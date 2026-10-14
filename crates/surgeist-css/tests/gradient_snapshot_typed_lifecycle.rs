@@ -2,6 +2,7 @@
 //! Functional new-API contracts from Images 4 WD 2025-09-30 §§3.1–3.5,
 //! the specific Values 5 WD 2024-11-11 position import, and shared Color 4/5.
 //! New construction APIs have no executable preimplementation boundary.
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
 fn named(name: &str) -> CssColor {
@@ -34,11 +35,8 @@ fn line_stops() -> CssColorStopList {
 }
 fn interpolation() -> CssColorInterpolation {
     CssColorInterpolation::from_predefined(
-        CssColorInterpolationMethod::try_new(
-            CssColorInterpolationSpace::Oklch,
-            Some(CssHueInterpolationMethod::Longer),
-        )
-        .unwrap(),
+        CssColorInterpolationMethod::try_new(ColorSpace::Oklch, Some(HueInterpolation::Longer))
+            .unwrap(),
     )
 }
 fn conic(
@@ -512,7 +510,7 @@ fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
             .predefined()
             .unwrap()
             .space(),
-        CssColorInterpolationSpace::Lab
+        ColorSpace::Lab
     );
 }
 
@@ -545,8 +543,7 @@ fn intrinsic_conic_geometry_defaults_are_omitted_with_all_authored_nodes_still_c
                 .unwrap(),
             ),
             Some(CssColorInterpolation::from_predefined(
-                CssColorInterpolationMethod::try_new(CssColorInterpolationSpace::Oklab, None)
-                    .unwrap(),
+                CssColorInterpolationMethod::try_new(ColorSpace::Oklab, None).unwrap(),
             )),
             stops,
         );
@@ -657,7 +654,7 @@ fn matching_interpolation_omission_keeps_the_authored_node_budget() {
         None,
         Some(CssColorInterpolation::from_predefined(
             CssColorInterpolationMethod::try_new(
-                CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+                ColorSpace::Predefined(PredefinedColorSpace::Srgb),
                 None,
             )
             .unwrap(),
@@ -774,7 +771,7 @@ fn generated_default_preservation_does_not_invent_an_authored_input_node() {
         None,
         Some(CssColorInterpolation::from_predefined(
             CssColorInterpolationMethod::try_new(
-                CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+                ColorSpace::Predefined(PredefinedColorSpace::Srgb),
                 None,
             )
             .unwrap(),
@@ -864,7 +861,7 @@ fn matching_legacy_keyword_default_is_omitted_without_resolving_current_color() 
         None,
         Some(CssColorInterpolation::from_predefined(
             CssColorInterpolationMethod::try_new(
-                CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+                ColorSpace::Predefined(PredefinedColorSpace::Srgb),
                 None,
             )
             .unwrap(),

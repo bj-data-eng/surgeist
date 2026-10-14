@@ -5,6 +5,7 @@
 //! The shared accepted Color 5 omitted-weight reconciliation also applies.
 //! Functional tests for new APIs, separate from the executable lifecycle RED.
 
+use surgeist_color::ColorSpace;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -187,7 +188,7 @@ fn explicit_default_and_nondefault_interpolation_keep_authored_method_identity()
             .predefined()
             .unwrap()
             .space(),
-        CssColorInterpolationSpace::Oklab
+        ColorSpace::Oklab
     );
     assert_text(
         "palette-mix(in oklab,light,dark)",

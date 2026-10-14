@@ -1,8 +1,8 @@
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::{
-    CssColorComponent, CssColorHue, CssColorInterpolationSpace, CssColorSyntax,
-    CssHueInterpolationMethod, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssOpacityValue, CssPredefinedColorSpace,
-    CssRelativeColorEnvironment, CssRelativeColorFunction, CssSystemColor, parse_style_attribute,
+    CssColorComponent, CssColorHue, CssColorSyntax, CssKnownDeclaredValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssOpacityValue, CssRelativeColorEnvironment,
+    CssRelativeColorFunction, CssSystemColor, parse_style_attribute,
 };
 
 fn color_value(source: &str) -> surgeist_css::CssColorPropertyValue {
@@ -111,7 +111,7 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
             .predefined()
             .unwrap()
             .space(),
-        CssColorInterpolationSpace::Oklch,
+        ColorSpace::Oklch,
     );
     assert_eq!(
         color_mix
@@ -120,7 +120,7 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
             .predefined()
             .unwrap()
             .hue(),
-        Some(CssHueInterpolationMethod::Longer),
+        Some(HueInterpolation::Longer),
     );
     assert!(color_mix.components()[0].color().lab_value().is_some());
     assert_eq!(
@@ -299,13 +299,13 @@ fn relative_color_families_expose_their_closed_current_environments_and_i01_proj
         ),
         (
             "color: color(from red display-p3 r g b / alpha)",
-            CssRelativeColorFunction::Color(CssPredefinedColorSpace::DisplayP3),
-            CssRelativeColorEnvironment::PredefinedRgb(CssPredefinedColorSpace::DisplayP3),
+            CssRelativeColorFunction::Color(PredefinedColorSpace::DisplayP3),
+            CssRelativeColorEnvironment::PredefinedRgb(PredefinedColorSpace::DisplayP3),
         ),
         (
             "color: color(from red xyz x y z / alpha)",
-            CssRelativeColorFunction::Color(CssPredefinedColorSpace::XyzD65),
-            CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::XyzD65),
+            CssRelativeColorFunction::Color(PredefinedColorSpace::XyzD65),
+            CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::XyzD65),
         ),
     ] {
         let value = color_value(source);
@@ -471,7 +471,7 @@ fn relative_color_origins_recurse_without_evaluation() {
     assert_eq!(middle.environment(), CssRelativeColorEnvironment::Oklch);
     assert_eq!(
         inner.environment(),
-        CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::XyzD65)
+        CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::XyzD65)
     );
 }
 
@@ -693,19 +693,16 @@ fn authored_perceptual_colors_preserve_channels_alpha_and_function_identity() {
 #[test]
 fn authored_predefined_colors_preserve_supported_space_and_channel_kinds() {
     for (name, expected) in [
-        ("srgb", CssPredefinedColorSpace::Srgb),
-        ("srgb-linear", CssPredefinedColorSpace::SrgbLinear),
-        ("display-p3", CssPredefinedColorSpace::DisplayP3),
-        (
-            "display-p3-linear",
-            CssPredefinedColorSpace::DisplayP3Linear,
-        ),
-        ("a98-rgb", CssPredefinedColorSpace::A98Rgb),
-        ("prophoto-rgb", CssPredefinedColorSpace::ProphotoRgb),
-        ("rec2020", CssPredefinedColorSpace::Rec2020),
-        ("xyz", CssPredefinedColorSpace::XyzD65),
-        ("xyz-d50", CssPredefinedColorSpace::XyzD50),
-        ("xyz-d65", CssPredefinedColorSpace::XyzD65),
+        ("srgb", PredefinedColorSpace::Srgb),
+        ("srgb-linear", PredefinedColorSpace::SrgbLinear),
+        ("display-p3", PredefinedColorSpace::DisplayP3),
+        ("display-p3-linear", PredefinedColorSpace::DisplayP3Linear),
+        ("a98-rgb", PredefinedColorSpace::A98Rgb),
+        ("prophoto-rgb", PredefinedColorSpace::ProphotoRgb),
+        ("rec2020", PredefinedColorSpace::Rec2020),
+        ("xyz", PredefinedColorSpace::XyzD65),
+        ("xyz-d50", PredefinedColorSpace::XyzD50),
+        ("xyz-d65", PredefinedColorSpace::XyzD65),
     ] {
         let value = color_value(&format!(
             "color: color({name} calc(1 + 2) 120% none / -25%)"
@@ -735,10 +732,7 @@ fn authored_predefined_colors_preserve_supported_space_and_channel_kinds() {
 fn display_p3_linear_color_preserves_exact_channels() {
     let value = color_value("color: color(display-p3-linear 1 0.5 0)");
     let current = value.value().predefined_value().unwrap();
-    assert_eq!(
-        current.color_space(),
-        CssPredefinedColorSpace::DisplayP3Linear
-    );
+    assert_eq!(current.color_space(), PredefinedColorSpace::DisplayP3Linear);
     for (channel, expected) in current.channels().iter().zip(["1", "0.5", "0"]) {
         assert!(
             matches!(channel, CssColorComponent::Number(value) if value.numeric().representation() == expected)
@@ -757,7 +751,7 @@ fn predefined_inexact_literals_have_no_rounded_compatibility_projection() {
     let value = color_value("color: color(display-p3 0.8 0.2 0.1 / 90%)");
     assert_eq!(
         value.value().predefined_value().unwrap().color_space(),
-        CssPredefinedColorSpace::DisplayP3,
+        PredefinedColorSpace::DisplayP3,
     );
     for (channel, expected) in value
         .value()

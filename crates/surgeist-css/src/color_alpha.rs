@@ -19,11 +19,12 @@ use crate::{
 /// serializer's later family-specific calculation phase.
 ///
 /// ```
+/// use surgeist_color::PredefinedColorSpace;
 /// use surgeist_css::{CssColorComponent, CssColorNumberLiteral, CssComponentValue,
-///     CssParsedColorAlphaRef, CssPredefinedColor, CssPredefinedColorSpace};
+///     CssParsedColorAlphaRef, CssPredefinedColor};
 /// let number = |text| CssColorComponent::Number(
 ///     CssColorNumberLiteral::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap());
-/// let color = CssPredefinedColor::try_new(CssPredefinedColorSpace::Srgb,
+/// let color = CssPredefinedColor::try_new(PredefinedColorSpace::Srgb,
 ///     [number("1"), number("0"), number("0")], Some(number("2"))).unwrap();
 /// let CssParsedColorAlphaRef::Scalar(alpha) = color.parsed_alpha() else { panic!("direct alpha") };
 /// assert!(alpha.is_one());

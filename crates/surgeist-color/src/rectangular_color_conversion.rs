@@ -16,7 +16,7 @@ mod wide;
 
 use std::fmt;
 
-use crate::CssPredefinedColorSpace;
+use crate::PredefinedColorSpace;
 use colorimetry::WhitePoint;
 use wide::Wide;
 
@@ -31,20 +31,20 @@ use wide::Wide;
 /// Downstream matches must allow additional spaces:
 ///
 /// ```compile_fail
-/// use surgeist_css::CssRectangularColorSpace;
-/// fn name(space: CssRectangularColorSpace) -> &'static str {
+/// use surgeist_color::RectangularSpace;
+/// fn name(space: RectangularSpace) -> &'static str {
 ///     match space {
-///         CssRectangularColorSpace::Predefined(_) => "predefined",
-///         CssRectangularColorSpace::Lab => "lab",
-///         CssRectangularColorSpace::Oklab => "oklab",
+///         RectangularSpace::Predefined(_) => "predefined",
+///         RectangularSpace::Lab => "lab",
+///         RectangularSpace::Oklab => "oklab",
 ///     }
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssRectangularColorSpace {
-    /// A predefined RGB or XYZ space, with its existing CSS identity.
-    Predefined(CssPredefinedColorSpace),
+pub enum RectangularSpace {
+    /// A predefined RGB or XYZ space, with its numerical identity.
+    Predefined(PredefinedColorSpace),
     /// Rectangular CIE Lab coordinates adapted to D50.
     Lab,
     /// Rectangular Oklab coordinates adapted to D65.
@@ -60,24 +60,24 @@ pub enum CssRectangularColorSpace {
 /// Downstream matches must allow additional errors:
 ///
 /// ```compile_fail
-/// use surgeist_css::CssRectangularColorConversionError;
-/// fn kind(error: CssRectangularColorConversionError) -> &'static str {
+/// use surgeist_color::RectangularConversionError;
+/// fn kind(error: RectangularConversionError) -> &'static str {
 ///     match error {
-///         CssRectangularColorConversionError::NonFiniteInput { .. } => "input",
-///         CssRectangularColorConversionError::UnrepresentableResult { .. } => "result",
+///         RectangularConversionError::NonFiniteInput { .. } => "input",
+///         RectangularConversionError::UnrepresentableResult { .. } => "result",
 ///     }
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssRectangularColorConversionError {
+pub enum RectangularConversionError {
     /// The first present nonfinite input channel in index order `0..3`.
     NonFiniteInput { component: usize },
     /// The first computed final destination channel unable to become finite f64.
     UnrepresentableResult { component: usize },
 }
 
-impl fmt::Display for CssRectangularColorConversionError {
+impl fmt::Display for RectangularConversionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonFiniteInput { component } => write!(
@@ -92,7 +92,7 @@ impl fmt::Display for CssRectangularColorConversionError {
     }
 }
 
-impl std::error::Error for CssRectangularColorConversionError {}
+impl std::error::Error for RectangularConversionError {}
 
 /// Checked finite or explicitly missing coordinates in one rectangular space.
 ///
@@ -101,31 +101,31 @@ impl std::error::Error for CssRectangularColorConversionError {}
 /// channels. All finite extended coordinates are accepted without clamping.
 /// This numerical carrier does not resolve authored CSS or carry alpha.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssRectangularColorCoordinates {
-    space: CssRectangularColorSpace,
+pub struct RectangularCoordinates {
+    space: RectangularSpace,
     channels: [Option<f64>; 3],
 }
 
-impl CssRectangularColorCoordinates {
+impl RectangularCoordinates {
     /// Checks present channels for finiteness in index order before construction.
     ///
     /// ```
-    /// use surgeist_css::{CssPredefinedColorSpace, CssRectangularColorCoordinates,
-    ///     CssRectangularColorSpace};
-    /// let color = CssRectangularColorCoordinates::try_new(
-    ///     CssRectangularColorSpace::Predefined(CssPredefinedColorSpace::Srgb),
+    /// use surgeist_color::{PredefinedColorSpace, RectangularCoordinates,
+    ///     RectangularSpace};
+    /// let color = RectangularCoordinates::try_new(
+    ///     RectangularSpace::Predefined(PredefinedColorSpace::Srgb),
     ///     [Some(-0.0), None, Some(1.2)],
     /// ).unwrap();
     /// assert_eq!(color.channels()[0].unwrap().to_bits(), (-0.0_f64).to_bits());
     /// assert_eq!(color.channels()[1], None);
     /// ```
     pub fn try_new(
-        space: CssRectangularColorSpace,
+        space: RectangularSpace,
         channels: [Option<f64>; 3],
-    ) -> Result<Self, CssRectangularColorConversionError> {
+    ) -> Result<Self, RectangularConversionError> {
         for (component, channel) in channels.iter().enumerate() {
             if channel.is_some_and(|value| !value.is_finite()) {
-                return Err(CssRectangularColorConversionError::NonFiniteInput { component });
+                return Err(RectangularConversionError::NonFiniteInput { component });
             }
         }
         Ok(Self { space, channels })
@@ -133,7 +133,7 @@ impl CssRectangularColorCoordinates {
 
     /// The space that determines units, channel order and whitepoint.
     #[must_use]
-    pub const fn space(&self) -> CssRectangularColorSpace {
+    pub const fn space(&self) -> RectangularSpace {
         self.space
     }
 
@@ -165,9 +165,9 @@ impl CssRectangularColorCoordinates {
     /// `f64` returns `UnrepresentableResult`; final underflow to zero is allowed.
     ///
     /// ```
-    /// use surgeist_css::{CssPredefinedColorSpace as P, CssRectangularColorCoordinates,
-    ///     CssRectangularColorSpace as S};
-    /// let encoded = CssRectangularColorCoordinates::try_new(
+    /// use surgeist_color::{PredefinedColorSpace as P, RectangularCoordinates,
+    ///     RectangularSpace as S};
+    /// let encoded = RectangularCoordinates::try_new(
     ///     S::Predefined(P::Srgb), [Some(0.01292), None, Some(-0.01292)],
     /// ).unwrap();
     /// let linear = encoded.convert_to(S::Predefined(P::SrgbLinear)).unwrap();
@@ -177,8 +177,8 @@ impl CssRectangularColorCoordinates {
     /// ```
     pub fn convert_to(
         &self,
-        destination: CssRectangularColorSpace,
-    ) -> Result<Self, CssRectangularColorConversionError> {
+        destination: RectangularSpace,
+    ) -> Result<Self, RectangularConversionError> {
         if self.space == destination {
             return Ok(*self);
         }
@@ -198,10 +198,11 @@ impl CssRectangularColorCoordinates {
         };
         let mut channels = [None; 3];
         for (component, value) in converted.into_iter().enumerate() {
-            channels[component] =
-                Some(value.to_f64().ok_or(
-                    CssRectangularColorConversionError::UnrepresentableResult { component },
-                )?);
+            channels[component] = Some(
+                value
+                    .to_f64()
+                    .ok_or(RectangularConversionError::UnrepresentableResult { component })?,
+            );
         }
         Ok(Self {
             space: destination,
@@ -210,21 +211,22 @@ impl CssRectangularColorCoordinates {
     }
 }
 
-fn whitepoint(space: CssRectangularColorSpace) -> WhitePoint {
-    use CssPredefinedColorSpace::{ProphotoRgb, XyzD50};
+fn whitepoint(space: RectangularSpace) -> WhitePoint {
+    use PredefinedColorSpace::{ProphotoRgb, XyzD50};
     match space {
-        CssRectangularColorSpace::Lab
-        | CssRectangularColorSpace::Predefined(ProphotoRgb | XyzD50) => WhitePoint::D50,
+        RectangularSpace::Lab | RectangularSpace::Predefined(ProphotoRgb | XyzD50) => {
+            WhitePoint::D50
+        }
         _ => WhitePoint::D65,
     }
 }
 
 fn same_rgb_primaries(
-    source: CssRectangularColorSpace,
-    destination: CssRectangularColorSpace,
-) -> Option<(CssPredefinedColorSpace, CssPredefinedColorSpace)> {
-    use CssPredefinedColorSpace::{DisplayP3, DisplayP3Linear, Srgb, SrgbLinear};
-    use CssRectangularColorSpace::Predefined;
+    source: RectangularSpace,
+    destination: RectangularSpace,
+) -> Option<(PredefinedColorSpace, PredefinedColorSpace)> {
+    use PredefinedColorSpace::{DisplayP3, DisplayP3Linear, Srgb, SrgbLinear};
+    use RectangularSpace::Predefined;
     if let (Predefined(source), Predefined(destination)) = (source, destination)
         && matches!(
             (source, destination),
@@ -237,25 +239,25 @@ fn same_rgb_primaries(
     None
 }
 
-fn to_xyz(channels: [Wide; 3], space: CssRectangularColorSpace) -> [Wide; 3] {
-    use CssPredefinedColorSpace::{XyzD50, XyzD65};
+fn to_xyz(channels: [Wide; 3], space: RectangularSpace) -> [Wide; 3] {
+    use PredefinedColorSpace::{XyzD50, XyzD65};
     match space {
-        CssRectangularColorSpace::Lab => colorimetry::lab_to_xyz(channels),
-        CssRectangularColorSpace::Oklab => colorimetry::oklab_to_xyz(channels),
-        CssRectangularColorSpace::Predefined(XyzD50 | XyzD65) => channels,
-        CssRectangularColorSpace::Predefined(rgb) => {
+        RectangularSpace::Lab => colorimetry::lab_to_xyz(channels),
+        RectangularSpace::Oklab => colorimetry::oklab_to_xyz(channels),
+        RectangularSpace::Predefined(XyzD50 | XyzD65) => channels,
+        RectangularSpace::Predefined(rgb) => {
             colorimetry::rgb_to_xyz(channels.map(|v| transfer::decode(v, rgb)), rgb)
         }
     }
 }
 
-fn from_xyz(channels: [Wide; 3], space: CssRectangularColorSpace) -> [Wide; 3] {
-    use CssPredefinedColorSpace::{XyzD50, XyzD65};
+fn from_xyz(channels: [Wide; 3], space: RectangularSpace) -> [Wide; 3] {
+    use PredefinedColorSpace::{XyzD50, XyzD65};
     match space {
-        CssRectangularColorSpace::Lab => colorimetry::xyz_to_lab(channels),
-        CssRectangularColorSpace::Oklab => colorimetry::xyz_to_oklab(channels),
-        CssRectangularColorSpace::Predefined(XyzD50 | XyzD65) => channels,
-        CssRectangularColorSpace::Predefined(rgb) => {
+        RectangularSpace::Lab => colorimetry::xyz_to_lab(channels),
+        RectangularSpace::Oklab => colorimetry::xyz_to_oklab(channels),
+        RectangularSpace::Predefined(XyzD50 | XyzD65) => channels,
+        RectangularSpace::Predefined(rgb) => {
             colorimetry::xyz_to_rgb(channels, rgb).map(|v| transfer::encode(v, rgb))
         }
     }

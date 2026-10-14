@@ -4,6 +4,7 @@ use super::{
     CssColorPercentageLiteral, CssColorScalarError, CssHintedNumberCalculation,
     CssNumberCalculation, CssPercentageCalculation,
 };
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
 mod inverse;
 mod recognition;
@@ -1390,7 +1391,7 @@ impl CssColor {
 /// A checked absolute `color()` value in a predefined Color 4 space.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPredefinedColor {
-    color_space: CssPredefinedColorSpace,
+    color_space: PredefinedColorSpace,
     channels: [CssColorComponent; 3],
     alpha: Option<CssColorComponent>,
 }
@@ -1407,22 +1408,22 @@ pub enum CssRelativeColorEnvironment {
     Lch,
     Oklab,
     Oklch,
-    PredefinedRgb(CssPredefinedColorSpace),
-    Xyz(CssPredefinedColorSpace),
+    PredefinedRgb(PredefinedColorSpace),
+    Xyz(PredefinedColorSpace),
 }
 impl CssRelativeColorEnvironment {
     pub(crate) const fn is_consistent(self) -> bool {
         !matches!(
             self,
-            Self::PredefinedRgb(CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65)
+            Self::PredefinedRgb(PredefinedColorSpace::XyzD50 | PredefinedColorSpace::XyzD65)
                 | Self::Xyz(
-                    CssPredefinedColorSpace::Srgb
-                        | CssPredefinedColorSpace::SrgbLinear
-                        | CssPredefinedColorSpace::DisplayP3
-                        | CssPredefinedColorSpace::DisplayP3Linear
-                        | CssPredefinedColorSpace::A98Rgb
-                        | CssPredefinedColorSpace::ProphotoRgb
-                        | CssPredefinedColorSpace::Rec2020
+                    PredefinedColorSpace::Srgb
+                        | PredefinedColorSpace::SrgbLinear
+                        | PredefinedColorSpace::DisplayP3
+                        | PredefinedColorSpace::DisplayP3Linear
+                        | PredefinedColorSpace::A98Rgb
+                        | PredefinedColorSpace::ProphotoRgb
+                        | PredefinedColorSpace::Rec2020
                 )
         )
     }
@@ -1640,7 +1641,7 @@ impl CssRelativeColor {
 
 impl CssPredefinedColor {
     pub fn try_new(
-        color_space: CssPredefinedColorSpace,
+        color_space: PredefinedColorSpace,
         channels: [CssColorComponent; 3],
         alpha: Option<CssColorComponent>,
     ) -> Result<Self, CssColorConstructionError> {
@@ -1653,7 +1654,7 @@ impl CssPredefinedColor {
     }
 
     #[must_use]
-    pub const fn color_space(&self) -> CssPredefinedColorSpace {
+    pub const fn color_space(&self) -> PredefinedColorSpace {
         self.color_space
     }
 
@@ -2017,41 +2018,28 @@ fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthErro
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssPredefinedColorSpace {
-    Srgb,
-    SrgbLinear,
-    DisplayP3,
-    DisplayP3Linear,
-    A98Rgb,
-    ProphotoRgb,
-    Rec2020,
-    XyzD50,
-    XyzD65,
-}
-
 /// A checked authored predefined interpolation method.
 /// Explicit hue strategies are valid only for polar color spaces.
 ///
-/// ```compile_fail
-/// use surgeist_css::{CssColorInterpolationMethod, CssColorInterpolationSpace};
+/// ```compile_fail,E0451
+/// use surgeist_color::ColorSpace;
+/// use surgeist_css::CssColorInterpolationMethod;
 /// let unchecked = CssColorInterpolationMethod {
-///     space: CssColorInterpolationSpace::Hsl,
+///     space: ColorSpace::Hsl,
 ///     hue: None,
 /// };
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorInterpolationMethod {
-    space: CssColorInterpolationSpace,
-    hue: Option<CssHueInterpolationMethod>,
+    space: ColorSpace,
+    hue: Option<HueInterpolation>,
 }
 
 impl CssColorInterpolationMethod {
     /// Checks the polar-only hue grammar without resolving or interpolating colors.
     pub const fn try_new(
-        space: CssColorInterpolationSpace,
-        hue: Option<CssHueInterpolationMethod>,
+        space: ColorSpace,
+        hue: Option<HueInterpolation>,
     ) -> Result<Self, CssColorInterpolationMethodConstructionError> {
         if hue.is_some() && !space.is_polar() {
             return Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace);
@@ -2060,12 +2048,12 @@ impl CssColorInterpolationMethod {
     }
 
     #[must_use]
-    pub const fn space(&self) -> CssColorInterpolationSpace {
+    pub const fn space(&self) -> ColorSpace {
         self.space
     }
 
     #[must_use]
-    pub const fn hue(&self) -> Option<CssHueInterpolationMethod> {
+    pub const fn hue(&self) -> Option<HueInterpolation> {
         self.hue
     }
 
@@ -2074,11 +2062,11 @@ impl CssColorInterpolationMethod {
     /// strategy. The authored omission remains available through [`Self::hue`].
     /// This does not select a host's policy or execute color interpolation.
     #[must_use]
-    pub const fn effective_hue(&self) -> Option<CssHueInterpolationMethod> {
+    pub const fn effective_hue(&self) -> Option<HueInterpolation> {
         if self.space.is_polar() {
             match self.hue {
                 Some(hue) => Some(hue),
-                None => Some(CssHueInterpolationMethod::Shorter),
+                None => Some(HueInterpolation::Shorter),
             }
         } else {
             None
@@ -2115,35 +2103,6 @@ impl std::error::Error for CssColorInterpolationMethodConstructionError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssColorInterpolationSpace {
-    Predefined(CssPredefinedColorSpace),
-    Hsl,
-    Hwb,
-    Lab,
-    Lch,
-    Oklab,
-    Oklch,
-}
-
-impl CssColorInterpolationSpace {
-    /// Reports whether the interpolation space has a polar hue component.
-    #[must_use]
-    pub const fn is_polar(self) -> bool {
-        matches!(self, Self::Hsl | Self::Hwb | Self::Lch | Self::Oklch)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssHueInterpolationMethod {
-    Shorter,
-    Longer,
-    Increasing,
-    Decreasing,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum CssRelativeColorFunction {
     Rgb,
     Hsl,
@@ -2152,7 +2111,7 @@ pub enum CssRelativeColorFunction {
     Lch,
     Oklab,
     Oklch,
-    Color(CssPredefinedColorSpace),
+    Color(PredefinedColorSpace),
 }
 
 impl CssRelativeColorFunction {
@@ -2172,9 +2131,9 @@ impl CssRelativeColorFunction {
             Self::Lch => (E::Lch, [N, N, Hue]),
             Self::Oklab => (E::Oklab, [N; 3]),
             Self::Oklch => (E::Oklch, [N, N, Hue]),
-            Self::Color(
-                space @ (CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65),
-            ) => (E::Xyz(space), [N; 3]),
+            Self::Color(space @ (PredefinedColorSpace::XyzD50 | PredefinedColorSpace::XyzD65)) => {
+                (E::Xyz(space), [N; 3])
+            }
             Self::Color(space) => (E::PredefinedRgb(space), [N; 3]),
         }
     }

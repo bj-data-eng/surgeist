@@ -712,7 +712,7 @@ let facts = CssColorFacts::new(
 let limits = CssColorOrdinaryLimits {
     input_units: 1_024, algorithm_records: 16_384,
     arithmetic_records: 4_096, evaluation_records: 4_096,
-    actions: 4_000_000, output_units: 256,
+    actions: 4_000_000,
 };
 let original: Vec<u16> = "red".encode_utf16().collect();
 let parsed = parse_used_color(CssColorInput::Utf16(&original),

@@ -4,11 +4,8 @@
 //! variadic argument is observed here; those continuations supply typed values.
 
 use super::keywords::ColorFunction as F;
-use super::{CssUsedColor, CssUsedColorError};
-use crate::{
-    CssColorInterpolationSpace as Space, CssColorSyntax as Syntax,
-    CssPredefinedColorSpace as Predefined,
-};
+use super::{Color, ColorError};
+use crate::{ColorSpace as Space, CssColorSyntax as Syntax, PredefinedColorSpace as Predefined};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Domain {
@@ -37,15 +34,15 @@ impl Component {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
     Grammar,
-    Numerical(CssUsedColorError),
+    Numerical(ColorError),
 }
 pub(crate) fn legacy_rgb_domains(domains: [Domain; 3]) -> bool {
     matches!(domains[0], Domain::Number | Domain::Percentage)
         && domains[1] == domains[0]
         && domains[2] == domains[0]
 }
-impl From<CssUsedColorError> for Error {
-    fn from(value: CssUsedColorError) -> Self {
+impl From<ColorError> for Error {
+    fn from(value: ColorError) -> Self {
         Self::Numerical(value)
     }
 }
@@ -107,7 +104,7 @@ pub(crate) fn absolute_coordinates(
     syntax: Syntax,
     components: [Component; 3],
     alpha_component: Option<Component>,
-) -> Result<CssUsedColor, Error> {
+) -> Result<Color, Error> {
     let legacy = syntax == Syntax::Legacy;
     if legacy && !matches!(function, F::Rgb | F::Hsl) {
         return Err(Error::Grammar);
@@ -218,12 +215,12 @@ pub(crate) fn absolute_coordinates(
         ),
         _ => return Err(Error::Grammar),
     };
-    let value = CssUsedColor::try_new(space, channels, alpha)?;
+    let value = Color::try_new(space, channels, alpha)?;
     // Color4 16.2.2 retains the absolute rgb()/rgba() serialization family.
     // Missing channels still select color(srgb ...) in the canonical serializer;
     // relative RGB is a separate Color5 color-function family.
     Ok(if function == F::Rgb {
-        value.with_legacy_srgb()
+        value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)?
     } else {
         value
     })
@@ -235,20 +232,22 @@ pub(crate) fn absolute(
     syntax: Syntax,
     components: [Component; 3],
     alpha_component: Option<Component>,
-) -> Result<CssUsedColor, Error> {
+) -> Result<Color, Error> {
     let value = absolute_coordinates(function, predefined, syntax, components, alpha_component)?;
     let alpha = value.alpha();
     let channels = value.channels();
     // Color4§15.1 resolves present HSL/HWB channels to corresponding sRGB.
     // Explicit missing channels instead retain their modern natural form.
     if matches!(function, F::Hsl | F::Hwb) && channels.iter().all(Option::is_some) {
-        let converted = value.convert(Space::Predefined(Predefined::Srgb))?;
-        CssUsedColor::try_new(
+        let converted = value.converted(Space::Predefined(Predefined::Srgb))?;
+        Color::try_new(
             converted.space(),
             converted.channels().map(|value| clamp(value, 1.0)),
             alpha,
         )
-        .map(CssUsedColor::with_legacy_srgb)
+        .and_then(|value| {
+            value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)
+        })
         .map_err(Into::into)
     } else {
         Ok(value)
@@ -350,9 +349,7 @@ mod tests {
                 ],
                 None
             ),
-            Err(Error::Numerical(CssUsedColorError::NonFinite {
-                component: 1
-            }))
+            Err(Error::Numerical(ColorError::NonFinite { component: 1 }))
         );
         let rgb = absolute(
             F::Rgb,
@@ -380,7 +377,9 @@ mod tests {
         .unwrap();
         assert_eq!(red.space(), Space::Predefined(Predefined::Srgb));
         assert_eq!(red.channels(), [Some(1.0), Some(0.0), Some(0.0)]);
-        assert!(!red.uses_color_function());
+        assert!(
+            !(red.serialization_family() == surgeist_color::SerializationFamily::ColorFunction)
+        );
         let missing = absolute(
             F::Hsl,
             None,

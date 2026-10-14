@@ -1,3 +1,4 @@
+use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_html::*;
 
 #[test]
@@ -135,11 +136,9 @@ fn color_currentcolor_without_palette_is_unavailable_and_reclaims_partial_constr
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
-            surgeist_css::CssColorOperationError::Unavailable(
-                surgeist_css::CssColorUnavailable::Palette(
-                    surgeist_css::CssSystemColor::CanvasText
-                )
-            )
+            HtmlColorProcessingError::Unavailable(surgeist_css::CssColorUnavailable::Palette(
+                surgeist_css::CssSystemColor::CanvasText
+            ))
         ))
     );
     assert_eq!(failure.cleanup_error(), None);
@@ -330,7 +329,17 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
         assert_eq!(color.source(), HtmlParseColorValueSource::InstalledValue);
         assert_eq!(color.colorspace(), HtmlInputColorSpace::LimitedSrgb);
         assert_eq!(color.standard_failure(), None);
-        assert_eq!(color.value().srgb_bytes(), Some([255, 0, 0]));
+        let value: Color = color.value();
+        assert_eq!(value.srgb_bytes(), Some([255, 0, 0]));
+        assert_eq!(
+            value.space(),
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb)
+        );
+        assert_eq!(
+            value.channels(),
+            Color::from_srgba8([255, 0, 0, 255]).channels()
+        );
+        assert_eq!(value.alpha(), Some(1.0));
         assert!(
             color
                 .operand_group(HtmlParseColorOperandRole::Alpha)

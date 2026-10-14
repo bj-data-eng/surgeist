@@ -5,10 +5,9 @@
 //! controls are derived from the selected numerical contract, not from output
 //! of the implementation. Round trips supplement explicit coordinate checks.
 
-use surgeist_css::{
-    CssHslColorCoordinates as Hsl, CssHslHwbConversionError as Error,
-    CssHwbColorCoordinates as Hwb, convert_hsl_to_srgb, convert_hwb_to_srgb, convert_srgb_to_hsl,
-    convert_srgb_to_hwb,
+use surgeist_color::{
+    HslCoordinates as Hsl, HslHwbConversionError as Error, HwbCoordinates as Hwb,
+    convert_hsl_to_srgb, convert_hwb_to_srgb, convert_srgb_to_hsl, convert_srgb_to_hwb,
 };
 
 fn close(actual: f64, expected: f64, tolerance: f64) {

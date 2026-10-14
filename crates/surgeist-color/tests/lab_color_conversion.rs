@@ -4,8 +4,8 @@
 //! Cardinal/diagonal angles and scaled 3-4-5 triangles are independent geometry
 //! oracles. Decimal 53.13010235415598° is the independently rounded atan(4/3).
 
-use surgeist_css::{
-    CssPolarColorConversionError as Error, CssPolarColorCoordinates as Polar, convert_lab_to_lch,
+use surgeist_color::{
+    PolarConversionError as Error, PolarCoordinates as Polar, convert_lab_to_lch,
     convert_lch_to_lab, convert_oklab_to_oklch, convert_oklch_to_oklab,
 };
 

@@ -80,7 +80,8 @@ implemented dependency graph and behavior.
 | --- | --- |
 | Root `surgeist` | Thin facade, curated reexports, application builders, and bootstrap |
 | `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
-| `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and clean-report validation |
+| `surgeist-color` | Dependency-free checked numerical colors, conversion, interpolation, transformations, resolved serialization, finite formatting, and byte-alpha spelling |
+| `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, clean-report validation, and source/fact-qualified color resolution |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
@@ -130,7 +131,11 @@ Its decoded-Unicode front door supports fresh offline ordinary documents and
 qualified contextual fragments. The crate README and conformance matrix record
 external fact requirements, unsupported hosted execution and selected coverage;
 they do not certify full browser conformance. It has no DOM or downstream
-rendering dependency and owns its direct CSS color integration.
+rendering dependency and owns its current direct CSS and Color integration.
+Its source color adapter services CSS parsing and Color numerical actions through
+one original parser controller, with separate numerical ownership and digit
+storage; stored computation values use Color directly. The planned HTML
+values/parser/semantics split is not yet a physical package split.
 The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.

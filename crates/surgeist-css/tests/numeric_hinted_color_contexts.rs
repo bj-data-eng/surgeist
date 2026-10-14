@@ -9,6 +9,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hue-syntax
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
@@ -153,8 +154,8 @@ fn relative_expression_constructors_admit_hinted_number_only_in_percentage_permi
         E::Lch,
         E::Oklab,
         E::Oklch,
-        E::PredefinedRgb(CssPredefinedColorSpace::Srgb),
-        E::Xyz(CssPredefinedColorSpace::XyzD65),
+        E::PredefinedRgb(PredefinedColorSpace::Srgb),
+        E::Xyz(PredefinedColorSpace::XyzD65),
     ] {
         for domain in [D::NumberPercentage, D::Alpha] {
             let original = components(HINTED);

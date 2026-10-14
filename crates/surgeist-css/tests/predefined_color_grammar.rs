@@ -8,36 +8,33 @@
 //! no channel gamut clipping, and direct alpha clipping to [0, 1]. Calculations
 //! retain their authored graph and the selected specified projection wrappers.
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 // The source lists seven RGB keywords and three XYZ spellings; xyz denotes D65.
-const SPACES: [(&str, CssPredefinedColorSpace, &str); 10] = [
-    ("srgb", CssPredefinedColorSpace::Srgb, "srgb"),
+const SPACES: [(&str, PredefinedColorSpace, &str); 10] = [
+    ("srgb", PredefinedColorSpace::Srgb, "srgb"),
     (
         "srgb-linear",
-        CssPredefinedColorSpace::SrgbLinear,
+        PredefinedColorSpace::SrgbLinear,
         "srgb-linear",
     ),
-    (
-        "display-p3",
-        CssPredefinedColorSpace::DisplayP3,
-        "display-p3",
-    ),
+    ("display-p3", PredefinedColorSpace::DisplayP3, "display-p3"),
     (
         "display-p3-linear",
-        CssPredefinedColorSpace::DisplayP3Linear,
+        PredefinedColorSpace::DisplayP3Linear,
         "display-p3-linear",
     ),
-    ("a98-rgb", CssPredefinedColorSpace::A98Rgb, "a98-rgb"),
+    ("a98-rgb", PredefinedColorSpace::A98Rgb, "a98-rgb"),
     (
         "prophoto-rgb",
-        CssPredefinedColorSpace::ProphotoRgb,
+        PredefinedColorSpace::ProphotoRgb,
         "prophoto-rgb",
     ),
-    ("rec2020", CssPredefinedColorSpace::Rec2020, "rec2020"),
-    ("xyz", CssPredefinedColorSpace::XyzD65, "xyz-d65"),
-    ("xyz-d50", CssPredefinedColorSpace::XyzD50, "xyz-d50"),
-    ("xyz-d65", CssPredefinedColorSpace::XyzD65, "xyz-d65"),
+    ("rec2020", PredefinedColorSpace::Rec2020, "rec2020"),
+    ("xyz", PredefinedColorSpace::XyzD65, "xyz-d65"),
+    ("xyz-d50", PredefinedColorSpace::XyzD50, "xyz-d50"),
+    ("xyz-d65", PredefinedColorSpace::XyzD65, "xyz-d65"),
 ];
 
 fn token(text: &str) -> CssComponentValue {
@@ -129,7 +126,7 @@ fn assert_component(value: &CssColorComponent, expected: &str) {
 
 fn assert_fields(
     color: &CssColor,
-    space: CssPredefinedColorSpace,
+    space: PredefinedColorSpace,
     channels: [&str; 3],
     alpha: Option<&str>,
 ) {
@@ -147,7 +144,7 @@ fn assert_fields(
 
 fn assert_case(
     name: &str,
-    space: CssPredefinedColorSpace,
+    space: PredefinedColorSpace,
     canonical: &str,
     channels: [&str; 3],
     alpha: Option<&str>,
@@ -233,15 +230,15 @@ fn xyz_is_the_d65_alias_and_d50_remains_distinct() {
     let d50 = parsed("color(xyz-d50 .1 .2 .3)");
     assert_eq!(
         alias.predefined_value().unwrap().color_space(),
-        CssPredefinedColorSpace::XyzD65
+        PredefinedColorSpace::XyzD65
     );
     assert_eq!(
         d65.predefined_value().unwrap().color_space(),
-        CssPredefinedColorSpace::XyzD65
+        PredefinedColorSpace::XyzD65
     );
     assert_eq!(
         d50.predefined_value().unwrap().color_space(),
-        CssPredefinedColorSpace::XyzD50
+        PredefinedColorSpace::XyzD50
     );
     // Full authored equality includes provenance; semantic space identity does not.
     assert_eq!(

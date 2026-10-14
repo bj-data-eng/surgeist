@@ -4,7 +4,6 @@
 //! buffers. Guards never release capacity, run abandoned work, or refund on Drop.
 
 use super::grammar::GrammarRecord;
-use crate::finite_format::bounded::FormatDigit;
 use crate::numeric::bounded_decimal::DecimalDigit;
 use crate::tokenization::bounded::{InputCursor, InputKind, Request as InputRequest, Scalar};
 use crate::tokenization::color_tokens::{Record, Request as TokenRequest, Token, TokenCursor};
@@ -29,14 +28,26 @@ impl CssColorOperationOwner {
     pub(crate) fn begin(&mut self) -> Result<usize, CssColorProtocolError> {
         self.advance_from(self.phase.get())
     }
-    pub(super) fn advance_from(&self, expected: usize) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn prepare_advance(&self, expected: usize) -> Result<usize, CssColorProtocolError> {
         if self.phase.get() != expected {
             return Err(CssColorProtocolError::ForeignSlot);
         }
-        let next = expected
+        expected
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(CssColorProtocolError::Overflow)
+    }
+    pub(super) fn commit_phase(&self, expected: usize, next: usize) {
+        assert_eq!(
+            self.phase.get(),
+            expected,
+            "phase was preflighted before numerical owner construction"
+        );
+        assert_eq!(expected.checked_add(1), Some(next));
         self.phase.set(next);
+    }
+    pub(super) fn advance_from(&self, expected: usize) -> Result<usize, CssColorProtocolError> {
+        let next = self.prepare_advance(expected)?;
+        self.commit_phase(expected, next);
         Ok(next)
     }
     pub(super) fn current_phase(&self) -> usize {
@@ -53,7 +64,6 @@ pub enum CssColorSlotKind {
     DecimalDigit,
     ScaledDigit,
     ProfileChannel,
-    FormatDigit,
     Grammar,
     NumericLeaf,
     Expression,
@@ -92,7 +102,6 @@ pub(super) enum Data {
         ordinal: usize,
         value: Option<f64>,
     },
-    FormatDigit(FormatDigit),
     Grammar(GrammarRecord),
     NumericLeaf(super::expression::NumericLeaf),
     Expression(super::expression::ExpressionRecord),
@@ -117,7 +126,6 @@ impl Data {
             Self::DecimalDigit { .. } => CssColorSlotKind::DecimalDigit,
             Self::ScaledDigit { .. } => CssColorSlotKind::ScaledDigit,
             Self::ProfileChannel { .. } => CssColorSlotKind::ProfileChannel,
-            Self::FormatDigit(_) => CssColorSlotKind::FormatDigit,
             Self::Grammar(_) => CssColorSlotKind::Grammar,
             Self::NumericLeaf(_) => CssColorSlotKind::NumericLeaf,
             Self::Expression(_) => CssColorSlotKind::Expression,
@@ -235,7 +243,6 @@ impl<'owner> LexicalTable<'owner> {
             Data::DecimalDigit { .. }
             | Data::ScaledDigit { .. }
             | Data::ProfileChannel { .. }
-            | Data::FormatDigit(_)
             | Data::Grammar(_)
             | Data::NumericLeaf(_)
             | Data::Expression(_)
@@ -257,10 +264,14 @@ pub enum CssColorProtocolError {
     Terminal,
     StorageNotEmpty,
     EmptySlot,
+    NumericalProtocol(surgeist_color::ProtocolError),
 }
 
 impl std::fmt::Display for CssColorProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Self::NumericalProtocol(error) = self {
+            return std::fmt::Display::fmt(error, f);
+        }
         f.write_str(match self {
             Self::WrongAction => "color action does not match the pending request",
             Self::WrongIndex => "color record index does not match the requested ordinal",
@@ -271,10 +282,18 @@ impl std::fmt::Display for CssColorProtocolError {
             Self::Terminal => "color operation has no completed result",
             Self::StorageNotEmpty => "color scratch banks have not been retired",
             Self::EmptySlot => "color transition has no caller-owned checkpoint",
+            Self::NumericalProtocol(_) => unreachable!("handled numerical protocol source"),
         })
     }
 }
-impl std::error::Error for CssColorProtocolError {}
+impl std::error::Error for CssColorProtocolError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NumericalProtocol(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ActionDescription {

@@ -367,7 +367,7 @@ fn parses_color_mix_symbolically() {
 
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().space(),
-        CssColorInterpolationSpace::Oklch
+        ColorSpace::Oklch
     );
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().hue(),
@@ -400,11 +400,11 @@ fn parses_color_mix_with_hue_interpolation() {
 
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().space(),
-        CssColorInterpolationSpace::Lch
+        ColorSpace::Lch
     );
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().hue(),
-        Some(CssHueInterpolationMethod::Longer)
+        Some(HueInterpolation::Longer)
     );
     assert_eq!(
         mix.components()[1]

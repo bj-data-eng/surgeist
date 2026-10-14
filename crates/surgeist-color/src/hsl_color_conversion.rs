@@ -11,18 +11,18 @@ use std::fmt;
 /// This error can gain variants; downstream matches need a fallback.
 ///
 /// ```compile_fail
-/// use surgeist_css::CssHslHwbConversionError;
-/// fn exhaustive(error: CssHslHwbConversionError) {
+/// use surgeist_color::HslHwbConversionError;
+/// fn exhaustive(error: HslHwbConversionError) {
 ///     match error {
-///         CssHslHwbConversionError::NonFiniteInput { .. } => (),
-///         CssHslHwbConversionError::NegativeSaturation => (),
-///         CssHslHwbConversionError::UnrepresentableResult => (),
+///         HslHwbConversionError::NonFiniteInput { .. } => (),
+///         HslHwbConversionError::NegativeSaturation => (),
+///         HslHwbConversionError::UnrepresentableResult => (),
 ///     }
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssHslHwbConversionError {
+pub enum HslHwbConversionError {
     /// The first nonfinite component, using the documented input order.
     NonFiniteInput { component: usize },
     /// Concrete HSL saturation must already be nonnegative.
@@ -31,7 +31,7 @@ pub enum CssHslHwbConversionError {
     UnrepresentableResult,
 }
 
-impl fmt::Display for CssHslHwbConversionError {
+impl fmt::Display for HslHwbConversionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonFiniteInput { component } => write!(
@@ -46,7 +46,7 @@ impl fmt::Display for CssHslHwbConversionError {
     }
 }
 
-impl std::error::Error for CssHslHwbConversionError {}
+impl std::error::Error for HslHwbConversionError {}
 
 /// Finite concrete HSL coordinates with optional hue in degrees.
 ///
@@ -56,13 +56,13 @@ impl std::error::Error for CssHslHwbConversionError {}
 /// present hue independently of saturation, and preserves lightness bits.
 /// This carrier has no alpha or authored CSS semantics.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssHslColorCoordinates {
+pub struct HslCoordinates {
     hue_degrees: Option<f64>,
     saturation: f64,
     lightness: f64,
 }
 
-impl CssHslColorCoordinates {
+impl HslCoordinates {
     /// Checks H (if present), S, L in index order before rejecting negative S.
     ///
     /// Hue and saturation zero are canonical positive zero. Lightness retains
@@ -70,8 +70,8 @@ impl CssHslColorCoordinates {
     /// is applied here, and no authored saturation clamp is performed.
     ///
     /// ```
-    /// use surgeist_css::CssHslColorCoordinates;
-    /// let hsl = CssHslColorCoordinates::try_new(Some(-90.0), 100.0, 50.0).unwrap();
+    /// use surgeist_color::HslCoordinates;
+    /// let hsl = HslCoordinates::try_new(Some(-90.0), 100.0, 50.0).unwrap();
     /// assert_eq!(hsl.hue_degrees(), Some(270.0));
     /// assert_eq!(hsl.saturation(), 100.0);
     /// assert_eq!(hsl.lightness(), 50.0);
@@ -80,10 +80,10 @@ impl CssHslColorCoordinates {
         hue_degrees: Option<f64>,
         saturation: f64,
         lightness: f64,
-    ) -> Result<Self, CssHslHwbConversionError> {
+    ) -> Result<Self, HslHwbConversionError> {
         validate_input([hue_degrees.unwrap_or(0.0), saturation, lightness])?;
         if saturation < 0.0 {
-            return Err(CssHslHwbConversionError::NegativeSaturation);
+            return Err(HslHwbConversionError::NegativeSaturation);
         }
         Ok(Self {
             hue_degrees: hue_degrees.map(normalize_hue),
@@ -118,21 +118,21 @@ impl CssHslColorCoordinates {
 /// carrier preserves missing or present hue independently of W and B. HWB sum
 /// normalization occurs during conversion, not construction.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssHwbColorCoordinates {
+pub struct HwbCoordinates {
     hue_degrees: Option<f64>,
     whiteness: f64,
     blackness: f64,
 }
 
-impl CssHwbColorCoordinates {
+impl HwbCoordinates {
     /// Checks H (if present), W, B in index order and normalizes only hue.
     ///
     /// W and B retain their exact input bits, including negative zero. No
     /// inverse powerless threshold or authored CSS clamp is applied.
     ///
     /// ```
-    /// use surgeist_css::CssHwbColorCoordinates;
-    /// let hwb = CssHwbColorCoordinates::try_new(Some(510.0), 25.0, 12.5).unwrap();
+    /// use surgeist_color::HwbCoordinates;
+    /// let hwb = HwbCoordinates::try_new(Some(510.0), 25.0, 12.5).unwrap();
     /// assert_eq!(hwb.hue_degrees(), Some(150.0));
     /// assert_eq!(hwb.whiteness(), 25.0);
     /// assert_eq!(hwb.blackness(), 12.5);
@@ -141,7 +141,7 @@ impl CssHwbColorCoordinates {
         hue_degrees: Option<f64>,
         whiteness: f64,
         blackness: f64,
-    ) -> Result<Self, CssHslHwbConversionError> {
+    ) -> Result<Self, HslHwbConversionError> {
         validate_input([hue_degrees.unwrap_or(0.0), whiteness, blackness])?;
         Ok(Self {
             hue_degrees: hue_degrees.map(normalize_hue),
@@ -174,18 +174,16 @@ impl CssHwbColorCoordinates {
 /// S and L use `0..100` reference numbers; RGB uses `0..1` reference numbers.
 /// Finite extended results are retained without clipping or gamut mapping.
 /// Missing hue substitutes 0 degrees, even at nonzero saturation. A required
-/// amplitude or channel that overflows returns [`CssHslHwbConversionError::UnrepresentableResult`].
+/// amplitude or channel that overflows returns [`HslHwbConversionError::UnrepresentableResult`].
 /// Ordinary binary64 rounding and underflow apply; exact round trips are not
 /// promised, including after powerless inverse conversion.
 ///
 /// ```
-/// use surgeist_css::{CssHslColorCoordinates, convert_hsl_to_srgb};
-/// let hsl = CssHslColorCoordinates::try_new(None, 200.0, 50.0).unwrap();
+/// use surgeist_color::{HslCoordinates, convert_hsl_to_srgb};
+/// let hsl = HslCoordinates::try_new(None, 200.0, 50.0).unwrap();
 /// assert_eq!(convert_hsl_to_srgb(&hsl).unwrap(), [1.5, -0.5, -0.5]);
 /// ```
-pub fn convert_hsl_to_srgb(
-    hsl: &CssHslColorCoordinates,
-) -> Result<[f64; 3], CssHslHwbConversionError> {
+pub fn convert_hsl_to_srgb(hsl: &HslCoordinates) -> Result<[f64; 3], HslHwbConversionError> {
     let saturation = hsl.saturation / 100.0;
     let lightness = hsl.lightness / 100.0;
     let amplitude = finite_result(saturation * lightness.min(1.0 - lightness))?;
@@ -215,15 +213,13 @@ pub fn convert_hsl_to_srgb(
 /// hue loss apply, so conversion does not promise exact inversion.
 ///
 /// ```
-/// use surgeist_css::convert_srgb_to_hsl;
+/// use surgeist_color::convert_srgb_to_hsl;
 /// let hsl = convert_srgb_to_hsl([-1.0, -0.5, 0.0]).unwrap();
 /// assert_eq!(hsl.hue_degrees(), Some(30.0));
 /// assert_eq!(hsl.saturation(), 100.0);
 /// assert_eq!(hsl.lightness(), -50.0);
 /// ```
-pub fn convert_srgb_to_hsl(
-    rgb: [f64; 3],
-) -> Result<CssHslColorCoordinates, CssHslHwbConversionError> {
+pub fn convert_srgb_to_hsl(rgb: [f64; 3]) -> Result<HslCoordinates, HslHwbConversionError> {
     validate_input(rgb)?;
     let minimum = rgb.into_iter().fold(f64::INFINITY, f64::min);
     let maximum = rgb.into_iter().fold(f64::NEG_INFINITY, f64::max);
@@ -237,7 +233,7 @@ pub fn convert_srgb_to_hsl(
     // These branches discard hue. In particular MAX - (-MAX) is irrelevant
     // for singular lightness and must not reject a representable result.
     if minimum == maximum || lightness == 0.0 || lightness == 1.0 {
-        return CssHslColorCoordinates::try_new(None, 0.0, lightness_percent);
+        return HslCoordinates::try_new(None, 0.0, lightness_percent);
     }
     let difference = maximum - minimum;
     let half_difference = if difference.is_finite() {
@@ -253,7 +249,7 @@ pub fn convert_srgb_to_hsl(
         let hue = rgb_hue(rgb, minimum, maximum);
         Some(if saturation < 0.0 { hue + 180.0 } else { hue })
     };
-    CssHslColorCoordinates::try_new(hue, saturation_percent, lightness_percent)
+    HslCoordinates::try_new(hue, saturation_percent, lightness_percent)
 }
 
 /// Converts concrete HWB to encoded sRGB using Color 4 §8.1.
@@ -268,12 +264,12 @@ pub fn convert_srgb_to_hsl(
 /// rounding and underflow apply, with no exact round-trip promise.
 ///
 /// ```
-/// use surgeist_css::{CssHwbColorCoordinates, convert_hwb_to_srgb};
-/// let hwb = CssHwbColorCoordinates::try_new(Some(150.0), 25.0, 12.5).unwrap();
+/// use surgeist_color::{HwbCoordinates, convert_hwb_to_srgb};
+/// let hwb = HwbCoordinates::try_new(Some(150.0), 25.0, 12.5).unwrap();
 /// assert_eq!(convert_hwb_to_srgb(&hwb), [0.25, 0.875, 0.5625]);
 /// ```
 #[must_use]
-pub fn convert_hwb_to_srgb(hwb: &CssHwbColorCoordinates) -> [f64; 3] {
+pub fn convert_hwb_to_srgb(hwb: &HwbCoordinates) -> [f64; 3] {
     let whiteness = hwb.whiteness / 100.0;
     let blackness = hwb.blackness / 100.0;
     let sum = whiteness + blackness;
@@ -303,15 +299,13 @@ pub fn convert_hwb_to_srgb(hwb: &CssHwbColorCoordinates) -> [f64; 3] {
 /// rounding, underflow, and powerless hue loss preclude exact inversion.
 ///
 /// ```
-/// use surgeist_css::convert_srgb_to_hwb;
+/// use surgeist_color::convert_srgb_to_hwb;
 /// let hwb = convert_srgb_to_hwb([-1.0, -0.5, 0.0]).unwrap();
 /// assert_eq!(hwb.hue_degrees(), Some(210.0));
 /// assert_eq!(hwb.whiteness(), -100.0);
 /// assert_eq!(hwb.blackness(), 100.0);
 /// ```
-pub fn convert_srgb_to_hwb(
-    rgb: [f64; 3],
-) -> Result<CssHwbColorCoordinates, CssHslHwbConversionError> {
+pub fn convert_srgb_to_hwb(rgb: [f64; 3]) -> Result<HwbCoordinates, HslHwbConversionError> {
     validate_input(rgb)?;
     let minimum = rgb.into_iter().fold(f64::INFINITY, f64::min);
     let maximum = rgb.into_iter().fold(f64::NEG_INFINITY, f64::max);
@@ -323,23 +317,23 @@ pub fn convert_srgb_to_hwb(
     } else {
         Some(rgb_hue(rgb, minimum, maximum))
     };
-    CssHwbColorCoordinates::try_new(hue, whiteness_percent, blackness_percent)
+    HwbCoordinates::try_new(hue, whiteness_percent, blackness_percent)
 }
 
-fn validate_input(input: [f64; 3]) -> Result<(), CssHslHwbConversionError> {
+fn validate_input(input: [f64; 3]) -> Result<(), HslHwbConversionError> {
     for (component, value) in input.into_iter().enumerate() {
         if !value.is_finite() {
-            return Err(CssHslHwbConversionError::NonFiniteInput { component });
+            return Err(HslHwbConversionError::NonFiniteInput { component });
         }
     }
     Ok(())
 }
 
-fn finite_result(value: f64) -> Result<f64, CssHslHwbConversionError> {
+fn finite_result(value: f64) -> Result<f64, HslHwbConversionError> {
     if value.is_finite() {
         Ok(value)
     } else {
-        Err(CssHslHwbConversionError::UnrepresentableResult)
+        Err(HslHwbConversionError::UnrepresentableResult)
     }
 }
 

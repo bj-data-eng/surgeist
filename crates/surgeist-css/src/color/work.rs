@@ -4,11 +4,12 @@
 //! expression, profile array, parse, or serialized number. Library scalar math
 //! is atomic and is not described as an invented internal instruction count.
 
-use crate::{CssMathFunction, CssUsedColorTransformation};
+use crate::CssMathFunction;
 
 /// A finite operation whose variable operands have already been lent by actions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorKernel {
+    Numerical(surgeist_color::Kernel),
     /// One bounded UTF decoding/preprocessing transition.
     Preprocess,
     /// One bounded token-state transition, including held lookahead.
@@ -49,12 +50,6 @@ pub enum CssColorKernel {
     Contrast,
     /// Select/validate one already read fact record or one exact compared unit.
     Fact,
-    /// Plan the fixed pieces of one final used serialization.
-    SerializationPlan,
-    /// One finite number-format state transition or one digit operation.
-    Format,
-    /// Apply one fixed checked transformation to a used value.
-    Transform(CssUsedColorTransformation),
 }
 impl CssColorKernel {
     /// Actual scalar fold count in this action. The three aggregates are

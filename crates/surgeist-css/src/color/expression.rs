@@ -1855,7 +1855,7 @@ mod tests {
         let expressions_table = syntax.finish().unwrap();
         let binding = super::super::relative::Binding::new(
             crate::CssRelativeColorEnvironment::Rgb,
-            super::super::CssUsedColor::from_srgba8([128, 32, 16, 64]),
+            super::super::Color::from_srgba8([128, 32, 16, 64]),
         )
         .unwrap();
         let mut evaluator = NumericEvaluation::start(&expressions_table, 0).unwrap();

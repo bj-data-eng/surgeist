@@ -1,3 +1,4 @@
+use surgeist_color::{ColorSpace, PredefinedColorSpace};
 mod common;
 #[path = "common/property_expectations.rs"]
 mod property_expectations;
@@ -229,7 +230,7 @@ fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
         .value()
         .predefined_value()
         .expect("predefined color");
-    assert_eq!(predefined.color_space(), CssPredefinedColorSpace::XyzD65);
+    assert_eq!(predefined.color_space(), PredefinedColorSpace::XyzD65);
     assert!(matches!(
         predefined.channels(),
         [
@@ -294,11 +295,11 @@ fn direct_color_wrappers_preserve_typed_relative_channels() {
         .expect("relative xyz color");
     assert_eq!(
         relative.function(),
-        &CssRelativeColorFunction::Color(CssPredefinedColorSpace::XyzD65)
+        &CssRelativeColorFunction::Color(PredefinedColorSpace::XyzD65)
     );
     assert_eq!(
         relative.environment(),
-        CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::XyzD65)
+        CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::XyzD65)
     );
     assert_eq!(relative.source().named().unwrap().name(), "red");
     for (channel, expected) in relative.channels().iter().zip([
@@ -929,7 +930,7 @@ fn assert_srgb_mix_with_lab_and_blue(color: &CssColor) {
         .expect("predefined interpolation");
     assert_eq!(
         method.space(),
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb)
     );
     assert_eq!(method.hue(), None);
     let [lab, blue] = mix.components() else {

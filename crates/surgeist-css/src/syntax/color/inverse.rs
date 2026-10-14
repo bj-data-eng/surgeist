@@ -429,8 +429,8 @@ fn interpolation_equal(
     right: Option<&CssColorInterpolation>,
 ) -> bool {
     use ColorInterpolation as I;
-    let default = CssColorInterpolationMethod::try_new(CssColorInterpolationSpace::Oklab, None)
-        .expect("rectangular default");
+    let default =
+        CssColorInterpolationMethod::try_new(ColorSpace::Oklab, None).expect("rectangular default");
     match (left.map(|v| &v.0), right.map(|v| &v.0)) {
         (Some(I::Custom(a)), Some(I::Custom(b))) => a == b,
         (Some(I::Custom(_)), _) | (_, Some(I::Custom(_))) => false,

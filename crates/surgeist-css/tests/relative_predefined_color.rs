@@ -7,12 +7,13 @@
 //! values remain authored, and no origin conversion or calculation evaluation
 //! is expected at this boundary.
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 #[derive(Clone, Copy)]
 struct Space {
     spelling: &'static str,
-    value: CssPredefinedColorSpace,
+    value: PredefinedColorSpace,
     canonical: &'static str,
     xyz: bool,
 }
@@ -20,61 +21,61 @@ struct Space {
 const SPACES: [Space; 10] = [
     Space {
         spelling: "srgb",
-        value: CssPredefinedColorSpace::Srgb,
+        value: PredefinedColorSpace::Srgb,
         canonical: "srgb",
         xyz: false,
     },
     Space {
         spelling: "srgb-linear",
-        value: CssPredefinedColorSpace::SrgbLinear,
+        value: PredefinedColorSpace::SrgbLinear,
         canonical: "srgb-linear",
         xyz: false,
     },
     Space {
         spelling: "display-p3",
-        value: CssPredefinedColorSpace::DisplayP3,
+        value: PredefinedColorSpace::DisplayP3,
         canonical: "display-p3",
         xyz: false,
     },
     Space {
         spelling: "display-p3-linear",
-        value: CssPredefinedColorSpace::DisplayP3Linear,
+        value: PredefinedColorSpace::DisplayP3Linear,
         canonical: "display-p3-linear",
         xyz: false,
     },
     Space {
         spelling: "a98-rgb",
-        value: CssPredefinedColorSpace::A98Rgb,
+        value: PredefinedColorSpace::A98Rgb,
         canonical: "a98-rgb",
         xyz: false,
     },
     Space {
         spelling: "prophoto-rgb",
-        value: CssPredefinedColorSpace::ProphotoRgb,
+        value: PredefinedColorSpace::ProphotoRgb,
         canonical: "prophoto-rgb",
         xyz: false,
     },
     Space {
         spelling: "rec2020",
-        value: CssPredefinedColorSpace::Rec2020,
+        value: PredefinedColorSpace::Rec2020,
         canonical: "rec2020",
         xyz: false,
     },
     Space {
         spelling: "xyz",
-        value: CssPredefinedColorSpace::XyzD65,
+        value: PredefinedColorSpace::XyzD65,
         canonical: "xyz-d65",
         xyz: true,
     },
     Space {
         spelling: "xyz-d50",
-        value: CssPredefinedColorSpace::XyzD50,
+        value: PredefinedColorSpace::XyzD50,
         canonical: "xyz-d50",
         xyz: true,
     },
     Space {
         spelling: "xyz-d65",
-        value: CssPredefinedColorSpace::XyzD65,
+        value: PredefinedColorSpace::XyzD65,
         canonical: "xyz-d65",
         xyz: true,
     },
@@ -429,7 +430,7 @@ fn nested_and_contextual_origins_are_retained_without_conversion() {
         let color = parsed(&text);
         let relative = color.relative_value().unwrap();
         let origin = relative.source().predefined_value().unwrap();
-        assert_eq!(origin.color_space(), CssPredefinedColorSpace::DisplayP3);
+        assert_eq!(origin.color_space(), PredefinedColorSpace::DisplayP3);
         assert!(
             matches!(&origin.channels()[0], CssColorComponent::Number(value) if value.numeric().representation() == "-0.2")
         );

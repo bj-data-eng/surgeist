@@ -1,6 +1,6 @@
-use surgeist_css::{
-    CssPredefinedColorSpace as P, CssRectangularColorConversionError as Error,
-    CssRectangularColorCoordinates as Coordinates, CssRectangularColorSpace as S,
+use surgeist_color::{
+    PredefinedColorSpace as P, RectangularConversionError as Error,
+    RectangularCoordinates as Coordinates, RectangularSpace as S,
 };
 
 const SPACES: [S; 11] = [

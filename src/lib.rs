@@ -12,6 +12,9 @@ pub mod animation {
 pub mod app {
     pub use surgeist_runtime::*;
 }
+pub mod color {
+    pub use surgeist_color::*;
+}
 pub mod css {
     pub use surgeist_css::*;
 }

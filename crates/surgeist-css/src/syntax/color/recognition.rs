@@ -1,23 +1,22 @@
 //! Decoded color names and relative channel environment recognition.
 
 use super::{
-    CssCalculationType, CssPredefinedColorSpace, CssRelativeColorChannel,
-    CssRelativeColorEnvironment,
+    CssCalculationType, CssRelativeColorChannel, CssRelativeColorEnvironment, PredefinedColorSpace,
 };
 use cssparser::match_ignore_ascii_case;
 
 /// Token admission, extensions, origins and failures belong to each caller.
-pub(crate) fn predefined_color_space(name: &str) -> Option<CssPredefinedColorSpace> {
+pub(crate) fn predefined_color_space(name: &str) -> Option<PredefinedColorSpace> {
     Some(match_ignore_ascii_case! { name,
-        "srgb" => CssPredefinedColorSpace::Srgb,
-        "srgb-linear" => CssPredefinedColorSpace::SrgbLinear,
-        "display-p3" => CssPredefinedColorSpace::DisplayP3,
-        "display-p3-linear" => CssPredefinedColorSpace::DisplayP3Linear,
-        "a98-rgb" => CssPredefinedColorSpace::A98Rgb,
-        "prophoto-rgb" => CssPredefinedColorSpace::ProphotoRgb,
-        "rec2020" => CssPredefinedColorSpace::Rec2020,
-        "xyz" | "xyz-d65" => CssPredefinedColorSpace::XyzD65,
-        "xyz-d50" => CssPredefinedColorSpace::XyzD50,
+        "srgb" => PredefinedColorSpace::Srgb,
+        "srgb-linear" => PredefinedColorSpace::SrgbLinear,
+        "display-p3" => PredefinedColorSpace::DisplayP3,
+        "display-p3-linear" => PredefinedColorSpace::DisplayP3Linear,
+        "a98-rgb" => PredefinedColorSpace::A98Rgb,
+        "prophoto-rgb" => PredefinedColorSpace::ProphotoRgb,
+        "rec2020" => PredefinedColorSpace::Rec2020,
+        "xyz" | "xyz-d65" => PredefinedColorSpace::XyzD65,
+        "xyz-d50" => PredefinedColorSpace::XyzD50,
         _ => return None,
     })
 }

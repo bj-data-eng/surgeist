@@ -1,9 +1,7 @@
 //! Standalone used-color operations over explicit source and facts.
 
-pub(crate) mod alpha;
 pub(crate) mod authored;
-mod numerical;
-pub use numerical::value::{CssUsedColor, CssUsedColorError, CssUsedColorTransformation};
+use surgeist_color::{Color, ColorError};
 
 mod bounded;
 mod component;
@@ -17,7 +15,6 @@ mod operation;
 mod ordinary;
 mod protocol;
 mod resolution;
-mod serialize;
 mod syntax_pass;
 mod work;
 pub use bounded::*;
@@ -40,4 +37,3 @@ pub use facts::{
     CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
-pub use numerical::serialization::CssColorSerializationRequest;

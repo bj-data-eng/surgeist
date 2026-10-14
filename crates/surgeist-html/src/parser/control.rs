@@ -66,8 +66,62 @@ pub enum ParseStop {
     InternalInvariant(Invariant),
     UnsupportedStandaloneState(StandaloneUnsupported),
     /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
-    ColorProcessing(surgeist_css::CssColorOperationError),
+    ColorProcessing(HtmlColorProcessingError),
     BaseFacts(crate::HtmlBaseMissing),
+}
+/// Processing error from HTML's source-only CSS color adapter. Numerical
+/// coordinates count UTF-16 units in the selected color field, not the HTML source.
+/// The parser's original source binding remains separately owned by ParseControl.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlColorProcessingError {
+    Protocol(surgeist_css::CssColorProtocolError),
+    Unavailable(surgeist_css::CssColorUnavailable),
+    Unsupported(surgeist_css::CssColorUnsupported),
+    Facts(surgeist_css::CssColorFactError),
+    Numerical {
+        error: surgeist_color::ColorError,
+        input: surgeist_css::CssColorInputRange,
+    },
+}
+impl std::fmt::Display for HtmlColorProcessingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Protocol(error) => std::fmt::Display::fmt(error, f),
+            Self::Unavailable(fact) => write!(f, "reached color fact is unavailable: {fact:?}"),
+            Self::Unsupported(capability) => {
+                write!(f, "reached color capability is unsupported: {capability:?}")
+            }
+            Self::Facts(error) => write!(f, "invalid color fact envelope: {error:?}"),
+            Self::Numerical { error, .. } => std::fmt::Display::fmt(error, f),
+        }
+    }
+}
+impl std::error::Error for HtmlColorProcessingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Protocol(error) => Some(error),
+            Self::Numerical { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
+impl HtmlColorProcessingError {
+    /// Only a source operation can enter HTML's current adapter. A future
+    /// non-source site is an adapter invariant failure, never fabricated source.
+    fn from_source(error: surgeist_css::CssColorOperationError) -> Result<Self, Invariant> {
+        use surgeist_css::{CssColorOperationError as E, CssColorResolutionSite as Site};
+        Ok(match error {
+            E::Protocol(error) => Self::Protocol(error),
+            E::Unavailable(error) => Self::Unavailable(error),
+            E::Unsupported(error) => Self::Unsupported(error),
+            E::Facts(error) => Self::Facts(error),
+            E::Numerical {
+                error,
+                site: Site::Source(input),
+            } => Self::Numerical { error, input },
+            E::Numerical { .. } => return Err(Invariant::InputCursorState),
+        })
+    }
 }
 /// Actual selected closed-environment execution boundaries, not limit errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -252,7 +306,10 @@ impl ParseControl {
         if let Err(first) = self.checkpoint() {
             return first;
         }
-        self.latch_stop(ParseStop::ColorProcessing(reason))
+        match HtmlColorProcessingError::from_source(reason) {
+            Ok(reason) => self.latch_stop(ParseStop::ColorProcessing(reason)),
+            Err(reason) => self.latch_stop(ParseStop::InternalInvariant(reason)),
+        }
     }
     pub(crate) fn stop_base_facts(&mut self, reason: crate::HtmlBaseMissing) -> ParseStop {
         if let Err(first) = self.checkpoint() {
@@ -5258,5 +5315,46 @@ mod tests {
             );
             assert_eq!(owner.usage(), &before);
         }
+    }
+    #[test]
+    fn source_color_error_keeps_field_coordinates_and_original_source_binding() {
+        let mut owner = control();
+        let source = HtmlSource::utf16(crate::DocumentString::from("<input type=color value=red>"));
+        owner.admit_source(&source).unwrap();
+        let input = surgeist_css::CssColorInputRange { start: 1, end: 3 };
+        let error = surgeist_color::ColorError::Unrepresentable;
+        let stop = owner.stop_color_processing(surgeist_css::CssColorOperationError::Numerical {
+            error,
+            site: surgeist_css::CssColorResolutionSite::Source(input),
+        });
+        assert_eq!(
+            stop,
+            ParseStop::ColorProcessing(HtmlColorProcessingError::Numerical { error, input })
+        );
+        let observed = owner.first_stop_usage().unwrap().clone();
+        owner.cancellation.cancel();
+        assert_eq!(
+            owner.stop_color_processing(surgeist_css::CssColorOperationError::Protocol(
+                surgeist_css::CssColorProtocolError::WrongAction
+            )),
+            stop
+        );
+        assert_eq!(owner.first_stop_usage(), Some(&observed));
+        let binding = owner.take_stopped_source_binding().unwrap();
+        assert_eq!(&binding.0, source.identity());
+        assert_eq!(binding.1, source.coordinates());
+        assert!(owner.stopped_source_binding().unwrap().is_none());
+    }
+    #[test]
+    fn source_color_protocol_projection_preserves_numerical_protocol_kind() {
+        let mut owner = control();
+        let protocol = surgeist_css::CssColorProtocolError::NumericalProtocol(
+            surgeist_color::ProtocolError::ForeignSlot,
+        );
+        assert_eq!(
+            owner.stop_color_processing(protocol.into()),
+            ParseStop::ColorProcessing(HtmlColorProcessingError::Protocol(protocol))
+        );
+        assert!(owner.stopped_source_binding().unwrap().is_none());
     }
 }

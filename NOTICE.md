@@ -155,6 +155,16 @@ The root facade depends on surgeist-animation, distributed by bj-data-eng.
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-animation](https://github.com/bj-data-eng/surgeist-animation)
 
+### surgeist-color 0.1.0
+
+The root facade depends on surgeist-color, authored in this repository. Its
+numerical and finite-formatting implementation was relocated from surgeist-css;
+CSS retains authored syntax, exact decimal formatting and source resolution.
+
+* License: [MIT](LICENSE)
+* Homepage: [Surgeist](https://github.com/bj-data-eng/surgeist)
+* Source attribution: [Color crate notice](crates/surgeist-color/NOTICE.md)
+
 ### surgeist-css 0.1.0
 
 The root facade depends on surgeist-css, distributed by bj-data-eng.
@@ -420,6 +430,7 @@ transitive binary-release inventory.
 | Crate | Local attribution |
 | --- | --- |
 | surgeist-animation | [NOTICE.md](crates/surgeist-animation/NOTICE.md) |
+| surgeist-color | [NOTICE.md](crates/surgeist-color/NOTICE.md) |
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |

@@ -4,8 +4,8 @@ use super::facts::{
     CssColorFactIdentity, CssColorFacts, CssColorPaletteEntry, CssColorPropertyFacts,
 };
 use super::keywords::canonical_system;
-use super::numerical::value::CssUsedColor;
 use crate::CssSystemColor;
+use surgeist_color::Color;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaletteError {
@@ -21,7 +21,7 @@ pub(crate) enum PaletteError {
 pub(crate) struct PaletteResult {
     pub(crate) facts: CssColorFactIdentity,
     pub(crate) resource: Option<CssColorFactIdentity>,
-    pub(crate) value: CssUsedColor,
+    pub(crate) value: Color,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -209,7 +209,7 @@ mod tests {
     fn initial_current_reaches_canvas_text_and_never_guesses_black() {
         let identity = CssColorFactIdentity::new(7, 3);
         let resource = CssColorFactIdentity::new(8, 4);
-        let expected = CssUsedColor::from_srgba8([11, 22, 33, 255]);
+        let expected = Color::from_srgba8([11, 22, 33, 255]);
         let palette = [CssColorPaletteEntry::new(
             CssSystemColor::CanvasText,
             resource,
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn supplied_property_does_not_read_irrelevant_palette_or_scheme() {
         let id = CssColorFactIdentity::new(1, 1);
-        let expected = CssUsedColor::from_srgba8([4, 5, 6, 255]);
+        let expected = Color::from_srgba8([4, 5, 6, 255]);
         let duplicate = [CssColorPaletteEntry::new(CssSystemColor::Canvas, id, expected); 2];
         let facts = CssColorFacts::new(
             id,
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn deprecated_lookup_keeps_real_resource_and_duplicate_keys_are_not_silently_selected() {
         let id = CssColorFactIdentity::new(1, 2);
-        let expected = CssUsedColor::opaque_black();
+        let expected = Color::opaque_black();
         let palette = [CssColorPaletteEntry::new(
             CssSystemColor::ButtonBorder,
             id,

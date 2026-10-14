@@ -2,6 +2,7 @@
 //! Public authored-color construction contracts from CSS Color 4 and the
 //! 2026-09-08 CSS Color 5 relative-color and color-mix definitions.
 
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
 fn token(text: &str) -> CssComponentValue {
@@ -210,12 +211,12 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
     assert!(CssColor::from_oklch(lch).oklch_value().is_some());
 
     let predefined = CssPredefinedColor::try_new(
-        CssPredefinedColorSpace::DisplayP3,
+        PredefinedColorSpace::DisplayP3,
         [number("1"), percentage("50%"), CssColorComponent::None],
         None,
     )
     .unwrap();
-    assert_eq!(predefined.color_space(), CssPredefinedColorSpace::DisplayP3);
+    assert_eq!(predefined.color_space(), PredefinedColorSpace::DisplayP3);
     assert!(
         matches!(&predefined.channels()[1], CssColorComponent::Percentage(value)
         if value.numeric().representation() == "50")
@@ -329,8 +330,8 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
     assert_eq!(origin.span().start().byte_offset().value(), 9);
     assert_eq!(origin.span().end().byte_offset().value(), 12);
     for environment in [
-        CssRelativeColorEnvironment::PredefinedRgb(CssPredefinedColorSpace::XyzD50),
-        CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::Srgb),
+        CssRelativeColorEnvironment::PredefinedRgb(PredefinedColorSpace::XyzD50),
+        CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::Srgb),
     ] {
         let error = CssRelativeColorExpression::try_from_components(
             parse_component_values("r").unwrap(),
@@ -444,11 +445,8 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     )
     .unwrap();
     let interpolation = CssColorInterpolation::from_predefined(
-        CssColorInterpolationMethod::try_new(
-            CssColorInterpolationSpace::Lch,
-            Some(CssHueInterpolationMethod::Longer),
-        )
-        .unwrap(),
+        CssColorInterpolationMethod::try_new(ColorSpace::Lch, Some(HueInterpolation::Longer))
+            .unwrap(),
     );
     let mix = CssColorMix::try_new(
         Some(interpolation),
@@ -483,7 +481,7 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     assert!(mix.components()[2].weight().is_none());
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().hue(),
-        Some(CssHueInterpolationMethod::Longer)
+        Some(HueInterpolation::Longer)
     );
     assert!(CssColor::from_color_mix(mix).color_mix_value().is_some());
     assert_eq!(
@@ -492,8 +490,8 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     );
     assert!(
         CssColorInterpolationMethod::try_new(
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
-            Some(CssHueInterpolationMethod::Longer),
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb),
+            Some(HueInterpolation::Longer),
         )
         .is_err()
     );

@@ -8,8 +8,8 @@ use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalRecord, 
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, TokenKind};
 use crate::{
-    CssColorInterpolationMethod, CssColorInterpolationSpace as Space, CssColorSyntax,
-    CssHueInterpolationMethod, CssPredefinedColorSpace, CssSystemColor,
+    ColorSpace as Space, CssColorInterpolationMethod, CssColorSyntax, CssSystemColor,
+    HueInterpolation, PredefinedColorSpace,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,7 +49,7 @@ pub(crate) enum Leaf {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ProfileSpace {
-    Predefined(CssPredefinedColorSpace),
+    Predefined(PredefinedColorSpace),
     Custom { token: usize, units: Span },
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -141,7 +141,7 @@ pub(crate) struct Frame {
     weight: Option<usize>,
     mix_color: Option<usize>,
     mix_space: Option<MixSpace>,
-    mix_hue: Option<CssHueInterpolationMethod>,
+    mix_hue: Option<HueInterpolation>,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum GrammarRecord {
@@ -1484,11 +1484,8 @@ mod tests {
         assert_eq!(
             value.interpolation,
             Some(Interpolation::Standard(
-                CssColorInterpolationMethod::try_new(
-                    Space::Oklch,
-                    Some(CssHueInterpolationMethod::Longer)
-                )
-                .unwrap()
+                CssColorInterpolationMethod::try_new(Space::Oklch, Some(HueInterpolation::Longer))
+                    .unwrap()
             ))
         );
         let members: Vec<_> = records

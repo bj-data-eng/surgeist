@@ -2,6 +2,7 @@
 //! Color5 WD 2026-09-08 §11.1 omits the default shorter hue method.
 //! Expectations come from that serialization clause, independently of the writer.
 
+use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
 fn parsed(source: &str) -> CssColor {
@@ -19,7 +20,7 @@ fn parsed(source: &str) -> CssColor {
     value.value().clone()
 }
 
-fn constructed(space: CssColorInterpolationSpace, hue: CssHueInterpolationMethod) -> CssColor {
+fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
     CssColor::from_color_mix(
         CssColorMix::try_new(
             Some(CssColorInterpolation::from_predefined(
@@ -53,10 +54,7 @@ macro_rules! shorter {
         fn $name() {
             for value in [
                 parsed($source),
-                constructed(
-                    CssColorInterpolationSpace::$space,
-                    CssHueInterpolationMethod::Shorter,
-                ),
+                constructed(ColorSpace::$space, HueInterpolation::Shorter),
             ] {
                 let interpolation = value
                     .color_mix_value()
@@ -65,11 +63,8 @@ macro_rules! shorter {
                     .unwrap()
                     .predefined()
                     .unwrap();
-                assert_eq!(interpolation.space(), CssColorInterpolationSpace::$space);
-                assert_eq!(
-                    interpolation.hue(),
-                    Some(CssHueInterpolationMethod::Shorter)
-                );
+                assert_eq!(interpolation.space(), ColorSpace::$space);
+                assert_eq!(interpolation.hue(), Some(HueInterpolation::Shorter));
                 assert_text(&value, $expected);
                 assert_eq!(
                     value
@@ -80,7 +75,7 @@ macro_rules! shorter {
                         .predefined()
                         .unwrap()
                         .hue(),
-                    Some(CssHueInterpolationMethod::Shorter)
+                    Some(HueInterpolation::Shorter)
                 );
             }
         }
@@ -115,15 +110,15 @@ shorter!(
 #[test]
 fn nondefault_hue_methods_remain_explicit() {
     for (space, name) in [
-        (CssColorInterpolationSpace::Hsl, "hsl"),
-        (CssColorInterpolationSpace::Hwb, "hwb"),
-        (CssColorInterpolationSpace::Lch, "lch"),
-        (CssColorInterpolationSpace::Oklch, "oklch"),
+        (ColorSpace::Hsl, "hsl"),
+        (ColorSpace::Hwb, "hwb"),
+        (ColorSpace::Lch, "lch"),
+        (ColorSpace::Oklch, "oklch"),
     ] {
         for (hue, text) in [
-            (CssHueInterpolationMethod::Longer, "longer hue"),
-            (CssHueInterpolationMethod::Increasing, "increasing hue"),
-            (CssHueInterpolationMethod::Decreasing, "decreasing hue"),
+            (HueInterpolation::Longer, "longer hue"),
+            (HueInterpolation::Increasing, "increasing hue"),
+            (HueInterpolation::Decreasing, "decreasing hue"),
         ] {
             let expected = format!("color-mix(in {name} {text}, red, blue)");
             for value in [parsed(&expected), constructed(space, hue)] {

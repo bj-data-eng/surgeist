@@ -2,8 +2,8 @@
 
 //! Numerical expectations are derived from Color 5 WD 2026-09-08 §6.1.
 //! Section 14's informative JavaScript is deliberately not an oracle.
-use surgeist_css::{
-    CssNaiveColorConversionError as Error, naively_convert_cmyk_to_srgba as forward,
+use surgeist_color::{
+    NaiveConversionError as Error, naively_convert_cmyk_to_srgba as forward,
     naively_convert_srgba_to_cmyk as inverse,
 };
 

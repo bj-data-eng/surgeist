@@ -6,10 +6,10 @@
 //! on the same finite-bit kernel; retained color calculation roles stay separate.
 
 use crate::exact_decimal::LexicalDecimal;
-use crate::finite_format::{self, FormatError, RoundingMode};
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
 };
+use surgeist_color::format::{self, FormatError, RoundingMode};
 
 type Result<T> = std::result::Result<T, Error>;
 use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
@@ -127,15 +127,20 @@ pub(crate) fn format_ordinary_color_number(value: f64, limit: usize) -> Result<S
 }
 
 fn format_finite_number(value: f64, limit: usize, rounding: RoundingMode) -> Result<String> {
-    finite_format::format(value, limit, rounding).map_err(|error| match error {
+    format::format_finite(value, rounding, limit).map_err(|error| match error {
         FormatError::ByteLimit => Error::new(ByteLimit),
         FormatError::CapacityOverflow => Error::new(CapacityOverflow),
+        FormatError::NonFinite | FormatError::Protocol(_) => {
+            unreachable!("checked finite projected scalar and actual owner acknowledgements")
+        }
+        _ => unreachable!("all format errors in the pinned numerical color edition are handled"),
     })
 }
 
 /// Classification uses the same finite rounding kernel as projected output.
 pub(crate) fn projected_number_rounds_to_zero(value: f64) -> bool {
-    finite_format::rounds_to_zero(value, RoundingMode::AwayFromZero)
+    format::rounds_to_zero(value, RoundingMode::AwayFromZero)
+        .expect("checked finite projected scalar")
 }
 
 fn emit_with_metadata(

@@ -556,7 +556,7 @@ impl<'a> HtmlParseColorComputation<'a> {
     pub fn environment(&self) -> surgeist_css::CssColorFactIdentity {
         self.value.environment
     }
-    pub fn value(&self) -> surgeist_css::CssUsedColor {
+    pub fn value(&self) -> surgeist_color::Color {
         self.value.value
     }
     pub fn original_group(&self) -> Option<HistoryGroup<'a>> {

@@ -4,18 +4,20 @@
 //! source nor obtain context facts, allocate scratch, or emit output.
 
 use crate::{
-    CssColorInterpolationSpace as Space, CssHslColorCoordinates, CssHwbColorCoordinates,
-    CssPolarColorCoordinates, CssPredefinedColorSpace as Predefined,
-    CssRectangularColorCoordinates, CssRectangularColorSpace as Rectangular, convert_hsl_to_srgb,
-    convert_hwb_to_srgb, convert_lab_to_lch, convert_lch_to_lab, convert_oklab_to_oklch,
-    convert_oklch_to_oklab, convert_srgb_to_hsl, convert_srgb_to_hwb,
+    ColorSpace as Space, HslCoordinates, HwbCoordinates, PolarCoordinates,
+    PredefinedColorSpace as Predefined, RectangularCoordinates, RectangularSpace as Rectangular,
+    convert_hsl_to_srgb, convert_hwb_to_srgb, convert_lab_to_lch, convert_lch_to_lab,
+    convert_oklab_to_oklch, convert_oklch_to_oklab, convert_srgb_to_hsl, convert_srgb_to_hwb,
 };
 
 /// A failed checked used-value construction or finite conversion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssUsedColorError {
+#[non_exhaustive]
+pub enum ColorError {
     /// A present channel is not finite, in channel order followed by alpha.
-    NonFinite { component: usize },
+    NonFinite {
+        component: usize,
+    },
     /// Used alpha must already be within its resolved range.
     AlphaOutOfRange,
     /// A concrete coordinate violates its intrinsic domain.
@@ -24,9 +26,10 @@ pub enum CssUsedColorError {
     Unrepresentable,
     /// Byte quantization requires encoded sRGB coordinates.
     RequiresSrgb,
+    InvalidSerializationFamily,
 }
 
-impl std::fmt::Display for CssUsedColorError {
+impl std::fmt::Display for ColorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NonFinite { component } => {
@@ -37,18 +40,21 @@ impl std::fmt::Display for CssUsedColorError {
             Self::Unrepresentable => {
                 f.write_str("used color conversion is not finitely representable")
             }
+            Self::InvalidSerializationFamily => {
+                f.write_str("serialization family is incompatible with the color space")
+            }
             Self::RequiresSrgb => f.write_str("byte quantization requires sRGB"),
         }
     }
 }
-impl std::error::Error for CssUsedColorError {}
+impl std::error::Error for ColorError {}
 
 /// One source-selected finite transformation at a used-value checkpoint.
 ///
 /// Order is chosen by the consuming language. This operation does not parse,
 /// emit output, obtain facts, or select a fallback for a failed parse.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssUsedColorTransformation {
+pub enum Transformation {
     /// Replace missing or present alpha with fully opaque alpha.
     ForceOpaqueAlpha,
     /// Perform intrinsic conversion with the existing binary64 numerical owner.
@@ -57,6 +63,14 @@ pub enum CssUsedColorTransformation {
     QuantizeSrgb,
     /// Select the modern color-function form for subsequent serialization.
     ColorFunction,
+}
+
+/// Effective resolved serialization family; no authored syntax is retained.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SerializationFamily {
+    Natural,
+    ColorFunction,
+    LegacySrgb,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,15 +102,15 @@ impl Alpha {
 /// channels are not gamut-clamped. Only actual byte construction or an explicit
 /// quantization can establish byte-backed sRGB.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssUsedColor {
+pub struct Color {
     space: Space,
     channels: Channels,
     alpha: Alpha,
     color_function: bool,
 }
 
-impl CssUsedColor {
-    pub(crate) fn identical(self, other: Self) -> bool {
+impl Color {
+    pub fn identical(self, other: Self) -> bool {
         let channels = match (self.channels, other.channels) {
             (Channels::Floating(a), Channels::Floating(b)) => {
                 a.map(|v| v.map(f64::to_bits)) == b.map(|v| v.map(f64::to_bits))
@@ -115,17 +129,51 @@ impl CssUsedColor {
             && self.color_function == other.color_function
     }
 
+    pub fn serialization_family(&self) -> SerializationFamily {
+        if self.color_function {
+            SerializationFamily::ColorFunction
+        } else if self.space == Space::Predefined(Predefined::Srgb) {
+            SerializationFamily::LegacySrgb
+        } else {
+            SerializationFamily::Natural
+        }
+    }
+    pub fn with_serialization_family(
+        mut self,
+        family: SerializationFamily,
+    ) -> Result<Self, ColorError> {
+        self.color_function = match family {
+            SerializationFamily::Natural => matches!(self.space, Space::Predefined(_)),
+            SerializationFamily::ColorFunction => true,
+            SerializationFamily::LegacySrgb
+                if self.space == Space::Predefined(Predefined::Srgb) =>
+            {
+                false
+            }
+            SerializationFamily::LegacySrgb => return Err(ColorError::InvalidSerializationFamily),
+        };
+        Ok(self)
+    }
+    pub fn prepared_for_interpolation(self, destination: Space) -> Result<Self, ColorError> {
+        crate::interpolation::prepare(self, destination)
+    }
+    pub fn interpolated(
+        self,
+        second: Self,
+        method: crate::InterpolationMethod,
+        progress: f64,
+    ) -> Result<Self, crate::InterpolationError> {
+        crate::interpolation::interpolate(self, second, method, progress)
+    }
+
     /// Executes one fixed transformation after the caller's work admission.
     /// Failure preserves the original copyable value; no output is produced.
-    pub fn transformed(
-        self,
-        transformation: CssUsedColorTransformation,
-    ) -> Result<Self, CssUsedColorError> {
+    pub fn transformed(self, transformation: Transformation) -> Result<Self, ColorError> {
         match transformation {
-            CssUsedColorTransformation::ForceOpaqueAlpha => Ok(self.with_opaque_alpha()),
-            CssUsedColorTransformation::Convert(space) => self.convert(space),
-            CssUsedColorTransformation::QuantizeSrgb => self.quantize_srgb(),
-            CssUsedColorTransformation::ColorFunction => Ok(self.with_color_function()),
+            Transformation::ForceOpaqueAlpha => Ok(self.with_opaque_alpha()),
+            Transformation::Convert(space) => self.converted(space),
+            Transformation::QuantizeSrgb => self.quantize_srgb(),
+            Transformation::ColorFunction => Ok(self.with_color_function()),
         }
     }
 
@@ -137,14 +185,14 @@ impl CssUsedColor {
         space: Space,
         channels: [Option<f64>; 3],
         alpha: Option<f64>,
-    ) -> Result<Self, CssUsedColorError> {
+    ) -> Result<Self, ColorError> {
         for (component, channel) in channels.into_iter().chain([alpha]).enumerate() {
             if channel.is_some_and(|value| !value.is_finite()) {
-                return Err(CssUsedColorError::NonFinite { component });
+                return Err(ColorError::NonFinite { component });
             }
         }
         if alpha.is_some_and(|value| !(0.0..=1.0).contains(&value)) {
-            return Err(CssUsedColorError::AlphaOutOfRange);
+            return Err(ColorError::AlphaOutOfRange);
         }
         // Relative Color5 coordinates are retained without reference-range
         // clamping, including signed saturation/chroma. Concrete numerical
@@ -215,14 +263,11 @@ impl CssUsedColor {
 
     /// Whether the selected sRGB form is the modern color function.
     #[must_use]
-    pub const fn uses_color_function(&self) -> bool {
+    pub(crate) const fn uses_color_function(&self) -> bool {
         self.color_function
     }
 
-    pub(crate) fn with_resolved_alpha(
-        mut self,
-        alpha: Option<f64>,
-    ) -> Result<Self, CssUsedColorError> {
+    pub fn with_alpha(mut self, alpha: Option<f64>) -> Result<Self, ColorError> {
         // The checked constructor validates fixed alpha before mutation, while
         // retaining actual byte channels rather than inferring new byte proof.
         Self::try_new(self.space, self.channels(), alpha)?;
@@ -248,7 +293,7 @@ impl CssUsedColor {
         self
     }
 
-    pub(crate) fn convert(self, destination: Space) -> Result<Self, CssUsedColorError> {
+    pub fn converted(self, destination: Space) -> Result<Self, ColorError> {
         if self.space == destination {
             return Ok(self);
         }
@@ -257,7 +302,7 @@ impl CssUsedColor {
             Space::Predefined(space) => {
                 let converted = coordinates
                     .convert_to(Rectangular::Predefined(space))
-                    .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    .map_err(|_| ColorError::Unrepresentable)?;
                 Self::try_new(destination, *converted.channels(), self.alpha())?
             }
             Space::Lab | Space::Oklab => {
@@ -268,7 +313,7 @@ impl CssUsedColor {
                 };
                 let converted = coordinates
                     .convert_to(target)
-                    .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    .map_err(|_| ColorError::Unrepresentable)?;
                 Self::try_new(destination, *converted.channels(), self.alpha())?
             }
             Space::Lch | Space::Oklch => {
@@ -279,14 +324,14 @@ impl CssUsedColor {
                 };
                 let converted = coordinates
                     .convert_to(target)
-                    .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    .map_err(|_| ColorError::Unrepresentable)?;
                 let channels = converted.channels().map(|value| value.unwrap_or(0.0));
                 let polar = if destination == Space::Lch {
                     convert_lab_to_lch(channels)
                 } else {
                     convert_oklab_to_oklch(channels)
                 }
-                .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                .map_err(|_| ColorError::Unrepresentable)?;
                 Self::try_new(
                     destination,
                     [
@@ -300,19 +345,19 @@ impl CssUsedColor {
             Space::Hsl | Space::Hwb => {
                 let converted = coordinates
                     .convert_to(Rectangular::Predefined(Predefined::Srgb))
-                    .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    .map_err(|_| ColorError::Unrepresentable)?;
                 let channels = converted.channels().map(|value| value.unwrap_or(0.0));
                 let channels = if destination == Space::Hsl {
-                    let value = convert_srgb_to_hsl(channels)
-                        .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    let value =
+                        convert_srgb_to_hsl(channels).map_err(|_| ColorError::Unrepresentable)?;
                     [
                         value.hue_degrees(),
                         Some(value.saturation()),
                         Some(value.lightness()),
                     ]
                 } else {
-                    let value = convert_srgb_to_hwb(channels)
-                        .map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    let value =
+                        convert_srgb_to_hwb(channels).map_err(|_| ColorError::Unrepresentable)?;
                     [
                         value.hue_degrees(),
                         Some(value.whiteness()),
@@ -331,7 +376,7 @@ impl CssUsedColor {
         })
     }
 
-    fn rectangular(self) -> Result<CssRectangularColorCoordinates, CssUsedColorError> {
+    fn rectangular(self) -> Result<RectangularCoordinates, ColorError> {
         let channels = self.channels();
         let (space, channels) = match self.space {
             Space::Predefined(space) => (Rectangular::Predefined(space), channels),
@@ -347,12 +392,9 @@ impl CssUsedColor {
                 } else {
                     channels[2]
                 };
-                let polar = CssPolarColorCoordinates::try_new(
-                    channels[0].unwrap_or(0.0),
-                    chroma.abs(),
-                    hue,
-                )
-                .map_err(|_| CssUsedColorError::InvalidCoordinates)?;
+                let polar =
+                    PolarCoordinates::try_new(channels[0].unwrap_or(0.0), chroma.abs(), hue)
+                        .map_err(|_| ColorError::InvalidCoordinates)?;
                 let channels = if self.space == Space::Lch {
                     convert_lch_to_lab(&polar)
                 } else {
@@ -372,39 +414,35 @@ impl CssUsedColor {
                 } else {
                     channels[0]
                 };
-                let hsl = CssHslColorCoordinates::try_new(
-                    hue,
-                    saturation.abs(),
-                    channels[2].unwrap_or(0.0),
-                )
-                .map_err(|_| CssUsedColorError::InvalidCoordinates)?;
+                let hsl =
+                    HslCoordinates::try_new(hue, saturation.abs(), channels[2].unwrap_or(0.0))
+                        .map_err(|_| ColorError::InvalidCoordinates)?;
                 let channels =
-                    convert_hsl_to_srgb(&hsl).map_err(|_| CssUsedColorError::Unrepresentable)?;
+                    convert_hsl_to_srgb(&hsl).map_err(|_| ColorError::Unrepresentable)?;
                 (
                     Rectangular::Predefined(Predefined::Srgb),
                     channels.map(Some),
                 )
             }
             Space::Hwb => {
-                let hwb = CssHwbColorCoordinates::try_new(
+                let hwb = HwbCoordinates::try_new(
                     channels[0],
                     channels[1].unwrap_or(0.0),
                     channels[2].unwrap_or(0.0),
                 )
-                .map_err(|_| CssUsedColorError::InvalidCoordinates)?;
+                .map_err(|_| ColorError::InvalidCoordinates)?;
                 (
                     Rectangular::Predefined(Predefined::Srgb),
                     convert_hwb_to_srgb(&hwb).map(Some),
                 )
             }
         };
-        CssRectangularColorCoordinates::try_new(space, channels)
-            .map_err(|_| CssUsedColorError::Unrepresentable)
+        RectangularCoordinates::try_new(space, channels).map_err(|_| ColorError::Unrepresentable)
     }
 
-    pub(crate) fn quantize_srgb(self) -> Result<Self, CssUsedColorError> {
+    pub(crate) fn quantize_srgb(self) -> Result<Self, ColorError> {
         if self.space != Space::Predefined(Predefined::Srgb) {
-            return Err(CssUsedColorError::RequiresSrgb);
+            return Err(ColorError::RequiresSrgb);
         }
         let channels = self.channels().map(|value| value.map(quantize_channel));
         // Missing coordinates remain missing. They cannot prove all three byte
@@ -422,8 +460,8 @@ impl CssUsedColor {
         })
     }
 
-    pub(crate) fn contrast(self) -> Result<Self, CssUsedColorError> {
-        let xyz = self.convert(Space::Predefined(Predefined::XyzD65))?;
+    pub fn black_white_contrast(self) -> Result<Self, ColorError> {
+        let xyz = self.converted(Space::Predefined(Predefined::XyzD65))?;
         let luminance = xyz.channels()[1].unwrap_or(0.0).clamp(0.0, 1.0);
         let white = 1.05 / (luminance + 0.05);
         let black = (luminance + 0.05) / 0.05;
@@ -447,7 +485,7 @@ mod tests {
 
     #[test]
     fn floating_integer_channels_do_not_prove_byte_backing() {
-        let value = CssUsedColor::try_new(
+        let value = Color::try_new(
             Space::Predefined(Predefined::Srgb),
             [Some(1.0), Some(0.0), Some(0.0)],
             Some(1.0),
@@ -462,7 +500,7 @@ mod tests {
 
     #[test]
     fn quantization_has_positive_ties_and_preserves_missingness() {
-        let value = CssUsedColor::try_new(
+        let value = Color::try_new(
             Space::Predefined(Predefined::Srgb),
             [Some(0.5), Some(-2.0), Some(2.0)],
             None,
@@ -472,7 +510,7 @@ mod tests {
         .unwrap();
         assert_eq!(value.srgb_bytes(), Some([128, 0, 255]));
         assert_eq!(value.alpha(), None);
-        let missing = CssUsedColor::try_new(
+        let missing = Color::try_new(
             Space::Predefined(Predefined::Srgb),
             [None, Some(0.5), Some(0.0)],
             Some(1.0),
@@ -487,34 +525,35 @@ mod tests {
     #[test]
     fn alpha_and_channel_checks_do_not_clamp_native_values() {
         assert_eq!(
-            CssUsedColor::try_new(Space::Lab, [Some(f64::INFINITY), None, None], Some(2.0)),
-            Err(CssUsedColorError::NonFinite { component: 0 })
+            Color::try_new(Space::Lab, [Some(f64::INFINITY), None, None], Some(2.0)),
+            Err(ColorError::NonFinite { component: 0 })
         );
         assert_eq!(
-            CssUsedColor::try_new(Space::Lab, [None; 3], Some(2.0)),
-            Err(CssUsedColorError::AlphaOutOfRange)
+            Color::try_new(Space::Lab, [None; 3], Some(2.0)),
+            Err(ColorError::AlphaOutOfRange)
         );
-        let value =
-            CssUsedColor::try_new(Space::Lab, [Some(-2.0), Some(3.0), None], Some(-0.0)).unwrap();
+        let value = Color::try_new(Space::Lab, [Some(-2.0), Some(3.0), None], Some(-0.0)).unwrap();
         assert_eq!(value.channels(), [Some(-2.0), Some(3.0), None]);
         assert_eq!(value.alpha().unwrap().to_bits(), (-0.0_f64).to_bits());
     }
 
     #[test]
     fn same_space_retains_bits_and_conversion_retains_extended_range() {
-        let value = CssUsedColor::try_new(
+        let value = Color::try_new(
             Space::Predefined(Predefined::SrgbLinear),
             [Some(-0.0), None, Some(2.0)],
             Some(0.5),
         )
         .unwrap();
         assert_eq!(
-            value.convert(value.space()).unwrap().channels()[0]
+            value.converted(value.space()).unwrap().channels()[0]
                 .unwrap()
                 .to_bits(),
             (-0.0_f64).to_bits()
         );
-        let result = value.convert(Space::Predefined(Predefined::Srgb)).unwrap();
+        let result = value
+            .converted(Space::Predefined(Predefined::Srgb))
+            .unwrap();
         assert!(result.channels()[2].unwrap() > 1.0);
         assert_eq!(result.alpha(), Some(0.5));
     }
@@ -522,21 +561,16 @@ mod tests {
     #[test]
     fn modern_family_is_retained_through_cylindrical_conversion_and_alpha() {
         let absolute =
-            CssUsedColor::try_new(Space::Hsl, [Some(0.0), Some(100.0), Some(50.0)], Some(1.0))
-                .unwrap();
+            Color::try_new(Space::Hsl, [Some(0.0), Some(100.0), Some(50.0)], Some(1.0)).unwrap();
         assert!(!absolute.uses_color_function());
         let relative = absolute.with_color_function();
         let rgb = relative
-            .convert(Space::Predefined(Predefined::Srgb))
+            .converted(Space::Predefined(Predefined::Srgb))
             .unwrap();
-        let hwb = rgb.convert(Space::Hwb).unwrap();
+        let hwb = rgb.converted(Space::Hwb).unwrap();
         assert_eq!(hwb.channels(), [Some(0.0), Some(0.0), Some(0.0)]);
         assert!(hwb.uses_color_function());
-        assert!(
-            hwb.with_resolved_alpha(Some(0.5))
-                .unwrap()
-                .uses_color_function()
-        );
+        assert!(hwb.with_alpha(Some(0.5)).unwrap().uses_color_function());
         assert!(hwb.with_opaque_alpha().uses_color_function());
         // The marker describes source-selected serialization, not coordinate
         // equality: the absolute and relative values retain distinct forms.
@@ -547,39 +581,41 @@ mod tests {
     #[test]
     fn contrast_uses_selected_luminance_and_ignores_alpha() {
         assert_eq!(
-            CssUsedColor::opaque_black()
-                .contrast()
+            Color::opaque_black()
+                .black_white_contrast()
                 .unwrap()
                 .srgb_bytes(),
             Some([255; 3])
         );
         assert_eq!(
-            CssUsedColor::from_srgba8([255; 4])
-                .contrast()
+            Color::from_srgba8([255; 4])
+                .black_white_contrast()
                 .unwrap()
                 .srgb_bytes(),
             Some([0; 3])
         );
-        let dark = CssUsedColor::try_new(
+        let dark = Color::try_new(
             Space::Predefined(Predefined::XyzD65),
             [Some(0.0), Some(-2.0), Some(0.0)],
             Some(0.0),
         )
         .unwrap();
-        assert_eq!(dark.contrast().unwrap().srgb_bytes(), Some([255; 3]));
         assert_eq!(
-            dark.with_opaque_alpha().contrast().unwrap(),
-            dark.contrast().unwrap()
+            dark.black_white_contrast().unwrap().srgb_bytes(),
+            Some([255; 3])
+        );
+        assert_eq!(
+            dark.with_opaque_alpha().black_white_contrast().unwrap(),
+            dark.black_white_contrast().unwrap()
         );
     }
     #[test]
     fn byte_alpha_proof_is_preserved_and_never_inferred() {
-        let bytes = CssUsedColor::from_srgba8([1, 2, 3, 237]);
+        let bytes = Color::from_srgba8([1, 2, 3, 237]);
         assert_eq!(bytes.alpha_byte(), Some(237));
-        assert_eq!(bytes.convert(Space::Lab).unwrap().alpha_byte(), Some(237));
+        assert_eq!(bytes.converted(Space::Lab).unwrap().alpha_byte(), Some(237));
         assert_eq!(bytes.with_opaque_alpha().alpha_byte(), Some(255));
-        let floating =
-            CssUsedColor::try_new(bytes.space(), bytes.channels(), bytes.alpha()).unwrap();
+        let floating = Color::try_new(bytes.space(), bytes.channels(), bytes.alpha()).unwrap();
         assert_eq!(floating.alpha_byte(), None);
         assert_eq!(floating.quantize_srgb().unwrap().alpha_byte(), None);
         assert_eq!(floating.with_opaque_alpha().alpha_byte(), None);

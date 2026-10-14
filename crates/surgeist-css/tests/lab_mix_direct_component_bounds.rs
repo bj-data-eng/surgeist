@@ -5,6 +5,7 @@
 //! distinct roles. Expectations are exact domain/scale and resource oracles,
 //! not browser output or values copied from the implementation under test.
 
+use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -1132,11 +1133,8 @@ fn checked_family_mix(
     )
     .unwrap();
     let interpolation = CssColorInterpolation::from_predefined(
-        CssColorInterpolationMethod::try_new(
-            CssColorInterpolationSpace::Lch,
-            Some(CssHueInterpolationMethod::Longer),
-        )
-        .unwrap(),
+        CssColorInterpolationMethod::try_new(ColorSpace::Lch, Some(HueInterpolation::Longer))
+            .unwrap(),
     );
     let blue = CssColor::from_named(CssNamedColor::try_new("blue").unwrap());
     let mix = CssColorMix::try_new(

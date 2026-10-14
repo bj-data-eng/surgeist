@@ -9,6 +9,7 @@
 //! Expected preserving text uses the source's none keyword and selected ordinary
 //! family projections; no computed interpolation or calculated range phase is tested.
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 #[derive(Clone, Copy)]
@@ -20,7 +21,7 @@ enum Family {
     Lch,
     Oklab,
     Oklch,
-    Predefined(CssPredefinedColorSpace),
+    Predefined(PredefinedColorSpace),
 }
 
 const ORDINARY: [(&str, Family); 7] = [
@@ -33,33 +34,29 @@ const ORDINARY: [(&str, Family); 7] = [
     ("oklch", Family::Oklch),
 ];
 
-const SPACES: [(&str, CssPredefinedColorSpace, &str); 10] = [
-    ("srgb", CssPredefinedColorSpace::Srgb, "srgb"),
+const SPACES: [(&str, PredefinedColorSpace, &str); 10] = [
+    ("srgb", PredefinedColorSpace::Srgb, "srgb"),
     (
         "srgb-linear",
-        CssPredefinedColorSpace::SrgbLinear,
+        PredefinedColorSpace::SrgbLinear,
         "srgb-linear",
     ),
-    (
-        "display-p3",
-        CssPredefinedColorSpace::DisplayP3,
-        "display-p3",
-    ),
+    ("display-p3", PredefinedColorSpace::DisplayP3, "display-p3"),
     (
         "display-p3-linear",
-        CssPredefinedColorSpace::DisplayP3Linear,
+        PredefinedColorSpace::DisplayP3Linear,
         "display-p3-linear",
     ),
-    ("a98-rgb", CssPredefinedColorSpace::A98Rgb, "a98-rgb"),
+    ("a98-rgb", PredefinedColorSpace::A98Rgb, "a98-rgb"),
     (
         "prophoto-rgb",
-        CssPredefinedColorSpace::ProphotoRgb,
+        PredefinedColorSpace::ProphotoRgb,
         "prophoto-rgb",
     ),
-    ("rec2020", CssPredefinedColorSpace::Rec2020, "rec2020"),
-    ("xyz", CssPredefinedColorSpace::XyzD65, "xyz-d65"),
-    ("xyz-d50", CssPredefinedColorSpace::XyzD50, "xyz-d50"),
-    ("xyz-d65", CssPredefinedColorSpace::XyzD65, "xyz-d65"),
+    ("rec2020", PredefinedColorSpace::Rec2020, "rec2020"),
+    ("xyz", PredefinedColorSpace::XyzD65, "xyz-d65"),
+    ("xyz-d50", PredefinedColorSpace::XyzD50, "xyz-d50"),
+    ("xyz-d65", PredefinedColorSpace::XyzD65, "xyz-d65"),
 ];
 
 fn token(text: &str) -> CssComponentValue {

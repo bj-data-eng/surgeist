@@ -6,14 +6,14 @@ use std::fmt;
 /// Why a concrete numerical sample could not be naively converted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssNaiveColorConversionError {
+pub enum NaiveConversionError {
     /// The first nonfinite input, indexed in the function's documented array order.
     NonFiniteInput { component: usize },
     /// A required result overflowed the implemented finite `f64` arithmetic.
     UnrepresentableResult,
 }
 
-impl fmt::Display for CssNaiveColorConversionError {
+impl fmt::Display for NaiveConversionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonFiniteInput { component } => write!(
@@ -26,7 +26,7 @@ impl fmt::Display for CssNaiveColorConversionError {
     }
 }
 
-impl std::error::Error for CssNaiveColorConversionError {}
+impl std::error::Error for NaiveConversionError {}
 
 /// Naively converts cyan, magenta, yellow, black, alpha to encoded sRGB red,
 /// green, blue, alpha, using Color 5 WD 2026-09-08 §6.1.
@@ -42,15 +42,13 @@ impl std::error::Error for CssNaiveColorConversionError {}
 /// mapping, clamps computed ink or alpha, or promises calibrated equivalence.
 ///
 /// ```
-/// use surgeist_css::naively_convert_cmyk_to_srgba;
+/// use surgeist_color::naively_convert_cmyk_to_srgba;
 /// assert_eq!(
 ///     naively_convert_cmyk_to_srgba([0.25, 0.5, 0.75, 0.5, 0.375]).unwrap(),
 ///     [0.375, 0.25, 0.125, 0.375],
 /// );
 /// ```
-pub fn naively_convert_cmyk_to_srgba(
-    cmyka: [f64; 5],
-) -> Result<[f64; 4], CssNaiveColorConversionError> {
+pub fn naively_convert_cmyk_to_srgba(cmyka: [f64; 5]) -> Result<[f64; 4], NaiveConversionError> {
     validate_input(&cmyka)?;
     let [cyan, magenta, yellow, black, alpha] = cmyka;
     let remaining_black = 1.0 - black;
@@ -77,15 +75,13 @@ pub fn naively_convert_cmyk_to_srgba(
 /// gamut mapping, alpha clamp or authored CSS evaluation is performed.
 ///
 /// ```
-/// use surgeist_css::naively_convert_srgba_to_cmyk;
+/// use surgeist_color::naively_convert_srgba_to_cmyk;
 /// assert_eq!(
 ///     naively_convert_srgba_to_cmyk([2.0, 1.0, 0.0, -0.0]).unwrap(),
 ///     [0.0, 0.5, 1.0, -1.0, -0.0],
 /// );
 /// ```
-pub fn naively_convert_srgba_to_cmyk(
-    rgba: [f64; 4],
-) -> Result<[f64; 5], CssNaiveColorConversionError> {
+pub fn naively_convert_srgba_to_cmyk(rgba: [f64; 4]) -> Result<[f64; 5], NaiveConversionError> {
     validate_input(&rgba)?;
     let [red, green, blue, alpha] = rgba;
     let maximum = red.max(green).max(blue);
@@ -102,16 +98,16 @@ pub fn naively_convert_srgba_to_cmyk(
     Ok([inks[0], inks[1], inks[2], black, alpha])
 }
 
-fn validate_input(input: &[f64]) -> Result<(), CssNaiveColorConversionError> {
+fn validate_input(input: &[f64]) -> Result<(), NaiveConversionError> {
     for (component, value) in input.iter().enumerate() {
         if !value.is_finite() {
-            return Err(CssNaiveColorConversionError::NonFiniteInput { component });
+            return Err(NaiveConversionError::NonFiniteInput { component });
         }
     }
     Ok(())
 }
 
-fn forward_channel(ink: f64, remaining_black: f64) -> Result<f64, CssNaiveColorConversionError> {
+fn forward_channel(ink: f64, remaining_black: f64) -> Result<f64, NaiveConversionError> {
     let remaining_ink = 1.0 - ink;
     // Classify the exact formula's saturated side before a product can overflow.
     // Zero factors also give zero for every finite coordinate.
@@ -124,10 +120,10 @@ fn forward_channel(ink: f64, remaining_black: f64) -> Result<f64, CssNaiveColorC
     finite_result(remaining_ink * remaining_black)
 }
 
-fn finite_result(value: f64) -> Result<f64, CssNaiveColorConversionError> {
+fn finite_result(value: f64) -> Result<f64, NaiveConversionError> {
     if value.is_finite() {
         Ok(value)
     } else {
-        Err(CssNaiveColorConversionError::UnrepresentableResult)
+        Err(NaiveConversionError::UnrepresentableResult)
     }
 }

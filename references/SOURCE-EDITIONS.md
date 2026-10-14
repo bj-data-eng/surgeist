@@ -186,20 +186,25 @@ The owning issue determinations record the operative choices beyond the captured
 ## HTML Color delegation and intrinsic contrast policy
 
 For [#805](https://github.com/bj-data-eng/surgeist/issues/805), the Architecture
-Coordinator selects CSS-owned standalone color parsing, intrinsic resolution,
-conversion and used-color serialization, consumed directly by HTML. Each
-consuming crate owns its adapter; the root facade supplies optional composition.
-Style owns contextual property/profile facts and runtime owns resource retrieval.
-This is selected contribution work, not a claim that the complete producer or
-HTML Color construction has shipped. The owning issue retains its separate
-contextual CSSOM and quirky-color/CSS.supports acceptance.
+Coordinator selects CSS-owned standalone source parsing, contextual resolution
+and source/fact qualification, with numerical conversion, interpolation,
+transformations and resolved serialization owned by
+[`surgeist-color`](../crates/surgeist-color/README.md). The current
+[`surgeist-html` adapter](../crates/surgeist-html/src/construction/parser_session/input_color.rs)
+consumes both directly and owns its original controller, fallback, transformation
+order and publication. Each consuming crate owns its adapter; the root facade
+supplies optional composition. Style owns contextual property/profile facts and
+runtime owns resource retrieval. Source-based standalone operations and HTML
+Color construction are implemented; a checked-authored used-color feeder and
+the physical HTML crate split remain unimplemented. The owning issue retains
+its separate contextual CSSOM and quirky-color/CSS.supports acceptance.
 
 HTML remains at `877d6146487f15b15bc8dd0e3c625063a37b456a`. Its
 [color-well update](html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#update-a-color-well-control-color)
 and [serialization](html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#serialize-a-color-well-control-color)
 delegate bounded parsing, resolution, conversion and serialization to the
 already selected [Color 4 CRD of 8 September 2026](css-color-4--CRD-css-color-4-20260908--bada647312a7.md).
-The original HTML snapshot SHA-256 is
+The original Color 4 document's HTML capture SHA-256 is
 `bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba`;
 the converted Markdown file SHA-256 is
 `31b9210596843b84bdc1a61d82687b3d1278f885a1559ec0c64264e3642076fe`.
@@ -214,7 +219,8 @@ including [conditional HTML-compatible sRGB serialization](css-color-4--CRD-css-
 HTML supplies no context element. Required property values use their selected
 initial values; [initial color is CanvasText](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#propdef-color),
 which does not itself supply a system palette. HTML owns dirty/default/current
-selection, alpha/colorspace policy, quantization and source-positioned updates.
+selection, alpha/colorspace policy, the request for numerical quantization and
+source-positioned updates.
 Its positive-infinity tie rounding retains
 [Values 4 of 12 March 2024](css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#css-round-to-the-nearest-integer).
 No HTML pin, accepted authored grammar or global gamut policy is replaced.
@@ -243,12 +249,12 @@ per-file hashes. Its helper converts to XYZ D65 Y and compares luminance ratios.
 The browser resolver uses strict `>` and therefore black on an exact tie;
 that branch is not selected.
 
-The selected operation resolves the input using the same used-color producer
-and only its reached facts. For the solid-background analysis it ignores alpha,
-resolves missing components through the selected CSS conversion rules, and uses
-the CSS-owned XYZ D65 conversion's Y. Finite Y is locally clamped to [0,1] only
-for this comparison. This clamp is Surgeist policy; the cited helper does not
-establish it. The actual input color and alpha remain intact, with no invented
+CSS resolves the input using the source-qualified used-color producer and only
+its reached facts, then delegates the numerical black/white operation to Color.
+For the solid-background analysis it ignores alpha, resolves missing components
+through the selected conversion rules, and uses Color's XYZ D65 conversion's Y.
+Finite Y is locally clamped to [0,1] only for this comparison. This clamp is
+Surgeist policy; the cited helper does not establish it. The actual input color and alpha remain intact, with no invented
 canvas compositing, global gamut mapping or sRGB byte quantization.
 
 Under the producer's binary64 contract, black scores `(Y + 0.05) / 0.05` and
@@ -262,8 +268,9 @@ requires no external service.
 The owning issue supplies the detailed capability and test contract. This
 reference checkpoint records its exact source selection and the
 [file-specific attribution](../licenses/webkit/NOTICE.md#contrast-color-source-witnesses);
-it ingests no WebKit code, implements no algorithm and claims no browser parity
-or completed producer.
+this reference ingests no WebKit code, implements no algorithm and claims no
+browser parity. The implemented numerical owner preserves that source selection
+and policy.
 
 ## Pinned HTML language baseline
 

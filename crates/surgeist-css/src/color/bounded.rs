@@ -6,7 +6,8 @@
 
 use super::operation as core;
 use super::protocol::{CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot};
-use super::{CssColorFactIdentity, CssColorFacts, CssColorKernel, CssUsedColor, CssUsedColorError};
+use super::{Color, ColorError, CssColorFactIdentity, CssColorFacts, CssColorKernel};
+use surgeist_color::{SerializationRequest, Transformation};
 
 /// Encoding of the original immutable input. UTF8 reads are bytes, not chars.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,7 +79,10 @@ pub enum CssColorOperationError {
     Unavailable(CssColorUnavailable),
     Unsupported(CssColorUnsupported),
     Facts(CssColorFactError),
-    Numerical(CssUsedColorError),
+    Numerical {
+        error: ColorError,
+        site: CssColorResolutionSite,
+    },
 }
 impl std::fmt::Display for CssColorOperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -89,7 +93,7 @@ impl std::fmt::Display for CssColorOperationError {
                 write!(f, "reached color capability is unsupported: {capability:?}")
             }
             Self::Facts(error) => write!(f, "invalid color fact envelope: {error:?}"),
-            Self::Numerical(error) => std::fmt::Display::fmt(error, f),
+            Self::Numerical { error, .. } => std::fmt::Display::fmt(error, f),
         }
     }
 }
@@ -97,7 +101,7 @@ impl std::error::Error for CssColorOperationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Protocol(error) => Some(error),
-            Self::Numerical(error) => Some(error),
+            Self::Numerical { error, .. } => Some(error),
             _ => None,
         }
     }
@@ -106,6 +110,13 @@ impl From<CssColorProtocolError> for CssColorOperationError {
     fn from(error: CssColorProtocolError) -> Self {
         Self::Protocol(error)
     }
+}
+/// Original coordinates of the reached CSS recipe; authored sites join this
+/// carrier when the actual checked-authored resolver is implemented.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssColorResolutionSite {
+    Source(CssColorInputRange),
 }
 impl From<core::Error> for CssColorOperationError {
     fn from(error: core::Error) -> Self {
@@ -120,6 +131,13 @@ impl From<core::Error> for CssColorOperationError {
             resolution::Error as R,
         };
         match error {
+            core::Error::Numerical { error, site } => Self::Numerical {
+                error,
+                site: CssColorResolutionSite::Source(CssColorInputRange {
+                    start: site.start,
+                    end: site.end,
+                }),
+            },
             core::Error::Protocol(error)
             | core::Error::Resolution(
                 R::Protocol(error)
@@ -134,7 +152,12 @@ impl From<core::Error> for CssColorOperationError {
                 | R::Component(V::Channel(A::Numerical(error)))
                 | R::Conversion(C::Numerical(error))
                 | R::Device(D::Numerical(error))
-                | R::Interpolation(I::Numerical(error)) => Self::Numerical(error),
+                | R::Interpolation(I::Numerical(error)) => {
+                    let _ = error;
+                    unreachable!(
+                        "numerical errors are decorated at the reached core recipe before abandonment"
+                    )
+                }
                 R::MissingScheme => Self::Unavailable(CssColorUnavailable::Scheme),
                 R::ForeignFacts
                 | R::Palette(P::ForeignFacts)
@@ -185,7 +208,7 @@ impl From<core::Error> for CssColorOperationError {
                     Self::Unsupported(CssColorUnsupported::ContextualUnit(unit))
                 }
                 R::Interpolation(I::Overflow) => {
-                    Self::Numerical(CssUsedColorError::Unrepresentable)
+                    unreachable!("numerical mix overflow is decorated before leaving the core")
                 }
                 // These are refused dynamic call orders or standard-invalid
                 // branches already converted by the canonical core. They cannot
@@ -222,6 +245,9 @@ pub enum CssColorActionDescription {
     AppendSlot { bank: CssColorBank, index: usize },
     UpdateSlot { bank: CssColorBank, index: usize },
     ReadFact(CssColorFactRead),
+    ReadNumericalDigit { index: usize },
+    AppendNumericalDigit { index: usize },
+    UpdateNumericalDigit { index: usize },
     Compute(CssColorKernel),
     EmitUnit { unit: u8 },
     UsedReady,
@@ -352,6 +378,8 @@ pub struct CssColorActionLayout {
     pub slot_write_bytes: usize,
     pub fact_records: [usize; 3],
     pub output_unit_bytes: usize,
+    pub numerical_read_bytes: usize,
+    pub numerical_write_bytes: usize,
     pub kernel: CssColorKernel,
 }
 fn layout(
@@ -361,6 +389,8 @@ fn layout(
 ) -> CssColorActionLayout {
     use std::mem::size_of;
     let mut layout = CssColorActionLayout {
+        numerical_read_bytes: 0,
+        numerical_write_bytes: 0,
         input_unit_bytes: 0,
         slot_read_bytes: 0,
         slot_write_bytes: 0,
@@ -470,8 +500,20 @@ impl<'owner, 'facts> CssColorOperation<'owner, 'facts> {
         self.cursor.abandon();
     }
     /// Extract only a complete fixed checkpoint; no scratch index escapes.
-    pub fn take(self) -> Result<CssColorParseOutcome<'owner, 'facts>, CssColorProtocolError> {
-        Ok(match self.cursor.take()? {
+    pub fn take(
+        slot: &mut Option<Self>,
+    ) -> Result<CssColorParseOutcome<'owner, 'facts>, CssColorProtocolError> {
+        let operation = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
+        if !matches!(
+            operation.cursor.action(),
+            core::Action::UsedReady | core::Action::StandardFailed
+        ) {
+            return Err(CssColorProtocolError::Terminal);
+        }
+        let operation = slot
+            .take()
+            .expect("shared preflight proved a completed parse");
+        Ok(match operation.cursor.take()? {
             core::ParseOutcome::Used(checkpoint) => {
                 CssColorParseOutcome::Used(CssUsedColorCheckpoint { checkpoint })
             }
@@ -574,7 +616,7 @@ pub enum CssColorParseOutcome<'owner, 'facts> {
 }
 /// Fixed used value plus original source/fact qualification, no recipe backing.
 pub struct CssUsedColorCheckpoint<'owner, 'facts> {
-    checkpoint: core::UsedCheckpoint<'owner, 'facts>,
+    pub(super) checkpoint: core::UsedCheckpoint<'owner, 'facts>,
 }
 /// Actual standard-invalid branch, distinct from reached capability failure.
 pub struct CssColorFailureCheckpoint<'owner, 'facts> {
@@ -612,7 +654,7 @@ fn failure(value: core::StandardFailure) -> CssColorStandardFailure {
 }
 impl<'owner, 'facts> CssUsedColorCheckpoint<'owner, 'facts> {
     #[must_use]
-    pub const fn value(&self) -> CssUsedColor {
+    pub const fn value(&self) -> Color {
         self.checkpoint.value()
     }
     #[must_use]
@@ -646,7 +688,7 @@ impl<'owner, 'facts> CssColorFailureCheckpoint<'owner, 'facts> {
     }
     /// Consumer policy supplies the already checked value; no unavailable,
     /// numerical, protocol or resource failure has this transition.
-    pub fn fallback(self, value: CssUsedColor) -> CssUsedColorCheckpoint<'owner, 'facts> {
+    pub fn fallback(self, value: Color) -> CssUsedColorCheckpoint<'owner, 'facts> {
         CssUsedColorCheckpoint {
             checkpoint: self.checkpoint.fallback(value),
         }
@@ -705,387 +747,385 @@ fn source(context: &core::CheckpointContext<'_, '_>) -> CssColorSourceDescriptor
         facts: context.expected,
     }
 }
-fn transformation_error(error: core::TransformError) -> CssColorOperationError {
+fn numerical_error(
+    error: surgeist_color::ComputationError,
+    range: CssColorInputRange,
+) -> CssColorOperationError {
     match error {
-        core::TransformError::Protocol(error) => error.into(),
-        core::TransformError::Numerical(error) => CssColorOperationError::Numerical(error),
+        surgeist_color::ComputationError::Numerical(error) => CssColorOperationError::Numerical {
+            error,
+            site: CssColorResolutionSite::Source(range),
+        },
+        surgeist_color::ComputationError::Interpolation(
+            surgeist_color::InterpolationError::Numerical(error),
+        ) => CssColorOperationError::Numerical {
+            error,
+            site: CssColorResolutionSite::Source(range),
+        },
+        surgeist_color::ComputationError::Protocol(error) => {
+            CssColorProtocolError::NumericalProtocol(error).into()
+        }
+        _ => unreachable!(
+            "CSS fixed transformations use checked numerical requests without interpolation policy errors"
+        ),
     }
 }
-/// One fixed transformation under an advanced checked phase, with no output.
-pub struct CssColorTransformation<'owner, 'facts> {
-    cursor: core::Transformation<'owner, 'facts>,
+fn numerical_serialization_error(
+    error: surgeist_color::SerializationError,
+    range: CssColorInputRange,
+) -> CssColorOperationError {
+    match error {
+        surgeist_color::SerializationError::Numerical(error) => CssColorOperationError::Numerical {
+            error,
+            site: CssColorResolutionSite::Source(range),
+        },
+        surgeist_color::SerializationError::Protocol(error) => {
+            CssColorProtocolError::NumericalProtocol(error).into()
+        }
+        _ => unreachable!(
+            "controlled serialization does not execute ordinary allocation or admission policy"
+        ),
+    }
 }
-impl<'owner, 'facts> CssColorTransformation<'owner, 'facts> {
-    #[must_use]
+fn numerical_description(action: surgeist_color::ActionDescription) -> CssColorActionDescription {
+    use surgeist_color::ActionDescription as N;
+    match action {
+        N::Compute(k) => CssColorActionDescription::Compute(CssColorKernel::Numerical(k)),
+        N::ReadDigit { index } => CssColorActionDescription::ReadNumericalDigit { index },
+        N::AppendDigit { index } => CssColorActionDescription::AppendNumericalDigit { index },
+        N::ReplaceDigit { index } => CssColorActionDescription::UpdateNumericalDigit { index },
+        N::EmitByte { unit } => CssColorActionDescription::EmitUnit { unit },
+        N::Ready => CssColorActionDescription::Serialized,
+        N::Failed | N::Abandoned => CssColorActionDescription::Stopped,
+    }
+}
+
+pub struct CssColorTransformation<'css, 'num, 'facts> {
+    checkpoint: core::UsedCheckpoint<'css, 'facts>,
+    numerical: Option<surgeist_color::Computation<'num>>,
+}
+impl<'css, 'num, 'facts> CssColorTransformation<'css, 'num, 'facts> {
     pub const fn register_bytes() -> usize {
         std::mem::size_of::<Self>()
     }
-    #[must_use]
     pub const fn action_bytes() -> usize {
-        std::mem::size_of::<CssColorTransformAction<'_, '_, '_>>()
+        std::mem::size_of::<CssColorTransformAction<'_, '_, '_, '_>>()
     }
-    #[must_use]
     pub fn action(&self) -> CssColorActionDescription {
-        match self.cursor.action() {
-            core::TransformationAction::Compute(transformation) => {
-                CssColorActionDescription::Compute(CssColorKernel::Transform(transformation))
-            }
-            core::TransformationAction::Done => CssColorActionDescription::UsedReady,
-            core::TransformationAction::Stopped => CssColorActionDescription::Stopped,
+        match self
+            .numerical
+            .as_ref()
+            .expect("owned numerical computation")
+            .action()
+        {
+            surgeist_color::ActionDescription::Ready => CssColorActionDescription::UsedReady,
+            a => numerical_description(a),
         }
     }
-    pub fn next_action(&mut self) -> CssColorTransformAction<'_, 'owner, 'facts> {
+    pub fn next_action(&mut self) -> CssColorTransformAction<'_, 'css, 'num, 'facts> {
         CssColorTransformAction { operation: self }
     }
     pub fn abandon(&mut self) {
-        self.cursor.abandon();
+        self.numerical
+            .as_mut()
+            .expect("owned computation")
+            .abandon();
     }
-    /// Refusal leaves the actual transformation in the caller's slot.
     pub fn take(
         slot: &mut Option<Self>,
-    ) -> Result<CssUsedColorCheckpoint<'owner, 'facts>, CssColorOperationError> {
-        slot.as_ref()
-            .ok_or(CssColorProtocolError::EmptySlot)?
-            .cursor
-            .check_completed()
-            .map_err(transformation_error)?;
-        let Some(transformation) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
+    ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorOperationError> {
+        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
+        let range = source(&actual.checkpoint.context).consumed;
+        let value = surgeist_color::Computation::take(&mut actual.numerical)
+            .map_err(|e| numerical_error(e, range))?;
+        let mut actual = slot.take().expect("preflight kept wrapper");
+        actual.checkpoint.value = value;
         Ok(CssUsedColorCheckpoint {
-            checkpoint: transformation.cursor.into_completed(),
+            checkpoint: actual.checkpoint,
         })
     }
-    /// Recover the latest committed value and its original context. A numerical
-    /// refusal preserves the input to that transformation. This does not restart
-    /// a stopped consumer controller.
-    pub fn recover(self) -> CssUsedColorCheckpoint<'owner, 'facts> {
-        CssUsedColorCheckpoint {
-            checkpoint: self.cursor.recover(),
-        }
+    pub fn recover(
+        slot: &mut Option<Self>,
+    ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorProtocolError> {
+        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
+        surgeist_color::Computation::recover(&mut actual.numerical)
+            .map_err(CssColorProtocolError::NumericalProtocol)?;
+        Ok(CssUsedColorCheckpoint {
+            checkpoint: slot
+                .take()
+                .expect("shared preflight proved Some")
+                .checkpoint,
+        })
     }
 }
-/// Exclusive transformation action. Dropping it leaves the computation pending.
-pub struct CssColorTransformAction<'step, 'owner, 'facts> {
-    operation: &'step mut CssColorTransformation<'owner, 'facts>,
+pub struct CssColorTransformAction<'step, 'css, 'num, 'facts> {
+    operation: &'step mut CssColorTransformation<'css, 'num, 'facts>,
 }
-impl CssColorTransformAction<'_, '_, '_> {
-    #[must_use]
-    pub fn layout(&self) -> CssColorActionLayout {
-        let description = self.description();
-        layout(
-            description,
-            CssColorInputKind::Utf8,
-            match description {
-                CssColorActionDescription::Compute(kernel) => kernel,
-                _ => CssColorKernel::Transition,
-            },
-        )
-    }
-    #[must_use]
+impl CssColorTransformAction<'_, '_, '_, '_> {
     pub fn description(&self) -> CssColorActionDescription {
         self.operation.action()
     }
-    pub fn compute(self) -> Result<(), CssColorOperationError> {
-        self.operation
-            .cursor
-            .compute()
-            .map_err(transformation_error)
-    }
-}
-impl<'owner, 'facts> CssUsedColorCheckpoint<'owner, 'facts> {
-    #[must_use]
-    pub fn source(&self) -> CssColorSourceDescriptor {
-        source(self.checkpoint.context())
-    }
-    /// Retired banks must have been disposed through the actual original owner
-    /// before this fixed header check. CSS itself owns no allocation tickets.
-    pub fn transform(
-        slot: &mut Option<Self>,
-        transformation: super::CssUsedColorTransformation,
-        banks: CssColorBankLengths,
-    ) -> Result<CssColorTransformation<'owner, 'facts>, CssColorOperationError> {
-        let checkpoint = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        banks.empty()?;
-        let phase = checkpoint
-            .checkpoint
-            .next_phase()
-            .map_err(transformation_error)?;
-        let Some(checkpoint) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
-        Ok(CssColorTransformation {
-            cursor: checkpoint
-                .checkpoint
-                .transform_committed(transformation, phase),
-        })
-    }
-    /// Begin only final selected serialization. Refusal preserves the actual
-    /// caller slot; success consumes once after all fallible preflight.
-    pub fn serialize(
-        slot: &mut Option<Self>,
-        request: super::CssColorSerializationRequest,
-        banks: CssColorBankLengths,
-    ) -> Result<CssColorSerialization<'owner, 'facts>, CssColorOperationError> {
-        let checkpoint = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        banks.empty()?;
-        let phase = checkpoint
-            .checkpoint
-            .next_phase()
-            .map_err(transformation_error)?;
-        let Some(checkpoint) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
-        Ok(CssColorSerialization {
-            inner: SerializationInner::Parsed(
-                checkpoint.checkpoint.serialize_committed(request, phase),
-            ),
-        })
-    }
-}
-enum SerializationInner<'owner, 'facts> {
-    Parsed(core::Serialization<'owner, 'facts>),
-    Native {
-        cursor: super::serialize::UsedSerializer<'owner>,
-        value: CssUsedColor,
-    },
-}
-/// Canonical finite serialization from either a parsed checkpoint or a checked
-/// native value. Both entries use the same CSS-owned digit/format continuation.
-pub struct CssColorSerialization<'owner, 'facts> {
-    inner: SerializationInner<'owner, 'facts>,
-}
-impl<'owner, 'facts> CssColorSerialization<'owner, 'facts> {
-    #[must_use]
-    pub const fn register_bytes() -> usize {
-        std::mem::size_of::<Self>()
-    }
-    #[must_use]
-    pub const fn action_bytes() -> usize {
-        std::mem::size_of::<CssColorSerializationAction<'_, '_, '_>>()
-    }
-    /// A native value carries no invented parsed source or resolved fact proof.
-    pub fn from_used(
-        owner: &'owner mut CssColorOperationOwner,
-        value: CssUsedColor,
-        request: super::CssColorSerializationRequest,
-        banks: CssColorBankLengths,
-    ) -> Result<Self, CssColorProtocolError> {
-        banks.empty()?;
-        Ok(Self {
-            inner: SerializationInner::Native {
-                cursor: super::serialize::UsedSerializer::start(owner, value, request)?,
-                value,
-            },
-        })
-    }
-    fn native_action(&self) -> super::serialize::SerializationAction {
-        match &self.inner {
-            SerializationInner::Parsed(cursor) => cursor.action(),
-            SerializationInner::Native { cursor, .. } => cursor.action(),
-        }
-    }
-    #[must_use]
-    pub fn action(&self) -> CssColorActionDescription {
-        use super::serialize::SerializationAction as A;
-        match self.native_action() {
-            A::Plan | A::Compute => CssColorActionDescription::Compute(match &self.inner {
-                SerializationInner::Parsed(cursor) => cursor.kernel(),
-                SerializationInner::Native { cursor, .. } => cursor.kernel(),
-            }),
-            A::ReadDigit { index } => CssColorActionDescription::ReadSlot {
-                bank: CssColorBank::Algorithm,
-                index,
-            },
-            A::AppendDigit { index } => CssColorActionDescription::AppendSlot {
-                bank: CssColorBank::Algorithm,
-                index,
-            },
-            A::ReplaceDigit { index } => CssColorActionDescription::UpdateSlot {
-                bank: CssColorBank::Algorithm,
-                index,
-            },
-            A::Emit { unit } => CssColorActionDescription::EmitUnit { unit },
-            A::Done => CssColorActionDescription::Serialized,
-            A::Stopped => CssColorActionDescription::Stopped,
-        }
-    }
-    pub fn next_action(&mut self) -> CssColorSerializationAction<'_, 'owner, 'facts> {
-        let description = self.action();
-        CssColorSerializationAction {
-            operation: self,
-            description,
-            issued: false,
-        }
-    }
-    pub fn abandon(&mut self) {
-        match &mut self.inner {
-            SerializationInner::Parsed(cursor) => cursor.abandon(),
-            SerializationInner::Native { cursor, .. } => cursor.abandon(),
-        }
-    }
-    pub fn take(
-        self,
-    ) -> Result<CssColorSerializationReceipt<'owner, 'facts>, CssColorProtocolError> {
-        Ok(CssColorSerializationReceipt {
-            inner: match self.inner {
-                SerializationInner::Parsed(cursor) => ReceiptInner::Parsed(cursor.take()?),
-                SerializationInner::Native { cursor, value } => ReceiptInner::Native {
-                    value,
-                    length: cursor.completed_length()?,
-                },
-            },
-        })
-    }
-}
-/// The original output buffer remains caller-owned throughout this action.
-pub struct CssColorSerializationAction<'step, 'owner, 'facts> {
-    operation: &'step mut CssColorSerialization<'owner, 'facts>,
-    description: CssColorActionDescription,
-    issued: bool,
-}
-fn serialization_error(error: super::serialize::SerializationError) -> CssColorOperationError {
-    match error {
-        super::serialize::SerializationError::Protocol(error) => error.into(),
-        super::serialize::SerializationError::Numerical(error) => {
-            CssColorOperationError::Numerical(error)
-        }
-    }
-}
-impl<'owner> CssColorSerializationAction<'_, 'owner, '_> {
-    #[must_use]
-    pub const fn description(&self) -> CssColorActionDescription {
-        self.description
-    }
-    #[must_use]
     pub fn layout(&self) -> CssColorActionLayout {
+        let d = self.description();
         layout(
-            self.description,
+            d,
             CssColorInputKind::Utf8,
-            match self.description {
-                CssColorActionDescription::Compute(kernel) => kernel,
+            match d {
+                CssColorActionDescription::Compute(k) => k,
                 _ => CssColorKernel::Transition,
             },
         )
     }
     pub fn compute(self) -> Result<(), CssColorOperationError> {
-        if !matches!(self.description, CssColorActionDescription::Compute(_)) {
-            return Err(CssColorProtocolError::WrongAction.into());
-        }
-        match &mut self.operation.inner {
-            SerializationInner::Parsed(cursor) => cursor.compute(),
-            SerializationInner::Native { cursor, .. } => cursor.compute(),
-        }
-        .map_err(serialization_error)
-    }
-    pub fn read_slot(
-        self,
-        bank: CssColorBank,
-        index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
-        if self.description != (CssColorActionDescription::ReadSlot { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction);
-        }
-        match &mut self.operation.inner {
-            SerializationInner::Parsed(cursor) => cursor.read_digit(index, slot),
-            SerializationInner::Native { cursor, .. } => cursor.read_digit(index, slot),
-        }
-    }
-    pub fn record(&mut self) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
-        if self.issued {
-            return Err(CssColorProtocolError::WrongAction);
-        }
-        let index = match self.description {
-            CssColorActionDescription::AppendSlot {
-                bank: CssColorBank::Algorithm,
-                index,
-            }
-            | CssColorActionDescription::UpdateSlot {
-                bank: CssColorBank::Algorithm,
-                index,
-            } => index,
-            _ => return Err(CssColorProtocolError::WrongAction),
-        };
-        let slot = match &self.operation.inner {
-            SerializationInner::Parsed(cursor) => cursor.pending_record(index),
-            SerializationInner::Native { cursor, .. } => cursor.digit_record(index),
-        }?;
-        self.issued = true;
-        Ok(slot)
-    }
-    pub fn written(
-        self,
-        bank: CssColorBank,
-        index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
-        if !self.issued
-            || !matches!(self.description,CssColorActionDescription::AppendSlot {bank:b,index:i}|CssColorActionDescription::UpdateSlot {bank:b,index:i} if bank==b&&index==i)
-        {
-            return Err(CssColorProtocolError::WrongAction);
-        }
-        match &mut self.operation.inner {
-            SerializationInner::Parsed(cursor) => cursor.written(index, slot),
-            SerializationInner::Native { cursor, .. } => cursor.digit_written(index, slot),
-        }
-    }
-    pub fn emitted(self, unit: u8) -> Result<(), CssColorProtocolError> {
-        if self.description != (CssColorActionDescription::EmitUnit { unit }) {
-            return Err(CssColorProtocolError::WrongAction);
-        }
-        match &mut self.operation.inner {
-            SerializationInner::Parsed(cursor) => cursor.emitted(unit),
-            SerializationInner::Native { cursor, .. } => cursor.emitted(unit),
-        }
+        let range = source(&self.operation.checkpoint.context).consumed;
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned computation")
+            .next_action()
+            .compute()
+            .map_err(|e| numerical_error(e, range))
     }
 }
-enum ReceiptInner<'owner, 'facts> {
-    Parsed(core::SerializationReceipt<'owner, 'facts>),
-    Native { value: CssUsedColor, length: usize },
+impl<'css, 'facts> CssUsedColorCheckpoint<'css, 'facts> {
+    pub fn source(&self) -> CssColorSourceDescriptor {
+        source(self.checkpoint.context())
+    }
+    pub fn transform<'num>(
+        slot: &mut Option<Self>,
+        numerical_owner: &'num mut surgeist_color::OperationOwner,
+        transformation: Transformation,
+        banks: CssColorBankLengths,
+    ) -> Result<CssColorTransformation<'css, 'num, 'facts>, CssColorOperationError> {
+        let checkpoint = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
+        banks.empty()?;
+        let context = checkpoint.checkpoint.context();
+        let next = context.owner.prepare_advance(context.phase)?;
+        let numerical = surgeist_color::Computation::new(
+            numerical_owner,
+            surgeist_color::NumericalRequest::Transform {
+                value: checkpoint.value(),
+                transformation,
+            },
+        )
+        .map_err(CssColorProtocolError::NumericalProtocol)?;
+        context.owner.commit_phase(context.phase, next);
+        let mut checkpoint = slot
+            .take()
+            .expect("shared preflight proved Some")
+            .checkpoint;
+        checkpoint.context.phase = next;
+        Ok(CssColorTransformation {
+            checkpoint,
+            numerical: Some(numerical),
+        })
+    }
+    pub fn serialize<'num>(
+        slot: &mut Option<Self>,
+        numerical_owner: &'num mut surgeist_color::OperationOwner,
+        request: SerializationRequest,
+        banks: CssColorBankLengths,
+        numerical_digits: usize,
+    ) -> Result<CssColorSerialization<'css, 'num, 'facts>, CssColorOperationError> {
+        let checkpoint = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
+        banks.empty()?;
+        if numerical_digits != 0 {
+            return Err(CssColorProtocolError::NumericalProtocol(
+                surgeist_color::ProtocolError::StorageNotEmpty,
+            )
+            .into());
+        }
+        let context = checkpoint.checkpoint.context();
+        let next = context.owner.prepare_advance(context.phase)?;
+        let numerical =
+            surgeist_color::Serialization::new(numerical_owner, checkpoint.value(), request)
+                .map_err(CssColorProtocolError::NumericalProtocol)?;
+        context.owner.commit_phase(context.phase, next);
+        let mut checkpoint = slot
+            .take()
+            .expect("shared preflight proved Some")
+            .checkpoint;
+        checkpoint.context.phase = next;
+        Ok(CssColorSerialization {
+            checkpoint,
+            numerical: Some(numerical),
+        })
+    }
 }
-/// Fixed success receipt. The consumer still owns its final buffer and commit.
-pub struct CssColorSerializationReceipt<'owner, 'facts> {
-    inner: ReceiptInner<'owner, 'facts>,
+pub struct CssColorSerialization<'css, 'num, 'facts> {
+    checkpoint: core::UsedCheckpoint<'css, 'facts>,
+    numerical: Option<surgeist_color::Serialization<'num>>,
+}
+impl<'css, 'num, 'facts> CssColorSerialization<'css, 'num, 'facts> {
+    pub const fn register_bytes() -> usize {
+        std::mem::size_of::<Self>()
+    }
+    pub const fn action_bytes() -> usize {
+        std::mem::size_of::<CssColorSerializationAction<'_, '_, '_, '_>>()
+    }
+    pub fn action(&self) -> CssColorActionDescription {
+        numerical_description(
+            self.numerical
+                .as_ref()
+                .expect("owned serialization")
+                .action(),
+        )
+    }
+    pub fn next_action(&mut self) -> CssColorSerializationAction<'_, 'css, 'num, 'facts> {
+        CssColorSerializationAction { operation: self }
+    }
+    pub fn abandon(&mut self) {
+        self.numerical
+            .as_mut()
+            .expect("owned serialization")
+            .abandon();
+    }
+    pub fn take(
+        slot: &mut Option<Self>,
+    ) -> Result<CssColorSerializationReceipt<'css, 'facts>, CssColorOperationError> {
+        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
+        let range = source(&actual.checkpoint.context).consumed;
+        let receipt = surgeist_color::Serialization::take(&mut actual.numerical)
+            .map_err(|e| numerical_serialization_error(e, range))?;
+        let actual = slot.take().expect("shared preflight proved Some");
+        Ok(CssColorSerializationReceipt {
+            checkpoint: actual.checkpoint,
+            length: receipt.length(),
+        })
+    }
+    pub fn recover(
+        slot: &mut Option<Self>,
+    ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorProtocolError> {
+        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
+        surgeist_color::Serialization::recover(&mut actual.numerical)
+            .map_err(CssColorProtocolError::NumericalProtocol)?;
+        Ok(CssUsedColorCheckpoint {
+            checkpoint: slot
+                .take()
+                .expect("shared preflight proved Some")
+                .checkpoint,
+        })
+    }
+}
+pub struct CssColorSerializationAction<'step, 'css, 'num, 'facts> {
+    operation: &'step mut CssColorSerialization<'css, 'num, 'facts>,
+}
+impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
+    pub fn description(&self) -> CssColorActionDescription {
+        self.operation.action()
+    }
+    pub fn layout(&mut self) -> CssColorActionLayout {
+        let mut result = layout(
+            self.description(),
+            CssColorInputKind::Utf8,
+            CssColorKernel::Transition,
+        );
+        let numerical = self
+            .operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .layout();
+        result.numerical_read_bytes = numerical.read_bytes;
+        result.numerical_write_bytes = numerical.write_bytes;
+        result.output_unit_bytes = numerical.output_bytes;
+        if let CssColorActionDescription::Compute(k) = self.description() {
+            result.kernel = k;
+        }
+        result
+    }
+    pub fn compute(self) -> Result<(), CssColorOperationError> {
+        let range = source(&self.operation.checkpoint.context).consumed;
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .compute()
+            .map_err(|e| numerical_serialization_error(e, range))
+    }
+    pub fn read_numerical_digit(
+        self,
+        index: usize,
+        slot: &surgeist_color::DigitSlot<'_>,
+    ) -> Result<(), CssColorOperationError> {
+        let context = &self.operation.checkpoint.context;
+        if context.owner.current_phase() != context.phase {
+            return Err(CssColorProtocolError::ForeignSlot.into());
+        }
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .read_digit(index, slot)
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+    }
+    pub fn numerical_record(
+        &mut self,
+    ) -> Result<surgeist_color::DigitSlot<'num>, CssColorOperationError> {
+        let context = &self.operation.checkpoint.context;
+        if context.owner.current_phase() != context.phase {
+            return Err(CssColorProtocolError::ForeignSlot.into());
+        }
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .record()
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+    }
+    pub fn numerical_written(
+        self,
+        index: usize,
+        slot: &surgeist_color::DigitSlot<'_>,
+    ) -> Result<(), CssColorOperationError> {
+        let context = &self.operation.checkpoint.context;
+        if context.owner.current_phase() != context.phase {
+            return Err(CssColorProtocolError::ForeignSlot.into());
+        }
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .written(index, slot)
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+    }
+    pub fn emitted(self, unit: u8) -> Result<(), CssColorOperationError> {
+        self.operation
+            .numerical
+            .as_mut()
+            .expect("owned serialization")
+            .next_action()
+            .emitted(unit)
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+    }
+}
+pub struct CssColorSerializationReceipt<'css, 'facts> {
+    checkpoint: core::UsedCheckpoint<'css, 'facts>,
+    length: usize,
 }
 impl CssColorSerializationReceipt<'_, '_> {
-    #[must_use]
-    pub fn value(&self) -> CssUsedColor {
-        match &self.inner {
-            ReceiptInner::Parsed(receipt) => receipt.value,
-            ReceiptInner::Native { value, .. } => *value,
-        }
+    pub fn value(&self) -> Color {
+        self.checkpoint.value()
     }
-    #[must_use]
-    pub fn length(&self) -> usize {
-        match &self.inner {
-            ReceiptInner::Parsed(receipt) => receipt.output_length,
-            ReceiptInner::Native { length, .. } => *length,
-        }
+    pub const fn length(&self) -> usize {
+        self.length
     }
-    /// None is the native entry, not missing parsed-source metadata.
-    #[must_use]
-    pub fn source(&self) -> Option<CssColorSourceDescriptor> {
-        match &self.inner {
-            ReceiptInner::Parsed(receipt) => Some(source(&receipt.context)),
-            ReceiptInner::Native { .. } => None,
-        }
+    pub fn source(&self) -> CssColorSourceDescriptor {
+        source(&self.checkpoint.context)
     }
-    #[must_use]
     pub fn standard_failure(&self) -> Option<CssColorStandardFailure> {
-        match &self.inner {
-            ReceiptInner::Parsed(receipt) => receipt.standard_failure.map(failure),
-            ReceiptInner::Native { .. } => None,
-        }
+        self.checkpoint.standard_failure.map(failure)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        CssColorPropertyFacts, CssColorSchemeFact, CssColorSerializationRequest,
-        CssDeviceColorFact, CssUsedColorTransformation,
-    };
+    use super::super::{CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact};
     use super::*;
     fn facts() -> CssColorFacts<'static> {
         CssColorFacts::new(
@@ -1177,7 +1217,7 @@ mod tests {
                 other => panic!("unexpected parse action {other:?}"),
             }
         }
-        let outcome = operation.take()?;
+        let outcome = CssColorOperation::take(&mut Some(operation))?;
         // This ordinary owner clears its vectors. It does not simulate real
         // HTML capacity/ticket cleanup or claim foreign-controller admission.
         banks.iter_mut().for_each(Vec::clear);
@@ -1185,10 +1225,10 @@ mod tests {
         Ok((outcome, folds))
     }
     fn serialize(
-        mut serializer: CssColorSerialization<'_, '_>,
+        mut serializer: CssColorSerialization<'_, '_, '_>,
     ) -> (
         String,
-        CssUsedColor,
+        Color,
         Option<CssColorSourceDescriptor>,
         Option<CssColorStandardFailure>,
     ) {
@@ -1198,18 +1238,17 @@ mod tests {
             let mut action = serializer.next_action();
             match action.description() {
                 CssColorActionDescription::Compute(_) => action.compute().unwrap(),
-                CssColorActionDescription::ReadSlot { bank, index } => {
-                    action.read_slot(bank, index, &digits[index]).unwrap()
+                CssColorActionDescription::ReadNumericalDigit { index } => {
+                    action.read_numerical_digit(index, &digits[index]).unwrap()
                 }
-                CssColorActionDescription::AppendSlot { bank, index } => {
-                    assert_eq!(bank, CssColorBank::Algorithm);
+                CssColorActionDescription::AppendNumericalDigit { index } => {
                     assert_eq!(index, digits.len());
-                    digits.push(action.record().unwrap());
-                    action.written(bank, index, &digits[index]).unwrap();
+                    digits.push(action.numerical_record().unwrap());
+                    action.numerical_written(index, &digits[index]).unwrap();
                 }
-                CssColorActionDescription::UpdateSlot { bank, index } => {
-                    digits[index] = action.record().unwrap();
-                    action.written(bank, index, &digits[index]).unwrap();
+                CssColorActionDescription::UpdateNumericalDigit { index } => {
+                    digits[index] = action.numerical_record().unwrap();
+                    action.numerical_written(index, &digits[index]).unwrap();
                 }
                 CssColorActionDescription::EmitUnit { unit } => {
                     output.push(unit);
@@ -1221,18 +1260,116 @@ mod tests {
                 other => panic!("unexpected serialization action {other:?}"),
             }
         }
-        let receipt = serializer.take().unwrap();
+        let receipt = CssColorSerialization::take(&mut Some(serializer)).unwrap();
         digits.clear();
         drop(digits);
         (
             String::from_utf8(output).unwrap(),
             receipt.value(),
-            receipt.source(),
+            Some(receipt.source()),
             receipt.standard_failure(),
         )
     }
     #[test]
+    fn refused_parse_take_and_external_numerical_owner_reuse_preserve_source() {
+        let facts = facts();
+        let mut css_owner = CssColorOperationOwner::new();
+        {
+            let mut operation = Some(
+                CssColorOperation::parse_used(
+                    &mut css_owner,
+                    CssColorInputKind::Utf8,
+                    3,
+                    CssColorGrammarRequest::WholeColor,
+                    &facts,
+                    facts.identity(),
+                )
+                .unwrap(),
+            );
+            let pending = operation.as_ref().unwrap().action();
+            assert!(matches!(
+                CssColorOperation::take(&mut operation),
+                Err(CssColorProtocolError::Terminal)
+            ));
+            assert_eq!(operation.as_ref().unwrap().action(), pending);
+            operation.as_mut().unwrap().abandon();
+            assert!(matches!(
+                CssColorOperation::take(&mut operation),
+                Err(CssColorProtocolError::Terminal)
+            ));
+            assert!(operation.is_some());
+        }
+        let (outcome, _) = parse(&mut css_owner, "red", &facts).unwrap();
+        let CssColorParseOutcome::Used(checkpoint) = outcome else {
+            panic!("red")
+        };
+        let source = checkpoint.source();
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
+        let mut slot = Some(checkpoint);
+        assert_eq!(
+            CssUsedColorCheckpoint::serialize(
+                &mut slot,
+                &mut numerical_owner,
+                SerializationRequest::Css,
+                CssColorBankLengths::new(0, 0, 0),
+                1
+            )
+            .err(),
+            Some(CssColorOperationError::Protocol(
+                CssColorProtocolError::NumericalProtocol(
+                    surgeist_color::ProtocolError::StorageNotEmpty
+                )
+            ))
+        );
+        assert_eq!(slot.as_ref().unwrap().source(), source);
+        let mut transform = Some(
+            CssUsedColorCheckpoint::transform(
+                &mut slot,
+                &mut numerical_owner,
+                Transformation::ForceOpaqueAlpha,
+                CssColorBankLengths::new(0, 0, 0),
+            )
+            .unwrap(),
+        );
+        assert!(CssColorTransformation::take(&mut transform).is_err());
+        assert!(transform.is_some());
+        transform.as_mut().unwrap().next_action().compute().unwrap();
+        let checkpoint = CssColorTransformation::take(&mut transform).unwrap();
+        assert_eq!(checkpoint.source(), source);
+        let mut slot = Some(checkpoint);
+        let serializer = CssUsedColorCheckpoint::serialize(
+            &mut slot,
+            &mut numerical_owner,
+            SerializationRequest::HtmlCompatible,
+            CssColorBankLengths::new(0, 0, 0),
+            0,
+        )
+        .unwrap();
+        let (output, _, receipt_source, _) = serialize(serializer);
+        assert_eq!(output, "#ff0000");
+        assert_eq!(receipt_source, Some(source));
+        // Source metadata survives after the numerical owner borrow has ended.
+        let request = surgeist_color::NumericalRequest::Construct {
+            space: crate::ColorSpace::Lab,
+            channels: [None; 3],
+            alpha: None,
+        };
+        let mut native =
+            Some(surgeist_color::Computation::new(&mut numerical_owner, request).unwrap());
+        native.as_mut().unwrap().next_action().compute().unwrap();
+        assert_eq!(
+            surgeist_color::Computation::take(&mut native)
+                .unwrap()
+                .alpha(),
+            None
+        );
+        assert_eq!(receipt_source, Some(source));
+    }
+
+    #[test]
     fn public_guard_drives_actual_banks_and_exposes_three_folds_per_argument() {
+        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
+
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, folds) = parse(&mut owner, "rgb(calc(min(3, 2, 1)) 0 0)", &facts).unwrap();
@@ -1251,8 +1388,10 @@ mod tests {
         let value = checkpoint.value();
         let serializer = CssUsedColorCheckpoint::serialize(
             &mut Some(checkpoint),
-            CssColorSerializationRequest::Css,
+            &mut numerical_owner_0,
+            SerializationRequest::Css,
             CssColorBankLengths::new(0, 0, 0),
+            0,
         )
         .ok()
         .unwrap();
@@ -1263,6 +1402,10 @@ mod tests {
     }
     #[test]
     fn public_checkpoint_rejects_live_banks_without_losing_value_and_retains_fallback_reason() {
+        let mut numerical_owner_2 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_1 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
+
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(&mut owner, "rgb(1deg 0 0)", &facts).unwrap();
@@ -1270,12 +1413,13 @@ mod tests {
             panic!("degree is not an RGB scalar")
         };
         let expected = failed.failure();
-        let checkpoint = failed.fallback(CssUsedColor::opaque_black());
+        let checkpoint = failed.fallback(Color::opaque_black());
         let mut slot = Some(checkpoint);
         assert_eq!(
             CssUsedColorCheckpoint::transform(
                 &mut slot,
-                CssUsedColorTransformation::ForceOpaqueAlpha,
+                &mut numerical_owner_0,
+                Transformation::ForceOpaqueAlpha,
                 CssColorBankLengths::new(1, 0, 0)
             )
             .err(),
@@ -1286,15 +1430,16 @@ mod tests {
         assert_eq!(slot.as_ref().unwrap().standard_failure(), Some(expected));
         let mut transform = CssUsedColorCheckpoint::transform(
             &mut slot,
-            CssUsedColorTransformation::ForceOpaqueAlpha,
+            &mut numerical_owner_1,
+            Transformation::ForceOpaqueAlpha,
             CssColorBankLengths::new(0, 0, 0),
         )
         .unwrap();
         assert!(slot.is_none());
         assert_eq!(
             transform.next_action().description(),
-            CssColorActionDescription::Compute(CssColorKernel::Transform(
-                CssUsedColorTransformation::ForceOpaqueAlpha
+            CssColorActionDescription::Compute(CssColorKernel::Numerical(
+                surgeist_color::Kernel::Transform(Transformation::ForceOpaqueAlpha)
             ))
         );
         transform.next_action().compute().unwrap();
@@ -1305,8 +1450,10 @@ mod tests {
             serialize(
                 CssUsedColorCheckpoint::serialize(
                     &mut Some(checkpoint),
-                    CssColorSerializationRequest::HtmlCompatible,
-                    CssColorBankLengths::new(0, 0, 0)
+                    &mut numerical_owner_2,
+                    SerializationRequest::HtmlCompatible,
+                    CssColorBankLengths::new(0, 0, 0),
+                    0
                 )
                 .ok()
                 .unwrap()
@@ -1391,28 +1538,6 @@ mod tests {
         ));
     }
     #[test]
-    fn native_serializer_does_not_invent_source_and_dropped_guard_keeps_exact_action() {
-        let mut owner = CssColorOperationOwner::new();
-        let value = CssUsedColor::from_srgba8([255, 0, 0, 236]);
-        let mut serializer = CssColorSerialization::from_used(
-            &mut owner,
-            value,
-            CssColorSerializationRequest::Css,
-            CssColorBankLengths::new(0, 0, 0),
-        )
-        .unwrap();
-        let before = serializer.action();
-        {
-            let guard = serializer.next_action();
-            assert_eq!(guard.description(), before);
-        }
-        assert_eq!(serializer.action(), before);
-        assert_eq!(
-            serialize(serializer),
-            ("rgba(255, 0, 0, 0.925)".to_owned(), value, None, None)
-        );
-    }
-    #[test]
     fn foreign_pending_record_and_wrong_reply_cannot_advance_public_guard() {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
@@ -1467,9 +1592,9 @@ mod tests {
             super::super::protocol::CssColorSlotKind::Scalar
         );
         second.abandon();
-        assert!(second.take().is_err());
+        assert!(CssColorOperation::take(&mut Some(second)).is_err());
         first.abandon();
-        assert!(first.take().is_err());
+        assert!(CssColorOperation::take(&mut Some(first)).is_err());
     }
     #[test]
     fn fixed_initialization_and_utf16_observation_are_exposed_before_action() {
@@ -1501,7 +1626,7 @@ mod tests {
             std::mem::size_of::<CssUsedColorCheckpoint<'_, '_>>(),
             std::mem::size_of::<Option<CssUsedColorCheckpoint<'_, '_>>>(),
             CssColorTransformation::register_bytes(),
-            std::mem::size_of::<Option<CssColorTransformation<'_, '_>>>(),
+            std::mem::size_of::<Option<CssColorTransformation<'_, '_, '_>>>(),
             CssColorSerialization::register_bytes()
         );
         let expected = CssColorFactIdentity::new(90, 91);
@@ -1596,7 +1721,9 @@ mod tests {
                 other => panic!("unexpected {other:?}"),
             }
         }
-        let CssColorParseOutcome::Used(value) = operation.take().unwrap() else {
+        let CssColorParseOutcome::Used(value) =
+            CssColorOperation::take(&mut Some(operation)).unwrap()
+        else {
             panic!("valid intrinsic operation")
         };
         banks.iter_mut().for_each(Vec::clear);
@@ -1613,6 +1740,9 @@ mod tests {
 
     #[test]
     fn relative_and_mix_cylindrical_results_preserve_the_color5_serialization_family() {
+        let mut numerical_owner_1 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
+
         let facts = facts();
         for text in [
             "hsl(from red h s l)",
@@ -1627,8 +1757,10 @@ mod tests {
             };
             let serializer = CssUsedColorCheckpoint::serialize(
                 &mut Some(value),
-                CssColorSerializationRequest::Css,
+                &mut numerical_owner_0,
+                SerializationRequest::Css,
                 CssColorBankLengths::new(0, 0, 0),
+                0,
             )
             .ok()
             .unwrap();
@@ -1648,8 +1780,10 @@ mod tests {
             };
             let serializer = CssUsedColorCheckpoint::serialize(
                 &mut Some(value),
-                CssColorSerializationRequest::Css,
+                &mut numerical_owner_1,
+                SerializationRequest::Css,
                 CssColorBankLengths::new(0, 0, 0),
+                0,
             )
             .ok()
             .unwrap();
@@ -1659,6 +1793,8 @@ mod tests {
 
     #[test]
     fn every_real_bank_refuses_wrong_replies_and_retired_slots_cannot_cross_phase() {
+        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
+
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let text = "rgb(calc(1 + 2) 0 0)";
@@ -1737,7 +1873,9 @@ mod tests {
                 other => panic!("unexpected parse action {other:?}"),
             }
         }
-        let CssColorParseOutcome::Used(checkpoint) = operation.take().unwrap() else {
+        let CssColorParseOutcome::Used(checkpoint) =
+            CssColorOperation::take(&mut Some(operation)).unwrap()
+        else {
             panic!("valid intrinsic arithmetic")
         };
         assert_eq!(read_banks, [true; 3]);
@@ -1751,11 +1889,32 @@ mod tests {
         // qualification, without pretending they have physical ledger tickets.
         let mut serializer = CssUsedColorCheckpoint::serialize(
             &mut Some(checkpoint),
-            CssColorSerializationRequest::Css,
+            &mut numerical_owner_0,
+            SerializationRequest::Css,
             CssColorBankLengths::new(0, 0, 0),
+            0,
         )
         .ok()
         .unwrap();
+        let mut foreign_owner = surgeist_color::OperationOwner::new();
+        let foreign_digit = {
+            let mut f = surgeist_color::format::FiniteFormatter::new(
+                &mut foreign_owner,
+                1.0,
+                surgeist_color::format::RoundingMode::AwayFromZero,
+            )
+            .unwrap();
+            loop {
+                let mut a = f.next_action();
+                match a.description() {
+                    surgeist_color::ActionDescription::Compute(_) => a.compute().unwrap(),
+                    surgeist_color::ActionDescription::AppendDigit { .. } => {
+                        break a.record().unwrap();
+                    }
+                    other => panic!("unexpected {other:?}"),
+                }
+            }
+        };
         let mut digits = Vec::new();
         let mut output = Vec::new();
         let mut refused = false;
@@ -1764,30 +1923,34 @@ mod tests {
             let mut action = serializer.next_action();
             match pending {
                 CssColorActionDescription::Compute(_) => action.compute().unwrap(),
-                CssColorActionDescription::ReadSlot { bank: which, index } => {
+                CssColorActionDescription::ReadNumericalDigit { index } => {
                     if !refused {
                         assert_eq!(
-                            action.read_slot(which, index, &banks[0][0]),
-                            Err(CssColorProtocolError::ForeignSlot)
+                            action.read_numerical_digit(index, &foreign_digit),
+                            Err(CssColorOperationError::Protocol(
+                                CssColorProtocolError::NumericalProtocol(
+                                    surgeist_color::ProtocolError::ForeignSlot
+                                )
+                            ))
                         );
                         assert_eq!(serializer.action(), pending);
                         serializer
                             .next_action()
-                            .read_slot(which, index, &digits[index])
+                            .read_numerical_digit(index, &digits[index])
                             .unwrap();
                         refused = true;
                     } else {
-                        action.read_slot(which, index, &digits[index]).unwrap();
+                        action.read_numerical_digit(index, &digits[index]).unwrap();
                     }
                 }
-                CssColorActionDescription::AppendSlot { bank: which, index } => {
+                CssColorActionDescription::AppendNumericalDigit { index } => {
                     assert_eq!(index, digits.len());
-                    digits.push(action.record().unwrap());
-                    action.written(which, index, &digits[index]).unwrap();
+                    digits.push(action.numerical_record().unwrap());
+                    action.numerical_written(index, &digits[index]).unwrap();
                 }
-                CssColorActionDescription::UpdateSlot { bank: which, index } => {
-                    digits[index] = action.record().unwrap();
-                    action.written(which, index, &digits[index]).unwrap();
+                CssColorActionDescription::UpdateNumericalDigit { index } => {
+                    digits[index] = action.numerical_record().unwrap();
+                    action.numerical_written(index, &digits[index]).unwrap();
                 }
                 CssColorActionDescription::EmitUnit { unit } => {
                     output.push(unit);
@@ -1799,7 +1962,12 @@ mod tests {
         }
         assert!(refused);
         assert_eq!(output, b"rgb(3, 0, 0)");
-        assert_eq!(serializer.take().unwrap().length(), output.len());
+        assert_eq!(
+            CssColorSerialization::take(&mut Some(serializer))
+                .unwrap()
+                .length(),
+            output.len()
+        );
         banks.iter_mut().for_each(Vec::clear);
         digits.clear();
     }
@@ -1816,15 +1984,17 @@ mod tests {
         let source = checkpoint.source();
         assert_eq!(original.srgb_bytes(), None);
         let mut slot = Some(checkpoint);
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
         let mut transform = CssUsedColorCheckpoint::transform(
             &mut slot,
-            CssUsedColorTransformation::QuantizeSrgb,
+            &mut numerical_owner,
+            Transformation::QuantizeSrgb,
             CssColorBankLengths::new(0, 0, 0),
         )
         .unwrap();
         transform.next_action().compute().unwrap();
         transform.abandon();
-        let recovered = transform.recover();
+        let recovered = CssColorTransformation::recover(&mut Some(transform)).unwrap();
         // Numerical computation alone does not publish a checkpoint. Only a
         // successful take commits its result; abandonment preserves the input.
         assert!(recovered.value().identical(original));
@@ -1836,6 +2006,15 @@ mod tests {
 
     #[test]
     fn caller_checkpoint_slots_keep_refused_and_pending_owners_and_recover_committed_values() {
+        let mut numerical_owner_7 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_6 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_5 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_4 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_3 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_2 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_1 = surgeist_color::OperationOwner::new();
+        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
+
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(&mut owner, "rgba(255 0 0 / .5)", &facts).unwrap();
@@ -1849,7 +2028,8 @@ mod tests {
         assert_eq!(
             CssUsedColorCheckpoint::transform(
                 &mut slot,
-                CssUsedColorTransformation::ForceOpaqueAlpha,
+                &mut numerical_owner_0,
+                Transformation::ForceOpaqueAlpha,
                 banks
             )
             .err(),
@@ -1861,8 +2041,14 @@ mod tests {
         assert_eq!(slot.as_ref().unwrap().value(), original);
         assert!(std::ptr::eq(slot.as_ref().unwrap().facts(), &facts));
         assert_eq!(
-            CssUsedColorCheckpoint::serialize(&mut slot, CssColorSerializationRequest::Css, banks)
-                .err(),
+            CssUsedColorCheckpoint::serialize(
+                &mut slot,
+                &mut numerical_owner_1,
+                SerializationRequest::Css,
+                banks,
+                0
+            )
+            .err(),
             Some(CssColorOperationError::Protocol(
                 CssColorProtocolError::StorageNotEmpty
             ))
@@ -1871,7 +2057,8 @@ mod tests {
         assert_eq!(slot.as_ref().unwrap().value(), original);
         let transformation = CssUsedColorCheckpoint::transform(
             &mut slot,
-            CssUsedColorTransformation::ForceOpaqueAlpha,
+            &mut numerical_owner_2,
+            Transformation::ForceOpaqueAlpha,
             CssColorBankLengths::new(0, 0, 0),
         )
         .unwrap();
@@ -1879,7 +2066,8 @@ mod tests {
         assert_eq!(
             CssUsedColorCheckpoint::transform(
                 &mut slot,
-                CssUsedColorTransformation::ForceOpaqueAlpha,
+                &mut numerical_owner_3,
+                Transformation::ForceOpaqueAlpha,
                 CssColorBankLengths::new(0, 0, 0)
             )
             .err(),
@@ -1892,7 +2080,7 @@ mod tests {
         assert_eq!(
             CssColorTransformation::take(&mut transform).err(),
             Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::Terminal
+                CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::NotReady)
             ))
         );
         assert_eq!(transform.as_ref().unwrap().action(), pending);
@@ -1908,11 +2096,12 @@ mod tests {
         assert_eq!(checkpoint.value().alpha(), Some(1.0));
         assert_eq!(checkpoint.source(), source);
         let mut slot = Some(checkpoint);
-        // Once computation commits, an explicit abandon retains that latest
-        // committed value rather than restoring the input checkpoint.
+        // Computation remains unpublished until take; abandonment recovers
+        // the previous committed floating checkpoint and its source context.
         let mut transform = CssUsedColorCheckpoint::transform(
             &mut slot,
-            CssUsedColorTransformation::QuantizeSrgb,
+            &mut numerical_owner_4,
+            Transformation::QuantizeSrgb,
             CssColorBankLengths::new(0, 0, 0),
         )
         .unwrap();
@@ -1922,34 +2111,38 @@ mod tests {
         assert_eq!(
             CssColorTransformation::take(&mut transform).err(),
             Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::Terminal
+                CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::Terminated)
             ))
         );
-        let checkpoint = transform.take().unwrap().recover();
-        assert_eq!(checkpoint.value().srgb_bytes(), Some([255, 0, 0])); // Channel quantization does not invent alpha byte provenance.
+        let checkpoint = CssColorTransformation::recover(&mut transform).unwrap();
+        assert_eq!(checkpoint.value().srgb_bytes(), None); // Untaken quantization does not commit byte backing.
         assert_eq!(checkpoint.value().alpha(), Some(1.0));
         assert_eq!(checkpoint.value().alpha_byte(), None);
         assert_eq!(checkpoint.source(), source);
         let mut slot = Some(checkpoint);
         let serializer = CssUsedColorCheckpoint::serialize(
             &mut slot,
-            CssColorSerializationRequest::HtmlCompatible,
+            &mut numerical_owner_5,
+            SerializationRequest::HtmlCompatible,
             CssColorBankLengths::new(0, 0, 0),
+            0,
         )
         .unwrap();
         assert!(slot.is_none());
         assert_eq!(
             CssUsedColorCheckpoint::serialize(
                 &mut slot,
-                CssColorSerializationRequest::Css,
-                CssColorBankLengths::new(0, 0, 0)
+                &mut numerical_owner_6,
+                SerializationRequest::Css,
+                CssColorBankLengths::new(0, 0, 0),
+                0
             )
             .err(),
             Some(CssColorOperationError::Protocol(
                 CssColorProtocolError::EmptySlot
             ))
         );
-        assert_eq!(serialize(serializer).0, "#ff0000");
+        assert_eq!(serialize(serializer).0, "rgb(255, 0, 0)");
 
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(
@@ -1966,20 +2159,25 @@ mod tests {
         let mut slot = Some(checkpoint);
         let mut transform = CssUsedColorCheckpoint::transform(
             &mut slot,
-            CssUsedColorTransformation::Convert(crate::CssColorInterpolationSpace::Predefined(
-                crate::CssPredefinedColorSpace::XyzD65,
+            &mut numerical_owner_7,
+            Transformation::Convert(crate::ColorSpace::Predefined(
+                crate::PredefinedColorSpace::XyzD65,
             )),
             CssColorBankLengths::new(0, 0, 0),
         )
         .unwrap();
         assert_eq!(
             transform.next_action().compute(),
-            Err(CssColorOperationError::Numerical(
-                CssUsedColorError::Unrepresentable
-            ))
+            Err(CssColorOperationError::Numerical {
+                error: ColorError::Unrepresentable,
+                site: CssColorResolutionSite::Source(CssColorInputRange {
+                    start: 0,
+                    end: "color(srgb-linear 1.7e308 1.7e308 1.7e308)".len()
+                })
+            })
         );
         transform.abandon();
-        let checkpoint = transform.recover();
+        let checkpoint = CssColorTransformation::recover(&mut Some(transform)).unwrap();
         assert!(checkpoint.value().identical(before));
         assert_eq!(checkpoint.source(), source);
         assert_eq!(checkpoint.standard_failure(), None);
@@ -2035,7 +2233,7 @@ mod tests {
                         assert_eq!(operation.action(), CssColorActionDescription::Stopped);
                         assert_eq!(banks.each_ref().map(Vec::len), lengths);
                         assert!(matches!(
-                            operation.take(),
+                            CssColorOperation::take(&mut Some(operation)),
                             Err(CssColorProtocolError::Terminal)
                         ));
                         break;
@@ -2065,17 +2263,20 @@ mod tests {
                     CssColorActionDescription::ReadFact(_)
                     | CssColorActionDescription::Compute(_) => action.compute().unwrap(),
                     CssColorActionDescription::UsedReady => {
-                        let CssColorParseOutcome::Used(value) = operation.take().unwrap() else {
+                        let CssColorParseOutcome::Used(value) =
+                            CssColorOperation::take(&mut Some(operation)).unwrap()
+                        else {
                             panic!("used checkpoint")
                         };
                         assert_eq!(
                             value.value().space(),
-                            crate::CssColorInterpolationSpace::Predefined(
-                                crate::CssPredefinedColorSpace::Srgb
-                            )
+                            crate::ColorSpace::Predefined(crate::PredefinedColorSpace::Srgb)
                         );
                         assert_eq!(value.value().channels(), [Some(1.0), Some(0.0), Some(0.0)]);
-                        assert!(!value.value().uses_color_function());
+                        assert!(
+                            !(value.value().serialization_family()
+                                == surgeist_color::SerializationFamily::ColorFunction)
+                        );
                         assert_eq!(value.value().srgb_bytes(), None);
                         assert!(std::ptr::eq(value.facts(), &facts));
                         break;

@@ -3,17 +3,22 @@
 ## Package And Workspace
 
 The root [Cargo.toml](../Cargo.toml) declares `surgeist` 0.1.0, Rust edition 2024,
-MSRV 1.97, and the MIT license. The product workspace contains root plus 15
-crates, with `default-members = ["."]` and one committed root
-[Cargo.lock](../Cargo.lock). Thirteen crates are exact `=0.1.0` production path
-dependencies of the facade. `surgeist-test` supplies verification support and
-`surgeist-generator` 0.2.0 supplies shared corpus tooling; both are workspace
-members and API-audit inputs with no facade dependency or reexport.
+MSRV 1.97, and the MIT license. Its manifests own the current workspace and facade
+dependency inventory. The product workspace uses `default-members = ["."]` and
+one committed root [Cargo.lock](../Cargo.lock).
+
+Alongside production crates, the workspace includes
+[`surgeist-test`](../crates/surgeist-test/Cargo.toml) verification support,
+[`surgeist-generator`](../crates/surgeist-generator/Cargo.toml) shared corpus
+tooling, [`surgeist-fuzz`](../crates/surgeist-fuzz/Cargo.toml) bounded fuzz
+infrastructure, the HTML-owned [`surgeist-html-fuzz`](../crates/surgeist-html/fuzz/README.md)
+consumer, and the offline [CSSOM reflection tool](../tools/cssom-reflections/README.md).
+These are outside the facade's production dependencies and default members.
 
 The [API generator](../api/generator/Cargo.toml) and optional
 [layout Dylint catalog](../crates/surgeist-layout/tools/surgeist-layout-audits/Cargo.toml)
-are separate Cargo workspaces, outside the 16 product members. Crate manifests
-own their respective version, MSRV, dependencies, and features.
+are separate Cargo workspaces. Crate manifests own their respective version,
+MSRV, dependencies, and features.
 
 ## Facade Modules
 
@@ -25,9 +30,11 @@ front door. It also exposes `crate_name() -> &'static str`, returning
 | --- | --- |
 | `animation` | [surgeist-animation](../crates/surgeist-animation/src/lib.rs) |
 | `app`, `runtime` | [surgeist-runtime](../crates/surgeist-runtime/src/lib.rs) |
+| `color` | [surgeist-color](../crates/surgeist-color/src/lib.rs) |
 | `css` | [surgeist-css](../crates/surgeist-css/src/lib.rs) |
 | `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
+| `html` | [surgeist-html](../crates/surgeist-html/src/lib.rs) |
 | `layout` | [surgeist-layout](../crates/surgeist-layout/src/lib.rs) |
 | `render` | [surgeist-render](../crates/surgeist-render/src/lib.rs) |
 | `retained` | [surgeist-retained](../crates/surgeist-retained/src/lib.rs) |
@@ -44,6 +51,15 @@ generation contracts live in
 `css-corpus` feature exposes its CSS driver and whose `browser-corpus` feature
 enables browser infrastructure. Layout keeps its corpus adapter and semantic
 conversion in its own package.
+
+[`surgeist-color`](../crates/surgeist-color/README.md) owns dependency-free
+numerical color operations and finite formatting. CSS owns authored syntax and
+source/fact-qualified resolution. The current
+[HTML color adapter](../crates/surgeist-html/src/construction/parser_session/input_color.rs)
+directly consumes CSS and Color through its original parser controller and
+retains actual Color values in its public computation metadata. HTML values,
+parsing and interpretation still share the `surgeist-html` package; their
+[separate-package contracts](reference/html-crate-contracts.md) remain planned.
 
 ## Root Features
 
@@ -94,11 +110,11 @@ packages keep their default profile. The CSS profile appears as
 The [root command inventory](../AGENTS.md#command-inventory) selects focused
 package check/test/Clippy commands, formatting, and explicit API auditing.
 Unqualified root Cargo commands select the facade by default; `--workspace`
-would explicitly expand selection to all 16 product packages. Broad workspace
+would explicitly expand selection to the workspace members in the root manifest. Broad workspace
 test runs and assumed all-feature combinations are not the verification policy.
 
 Root has one library identity test. The API generator has tests in its separate
 workspace. Crate supplements locate their focused feature, platform, and test
 commands. Native GPU, platform, browser, and corpus checks require the matching
-environment and selection. No root CI configuration, integration-test suite,
-examples, `dev/` harness, or root `tools/` implementation is present.
+environment and selection. Root integration tests, application examples and a
+`dev/` harness remain planned; the root-owned tools listed above already exist.

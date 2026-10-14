@@ -3762,6 +3762,7 @@ name = "surgeist"
 version = "0.1.0"
 dependencies = [
  "surgeist-animation",
+ "surgeist-color",
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-dialog",
@@ -3785,6 +3786,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-color"
+version = "0.1.0"
+
+[[package]]
 name = "surgeist-css"
 version = "0.1.0"
 dependencies = [
@@ -3792,6 +3797,7 @@ dependencies = [
  "encoding_rs",
  "serde",
  "serde_json",
+ "surgeist-color",
  "unicode-segmentation",
 ]
 
@@ -3852,6 +3858,7 @@ name = "surgeist-html"
 version = "0.1.0"
 dependencies = [
  "cssparser",
+ "surgeist-color",
  "surgeist-css",
 ]
 

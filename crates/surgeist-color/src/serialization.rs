@@ -3,15 +3,15 @@
 //! This numerical cursor has no CSS source, fact, owner or resolver record.
 //! Its adapter qualifies the caller bank before lending one actual digit.
 
-use super::super::alpha::byte_alpha_for_serialization;
-use super::value::{CssUsedColor, CssUsedColorError};
-use crate::finite_format::RoundingMode;
-use crate::finite_format::bounded::{FiniteFormatCursor, FormatDigit, FormatReply, FormatRequest};
-use crate::{CssColorInterpolationSpace as Space, CssPredefinedColorSpace as Predefined};
+use super::value::{Color, ColorError};
+use crate::alpha::byte_alpha_for_serialization;
+use crate::format::RoundingMode;
+use crate::format::bounded::{FiniteFormatCursor, FormatDigit, FormatReply, FormatRequest};
+use crate::{ColorSpace as Space, PredefinedColorSpace as Predefined};
 
 /// Selects the standard used serialization, including the conditional HTML form.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorSerializationRequest {
+pub enum SerializationRequest {
     Css,
     HtmlCompatible,
 }
@@ -29,12 +29,9 @@ struct Plan {
     pieces: [Piece; 19],
 }
 impl Plan {
-    fn new(
-        value: CssUsedColor,
-        request: CssColorSerializationRequest,
-    ) -> Result<Self, CssUsedColorError> {
+    fn new(value: Color, request: SerializationRequest) -> Result<Self, ColorError> {
         let mut pieces = [Piece::End; 19];
-        if request == CssColorSerializationRequest::HtmlCompatible
+        if request == SerializationRequest::HtmlCompatible
             && value.alpha() == Some(1.0)
             && let Some([r, g, b]) = value.srgb_bytes()
         {
@@ -48,7 +45,7 @@ impl Plan {
         }
         let missing = value.channels().contains(&None) || value.alpha().is_none();
         let value = if matches!(value.space(), Space::Hsl | Space::Hwb) && !missing {
-            let converted = value.convert(Space::Predefined(Predefined::Srgb))?;
+            let converted = value.converted(Space::Predefined(Predefined::Srgb))?;
             if value.uses_color_function() {
                 converted.with_color_function()
             } else {
@@ -138,13 +135,6 @@ pub(crate) enum SerializationAction {
     Stopped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SerializationProtocolError {
-    WrongAction,
-    WrongIndex,
-    Overflow,
-    Terminal,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SerializationKernel {
     Plan,
     Format,
@@ -152,8 +142,8 @@ pub(crate) enum SerializationKernel {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SerializationError {
-    Protocol(SerializationProtocolError),
-    Numerical(CssUsedColorError),
+    Protocol(crate::ProtocolError),
+    Numerical(ColorError),
 }
 enum Stage {
     Plan,
@@ -165,8 +155,8 @@ enum Stage {
 
 /// Fixed state only. The caller owns all digits and every final output byte.
 pub(crate) struct SerializationCursor {
-    value: CssUsedColor,
-    request: CssColorSerializationRequest,
+    value: Color,
+    request: SerializationRequest,
     plan: Option<Plan>,
     stage: Stage,
     piece: usize,
@@ -178,7 +168,7 @@ pub(crate) struct SerializationCursor {
 impl SerializationCursor {
     /// The caller admits the fixed continuation before construction. Planning
     /// and numerical conversion remain pending until the Plan action is serviced.
-    pub(crate) fn new(value: CssUsedColor, request: CssColorSerializationRequest) -> Self {
+    pub(crate) fn new(value: Color, request: SerializationRequest) -> Self {
         Self {
             value,
             request,
@@ -240,6 +230,15 @@ impl SerializationCursor {
             _ => SerializationKernel::Transition,
         }
     }
+    pub(crate) fn format_kernel(&self) -> Option<crate::format::bounded::FormatKernel> {
+        match &self.stage {
+            Stage::Format(c) => match c.next_request() {
+                FormatRequest::Compute(k) => Some(k),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
     pub(crate) fn compute(&mut self) -> Result<(), SerializationError> {
         match &mut self.stage {
             Stage::Plan => {
@@ -259,7 +258,7 @@ impl SerializationCursor {
                     self.stage = Stage::Format(
                         FiniteFormatCursor::new(value, RoundingMode::TowardPositiveInfinity)
                             .map_err(|_| {
-                                SerializationError::Numerical(CssUsedColorError::Unrepresentable)
+                                SerializationError::Numerical(ColorError::Unrepresentable)
                             })?,
                     );
                 }
@@ -270,16 +269,14 @@ impl SerializationCursor {
                 }
                 _ => {
                     return Err(SerializationError::Protocol(
-                        SerializationProtocolError::WrongAction,
+                        crate::ProtocolError::WrongAction,
                     ));
                 }
             },
             Stage::Format(cursor) => match cursor.next_request() {
                 FormatRequest::Compute(kernel) => cursor
                     .complete(FormatReply::Computed(kernel))
-                    .map_err(|_| {
-                        SerializationError::Protocol(SerializationProtocolError::WrongAction)
-                    })?,
+                    .map_err(|error| SerializationError::Protocol(error.into()))?,
                 FormatRequest::Done(_) => {
                     self.stage = Stage::Pieces;
                     self.piece += 1;
@@ -287,13 +284,13 @@ impl SerializationCursor {
                 }
                 _ => {
                     return Err(SerializationError::Protocol(
-                        SerializationProtocolError::WrongAction,
+                        crate::ProtocolError::WrongAction,
                     ));
                 }
             },
             Stage::Done | Stage::Stopped => {
                 return Err(SerializationError::Protocol(
-                    SerializationProtocolError::Terminal,
+                    crate::ProtocolError::Terminated,
                 ));
             }
         }
@@ -303,26 +300,23 @@ impl SerializationCursor {
         &mut self,
         index: usize,
         digit: FormatDigit,
-    ) -> Result<(), SerializationProtocolError> {
+    ) -> Result<(), crate::ProtocolError> {
         if self.action() != (SerializationAction::ReadDigit { index }) {
-            return Err(SerializationProtocolError::WrongAction);
+            return Err(crate::ProtocolError::WrongAction);
         }
         let Stage::Format(cursor) = &mut self.stage else {
-            return Err(SerializationProtocolError::WrongAction);
+            return Err(crate::ProtocolError::WrongAction);
         };
         cursor
             .complete(FormatReply::Digit {
                 index: index - self.digit_base,
                 digit,
             })
-            .map_err(|_| SerializationProtocolError::WrongAction)
+            .map_err(crate::ProtocolError::from)
     }
-    pub(crate) fn digit_record(
-        &self,
-        index: usize,
-    ) -> Result<FormatDigit, SerializationProtocolError> {
+    pub(crate) fn digit_record(&self, index: usize) -> Result<FormatDigit, crate::ProtocolError> {
         let Stage::Format(cursor) = &self.stage else {
-            return Err(SerializationProtocolError::WrongAction);
+            return Err(crate::ProtocolError::WrongAction);
         };
         let digit = match cursor.next_request() {
             FormatRequest::AppendDigit {
@@ -333,12 +327,12 @@ impl SerializationCursor {
                 index: expected,
                 digit,
             } if self.digit_base + expected == index => digit,
-            _ => return Err(SerializationProtocolError::WrongIndex),
+            _ => return Err(crate::ProtocolError::WrongIndex),
         };
         if matches!(self.action(), SerializationAction::AppendDigit { .. }) {
             self.digits
                 .checked_add(1)
-                .ok_or(SerializationProtocolError::Overflow)?;
+                .ok_or(crate::ProtocolError::Overflow)?;
         }
         Ok(digit)
     }
@@ -348,7 +342,7 @@ impl SerializationCursor {
         &mut self,
         index: usize,
         digit: FormatDigit,
-    ) -> Result<(), SerializationProtocolError> {
+    ) -> Result<(), crate::ProtocolError> {
         let action = self.action();
         let reply = match action {
             SerializationAction::AppendDigit { index: expected }
@@ -365,38 +359,36 @@ impl SerializationCursor {
                     digit,
                 }
             }
-            _ => return Err(SerializationProtocolError::WrongIndex),
+            _ => return Err(crate::ProtocolError::WrongIndex),
         };
         let next = if matches!(action, SerializationAction::AppendDigit { .. }) {
             self.digits
                 .checked_add(1)
-                .ok_or(SerializationProtocolError::Overflow)?
+                .ok_or(crate::ProtocolError::Overflow)?
         } else {
             self.digits
         };
         let Stage::Format(cursor) = &mut self.stage else {
-            return Err(SerializationProtocolError::WrongAction);
+            return Err(crate::ProtocolError::WrongAction);
         };
-        cursor
-            .complete(reply)
-            .map_err(|_| SerializationProtocolError::WrongAction)?;
+        cursor.complete(reply).map_err(crate::ProtocolError::from)?;
         self.digits = next;
         Ok(())
     }
-    pub(crate) fn emitted(&mut self, unit: u8) -> Result<(), SerializationProtocolError> {
+    pub(crate) fn emitted(&mut self, unit: u8) -> Result<(), crate::ProtocolError> {
         if self.action() != (SerializationAction::Emit { unit }) {
-            return Err(SerializationProtocolError::WrongAction);
+            return Err(crate::ProtocolError::WrongAction);
         }
         let next = self
             .emitted
             .checked_add(1)
-            .ok_or(SerializationProtocolError::Overflow)?;
+            .ok_or(crate::ProtocolError::Overflow)?;
         match &mut self.stage {
             Stage::Format(cursor) => cursor
                 .complete(FormatReply::Emitted { unit })
-                .map_err(|_| SerializationProtocolError::WrongAction)?,
+                .map_err(crate::ProtocolError::from)?,
             Stage::Pieces => self.offset += 1,
-            _ => return Err(SerializationProtocolError::WrongAction),
+            _ => return Err(crate::ProtocolError::WrongAction),
         }
         self.emitted = next;
         Ok(())
@@ -404,11 +396,11 @@ impl SerializationCursor {
     pub(crate) fn abandon(&mut self) {
         self.stage = Stage::Stopped;
     }
-    pub(crate) fn completed_length(&self) -> Result<usize, SerializationProtocolError> {
+    pub(crate) fn completed_length(&self) -> Result<usize, crate::ProtocolError> {
         if matches!(self.stage, Stage::Done) {
             Ok(self.emitted)
         } else {
-            Err(SerializationProtocolError::Terminal)
+            Err(crate::ProtocolError::Terminated)
         }
     }
 }

@@ -3,28 +3,29 @@
 //! Each caller-admitted action observes at most two fixed colors or one weight.
 //! No recipe, argument array, context fact or original source is scanned here.
 
-use super::numerical::interpolation::{Method as NumericalMethod, interpolate, prepare};
-use super::{CssUsedColor, CssUsedColorError};
+use super::{Color, ColorError};
 use crate::CssColorInterpolationMethod as Method;
+use surgeist_color::{InterpolationError, InterpolationMethod as NumericalMethod};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
     InvalidWeight,
     Empty,
     Overflow,
-    Numerical(CssUsedColorError),
+    Numerical(ColorError),
 }
-impl From<CssUsedColorError> for Error {
-    fn from(value: CssUsedColorError) -> Self {
+impl From<ColorError> for Error {
+    fn from(value: ColorError) -> Self {
         Self::Numerical(value)
     }
 }
 
-impl From<super::numerical::interpolation::Error> for Error {
-    fn from(value: super::numerical::interpolation::Error) -> Self {
+impl From<InterpolationError> for Error {
+    fn from(value: InterpolationError) -> Self {
         match value {
-            super::numerical::interpolation::Error::InvalidProgress => Self::InvalidWeight,
-            super::numerical::interpolation::Error::Numerical(error) => Self::Numerical(error),
+            InterpolationError::InvalidProgress => Self::InvalidWeight,
+            InterpolationError::Numerical(error) => Self::Numerical(error),
+            _ => unreachable!("checked numerical method cannot reject hue"),
         }
     }
 }
@@ -59,7 +60,7 @@ impl WeightSummary {
             }
             specified += p;
             if !specified.is_finite() {
-                return Err(Error::Numerical(CssUsedColorError::Unrepresentable));
+                return Err(Error::Numerical(ColorError::Unrepresentable));
             }
         } else {
             omitted = omitted.checked_add(1).ok_or(Error::Overflow)?;
@@ -107,7 +108,7 @@ impl Weights {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MixFold {
     method: Method,
-    value: Option<CssUsedColor>,
+    value: Option<Color>,
     weight: f64,
 }
 impl MixFold {
@@ -131,49 +132,45 @@ impl MixFold {
     pub(crate) const fn has_value(&self) -> bool {
         self.value.is_some()
     }
-    pub(crate) fn observe(&mut self, value: CssUsedColor, weight: f64) -> Result<(), Error> {
+    pub(crate) fn observe(&mut self, value: Color, weight: f64) -> Result<(), Error> {
         if !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
             return Err(Error::InvalidWeight);
         }
         let total = self.weight + weight;
         if !total.is_finite() {
-            return Err(Error::Numerical(CssUsedColorError::Unrepresentable));
+            return Err(Error::Numerical(ColorError::Unrepresentable));
         }
         let value = if let Some(first) = self.value {
-            interpolate(
-                first,
+            first.interpolated(
                 value,
                 NumericalMethod::try_new(self.method.space(), self.method.effective_hue())
                     .expect("checked authored interpolation space and effective hue"),
                 if total > 0.0 { weight / total } else { 0.5 },
             )?
         } else {
-            prepare(value, self.method.space())?
+            value.prepared_for_interpolation(self.method.space())?
         };
         self.value = Some(value);
         self.weight = total;
         Ok(())
     }
-    pub(crate) fn finish(self, weights: Weights) -> Result<CssUsedColor, Error> {
+    pub(crate) fn finish(self, weights: Weights) -> Result<Color, Error> {
         let value = self.value.ok_or(Error::Empty)?;
         // Color5 mixtures retain their modern serialization family; missing
         // HSL/HWB components still serialize in the natural cylindrical form.
-        Ok(CssUsedColor::try_new(
+        Ok(Color::try_new(
             value.space(),
             value.channels(),
             value.alpha().map(|alpha| alpha * weights.alpha_multiplier),
         )?
-        .with_color_function())
+        .with_serialization_family(surgeist_color::SerializationFamily::ColorFunction)?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        CssColorInterpolationSpace as Space, CssHueInterpolationMethod as Hue,
-        CssPredefinedColorSpace as Predefined,
-    };
+    use crate::{ColorSpace as Space, HueInterpolation as Hue, PredefinedColorSpace as Predefined};
     const SRGB: Space = Space::Predefined(Predefined::Srgb);
     fn method(space: Space, hue: Option<Hue>) -> Method {
         Method::try_new(space, hue).unwrap()
@@ -220,12 +217,12 @@ mod tests {
         };
         let mut fold = MixFold::new(method(SRGB, None));
         fold.observe(
-            CssUsedColor::from_srgba8([255, 0, 0, 255]),
+            Color::from_srgba8([255, 0, 0, 255]),
             weights.weight(Some(30.0)).unwrap(),
         )
         .unwrap();
         fold.observe(
-            CssUsedColor::from_srgba8([0, 0, 255, 255]),
+            Color::from_srgba8([0, 0, 255, 255]),
             weights.weight(Some(30.0)).unwrap(),
         )
         .unwrap();
@@ -237,9 +234,8 @@ mod tests {
         s.observe(Some(0.0)).unwrap();
         let zero = s.finish().unwrap();
         let mut fold = MixFold::new(method(SRGB, None));
-        fold.observe(CssUsedColor::opaque_black(), 0.0).unwrap();
-        fold.observe(CssUsedColor::from_srgba8([255; 4]), 0.0)
-            .unwrap();
+        fold.observe(Color::opaque_black(), 0.0).unwrap();
+        fold.observe(Color::from_srgba8([255; 4]), 0.0).unwrap();
         let value = fold.finish(zero).unwrap();
         assert_eq!(value.channels(), [Some(0.5); 3]);
         assert_eq!(value.alpha(), Some(0.0));

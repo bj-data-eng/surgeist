@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 //! Public authored contracts from Color5 color-mix and Values4 calc-range.
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssDeclaration {
@@ -84,7 +85,7 @@ fn ordered_nonempty_lists_retain_duplicates_weights_and_method_omission() {
     let mix = wrapper(&explicit).value().color_mix_value().unwrap();
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().space(),
-        CssColorInterpolationSpace::Oklab
+        ColorSpace::Oklab
     );
     assert_ne!(wrapper(&singleton).value(), wrapper(&explicit).value());
 }
@@ -220,24 +221,23 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
         CssColorMixConstructionError::EmptyComponents
     );
     for space in [
-        CssColorInterpolationSpace::Oklab,
-        CssColorInterpolationSpace::Lab,
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+        ColorSpace::Oklab,
+        ColorSpace::Lab,
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb),
     ] {
         assert_eq!(
-            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Longer)),
+            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer)),
             Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
         );
     }
     for space in [
-        CssColorInterpolationSpace::Hsl,
-        CssColorInterpolationSpace::Hwb,
-        CssColorInterpolationSpace::Lch,
-        CssColorInterpolationSpace::Oklch,
+        ColorSpace::Hsl,
+        ColorSpace::Hwb,
+        ColorSpace::Lch,
+        ColorSpace::Oklch,
     ] {
         let method =
-            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Longer))
-                .unwrap();
+            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer)).unwrap();
         let interpolation = CssColorInterpolation::from_predefined(method);
         assert_eq!(interpolation.predefined(), Some(method));
         assert!(interpolation.custom_profile().is_none());

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Independent expectations for Unit E canonical specified colors.
 
+use surgeist_color::{Color, SerializationRequest};
 use surgeist_css::*;
 
 fn color(text: &str) -> CssColor {
@@ -265,18 +266,15 @@ fn every_byte_alpha_has_recoverable_specified_and_used_serialization() {
             expected,
             "specified {alpha}"
         );
-        let limits = CssColorOrdinaryLimits {
-            input_units: 1024,
-            algorithm_records: 16_384,
-            arithmetic_records: 4096,
-            evaluation_records: 4096,
+        let limits = surgeist_color::SerializationLimits {
             actions: 4_000_000,
-            output_units: 256,
+            digits: 4096,
+            output_bytes: 256,
         };
         assert_eq!(
-            serialize_used_color(
-                CssUsedColor::from_srgba8([0, 0, 0, alpha]),
-                CssColorSerializationRequest::Css,
+            surgeist_color::serialize(
+                Color::from_srgba8([0, 0, 0, alpha]),
+                SerializationRequest::Css,
                 limits,
             )
             .unwrap(),

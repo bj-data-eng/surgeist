@@ -22,10 +22,10 @@ use super::profile_conversion::{
 use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, Data};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
-use super::{CssUsedColor, CssUsedColorError};
+use super::{Color, ColorError};
 use crate::{
-    CssColorInterpolationSpace as Space, CssPredefinedColorSpace as Predefined,
-    CssRelativeColorEnvironment as Environment,
+    ColorSpace as Space, CssRelativeColorEnvironment as Environment,
+    PredefinedColorSpace as Predefined,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,7 +33,7 @@ pub(crate) enum Error {
     Protocol(CssColorProtocolError),
     Component(super::component_value::Error),
     Channel(channels::Error),
-    Numerical(CssUsedColorError),
+    Numerical(ColorError),
     Palette(super::palette::PaletteError),
     Profile(super::profile::ProfileError),
     ProfileComponent(super::profile::ComponentNameError),
@@ -61,14 +61,14 @@ enum FrameState {
     Finish(Coordinates),
     ProfileBegin,
     ProfileOrigin,
-    Profile(Option<CssUsedColor>),
+    Profile(Option<Color>),
     CustomAlpha(Custom),
     CustomInputs(Custom),
     WrapperBegin,
     WrapperScheme,
     WrapperSelected(usize),
     WrapperChild,
-    WrapperFinish(CssUsedColor),
+    WrapperFinish(Color),
     MixBegin,
     MixBuild(MixWeights),
     MixWeights(MixWeights),
@@ -77,14 +77,14 @@ enum FrameState {
 }
 #[derive(Clone, Copy, Debug)]
 struct Coordinates {
-    origin: Option<CssUsedColor>,
+    origin: Option<Color>,
     binding: Option<Binding>,
     components: [Component; 4],
     ordinal: usize,
     alpha: Option<Component>,
 }
 impl Coordinates {
-    fn new(origin: Option<CssUsedColor>) -> Self {
+    fn new(origin: Option<Color>) -> Self {
         Self {
             origin,
             binding: None,
@@ -108,7 +108,7 @@ impl Coordinates {
 }
 #[derive(Clone, Copy, Debug)]
 struct Custom {
-    origin: Option<CssUsedColor>,
+    origin: Option<Color>,
     selection: ProfileSelection,
     alpha: Option<Component>,
 }
@@ -122,7 +122,7 @@ struct MixWeights {
 enum MixCurrent {
     Next,
     Member { member: MixRecord, weight: f64 },
-    Returned { value: CssUsedColor, weight: f64 },
+    Returned { value: Color, weight: f64 },
 }
 #[derive(Clone, Copy, Debug)]
 struct MixColors {
@@ -176,9 +176,10 @@ impl MixColors {
 pub(crate) struct Frame {
     parent: Option<usize>,
     recipe: FunctionRecipe,
+    source: crate::tokenization::color_tokens::Span,
     state: FrameState,
 }
-fn same_color(a: Option<CssUsedColor>, b: Option<CssUsedColor>) -> bool {
+fn same_color(a: Option<Color>, b: Option<Color>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => a.identical(b),
         (None, None) => true,
@@ -193,7 +194,11 @@ fn same_component(a: Option<Component>, b: Option<Component>) -> bool {
     }
 }
 impl Frame {
-    fn new(parent: Option<usize>, recipe: FunctionRecipe) -> Self {
+    fn new(
+        parent: Option<usize>,
+        recipe: FunctionRecipe,
+        source: crate::tokenization::color_tokens::Span,
+    ) -> Self {
         let state = match recipe.function {
             F::LightDark | F::Contrast => FrameState::WrapperBegin,
             F::Mix => FrameState::MixBegin,
@@ -205,6 +210,7 @@ impl Frame {
         Self {
             parent,
             recipe,
+            source,
             state,
         }
     }
@@ -241,7 +247,8 @@ impl Frame {
         Ok(())
     }
     fn identical(self, other: Self) -> bool {
-        if self.parent != other.parent || self.recipe != other.recipe {
+        if self.parent != other.parent || self.recipe != other.recipe || self.source != other.source
+        {
             return false;
         }
         match (self.state, other.state) {
@@ -321,10 +328,10 @@ enum State<'owner, 'facts> {
         child: usize,
         index: usize,
     },
-    Return(CssUsedColor),
+    Return(Color),
     Parent {
         index: usize,
-        value: CssUsedColor,
+        value: Color,
     },
     Component(ComponentValue<'owner>),
     Palette(PaletteLookup<'facts>),
@@ -356,7 +363,7 @@ enum State<'owner, 'facts> {
         index: usize,
     },
     Scheme,
-    Done(CssUsedColor),
+    Done(Color),
     Stopped,
 }
 pub(crate) struct Resolution<'owner, 'facts> {
@@ -367,6 +374,7 @@ pub(crate) struct Resolution<'owner, 'facts> {
     parent: Option<usize>,
     pending_percentage: Option<f64>,
     source: Option<crate::tokenization::color_tokens::Span>,
+    reached: crate::tokenization::color_tokens::Span,
     state: State<'owner, 'facts>,
 }
 impl<'owner, 'facts> Resolution<'owner, 'facts> {
@@ -386,6 +394,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             parent: None,
             pending_percentage: None,
             source: None,
+            reached: crate::tokenization::color_tokens::Span { start: 0, end: 0 },
             state: State::Recipe(grammar.table.root),
         }
     }
@@ -418,12 +427,12 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     fn fixed_frame(&self) -> Result<Frame, CssColorProtocolError> {
         self.frame.ok_or(CssColorProtocolError::WrongAction)
     }
-    fn complete_cylindrical(value: CssUsedColor) -> bool {
+    fn complete_cylindrical(value: Color) -> bool {
         matches!(value.space(), Space::Hsl | Space::Hwb)
             && value.channels().iter().all(Option::is_some)
             && value.alpha().is_some()
     }
-    fn return_color(&mut self, value: CssUsedColor) {
+    fn return_color(&mut self, value: Color) {
         self.state = State::Return(value);
     }
     fn descend(
@@ -461,13 +470,12 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         if index == self.grammar.table.root && self.parent.is_none() {
             self.source = Some(recipe.source);
         }
+        self.reached = recipe.source;
         match recipe.kind {
             RecipeKind::Leaf(leaf) => match leaf {
-                Leaf::Transparent => self.return_color(CssUsedColor::from_srgba8([0; 4])),
-                Leaf::Named([r, g, b]) => {
-                    self.return_color(CssUsedColor::from_srgba8([r, g, b, 255]))
-                }
-                Leaf::Hex(bytes) => self.return_color(CssUsedColor::from_srgba8(bytes)),
+                Leaf::Transparent => self.return_color(Color::from_srgba8([0; 4])),
+                Leaf::Named([r, g, b]) => self.return_color(Color::from_srgba8([r, g, b, 255])),
+                Leaf::Hex(bytes) => self.return_color(Color::from_srgba8(bytes)),
                 Leaf::Current => {
                     self.state = State::Palette(PaletteLookup::current(self.facts, self.expected))
                 }
@@ -477,7 +485,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 }
             },
             RecipeKind::Function(recipe) => {
-                self.frame = Some(Frame::new(self.parent, recipe));
+                self.frame = Some(Frame::new(self.parent, recipe, self.reached));
                 self.state = State::Dispatch;
             }
         }
@@ -518,6 +526,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             }
             _ => return Err(CssColorProtocolError::WrongSlot.into()),
         };
+        self.reached = frame.source;
         self.parent = frame.parent;
         self.frame = Some(frame);
         self.state = State::Dispatch;
@@ -947,12 +956,22 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     // missing channels or alpha preserve the natural function.
                     let value = if Self::complete_cylindrical(value) {
                         let converted = value
-                            .convert(Space::Predefined(Predefined::Srgb))
+                            .converted(Space::Predefined(Predefined::Srgb))
                             .map_err(Error::Numerical)?;
-                        if value.uses_color_function() {
-                            converted.with_color_function()
+                        if value.serialization_family()
+                            == surgeist_color::SerializationFamily::ColorFunction
+                        {
+                            converted
+                                .with_serialization_family(
+                                    surgeist_color::SerializationFamily::ColorFunction,
+                                )
+                                .map_err(Error::Numerical)?
                         } else {
-                            converted.with_legacy_srgb()
+                            converted
+                                .with_serialization_family(
+                                    surgeist_color::SerializationFamily::LegacySrgb,
+                                )
+                                .map_err(Error::Numerical)?
                         }
                     } else {
                         value
@@ -1193,7 +1212,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             }
             FrameState::WrapperFinish(origin) => {
                 let value = if frame.recipe.function == F::Contrast {
-                    origin.contrast().map_err(Error::Numerical)?
+                    origin.black_white_contrast().map_err(Error::Numerical)?
                 } else {
                     origin
                 };
@@ -1394,6 +1413,9 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         self.state = State::Dispatch;
         Ok(())
     }
+    pub(crate) const fn reached_source(&self) -> crate::tokenization::color_tokens::Span {
+        self.reached
+    }
     pub(crate) fn consumed_source(
         &self,
     ) -> Result<crate::tokenization::color_tokens::Span, CssColorProtocolError> {
@@ -1403,7 +1425,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             Err(CssColorProtocolError::Terminal)
         }
     }
-    pub(crate) fn finish(&self) -> Result<CssUsedColor, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<Color, CssColorProtocolError> {
         if let State::Done(value) = self.state {
             Ok(value)
         } else {
@@ -1458,14 +1480,14 @@ mod tests {
     use super::super::protocol::CssColorOperationOwner;
     use super::super::syntax_pass::tests::fixture;
     use super::*;
-    fn resolve(input: &str, facts: &CssColorFacts<'_>) -> Result<CssUsedColor, Error> {
+    fn resolve(input: &str, facts: &CssColorFacts<'_>) -> Result<Color, Error> {
         resolve_suspending(input, facts, None)
     }
     fn resolve_suspending(
         input: &str,
         facts: &CssColorFacts<'_>,
         cancel_at: Option<usize>,
-    ) -> Result<CssUsedColor, Error> {
+    ) -> Result<Color, Error> {
         let foreign = CssColorOperationOwner::new();
         let mut suspensions = 0;
         let mut owner = CssColorOperationOwner::new();
@@ -1754,7 +1776,7 @@ mod tests {
             &[],
         )];
         let input = [0.2, 0.3, 0.0];
-        let expected = CssUsedColor::try_new(
+        let expected = Color::try_new(
             Space::Predefined(Predefined::XyzD50),
             [Some(0.4), Some(0.5), Some(0.6)],
             Some(1.0),
@@ -1851,6 +1873,8 @@ mod tests {
         let value = resolve(text, &facts).unwrap();
         assert_eq!(value.channels(), [Some(0.75), Some(0.5), Some(0.5)]);
         assert_eq!(value.alpha(), Some(1.0));
-        assert!(value.uses_color_function());
+        assert!(
+            (value.serialization_family() == surgeist_color::SerializationFamily::ColorFunction)
+        );
     }
 }

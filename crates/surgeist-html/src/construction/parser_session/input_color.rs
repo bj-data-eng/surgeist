@@ -1,6 +1,6 @@
 //! HTML877d #update-a-color-well-control-color. The CSS owner supplies all
-//! grammar, used-color arithmetic and formatting. This adapter services its
-//! finite actions through the original parser controller and private banks.
+//! grammar and source qualification; Color supplies numerical work and formatting.
+//! This adapter services finite actions through the original parser controller and private banks.
 //! The stack anchor, slots and unpublished output never escape this operation.
 
 use super::*;
@@ -9,9 +9,13 @@ use surgeist_css::{
     CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorBankLengths,
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
     CssColorOperation, CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome,
-    CssColorPropertyFacts, CssColorSchemeFact, CssColorSerialization, CssColorSerializationRequest,
-    CssColorSlot, CssColorStandardFailure, CssColorTransformation, CssDeviceColorFact,
-    CssUsedColor, CssUsedColorCheckpoint, CssUsedColorTransformation,
+    CssColorPropertyFacts, CssColorSchemeFact, CssColorSerialization, CssColorSlot,
+    CssColorStandardFailure, CssColorTransformation, CssDeviceColorFact, CssUsedColorCheckpoint,
+};
+
+use surgeist_color::{
+    Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, SerializationRequest,
+    Transformation,
 };
 
 /// This identity qualifies only the fixed unavailable-environment policy below.
@@ -81,7 +85,12 @@ fn action_layout(c: &mut ParseControl, layout: CssColorActionLayout) -> Result<(
     c.charge(WorkCategory::InspectByte, layout.input_unit_bytes as u64)?;
     c.charge(WorkCategory::InspectByte, layout.slot_read_bytes as u64)?;
     c.charge(WorkCategory::CopyByte, layout.slot_write_bytes as u64)?;
-    if layout.slot_write_bytes != 0 {
+    c.charge(
+        WorkCategory::InspectByte,
+        layout.numerical_read_bytes as u64,
+    )?;
+    c.charge(WorkCategory::CopyByte, layout.numerical_write_bytes as u64)?;
+    if layout.slot_write_bytes != 0 || layout.numerical_write_bytes != 0 {
         c.charge(WorkCategory::RecordWrite, 1)?;
     }
     // At most three actual fixed fact records; no array/variable payload scan.
@@ -105,12 +114,14 @@ fn bank_lengths(banks: &Banks<'_>) -> CssColorBankLengths {
 fn transform<'a, 'f>(
     c: &mut ParseControl,
     checkpoint: &mut Option<CssUsedColorCheckpoint<'a, 'f>>,
-    effect: CssUsedColorTransformation,
+    numerical_owner: &mut OperationOwner,
+    effect: Transformation,
     empty_banks: CssColorBankLengths,
 ) -> Result<(), SessionError> {
     frame(c, CssColorTransformation::register_bytes(), 0)?;
-    let transformation = CssUsedColorCheckpoint::transform(checkpoint, effect, empty_banks)
-        .map_err(|error| css_error(c, error))?;
+    let transformation =
+        CssUsedColorCheckpoint::transform(checkpoint, numerical_owner, effect, empty_banks)
+            .map_err(|error| css_error(c, error))?;
     let mut transformation = Some(transformation);
     let execution = (|| {
         loop {
@@ -154,7 +165,7 @@ fn execute(
     input: &[u16],
     alpha: bool,
     space: crate::HtmlInputColorSpace,
-) -> Result<(Utf16Buffer, CssUsedColor, Option<CssColorStandardFailure>), SessionError> {
+) -> Result<(Utf16Buffer, Color, Option<CssColorStandardFailure>), SessionError> {
     let layout = CssColorOperation::initialization_layout();
     frame(
         c,
@@ -162,7 +173,8 @@ fn execute(
         layout.owner_bytes
             + layout.fact_identity_bytes
             + mem::size_of::<CssColorFacts<'_>>()
-            + mem::size_of::<Banks<'_>>(),
+            + mem::size_of::<Banks<'_>>()
+            + OperationOwner::layout_bytes(),
     )?;
     let facts = CssColorFacts::new(
         environment_identity(),
@@ -173,8 +185,9 @@ fn execute(
         &[],
         CssDeviceColorFact::Unknown,
     );
+    let mut numerical_owner = OperationOwner::new();
     let mut owner = CssColorOperationOwner::new();
-    let mut operation = CssColorOperation::parse_used(
+    let operation = CssColorOperation::parse_used(
         &mut owner,
         CssColorInputKind::Utf16,
         input.len(),
@@ -183,6 +196,7 @@ fn execute(
         facts.identity(),
     )
     .map_err(|error| css_error(c, error))?;
+    let mut operation = Some(operation);
     let mut banks = banks()?;
     let mut output = None;
     let result = (|| {
@@ -193,6 +207,7 @@ fn execute(
                     CssColorOperation::register_bytes(),
                     CssColorOperation::action_bytes(),
                 )?;
+                let operation = operation.as_mut().ok_or_else(|| integrity(c))?;
                 if matches!(
                     operation.action(),
                     Action::UsedReady | Action::StandardFailed
@@ -253,7 +268,7 @@ fn execute(
             Ok(())
         })();
         if let Err(error) = parse {
-            operation.abandon();
+            operation.as_mut().ok_or_else(|| integrity(c))?.abandon();
             return Err(error);
         }
         frame(
@@ -261,12 +276,13 @@ fn execute(
             CssColorOperation::register_bytes(),
             mem::size_of::<CssColorParseOutcome<'_, '_>>(),
         )?;
-        let checkpoint = match operation.take().map_err(|error| css_error(c, error))? {
-            CssColorParseOutcome::Used(value) => value,
-            CssColorParseOutcome::StandardFailure(failure) => {
-                failure.fallback(CssUsedColor::opaque_black())
-            }
-        };
+        let checkpoint =
+            match CssColorOperation::take(&mut operation).map_err(|error| css_error(c, error))? {
+                CssColorParseOutcome::Used(value) => value,
+                CssColorParseOutcome::StandardFailure(failure) => {
+                    failure.fallback(Color::opaque_black())
+                }
+            };
         release_banks(&mut banks, c)?;
         let empty = bank_lengths(&banks);
         let mut checkpoint = Some(checkpoint);
@@ -278,45 +294,41 @@ fn execute(
                 break;
             };
             let effect = match effect {
-                crate::HtmlInputColorEffect::ForceOpaqueAlpha => {
-                    CssUsedColorTransformation::ForceOpaqueAlpha
-                }
+                crate::HtmlInputColorEffect::ForceOpaqueAlpha => Transformation::ForceOpaqueAlpha,
                 crate::HtmlInputColorEffect::Convert(crate::HtmlInputColorSpace::LimitedSrgb) => {
-                    CssUsedColorTransformation::Convert(
-                        surgeist_css::CssColorInterpolationSpace::Predefined(
-                            surgeist_css::CssPredefinedColorSpace::Srgb,
-                        ),
-                    )
+                    Transformation::Convert(ColorSpace::Predefined(PredefinedColorSpace::Srgb))
                 }
                 crate::HtmlInputColorEffect::Convert(crate::HtmlInputColorSpace::DisplayP3) => {
-                    CssUsedColorTransformation::Convert(
-                        surgeist_css::CssColorInterpolationSpace::Predefined(
-                            surgeist_css::CssPredefinedColorSpace::DisplayP3,
-                        ),
-                    )
+                    Transformation::Convert(ColorSpace::Predefined(PredefinedColorSpace::DisplayP3))
                 }
-                crate::HtmlInputColorEffect::QuantizeSrgb => {
-                    CssUsedColorTransformation::QuantizeSrgb
-                }
-                crate::HtmlInputColorEffect::ColorFunction => {
-                    CssUsedColorTransformation::ColorFunction
-                }
+                crate::HtmlInputColorEffect::QuantizeSrgb => Transformation::QuantizeSrgb,
+                crate::HtmlInputColorEffect::ColorFunction => Transformation::ColorFunction,
             };
-            transform(c, &mut checkpoint, effect, empty)?;
+            transform(c, &mut checkpoint, &mut numerical_owner, effect, empty)?;
         }
         frame(
             c,
             CssColorSerialization::register_bytes(),
-            mem::size_of::<Option<Utf16Buffer>>(),
+            mem::size_of::<Option<Utf16Buffer>>()
+                + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>(),
         )?;
         let request = if sequence.html_compatible() {
-            CssColorSerializationRequest::HtmlCompatible
+            SerializationRequest::HtmlCompatible
         } else {
-            CssColorSerializationRequest::Css
+            SerializationRequest::Css
         };
-        let mut serializer = CssUsedColorCheckpoint::serialize(&mut checkpoint, request, empty)
-            .map_err(|error| css_error(c, error))?;
-        banks = self::banks()?;
+        let mut digits = Some(OwnedVec::<DigitSlot<'_>>::new(
+            HtmlParseResource::AuxiliaryEntries,
+        )?);
+        let serializer = CssUsedColorCheckpoint::serialize(
+            &mut checkpoint,
+            &mut numerical_owner,
+            request,
+            empty,
+            digits.as_ref().ok_or_else(|| integrity(c))?.len(),
+        )
+        .map_err(|error| css_error(c, error))?;
+        let mut serializer = Some(serializer);
         output = Some(Utf16Buffer::new(c)?);
         let serialized = (|| {
             loop {
@@ -325,6 +337,7 @@ fn execute(
                     CssColorSerialization::register_bytes(),
                     CssColorSerialization::action_bytes(),
                 )?;
+                let serializer = serializer.as_mut().ok_or_else(|| integrity(c))?;
                 if serializer.action() == Action::Serialized {
                     break;
                 }
@@ -332,36 +345,42 @@ fn execute(
                 action_layout(c, action.layout())?;
                 match action.description() {
                     Action::Compute(_) => action.compute().map_err(|error| css_error(c, error))?,
-                    Action::ReadSlot { bank: kind, index } => {
-                        let bank = bank(&mut banks, kind, c)?;
+                    Action::ReadNumericalDigit { index } => {
+                        let bank = digits.as_mut().ok_or_else(|| integrity(c))?;
                         bank.require_owner(c)?;
                         let slot = bank.as_slice().get(index).ok_or_else(|| integrity(c))?;
                         action
-                            .read_slot(kind, index, slot)
+                            .read_numerical_digit(index, slot)
                             .map_err(|error| css_error(c, error))?;
                     }
-                    Action::AppendSlot { bank: kind, index } => {
-                        let bank = bank(&mut banks, kind, c)?;
+                    Action::AppendNumericalDigit { index } => {
+                        let bank = digits.as_mut().ok_or_else(|| integrity(c))?;
                         if bank.len() != index {
                             return Err(integrity(c));
                         }
                         bank.reserve_geometric(c, 1)?;
                         c.check_acquire_many(&[(HtmlParseResource::AuxiliaryEntries, 1)])?;
-                        let record = action.record().map_err(|error| css_error(c, error))?;
+                        let record = action
+                            .numerical_record()
+                            .map_err(|error| css_error(c, error))?;
                         if let Err((error, _uncommitted)) = bank.try_push_recover(c, record) {
                             return Err(error.into());
                         }
                         let slot = bank.as_slice().get(index).ok_or_else(|| integrity(c))?;
                         action
-                            .written(kind, index, slot)
+                            .numerical_written(index, slot)
                             .map_err(|error| css_error(c, error))?;
+                        #[cfg(test)]
+                        tests::interrupt_at(tests::ColorCancelPoint::NumericalDigitCommit);
                     }
-                    Action::UpdateSlot { bank: kind, index } => {
-                        let bank = bank(&mut banks, kind, c)?;
+                    Action::UpdateNumericalDigit { index } => {
+                        let bank = digits.as_mut().ok_or_else(|| integrity(c))?;
                         let slot = bank.get_mut(index, c)?.ok_or_else(|| integrity(c))?;
-                        *slot = action.record().map_err(|error| css_error(c, error))?;
+                        *slot = action
+                            .numerical_record()
+                            .map_err(|error| css_error(c, error))?;
                         action
-                            .written(kind, index, slot)
+                            .numerical_written(index, slot)
                             .map_err(|error| css_error(c, error))?;
                     }
                     Action::EmitUnit { unit } => {
@@ -381,15 +400,24 @@ fn execute(
             Ok(())
         })();
         if let Err(error) = serialized {
-            serializer.abandon();
+            serializer.as_mut().ok_or_else(|| integrity(c))?.abandon();
+            if let Some(digits) = digits.take() {
+                digits.release(c)?;
+            }
             return Err(error);
         }
-        frame(
-            c,
-            CssColorSerialization::register_bytes(),
-            mem::size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
-        )?;
-        let receipt = serializer.take().map_err(|error| css_error(c, error))?;
+        let receipt_result = (|| {
+            frame(
+                c,
+                CssColorSerialization::register_bytes(),
+                mem::size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
+            )?;
+            CssColorSerialization::take(&mut serializer).map_err(|error| css_error(c, error))
+        })();
+        if let Some(digits) = digits.take() {
+            digits.release(c)?;
+        }
+        let receipt = receipt_result?;
         if receipt.length() != output.as_ref().ok_or_else(|| integrity(c))?.len() {
             return Err(integrity(c));
         }
@@ -552,6 +580,7 @@ mod tests {
     pub(super) enum ColorCancelPoint {
         ParseSlotCommit,
         TransformCompute,
+        NumericalDigitCommit,
         ThirdOutputUnit,
     }
     struct TestCancellation {
@@ -1058,6 +1087,37 @@ mod tests {
         assert!(c.stop().is_none());
     }
     #[test]
+    fn color_numerical_failure_preserves_selected_field_range_and_reclaims_storage() {
+        // Unlike CSS Lab lightness, a* is not clamped. Its cubic XYZ
+        // reconstruction followed by sRGB's 1/2.4 transfer exponent exceeds
+        // binary64 for this finite authored coordinate.
+        let input: Vec<u16> = "lab(50 1e308 0)".encode_utf16().collect();
+        let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
+        assert!(
+            execute(
+                &mut c,
+                &input,
+                false,
+                crate::HtmlInputColorSpace::LimitedSrgb
+            )
+            .is_err()
+        );
+        assert_eq!(
+            c.stop(),
+            Some(ParseStop::ColorProcessing(
+                crate::HtmlColorProcessingError::Numerical {
+                    error: surgeist_color::ColorError::Unrepresentable,
+                    input: surgeist_css::CssColorInputRange {
+                        start: 0,
+                        end: input.len()
+                    },
+                }
+            ))
+        );
+        super::super::tests::storage_zero(&c);
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+    #[test]
     fn color_native_creation_installs_actual_default_and_generated_current() {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head></head><input type=color value=red>"),
@@ -1102,7 +1162,8 @@ mod tests {
         let guard = layout.owner_bytes
             + layout.fact_identity_bytes
             + mem::size_of::<CssColorFacts<'_>>()
-            + mem::size_of::<Banks<'_>>();
+            + mem::size_of::<Banks<'_>>()
+            + mem::size_of::<OperationOwner>();
         let first_header = (2 * layout.register_bytes + guard + 3) as u64;
         let limits = crate::parser::tree_builder::tests::limits(1000)
             .into_builder()
@@ -1461,6 +1522,7 @@ mod tests {
         for point in [
             ColorCancelPoint::ParseSlotCommit,
             ColorCancelPoint::TransformCompute,
+            ColorCancelPoint::NumericalDigitCommit,
             ColorCancelPoint::ThirdOutputUnit,
         ] {
             let cancellation = crate::HtmlParseCancellation::new();
@@ -1474,7 +1536,11 @@ mod tests {
                     &mut c,
                     &[114, 101, 100],
                     false,
-                    crate::HtmlInputColorSpace::LimitedSrgb,
+                    if point == ColorCancelPoint::NumericalDigitCommit {
+                        crate::HtmlInputColorSpace::DisplayP3
+                    } else {
+                        crate::HtmlInputColorSpace::LimitedSrgb
+                    },
                 )
                 .is_err()
             );
@@ -1515,6 +1581,17 @@ mod tests {
                         0
                     );
                     assert_eq!(at_stop.actual_capacity_bytes, 0);
+                }
+                ColorCancelPoint::NumericalDigitCommit => {
+                    // The released CSS banks are empty; actual Color slots
+                    // alone retain auxiliary storage at this checkpoint.
+                    assert!(
+                        at_stop
+                            .resource(HtmlParseResource::AuxiliaryEntries)
+                            .current
+                            > 0
+                    );
+                    assert!(at_stop.actual_capacity_bytes > 0);
                 }
                 ColorCancelPoint::ThirdOutputUnit => {
                     assert_eq!(

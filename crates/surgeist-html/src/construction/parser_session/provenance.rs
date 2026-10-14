@@ -173,7 +173,7 @@ pub(crate) struct ColorComputation {
     pub(crate) space: crate::HtmlInputColorSpace,
     pub(crate) standard_failure: Option<surgeist_css::CssColorStandardFailure>,
     pub(crate) environment: surgeist_css::CssColorFactIdentity,
-    pub(crate) value: surgeist_css::CssUsedColor,
+    pub(crate) value: surgeist_color::Color,
 }
 /// Only one actual generated-value operation can own a replacement cause.
 #[derive(Clone, Copy, Debug)]

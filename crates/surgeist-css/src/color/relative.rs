@@ -1,17 +1,17 @@
 //! Fixed relative component binding and extended used-value resolution.
 
+use super::Color;
 use super::channels::{self, Component, Error};
 use super::keywords::ColorFunction as F;
-use super::{CssUsedColor, CssUsedColorError};
 use crate::{
-    CssColorInterpolationSpace as Space, CssPredefinedColorSpace as Predefined,
-    CssRelativeColorChannel as Channel, CssRelativeColorEnvironment as Environment,
+    ColorSpace as Space, CssRelativeColorChannel as Channel,
+    CssRelativeColorEnvironment as Environment, PredefinedColorSpace as Predefined,
 };
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Binding {
     environment: Environment,
-    origin: CssUsedColor,
+    origin: Color,
 }
 impl Binding {
     pub(crate) fn identical(self, other: Self) -> bool {
@@ -20,7 +20,7 @@ impl Binding {
     pub(crate) const fn environment(self) -> Environment {
         self.environment
     }
-    pub(crate) fn new(environment: Environment, origin: CssUsedColor) -> Result<Self, Error> {
+    pub(crate) fn new(environment: Environment, origin: Color) -> Result<Self, Error> {
         if !environment.is_consistent() {
             return Err(Error::Grammar);
         }
@@ -35,22 +35,16 @@ impl Binding {
             Environment::Oklch => Space::Oklch,
             Environment::PredefinedRgb(space) | Environment::Xyz(space) => Space::Predefined(space),
         };
-        let origin =
-            super::numerical::interpolation::prepare(origin, space).map_err(
-                |error| match error {
-                    super::numerical::interpolation::Error::Numerical(error) => {
-                        Error::Numerical(error)
-                    }
-                    _ => Error::Numerical(CssUsedColorError::Unrepresentable),
-                },
-            )?;
+        let origin = origin
+            .prepared_for_interpolation(space)
+            .map_err(Error::Numerical)?;
         Ok(Self {
             environment,
             origin,
         })
     }
     #[cfg(test)]
-    pub(crate) const fn origin(self) -> CssUsedColor {
+    pub(crate) const fn origin(self) -> Color {
         self.origin
     }
     pub(crate) fn channel(self, channel: Channel, calculation: bool) -> Result<Component, Error> {
@@ -93,10 +87,10 @@ impl Binding {
 pub(crate) fn coordinates(
     function: F,
     predefined: Option<Predefined>,
-    origin: CssUsedColor,
+    origin: Color,
     components: [Component; 3],
     alpha: Option<Component>,
-) -> Result<CssUsedColor, Error> {
+) -> Result<Color, Error> {
     let alpha = if let Some(alpha) = alpha {
         channels::alpha(Some(alpha), false)?
     } else {
@@ -162,16 +156,17 @@ pub(crate) fn coordinates(
     };
     // Relative color results use Color5 serialization, including complete
     // HSL/HWB results lowered to color(srgb) by the serialization owner.
-    Ok(CssUsedColor::try_new(space, channels, alpha)?.with_color_function())
+    Ok(Color::try_new(space, channels, alpha)?
+        .with_serialization_family(surgeist_color::SerializationFamily::ColorFunction)?)
 }
 #[cfg(test)]
 pub(crate) fn resolve(
     function: F,
     predefined: Option<Predefined>,
-    origin: CssUsedColor,
+    origin: Color,
     components: [Component; 3],
     alpha: Option<Component>,
-) -> Result<CssUsedColor, Error> {
+) -> Result<Color, Error> {
     let value = coordinates(function, predefined, origin, components, alpha)?;
     let alpha = value.alpha();
     let channels = value.channels();
@@ -182,21 +177,18 @@ pub(crate) fn resolve(
         && alpha.is_some()
     {
         Ok(value
-            .convert(Space::Predefined(Predefined::Srgb))?
-            .with_color_function())
+            .converted(Space::Predefined(Predefined::Srgb))?
+            .with_serialization_family(surgeist_color::SerializationFamily::ColorFunction)?)
     } else {
         Ok(value)
     }
 }
 
-pub(crate) fn alpha_only(
-    origin: CssUsedColor,
-    component: Option<Component>,
-) -> Result<CssUsedColor, Error> {
+pub(crate) fn alpha_only(origin: Color, component: Option<Component>) -> Result<Color, Error> {
     let Some(component) = component else {
         return Ok(origin);
     };
-    Ok(origin.with_resolved_alpha(channels::alpha(Some(component), false)?)?)
+    Ok(origin.with_alpha(channels::alpha(Some(component), false)?)?)
 }
 
 #[cfg(test)]
@@ -212,7 +204,7 @@ mod tests {
     }
     #[test]
     fn binding_numbers_have_environment_units_and_missing_is_zero_only_in_math() {
-        let bytes = CssUsedColor::from_srgba8([255, 128, 0, 128]);
+        let bytes = Color::from_srgba8([255, 128, 0, 128]);
         let rgb = Binding::new(Environment::Rgb, bytes).unwrap();
         assert_eq!(rgb.channel(Channel::G, false), Ok(Component::number(128.0)));
         let predefined = Binding::new(Environment::PredefinedRgb(Predefined::Srgb), bytes).unwrap();
@@ -221,8 +213,7 @@ mod tests {
             Ok(Component::number(128.0 / 255.0))
         );
         assert_eq!(rgb.channel(Channel::H, false), Err(Error::Grammar));
-        let missing =
-            CssUsedColor::try_new(Space::Oklch, [Some(0.526), Some(0.115), None], None).unwrap();
+        let missing = Color::try_new(Space::Oklch, [Some(0.526), Some(0.115), None], None).unwrap();
         let binding = Binding::new(Environment::Oklch, missing).unwrap();
         assert_eq!(binding.channel(Channel::H, false), Ok(Component::MISSING));
         assert_eq!(
@@ -242,7 +233,7 @@ mod tests {
     }
     #[test]
     fn relative_channels_are_extended_and_omitted_alpha_comes_from_origin() {
-        let origin = CssUsedColor::try_new(
+        let origin = Color::try_new(
             Space::Oklab,
             [Some(0.543), Some(-0.09), Some(-0.02)],
             Some(0.3),
@@ -290,7 +281,7 @@ mod tests {
     }
     #[test]
     fn signed_polar_and_hsl_values_keep_history_without_changing_converter_types() {
-        let origin = CssUsedColor::opaque_black();
+        let origin = Color::opaque_black();
         let signed = resolve(
             F::Lch,
             None,
@@ -304,7 +295,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(signed.channels(), [Some(50.0), Some(-20.0), Some(0.0)]);
-        let cartesian = signed.convert(Space::Lab).unwrap().channels();
+        let cartesian = signed.converted(Space::Lab).unwrap().channels();
         assert_eq!(cartesian[0], Some(50.0));
         assert_eq!(cartesian[1], Some(-20.0));
         assert!(cartesian[2].unwrap().abs() < 1e-12);
@@ -340,7 +331,7 @@ mod tests {
     }
     #[test]
     fn alpha_only_retains_origin_channels_and_omission_is_lossless() {
-        let origin = CssUsedColor::from_srgba8([1, 2, 3, 237]);
+        let origin = Color::from_srgba8([1, 2, 3, 237]);
         assert_eq!(alpha_only(origin, None), Ok(origin));
         let result = alpha_only(origin, Some(percent(80.0))).unwrap();
         assert_eq!(result.srgb_bytes(), Some([1, 2, 3]));

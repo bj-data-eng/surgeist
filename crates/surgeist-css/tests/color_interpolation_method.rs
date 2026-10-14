@@ -7,96 +7,86 @@
 //! not a preimplementation RED. Replacement checked-method API tests establish
 //! new API behavior without executable preimplementation RED.
 
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
-const RECTANGULAR: [(CssColorInterpolationSpace, &str); 11] = [
+const RECTANGULAR: [(ColorSpace, &str); 11] = [
+    (ColorSpace::Predefined(PredefinedColorSpace::Srgb), "srgb"),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
-        "srgb",
-    ),
-    (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::SrgbLinear),
+        ColorSpace::Predefined(PredefinedColorSpace::SrgbLinear),
         "srgb-linear",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::DisplayP3),
+        ColorSpace::Predefined(PredefinedColorSpace::DisplayP3),
         "display-p3",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::DisplayP3Linear),
+        ColorSpace::Predefined(PredefinedColorSpace::DisplayP3Linear),
         "display-p3-linear",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::A98Rgb),
+        ColorSpace::Predefined(PredefinedColorSpace::A98Rgb),
         "a98-rgb",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::ProphotoRgb),
+        ColorSpace::Predefined(PredefinedColorSpace::ProphotoRgb),
         "prophoto-rgb",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Rec2020),
+        ColorSpace::Predefined(PredefinedColorSpace::Rec2020),
         "rec2020",
     ),
-    (CssColorInterpolationSpace::Lab, "lab"),
-    (CssColorInterpolationSpace::Oklab, "oklab"),
+    (ColorSpace::Lab, "lab"),
+    (ColorSpace::Oklab, "oklab"),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD50),
+        ColorSpace::Predefined(PredefinedColorSpace::XyzD50),
         "xyz-d50",
     ),
     (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD65),
+        ColorSpace::Predefined(PredefinedColorSpace::XyzD65),
         "xyz-d65",
     ),
 ];
-const POLAR: [(CssColorInterpolationSpace, &str); 4] = [
-    (CssColorInterpolationSpace::Hsl, "hsl"),
-    (CssColorInterpolationSpace::Hwb, "hwb"),
-    (CssColorInterpolationSpace::Lch, "lch"),
-    (CssColorInterpolationSpace::Oklch, "oklch"),
+const POLAR: [(ColorSpace, &str); 4] = [
+    (ColorSpace::Hsl, "hsl"),
+    (ColorSpace::Hwb, "hwb"),
+    (ColorSpace::Lch, "lch"),
+    (ColorSpace::Oklch, "oklch"),
 ];
-const HUES: [(CssHueInterpolationMethod, &str); 4] = [
-    (CssHueInterpolationMethod::Shorter, "shorter"),
-    (CssHueInterpolationMethod::Longer, "longer"),
-    (CssHueInterpolationMethod::Increasing, "increasing"),
-    (CssHueInterpolationMethod::Decreasing, "decreasing"),
+const HUES: [(HueInterpolation, &str); 4] = [
+    (HueInterpolation::Shorter, "shorter"),
+    (HueInterpolation::Longer, "longer"),
+    (HueInterpolation::Increasing, "increasing"),
+    (HueInterpolation::Decreasing, "decreasing"),
 ];
 
 const OMITTED_POLAR: CssColorInterpolationMethod =
-    match CssColorInterpolationMethod::try_new(CssColorInterpolationSpace::Hsl, None) {
+    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, None) {
         Ok(value) => value,
         Err(_) => panic!("polar omitted hue is valid"),
     };
-const EXPLICIT_POLAR: CssColorInterpolationMethod = match CssColorInterpolationMethod::try_new(
-    CssColorInterpolationSpace::Hsl,
-    Some(CssHueInterpolationMethod::Shorter),
-) {
-    Ok(value) => value,
-    Err(_) => panic!("polar shorter hue is valid"),
-};
+const EXPLICIT_POLAR: CssColorInterpolationMethod =
+    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, Some(HueInterpolation::Shorter)) {
+        Ok(value) => value,
+        Err(_) => panic!("polar shorter hue is valid"),
+    };
 const REJECTED_RECTANGULAR: Result<
     CssColorInterpolationMethod,
     CssColorInterpolationMethodConstructionError,
-> = CssColorInterpolationMethod::try_new(
-    CssColorInterpolationSpace::Lab,
-    Some(CssHueInterpolationMethod::Longer),
-);
+> = CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer));
 const CONST_WRAPPER: CssColorInterpolation = CssColorInterpolation::from_predefined(OMITTED_POLAR);
-const CONST_DEFAULT_HUE: Option<CssHueInterpolationMethod> = OMITTED_POLAR.effective_hue();
-const CONST_SPACE: CssColorInterpolationSpace = OMITTED_POLAR.space();
-const CONST_AUTHORED_HUE: Option<CssHueInterpolationMethod> = OMITTED_POLAR.hue();
+const CONST_DEFAULT_HUE: Option<HueInterpolation> = OMITTED_POLAR.effective_hue();
+const CONST_SPACE: ColorSpace = OMITTED_POLAR.space();
+const CONST_AUTHORED_HUE: Option<HueInterpolation> = OMITTED_POLAR.hue();
 
 #[test]
 fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_default() {
-    assert_eq!(CONST_SPACE, CssColorInterpolationSpace::Hsl);
+    assert_eq!(CONST_SPACE, ColorSpace::Hsl);
     assert_eq!(CONST_AUTHORED_HUE, None);
-    assert_eq!(CONST_DEFAULT_HUE, Some(CssHueInterpolationMethod::Shorter));
+    assert_eq!(CONST_DEFAULT_HUE, Some(HueInterpolation::Shorter));
     assert_eq!(CONST_WRAPPER.predefined(), Some(OMITTED_POLAR));
     assert_ne!(OMITTED_POLAR, EXPLICIT_POLAR);
-    assert_eq!(
-        EXPLICIT_POLAR.hue(),
-        Some(CssHueInterpolationMethod::Shorter)
-    );
+    assert_eq!(EXPLICIT_POLAR.hue(), Some(HueInterpolation::Shorter));
     assert_eq!(
         EXPLICIT_POLAR.effective_hue(),
         OMITTED_POLAR.effective_hue()
@@ -108,8 +98,7 @@ fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_defa
     for (space, _) in POLAR {
         let omitted = CssColorInterpolationMethod::try_new(space, None).unwrap();
         let explicit =
-            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Shorter))
-                .unwrap();
+            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Shorter)).unwrap();
         assert_ne!(omitted, explicit);
         assert_eq!(omitted.effective_hue(), explicit.effective_hue());
     }
@@ -117,11 +106,9 @@ fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_defa
 
 #[test]
 fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
-    let error = CssColorInterpolationMethod::try_new(
-        CssColorInterpolationSpace::Lab,
-        Some(CssHueInterpolationMethod::Longer),
-    )
-    .unwrap_err();
+    let error =
+        CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer))
+            .unwrap_err();
     assert_eq!(
         error,
         CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
@@ -267,10 +254,10 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
     for (space, keyword) in POLAR {
         for hue in [
             None,
-            Some(CssHueInterpolationMethod::Shorter),
-            Some(CssHueInterpolationMethod::Longer),
-            Some(CssHueInterpolationMethod::Increasing),
-            Some(CssHueInterpolationMethod::Decreasing),
+            Some(HueInterpolation::Shorter),
+            Some(HueInterpolation::Longer),
+            Some(HueInterpolation::Increasing),
+            Some(HueInterpolation::Decreasing),
         ] {
             let method = CssColorInterpolationMethod::try_new(space, hue).unwrap();
             let interpolation = CssColorInterpolation::from_predefined(method);
@@ -278,7 +265,7 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
             assert_eq!(method.hue(), hue);
             assert_eq!(
                 method.effective_hue(),
-                Some(hue.unwrap_or(CssHueInterpolationMethod::Shorter))
+                Some(hue.unwrap_or(HueInterpolation::Shorter))
             );
             assert_eq!(interpolation.predefined(), Some(method));
             let suffix = match hue {
@@ -289,7 +276,7 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
                 ),
             };
             let source = format!("color-mix(in {keyword}{suffix}, red, blue)");
-            let canonical_suffix = if hue == Some(CssHueInterpolationMethod::Shorter) {
+            let canonical_suffix = if hue == Some(HueInterpolation::Shorter) {
                 ""
             } else {
                 &suffix
@@ -326,10 +313,7 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
 
 #[test]
 fn every_predefined_keyword_case_and_escape_preserves_space_and_canonical_output() {
-    let alias = (
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD65),
-        "xyz",
-    );
+    let alias = (ColorSpace::Predefined(PredefinedColorSpace::XyzD65), "xyz");
     for (space, keyword) in RECTANGULAR.into_iter().chain(POLAR).chain([alias]) {
         for spelling in [
             keyword.to_owned(),
@@ -338,7 +322,7 @@ fn every_predefined_keyword_case_and_escape_preserves_space_and_canonical_output
         ] {
             let source = format!("color-mix(in {spelling}, red, blue)");
             let canonical = if keyword == "xyz" { "xyz-d65" } else { keyword };
-            let expected = if space == CssColorInterpolationSpace::Oklab {
+            let expected = if space == ColorSpace::Oklab {
                 "color-mix(red, blue)".to_owned()
             } else {
                 format!("color-mix(in {canonical}, red, blue)")

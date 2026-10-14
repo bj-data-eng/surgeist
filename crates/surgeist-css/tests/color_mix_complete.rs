@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Selected Color5 #funcdef-color-mix and Values4 #calc-range.
 //! Complete authored list, interpolation, and weight grammar.
+use surgeist_color::{ColorSpace, PredefinedColorSpace};
 use surgeist_css::*;
 
 fn parsed(property: &str, text: &str) -> CssDeclaration {
@@ -72,7 +73,7 @@ fn a_single_color_is_a_nonempty_mix_list() {
     for mix in admitted_mix("color-mix(in srgb, red)") {
         assert_eq!(
             mix.interpolation().unwrap().predefined().unwrap().space(),
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb)
         );
         assert_eq!(mix.components().len(), 1);
         assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
@@ -83,7 +84,7 @@ fn more_than_two_colors_keep_the_authored_list_and_duplicates() {
     for mix in admitted_mix("color-mix(in oklab, red, green, red)") {
         assert_eq!(
             mix.interpolation().unwrap().predefined().unwrap().space(),
-            CssColorInterpolationSpace::Oklab
+            ColorSpace::Oklab
         );
         assert_eq!(
             mix.components()

@@ -204,24 +204,25 @@ Use `parse_used_color` to resolve a standalone color over an original borrowed
 UTF-8 or UTF-16 input and explicit immutable `CssColorFacts`. Select
 `CssColorGrammarRequest::WholeColor` for a complete value or `PrefixColor` for a
 color prefix; the result retains the actual input, fact envelope and consumed
-original-unit range. Parsing produces a typed `CssUsedColor` or a
-`CssColorStandardFailure` before serialization, so it needs no output allowance.
-`serialize_used_color` then serializes the selected used value with either the
-CSS or conditional HTML-compatible request. These ordinary adapters use the
-same grammar and operation as the controlled protocol. Their explicit
-`CssColorOrdinaryLimits` bound input units, logical bank records, actions and
-output units; they do not bound allocator capacity or stand in for a consumer's
-resource controller. See the [public operation examples](tests/used_color_operations.rs).
+original-unit range. `CssColorOrdinaryOutcome` contains a
+[`surgeist_color::Color`](../surgeist-color/README.md) or a
+`CssColorStandardFailure`. Parsing creates no output. Its explicit
+`CssColorOrdinaryLimits` bound source units, logical parse-bank records and
+actions; they do not bound allocator capacity or replace a consumer's resource
+controller. For a native numerical value, use Color's `serialize` with
+`SerializationRequest` and `SerializationLimits`. See the
+[public operation examples](tests/used_color_operations.rs).
 
 The shared grammar recognizes all 21 retained color branches: currentcolor,
 transparent, hex, named and system colors; rgb, hsl, hwb, lab, lch, oklab and
 oklch; predefined and custom `color()`; relative custom colors, `alpha()` and
 other relative colors; `color-mix()`, `light-dark()`, `contrast-color()` and
 `device-cmyk()`. Absolute and relative predefined-space evaluation, numeric
-expressions, missing-channel handling, conversion and mixing are intrinsic
-operations. The ordinary authored parser also uses this grammar through its
-actual Parsed and Components inputs, preserving symbolic `CssColor` values and
-origins rather than resolving them during authored parsing.
+expressions, missing-channel handling and mixing resolve CSS semantics before
+or around Color's numerical operations. The ordinary authored parser also uses
+this grammar through its actual Parsed and Components inputs, preserving
+symbolic `CssColor` values and origins. A checked-authored-value feeder into
+used-color resolution is not implemented.
 
 Resolution observes only reached dependencies. The no-element
 `CssColorPropertyFacts::InitialProperties` branch resolves currentcolor through
@@ -240,52 +241,76 @@ boundaries where the fact carrier cannot represent the operation. Contextual
 numeric units likewise require a supported basis. CSS performs no resource
 loading or contextual style calculation.
 
-The selected `contrast-color()` policy converts to XYZ D65 Y, ignores alpha,
-clamps finite Y to [0, 1], and compares the black and white luminance ratios;
-white wins a tie. This is Surgeist's selected UA policy. Its source selection and
-capability boundaries are recorded in the
+The selected `contrast-color()` policy resolves the CSS input and delegates the
+numerical black/white comparison to Color. It converts to XYZ D65 Y, ignores
+alpha, clamps finite Y to [0, 1], and compares the black and white luminance
+ratios; white wins a tie. This is Surgeist's selected UA policy. Its source
+selection and capability boundaries are recorded in the
 [Color delegation reference](../../references/SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy).
 
-`CssUsedColor` retains finite signed channels, missing channels/alpha and the
-serialization family. Ordered `CssUsedColorTransformation` operations make
-conversion, opaque alpha and sRGB quantization explicit; equivalent coordinates
-do not establish byte provenance. Absolute sRGB/HSL/HWB values can serialize as
-legacy rgb/rgba while equivalent relative or mixed values preserve modern
-`color(srgb ...)` serialization. Missing components retain `none` where required.
-The HTML-compatible request emits lowercase hex only for an opaque value with
-established sRGB bytes. Used serialization uses the shared incremental decimal
-formatter and rounding policy. Byte alpha follows Color 4's numbered rounding
-algorithm (236 serializes as 0.925; 237 as 0.93), separately from floating alpha;
-the pinned nonnormative byte-236 example disagrees with that algorithm. Authored
-specified serialization remains a separate phase and preserves its existing
-precision contract.
+Color owns finite signed channels, missing channels/alpha, serialization
+families, conversion, interpolation, transformations and resolved serialization.
+Consumers import its numerical types directly. Ordered `Transformation`
+requests make conversion, opaque alpha and sRGB quantization explicit;
+equivalent coordinates do not establish byte provenance. Absolute
+sRGB/HSL/HWB values can serialize as legacy rgb/rgba while equivalent relative
+or mixed values preserve modern `color(srgb ...)` serialization. Missing
+components retain `none` where required. The HTML-compatible request emits
+lowercase hex only for an opaque value with established sRGB bytes. Color also
+owns the shared incremental finite formatter and byte-alpha rounding policy
+(236 serializes as 0.925; 237 as 0.93), separately from floating alpha; the
+pinned nonnormative byte-236 example disagrees with that algorithm. CSS retains
+authored exact-decimal formatting and specified serialization, preserving their
+existing precision contract.
 
 For a consumer with an existing controller, `CssColorOperation::parse_used`
 lends one `CssColorActionDescription` at a time. The consumer admits and polls
-before servicing each source read, fact read, bank read/write, fixed compute or
-final output unit using its actual `CssColorActionLayout` and compiled register
-sizes. It owns the Algorithm, Arithmetic and Evaluation vectors and their real
-capacity, copy and release events. Opaque slots are checked against the bank,
-exclusive `CssColorOperationOwner`, phase and ordinal; the anchor is not another
-resource controller. CSS neither allocates these banks nor assigns work weights
-or cancellation policy to the caller. Dropping an action leaves it pending;
-`abandon` does not dispose the caller's storage.
+before servicing each source read, fact read, bank read/write or fixed compute
+using the actual `CssColorActionLayout` and compiled register sizes. It owns the
+Algorithm, Arithmetic and Evaluation vectors and their real capacity, copy and
+release events. Opaque CSS slots are checked against the bank, exclusive
+`CssColorOperationOwner`, phase and ordinal. `CssColorOperation::take` accepts
+`&mut Option<Self>` and removes only a completed used or standard-failure
+outcome; refusal preserves the operation. Dropping an action leaves it pending;
+`abandon` does not dispose caller storage. The anchor is not a second resource
+controller.
 
-Retire actual scratch through its original owner before moving a used checkpoint
-to a transformation or serializer. `CssColorBankLengths` checks empty logical
-banks but cannot prove ticket disposal. The caller-owned `Option` checkpoint
-and transformation slots preserve their value on fallible preflight refusal;
-`recover` returns the latest committed checkpoint and numerical refusal retains
-the input to that transformation. It does not restart a cancelled controller.
-Only final chosen serialization admits output. A standard-failure checkpoint
-can accept an explicitly checked caller fallback, retaining its failure/source
-context. Unavailable, unsupported, malformed-fact, numerical and protocol errors
-remain distinct from standard invalidity; resource refusal and cancellation
-belong to the original controlled consumer. Ordinary adapters additionally
-report typed logical-limit and allocation failures. See the
+Retire actual CSS scratch through its original owner before moving a used
+checkpoint to a transformation or serializer. `CssColorBankLengths` checks empty
+logical banks but cannot prove ticket disposal. Keep a separate
+`surgeist_color::OperationOwner` stack local for the numerical continuation.
+`CssUsedColorCheckpoint::transform` lends that anchor to Color's computation;
+`serialize` lends it to Color's serializer and checks an empty numerical bank.
+The consumer owns a fourth bank of Color `DigitSlot` records, distinct from the
+three CSS parse banks. `ReadNumericalDigit`, `AppendNumericalDigit` and
+`UpdateNumericalDigit` actions expose its actual read/write layout; the
+serialization guard uses `read_numerical_digit`, `numerical_record` and
+`numerical_written`. Output remains one admitted unit at a time. Release and
+drop every digit record before reusing its numerical anchor.
+
+Transformation and serialization `take(&mut Option<Self>)` remove only a
+completed success. A computed result becomes the checkpoint's committed value
+only at successful take. Refused take leaves the wrapper intact; `recover`
+removes it and returns its original committed checkpoint, including source,
+facts and standard-failure context. Recovery does not complete pending work or
+restart a cancelled controller. A standard-failure checkpoint can accept an
+explicitly checked caller fallback while retaining that context. Unavailable,
+unsupported, malformed-fact, numerical and protocol errors remain distinct from
+standard invalidity. Numerical errors carry Color's `ColorError` and the
+actual reached CSS recipe's `CssColorResolutionSite::Source` range. Resource
+refusal and cancellation belong to the original controlled consumer. See the
 [controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
-These standalone operations do not establish a complete contextual CSSOM/style
-consumer or HTML color-input adapter.
+
+The current [HTML adapter](../surgeist-html/src/construction/parser_session/input_color.rs)
+uses the original UTF-16 source and its original parser controller with both
+owners and the separate digit bank. HTML owns dirty/default/current selection,
+standard-failure-only black fallback, transformation order and atomic publication
+after serialization and cleanup. Its `HtmlColorProcessingError` projects the
+source-only CSS error into fixed first-stop metadata: a numerical range is
+relative to the selected color field, while the original HTML source binding
+remains separate. This does not establish a complete contextual CSSOM/style
+consumer or close [#805](https://github.com/bj-data-eng/surgeist/issues/805)'s
+contextual and quirky-color/CSS.supports scope.
 
 ## Start
 

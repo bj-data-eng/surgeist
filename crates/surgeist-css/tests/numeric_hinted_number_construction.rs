@@ -4,6 +4,7 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
@@ -160,7 +161,7 @@ fn checked_color_consumers_keep_context_and_borrow_the_distinct_alpha_payload() 
     let calculation = hinted();
     let channel = CssColorComponent::HintedNumberCalculation(calculation.clone());
     let alpha_owner = CssPredefinedColor::try_new(
-        CssPredefinedColorSpace::Srgb,
+        PredefinedColorSpace::Srgb,
         [zero(), zero(), zero()],
         Some(channel.clone()),
     )

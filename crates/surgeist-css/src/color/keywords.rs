@@ -123,9 +123,9 @@ pub(crate) enum Word {
     Named([u8; 3]),
     Function(ColorFunction),
     Math(crate::CssMathFunction),
-    Predefined(crate::CssPredefinedColorSpace),
-    Interpolation(crate::CssColorInterpolationSpace),
-    Hue(crate::CssHueInterpolationMethod),
+    Predefined(crate::PredefinedColorSpace),
+    Interpolation(crate::ColorSpace),
+    Hue(crate::HueInterpolation),
     From,
     In,
     None,
@@ -151,7 +151,7 @@ pub(crate) fn word(name: &str, kind: crate::tokenization::color_tokens::NameKind
     if let Some(value) = crate::syntax::color::predefined_color_space(name) {
         return Word::Predefined(value);
     }
-    use crate::CssColorInterpolationSpace as Space;
+    use crate::ColorSpace as Space;
     let interpolation = match ColorFunction::parse(name) {
         Some(ColorFunction::Hsl) => Some(Space::Hsl),
         Some(ColorFunction::Hwb) => Some(Space::Hwb),
@@ -173,10 +173,10 @@ pub(crate) fn word(name: &str, kind: crate::tokenization::color_tokens::NameKind
     match_ignore_ascii_case! { name,
         "currentcolor" => Word::Current, "transparent" => Word::Transparent,
         "from" => Word::From, "in" => Word::In, "none" => Word::None, "hue" => Word::HueSuffix,
-        "shorter" => Word::Hue(crate::CssHueInterpolationMethod::Shorter),
-        "longer" => Word::Hue(crate::CssHueInterpolationMethod::Longer),
-        "increasing" => Word::Hue(crate::CssHueInterpolationMethod::Increasing),
-        "decreasing" => Word::Hue(crate::CssHueInterpolationMethod::Decreasing),
+        "shorter" => Word::Hue(crate::HueInterpolation::Shorter),
+        "longer" => Word::Hue(crate::HueInterpolation::Longer),
+        "increasing" => Word::Hue(crate::HueInterpolation::Increasing),
+        "decreasing" => Word::Hue(crate::HueInterpolation::Decreasing),
         "nearest" => Word::Strategy(crate::CssRoundingStrategy::Nearest),
         "up" => Word::Strategy(crate::CssRoundingStrategy::Up),
         "down" => Word::Strategy(crate::CssRoundingStrategy::Down),
@@ -219,7 +219,7 @@ mod namespace_tests {
         assert_eq!(word("red", NameKind::Function), Word::Unknown);
         assert_eq!(
             word("hsl", NameKind::Ident),
-            Word::Interpolation(crate::CssColorInterpolationSpace::Hsl)
+            Word::Interpolation(crate::ColorSpace::Hsl)
         );
         assert_eq!(
             word("hsl", NameKind::Function),

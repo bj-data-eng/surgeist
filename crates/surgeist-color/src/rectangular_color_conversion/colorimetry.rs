@@ -8,7 +8,7 @@
 //! it supplies coefficients consistent with the normative conversion routes.
 
 use super::wide::Wide;
-use crate::CssPredefinedColorSpace;
+use crate::PredefinedColorSpace;
 
 type Matrix = [[f64; 3]; 3];
 
@@ -43,16 +43,16 @@ pub(super) fn adapt(channels: [Wide; 3], source: WhitePoint, destination: WhiteP
     }
 }
 
-pub(super) fn rgb_to_xyz(channels: [Wide; 3], space: CssPredefinedColorSpace) -> [Wide; 3] {
+pub(super) fn rgb_to_xyz(channels: [Wide; 3], space: PredefinedColorSpace) -> [Wide; 3] {
     apply(rgb_matrix(space, false), channels)
 }
 
-pub(super) fn xyz_to_rgb(channels: [Wide; 3], space: CssPredefinedColorSpace) -> [Wide; 3] {
+pub(super) fn xyz_to_rgb(channels: [Wide; 3], space: PredefinedColorSpace) -> [Wide; 3] {
     apply(rgb_matrix(space, true), channels)
 }
 
-fn rgb_matrix(space: CssPredefinedColorSpace, inverse: bool) -> &'static Matrix {
-    use CssPredefinedColorSpace::*;
+fn rgb_matrix(space: PredefinedColorSpace, inverse: bool) -> &'static Matrix {
+    use PredefinedColorSpace::*;
     match (space, inverse) {
         (Srgb | SrgbLinear, false) => &SRGB_TO_XYZ,
         (Srgb | SrgbLinear, true) => &SRGB_FROM_XYZ,

@@ -66,8 +66,7 @@ impl ComponentContext {
                 Some(ProfileSpace::Predefined(space)) => Some(
                     if matches!(
                         space,
-                        crate::CssPredefinedColorSpace::XyzD50
-                            | crate::CssPredefinedColorSpace::XyzD65
+                        crate::PredefinedColorSpace::XyzD50 | crate::PredefinedColorSpace::XyzD65
                     ) {
                         Environment::Xyz(space)
                     } else {

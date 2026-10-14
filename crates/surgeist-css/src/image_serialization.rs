@@ -298,16 +298,11 @@ impl GradientDefault {
             self.emitted = D::Oklab;
         }
     }
-    fn matches_emitted(self, space: crate::CssColorInterpolationSpace) -> bool {
+    fn matches_emitted(self, space: crate::ColorSpace) -> bool {
         use crate::syntax::color::serialization::GradientColorDefault as D;
         match self.emitted {
-            D::Oklab => space == crate::CssColorInterpolationSpace::Oklab,
-            D::Srgb => {
-                space
-                    == crate::CssColorInterpolationSpace::Predefined(
-                        crate::CssPredefinedColorSpace::Srgb,
-                    )
-            }
+            D::Oklab => space == crate::ColorSpace::Oklab,
+            D::Srgb => space == crate::ColorSpace::Predefined(crate::PredefinedColorSpace::Srgb),
         }
     }
 }

@@ -13,13 +13,20 @@ always-available validators accept exactly clean reports without selecting anoth
 grammar. Keep authored symbolic values unresolved. The separately selected
 [standalone color producer](../../references/SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy)
 is contribution work under [#805](https://github.com/bj-data-eng/surgeist/issues/805):
-CSS owns its pure parsing, intrinsic resolution/conversion and used serialization
-over explicit inputs. Current source and tests establish implemented capabilities.
-Cascade, inheritance, substitution, selector/query evaluation, resource retrieval,
-layout, painting and each consuming crate's lowering remain outside this crate.
+CSS owns source parsing, exact authored expressions, contextual resolution and
+source/fact qualification over explicit inputs. The dependency-free
+[`surgeist-color`](../surgeist-color/README.md) owner supplies numerical values,
+conversion, interpolation, transformations, resolved serialization and finite
+formatting. CSS retains exact authored decimal and specified serialization.
+Current source and tests establish implemented capabilities; the checked-authored
+used-color feeder remains unimplemented. Cascade, inheritance, substitution,
+selector/query evaluation, resource retrieval, layout, painting and each consuming
+crate's lowering remain outside this crate.
 
 Consume sibling public front doors. Each consuming crate owns its direct adapter
-to lower-level contracts, including HTML's adapter to shared CSS color operations.
+to lower-level contracts, including HTML's current direct adapter to CSS source
+operations and Color's numerical owner. The HTML values/parser/semantics split
+remains planned.
 The root facade owns optional host-facing composition; it is not a mandatory
 integration intermediary. Follow the root guide's ownership and dependency rules.
 

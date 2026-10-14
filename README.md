@@ -6,8 +6,9 @@ animation, layout, text, rendering, and host integration. One repository and
 Cargo workspace contain the `surgeist` facade, its domain crates, test support,
 and shared corpus-generation tooling.
 
-The facade directly reexports the production crates. Cross-crate adapters, root
-integration tests, examples, and a native development harness are unimplemented.
+The facade directly reexports the production crates. CSSOM and HTML own direct
+adapters to their lower-level contracts. Complete root integration, application
+examples, and a native development harness remain planned.
 
 ## Start
 

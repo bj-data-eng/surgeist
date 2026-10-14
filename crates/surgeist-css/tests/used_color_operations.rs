@@ -1,13 +1,14 @@
 //! Public standalone used-value phases, independent of the authored grammar join.
 
+use surgeist_color::{
+    Color, ColorSpace, PredefinedColorSpace, SerializationRequest, Transformation,
+};
 use surgeist_css::{
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
-    CssColorInterpolationSpace, CssColorOperationError, CssColorOrdinaryError,
-    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
-    CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact, CssColorSerializationRequest,
-    CssColorStandardFailureKind, CssColorUnavailable, CssDeviceColorFact, CssPredefinedColorSpace,
-    CssSystemColor, CssUsedColor, CssUsedColorTransformation, parse_used_color,
-    serialize_used_color,
+    CssColorOperationError, CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorOrdinaryResource, CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact,
+    CssColorStandardFailureKind, CssColorUnavailable, CssDeviceColorFact, CssSystemColor,
+    parse_used_color,
 };
 
 fn limits() -> CssColorOrdinaryLimits {
@@ -19,7 +20,13 @@ fn limits() -> CssColorOrdinaryLimits {
         arithmetic_records: 4096,
         evaluation_records: 4096,
         actions: 4_000_000,
-        output_units: 256,
+    }
+}
+fn numerical_limits() -> surgeist_color::SerializationLimits {
+    surgeist_color::SerializationLimits {
+        actions: 4_000_000,
+        digits: 4096,
+        output_bytes: 256,
     }
 }
 fn absent_facts() -> CssColorFacts<'static> {
@@ -33,7 +40,7 @@ fn absent_facts() -> CssColorFacts<'static> {
         CssDeviceColorFact::Unknown,
     )
 }
-fn value(input: &str, facts: &CssColorFacts<'_>) -> CssUsedColor {
+fn value(input: &str, facts: &CssColorFacts<'_>) -> Color {
     let result = parse_used_color(
         CssColorInput::Utf8(input.as_bytes()),
         CssColorGrammarRequest::WholeColor,
@@ -67,7 +74,8 @@ fn equal_absolute_relative_and_mixed_channels_preserve_selected_serialization() 
         let actual = value(input, &facts);
         assert_eq!(actual.srgb_bytes(), None, "{input}");
         assert_eq!(
-            serialize_used_color(actual, CssColorSerializationRequest::Css, limits()).unwrap(),
+            surgeist_color::serialize(actual, SerializationRequest::Css, numerical_limits())
+                .unwrap(),
             expected,
             "{input}"
         );
@@ -91,15 +99,16 @@ fn equal_floating_and_byte_alpha_keep_their_distinct_serialization_policies() {
             "rgba(0, 0, 0, 0.929412)",
         ),
     ] {
-        let byte = CssUsedColor::from_srgba8([0, 0, 0, byte]);
+        let byte = Color::from_srgba8([0, 0, 0, byte]);
         let floating = value(floating, &facts);
         assert_eq!(byte.alpha(), floating.alpha());
         assert_eq!(
-            serialize_used_color(byte, CssColorSerializationRequest::Css, limits()).unwrap(),
+            surgeist_color::serialize(byte, SerializationRequest::Css, numerical_limits()).unwrap(),
             expected_byte,
         );
         assert_eq!(
-            serialize_used_color(floating, CssColorSerializationRequest::Css, limits()).unwrap(),
+            surgeist_color::serialize(floating, SerializationRequest::Css, numerical_limits())
+                .unwrap(),
             expected_float,
         );
     }
@@ -109,7 +118,7 @@ fn equal_floating_and_byte_alpha_keep_their_distinct_serialization_policies() {
 fn initial_current_color_reaches_canvas_text_and_only_the_selected_scheme_child() {
     let id = CssColorFactIdentity::new(7, 3);
     let resource = CssColorFactIdentity::new(8, 4);
-    let white = CssUsedColor::from_srgba8([255; 4]);
+    let white = Color::from_srgba8([255; 4]);
     let entries = [CssColorPaletteEntry::new(
         CssSystemColor::CanvasText,
         resource,
@@ -166,25 +175,23 @@ fn missing_components_and_alpha_are_preserved_until_explicit_transform() {
     assert_eq!(missing.channels(), [None, Some(100.0), Some(50.0)]);
     assert_eq!(missing.alpha(), None);
     assert_eq!(
-        serialize_used_color(missing, CssColorSerializationRequest::Css, limits()).unwrap(),
+        surgeist_color::serialize(missing, SerializationRequest::Css, numerical_limits()).unwrap(),
         "hsl(none 100% 50% / none)"
     );
     let present = value("rgb(100% 0 0 / .5)", &facts);
     let opaque = present
-        .transformed(CssUsedColorTransformation::ForceOpaqueAlpha)
+        .transformed(Transformation::ForceOpaqueAlpha)
         .unwrap();
     assert_eq!(present.alpha(), Some(0.5));
     assert_eq!(opaque.alpha(), Some(1.0));
     assert_eq!(opaque.srgb_bytes(), None);
-    let bytes = opaque
-        .transformed(CssUsedColorTransformation::QuantizeSrgb)
-        .unwrap();
+    let bytes = opaque.transformed(Transformation::QuantizeSrgb).unwrap();
     assert_eq!(bytes.srgb_bytes(), Some([255, 0, 0]));
     assert_eq!(
-        serialize_used_color(
+        surgeist_color::serialize(
             bytes,
-            CssColorSerializationRequest::HtmlCompatible,
-            limits()
+            SerializationRequest::HtmlCompatible,
+            numerical_limits()
         )
         .unwrap(),
         "#ff0000"
@@ -262,22 +269,21 @@ fn utf16_prefix_input_and_native_conversion_retain_actual_units_and_phase_meanin
     assert_eq!(result.source().consumed.end, 3);
     assert_eq!(
         result.outcome(),
-        CssColorOrdinaryOutcome::Used(CssUsedColor::from_srgba8([255, 0, 0, 255]))
+        CssColorOrdinaryOutcome::Used(Color::from_srgba8([255, 0, 0, 255]))
     );
-    let modern = CssUsedColor::try_new(
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+    let modern = Color::try_new(
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb),
         [Some(1.0), Some(0.0), Some(0.0)],
         Some(1.0),
     )
     .unwrap();
     let cylindrical = modern
-        .transformed(CssUsedColorTransformation::Convert(
-            CssColorInterpolationSpace::Hwb,
-        ))
+        .transformed(Transformation::Convert(ColorSpace::Hwb))
         .unwrap();
     assert_eq!(cylindrical.channels(), [Some(0.0); 3]);
     assert_eq!(
-        serialize_used_color(cylindrical, CssColorSerializationRequest::Css, limits()).unwrap(),
+        surgeist_color::serialize(cylindrical, SerializationRequest::Css, numerical_limits())
+            .unwrap(),
         "color(srgb 1 0 0)"
     );
 }
@@ -294,14 +300,12 @@ fn complete_cylindrical_parse_only_results_publish_srgb_before_output() {
         ("color-mix(in hsl, red, red)", true),
         ("color-mix(in hwb, red, red)", true),
     ] {
-        let mut no_output = limits();
-        no_output.output_units = 0;
         let result = parse_used_color(
             CssColorInput::Utf8(text.as_bytes()),
             CssColorGrammarRequest::WholeColor,
             &facts,
             facts.identity(),
-            no_output,
+            limits(),
         )
         .unwrap();
         let CssColorOrdinaryOutcome::Used(color) = result.outcome() else {
@@ -318,7 +322,7 @@ fn complete_cylindrical_parse_only_results_publish_srgb_before_output() {
         );
         assert_eq!(
             color.space(),
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb),
             "{text}"
         );
         assert_eq!(
@@ -326,7 +330,11 @@ fn complete_cylindrical_parse_only_results_publish_srgb_before_output() {
             [Some(1.0), Some(0.0), Some(0.0)],
             "{text}"
         );
-        assert_eq!(color.uses_color_function(), modern, "{text}");
+        assert_eq!(
+            (color.serialization_family() == surgeist_color::SerializationFamily::ColorFunction),
+            modern,
+            "{text}"
+        );
     }
 }
 
@@ -337,61 +345,56 @@ fn missing_cylindrical_channels_or_alpha_retain_their_natural_used_space() {
     for (text, space, channels, alpha) in [
         (
             "hsl(none 100% 50%)",
-            CssColorInterpolationSpace::Hsl,
+            ColorSpace::Hsl,
             [None, Some(100.0), Some(50.0)],
             Some(1.0),
         ),
         (
             "hsl(0 100% 50% / none)",
-            CssColorInterpolationSpace::Hsl,
+            ColorSpace::Hsl,
             [Some(0.0), Some(100.0), Some(50.0)],
             None,
         ),
         (
             "hwb(0 none 0%)",
-            CssColorInterpolationSpace::Hwb,
+            ColorSpace::Hwb,
             [Some(0.0), None, Some(0.0)],
             Some(1.0),
         ),
-        (
-            "hwb(0 0% 0% / none)",
-            CssColorInterpolationSpace::Hwb,
-            [Some(0.0); 3],
-            None,
-        ),
+        ("hwb(0 0% 0% / none)", ColorSpace::Hwb, [Some(0.0); 3], None),
         (
             "hsl(from red none s l)",
-            CssColorInterpolationSpace::Hsl,
+            ColorSpace::Hsl,
             [None, Some(100.0), Some(50.0)],
             Some(1.0),
         ),
         (
             "hsl(from red h s l / none)",
-            CssColorInterpolationSpace::Hsl,
+            ColorSpace::Hsl,
             [Some(0.0), Some(100.0), Some(50.0)],
             None,
         ),
         (
             "hwb(from red h none b)",
-            CssColorInterpolationSpace::Hwb,
+            ColorSpace::Hwb,
             [Some(0.0), None, Some(0.0)],
             Some(1.0),
         ),
         (
             "hwb(from red h w b / none)",
-            CssColorInterpolationSpace::Hwb,
+            ColorSpace::Hwb,
             [Some(0.0); 3],
             None,
         ),
         (
             "color-mix(in hsl, hsl(0 100% 50% / none), hsl(0 100% 50% / none))",
-            CssColorInterpolationSpace::Hsl,
+            ColorSpace::Hsl,
             [Some(0.0), Some(100.0), Some(50.0)],
             None,
         ),
         (
             "color-mix(in hwb, hwb(0 0% 0% / none), hwb(0 0% 0% / none))",
-            CssColorInterpolationSpace::Hwb,
+            ColorSpace::Hwb,
             [Some(0.0); 3],
             None,
         ),
@@ -416,24 +419,29 @@ fn nested_cylindrical_origins_keep_hue_and_signed_channels_until_root_completion
         let color = value(text, &facts);
         assert_eq!(
             color.space(),
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb)
         );
         assert_eq!(
             color.channels(),
             [Some(0.0), Some(1.0), Some(0.0)],
             "{text}"
         );
-        assert!(color.uses_color_function());
+        assert!(
+            (color.serialization_family() == surgeist_color::SerializationFamily::ColorFunction)
+        );
     }
     // Color4's HSL conversion explicitly permits out-of-gamut results.
     for (text, modern) in [("hsl(0 200% 50%)", false), ("hsl(from red 0 200 50)", true)] {
         let color = value(text, &facts);
         assert_eq!(
             color.space(),
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb)
         );
         assert_eq!(color.channels(), [Some(1.5), Some(-0.5), Some(-0.5)]);
-        assert_eq!(color.uses_color_function(), modern);
+        assert_eq!(
+            (color.serialization_family() == surgeist_color::SerializationFamily::ColorFunction),
+            modern
+        );
         assert_eq!(color.srgb_bytes(), None);
     }
 }
@@ -457,7 +465,7 @@ fn wrapper_and_utf16_prefix_results_complete_only_the_final_used_color() {
         let color = value(text, &facts);
         assert_eq!(
             color.space(),
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb)
         );
         assert_eq!(color.channels(), [Some(1.0), Some(0.0), Some(0.0)]);
         assert_eq!(color.alpha(), Some(alpha));
@@ -466,14 +474,12 @@ fn wrapper_and_utf16_prefix_results_complete_only_the_final_used_color() {
     let input = [
         104, 115, 108, 40, 48, 32, 49, 48, 48, 37, 32, 53, 48, 37, 41, 32, 98, 108, 117, 101,
     ];
-    let mut no_output = limits();
-    no_output.output_units = 0;
     let result = parse_used_color(
         CssColorInput::Utf16(&input),
         CssColorGrammarRequest::PrefixColor,
         &facts,
         id,
-        no_output,
+        limits(),
     )
     .unwrap();
     let CssColorInput::Utf16(original) = result.input() else {
@@ -487,7 +493,42 @@ fn wrapper_and_utf16_prefix_results_complete_only_the_final_used_color() {
     };
     assert_eq!(
         color.space(),
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb)
     );
     assert_eq!(color.channels(), [Some(1.0), Some(0.0), Some(0.0)]);
+}
+
+#[test]
+fn numerical_failure_reports_reached_nested_recipe_in_original_utf16_units() {
+    // The impossible finite conversion occurs while resolving the inner mix.
+    // A leading supplementary character in a comment distinguishes original
+    // UTF-16 units from UTF-8 bytes without changing the CSS recipe.
+    let facts = absent_facts();
+    let inner = "color-mix(in srgb, lab(0 1e308 0), red)";
+    let prefix = "/*🦀*/color-mix(in srgb, ";
+    let text = format!("{prefix}{inner}, blue)");
+    let input: Vec<u16> = text.encode_utf16().collect();
+    let mut allowance = limits();
+    // Exact conversion of a large authored exponent runs through the original
+    // incremental decimal owner before the fixed numerical failure is reached.
+    allowance.actions = 100_000_000;
+    let error = parse_used_color(
+        CssColorInput::Utf16(&input),
+        CssColorGrammarRequest::WholeColor,
+        &facts,
+        facts.identity(),
+        allowance,
+    )
+    .err()
+    .expect("inner conversion cannot produce finite sRGB");
+    assert_eq!(
+        error,
+        CssColorOrdinaryError::Operation(CssColorOperationError::Numerical {
+            error: surgeist_color::ColorError::Unrepresentable,
+            site: surgeist_css::CssColorResolutionSite::Source(surgeist_css::CssColorInputRange {
+                start: prefix.encode_utf16().count(),
+                end: prefix.encode_utf16().count() + inner.encode_utf16().count(),
+            }),
+        })
+    );
 }

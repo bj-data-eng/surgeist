@@ -1,6 +1,6 @@
 //! Shared exact decimal arithmetic for authored numeric CSS values.
 
-use crate::finite_format::RoundingMode;
+use surgeist_color::format::RoundingMode;
 
 /// Normalized borrowed metadata for an already checked finite decimal token.
 /// The coefficient remains in the original source regardless of its length.

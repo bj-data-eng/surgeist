@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 //! Exact authored color scalars under the selected Color4/Color5 grammars.
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 fn color(declaration: &CssDeclaration) -> &CssColor {
@@ -123,10 +124,7 @@ fn relative_literals_keep_exact_coefficients_and_channel_references() {
 fn predefined_none_math_and_exact_channel_remain_distinct() {
     for declaration in both("color(display-p3-linear none calc(0.5) 1e100)") {
         let value = color(&declaration).predefined_value().unwrap();
-        assert_eq!(
-            value.color_space(),
-            CssPredefinedColorSpace::DisplayP3Linear
-        );
+        assert_eq!(value.color_space(), PredefinedColorSpace::DisplayP3Linear);
         assert!(matches!(value.channels()[0], CssColorComponent::None));
         assert!(
             matches!(&value.channels()[1], CssColorComponent::NumberCalculation(calc) if calc.components().serialize().unwrap().as_css() == "calc(0.5)")
@@ -214,7 +212,7 @@ fn finite_number_hue_and_predefined_color_controls() {
     }
     for declaration in both("color(srgb 0.5 0 1)") {
         let value = color(&declaration).predefined_value().unwrap();
-        assert_eq!(value.color_space(), CssPredefinedColorSpace::Srgb);
+        assert_eq!(value.color_space(), PredefinedColorSpace::Srgb);
         number(&value.channels()[0], "0.5");
     }
 }

@@ -638,6 +638,18 @@ pub fn surgeist_html::HtmlClosedBy::into_attribute(self) -> surgeist_html::Attri
 pub enum surgeist_html::HtmlClosedByState
 pub surgeist_html::HtmlClosedByState::Auto
 pub surgeist_html::HtmlClosedByState::Keyword(surgeist_html::HtmlClosedBy)
+pub enum surgeist_html::HtmlColorProcessingError
+pub surgeist_html::HtmlColorProcessingError::Facts(surgeist_css::color::bounded::CssColorFactError)
+pub surgeist_html::HtmlColorProcessingError::Numerical
+pub surgeist_html::HtmlColorProcessingError::Numerical::error: surgeist_color::value::ColorError
+pub surgeist_html::HtmlColorProcessingError::Numerical::input: surgeist_css::color::bounded::CssColorInputRange
+pub surgeist_html::HtmlColorProcessingError::Protocol(surgeist_css::color::protocol::CssColorProtocolError)
+pub surgeist_html::HtmlColorProcessingError::Unavailable(surgeist_css::color::bounded::CssColorUnavailable)
+pub surgeist_html::HtmlColorProcessingError::Unsupported(surgeist_css::color::bounded::CssColorUnsupported)
+impl core::error::Error for surgeist_html::HtmlColorProcessingError
+pub fn surgeist_html::HtmlColorProcessingError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlColorProcessingError
+pub fn surgeist_html::HtmlColorProcessingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCommandKeyword
 pub surgeist_html::HtmlCommandKeyword::Custom(surgeist_html::HtmlCustomCommandKeyword)
 pub surgeist_html::HtmlCommandKeyword::Standard(surgeist_html::HtmlStandardCommand)
@@ -2349,7 +2361,7 @@ pub surgeist_html::HtmlParseStop::AllocationFailed::layout_bytes: u64
 pub surgeist_html::HtmlParseStop::AllocationFailed::resource: surgeist_html::HtmlParseResource
 pub surgeist_html::HtmlParseStop::BaseFacts(surgeist_html::HtmlBaseMissing)
 pub surgeist_html::HtmlParseStop::Cancelled
-pub surgeist_html::HtmlParseStop::ColorProcessing(surgeist_css::color::bounded::CssColorOperationError)
+pub surgeist_html::HtmlParseStop::ColorProcessing(surgeist_html::HtmlColorProcessingError)
 pub surgeist_html::HtmlParseStop::InternalInvariant(surgeist_html::HtmlParseInvariant)
 pub surgeist_html::HtmlParseStop::LimitExceeded
 pub surgeist_html::HtmlParseStop::LimitExceeded::current: u64
@@ -6083,7 +6095,7 @@ pub fn surgeist_html::HtmlParseColorComputation<'a>::operand_group(&self, role: 
 pub fn surgeist_html::HtmlParseColorComputation<'a>::original_group(&self) -> core::option::Option<surgeist_html::HtmlParseOriginGroup<'a>>
 pub fn surgeist_html::HtmlParseColorComputation<'a>::source(&self) -> surgeist_html::HtmlParseColorValueSource
 pub fn surgeist_html::HtmlParseColorComputation<'a>::standard_failure(&self) -> core::option::Option<surgeist_css::color::bounded::CssColorStandardFailure>
-pub fn surgeist_html::HtmlParseColorComputation<'a>::value(&self) -> surgeist_css::color::numerical::value::CssUsedColor
+pub fn surgeist_html::HtmlParseColorComputation<'a>::value(&self) -> surgeist_color::value::Color
 pub struct surgeist_html::HtmlParseDiagnostic
 impl surgeist_html::HtmlParseDiagnostic
 pub fn surgeist_html::HtmlParseDiagnostic::context(&self) -> surgeist_html::HtmlParseDiagnosticContext

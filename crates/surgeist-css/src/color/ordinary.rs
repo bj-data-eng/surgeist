@@ -1,7 +1,7 @@
 //! Explicit ordinary ownership for the same bounded pure operations.
 //!
 //! These convenience loops own local vectors. Their ceilings cover logical
-//! records/actions/output; they make no physical-allocator or HTML ledger claim.
+//! records/actions; they make no physical-allocator or HTML ledger claim.
 //! The controlled HTML adapter services the public actions directly instead.
 
 use super::*;
@@ -46,7 +46,6 @@ pub struct CssColorOrdinaryLimits {
     pub arithmetic_records: usize,
     pub evaluation_records: usize,
     pub actions: usize,
-    pub output_units: usize,
 }
 /// The actual exhausted ordinary resource, separate from CSS invalidity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,7 +55,6 @@ pub enum CssColorOrdinaryResource {
     ArithmeticRecords,
     EvaluationRecords,
     Actions,
-    OutputUnits,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorOrdinaryError {
@@ -107,7 +105,7 @@ impl From<CssColorProtocolError> for CssColorOrdinaryError {
 /// A fixed source-qualified outcome after all ordinary scratch is retired.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CssColorOrdinaryOutcome {
-    Used(CssUsedColor),
+    Used(Color),
     StandardFailure(CssColorStandardFailure),
 }
 /// Borrows the actual original source and fact envelope; no graph/anchor/scratch
@@ -267,7 +265,7 @@ pub fn parse_used_color<'source, 'facts>(
         banks.iter_mut().for_each(Vec::clear);
         return Err(error);
     }
-    let (source, outcome) = match operation.take()? {
+    let (source, outcome) = match CssColorOperation::take(&mut Some(operation))? {
         CssColorParseOutcome::Used(checkpoint) => (
             checkpoint.source(),
             CssColorOrdinaryOutcome::Used(checkpoint.value()),
@@ -298,99 +296,6 @@ pub fn parse_used_color<'source, 'facts>(
         outcome,
     })
 }
-/// Final serialization of an already checked resolved value. Parsing/source
-/// limits do not apply; no source/fact input is invented or reissued.
-pub fn serialize_used_color(
-    value: CssUsedColor,
-    request: CssColorSerializationRequest,
-    limits: CssColorOrdinaryLimits,
-) -> Result<String, CssColorOrdinaryError> {
-    let mut owner = CssColorOperationOwner::new();
-    let mut serializer = CssColorSerialization::from_used(
-        &mut owner,
-        value,
-        request,
-        CssColorBankLengths::new(0, 0, 0),
-    )?;
-    let mut digits = Vec::new();
-    let mut output = Vec::new();
-    let mut actions = 0;
-    let execution = (|| {
-        loop {
-            if serializer.action() == CssColorActionDescription::Serialized {
-                break;
-            }
-            action_count(&mut actions, limits.actions)?;
-            let mut action = serializer.next_action();
-            match action.description() {
-                CssColorActionDescription::Compute(_) => action.compute()?,
-                CssColorActionDescription::ReadSlot { bank, index } => action.read_slot(
-                    bank,
-                    index,
-                    digits.get(index).ok_or(CssColorProtocolError::WrongIndex)?,
-                )?,
-                CssColorActionDescription::AppendSlot { bank, index } => {
-                    if index != digits.len() {
-                        return Err(CssColorProtocolError::WrongIndex.into());
-                    }
-                    let required = index
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
-                    admit(resource(bank), required, allowed(limits, bank))?;
-                    digits
-                        .try_reserve(1)
-                        .map_err(|_| CssColorOrdinaryError::Allocation {
-                            resource: resource(bank),
-                        })?;
-                    let record = action.record()?;
-                    digits.push(record);
-                    action.written(bank, index, &digits[index])?;
-                }
-                CssColorActionDescription::UpdateSlot { bank, index } => {
-                    let old = digits
-                        .get_mut(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?;
-                    *old = action.record()?;
-                    action.written(bank, index, old)?;
-                }
-                CssColorActionDescription::EmitUnit { unit } => {
-                    let required = output
-                        .len()
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
-                    admit(
-                        CssColorOrdinaryResource::OutputUnits,
-                        required,
-                        limits.output_units,
-                    )?;
-                    output
-                        .try_reserve(1)
-                        .map_err(|_| CssColorOrdinaryError::Allocation {
-                            resource: CssColorOrdinaryResource::OutputUnits,
-                        })?;
-                    output.push(unit);
-                    action.emitted(unit)?;
-                }
-                _ => return Err(CssColorProtocolError::WrongAction.into()),
-            }
-        }
-        Ok(())
-    })();
-    if let Err(error) = execution {
-        serializer.abandon();
-        digits.clear();
-        output.clear();
-        return Err(error);
-    }
-    let receipt = serializer.take()?;
-    if receipt.length() != output.len() {
-        return Err(CssColorProtocolError::WrongIndex.into());
-    }
-    digits.clear();
-    drop(digits);
-    String::from_utf8(output).map_err(|_| CssColorProtocolError::Input.into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,11 +317,10 @@ mod tests {
             arithmetic_records: 512,
             evaluation_records: 512,
             actions: 1_000_000,
-            output_units: 0,
         }
     }
     #[test]
-    fn parse_only_preserves_actual_input_and_facts_with_zero_output_allowance() {
+    fn parse_only_preserves_actual_input_and_facts() {
         let facts = facts();
         let input = b"rgb(1 0 0)";
         let result = parse_used_color(
@@ -456,7 +360,7 @@ mod tests {
         assert_eq!(result.source().kind, CssColorInputKind::Utf16);
         assert_eq!(
             result.outcome(),
-            CssColorOrdinaryOutcome::Used(CssUsedColor::from_srgba8([255, 0, 0, 255]))
+            CssColorOrdinaryOutcome::Used(Color::from_srgba8([255, 0, 0, 255]))
         );
     }
     #[test]
@@ -526,37 +430,5 @@ mod tests {
                 ..
             })
         ));
-    }
-    #[test]
-    fn final_native_output_has_independent_exact_one_short_admission() {
-        let value = CssUsedColor::from_srgba8([255, 0, 0, 255]);
-        let mut limits = limits();
-        limits.input_units = 0;
-        limits.algorithm_records = 0;
-        limits.output_units = 6;
-        assert_eq!(
-            serialize_used_color(value, CssColorSerializationRequest::HtmlCompatible, limits),
-            Err(CssColorOrdinaryError::Limit {
-                resource: CssColorOrdinaryResource::OutputUnits,
-                required: 7,
-                allowed: 6
-            })
-        );
-        limits.output_units = 7;
-        assert_eq!(
-            serialize_used_color(value, CssColorSerializationRequest::HtmlCompatible, limits),
-            Ok("#ff0000".to_owned())
-        );
-        // Refusal cleans only this ordinary owner. A new explicit operation is
-        // not represented as retrying a terminal HTML controller.
-        limits.output_units = 0;
-        assert_eq!(
-            serialize_used_color(value, CssColorSerializationRequest::HtmlCompatible, limits),
-            Err(CssColorOrdinaryError::Limit {
-                resource: CssColorOrdinaryResource::OutputUnits,
-                required: 1,
-                allowed: 0
-            })
-        );
     }
 }

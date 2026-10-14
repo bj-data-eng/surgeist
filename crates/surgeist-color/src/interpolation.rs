@@ -3,54 +3,9 @@
 //! No authored channel domains, weights, recipe records or context facts cross
 //! this boundary. The caller admits the fixed operands before invoking it.
 
-use super::value::{CssUsedColor, CssUsedColorError};
-use crate::{CssColorInterpolationSpace as Space, CssHueInterpolationMethod as Hue};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Error {
-    InvalidProgress,
-    Numerical(CssUsedColorError),
-}
-impl From<CssUsedColorError> for Error {
-    fn from(value: CssUsedColorError) -> Self {
-        Self::Numerical(value)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MethodError {
-    HueRequiresPolarSpace,
-}
-
-/// Numerical method: hue is already the effective strategy, with no authored
-/// omission to interpret during a two-color kernel.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Method {
-    space: Space,
-    hue: Option<Hue>,
-}
-impl Method {
-    pub(crate) fn try_new(space: Space, hue: Option<Hue>) -> Result<Self, MethodError> {
-        let polar = space.is_polar();
-        if !polar && hue.is_some() {
-            return Err(MethodError::HueRequiresPolarSpace);
-        }
-        Ok(Self {
-            space,
-            hue: if polar {
-                Some(hue.unwrap_or(Hue::Shorter))
-            } else {
-                None
-            },
-        })
-    }
-    pub(crate) const fn space(self) -> Space {
-        self.space
-    }
-    pub(crate) const fn hue(self) -> Option<Hue> {
-        self.hue
-    }
-}
+use crate::{Color, ColorError};
+use crate::{ColorSpace as Space, HueInterpolation as Hue};
+use crate::{InterpolationError as Error, InterpolationMethod as Method};
 
 // Categories are fixed Color4§13.3 identities, not authored channel names.
 // HWB whiteness/blackness have no cross-space analogues.
@@ -70,7 +25,7 @@ fn hue_index(space: Space) -> Option<usize> {
         _ => None,
     }
 }
-fn carried(value: CssUsedColor, destination: Space) -> [bool; 3] {
+fn carried(value: Color, destination: Space) -> [bool; 3] {
     let source = categories(value.space());
     let target = categories(destination);
     let missing = value.channels().map(|value| value.is_none());
@@ -98,7 +53,7 @@ fn carried(value: CssUsedColor, destination: Space) -> [bool; 3] {
 // Color4§4.4.1: apply only in the conversion phase. Missing hue is not
 // replaced with zero. Tiny positive colorfulness is zeroed when powerless;
 // negative extended values are not gamut-clamped here.
-fn powerless(value: CssUsedColor) -> Result<CssUsedColor, Error> {
+fn powerless(value: Color) -> Result<Color, ColorError> {
     let space = value.space();
     let mut channels = value.channels();
     let Some(index) = hue_index(space) else {
@@ -135,22 +90,22 @@ fn powerless(value: CssUsedColor) -> Result<CssUsedColor, Error> {
     {
         channels[component] = Some(0.0);
     }
-    Ok(CssUsedColor::try_new(space, channels, value.alpha())?)
+    Color::try_new(space, channels, value.alpha())
 }
 
-pub(crate) fn prepare(value: CssUsedColor, destination: Space) -> Result<CssUsedColor, Error> {
+pub(crate) fn prepare(value: Color, destination: Space) -> Result<Color, ColorError> {
     if value.space() == destination {
         return Ok(value);
     }
     let carry = carried(value, destination);
-    let converted = powerless(powerless(value)?.convert(destination)?)?;
+    let converted = powerless(powerless(value)?.converted(destination)?)?;
     let mut channels = converted.channels();
     for i in 0..3 {
         if carry[i] {
             channels[i] = None;
         }
     }
-    Ok(CssUsedColor::try_new(destination, channels, value.alpha())?)
+    Color::try_new(destination, channels, value.alpha())
 }
 
 fn hue_pair(mut first: f64, mut second: f64, method: Hue) -> (f64, f64) {
@@ -170,11 +125,11 @@ fn hue_pair(mut first: f64, mut second: f64, method: Hue) -> (f64, f64) {
 }
 
 pub(crate) fn interpolate(
-    first: CssUsedColor,
-    second: CssUsedColor,
+    first: Color,
+    second: Color,
     method: Method,
     progress: f64,
-) -> Result<CssUsedColor, Error> {
+) -> Result<Color, Error> {
     if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
         return Err(Error::InvalidProgress);
     }
@@ -219,16 +174,16 @@ pub(crate) fn interpolate(
             channels[i] = Some(value);
         }
     }
-    Ok(CssUsedColor::try_new(method.space(), channels, alpha)?)
+    Ok(Color::try_new(method.space(), channels, alpha)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CssPredefinedColorSpace as Predefined;
+    use crate::PredefinedColorSpace as Predefined;
     const SRGB: Space = Space::Predefined(Predefined::Srgb);
-    fn color(space: Space, channels: [Option<f64>; 3], alpha: Option<f64>) -> CssUsedColor {
-        CssUsedColor::try_new(space, channels, alpha).unwrap()
+    fn color(space: Space, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {
+        Color::try_new(space, channels, alpha).unwrap()
     }
     fn method(space: Space, hue: Option<Hue>) -> Method {
         Method::try_new(space, hue).unwrap()
@@ -240,7 +195,7 @@ mod tests {
     fn numerical_methods_resolve_polar_omission_and_reject_rectangular_hue() {
         assert_eq!(
             Method::try_new(SRGB, Some(Hue::Shorter)),
-            Err(MethodError::HueRequiresPolarSpace)
+            Err(Error::HueRequiresPolarSpace)
         );
         assert_eq!(
             Method::try_new(Space::Oklch, None),
@@ -250,8 +205,8 @@ mod tests {
         for progress in [f64::NAN, f64::INFINITY, -0.1, 1.1] {
             assert_eq!(
                 interpolate(
-                    CssUsedColor::opaque_black(),
-                    CssUsedColor::opaque_black(),
+                    Color::opaque_black(),
+                    Color::opaque_black(),
                     method(SRGB, None),
                     progress
                 ),

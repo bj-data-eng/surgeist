@@ -153,37 +153,42 @@
 //! checked branches and enforce the complete composed subtree's 256-level ceiling.
 //! Color pairs remain contextual; image pairs may contain two `none` branches.
 //! Specified serialization shares the enclosing resource budget and preserves both
-//! branches. Downstream style owns used-scheme selection and resource resolution.
+//! branches. [`CssColorOperation`] selects color branches from an explicit
+//! [`CssColorSchemeFact`]; consumers supply that fact and select image branches
+//! and resources.
 //! [`CssContrastColor::try_new`] retains one checked symbolic color input, enforcing
 //! the complete composed depth ceiling. Its input uses ordinary Standalone specified
-//! serialization under the enclosing budget. Downstream style evaluates contrast
-//! and chooses white or black; authored CSS retains the input unchanged.
+//! serialization under the enclosing budget. [`CssColorOperation`] resolves
+//! admitted source and facts, then uses [`surgeist_color::Color::black_white_contrast`]
+//! to choose white or black; authored CSS retains the input unchanged.
 //! [`CssDeviceCmykColor::try_new`] retains four ordered, unbounded ink channels
 //! and optional alpha. Legacy form is number-only with no alpha; modern form
 //! also accepts percentages and `none`. [`CssColor::device_cmyk_value`] borrows
 //! the device-dependent input. Declared Standalone/Mix output scales direct
 //! percentages to numbers; Origin preserves their domains and explicit alpha.
 //! Calculations remain symbolic, and every child shares the enclosing depth and
-//! serialization limits. The independent concrete-sample helpers
-//! [`naively_convert_cmyk_to_srgba`] and [`naively_convert_srgba_to_cmyk`] implement
+//! serialization limits. The numerical owner, [`surgeist_color`], supplies the
+//! independent concrete-sample helpers
+//! [`surgeist_color::naively_convert_cmyk_to_srgba`] and [`surgeist_color::naively_convert_srgba_to_cmyk`] implement
 //! the uncalibrated Color 5 numerical fallback with finite `f64` coordinates.
 //! They preserve alpha bits and do not resolve authored colors or device profiles.
-//! Contextual conversion and computed output belong later.
-//! [`convert_lab_to_lch`] and [`convert_oklab_to_oklch`] provide pure numerical
+//! Source resolution consults explicit [`CssDeviceColorFact`] values; those
+//! contextual choices remain CSS-owned.
+//! [`surgeist_color::convert_lab_to_lch`] and [`surgeist_color::convert_oklab_to_oklch`] provide pure numerical
 //! rectangular-to-polar coordinates from Color 4, with space-specific missing-hue
-//! thresholds. [`CssPolarColorCoordinates`] checks finite lightness/chroma and
-//! normalizes optional hue; [`convert_lch_to_lab`] and [`convert_oklch_to_oklab`]
+//! thresholds. [`surgeist_color::PolarCoordinates`] checks finite lightness/chroma and
+//! normalizes optional hue; [`surgeist_color::convert_lch_to_lab`] and [`surgeist_color::convert_oklch_to_oklab`]
 //! invert those coordinates, setting both axes to zero when hue is missing.
 //! These helpers use concrete number units independently of authored colors.
-//! [`CssHslColorCoordinates`] and [`CssHwbColorCoordinates`] describe concrete
+//! [`surgeist_color::HslCoordinates`] and [`surgeist_color::HwbCoordinates`] describe concrete
 //! HSL and HWB coordinates with optional degree hue and percentage reference
-//! units. [`convert_hsl_to_srgb`], [`convert_srgb_to_hsl`],
-//! [`convert_hwb_to_srgb`] and [`convert_srgb_to_hwb`] convert encoded sRGB
+//! units. [`surgeist_color::convert_hsl_to_srgb`], [`surgeist_color::convert_srgb_to_hsl`],
+//! [`surgeist_color::convert_hwb_to_srgb`] and [`surgeist_color::convert_srgb_to_hwb`] convert encoded sRGB
 //! samples without gamut clipping. Inverse conversion marks powerless hue
 //! missing while retaining the other coordinates; forward missing hue uses zero.
-//! [`CssRectangularColorCoordinates`] checks concrete RGB, XYZ, Lab and Oklab
-//! channels with explicit missingness. Its [`convert_to`](CssRectangularColorCoordinates::convert_to)
-//! method converts among [`CssRectangularColorSpace`] values without gamut
+//! [`surgeist_color::RectangularCoordinates`] checks concrete RGB, XYZ, Lab and Oklab
+//! channels with explicit missingness. Its [`convert_to`](surgeist_color::RectangularCoordinates::convert_to)
+//! method converts among [`surgeist_color::RectangularSpace`] values without gamut
 //! clipping, preserving intermediate range with binary64 significand precision.
 //! Same-space conversion retains all bits; cross-space missing channels become
 //! zero locally. Alpha and authored expression evaluation remain separate.
@@ -1354,8 +1359,9 @@
 //! }
 //! ```
 //!
-//! ```compile_fail
-//! use surgeist_css::{CssPredefinedColorSpace, CssRelativeColorFunction};
+//! ```compile_fail,E0004
+//! use surgeist_color::PredefinedColorSpace;
+//! use surgeist_css::CssRelativeColorFunction;
 //!
 //! fn describe(value: CssRelativeColorFunction) -> &'static str {
 //!     match value {
@@ -1366,7 +1372,7 @@
 //!         CssRelativeColorFunction::Lch => "lch",
 //!         CssRelativeColorFunction::Oklab => "oklab",
 //!         CssRelativeColorFunction::Oklch => "oklch",
-//!         CssRelativeColorFunction::Color(CssPredefinedColorSpace::Srgb) => "srgb",
+//!         CssRelativeColorFunction::Color(PredefinedColorSpace::Srgb) => "srgb",
 //!         CssRelativeColorFunction::Color(_) => "other color space",
 //!     }
 //! }
@@ -1644,12 +1650,15 @@
 //! # Boundary
 //!
 //! This crate owns authored CSS syntax, intrinsic grammar validation, recovery
-//! boundaries, diagnostic provenance, and support metadata. It does not apply
-//! cascade or inheritance; substitute custom properties; validate computed
-//! post-substitution values; evaluate queries; match selectors; resolve URLs,
-//! resources, units, or colors; perform layout, painting, or animation; expose a
-//! mutable CSSOM; or lower CSS into sibling Surgeist types.
+//! boundaries, diagnostic provenance, support metadata and bounded source color
+//! resolution over explicit supplied facts. Numerical color values, conversion,
+//! interpolation and resolved serialization belong to [`surgeist_color`].
+//! CSS does not apply cascade or inheritance; substitute custom properties;
+//! validate computed post-substitution values; evaluate queries; match selectors;
+//! resolve URLs, resources or general style units; perform layout, painting or
+//! animation; or expose a mutable CSSOM.
 
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 mod background_layer_serialization;
 mod background_serialization;
 mod border_color;
@@ -1804,13 +1813,12 @@ pub use color::{
     CssColorOrdinaryOutcome, CssColorOrdinaryResource, CssColorOrdinaryResult,
     CssColorPaletteEntry, CssColorParseOutcome, CssColorProfileAvailability,
     CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
-    CssColorPropertyFacts, CssColorProtocolError, CssColorSchemeFact, CssColorSerialization,
-    CssColorSerializationAction, CssColorSerializationReceipt, CssColorSerializationRequest,
-    CssColorSlot, CssColorSlotKind, CssColorSourceDescriptor, CssColorStandardFailure,
+    CssColorPropertyFacts, CssColorProtocolError, CssColorResolutionSite, CssColorSchemeFact,
+    CssColorSerialization, CssColorSerializationAction, CssColorSerializationReceipt, CssColorSlot,
+    CssColorSlotKind, CssColorSourceDescriptor, CssColorStandardFailure,
     CssColorStandardFailureKind, CssColorTransformAction, CssColorTransformation,
-    CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssUsedColor,
-    CssUsedColorCheckpoint, CssUsedColorError, CssUsedColorTransformation, parse_used_color,
-    serialize_used_color,
+    CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssUsedColorCheckpoint,
+    parse_used_color,
 };
 mod color_alpha;
 mod color_scalar;
@@ -1819,23 +1827,18 @@ mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
-mod finite_format;
 mod frequency;
 mod gap;
 mod grid_template_areas;
-mod hsl_color_conversion;
 mod inset;
 mod integer_value;
 mod item_flow;
-mod lab_color_conversion;
-mod naive_color_conversion;
 mod numeric;
 mod numeric_formatting;
 mod opacity_scalar;
 mod page_line_minimum;
 mod pending_serialization;
 mod position_serialization;
-mod rectangular_color_conversion;
 mod resolution;
 mod rotate;
 mod scroll_snap;
@@ -2058,18 +2061,7 @@ pub use font_palette::*;
 pub use font_palette_values::*;
 pub use font_synthesis::*;
 pub use font_variant::*;
-pub use hsl_color_conversion::{
-    CssHslColorCoordinates, CssHslHwbConversionError, CssHwbColorCoordinates, convert_hsl_to_srgb,
-    convert_hwb_to_srgb, convert_srgb_to_hsl, convert_srgb_to_hwb,
-};
-pub use lab_color_conversion::{
-    CssPolarColorConversionError, CssPolarColorCoordinates, convert_lab_to_lch, convert_lch_to_lab,
-    convert_oklab_to_oklch, convert_oklch_to_oklab,
-};
 pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
-pub use naive_color_conversion::{
-    CssNaiveColorConversionError, naively_convert_cmyk_to_srgba, naively_convert_srgba_to_cmyk,
-};
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,
@@ -2106,9 +2098,6 @@ pub use properties::*;
 pub use property_value::{
     CssPropertyValueErrorKind, CssPropertyValueParseError, parse_margin_property_value,
     parse_page_property_value, parse_property_value, parse_property_value_for_grammar,
-};
-pub use rectangular_color_conversion::{
-    CssRectangularColorConversionError, CssRectangularColorCoordinates, CssRectangularColorSpace,
 };
 pub use report::*;
 pub use source::*;

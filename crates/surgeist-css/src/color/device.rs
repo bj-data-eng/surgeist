@@ -2,8 +2,8 @@
 
 use super::channels::{self, Component, Domain, Error as ChannelError};
 use super::facts::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
-use super::{CssUsedColor, CssUsedColorError};
-use crate::{CssColorInterpolationSpace as Space, CssColorSyntax, CssPredefinedColorSpace};
+use super::{Color, ColorError};
+use crate::{ColorSpace as Space, CssColorSyntax, PredefinedColorSpace};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ComputedCmyk {
@@ -38,16 +38,19 @@ impl ComputedCmyk {
             alpha: channels::alpha(alpha, legacy)?,
         })
     }
-    fn naive(self) -> Result<CssUsedColor, CssUsedColorError> {
+    fn naive(self) -> Result<Color, ColorError> {
         let [c, m, y, k] = self.channels.map(|value| value.unwrap_or(0.0));
-        let result = crate::naively_convert_cmyk_to_srgba([c, m, y, k, self.alpha.unwrap_or(1.0)])
-            .map_err(|_| CssUsedColorError::Unrepresentable)?;
-        CssUsedColor::try_new(
-            Space::Predefined(CssPredefinedColorSpace::Srgb),
+        let result =
+            surgeist_color::naively_convert_cmyk_to_srgba([c, m, y, k, self.alpha.unwrap_or(1.0)])
+                .map_err(|_| ColorError::Unrepresentable)?;
+        Color::try_new(
+            Space::Predefined(PredefinedColorSpace::Srgb),
             [Some(result[0]), Some(result[1]), Some(result[2])],
             self.alpha,
         )
-        .map(CssUsedColor::with_legacy_srgb)
+        .and_then(|value| {
+            value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)
+        })
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,7 +60,7 @@ pub(crate) enum DeviceError {
     Unavailable,
     ConversionMismatch,
     InvalidFacts,
-    Numerical(CssUsedColorError),
+    Numerical(ColorError),
     Stopped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -79,7 +82,7 @@ enum State {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DeviceResult {
-    pub(crate) value: CssUsedColor,
+    pub(crate) value: Color,
     pub(crate) facts: CssColorFactIdentity,
     pub(crate) resource: Option<CssColorFactIdentity>,
     pub(crate) intent: Option<crate::CssColorProfileRenderingIntent>,
@@ -185,7 +188,7 @@ impl<'facts> DeviceResolution<'facts> {
                 let CssDeviceColorFact::Resolved(record) = self.facts.device else {
                     return self.fail(DeviceError::InvalidFacts);
                 };
-                let value = match record.value.with_resolved_alpha(self.computed.alpha) {
+                let value = match record.value.with_alpha(self.computed.alpha) {
                     Ok(value) => value,
                     Err(error) => return self.fail(DeviceError::Numerical(error)),
                 };
@@ -305,7 +308,7 @@ mod tests {
         .unwrap();
         let profile = CssColorFactIdentity::new(9, 8);
         let input = [0.25; 4];
-        let lab = CssUsedColor::try_new(
+        let lab = Color::try_new(
             Space::Lab,
             [Some(45.06), Some(45.477), Some(35.459)],
             Some(1.0),

@@ -6,6 +6,7 @@ use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
     specified_serialization::SpecifiedSerializationContext,
 };
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -321,9 +322,9 @@ fn schedule_mix<'a>(
 }
 
 pub(crate) fn is_default_mix(value: &CssColorInterpolation) -> bool {
-    value.predefined().is_some_and(|value| {
-        value.space() == CssColorInterpolationSpace::Oklab && value.hue().is_none()
-    })
+    value
+        .predefined()
+        .is_some_and(|value| value.space() == ColorSpace::Oklab && value.hue().is_none())
 }
 
 fn escaped_identifier(value: &str, context: &SpecifiedSerializationContext) -> Result<String> {
@@ -361,17 +362,18 @@ fn relative_function(value: &CssRelativeColorFunction) -> (&'static str, Option<
     }
 }
 
-fn predefined_name(value: CssPredefinedColorSpace) -> &'static str {
+fn predefined_name(value: PredefinedColorSpace) -> &'static str {
     match value {
-        CssPredefinedColorSpace::Srgb => "srgb",
-        CssPredefinedColorSpace::SrgbLinear => "srgb-linear",
-        CssPredefinedColorSpace::DisplayP3 => "display-p3",
-        CssPredefinedColorSpace::DisplayP3Linear => "display-p3-linear",
-        CssPredefinedColorSpace::A98Rgb => "a98-rgb",
-        CssPredefinedColorSpace::ProphotoRgb => "prophoto-rgb",
-        CssPredefinedColorSpace::Rec2020 => "rec2020",
-        CssPredefinedColorSpace::XyzD50 => "xyz-d50",
-        CssPredefinedColorSpace::XyzD65 => "xyz-d65",
+        PredefinedColorSpace::Srgb => "srgb",
+        PredefinedColorSpace::SrgbLinear => "srgb-linear",
+        PredefinedColorSpace::DisplayP3 => "display-p3",
+        PredefinedColorSpace::DisplayP3Linear => "display-p3-linear",
+        PredefinedColorSpace::A98Rgb => "a98-rgb",
+        PredefinedColorSpace::ProphotoRgb => "prophoto-rgb",
+        PredefinedColorSpace::Rec2020 => "rec2020",
+        PredefinedColorSpace::XyzD50 => "xyz-d50",
+        PredefinedColorSpace::XyzD65 => "xyz-d65",
+        _ => unreachable!("all spaces in the pinned numerical color edition are handled"),
     }
 }
 
@@ -1232,7 +1234,7 @@ fn serialize_hex(
     if let Some(alpha) = alpha {
         out.push(if modern { " / " } else { ", " })?;
         out.push(&crate::specified_serialization::format_binary64(
-            crate::color::alpha::byte_alpha_for_serialization(alpha),
+            surgeist_color::byte_alpha_for_serialization(alpha),
         ))?;
     }
     out.push(")")?;
@@ -2633,24 +2635,23 @@ pub(crate) fn serialize_interpolation(
 
 fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String {
     let mut result = match value.space() {
-        CssColorInterpolationSpace::Predefined(value) => predefined_name(value).to_owned(),
-        CssColorInterpolationSpace::Hsl => "hsl".into(),
-        CssColorInterpolationSpace::Hwb => "hwb".into(),
-        CssColorInterpolationSpace::Lab => "lab".into(),
-        CssColorInterpolationSpace::Lch => "lch".into(),
-        CssColorInterpolationSpace::Oklab => "oklab".into(),
-        CssColorInterpolationSpace::Oklch => "oklch".into(),
+        ColorSpace::Predefined(value) => predefined_name(value).to_owned(),
+        ColorSpace::Hsl => "hsl".into(),
+        ColorSpace::Hwb => "hwb".into(),
+        ColorSpace::Lab => "lab".into(),
+        ColorSpace::Lch => "lch".into(),
+        ColorSpace::Oklab => "oklab".into(),
+        ColorSpace::Oklch => "oklch".into(),
+        _ => unreachable!("all spaces in the pinned numerical color edition are handled"),
     };
-    if let Some(hue) = value
-        .hue()
-        .filter(|hue| *hue != CssHueInterpolationMethod::Shorter)
-    {
+    if let Some(hue) = value.hue().filter(|hue| *hue != HueInterpolation::Shorter) {
         result.push(' ');
         result.push_str(match hue {
-            CssHueInterpolationMethod::Shorter => "shorter hue",
-            CssHueInterpolationMethod::Longer => "longer hue",
-            CssHueInterpolationMethod::Increasing => "increasing hue",
-            CssHueInterpolationMethod::Decreasing => "decreasing hue",
+            HueInterpolation::Shorter => "shorter hue",
+            HueInterpolation::Longer => "longer hue",
+            HueInterpolation::Increasing => "increasing hue",
+            HueInterpolation::Decreasing => "decreasing hue",
+            _ => unreachable!("all hue methods in the pinned numerical color edition are handled"),
         });
     }
     result

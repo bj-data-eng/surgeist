@@ -221,7 +221,10 @@ fn assert_modern_color(value: &CssColor) {
     let value = value
         .predefined_value()
         .expect("preserved predefined color");
-    assert_eq!(value.color_space(), CssPredefinedColorSpace::DisplayP3);
+    assert_eq!(
+        value.color_space(),
+        surgeist_color::PredefinedColorSpace::DisplayP3
+    );
     for (channel, expected) in value.channels().iter().zip(["1", "0.5", "0"]) {
         assert!(matches!(channel,
             CssColorComponent::Number(number) if number.numeric().representation() == expected));

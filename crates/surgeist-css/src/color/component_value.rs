@@ -425,7 +425,7 @@ mod tests {
         );
         let binding = Binding::new(
             Environment::Rgb,
-            super::super::CssUsedColor::from_srgba8([255, 0, 0, 255]),
+            super::super::Color::from_srgba8([255, 0, 0, 255]),
         )
         .unwrap();
         let mut values = Vec::new();
@@ -449,8 +449,7 @@ mod tests {
             ),
             Ok(Component::number(1.0))
         );
-        let wrong =
-            Binding::new(Environment::Hsl, super::super::CssUsedColor::opaque_black()).unwrap();
+        let wrong = Binding::new(Environment::Hsl, super::super::Color::opaque_black()).unwrap();
         assert_eq!(
             evaluate(
                 &fixture,

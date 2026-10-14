@@ -7,18 +7,18 @@ use std::fmt;
 /// Downstream matches must allow future error variants:
 ///
 /// ```compile_fail
-/// use surgeist_css::CssPolarColorConversionError;
-/// fn classify(error: CssPolarColorConversionError) -> &'static str {
+/// use surgeist_color::PolarConversionError;
+/// fn classify(error: PolarConversionError) -> &'static str {
 ///     match error {
-///         CssPolarColorConversionError::NonFiniteInput { .. } => "input",
-///         CssPolarColorConversionError::NegativeChroma => "chroma",
-///         CssPolarColorConversionError::UnrepresentableResult => "result",
+///         PolarConversionError::NonFiniteInput { .. } => "input",
+///         PolarConversionError::NegativeChroma => "chroma",
+///         PolarConversionError::UnrepresentableResult => "result",
 ///     }
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssPolarColorConversionError {
+pub enum PolarConversionError {
     /// The first nonfinite coordinate in the documented L, a/C, b/H order.
     NonFiniteInput { component: usize },
     /// Chroma is negative; negative zero is accepted.
@@ -27,7 +27,7 @@ pub enum CssPolarColorConversionError {
     UnrepresentableResult,
 }
 
-impl fmt::Display for CssPolarColorConversionError {
+impl fmt::Display for PolarConversionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonFiniteInput { component } => write!(
@@ -41,7 +41,7 @@ impl fmt::Display for CssPolarColorConversionError {
     }
 }
 
-impl std::error::Error for CssPolarColorConversionError {}
+impl std::error::Error for PolarConversionError {}
 
 /// Finite concrete lightness, nonnegative chroma, and optional hue in degrees.
 ///
@@ -50,13 +50,13 @@ impl std::error::Error for CssPolarColorConversionError {}
 /// lies in `[0, 360)`; zero chroma and hue have positive-zero bits. Lightness
 /// retains its input bits, including negative zero. Missing hue is explicit.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssPolarColorCoordinates {
+pub struct PolarCoordinates {
     lightness: f64,
     chroma: f64,
     hue_degrees: Option<f64>,
 }
 
-impl CssPolarColorCoordinates {
+impl PolarCoordinates {
     /// Checks L, C, then present H for finiteness before rejecting negative C.
     ///
     /// Accepts extended finite lightness and chroma, normalizes present hue
@@ -65,8 +65,8 @@ impl CssPolarColorCoordinates {
     /// any chroma, and a present hue stays present even at zero chroma.
     ///
     /// ```
-    /// use surgeist_css::CssPolarColorCoordinates;
-    /// let polar = CssPolarColorCoordinates::try_new(-2.0, 5.0, Some(-90.0)).unwrap();
+    /// use surgeist_color::PolarCoordinates;
+    /// let polar = PolarCoordinates::try_new(-2.0, 5.0, Some(-90.0)).unwrap();
     /// assert_eq!(polar.lightness(), -2.0);
     /// assert_eq!(polar.chroma(), 5.0);
     /// assert_eq!(polar.hue_degrees(), Some(270.0));
@@ -75,10 +75,10 @@ impl CssPolarColorCoordinates {
         lightness: f64,
         chroma: f64,
         hue_degrees: Option<f64>,
-    ) -> Result<Self, CssPolarColorConversionError> {
+    ) -> Result<Self, PolarConversionError> {
         validate_input([lightness, chroma, hue_degrees.unwrap_or(0.0)])?;
         if chroma < 0.0 {
-            return Err(CssPolarColorConversionError::NegativeChroma);
+            return Err(PolarConversionError::NegativeChroma);
         }
         Ok(Self {
             lightness,
@@ -119,15 +119,13 @@ impl CssPolarColorCoordinates {
 /// inversion. This does not evaluate authored CSS or convert between spaces.
 ///
 /// ```
-/// use surgeist_css::convert_lab_to_lch;
+/// use surgeist_color::convert_lab_to_lch;
 /// let polar = convert_lab_to_lch([50.0, 3.0, 4.0]).unwrap();
 /// assert_eq!(polar.lightness(), 50.0);
 /// assert_eq!(polar.chroma(), 5.0);
 /// assert!((polar.hue_degrees().unwrap() - 53.13010235415598).abs() < 1e-12);
 /// ```
-pub fn convert_lab_to_lch(
-    lab: [f64; 3],
-) -> Result<CssPolarColorCoordinates, CssPolarColorConversionError> {
+pub fn convert_lab_to_lch(lab: [f64; 3]) -> Result<PolarCoordinates, PolarConversionError> {
     rectangular_to_polar(lab, 0.0015)
 }
 
@@ -139,14 +137,12 @@ pub fn convert_lab_to_lch(
 /// for C strictly greater than `0.000004`, as specified in §9.4.
 ///
 /// ```
-/// use surgeist_css::convert_oklab_to_oklch;
+/// use surgeist_color::convert_oklab_to_oklch;
 /// let polar = convert_oklab_to_oklch([0.5, 0.0, 0.2]).unwrap();
 /// assert_eq!(polar.chroma(), 0.2);
 /// assert_eq!(polar.hue_degrees(), Some(90.0));
 /// ```
-pub fn convert_oklab_to_oklch(
-    oklab: [f64; 3],
-) -> Result<CssPolarColorCoordinates, CssPolarColorConversionError> {
+pub fn convert_oklab_to_oklch(oklab: [f64; 3]) -> Result<PolarCoordinates, PolarConversionError> {
     rectangular_to_polar(oklab, 0.000004)
 }
 
@@ -158,12 +154,12 @@ pub fn convert_oklab_to_oklch(
 /// this infallible; an exact round trip is not promised.
 ///
 /// ```
-/// use surgeist_css::{CssPolarColorCoordinates, convert_lch_to_lab};
-/// let polar = CssPolarColorCoordinates::try_new(50.0, 5.0, None).unwrap();
+/// use surgeist_color::{PolarCoordinates, convert_lch_to_lab};
+/// let polar = PolarCoordinates::try_new(50.0, 5.0, None).unwrap();
 /// assert_eq!(convert_lch_to_lab(&polar), [50.0, 0.0, 0.0]);
 /// ```
 #[must_use]
-pub fn convert_lch_to_lab(lch: &CssPolarColorCoordinates) -> [f64; 3] {
+pub fn convert_lch_to_lab(lch: &PolarCoordinates) -> [f64; 3] {
     polar_to_rectangular(lch)
 }
 
@@ -173,19 +169,19 @@ pub fn convert_lch_to_lab(lch: &CssPolarColorCoordinates) -> [f64; 3] {
 /// lightness, and rounding contract, in Oklab number units (typical L `0..1`).
 ///
 /// ```
-/// use surgeist_css::{CssPolarColorCoordinates, convert_oklch_to_oklab};
-/// let polar = CssPolarColorCoordinates::try_new(0.5, 0.25, Some(0.0)).unwrap();
+/// use surgeist_color::{PolarCoordinates, convert_oklch_to_oklab};
+/// let polar = PolarCoordinates::try_new(0.5, 0.25, Some(0.0)).unwrap();
 /// assert_eq!(convert_oklch_to_oklab(&polar), [0.5, 0.25, 0.0]);
 /// ```
 #[must_use]
-pub fn convert_oklch_to_oklab(oklch: &CssPolarColorCoordinates) -> [f64; 3] {
+pub fn convert_oklch_to_oklab(oklch: &PolarCoordinates) -> [f64; 3] {
     polar_to_rectangular(oklch)
 }
 
-fn validate_input(input: [f64; 3]) -> Result<(), CssPolarColorConversionError> {
+fn validate_input(input: [f64; 3]) -> Result<(), PolarConversionError> {
     for (component, value) in input.iter().enumerate() {
         if !value.is_finite() {
-            return Err(CssPolarColorConversionError::NonFiniteInput { component });
+            return Err(PolarConversionError::NonFiniteInput { component });
         }
     }
     Ok(())
@@ -204,28 +200,28 @@ fn normalize_hue(hue: f64) -> f64 {
 fn rectangular_to_polar(
     input: [f64; 3],
     epsilon: f64,
-) -> Result<CssPolarColorCoordinates, CssPolarColorConversionError> {
+) -> Result<PolarCoordinates, PolarConversionError> {
     validate_input(input)?;
     let [lightness, a, b] = input;
     let chroma = a.hypot(b);
     if !chroma.is_finite() {
-        return Err(CssPolarColorConversionError::UnrepresentableResult);
+        return Err(PolarConversionError::UnrepresentableResult);
     }
     if chroma <= epsilon {
-        return Ok(CssPolarColorCoordinates {
+        return Ok(PolarCoordinates {
             lightness,
             chroma: 0.0,
             hue_degrees: None,
         });
     }
-    Ok(CssPolarColorCoordinates {
+    Ok(PolarCoordinates {
         lightness,
         chroma,
         hue_degrees: Some(normalize_hue(b.atan2(a).to_degrees())),
     })
 }
 
-fn polar_to_rectangular(polar: &CssPolarColorCoordinates) -> [f64; 3] {
+fn polar_to_rectangular(polar: &PolarCoordinates) -> [f64; 3] {
     match polar.hue_degrees {
         Some(hue) => {
             let (sine, cosine) = hue.to_radians().sin_cos();

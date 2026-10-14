@@ -3,7 +3,7 @@
 //! Caller storage remains outside this machine. A reached error terminates the
 //! operation without taking any bank; checkpoints contain no scratch index.
 
-use super::CssUsedColor;
+use super::Color;
 use super::component::{ComponentAction, SyntaxFailure};
 use super::facts::{CssColorFactIdentity, CssColorFacts};
 use super::grammar::{ColorGrammar, GrammarAction};
@@ -38,6 +38,10 @@ pub(crate) struct StandardFailure {
 pub(crate) enum Error {
     Protocol(CssColorProtocolError),
     Resolution(super::resolution::Error),
+    Numerical {
+        error: super::ColorError,
+        site: Span,
+    },
 }
 impl From<CssColorProtocolError> for Error {
     fn from(error: CssColorProtocolError) -> Self {
@@ -145,7 +149,7 @@ enum Phase<'owner, 'facts> {
         reason: StandardReason,
     },
     Used {
-        value: CssUsedColor,
+        value: Color,
         consumed: Span,
     },
     Standard(StandardFailure),
@@ -167,44 +171,16 @@ pub(crate) enum ParseOutcome<'owner, 'facts> {
     StandardFailure(FailureCheckpoint<'owner, 'facts>),
 }
 pub(crate) struct UsedCheckpoint<'owner, 'facts> {
-    context: CheckpointContext<'owner, 'facts>,
-    value: CssUsedColor,
-    standard_failure: Option<StandardFailure>,
+    pub(crate) context: CheckpointContext<'owner, 'facts>,
+    pub(crate) value: Color,
+    pub(crate) standard_failure: Option<StandardFailure>,
 }
 pub(crate) struct FailureCheckpoint<'owner, 'facts> {
     context: CheckpointContext<'owner, 'facts>,
     failure: StandardFailure,
 }
-pub(crate) struct Transformation<'owner, 'facts> {
-    checkpoint: UsedCheckpoint<'owner, 'facts>,
-    transformation: super::CssUsedColorTransformation,
-    state: TransformState,
-}
-enum TransformState {
-    Pending,
-    Done,
-    Stopped,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TransformationAction {
-    Compute(super::CssUsedColorTransformation),
-    Done,
-    Stopped,
-}
-pub(crate) struct Serialization<'owner, 'facts> {
-    context: CheckpointContext<'owner, 'facts>,
-    value: CssUsedColor,
-    standard_failure: Option<StandardFailure>,
-    cursor: super::serialize::UsedSerializer<'owner>,
-}
-pub(crate) struct SerializationReceipt<'owner, 'facts> {
-    pub(crate) context: CheckpointContext<'owner, 'facts>,
-    pub(crate) value: CssUsedColor,
-    pub(crate) standard_failure: Option<StandardFailure>,
-    pub(crate) output_length: usize,
-}
 impl<'owner, 'facts> UsedCheckpoint<'owner, 'facts> {
-    pub(crate) const fn value(&self) -> CssUsedColor {
+    pub(crate) const fn value(&self) -> Color {
         self.value
     }
     pub(crate) const fn context(&self) -> &CheckpointContext<'owner, 'facts> {
@@ -213,186 +189,17 @@ impl<'owner, 'facts> UsedCheckpoint<'owner, 'facts> {
     pub(crate) const fn standard_failure(&self) -> Option<StandardFailure> {
         self.standard_failure
     }
-    /// Phase qualification/overflow refusal completes before any caller move.
-    pub(crate) fn next_phase(&self) -> Result<usize, TransformError> {
-        self.context
-            .owner
-            .advance_from(self.context.phase)
-            .map_err(TransformError::Protocol)
-    }
-    pub(crate) fn transform_committed(
-        mut self,
-        transformation: super::CssUsedColorTransformation,
-        phase: usize,
-    ) -> Transformation<'owner, 'facts> {
-        self.context.phase = phase;
-        Transformation {
-            checkpoint: self,
-            transformation,
-            state: TransformState::Pending,
-        }
-    }
-    pub(crate) fn serialize_committed(
-        mut self,
-        request: super::CssColorSerializationRequest,
-        phase: usize,
-    ) -> Serialization<'owner, 'facts> {
-        self.context.phase = phase;
-        Serialization {
-            cursor: super::serialize::UsedSerializer::start_phase(
-                self.context.owner,
-                phase,
-                self.value,
-                request,
-            ),
-            context: self.context,
-            value: self.value,
-            standard_failure: self.standard_failure,
-        }
-    }
-    #[cfg(test)]
-    fn transform(
-        slot: &mut Option<Self>,
-        transformation: super::CssUsedColorTransformation,
-    ) -> Result<Transformation<'owner, 'facts>, TransformError> {
-        let phase = slot
-            .as_ref()
-            .ok_or(TransformError::Protocol(CssColorProtocolError::EmptySlot))?
-            .next_phase()?;
-        let Some(checkpoint) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
-        Ok(checkpoint.transform_committed(transformation, phase))
-    }
-    #[cfg(test)]
-    fn serialize(
-        slot: &mut Option<Self>,
-        request: super::CssColorSerializationRequest,
-    ) -> Result<Serialization<'owner, 'facts>, TransformError> {
-        let phase = slot
-            .as_ref()
-            .ok_or(TransformError::Protocol(CssColorProtocolError::EmptySlot))?
-            .next_phase()?;
-        let Some(checkpoint) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
-        Ok(checkpoint.serialize_committed(request, phase))
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TransformError {
-    Protocol(CssColorProtocolError),
-    Numerical(super::CssUsedColorError),
-}
-impl<'owner, 'facts> Transformation<'owner, 'facts> {
-    pub(crate) fn action(&self) -> TransformationAction {
-        match self.state {
-            TransformState::Pending => TransformationAction::Compute(self.transformation),
-            TransformState::Done => TransformationAction::Done,
-            TransformState::Stopped => TransformationAction::Stopped,
-        }
-    }
-    pub(crate) fn compute(&mut self) -> Result<(), TransformError> {
-        if !matches!(self.state, TransformState::Pending) {
-            return Err(TransformError::Protocol(CssColorProtocolError::WrongAction));
-        }
-        let value = self
-            .checkpoint
-            .value
-            .transformed(self.transformation)
-            .map_err(TransformError::Numerical)?;
-        self.checkpoint.value = value;
-        self.state = TransformState::Done;
-        Ok(())
-    }
-    pub(crate) fn abandon(&mut self) {
-        self.state = TransformState::Stopped;
-    }
-    pub(crate) fn check_completed(&self) -> Result<(), TransformError> {
-        if matches!(self.state, TransformState::Done) {
-            Ok(())
-        } else {
-            Err(TransformError::Protocol(CssColorProtocolError::Terminal))
-        }
-    }
-    pub(crate) fn into_completed(self) -> UsedCheckpoint<'owner, 'facts> {
-        self.checkpoint
-    }
-    #[cfg(test)]
-    fn take(slot: &mut Option<Self>) -> Result<UsedCheckpoint<'owner, 'facts>, TransformError> {
-        slot.as_ref()
-            .ok_or(TransformError::Protocol(CssColorProtocolError::EmptySlot))?
-            .check_completed()?;
-        let Some(transformation) = slot.take() else {
-            unreachable!("slot preflight proved Some")
-        };
-        Ok(transformation.into_completed())
-    }
-    pub(crate) fn recover(self) -> UsedCheckpoint<'owner, 'facts> {
-        self.checkpoint
-    }
 }
 impl<'owner, 'facts> FailureCheckpoint<'owner, 'facts> {
     pub(crate) const fn failure(&self) -> StandardFailure {
         self.failure
     }
-    /// Only a genuine standard failure has this transition. The consuming
-    /// language supplies its explicit checked fallback without reparsing.
-    pub(crate) fn fallback(self, value: CssUsedColor) -> UsedCheckpoint<'owner, 'facts> {
+    pub(crate) fn fallback(self, value: Color) -> UsedCheckpoint<'owner, 'facts> {
         UsedCheckpoint {
             context: self.context,
             value,
             standard_failure: Some(self.failure),
         }
-    }
-}
-impl<'owner, 'facts> Serialization<'owner, 'facts> {
-    pub(crate) fn action(&self) -> super::serialize::SerializationAction {
-        self.cursor.action()
-    }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        self.cursor.kernel()
-    }
-    pub(crate) fn compute(&mut self) -> Result<(), super::serialize::SerializationError> {
-        self.cursor.compute()
-    }
-    pub(crate) fn read_digit(
-        &mut self,
-        index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
-        self.cursor.read_digit(index, slot)
-    }
-    pub(crate) fn pending_record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
-        self.cursor.digit_record(index)
-    }
-    pub(crate) fn written(
-        &mut self,
-        index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
-        self.cursor.digit_written(index, slot)
-    }
-    pub(crate) fn emitted(&mut self, unit: u8) -> Result<(), CssColorProtocolError> {
-        self.cursor.emitted(unit)
-    }
-    pub(crate) fn abandon(&mut self) {
-        self.cursor.abandon();
-    }
-    pub(crate) fn take(
-        self,
-    ) -> Result<SerializationReceipt<'owner, 'facts>, CssColorProtocolError> {
-        let output_length = self.cursor.completed_length()?;
-        Ok(SerializationReceipt {
-            context: self.context,
-            value: self.value,
-            standard_failure: self.standard_failure,
-            output_length,
-        })
     }
 }
 pub(crate) struct ParseUsed<'owner, 'facts> {
@@ -800,6 +607,28 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
     fn resolution_error(&mut self, error: super::resolution::Error) -> Result<(), Error> {
         use super::profile_conversion::Error as C;
         use super::resolution::Error as R;
+        let numerical = match error {
+            R::Numerical(e)
+            | R::Channel(super::channels::Error::Numerical(e))
+            | R::Component(super::component_value::Error::Channel(
+                super::channels::Error::Numerical(e),
+            ))
+            | R::Conversion(C::Numerical(e))
+            | R::Device(super::device::DeviceError::Numerical(e))
+            | R::Interpolation(super::interpolate::Error::Numerical(e)) => Some(e),
+            R::Interpolation(super::interpolate::Error::Overflow) => {
+                Some(super::ColorError::Unrepresentable)
+            }
+            _ => None,
+        };
+        if let Some(error) = numerical {
+            let Phase::Resolution(cursor) = &self.phase else {
+                return Err(CssColorProtocolError::WrongAction.into());
+            };
+            let site = cursor.reached_source();
+            self.abandon();
+            return Err(Error::Numerical { error, site });
+        }
         // Only an actual standard-invalid branch can mint a fallback checkpoint.
         let reason = match error {
             R::Conversion(C::InvalidColor) => Some(StandardReason::InvalidProfile),
@@ -1030,9 +859,12 @@ fn same_lexical(left: &CssColorSlot<'_>, right: &CssColorSlot<'_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::facts::{CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact};
-    use super::super::serialize::SerializationAction;
-    use super::super::{CssColorSerializationRequest, CssUsedColorTransformation};
     use super::*;
+    use crate::{
+        CssColorActionDescription as PublicAction, CssColorBankLengths, CssColorSerialization,
+        CssColorTransformation, CssUsedColorCheckpoint,
+    };
+    use surgeist_color::{SerializationRequest, Transformation};
     fn facts() -> CssColorFacts<'static> {
         CssColorFacts::new(
             CssColorFactIdentity::new(3, 5),
@@ -1115,70 +947,87 @@ mod tests {
         checkpoint: UsedCheckpoint<'_, '_>,
         cap: usize,
     ) -> Result<(String, usize, Option<StandardFailure>), usize> {
-        let mut serializer = UsedCheckpoint::serialize(
-            &mut Some(checkpoint),
-            CssColorSerializationRequest::HtmlCompatible,
-        )
-        .expect("phase transition");
+        let failure = checkpoint.standard_failure();
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
+        let mut serializer = Some(
+            CssUsedColorCheckpoint::serialize(
+                &mut Some(CssUsedColorCheckpoint { checkpoint }),
+                &mut numerical_owner,
+                SerializationRequest::HtmlCompatible,
+                CssColorBankLengths::new(0, 0, 0),
+                0,
+            )
+            .unwrap(),
+        );
         let mut digits = Vec::new();
         let mut output = Vec::new();
         loop {
-            match serializer.action() {
-                SerializationAction::Plan | SerializationAction::Compute => {
-                    serializer.compute().unwrap()
+            let current = serializer.as_mut().unwrap();
+            if current.action() == PublicAction::Serialized {
+                break;
+            }
+            let mut action = current.next_action();
+            match action.description() {
+                PublicAction::Compute(_) => action.compute().unwrap(),
+                PublicAction::ReadNumericalDigit { index } => {
+                    action.read_numerical_digit(index, &digits[index]).unwrap()
                 }
-                SerializationAction::ReadDigit { index } => {
-                    serializer.read_digit(index, &digits[index]).unwrap()
-                }
-                SerializationAction::AppendDigit { index } => {
+                PublicAction::AppendNumericalDigit { index } => {
                     assert_eq!(index, digits.len());
-                    digits.push(serializer.pending_record(index).unwrap());
-                    serializer.written(index, &digits[index]).unwrap();
+                    digits.push(action.numerical_record().unwrap());
+                    action.numerical_written(index, &digits[index]).unwrap()
                 }
-                SerializationAction::ReplaceDigit { index } => {
-                    digits[index] = serializer.pending_record(index).unwrap();
-                    serializer.written(index, &digits[index]).unwrap();
+                PublicAction::UpdateNumericalDigit { index } => {
+                    digits[index] = action.numerical_record().unwrap();
+                    action.numerical_written(index, &digits[index]).unwrap()
                 }
-                SerializationAction::Emit { unit } => {
+                PublicAction::EmitUnit { unit } => {
                     if output.len() == cap {
-                        serializer.abandon();
-                        assert_eq!(serializer.action(), SerializationAction::Stopped);
-                        assert!(serializer.take().is_err());
+                        serializer.as_mut().unwrap().abandon();
+                        assert!(CssColorSerialization::take(&mut serializer).is_err());
                         digits.clear();
                         return Err(output.len());
                     }
                     output.push(unit);
-                    serializer.emitted(unit).unwrap();
+                    action.emitted(unit).unwrap()
                 }
-                SerializationAction::Done => break,
-                SerializationAction::Stopped => panic!("unexpected serializer stop"),
+                other => panic!("unexpected {other:?}"),
             }
         }
-        let receipt = serializer.take().unwrap();
-        assert_eq!(receipt.context.expected, receipt.context.facts.identity);
-        assert_eq!(receipt.value.alpha(), Some(1.0));
-        digits.clear();
+        let receipt = CssColorSerialization::take(&mut serializer).unwrap();
+        assert_eq!(receipt.value().alpha(), Some(1.0));
+        assert_eq!(receipt.standard_failure().is_some(), failure.is_some());
         Ok((
             String::from_utf8(output).unwrap(),
-            receipt.output_length,
-            receipt.standard_failure,
+            receipt.length(),
+            failure,
         ))
     }
     fn transform<'owner, 'facts>(
         checkpoint: UsedCheckpoint<'owner, 'facts>,
-        action: CssUsedColorTransformation,
+        effect: Transformation,
     ) -> UsedCheckpoint<'owner, 'facts> {
-        let old_phase = checkpoint.context().phase;
-        let mut transformation =
-            UsedCheckpoint::transform(&mut Some(checkpoint), action).expect("phase starts");
-        assert_eq!(
-            transformation.action(),
-            TransformationAction::Compute(action)
+        let old_phase = checkpoint.context.phase;
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
+        let mut transformation = Some(
+            CssUsedColorCheckpoint::transform(
+                &mut Some(CssUsedColorCheckpoint { checkpoint }),
+                &mut numerical_owner,
+                effect,
+                CssColorBankLengths::new(0, 0, 0),
+            )
+            .unwrap(),
         );
-        transformation.compute().unwrap();
-        assert_eq!(transformation.action(), TransformationAction::Done);
-        let checkpoint = Transformation::take(&mut Some(transformation)).expect("fixed result");
-        assert_eq!(checkpoint.context().phase, old_phase + 1);
+        transformation
+            .as_mut()
+            .unwrap()
+            .next_action()
+            .compute()
+            .unwrap();
+        let checkpoint = CssColorTransformation::take(&mut transformation)
+            .unwrap()
+            .checkpoint;
+        assert_eq!(checkpoint.context.phase, old_phase + 1);
         checkpoint
     }
     #[test]
@@ -1203,14 +1052,14 @@ mod tests {
             assert_eq!(checkpoint.value().alpha(), Some(0.2));
             assert_eq!(checkpoint.standard_failure(), None);
             assert_eq!(checkpoint.context().request, GrammarRequest::WholeColor);
-            let checkpoint = transform(checkpoint, CssUsedColorTransformation::ForceOpaqueAlpha);
+            let checkpoint = transform(checkpoint, Transformation::ForceOpaqueAlpha);
             let checkpoint = transform(
                 checkpoint,
-                CssUsedColorTransformation::Convert(crate::CssColorInterpolationSpace::Predefined(
-                    crate::CssPredefinedColorSpace::Srgb,
+                Transformation::Convert(crate::ColorSpace::Predefined(
+                    crate::PredefinedColorSpace::Srgb,
                 )),
             );
-            let checkpoint = transform(checkpoint, CssUsedColorTransformation::QuantizeSrgb);
+            let checkpoint = transform(checkpoint, Transformation::QuantizeSrgb);
             assert_eq!(
                 serialize(checkpoint, cap),
                 if cap == 6 {
@@ -1239,7 +1088,7 @@ mod tests {
         let failure = checkpoint.failure();
         assert_eq!(failure.reason, StandardReason::ComponentGrammar);
         assert_eq!(failure.source, Span { start: 4, end: 9 });
-        let checkpoint = checkpoint.fallback(CssUsedColor::opaque_black());
+        let checkpoint = checkpoint.fallback(Color::opaque_black());
         assert_eq!(checkpoint.standard_failure(), Some(failure));
         assert_eq!(
             serialize(checkpoint, 7),
@@ -1310,21 +1159,29 @@ mod tests {
             panic!("finite channels")
         };
         let original = checkpoint.value();
-        let mut transformation = UsedCheckpoint::transform(
-            &mut Some(checkpoint),
-            CssUsedColorTransformation::Convert(crate::CssColorInterpolationSpace::Predefined(
-                crate::CssPredefinedColorSpace::XyzD65,
-            )),
-        )
-        .expect("phase starts");
-        assert_eq!(
-            transformation.compute(),
-            Err(TransformError::Numerical(
-                super::super::CssUsedColorError::Unrepresentable
-            ))
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
+        let mut transformation = Some(
+            CssUsedColorCheckpoint::transform(
+                &mut Some(CssUsedColorCheckpoint { checkpoint }),
+                &mut numerical_owner,
+                Transformation::Convert(crate::ColorSpace::Predefined(
+                    crate::PredefinedColorSpace::XyzD65,
+                )),
+                CssColorBankLengths::new(0, 0, 0),
+            )
+            .unwrap(),
         );
-        transformation.abandon();
-        let checkpoint = transformation.recover();
+        assert!(matches!(
+            transformation.as_mut().unwrap().next_action().compute(),
+            Err(crate::CssColorOperationError::Numerical {
+                error: super::super::ColorError::Unrepresentable,
+                ..
+            })
+        ));
+        transformation.as_mut().unwrap().abandon();
+        let checkpoint = CssColorTransformation::recover(&mut transformation)
+            .unwrap()
+            .checkpoint;
         assert!(checkpoint.value().identical(original));
         assert_eq!(checkpoint.standard_failure(), None);
     }

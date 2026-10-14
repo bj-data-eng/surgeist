@@ -1,8 +1,8 @@
 use super::wide::Wide;
-use crate::CssPredefinedColorSpace;
+use crate::PredefinedColorSpace;
 
-pub(super) fn decode(value: Wide, space: CssPredefinedColorSpace) -> Wide {
-    use CssPredefinedColorSpace::{A98Rgb, DisplayP3, ProphotoRgb, Rec2020, Srgb};
+pub(super) fn decode(value: Wide, space: PredefinedColorSpace) -> Wide {
+    use PredefinedColorSpace::{A98Rgb, DisplayP3, ProphotoRgb, Rec2020, Srgb};
     match space {
         Srgb | DisplayP3 => {
             if value.abs().greater_than(0.04045) {
@@ -29,8 +29,8 @@ pub(super) fn decode(value: Wide, space: CssPredefinedColorSpace) -> Wide {
     }
 }
 
-pub(super) fn encode(value: Wide, space: CssPredefinedColorSpace) -> Wide {
-    use CssPredefinedColorSpace::{A98Rgb, DisplayP3, ProphotoRgb, Rec2020, Srgb};
+pub(super) fn encode(value: Wide, space: PredefinedColorSpace) -> Wide {
+    use PredefinedColorSpace::{A98Rgb, DisplayP3, ProphotoRgb, Rec2020, Srgb};
     match space {
         Srgb | DisplayP3 => {
             if value.abs().greater_than(0.0031308) {

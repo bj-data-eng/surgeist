@@ -6,8 +6,8 @@ use super::facts::{
 };
 use super::profile::ProfileSelection;
 use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalTable};
-use super::{CssUsedColor, CssUsedColorError};
-use crate::{CssColorInterpolationSpace, tokenization::color_tokens::Span};
+use super::{Color, ColorError};
+use crate::{ColorSpace, tokenization::color_tokens::Span};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -18,7 +18,7 @@ pub(crate) enum Error {
     Unavailable,
     Unsupported,
     DuplicateConversion,
-    Numerical(CssUsedColorError),
+    Numerical(ColorError),
     Stopped,
 }
 fn checked_header(facts: &CssColorFacts<'_>, selection: ProfileSelection) -> Result<(), Error> {
@@ -323,7 +323,7 @@ enum ConversionState {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ProfileResult {
-    pub(crate) value: CssUsedColor,
+    pub(crate) value: Color,
     pub(crate) facts: CssColorFactIdentity,
     pub(crate) resource: CssColorFactIdentity,
 }
@@ -332,7 +332,7 @@ pub(crate) struct ProfileResult {
 pub(crate) struct ProfileConversionLookup<'owner, 'facts> {
     inputs: ProfileInputs<'owner>,
     facts: &'facts CssColorFacts<'facts>,
-    target: CssColorInterpolationSpace,
+    target: ColorSpace,
     state: ConversionState,
     conversions: usize,
     conversion: usize,
@@ -347,7 +347,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
     pub(crate) const fn start(
         inputs: &ProfileInputs<'owner>,
         facts: &'facts CssColorFacts<'facts>,
-        target: CssColorInterpolationSpace,
+        target: ColorSpace,
     ) -> Self {
         Self {
             inputs: *inputs,
@@ -526,7 +526,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
                 else {
                     return self.fail(Error::InvalidMetadata);
                 };
-                let value = match record.value.with_resolved_alpha(self.inputs.alpha) {
+                let value = match record.value.with_alpha(self.inputs.alpha) {
                     Ok(value) => value,
                     Err(error) => return self.fail(Error::Numerical(error)),
                 };
@@ -565,7 +565,7 @@ mod tests {
     };
     use super::*;
     use crate::{
-        CssColorProfileName, CssColorProfileRenderingIntent as Intent, CssPredefinedColorSpace,
+        CssColorProfileName, CssColorProfileRenderingIntent as Intent, PredefinedColorSpace,
         tokenization::bounded::InputKind,
     };
     fn lex<'a>(operation: &mut LexicalOperation<'a>, input: &str) -> Vec<CssColorSlot<'a>> {
@@ -670,9 +670,9 @@ mod tests {
             CssDeviceColorFact::Unknown,
         )
     }
-    fn srgb() -> CssUsedColor {
-        CssUsedColor::try_new(
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+    fn srgb() -> Color {
+        Color::try_new(
+            ColorSpace::Predefined(PredefinedColorSpace::Srgb),
             [Some(0.2), Some(0.4), Some(0.6)],
             Some(1.0),
         )

@@ -1,3 +1,4 @@
+use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 #[path = "support/descriptor_phases.rs"]
 mod descriptor_phases;
 use descriptor_phases::*;
@@ -5,18 +6,17 @@ use descriptor_phases::*;
 use surgeist_css::{
     CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
-    CssColorComponent, CssColorInterpolationMethod, CssColorInterpolationSpace,
-    CssColorMixPercentage, CssColorSyntax, CssComponentValue, CssCounterStyleRange,
-    CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode,
-    CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize,
-    CssFontSizeAdjust, CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps,
-    CssFontVariantEastAsianValues, CssFontVariantLigatureState, CssFontVariantLigatureValues,
-    CssFontVariantNumericFigure, CssFontVariantNumericValues, CssFontVariantPosition,
-    CssFontVariantValues, CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod,
-    CssImportance, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLanguageRange, CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
-    CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssOpenTypeTag,
-    CssPredefinedColorSpace, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
+    CssColorComponent, CssColorInterpolationMethod, CssColorMixPercentage, CssColorSyntax,
+    CssComponentValue, CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol,
+    CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
+    CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
+    CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
+    CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
+    CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
+    CssGenericFontFamily, CssGridAutoFlowAxis, CssImportance, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssMediaConditionKind,
+    CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint, CssNamespaceName,
+    CssNamespacePrefix, CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
     CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
     CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
@@ -473,7 +473,7 @@ fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
     };
     assert_eq!(
         predefined.value().predefined_value().unwrap().color_space(),
-        CssPredefinedColorSpace::XyzD65,
+        PredefinedColorSpace::XyzD65,
     );
 }
 
@@ -519,8 +519,8 @@ fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
     let color_mix = value.value().color_mix_value().unwrap();
     assert_eq!(color_mix.components().len(), 2);
     let invalid = CssColorInterpolationMethod::try_new(
-        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
-        Some(CssHueInterpolationMethod::Longer),
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb),
+        Some(HueInterpolation::Longer),
     );
     assert!(invalid.is_err());
 

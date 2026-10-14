@@ -3,11 +3,11 @@
 //! Creating this borrowed envelope does not scan or copy arrays. Operation
 //! actions validate individual headers/units and perform influencing lookups.
 
-use super::numerical::value::CssUsedColor;
 use crate::{
-    CssColorInterpolationSpace, CssColorProfileComponentName, CssColorProfileName,
-    CssColorProfileRenderingIntent, CssSystemColor,
+    ColorSpace, CssColorProfileComponentName, CssColorProfileName, CssColorProfileRenderingIntent,
+    CssSystemColor,
 };
+use surgeist_color::Color;
 
 /// Immutable fact-set identity and revision supplied by its actual owner.
 ///
@@ -43,7 +43,7 @@ pub enum CssColorPropertyFacts {
     /// With no context element, the initial current color is CanvasText.
     InitialProperties,
     /// The consumer supplies its actual resolved property value.
-    Current(CssUsedColor),
+    Current(Color),
     /// The required property facts have not been supplied.
     Unavailable,
 }
@@ -67,7 +67,7 @@ pub(crate) enum SchemeError {
 pub struct CssColorPaletteEntry {
     pub(crate) keyword: CssSystemColor,
     pub(crate) resource: CssColorFactIdentity,
-    pub(crate) value: CssUsedColor,
+    pub(crate) value: Color,
 }
 impl CssColorPaletteEntry {
     /// Constructs one fixed checked entry; duplicate-key admission belongs to the operation.
@@ -75,7 +75,7 @@ impl CssColorPaletteEntry {
     pub const fn new(
         keyword: CssSystemColor,
         resource: CssColorFactIdentity,
-        value: CssUsedColor,
+        value: Color,
     ) -> Self {
         Self {
             keyword,
@@ -95,7 +95,7 @@ impl CssColorPaletteEntry {
     }
     /// Its already resolved finite color.
     #[must_use]
-    pub const fn value(self) -> CssUsedColor {
+    pub const fn value(self) -> Color {
         self.value
     }
 }
@@ -182,8 +182,8 @@ pub struct CssColorProfileConversionRecord<'a> {
     pub(crate) profile: CssColorFactIdentity,
     pub(crate) channels: &'a [f64],
     pub(crate) intent: CssColorProfileRenderingIntent,
-    pub(crate) target: CssColorInterpolationSpace,
-    pub(crate) value: CssUsedColor,
+    pub(crate) target: ColorSpace,
+    pub(crate) value: Color,
 }
 impl<'a> CssColorProfileConversionRecord<'a> {
     /// Borrows one actual conversion observation, without scanning channels.
@@ -192,8 +192,8 @@ impl<'a> CssColorProfileConversionRecord<'a> {
         profile: CssColorFactIdentity,
         channels: &'a [f64],
         intent: CssColorProfileRenderingIntent,
-        target: CssColorInterpolationSpace,
-        value: CssUsedColor,
+        target: ColorSpace,
+        value: Color,
     ) -> Self {
         Self {
             profile,

@@ -39,15 +39,20 @@ qualified intrinsic interpretation. Its explicitly pinned HTML standard defines
 behavior; adapted html5ever source supplies implementation provenance. The
 [HTML crate guide](../crates/surgeist-html/README.md) records the decoded-Unicode
 document/fragment entry operations, admission and external capability boundaries.
-HTML owns its direct integration with CSS color operations. Implementation
-changes for safe Rust, source mapping and work limits do not define a separate
-HTML dialect.
+HTML owns its direct integration with CSS source color operations and Color's
+numerical owner, retaining one original parser controller and source binding.
+Separate CSS parse banks and numerical digit storage are admitted through that
+controller; generated values are installed after serialization and cleanup.
+Implementation changes for safe Rust, source mapping and work limits do not
+define a separate HTML dialect.
 
-The selected extraction contracts separate [HTML values, parsing and qualified
-semantics](reference/html-crate-contracts.md) and define a [dependency-free
-numerical Color library consumed by CSS](reference/color-crate-contracts.md).
-These references specify the planned ownership and checked interfaces;
-manifests and source establish which boundaries are implemented.
+The [dependency-free numerical Color owner](../crates/surgeist-color/README.md)
+is implemented and consumed directly by CSS and the current HTML adapter.
+Its [integration contract](reference/color-crate-contracts.md) explains the
+source-qualified CSS boundary. The separate contracts for
+[HTML values, parsing and qualified semantics](reference/html-crate-contracts.md)
+remain planned; these responsibilities still share the `surgeist-html` package.
+Manifests and source establish the implemented boundaries.
 
 `surgeist-dom`, the planned sole owner of live document identity, mutation and
 snapshots, will depend directly on HTML. DOM owns importing HTML construction
@@ -77,8 +82,8 @@ the GitHub Project record current work under the
 
 ## Workspace Membership And Verification Are Separate
 
-All 16 product packages share one committed root lockfile. The facade is the
-sole default member, keeping unqualified root commands focused. Explicit package
+All product workspace packages share one committed root lockfile. The facade is
+the sole default member, keeping unqualified root commands focused. Explicit package
 selection exposes the rest of the workspace without automatically running its
 CPU-heavy layout suites, GPU tests, platform hosts, or browser tooling.
 

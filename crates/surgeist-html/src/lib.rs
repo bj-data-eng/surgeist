@@ -73,9 +73,9 @@ pub use construction::parser_session::{
     StandaloneDocumentState as HtmlParseDocumentState,
 };
 pub use parser::control::{
-    Invariant as HtmlParseInvariant, ParseStop as HtmlParseStop, ParseUsage as HtmlParseUsage,
-    ResourceUsage as HtmlParseResourceUsage, StandaloneUnsupported as HtmlParseUnsupportedState,
-    WorkCategory as HtmlParseWorkCategory,
+    HtmlColorProcessingError, Invariant as HtmlParseInvariant, ParseStop as HtmlParseStop,
+    ParseUsage as HtmlParseUsage, ResourceUsage as HtmlParseResourceUsage,
+    StandaloneUnsupported as HtmlParseUnsupportedState, WorkCategory as HtmlParseWorkCategory,
 };
 pub use parser::tree_builder::head::HeadBoundary as HtmlParseConstructionBoundary;
 pub use parser::tree_builder::parse::{

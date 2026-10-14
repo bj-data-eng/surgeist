@@ -1,4 +1,5 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use surgeist_color::{ColorSpace, HueInterpolation};
 
 use super::values::parse_numeric_function;
 use crate::error::{Error, basic, invalid_color, unexpected_at};
@@ -89,19 +90,19 @@ fn collect_color_scalar<'i, 't>(
 
 fn parse_color_interpolation_space<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorInterpolationSpace, ParseError<'i, Error>> {
+) -> std::result::Result<ColorSpace, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let space = if let Some(space) = crate::syntax::color::predefined_color_space(&ident) {
-        CssColorInterpolationSpace::Predefined(space)
+        ColorSpace::Predefined(space)
     } else {
         match_ignore_ascii_case! { &ident,
-            "hsl" => CssColorInterpolationSpace::Hsl,
-            "hwb" => CssColorInterpolationSpace::Hwb,
-            "lab" => CssColorInterpolationSpace::Lab,
-            "lch" => CssColorInterpolationSpace::Lch,
-            "oklab" => CssColorInterpolationSpace::Oklab,
-            "oklch" => CssColorInterpolationSpace::Oklch,
+            "hsl" => ColorSpace::Hsl,
+            "hwb" => ColorSpace::Hwb,
+            "lab" => ColorSpace::Lab,
+            "lch" => ColorSpace::Lch,
+            "oklab" => ColorSpace::Oklab,
+            "oklch" => ColorSpace::Oklch,
             _ => return Err(unexpected_at(location)),
         }
     };
@@ -110,14 +111,14 @@ fn parse_color_interpolation_space<'i, 't>(
 
 fn parse_hue_interpolation<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssHueInterpolationMethod, ParseError<'i, Error>> {
+) -> std::result::Result<HueInterpolation, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let hue = match_ignore_ascii_case! { &ident,
-        "shorter" => CssHueInterpolationMethod::Shorter,
-        "longer" => CssHueInterpolationMethod::Longer,
-        "increasing" => CssHueInterpolationMethod::Increasing,
-        "decreasing" => CssHueInterpolationMethod::Decreasing,
+        "shorter" => HueInterpolation::Shorter,
+        "longer" => HueInterpolation::Longer,
+        "increasing" => HueInterpolation::Increasing,
+        "decreasing" => HueInterpolation::Decreasing,
         _ => return Err(unexpected_at(location)),
     };
     input.expect_ident_matching("hue").map_err(basic)?;

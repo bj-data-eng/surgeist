@@ -5041,7 +5041,7 @@ fn assert_color_palette_refusal(
             Ok(other) => panic!("expected reached Color fact refusal, got {other:?}"),
         }
     }
-    let first = ParseStop::ColorProcessing(surgeist_css::CssColorOperationError::Unavailable(
+    let first = ParseStop::ColorProcessing(crate::HtmlColorProcessingError::Unavailable(
         surgeist_css::CssColorUnavailable::Palette(surgeist_css::CssSystemColor::CanvasText),
     ));
     assert_eq!(driver.control.stop(), Some(first));

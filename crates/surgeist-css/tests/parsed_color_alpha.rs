@@ -6,6 +6,7 @@
 //! Expected classes derive from exact decimal comparison with 0, 1 or 100;
 //! approximate observations never supply the endpoint-classification oracle.
 
+use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 const FAMILIES: [&str; 8] = ["rgb", "hsl", "hwb", "lab", "lch", "oklab", "oklch", "srgb"];
@@ -104,7 +105,7 @@ fn constructed(family: &str, alpha: Option<&str>, programmatic: bool) -> CssColo
         }
         "srgb" => CssColor::from_predefined(
             CssPredefinedColor::try_new(
-                CssPredefinedColorSpace::Srgb,
+                PredefinedColorSpace::Srgb,
                 [number(), number(), number()],
                 alpha,
             )
