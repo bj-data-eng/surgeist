@@ -221,8 +221,18 @@ other relative colors; `color-mix()`, `light-dark()`, `contrast-color()` and
 expressions, missing-channel handling and mixing resolve CSS semantics before
 or around Color's numerical operations. The ordinary authored parser also uses
 this grammar through its actual Parsed and Components inputs, preserving
-symbolic `CssColor` values and origins. A checked-authored-value feeder into
-used-color resolution is not implemented.
+symbolic `CssColor` values and origins.
+
+For an existing checked `CssColor`, use `resolve_authored_color` with the same
+explicit facts. Its `CssAuthoredColorResult` borrows the original value and facts;
+the outcome contains a numerical color or the actual standard-failure cause.
+`CssAuthoredColorOrdinaryLimits` bounds the three logical record banks, path
+steps and actions. The controlled `CssAuthoredColorOperation` services the same
+resolver with caller-owned banks and a `CssColorPathBuffer`, preserving Parsed,
+Programmatic and ImplicitClosure origins without serialization or reparsing.
+Authored numerical errors transfer their reached component path and applicable
+origin through `CssColorResolutionSite::Authored`. See the
+[public authored-resolution examples](tests/color_authored_resolution.rs).
 
 Resolution observes only reached dependencies. The no-element
 `CssColorPropertyFacts::InitialProperties` branch resolves currentcolor through

@@ -18,8 +18,10 @@ source/fact qualification over explicit inputs. The dependency-free
 [`surgeist-color`](../surgeist-color/README.md) owner supplies numerical values,
 conversion, interpolation, transformations, resolved serialization and finite
 formatting. CSS retains exact authored decimal and specified serialization.
-Current source and tests establish implemented capabilities; the checked-authored
-used-color feeder remains unimplemented. Cascade, inheritance, substitution,
+Source and checked-authored used-color operations share the same CSS resolver;
+the authored feeder borrows checked values and preserves their actual paths and
+origins. Current source and tests establish implemented capabilities.
+Cascade, inheritance, substitution,
 selector/query evaluation, resource retrieval, layout, painting and each consuming
 crate's lowering remain outside this crate.
 
