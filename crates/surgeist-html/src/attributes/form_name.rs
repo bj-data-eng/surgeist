@@ -79,52 +79,18 @@ impl HtmlValueInterpreter {
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> HtmlAttributeReport<HtmlFormName> {
-        let applicability = if raw.is_some_and(|a| {
-            KnownHtmlAttribute::from_name(a.name()) != Some(KnownHtmlAttribute::Name)
-        }) {
-            HtmlAttributeApplicability::DifferentAttribute
-        } else if !element.namespace().uri().is_some_and(|uri| {
-            uri.code_units()
-                .iter()
-                .copied()
-                .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-        }) {
-            HtmlAttributeApplicability::ForeignElementNamespace
-        } else if KnownHtmlElement::from_name(element) != Some(KnownHtmlElement::Form) {
-            HtmlAttributeApplicability::DifferentElement
-        } else {
-            HtmlAttributeApplicability::Applicable
-        };
-        let applicable = applicability == HtmlAttributeApplicability::Applicable;
-        let mut result = HtmlAttributeReport {
-            element: element.clone(),
-            raw_attribute: raw.cloned(),
-            rule: RuleMetadata {
+        let mut result = report(
+            RuleMetadata {
                 attribute: KnownHtmlAttribute::Name,
                 rows: &[104],
                 source: source!("attr-form-name"),
                 context: Context::Elements(&[KnownHtmlElement::Form]),
                 vocabulary_source: None,
             },
-            observation: match raw {
-                None => HtmlAttributeObservation::Missing,
-                Some(a) if a.value().is_empty() => HtmlAttributeObservation::PresentEmpty,
-                Some(_) => HtmlAttributeObservation::PresentNonempty,
-            },
-            applicability,
-            recognition: HtmlAttributeRecognition::Unapplied,
-            author: HtmlAttributeAuthorState::Unapplied,
-            context_author: if !applicable {
-                HtmlAttributeContextAuthorState::Unapplied
-            } else if raw.is_some() {
-                HtmlAttributeContextAuthorState::Unchecked
-            } else {
-                HtmlAttributeContextAuthorState::NotRequired
-            },
-            intrinsic: None,
-            supplied_context: SuppliedContext::None,
-        };
-        if !applicable {
+            element,
+            raw,
+        );
+        if result.applicability != HtmlAttributeApplicability::Applicable {
             return result;
         }
         let Some(raw) = raw else {
@@ -132,6 +98,7 @@ impl HtmlValueInterpreter {
             result.author = HtmlAttributeAuthorState::Conforming;
             return result;
         };
+        result.context_author = HtmlAttributeContextAuthorState::Unchecked;
         match HtmlFormName::new(raw.value().clone()) {
             Ok(name) => {
                 result.recognition = HtmlAttributeRecognition::NonemptyText;

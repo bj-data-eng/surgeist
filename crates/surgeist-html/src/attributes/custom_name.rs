@@ -54,49 +54,17 @@ impl HtmlValueInterpreter {
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> HtmlAttributeReport<HtmlCustomElementName> {
-        let html = element.namespace().uri().is_some_and(|uri| {
-            uri.code_units()
-                .iter()
-                .copied()
-                .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-        });
-        let role = raw.is_none_or(|raw| {
-            raw.name().namespace().uri().is_none()
-                && raw.name().local_name().code_units() == [105, 115]
-        });
-        let applicability = if !role {
-            HtmlAttributeApplicability::DifferentAttribute
-        } else if html {
-            HtmlAttributeApplicability::Applicable
-        } else {
-            HtmlAttributeApplicability::ForeignElementNamespace
-        };
-        let mut result = HtmlAttributeReport {
-            element: element.clone(),
-            raw_attribute: raw.cloned(),
-            rule: RuleMetadata {
+        let mut result = report(
+            RuleMetadata {
                 attribute: KnownHtmlAttribute::Is,
                 rows: &[78],
                 source: source!("attr-is"),
                 context: Context::Global,
                 vocabulary_source: None,
             },
-            observation: match raw {
-                None => HtmlAttributeObservation::Missing,
-                Some(raw) if raw.value().is_empty() => HtmlAttributeObservation::PresentEmpty,
-                Some(_) => HtmlAttributeObservation::PresentNonempty,
-            },
-            applicability,
-            recognition: HtmlAttributeRecognition::Unapplied,
-            author: HtmlAttributeAuthorState::Unapplied,
-            context_author: if applicability == HtmlAttributeApplicability::Applicable {
-                HtmlAttributeContextAuthorState::NotRequired
-            } else {
-                HtmlAttributeContextAuthorState::Unapplied
-            },
-            intrinsic: None,
-            supplied_context: SuppliedContext::None,
-        };
+            element,
+            raw,
+        );
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return result;
         }

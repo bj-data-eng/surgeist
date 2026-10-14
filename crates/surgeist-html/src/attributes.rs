@@ -453,7 +453,7 @@ impl<T> HtmlAttributeReport<T> {
                         BUTTON_TYPE_SOURCE
                     });
                 }
-                None if self.element.namespace() == &Namespace::html()
+                None if html_element_namespace(&self.element)
                     && self.rule.context != Context::SubmitterOverride =>
                 {
                     return Some(FORM_ASSOCIATED_CUSTOM_SOURCE);
@@ -467,7 +467,7 @@ impl<T> HtmlAttributeReport<T> {
             return Some(SCRIPT_SOURCE);
         }
         if self.rule.context == Context::DisabledControls
-            && self.element.namespace() == &Namespace::html()
+            && html_element_namespace(&self.element)
             && KnownHtmlElement::from_name(&self.element).is_none()
         {
             return Some(FORM_ASSOCIATED_CUSTOM_SOURCE);
@@ -1325,7 +1325,7 @@ impl HtmlBooleanAttribute {
             (Self::Readonly, Some(KnownHtmlElement::Textarea)) => {
                 rule.source = source!("attr-textarea-readonly");
             }
-            (Self::Readonly, None) if element.namespace() == &Namespace::html() => {
+            (Self::Readonly, None) if html_element_namespace(element) => {
                 rule.source = source!("attr-face-readonly");
                 rule.rows = &[125];
             }
@@ -1351,16 +1351,40 @@ impl HtmlBooleanAttribute {
     }
 }
 
+fn html_element_namespace(element: &QualifiedName) -> bool {
+    element.namespace().uri().is_some_and(|uri| {
+        uri.code_units()
+            .iter()
+            .copied()
+            .eq("http://www.w3.org/1999/xhtml".encode_utf16())
+    })
+}
+
 fn applies(
     rule: RuleMetadata,
     element: &QualifiedName,
     raw: Option<&Attribute>,
 ) -> HtmlAttributeApplicability {
-    if raw.is_some_and(|a| KnownHtmlAttribute::from_name(a.name()) != Some(rule.attribute)) {
+    // Compare only the selected expanded name; prefixes have no role here.
+    // Avoid a vocabulary scan so specialized callers retain their work bounds.
+    if raw.is_some_and(|a| {
+        a.name().namespace().uri().is_some()
+            || !a
+                .name()
+                .local_name()
+                .code_units()
+                .iter()
+                .copied()
+                .eq(rule.attribute.local_name().encode_utf16())
+    }) {
         return HtmlAttributeApplicability::DifferentAttribute;
     }
-    if element.namespace() != &Namespace::html() {
+    if !html_element_namespace(element) {
         return HtmlAttributeApplicability::ForeignElementNamespace;
+    }
+    // Global rules need no element-name lookup, including id and is reports.
+    if matches!(rule.context, Context::Global | Context::Direction) {
+        return HtmlAttributeApplicability::Applicable;
     }
     let known = KnownHtmlElement::from_name(element);
     let applicable = match rule.context {
@@ -1437,6 +1461,9 @@ fn has_boolean_author_constraint(rule: RuleMetadata, element: &QualifiedName) ->
     }
 }
 
+// Seed exact observations and applicability without temporary owned names or
+// value buffers. Value grammars, missing-value states and additional author
+// context remain with the selected attribute owner.
 fn report<T>(
     rule: RuleMetadata,
     element: &QualifiedName,

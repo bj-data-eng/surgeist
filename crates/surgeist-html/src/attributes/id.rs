@@ -86,46 +86,17 @@ impl HtmlValueInterpreter {
         element: &QualifiedName,
         raw: Option<&Attribute>,
     ) -> HtmlAttributeReport<HtmlSpaceToken> {
-        let applicability = if raw.is_some_and(|a| {
-            KnownHtmlAttribute::from_name(a.name()) != Some(KnownHtmlAttribute::Id)
-        }) {
-            HtmlAttributeApplicability::DifferentAttribute
-        } else if !element.namespace().uri().is_some_and(|uri| {
-            uri.code_units()
-                .iter()
-                .copied()
-                .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-        }) {
-            HtmlAttributeApplicability::ForeignElementNamespace
-        } else {
-            HtmlAttributeApplicability::Applicable
-        };
-        let mut result = HtmlAttributeReport {
-            element: element.clone(),
-            raw_attribute: raw.cloned(),
-            rule: RuleMetadata {
+        let mut result = report(
+            RuleMetadata {
                 attribute: KnownHtmlAttribute::Id,
                 rows: &[72],
                 source: source!("the-id-attribute"),
                 context: Context::Global,
                 vocabulary_source: None,
             },
-            observation: match raw {
-                None => HtmlAttributeObservation::Missing,
-                Some(a) if a.value().is_empty() => HtmlAttributeObservation::PresentEmpty,
-                Some(_) => HtmlAttributeObservation::PresentNonempty,
-            },
-            applicability,
-            recognition: HtmlAttributeRecognition::Unapplied,
-            author: HtmlAttributeAuthorState::Unapplied,
-            context_author: if applicability == HtmlAttributeApplicability::Applicable {
-                HtmlAttributeContextAuthorState::NotRequired
-            } else {
-                HtmlAttributeContextAuthorState::Unapplied
-            },
-            intrinsic: None,
-            supplied_context: SuppliedContext::None,
-        };
+            element,
+            raw,
+        );
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return result;
         }
