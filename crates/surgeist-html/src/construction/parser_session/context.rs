@@ -702,11 +702,11 @@ impl SessionStorage {
                 )?;
                 if cursor.next_clones_registry() {
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    payload_write::<crate::capture::DefinitionLookupStep>(c, 1)?;
+                    payload_write::<crate::capture::HtmlDefinitionLookupStep>(c, 1)?;
                 }
                 match cursor.step() {
-                    crate::capture::DefinitionLookupStep::Searching => {}
-                    crate::capture::DefinitionLookupStep::Ready(found) => {
+                    crate::capture::HtmlDefinitionLookupStep::Searching => {}
+                    crate::capture::HtmlDefinitionLookupStep::Ready(found) => {
                         if found.is_some() {
                             // Capture describes definitions, not a constructor
                             // or custom-element reaction execution domain.
@@ -1457,12 +1457,12 @@ impl SessionStorage {
             c.charge(WorkCategory::InspectByte, (cost * 2) as u64)?;
             if cursor.next_clones_registry() {
                 c.charge(WorkCategory::ProviderCall, 1)?;
-                payload_write::<crate::capture::DefinitionLookupStep>(c, 1)?;
+                payload_write::<crate::capture::HtmlDefinitionLookupStep>(c, 1)?;
             }
             match cursor.step() {
-                crate::capture::DefinitionLookupStep::Searching => {}
-                crate::capture::DefinitionLookupStep::Ready(None) => return Ok(false),
-                crate::capture::DefinitionLookupStep::Ready(Some(id)) => {
+                crate::capture::HtmlDefinitionLookupStep::Searching => {}
+                crate::capture::HtmlDefinitionLookupStep::Ready(None) => return Ok(false),
+                crate::capture::HtmlDefinitionLookupStep::Ready(Some(id)) => {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     return Ok(context
                         .capture()

@@ -1483,6 +1483,9 @@ pub enum surgeist_html::HtmlDefiningTermOrigin
 pub surgeist_html::HtmlDefiningTermOrigin::AbbreviationTitle(surgeist_html::HtmlCaptureSubjectId)
 pub surgeist_html::HtmlDefiningTermOrigin::DescendantText
 pub surgeist_html::HtmlDefiningTermOrigin::OwnTitle
+pub enum surgeist_html::HtmlDefinitionLookupStep
+pub surgeist_html::HtmlDefinitionLookupStep::Ready(core::option::Option<surgeist_html::HtmlCaptureDefinitionId>)
+pub surgeist_html::HtmlDefinitionLookupStep::Searching
 pub enum surgeist_html::HtmlDesignMode
 pub surgeist_html::HtmlDesignMode::Disabled
 pub surgeist_html::HtmlDesignMode::Enabled
@@ -4977,6 +4980,7 @@ pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
 pub fn surgeist_html::HtmlCapture::definition(&self, id: &surgeist_html::HtmlCaptureDefinitionId) -> core::result::Result<&surgeist_html::HtmlCustomElementDefinition, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::definition_id(&self, handle: &surgeist_html::HtmlCaptureBuilderDefinition) -> core::result::Result<surgeist_html::HtmlCaptureDefinitionId, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCapture::definition_lookup_cursor<'a>(&'a self, registry: &'a surgeist_html::HtmlCapturedRegistry, local: &'a surgeist_html::DocumentString, is_value: core::option::Option<&'a surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::HtmlDefinitionLookupCursor<'a>, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::definitions(&self, registry: &surgeist_html::HtmlCaptureRegistryId) -> core::result::Result<surgeist_html::HtmlCapturedDefinitions<'_>, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::document_id(&self, id: &surgeist_html::HtmlCaptureSubjectId) -> core::result::Result<surgeist_html::HtmlCaptureDocumentId, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::element_id(&self, id: &surgeist_html::HtmlCaptureSubjectId) -> core::result::Result<surgeist_html::HtmlCaptureElementId, surgeist_html::HtmlCaptureError>
@@ -4989,7 +4993,9 @@ pub fn surgeist_html::HtmlCapture::node(&self, id: &surgeist_html::HtmlCaptureSu
 pub fn surgeist_html::HtmlCapture::registry_id(&self, handle: &surgeist_html::HtmlCaptureBuilderRegistry) -> core::result::Result<surgeist_html::HtmlCaptureRegistryId, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::registry_scope(&self, registry: &surgeist_html::HtmlCaptureRegistryId) -> core::result::Result<surgeist_html::HtmlRegistryScope, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::shadow_attachment_status(&self, element: &surgeist_html::HtmlCaptureElementId) -> core::result::Result<surgeist_html::HtmlShadowAttachmentStatus, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCapture::shadow_presence(&self, element: &surgeist_html::HtmlCaptureElementId) -> core::result::Result<core::option::Option<bool>, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::subject_id(&self, handle: &surgeist_html::HtmlCaptureBuilderSubject) -> core::result::Result<surgeist_html::HtmlCaptureSubjectId, surgeist_html::HtmlCaptureError>
+pub fn surgeist_html::HtmlCapture::template_document_cache(&self, document: &surgeist_html::HtmlCaptureDocumentId) -> core::result::Result<surgeist_html::HtmlCapturedTemplateCache, surgeist_html::HtmlCaptureError>
 pub fn surgeist_html::HtmlCapture::usage(&self) -> surgeist_html::HtmlCaptureUsage
 pub struct surgeist_html::HtmlCaptureBuilder
 impl surgeist_html::HtmlCaptureBuilder
@@ -5298,6 +5304,11 @@ pub struct surgeist_html::HtmlDefiningTerm
 impl surgeist_html::HtmlDefiningTerm
 pub fn surgeist_html::HtmlDefiningTerm::origin(&self) -> &surgeist_html::HtmlDefiningTermOrigin
 pub fn surgeist_html::HtmlDefiningTerm::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlDefinitionLookupCursor<'a>
+impl surgeist_html::HtmlDefinitionLookupCursor<'_>
+pub fn surgeist_html::HtmlDefinitionLookupCursor<'_>::next_clones_registry(&self) -> bool
+pub fn surgeist_html::HtmlDefinitionLookupCursor<'_>::next_cost(&self) -> usize
+pub fn surgeist_html::HtmlDefinitionLookupCursor<'_>::step(&mut self) -> surgeist_html::HtmlDefinitionLookupStep
 pub struct surgeist_html::HtmlDescriptionListGroup
 impl surgeist_html::HtmlDescriptionListGroup
 pub fn surgeist_html::HtmlDescriptionListGroup::names(&self) -> &[surgeist_html::HtmlCaptureSubjectId]

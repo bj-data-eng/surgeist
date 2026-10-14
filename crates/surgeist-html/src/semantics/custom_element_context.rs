@@ -7,7 +7,7 @@
 //! hardware-preemption/RSS guarantee.
 
 use super::*;
-use crate::capture::DefinitionLookupStep;
+use crate::capture::HtmlDefinitionLookupStep;
 use crate::{
     HtmlAttributeApplicability, HtmlAttributeReport, HtmlCaptureDefinitionId,
     HtmlCaptureRegistryId, HtmlCapturedCustomElementDefinition, HtmlCapturedCustomElementState,
@@ -118,7 +118,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 Ok(mut cursor) => {
                     let selected = loop {
                         self.charge(cursor.next_cost())?;
-                        if let DefinitionLookupStep::Ready(selected) = cursor.step() {
+                        if let HtmlDefinitionLookupStep::Ready(selected) = cursor.step() {
                             break selected;
                         }
                     };

@@ -2017,6 +2017,19 @@ impl HtmlCapture {
             index,
         })
     }
+    /// Reads one checked document's cache, preserving unavailable and absent facts.
+    /// A present cache returns its actual capture-qualified document identity.
+    pub fn template_document_cache(
+        &self,
+        document: &HtmlCaptureDocumentId,
+    ) -> Result<HtmlCapturedTemplateCache, HtmlCaptureError> {
+        let node = self.node(document.subject())?;
+        node.template_document_cache()
+            .ok_or(HtmlCaptureError::WrongKind {
+                expected: HtmlCaptureSubjectKind::Document,
+                actual: node.kind().subject_kind(),
+            })
+    }
     pub(crate) fn template_cache_index(
         &self,
         index: usize,
@@ -2130,12 +2143,15 @@ impl HtmlCapture {
             .and_then(|r| r.definitions.get(id.record_index))
             .ok_or(HtmlCaptureError::UnknownDefinition)
     }
-    pub(crate) fn definition_lookup_cursor<'a>(
+    /// Begins allocation-free ordered local/is-name lookup in this registry.
+    /// The caller selects HTML namespace applicability before this operation.
+    /// Unavailable definitions retain their actual registry identity in the error.
+    pub fn definition_lookup_cursor<'a>(
         &'a self,
         registry: &'a HtmlCapturedRegistry,
         local: &'a DocumentString,
         is_value: Option<&'a DocumentString>,
-    ) -> Result<DefinitionLookupCursor<'a>, HtmlCaptureError> {
+    ) -> Result<HtmlDefinitionLookupCursor<'a>, HtmlCaptureError> {
         let (id, definitions) = match registry {
             HtmlCapturedRegistry::Null => (None, &[][..]),
             HtmlCapturedRegistry::Unavailable => {
@@ -2154,7 +2170,7 @@ impl HtmlCapture {
                 (Some(id), definitions)
             }
         };
-        Ok(DefinitionLookupCursor {
+        Ok(HtmlDefinitionLookupCursor {
             registry: id,
             definitions,
             local,
@@ -2200,7 +2216,7 @@ impl HtmlCapture {
         }
         let mut cursor = self.definition_lookup_cursor(registry, local_name, is_value)?;
         loop {
-            if let DefinitionLookupStep::Ready(id) = cursor.step() {
+            if let HtmlDefinitionLookupStep::Ready(id) = cursor.step() {
                 return id.as_ref().map(|id| self.definition(id)).transpose();
             }
         }
@@ -2233,7 +2249,8 @@ impl HtmlCapture {
         }
     }
 
-    pub(crate) fn shadow_presence(
+    /// Returns known absence/presence, or `None` for an unavailable shadow fact.
+    pub fn shadow_presence(
         &self,
         element: &HtmlCaptureElementId,
     ) -> Result<Option<bool>, HtmlCaptureError> {
@@ -2525,7 +2542,7 @@ impl HtmlFragmentContext {
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;
 /// comparison headers cost one, each pair two, and Ready transfer one.
-pub(crate) struct DefinitionLookupCursor<'a> {
+pub struct HtmlDefinitionLookupCursor<'a> {
     registry: Option<&'a HtmlCaptureRegistryId>,
     definitions: &'a [HtmlCustomElementDefinition],
     local: &'a DocumentString,
@@ -2536,17 +2553,19 @@ pub(crate) struct DefinitionLookupCursor<'a> {
     offset: Option<usize>,
     ready: Option<Option<usize>>,
 }
-pub(crate) enum DefinitionLookupStep {
+/// One admitted lookup step; only `Ready(Some(_))` shares a registry identity.
+pub enum HtmlDefinitionLookupStep {
     Searching,
     Ready(Option<HtmlCaptureDefinitionId>),
 }
-impl DefinitionLookupCursor<'_> {
+impl HtmlDefinitionLookupCursor<'_> {
     /// Describes the actual next ready transfer without advancing the cursor.
     /// Only a found definition clones a retained registry handle.
-    pub(crate) fn next_clones_registry(&self) -> bool {
+    pub fn next_clones_registry(&self) -> bool {
         matches!(self.ready, Some(Some(_)))
     }
-    pub(crate) fn next_cost(&self) -> usize {
+    /// One header/transfer unit or two exact UTF-16 comparison units.
+    pub fn next_cost(&self) -> usize {
         if self.offset.is_some() { 2 } else { 1 }
     }
     fn next_record(&mut self) {
@@ -2554,9 +2573,10 @@ impl DefinitionLookupCursor<'_> {
         self.field = 0;
         self.offset = None;
     }
-    pub(crate) fn step(&mut self) -> DefinitionLookupStep {
+    /// Performs the next comparison or ready transfer after caller admission.
+    pub fn step(&mut self) -> HtmlDefinitionLookupStep {
         if let Some(record) = self.ready {
-            return DefinitionLookupStep::Ready(record.map(|record_index| {
+            return HtmlDefinitionLookupStep::Ready(record.map(|record_index| {
                 HtmlCaptureDefinitionId {
                     registry: self.registry.expect("selected record has registry").clone(),
                     record_index,
@@ -2570,7 +2590,7 @@ impl DefinitionLookupCursor<'_> {
             } else {
                 self.ready = Some(None);
             }
-            return DefinitionLookupStep::Searching;
+            return HtmlDefinitionLookupStep::Searching;
         }
         let d = &self.definitions[self.record];
         let (left, right) = if self.field == 0 {
@@ -2605,7 +2625,7 @@ impl DefinitionLookupCursor<'_> {
                 }
             }
         }
-        DefinitionLookupStep::Searching
+        HtmlDefinitionLookupStep::Searching
     }
     fn field_finished(&mut self) {
         self.offset = None;
@@ -2633,11 +2653,13 @@ mod definition_cursor_tests {
         let registry = HtmlCapturedRegistry::Registry(capture.registry_id(&r).unwrap());
         (capture, registry)
     }
-    fn run(cursor: &mut DefinitionLookupCursor<'_>) -> (usize, Option<HtmlCaptureDefinitionId>) {
+    fn run(
+        cursor: &mut HtmlDefinitionLookupCursor<'_>,
+    ) -> (usize, Option<HtmlCaptureDefinitionId>) {
         let mut work = 0;
         loop {
             work += cursor.next_cost();
-            if let DefinitionLookupStep::Ready(id) = cursor.step() {
+            if let HtmlDefinitionLookupStep::Ready(id) = cursor.step() {
                 return (work, id);
             }
         }
