@@ -4,8 +4,8 @@
 //! buffers. Guards never release capacity, run abandoned work, or refund on Drop.
 
 use super::grammar::GrammarRecord;
+use crate::finite_format::bounded::FormatDigit;
 use crate::numeric::bounded_decimal::DecimalDigit;
-use crate::numeric_formatting::bounded::FormatDigit;
 use crate::tokenization::bounded::{InputCursor, InputKind, Request as InputRequest, Scalar};
 use crate::tokenization::color_tokens::{Record, Request as TokenRequest, Token, TokenCursor};
 

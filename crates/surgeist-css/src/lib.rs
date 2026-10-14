@@ -1819,6 +1819,7 @@ mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
+mod finite_format;
 mod frequency;
 mod gap;
 mod grid_template_areas;

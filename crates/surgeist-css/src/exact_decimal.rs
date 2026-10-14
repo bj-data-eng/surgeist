@@ -1,5 +1,7 @@
 //! Shared exact decimal arithmetic for authored numeric CSS values.
 
+use crate::finite_format::RoundingMode;
+
 /// Normalized borrowed metadata for an already checked finite decimal token.
 /// The coefficient remains in the original source regardless of its length.
 pub(crate) struct LexicalDecimal<'a> {
@@ -797,19 +799,6 @@ impl BigCoefficient {
             removed += 1;
         }
         removed
-    }
-}
-
-/// Generic specified coefficients use away-from-zero ties; exact color
-/// rationals and final ordinary sRGB scalars use ties toward positive infinity.
-#[derive(Clone, Copy)]
-pub(crate) enum DecimalRounding {
-    TowardPositiveInfinity,
-    AwayFromZero,
-}
-impl DecimalRounding {
-    pub(crate) fn rounds_up(self, ordering: std::cmp::Ordering, negative: bool) -> bool {
-        ordering.is_gt() || (ordering.is_eq() && (matches!(self, Self::AwayFromZero) || !negative))
     }
 }
 
@@ -1910,7 +1899,7 @@ impl ExactRational {
                     context,
                 )?
             };
-            if DecimalRounding::AwayFromZero.rounds_up(ordering, lexical.negative) {
+            if RoundingMode::AwayFromZero.rounds_up(ordering, lexical.negative) {
                 rounded += 1;
             }
             if rounded == 0 {
@@ -1994,7 +1983,7 @@ impl ExactRational {
                 context,
             )?
         };
-        if DecimalRounding::AwayFromZero.rounds_up(ordering, lexical.negative) {
+        if RoundingMode::AwayFromZero.rounds_up(ordering, lexical.negative) {
             rounded.increment(context)?;
         }
         if suppressed {
@@ -2103,7 +2092,7 @@ impl ExactRational {
                 (quotient, ordering)
             }
         };
-        if DecimalRounding::TowardPositiveInfinity.rounds_up(rounding, self.negative) {
+        if RoundingMode::TowardPositiveInfinity.rounds_up(rounding, self.negative) {
             rounded.increment(context)?;
         }
         // Arithmetic storage is bounded by the existing cumulative projection

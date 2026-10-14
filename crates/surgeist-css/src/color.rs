@@ -2,8 +2,8 @@
 
 pub(crate) mod alpha;
 pub(crate) mod authored;
-mod used;
-pub use used::{CssUsedColor, CssUsedColorError, CssUsedColorTransformation};
+mod numerical;
+pub use numerical::value::{CssUsedColor, CssUsedColorError, CssUsedColorTransformation};
 
 mod bounded;
 mod component;
@@ -40,4 +40,4 @@ pub use facts::{
     CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
-pub use serialize::CssColorSerializationRequest;
+pub use numerical::serialization::CssColorSerializationRequest;

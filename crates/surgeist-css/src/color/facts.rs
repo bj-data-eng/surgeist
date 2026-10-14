@@ -3,7 +3,7 @@
 //! Creating this borrowed envelope does not scan or copy arrays. Operation
 //! actions validate individual headers/units and perform influencing lookups.
 
-use super::used::CssUsedColor;
+use super::numerical::value::CssUsedColor;
 use crate::{
     CssColorInterpolationSpace, CssColorProfileComponentName, CssColorProfileName,
     CssColorProfileRenderingIntent, CssSystemColor,

@@ -4,7 +4,7 @@ use super::facts::{
     CssColorFactIdentity, CssColorFacts, CssColorPaletteEntry, CssColorPropertyFacts,
 };
 use super::keywords::canonical_system;
-use super::used::CssUsedColor;
+use super::numerical::value::CssUsedColor;
 use crate::CssSystemColor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

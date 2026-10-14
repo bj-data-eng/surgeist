@@ -35,10 +35,15 @@ impl Binding {
             Environment::Oklch => Space::Oklch,
             Environment::PredefinedRgb(space) | Environment::Xyz(space) => Space::Predefined(space),
         };
-        let origin = super::interpolate::prepare(origin, space).map_err(|error| match error {
-            super::interpolate::Error::Numerical(error) => Error::Numerical(error),
-            _ => Error::Numerical(CssUsedColorError::Unrepresentable),
-        })?;
+        let origin =
+            super::numerical::interpolation::prepare(origin, space).map_err(
+                |error| match error {
+                    super::numerical::interpolation::Error::Numerical(error) => {
+                        Error::Numerical(error)
+                    }
+                    _ => Error::Numerical(CssUsedColorError::Unrepresentable),
+                },
+            )?;
         Ok(Self {
             environment,
             origin,

@@ -1,7 +1,7 @@
 //! Incremental finite-bit formatting. Variable digits and output belong to the caller.
 
+use super::RoundingMode;
 use super::rounded_millionths;
-use crate::exact_decimal::DecimalRounding;
 
 /// (2^53 - 1) * 2^971 has 309 decimal digits. Every finite binary64 integer
 /// lies below it; a rounded fractional coefficient fits in u128.
@@ -83,7 +83,7 @@ enum Phase {
 /// index alone does not prove that a record belongs to this operation.
 pub(crate) struct FiniteFormatCursor {
     bits: u64,
-    rounding: DecimalRounding,
+    rounding: RoundingMode,
     negative: bool,
     coefficient: u128,
     multiplies: u32,
@@ -99,7 +99,7 @@ pub(crate) struct FiniteFormatCursor {
 }
 impl FiniteFormatCursor {
     /// The caller admits the actual fixed cursor layout before construction.
-    pub(crate) fn new(value: f64, rounding: DecimalRounding) -> Result<Self, FormatProtocolError> {
+    pub(crate) fn new(value: f64, rounding: RoundingMode) -> Result<Self, FormatProtocolError> {
         if !value.is_finite() {
             return Err(FormatProtocolError::NonFinite);
         }
@@ -419,47 +419,43 @@ mod tests {
     #[test]
     fn literal_bits_round_trim_carry_and_emit_only_final_text() {
         for (value, rounding, expected) in [
-            (-0.0, DecimalRounding::AwayFromZero, "0"),
-            (f64::from_bits(1), DecimalRounding::AwayFromZero, "0"),
-            (
-                f64::MIN_POSITIVE,
-                DecimalRounding::TowardPositiveInfinity,
-                "0",
-            ),
-            (1.0 / 3.0, DecimalRounding::AwayFromZero, "0.333333"),
-            (1.25, DecimalRounding::AwayFromZero, "1.25"),
-            (-12.5, DecimalRounding::AwayFromZero, "-12.5"),
-            (0.0001, DecimalRounding::AwayFromZero, "0.0001"),
-            (0.9999996, DecimalRounding::AwayFromZero, "1"),
-            (999.9999996, DecimalRounding::AwayFromZero, "1000"),
+            (-0.0, RoundingMode::AwayFromZero, "0"),
+            (f64::from_bits(1), RoundingMode::AwayFromZero, "0"),
+            (f64::MIN_POSITIVE, RoundingMode::TowardPositiveInfinity, "0"),
+            (1.0 / 3.0, RoundingMode::AwayFromZero, "0.333333"),
+            (1.25, RoundingMode::AwayFromZero, "1.25"),
+            (-12.5, RoundingMode::AwayFromZero, "-12.5"),
+            (0.0001, RoundingMode::AwayFromZero, "0.0001"),
+            (0.9999996, RoundingMode::AwayFromZero, "1"),
+            (999.9999996, RoundingMode::AwayFromZero, "1000"),
             (
                 f64::from_bits(0x3f80000000000000),
-                DecimalRounding::AwayFromZero,
+                RoundingMode::AwayFromZero,
                 "0.007813",
             ),
             (
                 -f64::from_bits(0x3f80000000000000),
-                DecimalRounding::AwayFromZero,
+                RoundingMode::AwayFromZero,
                 "-0.007813",
             ),
             (
                 -f64::from_bits(0x3f80000000000000),
-                DecimalRounding::TowardPositiveInfinity,
+                RoundingMode::TowardPositiveInfinity,
                 "-0.007812",
             ),
             (
                 f64::from_bits(0x3f7fffffffffffff),
-                DecimalRounding::TowardPositiveInfinity,
+                RoundingMode::TowardPositiveInfinity,
                 "0.007812",
             ),
             (
                 f64::from_bits(0x3f80000000000001),
-                DecimalRounding::TowardPositiveInfinity,
+                RoundingMode::TowardPositiveInfinity,
                 "0.007813",
             ),
             (
                 f64::from_bits(0x43ab_c16d_674e_c801),
-                DecimalRounding::AwayFromZero,
+                RoundingMode::AwayFromZero,
                 "1000000000000000128",
             ),
         ] {
@@ -490,7 +486,7 @@ mod tests {
             } else {
                 INTEGER.into()
             };
-            let mut cursor = FiniteFormatCursor::new(value, DecimalRounding::AwayFromZero).unwrap();
+            let mut cursor = FiniteFormatCursor::new(value, RoundingMode::AwayFromZero).unwrap();
             let mut scratch = Vec::new();
             let mut output = String::new();
             let summary = drive(&mut cursor, &mut scratch, &mut output, expected.len()).unwrap();
@@ -503,8 +499,7 @@ mod tests {
     #[test]
     fn wrong_reply_index_and_generated_digit_leave_pending_request_and_storage_intact() {
         let mut cursor =
-            FiniteFormatCursor::new(9_007_199_254_740_992.0, DecimalRounding::AwayFromZero)
-                .unwrap();
+            FiniteFormatCursor::new(9_007_199_254_740_992.0, RoundingMode::AwayFromZero).unwrap();
         let mut scratch = Vec::new();
         let mut output = String::new();
         let mut append = false;
@@ -600,7 +595,7 @@ mod tests {
         let mut output = String::new();
         let (index, before, recovered) = {
             let mut cursor =
-                FiniteFormatCursor::new(9_007_199_254_740_992.0, DecimalRounding::AwayFromZero)
+                FiniteFormatCursor::new(9_007_199_254_740_992.0, RoundingMode::AwayFromZero)
                     .unwrap();
             let mut refused_append = false;
             let mut retained = None;
@@ -643,7 +638,7 @@ mod tests {
     #[test]
     fn one_short_final_output_keeps_real_prefix_and_pending_byte_until_acknowledged() {
         for (value, expected) in [(0.0, "0"), (-0.0078125, "-0.007813"), (0.9999996, "1")] {
-            let mut cursor = FiniteFormatCursor::new(value, DecimalRounding::AwayFromZero).unwrap();
+            let mut cursor = FiniteFormatCursor::new(value, RoundingMode::AwayFromZero).unwrap();
             let mut scratch = Vec::new();
             let mut output = String::new();
             let pending =
@@ -661,7 +656,7 @@ mod tests {
     fn nonfinite_and_nondecimal_digit_construction_is_typed_refusal() {
         for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(matches!(
-                FiniteFormatCursor::new(value, DecimalRounding::AwayFromZero),
+                FiniteFormatCursor::new(value, RoundingMode::AwayFromZero),
                 Err(FormatProtocolError::NonFinite)
             ));
         }

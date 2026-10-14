@@ -5,13 +5,11 @@
 //! zero. Final ordinary sRGB scalars select Color 4 ties toward positive infinity
 //! on the same finite-bit kernel; retained color calculation roles stay separate.
 
-pub(crate) mod bounded;
-
-use crate::exact_decimal::{DecimalRounding, LexicalDecimal};
+use crate::exact_decimal::LexicalDecimal;
+use crate::finite_format::{self, FormatError, RoundingMode};
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
 };
-use bounded::{FiniteFormatCursor, FormatReply, FormatRequest};
 
 type Result<T> = std::result::Result<T, Error>;
 use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
@@ -118,114 +116,26 @@ pub(crate) fn format_css_number_with_sign(
 /// or a shortest-decimal intermediate. Caller scratch covers every finite
 /// binary64 integer; output allocation contains only the final bounded text.
 pub(crate) fn format_projected_number(value: f64, limit: usize) -> Result<String> {
-    format_finite_number(value, limit, DecimalRounding::AwayFromZero)
+    format_finite_number(value, limit, RoundingMode::AwayFromZero)
 }
 
 /// Final ordinary sRGB text uses nearest millionths with exact ties toward
 /// positive infinity. The supplied value is the original post-scale outcome or
 /// the owning color algorithm's final binary64 channel, never decimal text.
 pub(crate) fn format_ordinary_color_number(value: f64, limit: usize) -> Result<String> {
-    format_finite_number(value, limit, DecimalRounding::TowardPositiveInfinity)
+    format_finite_number(value, limit, RoundingMode::TowardPositiveInfinity)
 }
 
-fn format_finite_number(value: f64, limit: usize, rounding: DecimalRounding) -> Result<String> {
-    assert!(value.is_finite(), "checked finite projected scalar");
-    let mut cursor = FiniteFormatCursor::new(value, rounding).expect("checked finite scalar");
-    // This ordinary owner services the SAME digit protocol as the controlled
-    // used serializer. It owns real scratch and reserves only final output;
-    // no preview number or expanded fractional spelling is materialized.
-    let mut scratch = Vec::new();
-    let mut output = String::new();
-    let mut output_ready = false;
-    loop {
-        if let Some(length) = cursor.planned_length()
-            && !output_ready
-        {
-            if length > limit {
-                return Err(Error::new(ByteLimit));
-            }
-            output
-                .try_reserve(length)
-                .map_err(|_| Error::new(CapacityOverflow))?;
-            output_ready = true;
-        }
-        let reply = match cursor.next_request() {
-            FormatRequest::Compute(kernel) => FormatReply::Computed(kernel),
-            FormatRequest::ReadDigit { index } => FormatReply::Digit {
-                index,
-                digit: scratch[index],
-            },
-            FormatRequest::AppendDigit { index, digit } => {
-                assert_eq!(index, scratch.len(), "actual next scratch index");
-                scratch
-                    .try_reserve(1)
-                    .map_err(|_| Error::new(CapacityOverflow))?;
-                scratch.push(digit);
-                FormatReply::Appended { index, digit }
-            }
-            FormatRequest::ReplaceDigit { index, digit } => {
-                scratch[index] = digit;
-                FormatReply::Replaced { index, digit }
-            }
-            FormatRequest::EmitByte { unit } => {
-                debug_assert!(output_ready);
-                output.push(char::from(unit));
-                FormatReply::Emitted { unit }
-            }
-            FormatRequest::Done(summary) => {
-                debug_assert_eq!(summary.emitted, output.len());
-                return Ok(output);
-            }
-        };
-        cursor
-            .complete(reply)
-            .expect("actual ordinary owner acknowledgement");
-    }
+fn format_finite_number(value: f64, limit: usize, rounding: RoundingMode) -> Result<String> {
+    finite_format::format(value, limit, rounding).map_err(|error| match error {
+        FormatError::ByteLimit => Error::new(ByteLimit),
+        FormatError::CapacityOverflow => Error::new(CapacityOverflow),
+    })
 }
 
-/// Tests the actual finite binary coefficient using the formatter's millionths
-/// kernel; this is emitted-zero metadata, not authored-value classification.
+/// Classification uses the same finite rounding kernel as projected output.
 pub(crate) fn projected_number_rounds_to_zero(value: f64) -> bool {
-    debug_assert!(value.is_finite());
-    let bits = value.to_bits();
-    let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
-    let fraction = bits & ((1_u64 << 52) - 1);
-    let (significand, exponent) = if encoded_exponent == 0 {
-        (fraction, -1074)
-    } else {
-        ((1_u64 << 52) | fraction, encoded_exponent - 1075)
-    };
-    if significand == 0 {
-        return true;
-    }
-    if exponent >= 0 {
-        return false;
-    }
-    rounded_millionths(
-        significand,
-        exponent,
-        bits >> 63 != 0,
-        DecimalRounding::AwayFromZero,
-    ) == 0
-}
-
-fn rounded_millionths(
-    significand: u64,
-    exponent: i32,
-    negative: bool,
-    rounding: DecimalRounding,
-) -> u128 {
-    debug_assert!(exponent < 0);
-    let numerator = u128::from(significand) * 1_000_000;
-    let shift = exponent.unsigned_abs();
-    if shift >= 128 {
-        return 0;
-    }
-    let denominator = 1_u128 << shift;
-    numerator / denominator
-        + u128::from(
-            rounding.rounds_up((numerator % denominator).cmp(&(denominator / 2)), negative),
-        )
+    finite_format::rounds_to_zero(value, RoundingMode::AwayFromZero)
 }
 
 fn emit_with_metadata(
