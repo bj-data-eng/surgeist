@@ -102,11 +102,11 @@ format, license and credits from html5lib-tests revision
 `f994590f528ac8b6073665791ddb1ed85c66dfb2`. This is test-only material, not an
 upstream parser implementation or runtime dependency.
 
-* License: [MIT](crates/surgeist-html/tests/fixtures/html5lib-f994590f/LICENSE)
-* Credits: [complete upstream AUTHORS.rst](crates/surgeist-html/tests/fixtures/html5lib-f994590f/AUTHORS.rst)
+* License: [MIT](crates/surgeist-html-parser/tests/fixtures/html5lib-f994590f/LICENSE)
+* Credits: [complete upstream AUTHORS.rst](crates/surgeist-html-parser/tests/fixtures/html5lib-f994590f/AUTHORS.rst)
 * Homepage: [html5lib-tests](https://github.com/html5lib/html5lib-tests)
 * Selected source: [pinned revision](https://github.com/html5lib/html5lib-tests/tree/f994590f528ac8b6073665791ddb1ed85c66dfb2)
-* Bundled scope: [HTML crate notice](crates/surgeist-html/NOTICE.md#html5lib-tests-fixtures)
+* Bundled scope: [HTML crate notice](crates/surgeist-html-parser/NOTICE.md#html5lib-tests-fixtures)
 
 The exact included license retains Copyright (c) 2006-2013 James Graham,
 Geoffrey Sneddon, and other contributors, with its full permission notice and
@@ -195,7 +195,7 @@ by the layout corpus adapter; it is not a dependency of the root facade.
 
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-generator](https://github.com/bj-data-eng/surgeist-generator)
-* Direct dependency attribution: [crate notice](crates/surgeist-generator/NOTICE.md) and [license material](crates/surgeist-generator/licenses/)
+* Direct dependency attribution: [crate notice](crates/surgeist-generator/NOTICE.md) and [license material](crates/surgeist-generator/licenses)
 
 The imported notice covers nine direct dependencies, including optional browser
 features and the Apple-Silicon macOS dependency. Preserve its license
@@ -308,7 +308,7 @@ and normative citations remain upstream.
 
 ### Unicode 18 bidirectional character data
 
-`surgeist-html` includes the complete Unicode 18.0.0 DerivedBidiClass data and
+`surgeist-html-semantics` includes the complete Unicode 18.0.0 DerivedBidiClass data and
 an offline-generated private first-strong classification table, distributed by
 Unicode, Inc. The checked-in reference retains the complete data text.
 
@@ -437,6 +437,8 @@ transitive binary-release inventory.
 | surgeist-fuzz | [NOTICE.md](crates/surgeist-fuzz/NOTICE.md) |
 | surgeist-generator | [NOTICE.md](crates/surgeist-generator/NOTICE.md) |
 | surgeist-html | [NOTICE.md](crates/surgeist-html/NOTICE.md) |
+| surgeist-html-parser | [NOTICE.md](crates/surgeist-html-parser/NOTICE.md) |
+| surgeist-html-semantics | [NOTICE.md](crates/surgeist-html-semantics/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |
 | surgeist-render | [NOTICE.md](crates/surgeist-render/NOTICE.md) |
 | surgeist-retained | [NOTICE.md](crates/surgeist-retained/NOTICE.md) |
@@ -452,9 +454,9 @@ transitive binary-release inventory.
 
 Pinned source excerpts and selected complete files are retained solely as research references. [html5ever](https://github.com/servo/html5ever) is dual-licensed MIT OR Apache-2.0; see its [local attribution and licenses](licenses/html5ever/NOTICE.md). [html5gum](https://github.com/untitaker/html5gum) is MIT-licensed; see its [local attribution and license](licenses/html5gum/NOTICE.md). This capture adds no production dependency.
 
-Separately, `surgeist-html` incorporates adapted html5ever tokenizer source in
-its private test-compiled parser machinery. The
-[origin record](crates/surgeist-html/PARSER-ORIGINS.md) identifies the selected
+Separately, `surgeist-html-parser` incorporates adapted html5ever tokenizer
+source in its private production parser machinery. The
+[origin record](crates/surgeist-html-parser/PARSER-ORIGINS.md) identifies the selected
 revision, exact original files and modifications. The retained
 [MIT OR Apache-2.0 notice and legal material](licenses/html5ever/NOTICE.md#incorporated-tokenizer-source)
 cover this adaptation; it adds no external parser Cargo dependency.
@@ -463,8 +465,9 @@ The same private machinery also incorporates bounded tree-insertion and scope
 operations, an ordinary-document Initial/BeforeHtml prologue and doctype tables
 under the [tree-source notice](licenses/html5ever/NOTICE.md#incorporated-tree-insertion-source).
 Its origin record preserves a separate initial adaptation checkpoint and the
-complete original notices. This does not assert complete tree-mode dispatch or
-public parsing.
+complete original notices. The crate README and conformance matrix qualify the
+supported public parsing profiles; this attribution certifies no full browser
+conformance.
 
 ## Selector matching research references
 
@@ -493,8 +496,8 @@ The restricted operation preserves Tiny’s processed/connectivity guard and
 connected processed mark while separate no-loader and Disabled capabilities
 suppress acquisition and execution. It is not literal Tiny Disabled behavior or
 an SVG runtime. The
-[crate notice](crates/surgeist-html/NOTICE.md#restricted-svg-script-processing)
-and [origin record](crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension)
+[crate notice](crates/surgeist-html-parser/NOTICE.md#restricted-svg-script-processing)
+and [origin record](crates/surgeist-html-parser/PARSER-ORIGINS.md#restricted-svg-script-extension)
 distinguish the HTML wrapper, Tiny incorporation and metadata-only WebKit clone
 selection. No browser source excerpt or new dependency is incorporated.
 

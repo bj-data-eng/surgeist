@@ -10,5 +10,3 @@ readme = "README.md"
 
 [dependencies]
 cssparser = "=0.37.0"
-surgeist-css = { path = "../surgeist-css" }
-surgeist-color = { path = "../surgeist-color", version = "=0.1.0" }

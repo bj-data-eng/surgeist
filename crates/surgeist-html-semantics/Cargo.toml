@@ -1,0 +1,12 @@
+[package]
+name = "surgeist-html-semantics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Qualified HTML captures and bounded intrinsic semantic queries."
+readme = "README.md"
+
+[dependencies]
+surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }

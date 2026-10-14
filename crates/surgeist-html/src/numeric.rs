@@ -1790,16 +1790,6 @@ impl IntegerPrefixScanner {
     }
 }
 
-impl ScannedIntegerPrefix {
-    /// The same nonnegative recovery decision as the ordinary parser, with no
-    /// allocation. The caller admits the original input and precharges at most
-    /// one visit per prefix digit before this atomic sign/zero inspection.
-    pub(crate) fn nonnegative_digits(self, units: &[u16]) -> Result<&[u16], NumericParseError> {
-        let digits = &units[self.start..self.end];
-        nonnegative_prefix_digits(self.negative, digits)
-    }
-}
-
 fn nonnegative_prefix_digits(negative: bool, digits: &[u16]) -> Result<&[u16], NumericParseError> {
     if negative && digits.iter().any(|&unit| unit != b'0' as u16) {
         Err(NumericParseError::Negative)
@@ -4103,7 +4093,7 @@ mod tests {
             }
             let actual = scanner
                 .finish()
-                .and_then(|prefix| prefix.nonnegative_digits(input.code_units()));
+                .and_then(|prefix| prefix.try_nonnegative_digits(input.code_units()));
             assert_eq!(
                 actual,
                 expected

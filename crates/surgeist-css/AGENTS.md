@@ -26,9 +26,9 @@ selector/query evaluation, resource retrieval, layout, painting and each consumi
 crate's lowering remain outside this crate.
 
 Consume sibling public front doors. Each consuming crate owns its direct adapter
-to lower-level contracts, including HTML's current direct adapter to CSS source
-operations and Color's numerical owner. The HTML values/parser/semantics split
-remains planned.
+to lower-level contracts, including the HTML parser's direct adapter to CSS source
+operations and Color's numerical owner. Shared HTML values and captured semantic
+queries have separate package owners.
 The root facade owns optional host-facing composition; it is not a mandatory
 integration intermediary. Follow the root guide's ownership and dependency rules.
 

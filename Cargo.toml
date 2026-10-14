@@ -20,6 +20,8 @@ surgeist-css = { path = "crates/surgeist-css", version = "=0.1.0" }
 surgeist-cssom = { path = "crates/surgeist-cssom", version = "=0.1.0" }
 surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
 surgeist-html = { path = "crates/surgeist-html", version = "=0.1.0" }
+surgeist-html-parser = { path = "crates/surgeist-html-parser", version = "=0.1.0" }
+surgeist-html-semantics = { path = "crates/surgeist-html-semantics", version = "=0.1.0" }
 surgeist-layout = { path = "crates/surgeist-layout", version = "=0.1.0" }
 surgeist-render = { path = "crates/surgeist-render", version = "=0.1.0" }
 surgeist-retained = { path = "crates/surgeist-retained", version = "=0.1.0" }
@@ -57,6 +59,8 @@ members = [
     "crates/surgeist-generator",
     "crates/surgeist-fuzz",
     "crates/surgeist-html",
+    "crates/surgeist-html-parser",
+    "crates/surgeist-html-semantics",
     "crates/surgeist-html/fuzz",
     "crates/surgeist-layout",
     "crates/surgeist-render",

@@ -48,7 +48,7 @@ Retained already provides canonical topology, model-scoped IDs, revisions, trans
 
 These observations come from `crates/surgeist-retained/src/{element,string,model,snapshot,mutation}.rs` and `crates/surgeist-template/src/{ast,span,render}.rs` at the stated revision. They are integration requirements, not a claim that retained already promises a complete HTML DOM. #1074 already owns relevant document assessment; avoid duplicating that work.
 
-The existing template parser has a strict custom grammar, matching closing tags, interpolation/control flow and registry-based validation. Preserve it as a distinct authoring frontend. Raw HTML should pass through the dedicated parser crate, tentatively `surgeist-html`, and converge through the authoritative document contract. Current repository rules place Surgeist-to-Surgeist adapters in root unless an explicit exception is adopted; choosing a parser crate does not silently move that adapter or settle final document ownership.
+The existing template parser has a strict custom grammar, matching closing tags, interpolation/control flow and registry-based validation. Preserve it as a distinct authoring frontend. Raw HTML passes through `surgeist-html-parser` and produces the immutable construction values owned by `surgeist-html`. The parser consumes qualified captures from `surgeist-html-semantics`; semantics owns the explicit construction-to-capture adapter. Consumers own their integrations directly. Canonical live document identity remains future DOM work.
 
 ## Alternative and acquisition options
 

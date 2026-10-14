@@ -27,6 +27,12 @@ pub mod dialog {
 pub mod html {
     pub use surgeist_html::*;
 }
+pub mod html_parser {
+    pub use surgeist_html_parser::*;
+}
+pub mod html_semantics {
+    pub use surgeist_html_semantics::*;
+}
 pub mod layout {
     pub use surgeist_layout::*;
 }

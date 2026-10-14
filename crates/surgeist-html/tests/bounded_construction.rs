@@ -938,3 +938,176 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_scratch() {
         [a]
     );
 }
+
+#[test]
+fn element_creation_installs_supplied_link_history_only_in_atomic_ready_commit() {
+    for supplied in [None, Some(surgeist_html::HtmlLinkFlags::fresh())] {
+        let (owner, _) = fragment(storage());
+        let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+            QualifiedName::new(Namespace::none(), None, "rel"),
+            "stylesheet",
+        )])
+        .unwrap();
+        let backing = attributes.shared_attributes().clone();
+        let command = HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::html(), None, "link"),
+            attributes,
+            link_flags: supplied,
+        };
+        let ready = ready(owner, command);
+        let HtmlConstructionCommit::Changed {
+            storage: owner,
+            created: Some(link),
+            ..
+        } = ready.commit()
+        else {
+            panic!()
+        };
+        let HtmlNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
+            panic!()
+        };
+        assert_eq!(element.link_flags(), supplied);
+        assert!(Arc::ptr_eq(
+            element.attributes().shared_attributes(),
+            &backing
+        ));
+        assert_eq!(
+            element.attributes().as_slice()[0]
+                .value()
+                .to_utf8()
+                .unwrap(),
+            "stylesheet"
+        );
+        assert_eq!(owner.usage().attributes(), 1);
+    }
+}
+
+#[test]
+fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inputs() {
+    for (namespace, local) in [
+        (Namespace::html(), "div"),
+        (Namespace::svg(), "link"),
+        (Namespace::html(), "LINK"),
+    ] {
+        let owner = storage();
+        let name = QualifiedName::new(namespace, None, local);
+        let name_alias = name.local_name().shared_code_units().clone();
+        let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+            QualifiedName::new(Namespace::none(), None, "x"),
+            "v",
+        )])
+        .unwrap();
+        let attributes_alias = attributes.shared_attributes().clone();
+        let mut operation = Some(
+            owner
+                .prepare(HtmlConstructionCommand::CreateElement {
+                    name,
+                    attributes,
+                    link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+                })
+                .unwrap_or_else(|_| panic!()),
+        );
+        loop {
+            let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+            assert!(!matches!(
+                action.description(),
+                HtmlConstructionActionDescription::Reserve { .. }
+                    | HtmlConstructionActionDescription::InitializeChildren { .. }
+                    | HtmlConstructionActionDescription::ShareReferences { .. }
+            ));
+            match action.perform() {
+                Ok(observation) => observation.accept(),
+                Err(error) => {
+                    assert_eq!(error.reason(), &HtmlConstructionError::WrongNodeKind);
+                    break;
+                }
+            }
+        }
+        assert!(matches!(
+            HtmlConstructionOperation::try_ready(&mut operation),
+            Err(HtmlConstructionError::WrongNodeKind)
+        ));
+        let (owner, command, _, _) = operation.unwrap().abort().into_parts();
+        assert_eq!(owner.len(), 0);
+        let HtmlConstructionCommand::CreateElement {
+            name,
+            attributes,
+            link_flags: Some(_),
+        } = command
+        else {
+            panic!()
+        };
+        assert!(Arc::ptr_eq(
+            name.local_name().shared_code_units(),
+            &name_alias
+        ));
+        assert!(Arc::ptr_eq(
+            attributes.shared_attributes(),
+            &attributes_alias
+        ));
+    }
+}
+
+#[test]
+fn interrupted_element_creation_returns_original_command_without_publishing_a_node() {
+    let (owner, root) = fragment(storage());
+    let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+        QualifiedName::new(Namespace::none(), None, "href"),
+        "x",
+    )])
+    .unwrap();
+    let backing = attributes.shared_attributes().clone();
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::CreateElement {
+                name: QualifiedName::new(Namespace::html(), None, "link"),
+                attributes,
+                link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    loop {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        if matches!(
+            action.description(),
+            HtmlConstructionActionDescription::Commit { .. }
+        ) {
+            break;
+        }
+        action.perform().unwrap().accept();
+    }
+    assert!(matches!(
+        HtmlConstructionOperation::try_ready(&mut operation),
+        Err(HtmlConstructionError::OperationNotReady)
+    ));
+    let (owner, command, _, mut orders) = operation.unwrap().abort().into_parts();
+    assert!(orders.next_action().is_none());
+    assert_eq!(owner.len(), 1);
+    assert_eq!(owner.position(&root), Ok(0));
+    assert!(owner.node_at(1).is_none());
+    let HtmlConstructionCommand::CreateElement {
+        attributes,
+        link_flags: Some(_),
+        ..
+    } = command
+    else {
+        panic!()
+    };
+    assert!(Arc::ptr_eq(attributes.shared_attributes(), &backing));
+    let (owner, link) = create(
+        owner,
+        HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::html(), None, "link"),
+            attributes,
+            link_flags: None,
+        },
+    );
+    let HtmlNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
+        panic!()
+    };
+    assert_eq!(element.link_flags(), None);
+    assert!(Arc::ptr_eq(
+        element.attributes().shared_attributes(),
+        &backing
+    ));
+}

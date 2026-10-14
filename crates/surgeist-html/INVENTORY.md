@@ -1,7 +1,7 @@
 # HTML language inventory associations
 
 This reference describes the HTML-owned values and intrinsic interpretation
-implemented in the current crate source. It associates original index
+implemented by the HTML values, parser and semantics crates. It associates original index
 identities with defining rules, real producers and source-qualified limits.
 Association coverage does not certify all listed algorithms or whole HTML
 conformance. Active unpublished implementation drafts are excluded.
@@ -13,7 +13,7 @@ The standard's defining clauses govern the non-normative printed indexes.
 cover the retained source and incorporation basis.
 [The retained index](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md)
 and [foundations](../../references/html-language-foundations--877d6146487f--b55e73c31978.md)
-retain the source. Crate source governs what is implemented; this reference
+retain the source. Each owning crate source governs what is implemented; this reference
 neither substitutes default tables for those owners nor records Project status.
 
 ## Read the dispositions
@@ -137,11 +137,11 @@ not assert all child/content constraints are machine checked.
 | <a id="e090"></a>E090 | sub; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact subscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
 | <a id="e091"></a>E091 | summary; HTML | [the-summary-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-summary-element) | [Details](#details) first direct summary predicate and captured TabIndex default; disclosure toggle external. |
 | <a id="e092"></a>E092 | sup; HTML | [the-sub-and-sup-elements](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-sub-and-sup-elements) | Exact superscript role/ordinary content is retained by raw construction; no source-specific computed getter or full content-conformance certificate is advertised. Applicable global language/editability/heading facts remain independently queryable. |
-| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private HTML foreign construction/integration and [restricted SVG script processing](README.md#private-svg-script) implemented, broader SVG language semantics/runtime delegated. |
+| <a id="e093"></a>E093 | SVG svg; SVG | [elementdef-svg](https://w3c.github.io/svgwg/svg2-draft/struct.html#elementdef-svg) | SVG namespace/open names retained; ordinary private HTML foreign construction/integration and [restricted SVG script processing](../../docs/reference/html-operations.md#private-svg-script) implemented, broader SVG language semantics/runtime delegated. |
 | <a id="e094"></a>E094 | table; HTML | [the-table-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) | [Tables](#tables): independent TableCaption/TableHead/TableFoot getters, static bodies/rows/cells and native collection indices, separately from the slot/column/header model; no live collections/mutation/layout or full author-conformance certificate. |
 | <a id="e095"></a>E095 | tbody; HTML | [the-tbody-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tbody-element) | [Tables](#tables) direct row membership; geometric layout and live DOM collection external. |
 | <a id="e096"></a>E096 | td; HTML | [the-td-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-td-element) | [Tables](#tables) cell/span/header model and native TableCellIndex in the immediate row's cells; geometry, live getters and mutation remain separate. |
-| <a id="e097"></a>E097 | template; HTML | [the-template-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element) | Native separate template contents and explicit declarative shadow effects; [private fresh ordinary templates](README.md#private-ordinary-templates) implement contents/patching. [Private context fragments](README.md#private-context-fragments) retain qualified template caches and shadow construction effects. [Template marker reference](#template-marker-reference) reports captured same-tree name witnesses and first selection. [Bounded document/fragment reports](README.md#decoded-unicode-parsing) are available; live DOM shadow attachment remains unfinished. |
+| <a id="e097"></a>E097 | template; HTML | [the-template-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element) | Native separate template contents and explicit declarative shadow effects; [private fresh ordinary templates](../../docs/reference/html-operations.md#private-ordinary-templates) implement contents/patching. [Private context fragments](../../docs/reference/html-operations.md#private-context-fragments) retain qualified template caches and shadow construction effects. [Template marker reference](#template-marker-reference) reports captured same-tree name witnesses and first selection. [Bounded document/fragment reports](../../docs/reference/html-operations.md#decoded-unicode-parsing) are available; live DOM shadow attachment remains unfinished. |
 | <a id="e098"></a>E098 | textarea; HTML | [the-textarea-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-textarea-element) | [Control lengths](#control-lengths), cols/rows/wrap, captured defaultValue/autocomplete/text assistance/current flags and TextareaValueMissing in [Control facts](#control-facts); editing/reset/validation execution separate. |
 | <a id="e099"></a>E099 | tfoot; HTML | [the-tfoot-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-tfoot-element) | [Tables](#tables) supplies independent first direct TableFoot selection and direct row membership/footer-last tableRows; no live mutation or full author-conformance certificate. |
 | <a id="e100"></a>E100 | th; HTML | [the-th-element](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-th-element) | [Tables](#tables) cell/span/header model and native TableCellIndex, plus [Table header scope](#table-header-scope); live getters, mutation and layout remain separate. |
@@ -193,7 +193,7 @@ cross-language references, so a contextual defining link is not lost.
 | <a id="a022"></a>A022 | class; HTML elements | [classes](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#classes); [set-of-space-separated-tokens](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#set-of-space-separated-tokens) | [Token sequences](#token-sequences): unordered space-token class set, comparison according to document mode/source. No selector matching or reflected live token list. |
 | <a id="a023"></a>A023 | closedby; dialog | [attr-dialog-closedby](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dialog-closedby); [attr-dialog-closedby-any](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dialog-closedby-any); [attr-dialog-closedby-closerequest](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dialog-closedby-closerequest); [attr-dialog-closedby-none](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-dialog-closedby-none) | [Enumerations](#enumerations): closedby missing/invalid Auto. Close-watcher/request-close/modal transitions are external execution. |
 | <a id="a024"></a>A024 | color; link | [attr-link-color](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-color); [attr-link-rel](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-link-rel); [typedef-color](https://drafts.csswg.org/css-color/#typedef-color) | Link mask-icon rel author restriction remains an HTML condition; CSS color grammar delegated. No UA color processing requirement is supplied by this clause. |
-| <a id="a025"></a>A025 | colorspace; input | [attr-input-colorspace](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace); [attr-input-colorspace-limited-srgb](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-limited-srgb); [attr-input-colorspace-display-p3](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-display-p3) | [Color input](#color-input): input_colorspace supplies limited-srgb/display-p3 recognition and missing/invalid Limited sRGB fallback; the actual-input-state companion independently observes Color-only author presence. CSS owns color grammar; [controlled Color construction](README.md#controlled-color-input) consumes it separately from attribute interpretation. Interactive wells remain external. |
+| <a id="a025"></a>A025 | colorspace; input | [attr-input-colorspace](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace); [attr-input-colorspace-limited-srgb](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-limited-srgb); [attr-input-colorspace-display-p3](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-colorspace-display-p3) | [Color input](#color-input): input_colorspace supplies limited-srgb/display-p3 recognition and missing/invalid Limited sRGB fallback; the actual-input-state companion independently observes Color-only author presence. CSS owns color grammar; [controlled Color construction](../../docs/reference/html-operations.md#controlled-color-input) consumes it separately from attribute interpretation. Interactive wells remain external. |
 | <a id="a026"></a>A026 | cols; textarea | [attr-textarea-cols](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-cols); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): textarea cols positive author quantity; missing/failed/zero recovery 20. |
 | <a id="a027"></a>A027 | colspan; td; th | [attr-tdth-colspan](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-tdth-colspan); [valid-non-negative-integer](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-non-negative-integer) | [Numeric content](#numeric-content): cell colspan author 1..1000; missing/failed/zero recovery 1, clamp 1000. [Tables](#tables) owns slots. |
 | <a id="a028"></a>A028 | command; button | [attr-button-command](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command); [attr-button-command-toggle-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-toggle-popover); [attr-button-command-show-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-popover); [attr-button-command-hide-popover](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-hide-popover); [attr-button-command-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-close); [attr-button-command-request-close](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-request-close); [attr-button-command-show-modal](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-show-modal); [attr-button-command-custom](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-button-command-custom) | [Commands and popovers](#commands-and-popovers): standard/Custom/Unknown content, checked native emission and retained Custom payload; [captured command validity](#command-target-relations); activation remains distinct. |
@@ -445,7 +445,7 @@ prohibited author context does not suppress source-defined content presence.
 [Content](tests/attributes_boolean_content.rs),
 [completion](tests/attributes_boolean_completion.rs),
 [hyperlink/context](tests/attributes_hyperlink_context.rs) and
-[captured context](tests/semantics_attribute_context.rs) are separate evidence.
+[captured context](../surgeist-html-semantics/tests/semantics_attribute_context.rs) are separate evidence.
 Missing required context is not an invented false/invalid result. Flags such as
 checked/selected/open/muted default content are not live current-state snapshots.
 
@@ -494,7 +494,7 @@ invented empty default. Canonical native emission is separate from exact raw.
 Actual button Auto classification, script-kind placement, link rel membership,
 href applicability, preload policy and effective request policy are additional
 conditions. Reports supply no fetch/navigation/editing/render execution.
-[Form settings](tests/semantics_form_settings.rs) and
+[Form settings](../surgeist-html-semantics/tests/semantics_form_settings.rs) and
 [hyperlink unqualified](tests/attributes_hyperlink_unqualified.rs) exercise this
 phase separation; source-required context methods must be selected explicitly.
 
@@ -599,12 +599,12 @@ value/min/max/low/high/optimum and low≤high relations.
 [Author meter](tests/attributes_meter.rs) and
 [author progress](tests/attributes_progress.rs) test these constraints.
 
-Captured `Meter`/`Progress` in [range.rs](src/semantics/range.rs) use processing
+Captured `Meter`/`Progress` in [range.rs](../surgeist-html-semantics/src/semantics/range.rs) use processing
 recovery: meter min0, max1 raised to min, value0 clamped, low=min, high=max then
 low/high clamps, optimum midpoint then clamp. Progress missing value is
 Indeterminate; present invalid/negative value yields determinate0; invalid or
 nonpositive max uses1 and value is capped there. Position follows that state.
-[Range tests](tests/semantics_ranges.rs) include coupled and finite edge cases.
+[Range tests](../surgeist-html-semantics/tests/semantics_ranges.rs) include coupled and finite edge cases.
 Neither family supplies rendering or task lifecycle.
 
 ## Area geometry
@@ -637,10 +637,10 @@ file, validate selected resources or implement a picker.
 [Autocomplete](src/attributes/autocomplete.rs) owns exact token order, recognized
 field/mode/contact/section/webauthn grammar, actual input-state/anchor mantle
 restrictions and field identity/scope/defaults. `ControlAutocomplete` in the
-[captured owner](src/semantics/autocomplete.rs) joins actual form association to
+[captured owner](../surgeist-html-semantics/src/semantics/autocomplete.rs) joins actual form association to
 own/missing field processing; unavailable owner is not an invented default.
 [Attribute](tests/attributes_autocomplete.rs) and
-[captured](tests/semantics_autocomplete.rs) tests cover qualification. Browser
+[captured](../surgeist-html-semantics/tests/semantics_autocomplete.rs) tests cover qualification. Browser
 stored data, credential retrieval and UI autofill are external transitions.
 
 ## Responsive images
@@ -685,10 +685,10 @@ empty, invalid and differently named slots remain distinct.
 uniqueness is a contextual author condition; collection lookups and form/label
 algorithms use actual IDs but do not certify global uniqueness.
 
-[Captured IdAuthor](src/semantics/id_author.rs) now independently retains that
+[Captured IdAuthor](../surgeist-html-semantics/src/semantics/id_author.rs) now independently retains that
 local report and observes ordinary-tree DOM-ID uniqueness. The
-[overview](README.md#captured-id-author) and
-[literal tests](tests/semantics_id_author.rs) distinguish NoId, Unique, an actual
+[overview](../../docs/reference/html-operations.md#captured-id-author) and
+[literal tests](../surgeist-html-semantics/tests/semantics_id_author.rs) distinguish NoId, Unique, an actual
 capture-qualified Duplicate witness and influencing Missing. Applicable present
 local author context remains Unchecked; absent and supplied-empty values both
 have no DOM ID without erasing their different local author states.
@@ -715,14 +715,14 @@ extensions are intentionally breaking; no compatibility adapter is provided.
 
 [Hash scanner](src/attributes/hash_name.rs) exposes exact first-hash/tail/local
 author form with native `HtmlUsemapReference` over a checked map-name token.
-[Usemap owner](src/semantics/image_map.rs) computes the first same-tree map with
+[Usemap owner](../surgeist-html-semantics/src/semantics/image_map.rs) computes the first same-tree map with
 matching id/name for processing independently from the existential author
 name-only witness. Positive witnesses after deferred later gaps are retained;
 unresolved influencing gaps remain Missing rather than false. No tree is cloned
 per query. `MapAreas` separately returns immutable ordinary area-descendant
 membership including nested maps/foreign wrappers; it does not select an image.
-[Hash](tests/attributes_hash_name.rs), [usemap](tests/semantics_usemap_reference.rs)
-and [areas](tests/semantics_map_areas.rs) cover these distinct results.
+[Hash](tests/attributes_hash_name.rs), [usemap](../surgeist-html-semantics/tests/semantics_usemap_reference.rs)
+and [areas](../surgeist-html-semantics/tests/semantics_map_areas.rs) cover these distinct results.
 
 ## Modification datetime
 
@@ -740,10 +740,10 @@ This does not turn a time-element value into a modification timestamp.
 `HtmlTimeElementValue`, `HtmlMachineReadableTime` and `time_element_value` for
 ordered Month/Date/Yearless/Time/Local/Offset/Global/Week/Year/Duration alternatives;
 strict year author syntax differs positive-year processing. Actual captured
-`TimeElement` in [time_element.rs](src/semantics/time_element.rs) selects explicit
+`TimeElement` in [time_element.rs](../surgeist-html-semantics/src/semantics/time_element.rs) selects explicit
 datetime or source-qualified text/content conditions, preserving provenance.
 [Standalone](tests/time_element_values.rs) and
-[captured](tests/semantics_time_element.rs) verify it. No host-zone, inverse,
+[captured](../surgeist-html-semantics/tests/semantics_time_element.rs) verify it. No host-zone, inverse,
 stepping or complete content-conformance checker is advertised.
 
 ## Textarea wrap
@@ -757,56 +757,56 @@ entry-list value/linebreaks.
 ## Captured global states
 
 `HtmlCapture`, `HtmlSemanticContext`, checked six-domain `HtmlSemanticLimits` and
-`HtmlSemanticSession` [own one immutable input and finite ledger](src/semantics.rs).
+`HtmlSemanticSession` [own one immutable input and finite ledger](../surgeist-html-semantics/src/semantics.rs).
 Outputs retain capture/configuration/host/source qualifications and subject IDs.
 `Known`, `Missing`, `Unsupported` and `Inapplicable` are distinct; terminal
 resource/cancellation errors yield no successful partial requested batch. Current
 host/configuration facts cannot be proved by a DOM revision alone. Dependency
 output is conservative recomputation, not fabricated precise dependencies.
 
-[Inheritance](src/semantics/inheritance.rs),
-[text assistance](src/semantics/text_assistance.rs) and explicit producer facts
+[Inheritance](../surgeist-html-semantics/src/semantics/inheritance.rs),
+[text assistance](../surgeist-html-semantics/src/semantics/text_assistance.rs) and explicit producer facts
 supply EditingHost/Editable/IsContentEditable (delegated editable source pin),
 TranslationMode, Spellcheck, ComputedHeadingLevel, capitalization/correction/
 writing-suggestions states. Parent versus shadow-host traversal is selected by
 its actual clause; missing relations/default policy remain typed. No edit,
 translation, spellcheck engine or virtual keyboard is executed.
-[Inheritance](tests/semantics_inheritance.rs),
-[text assistance](tests/semantics_text_assistance.rs),
-[semantics](tests/semantics.rs) and [capture](tests/capture.rs) cover qualification,
+[Inheritance](../surgeist-html-semantics/tests/semantics_inheritance.rs),
+[text assistance](../surgeist-html-semantics/tests/semantics_text_assistance.rs),
+[semantics](../surgeist-html-semantics/tests/semantics.rs) and [capture](../surgeist-html-semantics/tests/capture.rs) cover qualification,
 budgets, cancellation, source/default branches and unchanged raw storage.
 
 ## Language and direction
 
-[language.rs](src/semantics/language.rs) and [directionality.rs](src/semantics.rs)
+[language.rs](../surgeist-html-semantics/src/semantics/language.rs) and [directionality.rs](../surgeist-html-semantics/src/semantics.rs)
 consume actual qualified lang/XML-lang and ordinary/host ancestry, unknown empty
 versus unknown nonempty tag, document fallback, source auto scanning exclusions
 and current control-value facts. BCP47 lexical validation is not inferred.
 Directionality's Unicode/UAX qualification is separate from document revision.
-[Language tests](tests/semantics_language.rs) and [semantics tests](tests/semantics.rs)
+[Language tests](../surgeist-html-semantics/tests/semantics_language.rs) and [semantics tests](../surgeist-html-semantics/tests/semantics.rs)
 cover those native outputs, not CSS bidi layout or host language transitions.
 
 ## Inertness
 
-[inert.rs](src/semantics/inert.rs) consumes actual qualified flat relation,
+[inert.rs](../surgeist-html-semantics/src/semantics/inert.rs) consumes actual qualified flat relation,
 connectedness and topmost blocking modal facts. Own inert wins; only the source
 blocking modal escapes inherited inertness. Known Excluded ancestry is different
 from Missing and does not prove noninherited inertness. Document is inherently
-connected. [Inert tests](tests/semantics_inert.rs) exercise source cases and
+connected. [Inert tests](../surgeist-html-semantics/tests/semantics_inert.rs) exercise source cases and
 qualification. DOM owns flat relationships; host/runtime owns modal/top-layer
 transitions. No live state or generic flattening is rebuilt here.
 
 ## Legend form owner
 
-`LegendFormOwner` in [control.rs](src/semantics/control.rs) returns the actual
+`LegendFormOwner` in [control.rs](../surgeist-html-semantics/src/semantics/control.rs) returns the actual
 form getter of an immediate HTML fieldset parent, otherwise known null. An
 established current pointer, including null, differs from unavailable association
 or parent evidence; explicit reset interpretation reuses the existing form-owner
 algorithm. This applies to every direct legend without requiring first-child or
 ordered-child facts. Generic `FormOwner(legend)` stays inapplicable.
 [The source clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#dom-legend-form),
-[canonical explanation](README.md#captured-legend-form-owner) and
-[tests](tests/semantics_legend_form.rs) cover qualified results, consulted raw
+[canonical explanation](../../docs/reference/html-operations.md#captured-legend-form-owner) and
+[tests](../surgeist-html-semantics/tests/semantics_legend_form.rs) cover qualified results, consulted raw
 admission, actual session resource bounds, cancellation and atomic batches.
 No runtime association transition, caption selection or author content
 conformance is certified.
@@ -828,12 +828,12 @@ Date/Month/Week/Time/LocalDateTime use the shared strict grammar: invalid curren
 values become empty, valid Date/Month/Week/Time spellings survive, and LocalDateTime
 uses `T` with the shortest valid time while native default content stays independent.
 The controlled parser preserves actual source history and explicitly marks changed
-separators as InputValueNormalization; [public report readers](README.md#decoded-unicode-parsing)
+separators as InputValueNormalization; [public report readers](../../docs/reference/html-operations.md#decoded-unicode-parsing)
 lend the resulting metadata and associations. Ordinary content/quantity recovery,
 constraint validation, stepping, live setters and UI remain separate domains.
-[The overview](README.md#shared-intrinsic-control-rules) explains trigger order,
+[The overview](../../docs/reference/html-operations.md#shared-intrinsic-control-rules) explains trigger order,
 bounded recognition/comparison and adapter responsibilities;
-[input tests](tests/input_rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs),
+[input tests](../surgeist-html-parser/tests/input_rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs),
 [Radio tests](tests/input_radio_rules.rs), [Email/URL tests](tests/input_email_url_rules.rs),
 [temporal input tests](tests/input_temporal_rules.rs) and [family tests](tests/control_values.rs)
 verify literal local decisions. Strings, selection, form/tree references,
@@ -841,38 +841,38 @@ resource admission and canonical DOM mutation remain with their actual adapters.
 These pure rules do not replace the separately qualified captured observations
 below or establish complete control execution/conformance.
 
-[control.rs](src/semantics/control.rs) supplies Disabledness, current checkedness/
+[control.rs](../surgeist-html-semantics/src/semantics/control.rs) supplies Disabledness, current checkedness/
 selectedness, dirty flags, indeterminateness and validation candidacy from actual
 captured state/context. Own readonly/disabled content and actual dynamic state
 are different. First legend/fieldset, optgroup/select, datalist and form-associated
 custom classification are source predicates, not generic host booleans.
-[Controls](tests/semantics_controls.rs) and
-[candidacy](tests/semantics_validation_candidate.rs) verify them. Static candidacy
+[Controls](../surgeist-html-semantics/tests/semantics_controls.rs) and
+[candidacy](../surgeist-html-semantics/tests/semantics_validation_candidate.rs) verify them. Static candidacy
 is not current validity, reporting UI, ElementInternals or constraint-validation
 execution. `OutputValue`/`OutputDefaultValue` and `TextareaDefaultValue` use
-[control text](src/semantics/control_text.rs) exact current/default/text facts,
-with [tests](tests/semantics_control_text.rs); mutations/resets are not performed.
+[control text](../surgeist-html-semantics/src/semantics/control_text.rs) exact current/default/text facts,
+with [tests](../surgeist-html-semantics/tests/semantics_control_text.rs); mutations/resets are not performed.
 
 
-`CheckableInputValueMissing` in [checkable.rs](src/semantics/checkable.rs) is a
+`CheckableInputValueMissing` in [checkable.rs](../surgeist-html-semantics/src/semantics/checkable.rs) is a
 source-static Checkbox/Radio observation using required presence and actual
 checkedness. Radio self belongs even with absent/empty name; other members need
 exact nonempty name, same ordinary tree and actual form owner. A disabled required
 member still contributes. A checked witness proves false despite unrelated gaps;
 otherwise genuinely influencing possible membership/checkedness remains Missing.
-[Checkable tests](tests/semantics_checkable_input_missing.rs) cover these conditions,
+[Checkable tests](../surgeist-html-semantics/tests/semantics_checkable_input_missing.rs) cover these conditions,
 scratch release, admission, budgets, cancellation and atomicity. This performs
 neither validity execution nor radio-state normalization/transition.
 
 `InputTextValueMissing` and `TextareaValueMissing` in
-[value_missing.rs](src/semantics/value_missing.rs) observe required presence,
+[value_missing.rs](../surgeist-html-semantics/src/semantics/value_missing.rs) observe required presence,
 mutability and empty supplied current value for Text/Search/Telephone/URL/Email/
 Password inputs and textarea. They reuse the checked current-string supplement
 and ordinary disabledness/fieldset/first-legend owner; authored input value and
 textarea descendant default text do not substitute for current state. Required
 and readonly use exact attribute presence. Known nonempty current value or known
 immutability proves false without unrelated unavailable facts; otherwise the
-first influencing missing fact remains explicit. [Twenty-one public tests](tests/semantics_text_value_missing.rs)
+first influencing missing fact remains explicit. [Twenty-one public tests](../surgeist-html-semantics/tests/semantics_text_value_missing.rs)
 cover roles, literals, disabled branches, unknowns, qualification, exact work/
 output limits, cancellation and atomic batches. Current strings retain their
 supplement aggregate UTF-16 limit separately from selected attribute admission;
@@ -889,7 +889,7 @@ reports. Absence is Missing observation/recognition but locally Conforming;
 specified empty is a local violation. Whitespace, case, NULL and isolated UTF-16
 surrogates remain exact. Applicable present context remains Unchecked.
 
-[FormNameAuthor](src/semantics/form_name.rs) independently retains that local
+[FormNameAuthor](../surgeist-html-semantics/src/semantics/form_name.rs) independently retains that local
 report and actual Document forms-collection uniqueness: NoSpecifiedName,
 NoFormsCollection, Unique, an actual qualified Duplicate witness, or influencing
 Missing. Absence skips topology/other values. An established ordinary Element/
@@ -902,9 +902,9 @@ Specified-empty comparisons preserve local failure; missing name reflection is
 not an authored competitor. Ordinary foreign wrappers permit HTML descendants,
 while template/shadow/host/slot relations do not join collections.
 
-The [overview](README.md#captured-form-name-author),
-[local tests](tests/attributes_form_name.rs) and
-[captured tests](tests/semantics_form_name.rs) explain exact raw admission,
+The [overview](../../docs/reference/html-operations.md#captured-form-name-author),
+[local tests](../surgeist-html-semantics/tests/attributes_form_name.rs) and
+[captured tests](../surgeist-html-semantics/tests/semantics_form_name.rs) explain exact raw admission,
 borrowed traversal and the existing qualified session's work/storage/cancellation
 and atomic-batch contract. Known(report) is not overall conformance; a terminal
 failure cannot be rescued by a witness. Capture/standalone/cloning allocation
@@ -914,17 +914,17 @@ Query/Fact/local-error additions are intentionally breaking.
 
 ## Labels and form ownership
 
-[control.rs](src/semantics/control.rs), [labels](src/semantics/control.rs),
-[collections](src/semantics/control.rs) and
-[form defaults](src/semantics/form_default.rs) implement actual form owner versus
+[control.rs](../surgeist-html-semantics/src/semantics/control.rs), [labels](../surgeist-html-semantics/src/semantics/control.rs),
+[collections](../surgeist-html-semantics/src/semantics/control.rs) and
+[form defaults](../surgeist-html-semantics/src/semantics/form_default.rs) implement actual form owner versus
 reset interpretation, labeled control, label-associated form, control label
 membership and listed form/fieldset membership/length. Source uses ordinary tree,
 not flattened labels/form ancestry. Custom classification and actual current
 association remain qualified facts; unavailable history is not silently reset.
-[Controls](tests/semantics_controls.rs), [labels](tests/semantics_labels.rs),
-[label form](tests/semantics_label_form.rs),
-[collections](tests/semantics_collections.rs) and
-[form defaults](tests/semantics_form_default.rs) are actual public evidence.
+[Controls](../surgeist-html-semantics/tests/semantics_controls.rs), [labels](../surgeist-html-semantics/tests/semantics_labels.rs),
+[label form](../surgeist-html-semantics/tests/semantics_label_form.rs),
+[collections](../surgeist-html-semantics/tests/semantics_collections.rs) and
+[form defaults](../surgeist-html-semantics/tests/semantics_form_default.rs) are actual public evidence.
 These immutable collections are not live HTMLCollections, named-property APIs
 or entry-list/form submission execution.
 
@@ -933,9 +933,9 @@ or entry-list/form submission execution.
 `formmethod`/`formenctype` [scalar overlays](src/attributes/scalar.rs) intentionally
 have no own missing override; invalid defaults Get/UrlEncoded differ from None.
 Captured SubmitterFormMethod/SubmitterFormEnctype/SubmitterNoValidate in
-[form_settings.rs](src/semantics/form_settings.rs) join supplied actual owner/
-submitter facts, with [settings](tests/semantics_form_settings.rs) and
-[no-validate](tests/semantics_no_validate.rs) tests. FormDefaultButton and
+[form_settings.rs](../surgeist-html-semantics/src/semantics/form_settings.rs) join supplied actual owner/
+submitter facts, with [settings](../surgeist-html-semantics/tests/semantics_form_settings.rs) and
+[no-validate](../surgeist-html-semantics/tests/semantics_no_validate.rs) tests. FormDefaultButton and
 FormImplicitSubmissionCondition are static source conditions, not submission
 execution. Action URL resolution, target selection, encoding/entry-list assembly,
 events, network and navigable transitions require real consumer context; their
@@ -943,36 +943,36 @@ absence is not repaired by lexical Get/UrlEncoded values.
 
 ## Options and selection
 
-[select.rs](src/semantics/select.rs) and [option_text.rs](src/semantics/option_text.rs)
+[select.rs](../surgeist-html-semantics/src/semantics/select.rs) and [option_text.rs](../surgeist-html-semantics/src/semantics/option_text.rs)
 provide source-pruned option lists, selected lists/index/value, option index/form
 owner/text/label/value, source placeholder and SelectValueMissing. They use actual
 supplied selectedness/value/relations, not content selected as current state.
 Only influencing unknowns block; source-sufficient false witnesses remain sound.
 Actual explicit size1 placeholder rule is edition-qualified even with multiple.
-[Select](tests/semantics_select.rs), [placeholder](tests/semantics_select_placeholder.rs),
-[value missing](tests/semantics_select_value_missing.rs),
-[option text](tests/semantics_option_text.rs) and
-[option form](tests/semantics_option_form.rs) cover those contracts. These captured
+[Select](../surgeist-html-semantics/tests/semantics_select.rs), [placeholder](../surgeist-html-semantics/tests/semantics_select_placeholder.rs),
+[value missing](../surgeist-html-semantics/tests/semantics_select_value_missing.rs),
+[option text](../surgeist-html-semantics/tests/semantics_option_text.rs) and
+[option form](../surgeist-html-semantics/tests/semantics_option_form.rs) cover those contracts. These captured
 queries do not mutate selection. The private standalone parser's
-[select construction owner](src/construction/parser_session/select.rs) performs
+[select construction owner](../surgeist-html-parser/src/construction/select.rs) performs
 its own source-qualified creation/reset, option-pop, topology and selectedcontent
-effects, with [managed cloning](src/construction/parser_session/clone.rs) and
-[private tests](src/construction/parser_session/select_tests.rs). Its pending-work
+effects, with [managed cloning](../surgeist-html-parser/src/construction/clone.rs) and
+[private tests](../surgeist-html-parser/src/construction.rs). Its pending-work
 freeze refusal and source-defined FIFO checkpoints precede the separate
-[public completed-report boundary](README.md#decoded-unicode-parsing). Live DOM
+[public completed-report boundary](../../docs/reference/html-operations.md#decoded-unicode-parsing). Live DOM
 selection mutations, UI and event dispatch remain separate.
 
 ## Datalist
 
-[datalist.rs](src/semantics/datalist.rs) binds actual same-tree input list lookup,
+[datalist.rs](../surgeist-html-semantics/src/semantics/datalist.rs) binds actual same-tree input list lookup,
 immutable datalist option membership and suggestion filter using actual option
 value/label/disabledness; unrelated option details are not mandatory to every
-membership query. [Datalist tests](tests/semantics_datalist.rs) exercise those
+membership query. [Datalist tests](../surgeist-html-semantics/tests/semantics_datalist.rs) exercise those
 source branches. Host presentation/autocomplete choices remain external.
 
 ## Description lists
 
-[DescriptionListGroups](src/semantics/description_list.rs) computes dl's pinned
+[DescriptionListGroups](../surgeist-html-semantics/src/semantics/description_list.rs) computes dl's pinned
 [dt/dd grouping](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#process-dt-or-dd):
 ordered qualified identities, one-level direct HTML div processing and one
 seenDd state across div boundaries. Leading value-only/trailing name-only groups
@@ -981,21 +981,21 @@ influence the result; their unavailability yields owner-qualified Missing rather
 than partial membership. Ancestry and member/ignored/nested-wrapper contents do
 not influence grouping, and no attribute value or text is flattened.
 
-The [overview](README.md#captured-description-list-groups) and
-[literal tests](tests/semantics_description_list.rs) distinguish borrowed
+The [overview](../../docs/reference/html-operations.md#captured-description-list-groups) and
+[literal tests](../surgeist-html-semantics/tests/semantics_description_list.rs) distinguish borrowed
 iteration with zero scratch from controlled nested output capacities and atomic
 session failure. E024/E029/E030/E031 gain these associations, not whole dl/div/
 dt/dd content conformance, human-name uniqueness, live DOM or parser behavior.
 
 ## Lists
 
-[list.rs](src/semantics.rs) owns ListOwner/ListStartingValue/ListOrdinal
+[list.rs](../surgeist-html-semantics/src/semantics.rs) owns ListOwner/ListStartingValue/ListOrdinal
 using exact signed start/value, reversed and explicit CSS display/box participation
 revision-qualified supplement. Own li content value does not invent an ordinal
 outside a list; missing participation is not false. Native/content integer
 reports live in [scalar](src/attributes/scalar.rs);
 [list integer tests](tests/attributes_list_integers.rs) and
-[semantics tests](tests/semantics.rs) cover real source/default behavior. CSS
+[semantics tests](../surgeist-html-semantics/tests/semantics.rs) cover real source/default behavior. CSS
 layout/marker rendering and update publication belong their consuming owners.
 
 ## Tables
@@ -1005,27 +1005,27 @@ child or known null without forming TableModel or requiring row/header facts.
 Influencing direct-child order remains Missing; selected-caption descendants
 and later names after the first witness are uninspected. It shares the existing
 charged borrowed child scan and qualified atomic session, without new scratch
-or nested output. The [canonical getter explanation](README.md#captured-table-caption)
-and [literal/resource tests](tests/semantics_table_caption.rs) retain its exact
+or nested output. The [canonical getter explanation](../../docs/reference/html-operations.md#captured-table-caption)
+and [literal/resource tests](../surgeist-html-semantics/tests/semantics_table_caption.rs) retain its exact
 limits. Caption setters/create/delete and table author conformance are separate.
 
 `TableHead` and `TableFoot` additionally select the first direct HTML thead
 or tfoot independently of row membership/model formation, including empty
 sections and known null. Selection follows ordinary source order, not TableRows
-phase order. Their [canonical explanation](README.md#captured-table-sections)
-and [paired tests](tests/semantics_table_sections.rs) describe influencing Missing,
+phase order. Their [canonical explanation](../../docs/reference/html-operations.md#captured-table-sections)
+and [paired tests](../surgeist-html-semantics/tests/semantics_table_sections.rs) describe influencing Missing,
 shared qualified admission and first-witness read limits. Setter/create/delete
 and full table author conformance remain separate.
 
-[table.rs](src/semantics/table.rs) owns slot/column/cell/header model and errors,
+[table.rs](../surgeist-html-semantics/src/semantics/table.rs) owns slot/column/cell/header model and errors,
 including malformed spans/overlap, separately from static
-[collections](src/semantics/table/collections.rs): bodies direct tbody; rows
+[collections](../surgeist-html-semantics/src/semantics/table/collections.rs): bodies direct tbody; rows
 header-first then direct/body then footer; section direct tr; row direct td/th.
 Immutable membership does not require irrelevant cell/spans/attributes or imply
 live collections, mutation or geometric layout.
 
 `TableRowIndex`, `TableSectionRowIndex` and `TableCellIndex` use the same
-[collection owner](src/semantics/table/collections.rs) to return native zero-based
+[collection owner](../surgeist-html-semantics/src/semantics/table/collections.rs) to return native zero-based
 positions; None represents source −1, separately from influencing Missing.
 The row's immediate table parent, or section parent plus table grandparent,
 selects table.rows; sectionRowIndex needs only its immediate table/section
@@ -1035,8 +1035,8 @@ ordinals. No nearest ancestor or template/shadow host substitutes for these
 ordinary relationships. Target projection retains no member vector or scratch;
 actual traversal, scalar output, physical outer capacity and terminal atomic
 failure use the existing qualified session.
-[Canonical explanation](README.md#captured-table-indices) and
-[tests](tests/semantics_table_indices.rs) preserve the source/null/Missing,
+[Canonical explanation](../../docs/reference/html-operations.md#captured-table-indices) and
+[tests](../surgeist-html-semantics/tests/semantics_table_indices.rs) preserve the source/null/Missing,
 qualification and resource distinctions. This does not provide live collection
 or mutation, a WebIDL long binding or full table author conformance.
 
@@ -1045,8 +1045,8 @@ of unique space-separated tokens, each identifying a th participating in the
 same table. That author relation is distinct from retaining exact raw/token
 encounter order and processing header association in TableModel; processing
 order does not turn the author grammar into an ordered set.
-[Table model](tests/semantics_tables.rs) and
-[collections](tests/semantics_table_collections.rs) verify these separate contracts.
+[Table model](../surgeist-html-semantics/tests/semantics_tables.rs) and
+[collections](../surgeist-html-semantics/tests/semantics_table_collections.rs) verify these separate contracts.
 
 ## Table header scope
 
@@ -1069,12 +1069,12 @@ cancellation or physical-memory guarantees.
 
 ## Details
 
-[details.rs](src/semantics/details.rs) exposes first direct HTML summary optional
+[details.rs](../surgeist-html-semantics/src/semantics/details.rs) exposes first direct HTML summary optional
 ID, SummaryForParentDetails predicate and same-ordinary-tree exact nonempty name
 group including subject; absent/empty yields singleton without unneeded topology.
 [details_name](src/attributes/details_name.rs) adds local nonempty native author
 syntax. [Name tests](tests/attributes_details_name.rs) and
-[captured tests](tests/semantics_details.rs) cover those observations.
+[captured tests](../surgeist-html-semantics/tests/semantics_details.rs) cover those observations.
 [details_rules.rs](src/details_rules.rs) owns allocation-free attribute effects;
 [rule tests](tests/details_rules.rs) distinguish name/open presence and namespaces.
 Private construction applies exclusive-open changes at ordered creation, cloning
@@ -1087,10 +1087,10 @@ and whole content conformance remain separate.
 
 ## Tab index
 
-[tabindex.rs](src/semantics/tabindex.rs) uses signed integer recovery only within
+[tabindex.rs](../surgeist-html-semantics/src/semantics/tabindex.rs) uses signed integer recovery only within
 i32; otherwise source exact element/namespace defaults (including obsolete HTML
 frame, SVG/MathML a and first-summary predicate). Explicit recovered values bypass
-unneeded topology. [TabIndex tests](tests/semantics_tabindex.rs) distinguish
+unneeded topology. [TabIndex tests](../surgeist-html-semantics/tests/semantics_tabindex.rs) distinguish
 raw syntax, recovery/null/content magnitude, defaults/Missing and qualification.
 Focusability, navigation order and focus effects require actual host algorithms.
 
@@ -1136,14 +1136,14 @@ keywords/defaults, all non-Color states, exact raw/provenance and exact/short ca
 and the [Color state](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#color-state-(type=color))
 are the defining rules. Shared legacy_color is unrelated.
 
-[Controlled Color construction](README.md#controlled-color-input) consumes these
+[Controlled Color construction](../../docs/reference/html-operations.md#controlled-color-input) consumes these
 same colorspace decisions and actual alpha presence through the canonical
 `HtmlInputType::Color` and shared input effects. It delegates CSS parsing,
 conversion and serialization to `surgeist-css` under the original parse
 controller, retaining raw defaults independently from generated current values.
 Its admission, cancellation and generated-value provenance belong to that
 controlled adapter, rather than this ordinary attribute interpreter.
-[Public Color construction tests](tests/color_input_construction.rs) exercise
+[Public Color construction tests](../surgeist-html-parser/tests/color_input_construction.rs) exercise
 that integration separately. Mutable well updates and live reflection remain
 external operations.
 
@@ -1172,7 +1172,7 @@ retained labeled printed-index discovery links.
 
 ## Advisory title
 
-A160 uses [advisory_title.rs](src/semantics/advisory_title.rs) and the captured
+A160 uses [advisory_title.rs](../surgeist-html-semantics/src/semantics/advisory_title.rs) and the captured
 `AdvisoryInformation` query. `HtmlAdvisoryInformation` retains normalized
 UTF-16 and the actual selecting subject: an own title, including empty, wins;
 otherwise ordinary parent-Element recursion selects the nearest HTML title.
@@ -1195,7 +1195,7 @@ Whole selected raw admission precedes normalization. Reads, actual variable
 capacity reservations and writes use the shared semantic ledger; admission is
 cumulative, failures sticky and batches atomic. No traversal scratch is added.
 The existing fixed Arc wrapper/provider limitation remains explicit.
-[Twenty-two public tests](tests/semantics_advisory_title.rs) cover qualification,
+[Twenty-two public tests](../surgeist-html-semantics/tests/semantics_advisory_title.rs) cover qualification,
 selection, boundaries, exact UTF-16, work/storage/cancellation and retained reports.
 A163 title-of-link and stylesheet-set names still require their distinct
 document/CSSOM association. Abbr/dfn expansion and pattern descriptions retain
@@ -1204,7 +1204,7 @@ contextual author meaning; this query is no semantic-adequacy or exposure proof.
 ## Address descendant restriction
 
 E003 supplies `AddressHasForbiddenDescendant` through
-[address.rs](src/semantics/address.rs), using the existing qualified ordinary
+[address.rs](../surgeist-html-semantics/src/semantics/address.rs), using the existing qualified ordinary
 tree walker. The pinned [address content restriction](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-address-element)
 prohibits heading and sectioning content, header, footer and address descendants.
 Heading-free hgroup is allowed by this restriction; a heading-bearing hgroup
@@ -1215,8 +1215,8 @@ trees and the subject itself are excluded.
 Known true is an established witness; known false requires complete influencing
 coverage. A later witness can resolve an earlier unavailable branch, but without
 one the first unresolved dependency remains Missing. Terminal failures cannot
-be bypassed. The [canonical explanation](README.md#captured-address-restriction)
-and [tests](tests/semantics_address.rs) describe qualified scalar results,
+be bypassed. The [canonical explanation](../../docs/reference/html-operations.md#captured-address-restriction)
+and [tests](../surgeist-html-semantics/tests/semantics_address.rs) describe qualified scalar results,
 borrowed-iterator scratch, cumulative capacity admission, cleanup and atomic
 batches. Flow content, contact-information meaning and the nearest article/body
 contact scope remain separate; no full content-conformance or live DOM claim
@@ -1225,18 +1225,18 @@ follows.
 ## Anchor text
 
 E001 additionally supplies the captured `AnchorText` getter through
-[anchor.rs](src/semantics/anchor.rs) and the shared ordinary descendant-text
+[anchor.rs](../surgeist-html-semantics/src/semantics/anchor.rs) and the shared ordinary descendant-text
 owner. Exact UTF-16 Text data is concatenated in tree order without requiring
 href, trimming, rendered-text rules or associated template/shadow traversal.
 Known empty text differs from influencing unavailable ordered children.
-The [canonical explanation](README.md#captured-anchor-text) and
-[literal/resource tests](tests/semantics_anchor_text.rs) describe qualification,
+The [canonical explanation](../../docs/reference/html-operations.md#captured-anchor-text) and
+[literal/resource tests](../surgeist-html-semantics/tests/semantics_anchor_text.rs) describe qualification,
 shared admission and atomic batches. Setter mutation, navigation/activation
 and remaining anchor author obligations are separate.
 
 ## Figure caption
 
-E036 uses [figure.rs](src/semantics/figure.rs) and the captured
+E036 uses [figure.rs](../surgeist-html-semantics/src/semantics/figure.rs) and the captured
 `FigureCaption` query. The
 [defining clause](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#the-figure-element)
 selects the first direct HTML figcaption element child at any position.
@@ -1246,25 +1246,25 @@ middle nor repeated caption defeats source selection. Complete absence is
 identity ignores prefix; nested and template/shadow-associated content is not
 searched. Selected-child descendants and later branches are irrelevant.
 
-The same [borrowed direct-child scan](src/semantics.rs) serves the existing
+The same [borrowed direct-child scan](../surgeist-html-semantics/src/semantics.rs) serves the existing
 Details/summary algorithms without changing their resource sequence. Reads/name
 recognition and actual outer result capacity use the existing qualified ledger;
 there is no scratch, nested output, content-string materialization or raw-content
 scan. First stops are sticky and requested batches atomic. Fixed immutable
-handle/provider limits remain. [Literal tests](tests/semantics_figure_caption.rs)
+handle/provider limits remain. [Literal tests](../surgeist-html-semantics/tests/semantics_figure_caption.rs)
 cover membership, qualification and resource boundaries; see the
-[capability explanation](README.md#captured-figure-caption). E035's figcaption
+[capability explanation](../../docs/reference/html-operations.md#captured-figure-caption). E035's figcaption
 role/raw content remains retained without a new figcaption-subject query.
 Caption adequacy, author content conformance, mutation, rendering and exposure
 remain separate requirements.
 
 ## Footer scope
 
-E037 uses [footer.rs](src/semantics/footer.rs) and the captured `FooterScope`
+E037 uses [footer.rs](../surgeist-html-semantics/src/semantics/footer.rs) and the captured `FooterScope`
 query. It selects the nearest ordinary HTML sectioning-content ancestor, or the
 actual associated document's body, including established null. Influencing
 unavailable parent/child order remains Missing; template/shadow hosts supply no
-ordinary ancestry. See the [capability explanation](README.md#captured-footer-scope)
+ordinary ancestry. See the [capability explanation](../../docs/reference/html-operations.md#captured-footer-scope)
 for exact document-element/body selection, resource limits and qualification.
 E041 retains the header's introductory/navigation role without a HeaderScope
 query. Author content conformance, accessibility/exposure and live consequences
@@ -1272,7 +1272,7 @@ remain separate.
 
 ## Defining term
 
-E027 and A161 use [dfn.rs](src/semantics/dfn.rs) and the captured
+E027 and A161 use [dfn.rs](../surgeist-html-semantics/src/semantics/dfn.rs) and the captured
 `DfnDefiningTerm` query. The
 [source algorithm](../../references/html-language-elements-text-links--877d6146487f--8833a85fd242.md#defining-term)
 first selects a specified own no-namespace lowercase title, including empty.
@@ -1281,7 +1281,7 @@ can select an HTML abbr child's specified title. Comments and processing
 instructions are irrelevant to this predicate; even an empty Text node defeats
 it. Exact namespace/local-name identity ignores prefixes.
 
-Otherwise the existing [ordinary descendant-text owner](src/semantics/control_text.rs)
+Otherwise the existing [ordinary descendant-text owner](../surgeist-html-semantics/src/semantics/control_text.rs)
 concatenates Text in tree order, including ordinary script/img/foreign-element
 descendants, without separators or template/shadow association traversal.
 `HtmlDefiningTerm` retains exact UTF-16 and own-title, abbreviation-child or
@@ -1295,14 +1295,14 @@ Whole selected raw title admission precedes retaining shared backing. Actual
 fallback text and traversal capacities use the qualified semantic ledger,
 with scratch released on every exit, cumulative allocation, sticky stops and
 atomic batches. Fixed shared-wrapper limits remain explicit. The
-[literal tests](tests/semantics_dfn.rs) exercise selection, exact units,
-qualification and resource failure; the [capability explanation](README.md#captured-defining-term)
+[literal tests](../surgeist-html-semantics/tests/semantics_dfn.rs) exercise selection, exact units,
+qualification and resource failure; the [capability explanation](../../docs/reference/html-operations.md#captured-defining-term)
 retains definition/expansion adequacy, content-model, hyperlink and exposure
 limits. This getter does not certify those separate source requirements.
 
 ## Document title
 
-E103 uses [document_title.rs](src/semantics/document_title.rs), the existing
+E103 uses [document_title.rs](../surgeist-html-semantics/src/semantics/document_title.rs), the existing
 child-text owner and the captured `TitleText`/`DocumentTitle` queries.
 [Title text](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text)
 is exact direct-child Text data, excluding nested element text. The
@@ -1326,7 +1326,7 @@ Both actual text buffers, ordinary traversal capacity and cumulative output
 are admitted through the shared semantic ledger before writes. Failures are
 sticky, batches atomic and traversal scratch released on every stop. The
 existing fixed Arc wrapper allocation limitation remains explicit.
-[Twenty-four public tests](tests/semantics_document_title.rs) cover exact
+[Twenty-four public tests](../surgeist-html-semantics/tests/semantics_document_title.rs) cover exact
 selection, missing/empty distinctions, namespaces, excluded trees, UTF-16,
 literal work and capacity limits, cancellation and retained qualified reports.
 Title setters, author placement/content conformance and browser title-update
@@ -1349,7 +1349,7 @@ invalid Toggle defaults. Its input companion retains local content while
 independently checking author presence for Submit/Image/Reset/Button; other
 states report a context violation, unavailable context stays Unchecked and
 absence has no presence violation. Exact expanded names and complete raw
-admission precede these operations. [Twenty-two public tests](tests/attributes_command.rs)
+admission precede these operations. [Twenty-two public tests](../surgeist-html-semantics/tests/attributes_command.rs)
 cover literal keywords/defaults, native emission, Custom/raw retention,
 all input states, qualification, cap boundaries and existing presence-based
 Auto submitter behavior. Ordinary allocation and the per-original-value cap do
@@ -1362,7 +1362,7 @@ distinct consumers.
 
 ## Command target relations
 
-[command_targets.rs](src/semantics/command_targets.rs) supplies checked,
+[command_targets.rs](../surgeist-html-semantics/src/semantics/command_targets.rs) supplies checked,
 capture/host-qualified explicit Element slots for CommandFor and PopoverTarget.
 Missing or Unavailable slots stay missing; Null alone selects the content ID
 branch. Actual pointers use the source shadow-including ancestor scope test,
@@ -1382,7 +1382,7 @@ returns known null before popover inspection, following the
 [selected interface guard](../../references/SOURCE-EDITIONS.md#foreign-popover-target-interface-guard),
 and does not search for a later matching ID.
 
-[Thirty-nine public tests](tests/semantics_command_targets.rs) cover pointer
+[Thirty-nine public tests](../surgeist-html-semantics/tests/semantics_command_targets.rs) cover pointer
 states/scope, first duplicate ID, detached ordinary roots, foreign and shadow
 boundaries, missing influencing information, command support, form/control
 guards, exact UTF-16, shared capacities/work, cancellation and sticky atomic
@@ -1465,12 +1465,12 @@ actual controller; public `HtmlScriptKind` does not set saved preparation
 metadata. Public Boolean script operations still require their explicit context.
 External MIME, script/JSON body, wider placement/source conditions and language
 author conformance remain unasserted; no execution or whole-element validity
-follows. The [overview](README.md#script-type-values),
+follows. The [overview](../../docs/reference/html-operations.md#script-type-values),
 [public owner](src/attributes/script_type.rs),
 [source-derived tests](tests/attributes_script_type.rs) and
 [pinned MIME reference](../../references/mimesniff-javascript-essence--39aa53511b13.md)
 record this boundary. Private checkpoint provenance remains in
-[PARSER-ORIGINS](PARSER-ORIGINS.md).
+[PARSER-ORIGINS](../surgeist-html-parser/PARSER-ORIGINS.md).
 
 <a id="html-local-operations-with-no-corresponding-complete-producer"></a>
 
@@ -1512,7 +1512,7 @@ nonnegative-integer owner for author grammar and exact prefix recovery, with
 actual input-state and source-parent companions. Content-only conditional roles
 remain Unchecked; unavailable source-parent evidence does not establish
 inapplicability. These reports do not apply the [canvas report's](src/attributes/scalar.rs)
-300/150 defaults. The [captured natural-dimension query](src/semantics/natural_dimensions.rs)
+300/150 defaults. The [captured natural-dimension query](../surgeist-html-semantics/src/semantics/natural_dimensions.rs)
 uses the same applicability owner and strict whole-value author grammar.
 `EmbeddedDimensionAuthorConformance` independently reports omission and the
 inclusive half-unit pair alternatives, including the authored-both-zero case.
@@ -1530,9 +1530,9 @@ defaults.
 ### Captured image dimensions
 
 The captured `ImageDimensions` query in the
-[getter owner](src/semantics/image_dimensions.rs) interprets HTML img/input
+[getter owner](../surgeist-html-semantics/src/semantics/image_dimensions.rs) interprets HTML img/input
 width/height getters over qualified completed producer observations. Its
-[canonical explanation](README.md#captured-image-dimensions) distinguishes
+[canonical explanation](../../docs/reference/html-operations.md#captured-image-dimensions) distinguishes
 non-Image input zero, actual rendered content-box axes and unrendered independent
 attribute-prefix overrides. Uninspected attributes are not known absent.
 
@@ -1576,7 +1576,7 @@ apply; no aggregate work, physical-memory or cancellation control is claimed.
 
 ### Metadata
 
-[MetaAttributeAuthorStructure](src/semantics/meta_author.rs) supplies independent
+[MetaAttributeAuthorStructure](../surgeist-html-semantics/src/semantics/meta_author.rs) supplies independent
 exactly-one discriminator, content-presence, theme-color-only media-placement
 and specified-charset ordinary-Document multiplicity observations. Specified
 empty discriminators count; content is required for name/http-equiv/itemprop
@@ -1591,13 +1591,13 @@ without reading its value, and unrelated author failures do not remove it.
 A qualified duplicate can resolve a nonterminal child gap after membership is
 proved; unknown ancestry and terminal failure cannot be rescued. Separate
 Documents and template/shadow/host/slot relations do not join populations.
-The [overview](README.md#captured-meta-attribute-author-structure) and
-[literal tests](tests/semantics_meta_author.rs) explain the existing shared
+The [overview](../../docs/reference/html-operations.md#captured-meta-attribute-author-structure) and
+[literal tests](../surgeist-html-semantics/tests/semantics_meta_author.rs) explain the existing shared
 ledger, scratch cleanup, nested/outer capacities and atomic batch contract.
 Known structural evidence is not whole meta or encoding conformance.
 
 E060/A030/A107's captured
-[MetaDescriptionAuthor](src/semantics/meta_description.rs) observes exact
+[MetaDescriptionAuthor](../surgeist-html-semantics/src/semantics/meta_description.rs) observes exact
 original name/optional content, required-content presence and independent
 ordinary-Document description uniqueness. Only exact HTML meta and an
 ASCII-insensitive whole `description` name select it; no trim or Unicode fold is
@@ -1614,8 +1614,8 @@ an actual qualified witness can resolve unrelated nonterminal child gaps.
 Template/shadow/host/slot relations and node-document identity do not substitute
 for ordinary membership. A terminal stop cannot be rescued by a witness.
 
-The [overview](README.md#captured-meta-description-author) and
-[literal tests](tests/semantics_meta_description.rs) explain whole influencing
+The [overview](../../docs/reference/html-operations.md#captured-meta-description-author) and
+[literal tests](../surgeist-html-semantics/tests/semantics_meta_description.rs) explain whole influencing
 raw admission, shared exact UTF-16 backing, the existing qualified ledger's
 scratch/nested/outer capacities and atomic batch failure. Known(report) does not
 certify overall conformance, descriptive appropriateness or live metadata use.
@@ -1630,7 +1630,7 @@ but nonconforming; `HtmlMetaPragma` emits the five conforming native author
 keywords. Exact raw admission precedes processing/applicability, and applicable
 present context remains independently Unchecked.
 
-[MetaPragmaContent](src/semantics/meta_pragma.rs) retains original classification,
+[MetaPragmaContent](../surgeist-html-semantics/src/semantics/meta_pragma.rs) retains original classification,
 optional content and independent author/content/population observations.
 Missing content is not an empty default. Static content-language selects the
 first ASCII-space token only when no comma occurs; default-style returns an
@@ -1655,8 +1655,8 @@ qualified positive witnesses resolve only their own nonterminal gaps. Other
 Documents and template/shadow/host/slot relations do not join populations.
 Terminal raw/work/resource/cancel stops cannot be rescued by later witnesses.
 
-The [overview](README.md#captured-meta-pragma-content) and
-[local](tests/attributes_meta_pragma.rs) and [captured tests](tests/semantics_meta_pragma.rs)
+The [overview](../../docs/reference/html-operations.md#captured-meta-pragma-content) and
+[local](tests/attributes_meta_pragma.rs) and [captured tests](../surgeist-html-semantics/tests/semantics_meta_pragma.rs)
 describe exact shared UTF-16, the existing numeric/session owners, actual
 scratch/nested/outer capacity admission, cleanup and sticky atomic batches.
 Closed Query/Fact additions are intentionally breaking. Ordinary capture and
@@ -1685,14 +1685,14 @@ search; host/template/shadow associations supply no same-tree proof. A selected
 start counts following sibling start/end PIs regardless of their names, and
 complete exhaustion retains the start without an end.
 
-The [captured explanation](README.md#captured-template-marker-selection),
-[semantic owner](src/semantics/template.rs) and
-[public tests](tests/semantics_template_for.rs) describe admission, missing
+The [captured explanation](../../docs/reference/html-operations.md#captured-template-marker-selection),
+[semantic owner](../surgeist-html-semantics/src/semantics/template.rs) and
+[public tests](../surgeist-html-semantics/tests/semantics_template_for.rs) describe admission, missing
 evidence, actual cancellation and atomic batches. Native and captured readers
 share the [complete XML pseudo-attribute grammar](src/pi_pseudo_attributes.rs)
 and [marker selection rules](src/template_markers.rs); duplicate names or any
 malformed suffix invalidate the entire map. This is independent of label/output
-for grammar. The [private fresh ordinary parser](README.md#private-ordinary-templates)
+for grammar. The [private fresh ordinary parser](../../docs/reference/html-operations.md#private-ordinary-templates)
 executes insertion/replacement effects over actual PI maps and template state.
 The captured query reports immutable facts; imported patch facts, live DOM
 mutation and shadow attachment retain their separate owners.
@@ -1705,7 +1705,7 @@ rules. Native `HtmlMicrodataTokenList` enforces local uniqueness and required
 nonempty lists; URL/vocabulary context is independently qualified. Itemscope's
 existing Boolean presence remains the canonical local owner.
 
-The [captured queries](src/semantics/microdata.rs) expose item/property values,
+The [captured queries](../surgeist-html-semantics/src/semantics/microdata.rs) expose item/property values,
 itemid/itemscope/itemtype/itemref eligibility, same-tree first-ID lookup,
 property collection/order, receiving-item type paths, vocabulary/receiver checks
 and document cycles/orphans. Actual nested itemscope prunes descendant discovery;
@@ -1722,9 +1722,9 @@ operation. Property URLs retain attribute-set-time document/base/encoding/event
 context; identifiers use their current-document operation. Supplied facts do not
 implement URL parsing or establish vocabulary truth. Ordinary input construction
 limits are separate from the existing session's work, scratch, nested output,
-cancellation and atomic publication. The [overview](README.md#captured-microdata)
+cancellation and atomic publication. The [overview](../../docs/reference/html-operations.md#captured-microdata)
 and [local](tests/attributes_microdata.rs) and
-[captured tests](tests/semantics_microdata.rs) describe these boundaries.
+[captured tests](../surgeist-html-semantics/tests/semantics_microdata.rs) describe these boundaries.
 Live DOM collections, mutation, physical RSS and universal work-fit/linearity
 claims remain outside this immutable contribution.
 
@@ -1737,7 +1737,7 @@ invalid and Unapplied remain distinct without a default; present local reports
 leave author context Unchecked. `HtmlSpaceToken::into_map_name_attribute` emits
 canonical no-namespace `name` with exact UTF-16, without trimming or normalization.
 
-The captured [MapNameAuthor](src/semantics/map_name.rs) report separately observes
+The captured [MapNameAuthor](../surgeist-html-semantics/src/semantics/map_name.rs) report separately observes
 local syntax, specified own-id equality and other-map specified-name uniqueness
 in the same ordinary tree. Empty or invalid names still participate; own-id
 equality does not certify global id syntax or uniqueness. Absent name skips
@@ -1753,9 +1753,9 @@ borrowed precharged local assembly, whole consulted name/id admission, one
 fallibly retained data record and actual scratch capacities. Shared input backing
 and fixed wrappers are excluded from new backing-allocation charges. Current
 scratch is released while cumulative usage remains charged; terminal failures
-are sticky and atomically discard the requested batch. [The overview](README.md#captured-map-name-author),
+are sticky and atomically discard the requested batch. [The overview](../../docs/reference/html-operations.md#captured-map-name-author),
 [local tests](tests/attributes_map_name.rs) and
-[captured tests](tests/semantics_map_name.rs) describe the boundary.
+[captured tests](../surgeist-html-semantics/tests/semantics_map_name.rs) describe the boundary.
 UsemapReference and MapAreas remain separate; no map processing, URL, geometry,
 activation or live-collection guarantee is added.
 
@@ -1764,7 +1764,7 @@ activation or live-collection guarantee is added.
 A110: [shared decisions](src/nonce.rs) preserve exact UTF-16 and the distinct
 content attribute and cryptographic slot for HTML/SVG/MathML elements. Native
 eligible elements initialize an admitted registered empty slot. The actual
-[construction hooks](src/construction/parser_session/nonce.rs) handle content
+[construction hooks](../surgeist-html-parser/src/construction/nonce.rs) handle content
 changes/removal, independent slot writes, clone completion and conditioned
 insertion. Hiding uses current browsing-context connection and header-CSP of the
 actual shadow-including root Document; it saves the current slot, empties the
@@ -1772,14 +1772,14 @@ content attribute and restores the saved value. Standalone construction retains
 content because it has no browsing context. Influencing unavailable context
 refuses; a known false conjunct discharges unrelated gaps.
 
-The [capture owner](src/capture.rs) establishes actual slot and Document facts
+The [capture owner](../surgeist-html-semantics/src/capture.rs) establishes actual slot and Document facts
 with existing identity/retention admission. Unavailable differs from established
 empty. `HtmlSemanticQuery::Nonce` observes the slot independently of content and
 the content-attribute input cap; completed parse metadata lends its registered
 raw backing/history through `cryptographic_nonce`. Existing control, effects,
 provenance, cleanup and atomic publication remain authoritative. The
-[overview](README.md#nonce-slot-and-content), [local/capture tests](tests/nonce.rs),
-[semantic tests](tests/semantics_nonce.rs) and [public parse tests](tests/public_nonce.rs)
+[overview](../../docs/reference/html-operations.md#nonce-slot-and-content), [local/capture tests](../surgeist-html-semantics/tests/nonce.rs),
+[semantic tests](../surgeist-html-semantics/tests/semantics_nonce.rs) and [public parse tests](../surgeist-html-parser/tests/public_nonce.rs)
 describe the boundaries. CSP parsing/enforcement and live DOM setters remain
 with their consuming owners; content storage alone does not prove slot state.
 
@@ -1795,13 +1795,13 @@ are retained; unavailable compilation is not Invalid or a match success.
 A127/A128: [local reports](src/rel.rs) preserve exact rel/rev fields and token
 occurrences, distinguishing role applicability, relationship effects, no-links
 cases and independent rel/itemprop author constraints. Captured
-[relationship facts](src/semantics/link_relationships.rs) qualify extensions,
+[relationship facts](../surgeist-html-semantics/src/semantics/link_relationships.rs) qualify extensions,
 supported-token observations, URL grammar, bookmark/settings context and actual
 native link history separately. Recognition and registration do not establish
 execution support. Supplemental form interpretation follows its own defining
 clause without changing the printed row identities.
 
-[Document operations](src/semantics/link_relationships/selectors.rs) expose feed
+[Document operations](../surgeist-html-semantics/src/semantics/link_relationships/selectors.rs) expose feed
 discovery/default selection, first manifest and icon ordering/retry over ordinary
 Document children. Feed types match exactly; discovery includes alternate
 stylesheet declarations independently of their per-element meaning. Manifest
@@ -1809,13 +1809,13 @@ selection does not skip the first declaration for downstream readiness. Icon
 selection consumes qualified suitability groups, breaks ties by last actual
 tree order, and retains qualified actual attempted-use rejection history.
 Unknown influencing evidence stays Missing; raw declarations and diagnostics
-remain independent. [Independent cases](tests/semantics_rel_selectors.rs) cover
+remain independent. [Independent cases](../surgeist-html-semantics/tests/semantics_rel_selectors.rs) cover
 these operations. Network/navigation/CSS association, feed retrieval, manifest
 installation and icon decoding/display remain with consuming execution owners.
 
 ### Document base
 
-E009/A069/A158: [captured operations](src/semantics/base.rs) separately select
+E009/A069/A158: [captured operations](../surgeist-html-semantics/src/semantics/base.rs) separately select
 first href/target candidates in ordinary Document order. `DocumentBaseUrl` uses
 actual fallback or the first candidate's historical frozen URL; unavailable first
 facts remain Missing rather than selecting a later candidate. `BaseHref` is the
@@ -1823,17 +1823,17 @@ current getter, independent of frozen/CSP state. `ElementTarget` and
 `FormSubmissionTarget` preserve overrides, own empty values and qualified form
 precedence before the default target, using the shared TAB/LF/CR/less-than recovery.
 
-[Qualified base facts](src/base.rs) distinguish unavailable from known-null
+[Qualified base facts](../surgeist-html-semantics/src/base.rs) distinguish unavailable from known-null
 about-base and retain actual URL/encoding/parse/CSP observations and revisions.
-The [native hook](src/construction/parser_session/base.rs) handles becoming first,
+The [native hook](../surgeist-html-parser/src/construction/base.rs) handles becoming first,
 actual href changes, removal/reorder/adoption and clone/destination insertion in
 the canonical effects owner. Non-href appends preserve an established response;
 pending stopped responses cannot publish. Completed metadata retains actual
 frozen state. Formation and semantic/native execution keep their respective
 finite admission and original-stop/cleanup owners. Source labels are not URLs;
 URL parsing, CSP enforcement, live browser response and navigation remain external.
-The [overview](README.md#document-base-and-target), [public tests](tests/base_target.rs)
-and [captured tests](tests/semantics_base.rs) qualify the current producer.
+The [overview](../../docs/reference/html-operations.md#document-base-and-target), [public tests](../surgeist-html-parser/tests/base_target.rs)
+and [captured tests](../surgeist-html-semantics/tests/semantics_base.rs) qualify the current producer.
 
 ### Custom element names
 
@@ -1850,7 +1850,7 @@ original raw value before expanded-name applicability and uses the same checked
 name owner. Missing, Empty, locally nonconforming and Unapplied states remain
 distinct; no default name is manufactured. Every applicable present value leaves
 context Unchecked independently of lexical success. The separate captured
-[IsAttributeAuthorContext](src/semantics/custom_element_context.rs) observation
+[IsAttributeAuthorContext](../surgeist-html-semantics/src/semantics/custom_element_context.rs) observation
 supplies local syntax, current matching-definition and autonomous-prohibition
 results independently. Its Known result can retain a nonconforming or unavailable
 obligation; it does not certify complete author conformance. Absent content skips
@@ -1858,7 +1858,7 @@ unrelated context facts, and invalid syntax does not suppress a known autonomous
 prohibition. Unavailable registry, definition set, state or association is typed
 evidence rather than a guessed mismatch.
 
-The [capture producer](src/capture.rs) retains actual state and associated
+The [capture producer](../surgeist-html-semantics/src/capture.rs) retains actual state and associated
 definition, including independently known records in an incomplete registry.
 Such records do not make current lookup complete. Current content lookup uses
 the current registry and autonomous-first source order; saved runtime `is` and an
@@ -1877,9 +1877,9 @@ shared after admission. Work, output and cancellation failures are sticky and
 discard the whole batch. No process-RSS, universal polling-quantum or linear-work
 guarantee is supplied. Registry execution, construction, upgrade and callbacks
 remain with their execution owner. Content checking does not set saved runtime
-`is` or change an element's behavior. [The crate overview](README.md#captured-custom-element-author-context),
-[local tests](tests/custom_names.rs) and
-[captured tests](tests/semantics_custom_element_context.rs) describe these
+`is` or change an element's behavior. [The crate overview](../../docs/reference/html-operations.md#captured-custom-element-author-context),
+[local tests](../surgeist-html-semantics/tests/custom_names.rs) and
+[captured tests](../surgeist-html-semantics/tests/semantics_custom_element_context.rs) describe these
 separate surfaces.
 
 ### Media queries
@@ -1894,15 +1894,15 @@ Captured `MediaAttributeRules` exposes conditional link advice/resource gates,
 style gates, source filtering/picture requirements and theme-color uniqueness
 over the actual ordinary HTML Document. Missing media gives link/style DefaultAll
 or source/theme NoFilter; unavailable influencing environment is Missing, never
-a mismatch. [Qualified facts](src/semantics/media_facts.rs) bind the actual media
+a mismatch. [Qualified facts](../surgeist-html-semantics/src/semantics/media_facts.rs) bind the actual media
 ordinal/capture/host and independent grammar/environment revisions, with bounded
 incoming record capacity and validation work. HTML does not execute CSS matching,
 resource application or theme selection. Link readers need actual relationship
 classification from their consumer.
 
-The [semantic owner](src/semantics/media.rs) uses the existing session's raw
+The [semantic owner](../surgeist-html-semantics/src/semantics/media.rs) uses the existing session's raw
 admission, work, nested output, scratch cleanup and atomic first-stop behavior.
-[Public literal tests](tests/media_rules.rs) cover exact values, qualification,
+[Public literal tests](../surgeist-html-semantics/tests/media_rules.rs) cover exact values, qualification,
 picture order, ordinary-tree uniqueness and resource/batch boundaries.
 
 ## Supplemental source domains
@@ -1919,30 +1919,30 @@ is retained; JS grammar/event compilation/dispatch is not executed here.
 Ordinary private foreign construction implements the HTML-defined MathML/SVG
 name/attribute adjustment, integration, CDATA, recovery and qualified native
 cloning through the existing controlled parser owner. Exact SVG script elements
-also have [restricted private processing](README.md#private-svg-script): actual
+also have [restricted private processing](../../docs/reference/html-operations.md#private-svg-script): actual
 processed state, parser-end wrapper, nonparser connection and qualified clone
 bit preservation. Separate no-loader and Disabled capabilities suppress
 acquisition and execution; this is not literal SVG Tiny Disabled behavior or
-whole SVG/MathML language support. [Private contextual fragments](README.md#private-context-fragments)
+whole SVG/MathML language support. [Private contextual fragments](../../docs/reference/html-operations.md#private-context-fragments)
 retain qualified context/effect facts in
-[bounded public reports](README.md#decoded-unicode-parsing); live DOM import remains
-unfinished. [Parser origins](PARSER-ORIGINS.md) records the selected upstream
+[bounded public reports](../../docs/reference/html-operations.md#decoded-unicode-parsing); live DOM import remains
+unfinished. [Parser origins](../surgeist-html-parser/PARSER-ORIGINS.md) records the selected upstream
 adaptation and HTML differences; [the crate overview](README.md) records actual
 admission, cleanup and capability limits.
 
-The fresh ordinary driver has [private EOF completion](README.md#private-ordinary-eof):
+The fresh ordinary driver has [private EOF completion](../../docs/reference/html-operations.md#private-ordinary-eof):
 source-initial Complete readiness is distinct from parsing completion; Interactive
 precedes canonical pops, two source checkpoints run, and the post-load milestone
 precedes execution of the retained Complete-readiness continuation. The whole
 completed owner
-retains construction evidence. [Contextual fragment execution](README.md#private-context-fragments)
+retains construction evidence. [Contextual fragment execution](../../docs/reference/html-operations.md#private-context-fragments)
 has a separately qualified internal EOF return. The public entry transfers
 completed native storage and committed diagnostics/history into its source-owning
 report; no browser events or queue are synthesized.
 
 Immutable constructed template/shadow/PI content and explicit metadata/effects
 are not a second live DOM. Internal production parser machinery supplies
-[decoded-Unicode document/fragment requests](README.md#decoded-unicode-parsing)
+[decoded-Unicode document/fragment requests](../../docs/reference/html-operations.md#decoded-unicode-parsing)
 with source-limited profiles, explicit unsupported branches and retained
 provenance; this reference does not certify complete HTML parser conformance.
 DOM owns canonical identity/mutation/ordinary-shadow-flat captures and

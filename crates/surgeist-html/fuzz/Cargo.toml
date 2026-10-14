@@ -19,6 +19,8 @@ coverage = ["surgeist-fuzz/coverage", "dep:libfuzzer-sys"]
 
 [dependencies]
 surgeist-html = { path = ".." }
+surgeist-html-parser = { path = "../../surgeist-html-parser" }
+surgeist-html-semantics = { path = "../../surgeist-html-semantics" }
 surgeist-fuzz = { path = "../../surgeist-fuzz" }
 toml = "=0.9.8"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"], optional = true }

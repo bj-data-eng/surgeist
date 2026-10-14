@@ -1,37 +1,20 @@
-# HTML crate guide
+# HTML values crate guide
 
-Apply the root repository guide and focused PISCT skills. This crate owns HTML
-language vocabulary, typed authoring, immutable construction results, parsing
-and intrinsic semantic interpretation. The selected edition and implementation
-basis are recorded in [source editions](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).
-The WHATWG edition governs disagreement with the html5ever implementation basis.
+Apply the root repository guide and focused PISCT skills. HTML owns language
+values, local rules, native builders, controlled construction and immutable
+results. [Parser](../surgeist-html-parser/AGENTS.md) and
+[semantics](../surgeist-html-semantics/AGENTS.md) consume its public root and
+bounded front doors directly. The [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
+governs behavior. Preserve exact UTF-16 and private generic storage invariants.
 
-The public front door is `src/lib.rs`. Shared string/name/attribute records
-preserve exact UTF-16 without HTML normalization or generic DOM validation.
-Parsing applies HTML normalization at the specified stage. Immutable result
-identities are local to their result; they are never canonical live DOM IDs.
-DOM owns its HTML integration. This crate has no downstream production dependency.
-
-Focused checks, through bounded `pisct run`, are:
+Through bounded `pisct run`, from repository root:
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-html
 cargo clippy --offline --locked -j 1 -p surgeist-html --all-targets -- -F unsafe-code -D warnings
+python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 cargo fmt --all -- --check
 ```
 
-Refresh and check the HTML API through the root-owned API generator when the
-public surface changes. Select additional parser, semantic and feature checks
-from their actual source contracts as those capabilities are implemented.
-
-The offline `tools/generate_vocabulary.py` owns the marked ordinary Rust region
-in `src/vocabulary.rs`; run it with `--check` after vocabulary/source changes.
-Its non-normative inventory records retain contextual rows and defining-clause
-links without replacing intrinsic value interpretation or execution ownership.
-
-The offline `tools/generate_character_references.py` derives private parser
-reference data from the complete tracked normative syntax tables. Run
-`python3 crates/surgeist-html/tools/generate_character_references.py --check`
-from the repository root after reference data or generator changes. Optional
-`--verify-origins` needs the retained full HTML and acquired engine witnesses;
-normal checking does not require ignored working material.
+Vocabulary generation stays here. Parser character references and semantic bidi
+data/generators stay with their actual owners. Root owns generated API audits.

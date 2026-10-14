@@ -4,7 +4,7 @@ use surgeist_fuzz::{
     Result,
     generation::{Budget, BudgetCharge},
 };
-use surgeist_html::*;
+use surgeist_html_parser::HtmlParseLimits;
 
 pub const MAX_SOURCE_UNITS: usize = 4096;
 pub const CAPS: [u64; 19] = [

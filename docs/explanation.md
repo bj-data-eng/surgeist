@@ -33,13 +33,14 @@ declaration, rule, stylesheet and MediaList operations. The
 [CSSOM crate guide](../crates/surgeist-cssom/README.md) explains the supported
 extension operations, explicit host facts and source-qualified formatting limits.
 Root host bindings and full product CSSOM conformance remain separate work.
-`surgeist-html` supplies the HTML types shared by markup parsing and Rust
-authoring, immutable recovered parse results, structured diagnostics and
-qualified intrinsic interpretation. Its explicitly pinned HTML standard defines
+`surgeist-html` supplies exact HTML values, native builders and the immutable
+construction owner shared by native authoring and `surgeist-html-parser`.
+`surgeist-html-semantics` owns captures, qualified intrinsic queries and the
+explicit adapter from those same construction results. Its explicitly pinned HTML standard defines
 behavior; adapted html5ever source supplies implementation provenance. The
-[HTML crate guide](../crates/surgeist-html/README.md) records the decoded-Unicode
+[HTML parser guide](../crates/surgeist-html-parser/README.md) records the decoded-Unicode
 document/fragment entry operations, admission and external capability boundaries.
-HTML owns its direct integration with CSS source color operations and Color's
+The parser owns its direct integration with CSS source color operations and Color's
 numerical owner, retaining one original parser controller and source binding.
 Separate CSS parse banks and numerical digit storage are admitted through that
 controller; generated values are installed after serialization and cleanup.
@@ -47,12 +48,12 @@ Implementation changes for safe Rust, source mapping and work limits do not
 define a separate HTML dialect.
 
 The [dependency-free numerical Color owner](../crates/surgeist-color/README.md)
-is implemented and consumed directly by CSS and the current HTML adapter.
+is implemented and consumed directly by CSS and the HTML parser adapter.
 Its [integration contract](reference/color-crate-contracts.md) explains the
 source-qualified CSS boundary. The separate contracts for
 [HTML values, parsing and qualified semantics](reference/html-crate-contracts.md)
-remain planned; these responsibilities still share the `surgeist-html` package.
-Manifests and source establish the implemented boundaries.
+are implemented as three packages with direct acyclic dependencies. Manifests
+and source establish those boundaries; no old-package reexports are retained.
 
 `surgeist-dom`, the planned sole owner of live document identity, mutation and
 snapshots, will depend directly on HTML. DOM owns importing HTML construction

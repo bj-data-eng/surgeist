@@ -1462,7 +1462,7 @@ SVG Tiny Disabled behavior, simulated loading or whole SVG conformance.
 The required ©2015 derivative notice above covers this software incorporation
 as well as its support documents; the original ©2008 notice and complete STATUS
 remain in the linked reference. No upstream marked code component is imported.
-The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension)
+The [origin record](../../crates/surgeist-html-parser/PARSER-ORIGINS.md#restricted-svg-script-extension)
 records the HTML wrapper and separate processed-bit clone selection.
 
 ## DOM-delegated XML pseudo-attribute grammar

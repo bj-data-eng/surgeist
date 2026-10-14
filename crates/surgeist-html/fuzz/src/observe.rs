@@ -3,6 +3,24 @@ use crate::{Lane, ParseKind, UnicodeCase, UnicodeSource, UnicodeTarget, error};
 use std::collections::HashSet;
 use surgeist_fuzz::*;
 use surgeist_html::*;
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseAssociationRelation,
+    HtmlParseCause, HtmlParseConstructionOperation, HtmlParseDestination,
+    HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole,
+    HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity, HtmlParseDiagnostics,
+    HtmlParseFailureReason, HtmlParseField, HtmlParseLexicalDisposition, HtmlParseLexicalKind,
+    HtmlParseLexicalRole, HtmlParseOmissionKind, HtmlParseOriginKind, HtmlParseRawField,
+    HtmlParseReport, HtmlParseRequestError, HtmlParseResource, HtmlParseStop, HtmlParseTokenFamily,
+    HtmlParseUnsupportedState, HtmlParserRule, HtmlPrologueDiagnostic, HtmlSource, HtmlSourceRange,
+    HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase, HtmlTokenizerState,
+};
+use surgeist_html_semantics::HtmlHostFactsRevision;
+use surgeist_html_semantics::{
+    HtmlCaptureBuilder, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureLimits,
+    HtmlCaptureRegistryInput, HtmlCaptureTemplateCacheInput, HtmlCapturedIsValue,
+    HtmlDocumentClass, HtmlFragmentContext, HtmlImageSupport, HtmlScriptingStatus,
+    HtmlTemplateDocumentRole,
+};
 const MAX_NODES: usize = 100_000;
 const MAX_ROWS: usize = 100_000;
 

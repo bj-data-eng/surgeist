@@ -1,0 +1,15 @@
+[package]
+name = "surgeist-html-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Decoded HTML parsing, recovery, provenance, and immutable parse reports."
+readme = "README.md"
+
+[dependencies]
+surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
+surgeist-html-semantics = { path = "../surgeist-html-semantics", version = "=0.1.0" }
+surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
+surgeist-color = { path = "../surgeist-color", version = "=0.1.0" }

@@ -35,6 +35,8 @@ front door. It also exposes `crate_name() -> &'static str`, returning
 | `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
 | `html` | [surgeist-html](../crates/surgeist-html/src/lib.rs) |
+| `html_parser` | [surgeist-html-parser](../crates/surgeist-html-parser/src/lib.rs) |
+| `html_semantics` | [surgeist-html-semantics](../crates/surgeist-html-semantics/src/lib.rs) |
 | `layout` | [surgeist-layout](../crates/surgeist-layout/src/lib.rs) |
 | `render` | [surgeist-render](../crates/surgeist-render/src/lib.rs) |
 | `retained` | [surgeist-retained](../crates/surgeist-retained/src/lib.rs) |
@@ -55,11 +57,13 @@ conversion in its own package.
 [`surgeist-color`](../crates/surgeist-color/README.md) owns dependency-free
 numerical color operations and finite formatting. CSS owns authored syntax and
 source/fact-qualified resolution. The current
-[HTML color adapter](../crates/surgeist-html/src/construction/parser_session/input_color.rs)
+[HTML color adapter](../crates/surgeist-html-parser/src/construction/input_color.rs)
 directly consumes CSS and Color through its original parser controller and
 retains actual Color values in its public computation metadata. HTML values,
-parsing and interpretation still share the `surgeist-html` package; their
-[separate-package contracts](reference/html-crate-contracts.md) remain planned.
+parsing and captured interpretation have distinct package owners under the
+[three-crate contracts](reference/html-crate-contracts.md). The
+[detailed HTML operations guide](reference/html-operations.md) records their
+public operations and capability limits.
 
 ## Root Features
 
@@ -81,14 +85,14 @@ Dependencies still retain their own manifest-defined defaults.
 | Agent ownership and command discovery | [AGENTS.md](../AGENTS.md) |
 | Root package, dependencies, features, and workspace | [Cargo.toml](../Cargo.toml) |
 | Product dependency resolution | [Cargo.lock](../Cargo.lock) |
-| Crate source and domain guides | [crates/](../crates/); each package's manifest, `AGENTS.md`, README, and `src/lib.rs` |
+| Crate source and domain guides | [crates/](../crates); each package's manifest, `AGENTS.md`, README, and `src/lib.rs` |
 | Crate ownership and integration boundaries | [Explanation](explanation.md#one-repository-distinct-crate-boundaries) |
 | Shared corpus tooling | [surgeist-generator](../crates/surgeist-generator/README.md) |
 | Offline CSSOM property reflection generation | [tools/cssom-reflections](../tools/cssom-reflections/README.md) |
 | API-generator CLI and target discovery | [api/generator/src/lib.rs](../api/generator/src/lib.rs) |
 | Facade API audit | [api/public-api.txt](../api/public-api.txt) |
-| Crate API audits | [api/crates/](../api/crates/) |
-| Source-checkout attribution and crate notice index | [NOTICE.md](../NOTICE.md) and [licenses/](../licenses/) |
+| Crate API audits | [api/crates/](../api/crates) |
+| Source-checkout attribution and crate notice index | [NOTICE.md](../NOTICE.md) and [licenses/](../licenses) |
 
 The generator supports `--all`, `--root`, or `--crate` target selection and
 `--list` or `--check` actions. Without flags it generates all artifacts. Targets
@@ -118,3 +122,5 @@ workspace. Crate supplements locate their focused feature, platform, and test
 commands. Native GPU, platform, browser, and corpus checks require the matching
 environment and selection. Root integration tests, application examples and a
 `dev/` harness remain planned; the root-owned tools listed above already exist.
+
+The [HTML operations guide](reference/html-operations.md) records the shared value, parser and capture/query contracts across their direct owners.

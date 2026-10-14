@@ -311,7 +311,7 @@ actual reached CSS recipe's `CssColorResolutionSite::Source` range. Resource
 refusal and cancellation belong to the original controlled consumer. See the
 [controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
 
-The current [HTML adapter](../surgeist-html/src/construction/parser_session/input_color.rs)
+The current [HTML adapter](../surgeist-html-parser/src/construction/input_color.rs)
 uses the original UTF-16 source and its original parser controller with both
 owners and the separate digit bank. HTML owns dirty/default/current selection,
 standard-failure-only black fallback, transformation order and atomic publication

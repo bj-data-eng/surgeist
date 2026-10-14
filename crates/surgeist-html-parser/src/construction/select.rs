@@ -1,0 +1,845 @@
+//! Intrinsic select metadata and select-specific construction handlers.
+//! Governing HTML 877d6146487f: select/option/selectedcontent processing.
+
+use super::effects::{EffectFrame, FragmentStage, IntrinsicTask, TargetStage, WorkListKind};
+use super::*;
+use crate::{HtmlOptionFlags, HtmlSelectFlags};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SelectState {
+    pub(crate) flags: HtmlSelectFlags,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OptionState {
+    pub(crate) flags: HtmlOptionFlags,
+    nearest_select: Option<usize>,
+}
+impl OptionState {
+    /// Fixed canonical cache read; callers qualify the result-local reference
+    /// before immutable publication. This does not recompute ancestry.
+    pub(super) fn cached_nearest_select(&self) -> Option<usize> {
+        self.nearest_select
+    }
+    pub(super) fn fresh() -> Self {
+        Self {
+            flags: HtmlOptionFlags::default(),
+            nearest_select: None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SelectedcontentState {
+    pub(crate) disabled: bool,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SelectMetadata {
+    Select(SelectState),
+    Option(OptionState),
+    Selectedcontent(SelectedcontentState),
+}
+pub(super) fn initial_metadata(
+    c: &mut ParseControl,
+    tag: &Tag,
+) -> Result<Option<SelectMetadata>, SessionError> {
+    for (name, state) in [
+        (
+            "select",
+            Some(SelectMetadata::Select(SelectState {
+                flags: HtmlSelectFlags::default(),
+            })),
+        ),
+        (
+            "option",
+            Some(SelectMetadata::Option(OptionState {
+                flags: HtmlOptionFlags::default(),
+                nearest_select: None,
+            })),
+        ),
+        (
+            "selectedcontent",
+            Some(SelectMetadata::Selectedcontent(SelectedcontentState {
+                disabled: false,
+            })),
+        ),
+        ("optgroup", None),
+    ] {
+        if exact_ascii(c, Some(tag.name.value.text()), name)? {
+            return Ok(state);
+        }
+    }
+    Err(SessionError::WrongToken)
+}
+impl SessionStorage {
+    pub(super) fn step_select_effect(
+        &mut self,
+        c: &mut ParseControl,
+        frame: EffectFrame,
+    ) -> Result<(), SessionError> {
+        match frame {
+            EffectFrame::UpdateSelect {
+                select,
+                list,
+                cursor,
+            } => {
+                let Some(target) = self.work_list_node(c, list, cursor)? else {
+                    self.release_work_list(c, list)?;
+                    return self.write_current_effect(c, None);
+                };
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::UpdateSelect {
+                        select,
+                        list,
+                        cursor: cursor + 1,
+                    }),
+                )?;
+                let (_, SelectMetadata::Selectedcontent(state)) =
+                    self.select_metadata(c, target)?
+                else {
+                    return Err(SessionError::SelectMetadataUnavailable);
+                };
+                if state.disabled {
+                    return Ok(());
+                }
+                let option = self.first_selected_option(c, select)?;
+                self.start_effect(
+                    c,
+                    EffectFrame::UpdateTarget {
+                        option,
+                        target,
+                        fragment: None,
+                        stage: TargetStage::Prepare,
+                    },
+                )
+            }
+            EffectFrame::UpdateTarget {
+                option,
+                target,
+                stage: TargetStage::Prepare,
+                ..
+            } => {
+                if let Some(option) = option {
+                    self.qualify_clone_subtree(c, option)?;
+                }
+                let document = option
+                    .map(|option| self.node_document_ref(c, option))
+                    .transpose()?;
+                let fragment = if option.is_some() {
+                    Some(
+                        self.allocate_in_document_owned(
+                            c,
+                            HtmlNodeKind::Fragment,
+                            false,
+                            0,
+                            0,
+                            document,
+                        )?
+                        .index,
+                    )
+                } else {
+                    None
+                };
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::UpdateTarget {
+                        option,
+                        target,
+                        fragment,
+                        stage: TargetStage::Replace,
+                    }),
+                )?;
+                if let (Some(option), Some(fragment)) = (option, fragment) {
+                    self.start_effect(
+                        c,
+                        EffectFrame::CloneOptionChildren {
+                            option,
+                            fragment,
+                            cursor: 0,
+                        },
+                    )?;
+                }
+                Ok(())
+            }
+            EffectFrame::UpdateTarget {
+                option,
+                target,
+                fragment,
+                stage: TargetStage::Replace,
+            } => {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if self
+                    .construction
+                    .node_at(target)
+                    .expect("retained construction position")
+                    .child_count()
+                    == 0
+                {
+                    if fragment.is_none() {
+                        return self.write_current_effect(c, None);
+                    }
+                    return self.write_current_effect(
+                        c,
+                        Some(EffectFrame::UpdateTarget {
+                            option,
+                            target,
+                            fragment,
+                            stage: TargetStage::Insert,
+                        }),
+                    );
+                }
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let child = self
+                    .construction
+                    .node_at(target)
+                    .expect("retained construction position")
+                    .child_at(0)
+                    .expect("retained child ordinal")
+                    .position();
+                self.remove_index(c, child)
+            }
+            EffectFrame::UpdateTarget {
+                target,
+                fragment: Some(fragment),
+                stage: TargetStage::Insert,
+                ..
+            } => {
+                // DOM insert snapshots the fragment's top-level nodes, removes
+                // all of them, then finishes all sibling insertion hooks before
+                // one parent childrenChanged and static post-connection list.
+                let list = self.retain_work_list(c, fragment, WorkListKind::FragmentChildren)?;
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::FragmentInsertion {
+                        parent: target,
+                        list,
+                        cursor: 0,
+                        stage: FragmentStage::Remove,
+                    }),
+                )
+            }
+            EffectFrame::UpdateTarget { fragment: None, .. } => Err(SessionError::WrongToken),
+            EffectFrame::CloneOptionChildren {
+                option,
+                fragment,
+                cursor,
+            } => {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if cursor
+                    == self
+                        .construction
+                        .node_at(option)
+                        .expect("retained construction position")
+                        .child_count()
+                {
+                    return self.write_current_effect(c, None);
+                }
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                let child = self
+                    .construction
+                    .node_at(option)
+                    .expect("retained construction position")
+                    .child_at(cursor)
+                    .expect("retained child ordinal")
+                    .position();
+                let document = self.node_document_ref(c, child)?;
+                let child_document = document.try_clone(c)?;
+                let copy = self.clone_node(c, child, child_document)?;
+                self.write_current_effect(
+                    c,
+                    Some(EffectFrame::CloneOptionChildren {
+                        option,
+                        fragment,
+                        cursor: cursor + 1,
+                    }),
+                )?;
+                self.start_effect(
+                    c,
+                    EffectFrame::AppendClone {
+                        parent: fragment,
+                        copy,
+                    },
+                )?;
+                self.start_effect(
+                    c,
+                    EffectFrame::CloneChildren {
+                        source: child,
+                        copy,
+                        cursor: 0,
+                        document,
+                    },
+                )?;
+                self.start_template_clone(c, child, copy)
+            }
+            _ => Err(SessionError::WrongToken),
+        }
+    }
+    pub(super) fn ancestor_optgroup(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        select: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        let mut next = self.ordinary_parent(c, node, detached)?;
+        for _ in 0..self.construction.storage().len() {
+            let Some(ancestor) = next else {
+                return Ok(false);
+            };
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if ancestor == select {
+                return Ok(false);
+            }
+            if self.html_local(c, ancestor, "optgroup")? {
+                return Ok(true);
+            }
+            next = self.ordinary_parent(c, ancestor, detached)?;
+        }
+        Err(SessionError::Cycle)
+    }
+    pub(super) fn first_selected_option(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        let list = self.retain_work_list(c, select, WorkListKind::Options { detached: None })?;
+        payload_write::<(usize, Option<usize>)>(c, 2)?;
+        let mut cursor = 0;
+        let mut selected = None;
+        while let Some(node) = self.work_list_node(c, list, cursor)? {
+            let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
+                return Err(SessionError::SelectMetadataUnavailable);
+            };
+            if state.flags.selectedness() {
+                payload_write::<Option<usize>>(c, 1)?;
+                selected = Some(node);
+                break;
+            }
+            payload_write::<usize>(c, 1)?;
+            cursor += 1;
+        }
+        self.release_work_list(c, list)?;
+        Ok(selected)
+    }
+    pub(super) fn update_select(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+    ) -> Result<(), SessionError> {
+        if self.form_attribute(c, select, "multiple")?.is_some() {
+            return Ok(());
+        }
+        let list = self.retain_work_list(c, select, WorkListKind::SelectedTargets)?;
+        self.start_effect(
+            c,
+            EffectFrame::UpdateSelect {
+                select,
+                list,
+                cursor: 0,
+            },
+        )
+    }
+    pub(super) fn update_for_option(
+        &mut self,
+        c: &mut ParseControl,
+        option: usize,
+    ) -> Result<(), SessionError> {
+        let (_, SelectMetadata::Option(state)) = self.select_metadata(c, option)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if state.flags.selectedness()
+            && let Some(select) = state.nearest_select
+        {
+            self.update_select(c, select)?;
+        }
+        Ok(())
+    }
+    pub(super) fn intrinsic_select_tree_hook(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+        removal: bool,
+    ) -> Result<(), SessionError> {
+        if self.html_local(c, node, "option")? {
+            let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, node)? else {
+                return Err(SessionError::SelectMetadataUnavailable);
+            };
+            let old = state.nearest_select;
+            let new = self.nearest_select(c, node, detached)?;
+            state.nearest_select = new;
+            self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+            if old != new {
+                for select in [old, new].into_iter().flatten() {
+                    let changed = self.selectedness_setting(c, select, detached)?;
+                    let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
+                        return Err(SessionError::SelectMetadataUnavailable);
+                    };
+                    if removal && (changed || state.flags.selectedness()) {
+                        let cause = self
+                            .evidence
+                            .as_ref()
+                            .map(|evidence| evidence.current_cause(c))
+                            .transpose()?
+                            .flatten();
+                        self.effects
+                            .enqueue(c, IntrinsicTask::UpdateSelect(select), cause)?;
+                    }
+                }
+            }
+        } else if !removal && self.html_local(c, node, "selectedcontent")? {
+            self.recalculate_selectedcontent(c, node)?;
+        }
+        Ok(())
+    }
+    fn recalculate_selectedcontent(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        let (slot, SelectMetadata::Selectedcontent(mut state)) = self.select_metadata(c, node)?
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        state.disabled = false;
+        self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
+        let mut nearest = None;
+        let mut next = self.ordinary_parent(c, node, None)?;
+        for _ in 0..self.construction.storage().len() {
+            let Some(ancestor) = next else {
+                return Ok(nearest);
+            };
+            if self.html_local(c, ancestor, "select")? {
+                if nearest.is_none() {
+                    payload_write::<Option<usize>>(c, 1)?;
+                    nearest = Some(ancestor);
+                    next = self.ordinary_parent(c, ancestor, None)?;
+                    continue;
+                }
+                state.disabled = true;
+            } else if self.html_local(c, ancestor, "option")?
+                || self.html_local(c, ancestor, "selectedcontent")?
+            {
+                state.disabled = true;
+            }
+            if state.disabled {
+                self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
+                return Ok(nearest);
+            }
+            next = self.ordinary_parent(c, ancestor, None)?;
+        }
+        Err(SessionError::Cycle)
+    }
+    pub(super) fn connect_selectedcontent(
+        &mut self,
+        c: &mut ParseControl,
+        target: usize,
+    ) -> Result<(), SessionError> {
+        let select = self.recalculate_selectedcontent(c, target)?;
+        let (_, SelectMetadata::Selectedcontent(state)) = self.select_metadata(c, target)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if !state.disabled
+            && let Some(select) = select
+            && self.form_attribute(c, select, "multiple")?.is_none()
+        {
+            let option = self.first_selected_option(c, select)?;
+            self.start_effect(
+                c,
+                EffectFrame::UpdateTarget {
+                    option,
+                    target,
+                    fragment: None,
+                    stage: TargetStage::Prepare,
+                },
+            )?;
+        }
+        Ok(())
+    }
+    pub(super) fn initial_select_reset(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<(), SessionError> {
+        if !self.html_local(c, node, "select")? {
+            return Ok(());
+        }
+        let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, node)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        state.flags.reset();
+        self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
+        self.selectedness_setting(c, node, None)?;
+        // Fresh parser-created select has no children at syntax3537 reset.
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .child_count()
+            != 0
+        {
+            return Err(SessionError::WrongToken);
+        }
+        Ok(())
+    }
+    pub(super) fn initial_select_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        position: usize,
+    ) -> Result<(), SessionError> {
+        c.charge(WorkCategory::RecordVisit, 3)?;
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
+            return Err(SessionError::WrongToken);
+        };
+        let attribute = element
+            .attributes()
+            .as_slice()
+            .get(position)
+            .ok_or(SessionError::WrongToken)?;
+        let selected = exact_ascii(c, Some(attribute.name().local_name()), "selected")?;
+        let disabled = exact_ascii(c, Some(attribute.name().local_name()), "disabled")?;
+        let size = exact_ascii(c, Some(attribute.name().local_name()), "size")?;
+        let multiple = exact_ascii(c, Some(attribute.name().local_name()), "multiple")?;
+        if self.html_local(c, node, "option")? {
+            let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, node)? else {
+                return Err(SessionError::SelectMetadataUnavailable);
+            };
+            if selected && !state.flags.dirtiness() {
+                state.flags.selected_attribute_changed(true);
+                self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+            }
+            if (selected || disabled)
+                && let Some(select) = state.nearest_select
+            {
+                self.selectedness_setting(c, select, None)?;
+            }
+        } else if self.html_local(c, node, "select")? && (size || multiple) {
+            self.selectedness_setting(c, node, None)?;
+        } else if self.html_local(c, node, "optgroup")?
+            && disabled
+            && let Some(select) = self.nearest_select(c, node, None)?
+        {
+            self.selectedness_setting(c, select, None)?;
+        }
+        Ok(())
+    }
+    pub(super) fn select_metadata(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<(usize, SelectMetadata), SessionError> {
+        retained_select_metadata(&self.payloads, c, node)
+    }
+    pub(super) fn set_select_metadata(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        value: SelectMetadata,
+    ) -> Result<(), SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        payload_write::<SelectMetadata>(c, 1)?;
+        let Some(RetainedPayload::SelectFamily { state, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        *state = value;
+        Ok(())
+    }
+    pub(super) fn nearest_select(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+    ) -> Result<Option<usize>, SessionError> {
+        let mut next = self.ordinary_parent(c, node, detached)?;
+        let mut group = false;
+        for _ in 0..self.construction.storage().len() {
+            let Some(node) = next else { return Ok(None) };
+            for barrier in ["datalist", "hr", "option"] {
+                if self.html_local(c, node, barrier)? {
+                    return Ok(None);
+                }
+            }
+            if self.html_local(c, node, "optgroup")? {
+                if group {
+                    return Ok(None);
+                }
+                payload_write::<bool>(c, 1)?;
+                group = true;
+            }
+            if self.html_local(c, node, "select")? {
+                return Ok(Some(node));
+            }
+            next = self.ordinary_parent(c, node, detached)?;
+        }
+        Err(SessionError::Cycle)
+    }
+    pub(super) fn option_disabled(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        if self.form_attribute(c, node, "disabled")?.is_some() {
+            return Ok(true);
+        }
+        let mut next = self.ordinary_parent(c, node, detached)?;
+        for _ in 0..self.construction.storage().len() {
+            let Some(node) = next else { return Ok(false) };
+            for barrier in ["option", "select", "datalist", "hr"] {
+                if self.html_local(c, node, barrier)? {
+                    return Ok(false);
+                }
+            }
+            if self.html_local(c, node, "optgroup")? {
+                return Ok(self.form_attribute(c, node, "disabled")?.is_some());
+            }
+            next = self.ordinary_parent(c, node, detached)?;
+        }
+        Err(SessionError::Cycle)
+    }
+    pub(super) fn select_size(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<usize, SessionError> {
+        let multiple = self.form_attribute(c, node, "multiple")?.is_some();
+        let fallback = if multiple { 4 } else { 1 };
+        let Some(value) = self.form_attribute(c, node, "size")? else {
+            return Ok(fallback);
+        };
+        payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
+        payload_write::<usize>(c, 1)?;
+        let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
+        let mut position = 0;
+        while position < value.len() {
+            c.charge(WorkCategory::InspectByte, 2)?;
+            payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
+            let unit = value.code_units()[position];
+            if !scanner.feed(unit) {
+                break;
+            }
+            payload_write::<usize>(c, 1)?;
+            position += 1;
+        }
+        let Ok(prefix) = scanner.finish() else {
+            return Ok(fallback);
+        };
+        payload_write::<(usize, usize)>(c, 2)?;
+        let mut result = 0usize;
+        let mut position = prefix.start();
+        while position < prefix.end() {
+            c.charge(WorkCategory::InspectByte, 2)?;
+            let unit = value.code_units()[position];
+            if prefix.is_negative() && unit != b'0' as u16 {
+                return Ok(fallback);
+            }
+            payload_write::<usize>(c, 1)?;
+            result = (result * 10 + usize::from(unit - b'0' as u16)).min(2);
+            payload_write::<usize>(c, 1)?;
+            position += 1;
+        }
+        Ok(result)
+    }
+    pub(super) fn selectedness_setting(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        if self.form_attribute(c, select, "multiple")?.is_some() {
+            return Ok(false);
+        }
+        let list = self.retain_work_list(c, select, WorkListKind::Options { detached })?;
+        let mut cursor = 0;
+        payload_write::<(Option<usize>, Option<usize>, bool, usize)>(c, 4)?;
+        let mut first = None;
+        let mut last = None;
+        let mut changed = false;
+        while let Some(node) = self.work_list_node(c, list, cursor)? {
+            let (_, metadata) = self.select_metadata(c, node)?;
+            let SelectMetadata::Option(state) = metadata else {
+                return Err(SessionError::SelectMetadataUnavailable);
+            };
+            if state.flags.selectedness() {
+                if let Some(previous) = last {
+                    let (slot, SelectMetadata::Option(mut previous_state)) =
+                        self.select_metadata(c, previous)?
+                    else {
+                        return Err(SessionError::SelectMetadataUnavailable);
+                    };
+                    previous_state.flags.set_selectedness_for_select(false);
+                    self.set_select_metadata(c, slot, SelectMetadata::Option(previous_state))?;
+                    payload_write::<bool>(c, 1)?;
+                    changed = true;
+                }
+                payload_write::<Option<usize>>(c, 1)?;
+                last = Some(node);
+            }
+            if first.is_none() && !self.option_disabled(c, node, detached)? {
+                payload_write::<Option<usize>>(c, 1)?;
+                first = Some(node);
+            }
+            payload_write::<usize>(c, 1)?;
+            cursor += 1;
+        }
+        if last.is_none()
+            && let Some(first) = first
+            && self.select_size(c, select)? == 1
+        {
+            let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, first)? else {
+                return Err(SessionError::SelectMetadataUnavailable);
+            };
+            state.flags.set_selectedness_for_select(true);
+            self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+            payload_write::<bool>(c, 1)?;
+            changed = true;
+        }
+        self.release_work_list(c, list)?;
+        Ok(changed)
+    }
+}
+
+impl ParserArenaSession {
+    #[cfg(test)]
+    pub(crate) fn select_state(
+        &self,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<SelectState, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(c, node)?;
+        match storage.select_metadata(c, node)?.1 {
+            SelectMetadata::Select(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn option_state(
+        &self,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<OptionState, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(c, node)?;
+        match storage.select_metadata(c, node)?.1 {
+            SelectMetadata::Option(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn selectedcontent_state(
+        &self,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<SelectedcontentState, SessionError> {
+        let storage = self.active()?;
+        let node = storage.index(c, node)?;
+        match storage.select_metadata(c, node)?.1 {
+            SelectMetadata::Selectedcontent(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn option_nearest_select(
+        &self,
+        c: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<Option<ParserNode>, SessionError> {
+        self.option_state(c, node)?
+            .nearest_select
+            .map(|index| self.active()?.node(c, index))
+            .transpose()
+    }
+}
+
+fn retained_select_metadata(
+    payloads: &PayloadStorage,
+    c: &mut ParseControl,
+    node: usize,
+) -> Result<(usize, SelectMetadata), SessionError> {
+    for (slot, payload) in payloads.values.iter().enumerate() {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if let RetainedPayload::SelectFamily {
+            node: Some(owner),
+            state,
+        } = payload
+            && *owner == node
+        {
+            c.charge(
+                WorkCategory::CopyByte,
+                mem::size_of::<SelectMetadata>() as u64,
+            )?;
+            return Ok((slot, *state));
+        }
+    }
+    Err(SessionError::SelectMetadataUnavailable)
+}
+
+impl FrozenArena {
+    #[cfg(test)]
+    fn retained_select_state(
+        &self,
+        c: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<SelectMetadata, SessionError> {
+        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
+        c.require_identity(&storage.control)?;
+        let arena = &storage.view;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let position = arena
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
+        Ok(retained_select_metadata(&storage.payloads, c, position)?.1)
+    }
+    #[cfg(test)]
+    pub(crate) fn select_state(
+        &self,
+        c: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<SelectState, SessionError> {
+        match self.retained_select_state(c, node)? {
+            SelectMetadata::Select(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn option_state(
+        &self,
+        c: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<OptionState, SessionError> {
+        match self.retained_select_state(c, node)? {
+            SelectMetadata::Option(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn selectedcontent_state(
+        &self,
+        c: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<SelectedcontentState, SessionError> {
+        match self.retained_select_state(c, node)? {
+            SelectMetadata::Selectedcontent(state) => Ok(state),
+            _ => Err(SessionError::SelectMetadataUnavailable),
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn option_nearest_select(
+        &self,
+        c: &mut ParseControl,
+        node: &HtmlNodeId,
+    ) -> Result<Option<HtmlNodeId>, SessionError> {
+        let owner = self.option_state(c, node)?.nearest_select;
+        self.resolve_form_owner(c, owner)
+    }
+}

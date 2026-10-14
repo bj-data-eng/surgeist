@@ -2,8 +2,9 @@
 
 This reference records the boundary selected for [#1174](https://github.com/bj-data-eng/surgeist/issues/1174)
 under [#1173](https://github.com/bj-data-eng/surgeist/issues/1173). It is an
-implementation contract for the extraction, rather than a claim that the new
-packages already exist. The source basis is
+implementation contract for the three-package extraction. The current manifests
+and source implement those package boundaries; capability claims remain limited
+to the owning contracts and executable evidence below. The source basis is
 `11fea87cca1674b93dc2bef57bb138ff55570cfe`; subsequent fixes in the same
 contribution must preserve the boundaries below.
 
@@ -496,8 +497,16 @@ fallback retain reciprocal contents ownership. Parser stacks and effects use the
 same referenced fragment and remain parser-owned. No new native declarative-shadow
 convenience or DOM implementation is implied.
 
-Add `HtmlElement::new(QualifiedName, OrderedAttributes) -> Self`, whose link
-flags are absent until the actual producing operation supplies them. Raw
+`HtmlElement::new(QualifiedName, OrderedAttributes) -> Self` keeps link flags
+absent for imported values. `CreateElement { name, attributes, link_flags }`
+accepts the actual owned name, validated ordered attributes and optional producer
+history as one creation input. It validates supplied flags against its existing
+admitted HTML link classification, then forms the private element only at the
+same Ready record commit. Invalid supplied flags retain the exact command and
+inputs. `None` preserves unknown history. The existing `Create { kind }` consumes
+completed checked payloads; it has no competing flag input. Parser initial and
+clone producers keep their original source qualification before this operation;
+no later SetLinkFlags phase or duplicate name scan is introduced. Raw
 `HtmlProcessingInstruction` payload construction remains exact-value storage;
 native authoring still requires its existing separately checked
 `HtmlAuthoredProcessingInstruction`. Those are different phase contracts, not
@@ -1025,8 +1034,8 @@ and mutation helpers remain private.
 
 These requirements follow the actual
 [rel kernel](../../crates/surgeist-html/src/rel.rs),
-[relationship adapter](../../crates/surgeist-html/src/semantics/link_relationships.rs)
-and [noopener adapter](../../crates/surgeist-html/src/semantics/link_relationships/noopener.rs).
+[relationship adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships.rs)
+and [noopener adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships/noopener.rs).
 
 #### Media interpretation with deferred name recognition
 
@@ -1092,7 +1101,7 @@ variable allocation. External grammar, uniqueness and processing readbacks
 remain semantics-owned. `HtmlMediaAttributeReport::observed` stays private.
 
 This order is required by the existing
-[media semantic adapter](../../crates/surgeist-html/src/semantics/media.rs),
+[media semantic adapter](../../crates/surgeist-html-semantics/src/semantics/media.rs),
 [ordinary report kernel](../../crates/surgeist-html/src/attributes/media.rs)
 and [media cursors](../../crates/surgeist-html/src/media.rs).
 
@@ -1131,7 +1140,7 @@ The ordinary interpreter drives the same token-production kernel with ordinary
 admission. The existing report's kind-specific processing-token and local-author
 rules stay authoritative; in particular ItemProp suppresses duplicate processing
 tokens. This protocol preserves the actual checkpoints in
-[`md_tokens`](../../crates/surgeist-html/src/semantics/microdata.rs) while moving
+[`md_tokens`](../../crates/surgeist-html-semantics/src/semantics/microdata.rs) while moving
 token/report assembly into the
 [HTML microdata owner](../../crates/surgeist-html/src/attributes/microdata.rs).
 
@@ -1172,7 +1181,7 @@ their existing cumulative treatment. Finishing cannot hide a late poll or
 allocation, and neither abort nor refusal can replace the consumer's first stop.
 
 The authoritative accounting body is
-[`HtmlSemanticSession::reserve_records`](../../crates/surgeist-html/src/semantics.rs);
+[`HtmlSemanticSession::reserve_records`](../../crates/surgeist-html-semantics/src/semantics.rs);
 the concrete guards protect private HTML storage while allowing that existing
 controller to remain authoritative.
 

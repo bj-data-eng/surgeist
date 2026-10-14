@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 use surgeist_fuzz::{engine, *};
 use surgeist_html_fuzz::*;
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlParseFailureReason, HtmlParseResource, HtmlParseStop, HtmlSource,
+};
 
 fn targets() -> [UnicodeTarget; 2] {
     [UnicodeTarget::document(), UnicodeTarget::fragment()]
@@ -466,7 +469,6 @@ fn finite_nonzero_work_cut_checks_partial_execution_cleanup_and_retained_evidenc
 
 #[test]
 fn public_partial_work_failure_has_admitted_source_first_stop_and_actual_cleanup_snapshot() {
-    use surgeist_html::*;
     let c = UnicodeCase::new(
         ParseKind::Document,
         UnicodeSource::Utf8(

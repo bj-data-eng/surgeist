@@ -190,7 +190,7 @@ Coordinator selects CSS-owned standalone source parsing, contextual resolution
 and source/fact qualification, with numerical conversion, interpolation,
 transformations and resolved serialization owned by
 [`surgeist-color`](../crates/surgeist-color/README.md). The current
-[`surgeist-html` adapter](../crates/surgeist-html/src/construction/parser_session/input_color.rs)
+[`surgeist-html-parser` adapter](../crates/surgeist-html-parser/src/construction/input_color.rs)
 consumes both directly and owns its original controller, fallback, transformation
 order and publication. Each consuming crate owns its adapter; the root facade
 supplies optional composition. Style owns contextual property/profile facts and

@@ -11,8 +11,8 @@ The [supplemental parser witness](../../references/html5ever-parser-supplemental
 ## Incorporated tokenizer source
 
 Separately from those research captures, Surgeist incorporates an adapted,
-private tokenizer compiled for tests in `crates/surgeist-html/src/parser/tokenizer/`.
-The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) maps four original
+private production tokenizer in `crates/surgeist-html-parser/src/parser/tokenizer/`.
+The [origin record](../../crates/surgeist-html-parser/PARSER-ORIGINS.md) maps four original
 source files to five adapted implementation files and records their
 modifications on 2026-10-11. Exact original copyright and license headers remain
 in those files; the copyright, authorship and MIT OR Apache-2.0 material above
@@ -55,11 +55,12 @@ HTML/Tiny clauses; it ingests no additional html5ever slice. Existing driver
 notices remain verbatim. Its new session SVG state and insertion/clone/connection
 providers are Surgeist-authored, with separate W3C Tiny attribution and a
 metadata-only WebKit clone witness in the
-[SVG origin record](../../crates/surgeist-html/PARSER-ORIGINS.md#restricted-svg-script-extension).
-The [origin record](../../crates/surgeist-html/PARSER-ORIGINS.md) identifies four
+[SVG origin record](../../crates/surgeist-html-parser/PARSER-ORIGINS.md#restricted-svg-script-extension).
+The [origin record](../../crates/surgeist-html-parser/PARSER-ORIGINS.md) identifies four
 complete original file hashes and separate initial adapted checkpoints.
 The original eight-line copyright/license notices are retained verbatim;
 adaptation notes identify the changed source and selected HTML authority.
 The exact copyright, authorship and MIT OR Apache-2.0 material above applies.
-This test-compiled kernel uses Surgeist-owned controlled storage. It does not
-claim complete insertion modes or public parser execution.
+This production kernel uses Surgeist-owned controlled storage. The origin
+record qualifies its selected insertion modes; attribution does not certify
+full browser conformance.

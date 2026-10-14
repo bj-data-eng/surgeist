@@ -1,9 +1,10 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
 pub(crate) mod bounded;
-pub(crate) mod parser_session;
 
-use crate::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
+#[cfg(test)]
+use crate::Namespace;
+use crate::{DocumentString, OrderedAttributes, QualifiedName};
 use std::{
     error::Error,
     fmt,

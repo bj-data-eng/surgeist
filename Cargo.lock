@@ -3767,6 +3767,8 @@ dependencies = [
  "surgeist-cssom",
  "surgeist-dialog",
  "surgeist-html",
+ "surgeist-html-parser",
+ "surgeist-html-semantics",
  "surgeist-layout",
  "surgeist-render",
  "surgeist-retained",
@@ -3858,8 +3860,6 @@ name = "surgeist-html"
 version = "0.1.0"
 dependencies = [
  "cssparser",
- "surgeist-color",
- "surgeist-css",
 ]
 
 [[package]]
@@ -3870,7 +3870,26 @@ dependencies = [
  "proptest",
  "surgeist-fuzz",
  "surgeist-html",
+ "surgeist-html-parser",
+ "surgeist-html-semantics",
  "toml",
+]
+
+[[package]]
+name = "surgeist-html-parser"
+version = "0.1.0"
+dependencies = [
+ "surgeist-color",
+ "surgeist-css",
+ "surgeist-html",
+ "surgeist-html-semantics",
+]
+
+[[package]]
+name = "surgeist-html-semantics"
+version = "0.1.0"
+dependencies = [
+ "surgeist-html",
 ]
 
 [[package]]

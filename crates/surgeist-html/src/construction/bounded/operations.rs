@@ -10,6 +10,13 @@ pub enum HtmlConstructionCommand {
     Create {
         kind: HtmlNodeKind,
     },
+    /// Creates exact element values and explicit producer-supplied history in
+    /// one record commit. Flags require an actual HTML link expanded name.
+    CreateElement {
+        name: QualifiedName,
+        attributes: OrderedAttributes,
+        link_flags: Option<crate::HtmlLinkFlags>,
+    },
     CreateDocument {
         mode: HtmlDocumentMode,
     },
@@ -121,6 +128,7 @@ impl HtmlConstructionCommand {
         matches!(
             self,
             Self::Create { .. }
+                | Self::CreateElement { .. }
                 | Self::CreateDocument { .. }
                 | Self::CreateFragment
                 | Self::CreateShadowContents { .. }
@@ -472,6 +480,7 @@ impl HtmlConstructionOperation {
     }
     fn name(&self) -> Option<&QualifiedName> {
         match self.command() {
+            HtmlConstructionCommand::CreateElement { name, .. } => Some(name),
             HtmlConstructionCommand::Create {
                 kind: HtmlNodeKind::Element(v),
             } => Some(v.name()),
@@ -835,16 +844,32 @@ impl HtmlConstructionOperation {
             let b = plan.positions[1];
             let c = plan.positions[2];
             match self.command() {
-                Command::Create { kind } => {
-                    if matches!(kind, HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment) {
-                        return Err(HtmlConstructionError::WrongNodeKind);
-                    }
+                Command::Create { .. } | Command::CreateElement { .. } => {
+                    plan.new_units = match self.command() {
+                        Command::Create { kind } => {
+                            if matches!(kind, HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment) {
+                                return Err(HtmlConstructionError::WrongNodeKind);
+                            }
+                            if let HtmlNodeKind::Element(element) = kind {
+                                plan.new_attributes = element.attributes().len();
+                            }
+                            leaf_units(kind)?
+                        }
+                        Command::CreateElement {
+                            name,
+                            attributes,
+                            link_flags,
+                        } => {
+                            if link_flags.is_some() && !plan.link {
+                                return Err(HtmlConstructionError::WrongNodeKind);
+                            }
+                            plan.new_attributes = attributes.len();
+                            name_units(name)?
+                        }
+                        _ => unreachable!("creation command"),
+                    };
                     plan.record_count = 1 + usize::from(plan.template);
                     plan.positions[0] = arena.records.len();
-                    plan.new_units = leaf_units(kind)?;
-                    if let HtmlNodeKind::Element(element) = kind {
-                        plan.new_attributes = element.attributes().len();
-                    }
                     plan.usage.edges = add(plan.usage.edges, usize::from(plan.template))?;
                     plan.usage.depth = plan.usage.depth.max(usize::from(plan.template));
                 }
@@ -1561,6 +1586,7 @@ impl HtmlConstructionOperation {
                     Command::Create {
                         kind: HtmlNodeKind::Element(element),
                     } => &element.attributes().as_slice()[index],
+                    Command::CreateElement { attributes, .. } => &attributes.as_slice()[index],
                     Command::ReplaceAttributes { attributes, .. } => &attributes.as_slice()[index],
                     _ => unreachable!("only real new attributes are counted"),
                 };
@@ -1938,7 +1964,20 @@ impl HtmlConstructionReadyOperation {
         else {
             unreachable!("only publication shares an arena");
         };
-        let command = operation.command.take().expect("ready command");
+        let command = match operation.command.take().expect("ready command") {
+            Command::CreateElement {
+                name,
+                attributes,
+                link_flags,
+            } => Command::Create {
+                kind: HtmlNodeKind::Element(HtmlElement {
+                    name,
+                    attributes,
+                    link_flags,
+                }),
+            },
+            command => command,
+        };
         let attach_shadow = matches!(command, Command::AttachShadow { .. });
         let changes_topology = matches!(
             command,
@@ -1956,6 +1995,7 @@ impl HtmlConstructionReadyOperation {
         if !plan.no_op {
             let arena = &mut storage.arena;
             match command {
+                Command::CreateElement { .. } => unreachable!("element operands formed at Ready"),
                 Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
                 Command::Create { kind } => {
                     let mut record = Record::new(kind, None, 0);

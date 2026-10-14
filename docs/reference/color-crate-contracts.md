@@ -19,7 +19,7 @@ profile capability, render representation or external dependency is introduced.
 ## Owners and source crossings
 
 All source paths in this section are relative to
-[`crates/surgeist-css/src/`](../../crates/surgeist-css/src/).
+[`crates/surgeist-css/src/`](../../crates/surgeist-css/src).
 
 | Current owner/path and actual caller | Destination and contract |
 | --- | --- |
@@ -1020,13 +1020,13 @@ constructors before this resolution call, retaining original tokens. The
 authored path builds no source string.
 
 The actual controlled HTML consumer is currently
-[`construction/parser_session/input_color.rs`](../../crates/surgeist-html/src/construction/parser_session/input_color.rs).
-After #1173/#1174/#1179 it belongs to `surgeist-html-parser`, which directly
-depends on CSS and Color. The dependency-free `surgeist-html` shared-value
+[`construction/input_color.rs`](../../crates/surgeist-html-parser/src/construction/input_color.rs).
+It belongs to `surgeist-html-parser`, which directly depends on CSS and Color.
+The `surgeist-html` shared-value
 crate does not own a second adapter. Original-source, resource, lexical and
 computation evidence stays in the parser owner, including the records currently
 in
-[`construction/parser_session/provenance.rs`](../../crates/surgeist-html/src/construction/parser_session/provenance.rs).
+[`construction/provenance.rs`](../../crates/surgeist-html-parser/src/construction/provenance.rs).
 Stored numerical payloads use Color directly; CSS environment identities and
 standard failures remain CSS types.
 

@@ -86,7 +86,9 @@ implemented dependency graph and behavior.
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
-| `surgeist-html` | Pinned HTML language values, typed authoring, immutable construction results, parsing, and intrinsic interpretation |
+| `surgeist-html` | Pinned HTML values, local rules, native authoring and immutable construction |
+| `surgeist-html-parser` | Decoded-Unicode ingestion, recovery, source provenance, construction effects and immutable parse reports |
+| `surgeist-html-semantics` | Qualified captures, construction-to-capture import, external facts and bounded intrinsic semantic queries |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
 | `surgeist-render` | Rendering contracts and backend-facing draw data |
 | `surgeist-retained` | Retained identity and state, tree identity, and stable handles |
@@ -124,18 +126,16 @@ provides stable identities, immutable snapshots, atomic edits and headless live
 declaration, rule, stylesheet and MediaList operations. Its crate README records
 current extension operations and source-qualified capability limits.
 
-`surgeist-html` implements shared HTML-owned values, typed native authoring,
-immutable construction and parse results, adapted html5ever ingestion, recovery,
-structured diagnostics, source provenance and bounded intrinsic interpretation.
-Its decoded-Unicode front door supports fresh offline ordinary documents and
-qualified contextual fragments. The crate README and conformance matrix record
-external fact requirements, unsupported hosted execution and selected coverage;
-they do not certify full browser conformance. It has no DOM or downstream
-rendering dependency and owns its current direct CSS and Color integration.
-Its source color adapter services CSS parsing and Color numerical actions through
-one original parser controller, with separate numerical ownership and digit
-storage; stored computation values use Color directly. The planned HTML
-values/parser/semantics split is not yet a physical package split.
+`surgeist-html` owns exact shared values, local language rules, native builders
+and the controlled immutable construction owner. `surgeist-html-parser` consumes
+that owner and semantic captures for decoded-Unicode ordinary documents and
+qualified fragments, with recovery, source provenance, bounded effects and
+explicit terminal cleanup. `surgeist-html-semantics` owns captures and bounded
+queries and adapts native or parsed HTML results through one public capture
+adapter. Each crate's README records capability limits; these do not certify
+full browser conformance. HTML has no parser, semantic, DOM, CSS or Color
+dependency. Semantics depends only on HTML. Parser owns direct CSS grammar and
+Color numerical integration through its original controller.
 The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.

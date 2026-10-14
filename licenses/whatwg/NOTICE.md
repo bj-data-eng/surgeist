@@ -65,10 +65,10 @@ source identity or rendering implementation.
 
 The HTML crate incorporates the complete named-character-reference and C1
 replacement tables from the pinned HTML edition into ordinary Rust data under
-the upstream BSD 3-Clause source-code provision. The [offline generator](../../crates/surgeist-html/tools/generate_character_references.py)
+the upstream BSD 3-Clause source-code provision. The [offline generator](../../crates/surgeist-html-parser/tools/generate_character_references.py)
 reads the retained [syntax capture](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md),
 SHA-256 `db1eaacc388d494736080301dd18e9147feb39f2651e2bc7fbeed36ee2cfb214`,
-and writes [private reference data](../../crates/surgeist-html/src/parser/character_references.rs).
+and writes [private reference data](../../crates/surgeist-html-parser/src/parser/character_references.rs).
 Adaptations omit the leading ampersand from lookup keys, sort all complete
 names, retain semicolon-less spellings and two-scalar values, and represent
 unlisted C1 overrides as absence. The generation headers identify the selected

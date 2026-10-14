@@ -1,7 +1,8 @@
 # HTML Unicode parse fuzz cases
 
-This HTML-owned verification package consumes public complete document and
-captured-context fragment parsing. Shared [surgeist-fuzz](../../surgeist-fuzz/README.md)
+This verification package consumes shared `surgeist-html` values, public
+`surgeist-html-parser` document and fragment parsing, and explicit
+`surgeist-html-semantics` captures. Shared [surgeist-fuzz](../../surgeist-fuzz/README.md)
 owns engines, workers, supervision, artifacts, replay and reduction. HTML owns
 this strict codec, generation, literal expectations and evaluator. No HTML
 production API or private parser algorithm is copied or exposed here.
