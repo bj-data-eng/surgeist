@@ -284,6 +284,11 @@ pub struct CssProfileColorCalculation {
     references: Vec<crate::CssColorProfileComponentName>,
 }
 impl CssProfileColorCalculation {
+    /// Lends the actual checked node before its separately admitted inspection.
+    pub(crate) fn checked_expression(&self) -> &CssCalculationExpression {
+        &self.expression
+    }
+
     // The new declaration-block inverse uses the owning graph identity while
     // leaving authored components and diagnostic coordinates intact.
     pub(crate) fn specified_inverse_eq(

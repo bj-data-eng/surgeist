@@ -5,7 +5,8 @@
 
 use super::channels::{Component, Domain};
 use super::expression::{
-    ExpressionDescriptor, ExpressionTable, NumericAction, NumericGrammar, Variable,
+    ExpressionDescriptor, ExpressionTable, NumericAction, NumericGrammar, OperandReference,
+    Variable,
 };
 use super::grammar::{ComponentRole, FunctionRecipe, ProfileSpace, RawComponent};
 use super::keywords::{ColorFunction as F, Word};
@@ -124,7 +125,7 @@ impl ComponentContext {
             allow_missing: recipe.syntax == CssColorSyntax::Modern && role != ComponentRole::Weight,
         })
     }
-    fn domain(self, ty: CssNumericType) -> Option<Domain> {
+    pub(crate) fn domain(self, ty: CssNumericType) -> Option<Domain> {
         match self.expectation {
             Expectation::Hue if ty.percent_hint().is_none() => {
                 if ty.is_number() {
@@ -158,7 +159,7 @@ impl ComponentContext {
 pub(crate) enum CheckedComponent<'owner> {
     Literal(Component),
     Variable {
-        token: ClassifiedToken,
+        token: OperandReference,
         binding: Variable,
     },
     Expression {
@@ -172,7 +173,7 @@ pub(crate) enum CheckedComponent<'owner> {
 pub(crate) enum CheckedScalar {
     Literal(Component),
     Variable {
-        token: ClassifiedToken,
+        token: OperandReference,
         binding: Variable,
     },
     Expression {
@@ -232,13 +233,13 @@ impl CheckedScalar {
     }
     pub(crate) fn component<'owner>(
         self,
-        lexical: &LexicalTable<'owner>,
+        input: &super::grammar::GrammarInput<'owner>,
     ) -> Result<CheckedComponent<'owner>, CssColorProtocolError> {
         Ok(match self {
             Self::Literal(value) => CheckedComponent::Literal(value),
             Self::Variable { token, binding } => CheckedComponent::Variable { token, binding },
             Self::Expression { descriptor, domain } => CheckedComponent::Expression {
-                table: ExpressionTable::from_descriptor(lexical, descriptor)?,
+                table: ExpressionTable::from_descriptor(input, descriptor)?,
                 domain,
             },
         })
@@ -312,9 +313,7 @@ impl<'owner> ComponentSyntax<'owner> {
         if scratch_end < lexical.length() {
             return Err(CssColorProtocolError::WrongIndex);
         }
-        let token = match raw {
-            RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token,
-        };
+        let token = raw.source_token()?;
         let reader = TokenReader::start_at(lexical, token.index)?;
         Ok(Self {
             lexical: *lexical,
@@ -412,6 +411,7 @@ impl<'owner> ComponentSyntax<'owner> {
                         slot,
                         self.scratch_end,
                     )?),
+                    RawComponent::Authored { .. } => return Err(CssColorProtocolError::WrongSlot),
                     RawComponent::Math { .. } => State::Math(NumericGrammar::start(
                         &self.lexical,
                         *token,
@@ -506,9 +506,7 @@ impl<'owner> ComponentSyntax<'owner> {
             State::Token(reader) if reader.action() == TokenAction::Classify => reader.classify(),
             State::Token(reader) => {
                 let token = reader.current()?;
-                let expected = match self.raw {
-                    RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token,
-                };
+                let expected = self.raw.source_token()?;
                 if token != expected {
                     return Err(CssColorProtocolError::WrongSlot);
                 }
@@ -541,12 +539,20 @@ impl<'owner> ComponentSyntax<'owner> {
                                 let TokenKind::Name { units: name, .. } = token.token.kind else {
                                     unreachable!()
                                 };
-                                Some(Variable::Profile { name })
+                                Some(Variable::Profile {
+                                    name: super::protocol::RecordRange {
+                                        start: name.start,
+                                        end: name.end,
+                                    },
+                                })
                             }
                             Variables::None => None,
                         };
                         if let Some(binding) = binding {
-                            self.state = State::Done(CheckedComponent::Variable { token, binding });
+                            self.state = State::Done(CheckedComponent::Variable {
+                                token: OperandReference::Source(token),
+                                binding,
+                            });
                         } else {
                             self.reject(token.index);
                         }
@@ -585,7 +591,7 @@ impl<'owner> ComponentSyntax<'owner> {
                     };
                     if let Some(domain) = self.context.domain(ty) {
                         let table = cursor.finish()?;
-                        if table.last_token != end || table.closed != closed {
+                        if table.source_last_token()? != end || table.closed != closed {
                             return Err(CssColorProtocolError::WrongSlot);
                         }
                         self.state = State::Done(CheckedComponent::Expression { table, domain });
@@ -788,7 +794,7 @@ mod tests {
             output.push(match cursor.finish().unwrap() {
                 CheckedComponent::Literal(value) => Shape::Literal(value.domain, value.value),
                 CheckedComponent::Variable { token, binding } => {
-                    assert!(token.index < lexical.length());
+                    assert!(token.index() < lexical.length());
                     Shape::Variable(binding)
                 }
                 CheckedComponent::Expression { table, domain } => {

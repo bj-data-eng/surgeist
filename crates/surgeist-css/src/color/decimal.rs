@@ -1,10 +1,11 @@
 //! The actual shared decimal child, qualified to retained lexer/scratch records.
 
-use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable};
+use super::protocol::{
+    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, RecordRange, RecordTable,
+};
 use crate::numeric::bounded_decimal::{
     DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalReply, DecimalRequest,
 };
-use crate::tokenization::color_tokens::{Span, TokenKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum NumberAction {
@@ -19,11 +20,11 @@ pub(crate) enum NumberAction {
 }
 
 pub(crate) struct NumberConversion<'owner> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     token: usize,
-    digits: Span,
+    digits: RecordRange,
     mantissa: usize,
-    scaled: Option<Span>,
+    scaled: Option<RecordRange>,
     exponent: usize,
     scratch_base: usize,
     cursor: DecimalCursor,
@@ -33,22 +34,17 @@ impl<'owner> NumberConversion<'owner> {
     /// The caller admits the actual fixed layout before construction. The
     /// source token must be a real qualified grammar-produced numeric token.
     pub(crate) fn start(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         index: usize,
         slot: &CssColorSlot<'_>,
         scratch_base: usize,
     ) -> Result<Self, CssColorProtocolError> {
-        let LexicalRecord::Token(token) = table.observe(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
-        };
-        let TokenKind::Number { layout, digits, .. } = token.kind else {
-            return Err(CssColorProtocolError::WrongSlot);
-        };
+        let super::protocol::NumberHeader { layout, digits } = table.number_header(index, slot)?;
         let length = layout
             .mantissa_digits
             .checked_add(layout.exponent_digits)
             .ok_or(CssColorProtocolError::Overflow)?;
-        if digits.start.checked_add(length) != Some(digits.end) || digits.end > table.length() {
+        if digits.start.checked_add(length) != Some(digits.end) || digits.end > table.length {
             return Err(CssColorProtocolError::WrongIndex);
         }
         let child = DecimalLayout::new(
@@ -59,7 +55,7 @@ impl<'owner> NumberConversion<'owner> {
             layout.exponent_digits.max(1),
         )
         .map_err(|_| CssColorProtocolError::Input)?;
-        if scratch_base < table.length() {
+        if scratch_base < table.length {
             return Err(CssColorProtocolError::WrongIndex);
         }
         // Child contract: the exact binary64 boundary needs at most1100 digits.
@@ -80,7 +76,7 @@ impl<'owner> NumberConversion<'owner> {
         })
     }
     pub(crate) fn start_scaled(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         scale: ScaledNumber<'owner>,
         scratch_base: usize,
     ) -> Result<Self, CssColorProtocolError> {
@@ -380,8 +376,8 @@ pub(crate) struct ScaledNumber<'owner> {
     owner: &'owner super::protocol::CssColorOperationOwner,
     phase: usize,
     token: usize,
-    digits: Span,
-    source_digits: Span,
+    digits: RecordRange,
+    source_digits: RecordRange,
     source_mantissa: usize,
     layout: crate::tokenization::number::Layout,
 }
@@ -402,7 +398,7 @@ enum ScaleState {
     Stopped,
 }
 pub(crate) struct GradScale<'owner> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     result: ScaledNumber<'owner>,
     read: usize,
     written: usize,
@@ -411,20 +407,13 @@ pub(crate) struct GradScale<'owner> {
 }
 impl<'owner> GradScale<'owner> {
     pub(crate) fn start(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         index: usize,
         slot: &CssColorSlot<'_>,
         base: usize,
     ) -> Result<Self, CssColorProtocolError> {
-        let LexicalRecord::Token(token) = table.observe(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
-        };
-        let TokenKind::Number {
-            mut layout, digits, ..
-        } = token.kind
-        else {
-            return Err(CssColorProtocolError::WrongSlot);
-        };
+        let super::protocol::NumberHeader { mut layout, digits } =
+            table.number_header(index, slot)?;
         if layout.mantissa_digits == 0
             || layout.fraction_digits > layout.mantissa_digits
             || digits
@@ -432,8 +421,8 @@ impl<'owner> GradScale<'owner> {
                 .checked_add(layout.mantissa_digits)
                 .and_then(|end| end.checked_add(layout.exponent_digits))
                 != Some(digits.end)
-            || digits.end > table.length()
-            || base < table.length()
+            || digits.end > table.length
+            || base < table.length
         {
             return Err(CssColorProtocolError::WrongIndex);
         }
@@ -453,7 +442,7 @@ impl<'owner> GradScale<'owner> {
             owner: table.owner,
             phase: table.phase,
             token: index,
-            digits: Span { start: base, end },
+            digits: RecordRange { start: base, end },
             source_digits: digits,
             source_mantissa,
             layout,
@@ -663,7 +652,8 @@ mod tests {
             let table = operation.finish().unwrap();
             let index = table.length() - 1;
             let mut conversion =
-                NumberConversion::start(&table, index, &slots[index], table.length() + 7).unwrap();
+                NumberConversion::start(&table.records(), index, &slots[index], table.length() + 7)
+                    .unwrap();
             let actual = drive(&mut conversion, &slots);
             match (actual, expected) {
                 (DecimalOutcome::Finite(a), DecimalOutcome::Finite(b)) => {
@@ -683,7 +673,7 @@ mod tests {
         let mut foreign = LexicalOperation::start(&mut other, InputKind::Utf8, 2).unwrap();
         let foreign_slots = lexical(&mut foreign, b"34");
         let mut conversion = NumberConversion::start(
-            &table,
+            &table.records(),
             table.length() - 1,
             slots.last().unwrap(),
             table.length(),
@@ -711,7 +701,8 @@ mod tests {
         let mut slots = lexical(&mut operation, input.as_bytes());
         let table = operation.finish().unwrap();
         let token = table.length() - 1;
-        let mut scale = GradScale::start(&table, token, &slots[token], table.length()).unwrap();
+        let mut scale =
+            GradScale::start(&table.records(), token, &slots[token], table.length()).unwrap();
         loop {
             match scale.action() {
                 ScaleAction::ReadSource { index } => scale.read(index, &slots[index]).unwrap(),
@@ -727,7 +718,8 @@ mod tests {
         }
         let scaled = scale.finish().unwrap();
         let boundary_base = slots.len();
-        let mut conversion = NumberConversion::start_scaled(&table, scaled, boundary_base).unwrap();
+        let mut conversion =
+            NumberConversion::start_scaled(&table.records(), scaled, boundary_base).unwrap();
         loop {
             match conversion.action() {
                 NumberAction::ReadSource { index } => {
@@ -790,7 +782,8 @@ mod tests {
         let mut foreign = LexicalOperation::start(&mut other, InputKind::Utf8, 6).unwrap();
         let foreign_slots = lexical(&mut foreign, b"28grad");
         let token = table.length() - 1;
-        let mut scale = GradScale::start(&table, token, &slots[token], table.length()).unwrap();
+        let mut scale =
+            GradScale::start(&table.records(), token, &slots[token], table.length()).unwrap();
         let ScaleAction::ReadSource { index } = scale.action() else {
             panic!("read")
         };

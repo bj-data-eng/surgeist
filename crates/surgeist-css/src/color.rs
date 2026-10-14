@@ -1,6 +1,8 @@
-//! Standalone used-color operations over explicit source and facts.
+//! Used-color operations over original source or checked authored values and facts.
 
 pub(crate) mod authored;
+mod authored_resolution;
+pub use authored_resolution::*;
 use surgeist_color::{Color, ColorError};
 
 mod bounded;
@@ -26,6 +28,7 @@ pub use work::CssColorKernel;
 mod channels;
 mod device;
 mod grammar;
+mod hex;
 mod interpolate;
 mod palette;
 mod profile;

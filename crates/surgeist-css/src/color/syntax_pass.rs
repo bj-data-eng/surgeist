@@ -60,7 +60,7 @@ impl ValidatedGrammar<'_> {
         };
         let checked = record.checked.ok_or(CssColorProtocolError::WrongSlot)?;
         if let super::component::CheckedComponent::Expression { table, .. } =
-            checked.component(&self.table.lexical)?
+            checked.component(&self.table.input)?
             && table.length > self.expression_end
         {
             return Err(CssColorProtocolError::WrongIndex);
@@ -126,7 +126,7 @@ impl<'owner> SyntaxPass<'owner> {
                 return Err(CssColorProtocolError::WrongSlot);
             }
             let cursor = ComponentSyntax::start(
-                &self.table.lexical,
+                &self.table.input.source()?,
                 record.component,
                 record.context,
                 self.scratch_end,
@@ -191,6 +191,9 @@ impl<'owner> SyntaxPass<'owner> {
         sites[ordinal] = match record.component {
             super::grammar::RawComponent::Atom(token)
             | super::grammar::RawComponent::Math { opener: token, .. } => token.index,
+            super::grammar::RawComponent::Authored { .. } => {
+                return Err(CssColorProtocolError::WrongSlot);
+            }
         };
         if ordinal == 0 {
             if record.previous.is_some() {
@@ -301,8 +304,8 @@ impl<'owner> SyntaxPass<'owner> {
             unreachable!()
         };
         Ok(CssColorSlot::new(
-            self.table.lexical.owner,
-            self.table.lexical.phase,
+            self.table.input.records().owner,
+            self.table.input.records().phase,
             index,
             Data::Grammar(GrammarRecord::Component(record)),
         ))
@@ -495,7 +498,9 @@ pub(crate) mod tests {
                     assert_eq!(old, now);
                     if let CheckedComponent::Expression {
                         table: expression, ..
-                    } = scalar.component(&lexical).unwrap()
+                    } = scalar
+                        .component(&crate::color::grammar::GrammarInput::Source(lexical))
+                        .unwrap()
                     {
                         assert!(
                             expression.start < expression.length

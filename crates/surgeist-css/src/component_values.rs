@@ -278,6 +278,9 @@ impl fmt::Debug for NumericToken {
 pub struct CssNumericTokenRef<'a>(&'a NumericToken);
 
 impl<'a> CssNumericTokenRef<'a> {
+    pub(crate) fn same_original(self, other: Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
     /// Returns the exact numeric representation, without any dimension unit or `%`.
     #[must_use]
     pub fn representation(self) -> &'a str {

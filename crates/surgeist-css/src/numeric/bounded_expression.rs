@@ -1,7 +1,9 @@
 //! Incremental intrinsic CSS math grammar; the caller owns input, flat storage,
 //! qualification and all admission. CSS Values 4 mathematical syntax/type rules:
-//! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-syntax
+//! <https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-syntax>
 //! The retained 720ea286 defining supplement supplies clamp none and round(A).
+
+pub(crate) mod authored;
 
 use super::{
     CssCalculationProductOperator, CssCalculationSumOperator, CssMathFunction, CssNumericDimension,

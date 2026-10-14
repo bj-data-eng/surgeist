@@ -70,6 +70,36 @@ pub enum CssColorSlotKind {
     Evaluation,
     Resolution,
     MixTask,
+    AuthoredNumber,
+    AuthoredName,
+    AuthoredSite,
+    AuthoredTraversal,
+    AuthoredNumericFrame,
+    AuthoredColorFrame,
+    AuthoredStagedComponent,
+}
+
+/// A range in the actual algorithm record bank, never an original input span.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RecordRange {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AuthoredNumber<'css> {
+    pub(crate) numeric: crate::CssNumericTokenRef<'css>,
+    pub(crate) layout: crate::tokenization::number::Layout,
+    pub(crate) digits: RecordRange,
+    pub(crate) unit: Option<crate::CssNumericUnit>,
+    pub(crate) percentage: bool,
+    pub(crate) site: usize,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AuthoredName<'css> {
+    pub(crate) name: &'css str,
+    pub(crate) units: RecordRange,
+    pub(crate) site: usize,
 }
 
 /// Distinct flat storage banks, qualified by the same exclusive operation.
@@ -80,8 +110,12 @@ pub enum CssColorBank {
     Evaluation,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Real four-channel plus alpha staging and suspended frames stay inline in the three caller-accounted CssColorSlot banks; boxing introduces unadmitted heap ownership"
+)]
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Data {
+pub(super) enum Data<'css> {
     Scalar(Scalar),
     NameUnit(char),
     NumberDigit {
@@ -108,11 +142,18 @@ pub(super) enum Data {
     Evaluation(super::expression::Evaluated),
     Resolution(super::resolution::Frame),
     MixTask(super::resolution::MixTask),
+    AuthoredNumber(AuthoredNumber<'css>),
+    AuthoredName(AuthoredName<'css>),
+    AuthoredSite(super::authored_resolution::site::SiteRecord<'css>),
+    AuthoredTraversal(super::authored_resolution::site::TraversalRecord),
+    AuthoredNumericFrame(super::authored_resolution::numeric::Frame<'css>),
+    AuthoredColorFrame(super::authored_resolution::lowering::Frame<'css>),
+    AuthoredStagedComponent(super::authored_resolution::lowering::StagedComponent),
 }
-impl Data {
+impl Data<'_> {
     pub(super) const fn bank(self) -> CssColorBank {
         match self {
-            Self::Expression(_) => CssColorBank::Arithmetic,
+            Self::Expression(_) | Self::AuthoredTraversal(_) => CssColorBank::Arithmetic,
             Self::Evaluation(_) => CssColorBank::Evaluation,
             _ => CssColorBank::Algorithm,
         }
@@ -132,6 +173,13 @@ impl Data {
             Self::Evaluation(_) => CssColorSlotKind::Evaluation,
             Self::Resolution(_) => CssColorSlotKind::Resolution,
             Self::MixTask(_) => CssColorSlotKind::MixTask,
+            Self::AuthoredNumber(_) => CssColorSlotKind::AuthoredNumber,
+            Self::AuthoredName(_) => CssColorSlotKind::AuthoredName,
+            Self::AuthoredSite(_) => CssColorSlotKind::AuthoredSite,
+            Self::AuthoredTraversal(_) => CssColorSlotKind::AuthoredTraversal,
+            Self::AuthoredNumericFrame(_) => CssColorSlotKind::AuthoredNumericFrame,
+            Self::AuthoredColorFrame(_) => CssColorSlotKind::AuthoredColorFrame,
+            Self::AuthoredStagedComponent(_) => CssColorSlotKind::AuthoredStagedComponent,
         }
     }
 }
@@ -142,14 +190,14 @@ pub struct CssColorSlot<'owner> {
     pub(super) owner: &'owner CssColorOperationOwner,
     pub(super) phase: usize,
     bank: CssColorBank,
-    pub(super) data: Data,
+    pub(super) data: Data<'owner>,
 }
 impl<'owner> CssColorSlot<'owner> {
     pub(super) fn new(
         owner: &'owner CssColorOperationOwner,
         phase: usize,
         index: usize,
-        data: Data,
+        data: Data<'owner>,
     ) -> Self {
         Self {
             index,
@@ -158,6 +206,10 @@ impl<'owner> CssColorSlot<'owner> {
             bank: data.bank(),
             data,
         }
+    }
+    /// Actual compiled record layout for admission of any of the three banks.
+    pub const fn record_bytes() -> usize {
+        std::mem::size_of::<Self>()
     }
     pub const fn bank(&self) -> CssColorBank {
         self.bank
@@ -194,6 +246,106 @@ pub(crate) enum LexicalRecord {
     Token(Token),
 }
 
+/// Qualification of canonical records, independent of the input's provenance.
+#[derive(Clone, Copy)]
+pub(crate) struct RecordTable<'css> {
+    pub(crate) owner: &'css CssColorOperationOwner,
+    pub(crate) phase: usize,
+    pub(crate) length: usize,
+}
+#[derive(Clone, Copy)]
+pub(crate) struct NumberHeader {
+    pub(crate) layout: crate::tokenization::number::Layout,
+    pub(crate) digits: RecordRange,
+}
+impl RecordTable<'_> {
+    pub(crate) fn observe(
+        &self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<LexicalRecord, CssColorProtocolError> {
+        self.qualify(index, slot)?;
+        Ok(match slot.data {
+            Data::NameUnit(value) => LexicalRecord::NameUnit(value),
+            Data::NumberDigit { exponent, value } => LexicalRecord::NumberDigit { exponent, value },
+            Data::Token(value) => LexicalRecord::Token(value),
+            _ => return Err(CssColorProtocolError::WrongSlot),
+        })
+    }
+    pub(crate) fn qualify(
+        &self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<(), CssColorProtocolError> {
+        slot.qualify(self.owner, self.phase, index, CssColorBank::Algorithm)?;
+        if index >= self.length {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        Ok(())
+    }
+    pub(crate) fn number_header(
+        &self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<NumberHeader, CssColorProtocolError> {
+        self.qualify(index, slot)?;
+        let header = match slot.data {
+            Data::Token(crate::tokenization::color_tokens::Token {
+                kind: crate::tokenization::color_tokens::TokenKind::Number { layout, digits, .. },
+                ..
+            }) => NumberHeader {
+                layout,
+                digits: RecordRange {
+                    start: digits.start,
+                    end: digits.end,
+                },
+            },
+            Data::AuthoredNumber(number) => NumberHeader {
+                layout: number.layout,
+                digits: number.digits,
+            },
+            _ => return Err(CssColorProtocolError::WrongSlot),
+        };
+        if header.layout.mantissa_digits == 0
+            || header.layout.fraction_digits > header.layout.mantissa_digits
+            || header
+                .digits
+                .start
+                .checked_add(header.layout.mantissa_digits)
+                .and_then(|end| end.checked_add(header.layout.exponent_digits))
+                != Some(header.digits.end)
+            || header.digits.end > self.length
+        {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        Ok(header)
+    }
+    pub(crate) fn name_header(
+        &self,
+        index: usize,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<Option<RecordRange>, CssColorProtocolError> {
+        self.qualify(index, slot)?;
+        let range = match slot.data {
+            Data::Token(crate::tokenization::color_tokens::Token {
+                kind:
+                    crate::tokenization::color_tokens::TokenKind::Name {
+                        kind: crate::tokenization::color_tokens::NameKind::Ident,
+                        units,
+                    },
+                ..
+            }) => RecordRange {
+                start: units.start,
+                end: units.end,
+            },
+            Data::AuthoredName(name) => name.units,
+            Data::Token(_) | Data::NameUnit(_) | Data::NumberDigit { .. } => return Ok(None),
+            _ => return Err(CssColorProtocolError::WrongSlot),
+        };
+        Ok(Some(range))
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct LexicalTable<'owner> {
     pub(super) owner: &'owner CssColorOperationOwner,
@@ -202,6 +354,13 @@ pub(crate) struct LexicalTable<'owner> {
     scalars: usize,
 }
 impl<'owner> LexicalTable<'owner> {
+    pub(crate) const fn records(&self) -> RecordTable<'owner> {
+        RecordTable {
+            owner: self.owner,
+            phase: self.phase,
+            length: self.length,
+        }
+    }
     /// Actual ordinary component events use the same qualified lexical records.
     /// The adapter owns projection/admission; every later record read still
     /// qualifies its exact bank, ordinal, anchor and phase.
@@ -248,6 +407,13 @@ impl<'owner> LexicalTable<'owner> {
             | Data::Expression(_)
             | Data::Evaluation(_)
             | Data::Resolution(_)
+            | Data::AuthoredNumber(_)
+            | Data::AuthoredName(_)
+            | Data::AuthoredSite(_)
+            | Data::AuthoredTraversal(_)
+            | Data::AuthoredNumericFrame(_)
+            | Data::AuthoredColorFrame(_)
+            | Data::AuthoredStagedComponent(_)
             | Data::MixTask(_) => return Err(CssColorProtocolError::WrongSlot),
         })
     }

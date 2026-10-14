@@ -1,11 +1,12 @@
 //! Exact reached profile-key matching over real decoded/fact units.
 
 use super::facts::{CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability};
-use super::protocol::{CssColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
-use crate::{
-    CssColorProfileRenderingIntent,
-    tokenization::color_tokens::{NameKind, Span, TokenKind},
+use super::protocol::{
+    CssColorProtocolError, CssColorSlot, LexicalRecord, RecordRange, RecordTable,
 };
+use crate::CssColorProfileRenderingIntent;
+#[cfg(test)]
+use crate::tokenization::color_tokens::{NameKind, TokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProfileError {
@@ -59,7 +60,7 @@ struct NameComparison {
     matches: bool,
 }
 impl NameComparison {
-    const fn start(source: Span, fact_length: usize) -> Self {
+    const fn start(source: RecordRange, fact_length: usize) -> Self {
         Self {
             source: source.start,
             end: source.end,
@@ -143,10 +144,10 @@ enum State {
     Stopped,
 }
 pub(crate) struct ProfileLookup<'owner, 'facts> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     facts: &'facts CssColorFacts<'facts>,
     expected: CssColorFactIdentity,
-    name: Span,
+    name: RecordRange,
     prefix: usize,
     binding: usize,
     bindings: usize,
@@ -157,26 +158,19 @@ pub(crate) struct ProfileLookup<'owner, 'facts> {
 }
 impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
     pub(crate) fn start(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         token_index: usize,
         token_slot: &CssColorSlot<'_>,
         facts: &'facts CssColorFacts<'facts>,
         expected: CssColorFactIdentity,
     ) -> Result<Self, ProfileError> {
-        let LexicalRecord::Token(token) = table
-            .observe(token_index, token_slot)
+        let Some(name) = table
+            .name_header(token_index, token_slot)
             .map_err(ProfileError::Protocol)?
         else {
             return Err(ProfileError::InvalidName);
         };
-        let TokenKind::Name {
-            kind: NameKind::Ident,
-            units: name,
-        } = token.kind
-        else {
-            return Err(ProfileError::InvalidName);
-        };
-        if name.end > table.length() || name.start.checked_add(2).is_none_or(|end| end > name.end) {
+        if name.end > table.length || name.start.checked_add(2).is_none_or(|end| end > name.end) {
             return Err(ProfileError::InvalidName);
         }
         Ok(Self {
@@ -405,36 +399,29 @@ enum ComponentState {
 /// Exact first-name/actual-ordinal binding. Duplicate descriptor names do not
 /// shift coordinates, and unnamed actual channels do not gain invented names.
 pub(crate) struct ProfileComponentLookup<'owner, 'facts> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     facts: &'facts CssColorFacts<'facts>,
     selection: ProfileSelection,
-    name: Span,
+    name: RecordRange,
     ordinal: usize,
     comparison: Option<NameComparison>,
     state: ComponentState,
 }
 impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
     pub(crate) fn start(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         token: usize,
         slot: &CssColorSlot<'_>,
         facts: &'facts CssColorFacts<'facts>,
         selection: ProfileSelection,
     ) -> Result<Self, ComponentNameError> {
-        let LexicalRecord::Token(token) = table
-            .observe(token, slot)
+        let Some(name) = table
+            .name_header(token, slot)
             .map_err(ComponentNameError::Protocol)?
         else {
             return Err(ComponentNameError::UnknownChannel);
         };
-        let TokenKind::Name {
-            kind: NameKind::Ident,
-            units: name,
-        } = token.kind
-        else {
-            return Err(ComponentNameError::UnknownChannel);
-        };
-        if name.start > name.end || name.end > table.length() {
+        if name.start > name.end || name.end > table.length {
             return Err(ComponentNameError::InvalidMetadata);
         }
         Ok(Self {
@@ -709,7 +696,8 @@ mod tests {
             &[],
             CssDeviceColorFact::Unknown,
         );
-        let mut lookup = ProfileLookup::start(&table, token, &slots[token], &facts, id).unwrap();
+        let mut lookup =
+            ProfileLookup::start(&table.records(), token, &slots[token], &facts, id).unwrap();
         let selected = finish(&mut lookup, &slots).unwrap();
         assert_eq!(selected.binding, 1);
         assert_eq!(selected.availability, CssColorProfileAvailability::Absent);
@@ -739,7 +727,8 @@ mod tests {
         );
         assert_eq!(
             finish(
-                &mut ProfileLookup::start(&table, token, &slots[token], &absent, id).unwrap(),
+                &mut ProfileLookup::start(&table.records(), token, &slots[token], &absent, id)
+                    .unwrap(),
                 &slots
             ),
             Err(ProfileError::Missing)
@@ -763,7 +752,8 @@ mod tests {
         );
         assert_eq!(
             finish(
-                &mut ProfileLookup::start(&table, token, &slots[token], &duplicated, id).unwrap(),
+                &mut ProfileLookup::start(&table.records(), token, &slots[token], &duplicated, id)
+                    .unwrap(),
                 &slots
             ),
             Err(ProfileError::Duplicate {
@@ -772,7 +762,7 @@ mod tests {
             })
         );
         let mut foreign = ProfileLookup::start(
-            &table,
+            &table.records(),
             token,
             &slots[token],
             &absent,
@@ -839,7 +829,8 @@ mod tests {
             CssDeviceColorFact::Unknown,
         );
         let selection = finish(
-            &mut ProfileLookup::start(&table, tokens[0], &slots[tokens[0]], &facts, id).unwrap(),
+            &mut ProfileLookup::start(&table.records(), tokens[0], &slots[tokens[0]], &facts, id)
+                .unwrap(),
             &slots,
         )
         .unwrap();
@@ -848,7 +839,7 @@ mod tests {
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[1],
                     &slots[tokens[1]],
                     &facts,
@@ -862,7 +853,7 @@ mod tests {
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[2],
                     &slots[tokens[2]],
                     &facts,
@@ -876,7 +867,7 @@ mod tests {
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[3],
                     &slots[tokens[3]],
                     &facts,
@@ -907,14 +898,15 @@ mod tests {
             CssDeviceColorFact::Unknown,
         );
         let selection = finish(
-            &mut ProfileLookup::start(&table, tokens[0], &slots[tokens[0]], &facts, id).unwrap(),
+            &mut ProfileLookup::start(&table.records(), tokens[0], &slots[tokens[0]], &facts, id)
+                .unwrap(),
             &slots,
         )
         .unwrap();
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[1],
                     &slots[tokens[1]],
                     &facts,
@@ -928,7 +920,7 @@ mod tests {
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[2],
                     &slots[tokens[2]],
                     &facts,
@@ -969,7 +961,8 @@ mod tests {
             CssDeviceColorFact::Unknown,
         );
         let selection = finish(
-            &mut ProfileLookup::start(&table, tokens[0], &slots[tokens[0]], &facts, id).unwrap(),
+            &mut ProfileLookup::start(&table.records(), tokens[0], &slots[tokens[0]], &facts, id)
+                .unwrap(),
             &slots,
         )
         .unwrap();
@@ -978,7 +971,7 @@ mod tests {
         assert_eq!(
             named_finish(
                 &mut ProfileComponentLookup::start(
-                    &table,
+                    &table.records(),
                     tokens[1],
                     &slots[tokens[1]],
                     &facts,
@@ -991,9 +984,14 @@ mod tests {
         );
         let mut stale = selection;
         stale.resource = CssColorFactIdentity::new(5, 7);
-        let mut lookup =
-            ProfileComponentLookup::start(&table, tokens[1], &slots[tokens[1]], &facts, stale)
-                .unwrap();
+        let mut lookup = ProfileComponentLookup::start(
+            &table.records(),
+            tokens[1],
+            &slots[tokens[1]],
+            &facts,
+            stale,
+        )
+        .unwrap();
         assert_eq!(
             lookup.step(lookup.action()),
             Err(ComponentNameError::InvalidMetadata)
@@ -1020,8 +1018,14 @@ mod tests {
         );
         assert_eq!(
             finish(
-                &mut ProfileLookup::start(&table, tokens[0], &slots[tokens[0]], &facts, id)
-                    .unwrap(),
+                &mut ProfileLookup::start(
+                    &table.records(),
+                    tokens[0],
+                    &slots[tokens[0]],
+                    &facts,
+                    id
+                )
+                .unwrap(),
                 &slots
             ),
             Err(ProfileError::InvalidMetadata)

@@ -5,9 +5,9 @@ use super::facts::{
     CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability, CssColorProfileConversion,
 };
 use super::profile::ProfileSelection;
-use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalTable};
+use super::protocol::{CssColorProtocolError, CssColorSlot, Data, RecordTable};
 use super::{Color, ColorError};
-use crate::{ColorSpace, tokenization::color_tokens::Span};
+use crate::{ColorSpace, color::protocol::RecordRange};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -58,9 +58,9 @@ pub(crate) fn reverse_custom_channels(
 /// Immutable header over the caller's actual normalized input slots.
 #[derive(Clone, Copy)]
 pub(crate) struct ProfileInputs<'owner> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     selection: ProfileSelection,
-    span: Span,
+    span: RecordRange,
     alpha: Option<f64>,
 }
 impl ProfileInputs<'_> {
@@ -119,7 +119,7 @@ enum InputState {
     Stopped,
 }
 pub(crate) struct ProfileInputBuilder<'owner, 'facts> {
-    table: LexicalTable<'owner>,
+    table: RecordTable<'owner>,
     facts: &'facts CssColorFacts<'facts>,
     selection: ProfileSelection,
     supplied: usize,
@@ -132,7 +132,7 @@ pub(crate) struct ProfileInputBuilder<'owner, 'facts> {
 }
 impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
     pub(crate) fn start(
-        table: &LexicalTable<'owner>,
+        table: &RecordTable<'owner>,
         facts: &'facts CssColorFacts<'facts>,
         selection: ProfileSelection,
         supplied: usize,
@@ -142,7 +142,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
         if supplied == 0 {
             return Err(Error::InvalidColor);
         }
-        if base < table.length() || base.checked_add(selection.parameter_count).is_none() {
+        if base < table.length || base.checked_add(selection.parameter_count).is_none() {
             return Err(Error::Protocol(CssColorProtocolError::Overflow));
         }
         if alpha.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
@@ -288,7 +288,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
         Ok(ProfileInputs {
             table: self.table,
             selection: self.selection,
-            span: Span {
+            span: RecordRange {
                 start: self.base,
                 end: self.base + self.output,
             },
@@ -564,6 +564,7 @@ mod tests {
         protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation},
     };
     use super::*;
+    use crate::color::protocol::LexicalTable;
     use crate::{
         CssColorProfileName, CssColorProfileRenderingIntent as Intent, PredefinedColorSpace,
         tokenization::bounded::InputKind,
@@ -598,8 +599,14 @@ mod tests {
         facts: &CssColorFacts<'_>,
     ) -> ProfileSelection {
         let token = table.length() - 1;
-        let mut lookup =
-            ProfileLookup::start(table, token, &slots[token], facts, facts.identity).unwrap();
+        let mut lookup = ProfileLookup::start(
+            &table.records(),
+            token,
+            &slots[token],
+            facts,
+            facts.identity,
+        )
+        .unwrap();
         loop {
             match lookup.action() {
                 ProfileAction::ReadPrefix { index } | ProfileAction::ReadSource { index } => {
@@ -619,7 +626,7 @@ mod tests {
         slots: &mut Vec<CssColorSlot<'owner>>,
     ) -> Result<ProfileInputs<'owner>, Error> {
         let mut builder = ProfileInputBuilder::start(
-            table,
+            &table.records(),
             facts,
             selection,
             components.len(),
@@ -794,9 +801,15 @@ mod tests {
             ),
             Err(Error::Unavailable)
         );
-        let mut builder =
-            ProfileInputBuilder::start(&table, &facts, selection, 3, slots.len(), Some(1.0))
-                .unwrap();
+        let mut builder = ProfileInputBuilder::start(
+            &table.records(),
+            &facts,
+            selection,
+            3,
+            slots.len(),
+            Some(1.0),
+        )
+        .unwrap();
         builder.read_header().unwrap();
         for ordinal in 0..2 {
             builder.component(ordinal, Component::number(0.25)).unwrap();
@@ -936,9 +949,15 @@ mod tests {
         let slots = lex(&mut operation, "--p");
         let table = operation.finish().unwrap();
         let selection = select(&table, &slots, &facts);
-        let mut builder =
-            ProfileInputBuilder::start(&table, &facts, selection, 1, slots.len(), Some(1.0))
-                .unwrap();
+        let mut builder = ProfileInputBuilder::start(
+            &table.records(),
+            &facts,
+            selection,
+            1,
+            slots.len(),
+            Some(1.0),
+        )
+        .unwrap();
         builder.read_header().unwrap();
         builder.component(0, Component::number(0.25)).unwrap();
         let action = builder.action();
@@ -956,7 +975,7 @@ mod tests {
         let other_table = other.finish().unwrap();
         let other_selection = select(&other_table, &other_slots, &facts);
         let mut other_builder = ProfileInputBuilder::start(
-            &other_table,
+            &other_table.records(),
             &facts,
             other_selection,
             1,

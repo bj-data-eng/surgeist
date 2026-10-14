@@ -4,7 +4,10 @@
 //! reached resolution must finish before any record can become a used value.
 
 use super::keywords::{ColorFunction as F, Word};
-use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable};
+use super::protocol::{
+    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordRange,
+    RecordTable,
+};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, TokenKind};
 use crate::{
@@ -14,12 +17,23 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RawComponent {
+    Authored {
+        site: usize,
+    },
     Atom(ClassifiedToken),
     Math {
         opener: ClassifiedToken,
         end: usize,
         closed: bool,
     },
+}
+impl RawComponent {
+    pub(crate) fn source_token(self) -> Result<ClassifiedToken, CssColorProtocolError> {
+        match self {
+            Self::Atom(token) | Self::Math { opener: token, .. } => Ok(token),
+            Self::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ComponentRole {
@@ -50,12 +64,12 @@ pub(crate) enum Leaf {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ProfileSpace {
     Predefined(PredefinedColorSpace),
-    Custom { token: usize, units: Span },
+    Custom { token: usize, units: RecordRange },
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Interpolation {
     Standard(CssColorInterpolationMethod),
-    Custom { token: usize, units: Span },
+    Custom { token: usize, units: RecordRange },
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum MixSpace {
@@ -93,10 +107,24 @@ impl FunctionRecipe {
             .ok_or(CssColorProtocolError::Overflow)
     }
 }
+/// Provenance belongs to the actual input domain, independent of bank indices.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Site {
+    Source(Span),
+    Authored { record: usize },
+}
+impl Site {
+    pub(crate) fn source(self) -> Result<Span, CssColorProtocolError> {
+        match self {
+            Self::Source(source) => Ok(source),
+            Self::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Recipe {
     pub(crate) kind: RecipeKind,
-    pub(crate) source: Span,
+    pub(crate) site: Site,
     pub(crate) closed: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -153,10 +181,29 @@ pub(crate) enum GrammarRecord {
 
 #[derive(Clone, Copy)]
 pub(crate) struct GrammarTable<'owner> {
-    pub(crate) lexical: LexicalTable<'owner>,
+    pub(crate) input: GrammarInput<'owner>,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) root: usize,
+}
+#[derive(Clone, Copy)]
+pub(crate) enum GrammarInput<'css> {
+    Source(LexicalTable<'css>),
+    Authored(RecordTable<'css>),
+}
+impl<'css> GrammarInput<'css> {
+    pub(crate) const fn records(self) -> RecordTable<'css> {
+        match self {
+            Self::Source(table) => table.records(),
+            Self::Authored(table) => table,
+        }
+    }
+    pub(crate) fn source(self) -> Result<LexicalTable<'css>, CssColorProtocolError> {
+        match self {
+            Self::Source(table) => Ok(table),
+            Self::Authored(_) => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
 }
 impl GrammarTable<'_> {
     pub(crate) fn record(
@@ -165,8 +212,8 @@ impl GrammarTable<'_> {
         slot: &CssColorSlot<'_>,
     ) -> Result<GrammarRecord, CssColorProtocolError> {
         slot.qualify(
-            self.lexical.owner,
-            self.lexical.phase,
+            self.input.records().owner,
+            self.input.records().phase,
             index,
             super::protocol::CssColorBank::Algorithm,
         )?;
@@ -654,7 +701,7 @@ impl<'owner> ColorGrammar<'owner> {
         self.state = State::Pending {
             record: GrammarRecord::Recipe(Recipe {
                 kind: RecipeKind::Function(frame.recipe),
-                source: frame.source,
+                site: Site::Source(frame.source),
                 closed: frame.closed,
             }),
             commit: Commit::Color {
@@ -680,25 +727,11 @@ impl<'owner> ColorGrammar<'owner> {
             if index != units.end {
                 return Err(CssColorProtocolError::WrongAction);
             }
-            let value = if length == 3 || length == 4 {
-                [
-                    bytes[0] * 17,
-                    bytes[1] * 17,
-                    bytes[2] * 17,
-                    if length == 4 { bytes[3] * 17 } else { 255 },
-                ]
-            } else {
-                [
-                    bytes[0],
-                    bytes[1],
-                    bytes[2],
-                    if length == 8 { bytes[3] } else { 255 },
-                ]
-            };
+            let value = super::hex::finish(bytes, length);
             self.state = State::Pending {
                 record: GrammarRecord::Recipe(Recipe {
                     kind: RecipeKind::Leaf(Leaf::Hex(value)),
-                    source: token.token.source,
+                    site: Site::Source(token.token.source),
                     closed: true,
                 }),
                 commit: Commit::Color {
@@ -818,7 +851,7 @@ impl<'owner> ColorGrammar<'owner> {
                     self.state = State::Pending {
                         record: GrammarRecord::Recipe(Recipe {
                             kind: RecipeKind::Leaf(leaf),
-                            source: token.token.source,
+                            site: Site::Source(token.token.source),
                             closed: true,
                         }),
                         commit: Commit::Color {
@@ -922,16 +955,10 @@ impl<'owner> ColorGrammar<'owner> {
         else {
             return Err(CssColorProtocolError::WrongAction);
         };
-        if !unit.is_ascii_hexdigit() {
+        let position = index - units.start;
+        if !super::hex::write_digit(&mut bytes, length, position, unit) {
             self.failure(Some(token));
             return Ok(());
-        }
-        let digit = unit.to_digit(16).expect("ASCII hex") as u8;
-        let position = index - units.start;
-        if length <= 4 {
-            bytes[position] = digit;
-        } else {
-            bytes[position / 2] = (bytes[position / 2] << 4) | digit;
         }
         self.state = State::Hex {
             parent,
@@ -1004,7 +1031,10 @@ impl<'owner> ColorGrammar<'owner> {
                         _,
                     ) if value.dashed => ProfileSpace::Custom {
                         token: value.index,
-                        units,
+                        units: RecordRange {
+                            start: units.start,
+                            end: units.end,
+                        },
                     },
                     _ => {
                         self.failure_with_reason(Some(value), GrammarFailureReason::ColorSpace);
@@ -1211,7 +1241,10 @@ impl<'owner> ColorGrammar<'owner> {
                             units,
                         } if frame.mix_hue.is_none() => Interpolation::Custom {
                             token: profile,
-                            units,
+                            units: RecordRange {
+                                start: units.start,
+                                end: units.end,
+                            },
                         },
                         _ => {
                             self.failure(token);
@@ -1282,7 +1315,7 @@ impl<'owner> ColorGrammar<'owner> {
             return Err(CssColorProtocolError::Terminal);
         };
         Ok(GrammarTable {
-            lexical: self.table,
+            input: GrammarInput::Source(self.table),
             start: self.table.length(),
             end: self.next_record,
             root: recipe,

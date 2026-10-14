@@ -1,7 +1,9 @@
 //! Numeric leaf conversion, retaining unit/type separately from channel policy.
 
 use super::decimal::{GradScale, NumberAction, NumberConversion, ScaleAction};
-use super::protocol::{CssColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
+use super::protocol::{
+    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordTable,
+};
 use super::tokens::ClassifiedToken;
 use crate::numeric::bounded_decimal::DecimalOutcome;
 use crate::tokenization::color_tokens::NumberKind;
@@ -228,10 +230,16 @@ enum Stage<'owner> {
     Stopped,
 }
 pub(crate) struct LiteralConversion<'owner> {
-    table: LexicalTable<'owner>,
-    token: ClassifiedToken,
+    table: RecordTable<'owner>,
+    input: LiteralInput,
     stage: Stage<'owner>,
     scratch_end: usize,
+}
+#[derive(Clone, Copy)]
+struct LiteralInput {
+    index: usize,
+    unit: Option<CssNumericUnit>,
+    percentage: bool,
 }
 impl<'owner> LiteralConversion<'owner> {
     /// The unit observation came from the same decoded, finite token reader.
@@ -257,10 +265,48 @@ impl<'owner> LiteralConversion<'owner> {
         if kind != NumberKind::Dimension && token.unit.is_some() {
             return Err(CssColorProtocolError::Input);
         }
-        let decimal = NumberConversion::start(table, token.index, header, scratch_base)?;
+        Self::start_input(
+            table.records(),
+            LiteralInput {
+                index: token.index,
+                unit: token.unit,
+                percentage: kind == NumberKind::Percentage,
+            },
+            header,
+            scratch_base,
+        )
+    }
+    pub(crate) fn start_authored(
+        table: &RecordTable<'owner>,
+        index: usize,
+        header: &CssColorSlot<'_>,
+        scratch_base: usize,
+    ) -> Result<Self, CssColorProtocolError> {
+        table.qualify(index, header)?;
+        let Data::AuthoredNumber(number) = header.data else {
+            return Err(CssColorProtocolError::WrongSlot);
+        };
+        Self::start_input(
+            *table,
+            LiteralInput {
+                index,
+                unit: number.unit,
+                percentage: number.percentage,
+            },
+            header,
+            scratch_base,
+        )
+    }
+    fn start_input(
+        table: RecordTable<'owner>,
+        input: LiteralInput,
+        header: &CssColorSlot<'_>,
+        scratch_base: usize,
+    ) -> Result<Self, CssColorProtocolError> {
+        let decimal = NumberConversion::start(&table, input.index, header, scratch_base)?;
         Ok(Self {
-            table: *table,
-            token,
+            table,
+            input,
             stage: Stage::Decimal(decimal),
             scratch_end: scratch_base,
         })
@@ -277,7 +323,7 @@ impl<'owner> LiteralConversion<'owner> {
                 NumberAction::Stopped => LiteralAction::Stopped,
             },
             Stage::Header => LiteralAction::ReadHeader {
-                index: self.token.index,
+                index: self.input.index,
             },
             Stage::Scale(scale) => match scale.action() {
                 ScaleAction::ReadSource { index } => LiteralAction::ReadSource { index },
@@ -408,7 +454,7 @@ impl<'owner> LiteralConversion<'owner> {
         .expect("selected completed numeric child");
         if !scaled
             && matches!(outcome, DecimalOutcome::Overflow { .. })
-            && self.token.unit == Some(CssNumericUnit::Angle(CssAngleUnit::Gradians))
+            && self.input.unit == Some(CssNumericUnit::Angle(CssAngleUnit::Gradians))
         {
             self.stage = Stage::Header;
             return Ok(());
@@ -423,7 +469,7 @@ impl<'owner> LiteralConversion<'owner> {
                 }
             }
         };
-        let (value, unit) = match self.token.unit {
+        let (value, unit) = match self.input.unit {
             Some(CssNumericUnit::Angle(unit)) => {
                 let (_, factor) = CssNumericUnit::Angle(unit)
                     .intrinsic_scale()
@@ -438,13 +484,7 @@ impl<'owner> LiteralConversion<'owner> {
             }
             unit => (value, unit),
         };
-        let percentage = matches!(
-            self.token.token.kind,
-            crate::tokenization::color_tokens::TokenKind::Number {
-                kind: NumberKind::Percentage,
-                ..
-            }
-        );
+        let percentage = self.input.percentage;
         self.stage = Stage::Done(LiteralValue {
             value,
             unit,

@@ -73,7 +73,7 @@ pub enum CssColorFactError {
 }
 /// Semantic or caller protocol failure. Resource/cancellation stays with the
 /// original consumer's controller and is not reconstructed as this error.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CssColorOperationError {
     Protocol(CssColorProtocolError),
     Unavailable(CssColorUnavailable),
@@ -111,12 +111,16 @@ impl From<CssColorProtocolError> for CssColorOperationError {
         Self::Protocol(error)
     }
 }
-/// Original coordinates of the reached CSS recipe; authored sites join this
-/// carrier when the actual checked-authored resolver is implemented.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Original source coordinates or the owned path/origin of the reached authored
+/// operand. Authored backing transfers before a numerical error is returned.
+#[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorResolutionSite {
     Source(CssColorInputRange),
+    Authored {
+        path: super::authored_resolution::CssColorComponentPath,
+        origin: Option<crate::CssValueOrigin>,
+    },
 }
 impl From<core::Error> for CssColorOperationError {
     fn from(error: core::Error) -> Self {
@@ -131,13 +135,18 @@ impl From<core::Error> for CssColorOperationError {
             resolution::Error as R,
         };
         match error {
-            core::Error::Numerical { error, site } => Self::Numerical {
-                error,
-                site: CssColorResolutionSite::Source(CssColorInputRange {
-                    start: site.start,
-                    end: site.end,
-                }),
-            },
+            core::Error::Numerical { error, site } => {
+                let site = site
+                    .source()
+                    .expect("source adapter consumes source operation errors");
+                Self::Numerical {
+                    error,
+                    site: CssColorResolutionSite::Source(CssColorInputRange {
+                        start: site.start,
+                        end: site.end,
+                    }),
+                }
+            }
             core::Error::Protocol(error)
             | core::Error::Resolution(
                 R::Protocol(error)
@@ -255,7 +264,7 @@ pub enum CssColorActionDescription {
     Serialized,
     Stopped,
 }
-fn description(cursor: &core::ParseUsed<'_, '_>) -> CssColorActionDescription {
+pub(super) fn description(cursor: &core::ColorOperation<'_, '_>) -> CssColorActionDescription {
     use super::{
         device::DeviceAction as D,
         palette::PaletteAction as P,
@@ -406,13 +415,13 @@ fn layout(
             }
         }
         CssColorActionDescription::ReadSlot { .. } => {
-            layout.slot_read_bytes = size_of::<CssColorSlot<'_>>()
+            layout.slot_read_bytes = CssColorSlot::record_bytes()
         }
         CssColorActionDescription::AppendSlot { .. }
         | CssColorActionDescription::UpdateSlot { .. } => {
             // Generated opaque payload plus actual stored acknowledgement.
-            layout.slot_write_bytes = size_of::<CssColorSlot<'_>>();
-            layout.slot_read_bytes = size_of::<CssColorSlot<'_>>();
+            layout.slot_write_bytes = CssColorSlot::record_bytes();
+            layout.slot_read_bytes = CssColorSlot::record_bytes();
         }
         CssColorActionDescription::ReadFact(fact) => layout.fact_records = fact.record_layouts(),
         CssColorActionDescription::EmitUnit { .. } => layout.output_unit_bytes = size_of::<u8>(),
@@ -430,10 +439,14 @@ pub struct CssColorInitializationLayout {
 }
 /// Fixed continuation. It never takes the original input or caller banks.
 pub struct CssColorOperation<'owner, 'facts> {
-    cursor: core::ParseUsed<'owner, 'facts>,
+    cursor: core::ColorOperation<'owner, 'facts>,
 }
 impl<'owner, 'facts> CssColorOperation<'owner, 'facts> {
     /// Fixed metadata admission precedes this call; no array/input is scanned.
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn parse_used(
         owner: &'owner mut CssColorOperationOwner,
         kind: CssColorInputKind,
@@ -446,7 +459,7 @@ impl<'owner, 'facts> CssColorOperation<'owner, 'facts> {
             return Err(CssColorOperationError::Facts(CssColorFactError::Foreign));
         }
         Ok(Self {
-            cursor: core::ParseUsed::start(
+            cursor: core::ColorOperation::start(
                 owner,
                 kind.native(),
                 length,
@@ -545,6 +558,10 @@ impl<'owner> CssColorAction<'_, 'owner, '_> {
             self.operation.cursor.kernel(),
         )
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn read_input(self, offset: usize, unit: u16) -> Result<(), CssColorOperationError> {
         if self.description != (CssColorActionDescription::ReadInput { offset }) {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -554,6 +571,10 @@ impl<'owner> CssColorAction<'_, 'owner, '_> {
             .read_input(offset, unit)
             .map_err(Into::into)
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn read_slot(
         self,
         bank: CssColorBank,
@@ -570,6 +591,10 @@ impl<'owner> CssColorAction<'_, 'owner, '_> {
     }
     /// Mint one fixed pending payload. Generate only after the write/reserve
     /// admission. Advancing still requires acknowledgement of actual storage.
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn record(&mut self) -> Result<CssColorSlot<'owner>, CssColorOperationError> {
         if self.issued {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -583,6 +608,10 @@ impl<'owner> CssColorAction<'_, 'owner, '_> {
         self.issued = true;
         Ok(record)
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn written(
         self,
         bank: CssColorBank,
@@ -599,6 +628,10 @@ impl<'owner> CssColorAction<'_, 'owner, '_> {
             .written(bank, index, slot)
             .map_err(Into::into)
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn compute(self) -> Result<(), CssColorOperationError> {
         if !matches!(
             self.description,
@@ -638,6 +671,10 @@ pub struct CssColorStandardFailure {
 }
 fn failure(value: core::StandardFailure) -> CssColorStandardFailure {
     use core::StandardReason as R;
+    let source = value
+        .site
+        .source()
+        .expect("source checkpoint retains source provenance");
     CssColorStandardFailure {
         kind: match value.reason {
             R::ColorGrammar => CssColorStandardFailureKind::ColorGrammar,
@@ -647,8 +684,8 @@ fn failure(value: core::StandardFailure) -> CssColorStandardFailure {
             R::InvalidComponents => CssColorStandardFailureKind::InvalidComponents,
         },
         source: CssColorInputRange {
-            start: value.source.start,
-            end: value.source.end,
+            start: source.start,
+            end: source.end,
         },
     }
 }
@@ -831,6 +868,10 @@ impl<'css, 'num, 'facts> CssColorTransformation<'css, 'num, 'facts> {
             .expect("owned computation")
             .abandon();
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorOperationError> {
@@ -876,6 +917,10 @@ impl CssColorTransformAction<'_, '_, '_, '_> {
             },
         )
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn compute(self) -> Result<(), CssColorOperationError> {
         let range = source(&self.operation.checkpoint.context).consumed;
         self.operation
@@ -891,6 +936,10 @@ impl<'css, 'facts> CssUsedColorCheckpoint<'css, 'facts> {
     pub fn source(&self) -> CssColorSourceDescriptor {
         source(self.checkpoint.context())
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn transform<'num>(
         slot: &mut Option<Self>,
         numerical_owner: &'num mut surgeist_color::OperationOwner,
@@ -920,6 +969,10 @@ impl<'css, 'facts> CssUsedColorCheckpoint<'css, 'facts> {
             numerical: Some(numerical),
         })
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn serialize<'num>(
         slot: &mut Option<Self>,
         numerical_owner: &'num mut surgeist_color::OperationOwner,
@@ -980,6 +1033,10 @@ impl<'css, 'num, 'facts> CssColorSerialization<'css, 'num, 'facts> {
             .expect("owned serialization")
             .abandon();
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<CssColorSerializationReceipt<'css, 'facts>, CssColorOperationError> {
@@ -1035,6 +1092,10 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
         }
         result
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn compute(self) -> Result<(), CssColorOperationError> {
         let range = source(&self.operation.checkpoint.context).consumed;
         self.operation
@@ -1045,6 +1106,10 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
             .compute()
             .map_err(|e| numerical_serialization_error(e, range))
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn read_numerical_digit(
         self,
         index: usize,
@@ -1062,6 +1127,10 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
             .read_digit(index, slot)
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn numerical_record(
         &mut self,
     ) -> Result<surgeist_color::DigitSlot<'num>, CssColorOperationError> {
@@ -1077,6 +1146,10 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
             .record()
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn numerical_written(
         self,
         index: usize,
@@ -1094,6 +1167,10 @@ impl<'num> CssColorSerializationAction<'_, '_, 'num, '_> {
             .written(index, slot)
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+    )]
     pub fn emitted(self, unit: u8) -> Result<(), CssColorOperationError> {
         self.operation
             .numerical
@@ -1145,6 +1222,10 @@ mod tests {
             CssColorBank::Evaluation => 2,
         }
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "The controlled source fixture propagates the common owned path and origin error inline without allocation or cloning"
+    )]
     fn parse<'owner, 'facts>(
         owner: &'owner mut CssColorOperationOwner,
         input: &str,
@@ -1167,20 +1248,13 @@ mod tests {
                 CssColorActionDescription::ReadInput { .. } => {
                     assert_eq!(actual.input_unit_bytes, std::mem::size_of::<u8>())
                 }
-                CssColorActionDescription::ReadSlot { .. } => assert_eq!(
-                    actual.slot_read_bytes,
-                    std::mem::size_of::<CssColorSlot<'_>>()
-                ),
+                CssColorActionDescription::ReadSlot { .. } => {
+                    assert_eq!(actual.slot_read_bytes, CssColorSlot::record_bytes())
+                }
                 CssColorActionDescription::AppendSlot { .. }
                 | CssColorActionDescription::UpdateSlot { .. } => {
-                    assert_eq!(
-                        actual.slot_read_bytes,
-                        std::mem::size_of::<CssColorSlot<'_>>()
-                    );
-                    assert_eq!(
-                        actual.slot_write_bytes,
-                        std::mem::size_of::<CssColorSlot<'_>>()
-                    );
+                    assert_eq!(actual.slot_read_bytes, CssColorSlot::record_bytes());
+                    assert_eq!(actual.slot_write_bytes, CssColorSlot::record_bytes());
                 }
                 CssColorActionDescription::ReadFact(fact) => {
                     assert_eq!(actual.fact_records, fact.record_layouts())
@@ -1620,7 +1694,7 @@ mod tests {
         eprintln!(
             "compiled CSS color owner={} slot={} operation={} operation_action={} checkpoint={} checkpoint_option={} transformation={} transformation_option={} serialization={}",
             std::mem::size_of::<CssColorOperationOwner>(),
-            std::mem::size_of::<CssColorSlot<'_>>(),
+            CssColorSlot::record_bytes(),
             CssColorOperation::register_bytes(),
             CssColorOperation::action_bytes(),
             std::mem::size_of::<CssUsedColorCheckpoint<'_, '_>>(),

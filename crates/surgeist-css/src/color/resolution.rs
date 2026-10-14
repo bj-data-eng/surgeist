@@ -8,7 +8,7 @@ use super::component_value::{Action as ComponentAction, ComponentValue};
 use super::device::{ComputedCmyk, DeviceAction, DeviceResolution};
 use super::facts::{CssColorFactIdentity, CssColorFacts};
 use super::grammar::{
-    FunctionRecipe, GrammarRecord, Interpolation, Leaf, MixRecord, ProfileSpace, RecipeKind,
+    FunctionRecipe, GrammarRecord, Interpolation, Leaf, MixRecord, ProfileSpace, RecipeKind, Site,
 };
 use super::interpolate::{MixFold, WeightSummary, Weights};
 use super::keywords::ColorFunction as F;
@@ -176,7 +176,7 @@ impl MixColors {
 pub(crate) struct Frame {
     parent: Option<usize>,
     recipe: FunctionRecipe,
-    source: crate::tokenization::color_tokens::Span,
+    site: Site,
     state: FrameState,
 }
 fn same_color(a: Option<Color>, b: Option<Color>) -> bool {
@@ -194,11 +194,7 @@ fn same_component(a: Option<Component>, b: Option<Component>) -> bool {
     }
 }
 impl Frame {
-    fn new(
-        parent: Option<usize>,
-        recipe: FunctionRecipe,
-        source: crate::tokenization::color_tokens::Span,
-    ) -> Self {
+    fn new(parent: Option<usize>, recipe: FunctionRecipe, site: Site) -> Self {
         let state = match recipe.function {
             F::LightDark | F::Contrast => FrameState::WrapperBegin,
             F::Mix => FrameState::MixBegin,
@@ -210,7 +206,7 @@ impl Frame {
         Self {
             parent,
             recipe,
-            source,
+            site,
             state,
         }
     }
@@ -247,8 +243,7 @@ impl Frame {
         Ok(())
     }
     fn identical(self, other: Self) -> bool {
-        if self.parent != other.parent || self.recipe != other.recipe || self.source != other.source
-        {
+        if self.parent != other.parent || self.recipe != other.recipe || self.site != other.site {
             return false;
         }
         match (self.state, other.state) {
@@ -373,8 +368,8 @@ pub(crate) struct Resolution<'owner, 'facts> {
     frame: Option<Frame>,
     parent: Option<usize>,
     pending_percentage: Option<f64>,
-    source: Option<crate::tokenization::color_tokens::Span>,
-    reached: crate::tokenization::color_tokens::Span,
+    source: Option<Site>,
+    reached: Option<Site>,
     state: State<'owner, 'facts>,
 }
 impl<'owner, 'facts> Resolution<'owner, 'facts> {
@@ -394,7 +389,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             parent: None,
             pending_percentage: None,
             source: None,
-            reached: crate::tokenization::color_tokens::Span { start: 0, end: 0 },
+            reached: None,
             state: State::Recipe(grammar.table.root),
         }
     }
@@ -468,9 +463,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             return Err(CssColorProtocolError::WrongSlot.into());
         };
         if index == self.grammar.table.root && self.parent.is_none() {
-            self.source = Some(recipe.source);
+            self.source = Some(recipe.site);
         }
-        self.reached = recipe.source;
+        let recipe_site = recipe.site;
+        self.reached = Some(recipe_site);
         match recipe.kind {
             RecipeKind::Leaf(leaf) => match leaf {
                 Leaf::Transparent => self.return_color(Color::from_srgba8([0; 4])),
@@ -485,7 +481,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 }
             },
             RecipeKind::Function(recipe) => {
-                self.frame = Some(Frame::new(self.parent, recipe, self.reached));
+                self.frame = Some(Frame::new(self.parent, recipe, recipe_site));
                 self.state = State::Dispatch;
             }
         }
@@ -507,8 +503,8 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             return Err(CssColorProtocolError::WrongIndex.into());
         }
         slot.qualify(
-            self.grammar.table.lexical.owner,
-            self.grammar.table.lexical.phase,
+            self.grammar.table.input.records().owner,
+            self.grammar.table.input.records().phase,
             index,
             CssColorBank::Algorithm,
         )?;
@@ -526,7 +522,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             }
             _ => return Err(CssColorProtocolError::WrongSlot.into()),
         };
-        self.reached = frame.source;
+        self.reached = Some(frame.site);
         self.parent = frame.parent;
         self.frame = Some(frame);
         self.state = State::Dispatch;
@@ -550,16 +546,16 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         };
         Ok(CssColorSlot::new(
-            self.grammar.table.lexical.owner,
-            self.grammar.table.lexical.phase,
+            self.grammar.table.input.records().owner,
+            self.grammar.table.input.records().phase,
             index,
             data,
         ))
     }
     pub(crate) fn written(&mut self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), Error> {
         slot.qualify(
-            self.grammar.table.lexical.owner,
-            self.grammar.table.lexical.phase,
+            self.grammar.table.input.records().owner,
+            self.grammar.table.input.records().phase,
             index,
             CssColorBank::Algorithm,
         )?;
@@ -652,6 +648,9 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     fn component(&mut self, index: usize, evaluation_end: usize) -> Result<(), Error> {
         let frame = self.fixed_frame()?;
+        if matches!(frame.site, Site::Authored { .. }) {
+            self.reached = Some(frame.site);
+        }
         self.state = State::Component(ComponentValue::start(
             &self.grammar,
             index,
@@ -669,7 +668,15 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         };
-        cursor.read_component(index, slot).map_err(Error::Component)
+        cursor
+            .read_component(index, slot)
+            .map_err(Error::Component)?;
+        if let Data::Grammar(GrammarRecord::Component(record)) = slot.data
+            && let super::grammar::RawComponent::Authored { site } = record.component
+        {
+            self.reached = Some(Site::Authored { record: site });
+        }
+        Ok(())
     }
     pub(crate) fn component_read(
         &mut self,
@@ -681,7 +688,11 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         };
-        cursor.read(bank, index, slot).map_err(Error::Component)
+        cursor.read(bank, index, slot).map_err(Error::Component)?;
+        if let Some(record) = cursor.authored_site() {
+            self.reached = Some(Site::Authored { record });
+        }
+        Ok(())
     }
     pub(crate) fn component_record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         let cursor = match &self.state {
@@ -717,7 +728,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             return Err(CssColorProtocolError::WrongIndex.into());
         }
         let cursor = ProfileLookup::start(
-            &self.grammar.table.lexical,
+            &self.grammar.table.input.records(),
             index,
             slot,
             self.facts,
@@ -753,7 +764,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         let selection = self.fixed_frame()?.custom()?.selection;
         self.state = State::ProfileName(
             ProfileComponentLookup::start(
-                &self.grammar.table.lexical,
+                &self.grammar.table.input.records(),
                 index,
                 slot,
                 self.facts,
@@ -824,8 +835,8 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             return Err(CssColorProtocolError::WrongAction.into());
         }
         slot.qualify(
-            self.grammar.table.lexical.owner,
-            self.grammar.table.lexical.phase,
+            self.grammar.table.input.records().owner,
+            self.grammar.table.input.records().phase,
             index,
             CssColorBank::Algorithm,
         )?;
@@ -1018,6 +1029,11 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     builder
                         .component(ordinal, value)
                         .map_err(Error::Conversion)?;
+                    if let Some(frame) = self.frame
+                        && matches!(frame.site, Site::Authored { .. })
+                    {
+                        self.reached = Some(frame.site);
+                    }
                     self.state = State::CustomBuilder(builder);
                     return Ok(());
                 }
@@ -1120,6 +1136,11 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                         let State::CustomBuilder(builder) = state else {
                             unreachable!()
                         };
+                        if let Some(frame) = self.frame
+                            && matches!(frame.site, Site::Authored { .. })
+                        {
+                            self.reached = Some(frame.site);
+                        }
                         self.state = State::CustomComponent {
                             builder,
                             cursor: ComponentValue::start(
@@ -1168,6 +1189,9 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         }
         let mut frame = self.fixed_frame()?;
+        if matches!(frame.site, Site::Authored { .. }) {
+            self.reached = Some(frame.site);
+        }
         match frame.state {
             FrameState::CoordinateBegin => {
                 if let Some(origin) = frame.recipe.origin {
@@ -1269,7 +1293,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 };
                 self.state = State::CustomBuilder(
                     ProfileInputBuilder::start(
-                        &self.grammar.table.lexical,
+                        &self.grammar.table.input.records(),
                         self.facts,
                         custom.selection,
                         frame.recipe.count,
@@ -1413,14 +1437,29 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         self.state = State::Dispatch;
         Ok(())
     }
-    pub(crate) const fn reached_source(&self) -> crate::tokenization::color_tokens::Span {
-        self.reached
+    pub(crate) fn reached_site(&self) -> Result<Site, CssColorProtocolError> {
+        if matches!(self.state, State::Dispatch) {
+            self.frame
+                .map(|frame| frame.site)
+                .ok_or(CssColorProtocolError::WrongSlot)
+        } else {
+            self.reached.ok_or(CssColorProtocolError::WrongSlot)
+        }
+    }
+    pub(crate) fn consumed_site(&self) -> Result<Site, CssColorProtocolError> {
+        if matches!(self.state, State::Done(_)) {
+            self.source.ok_or(CssColorProtocolError::WrongSlot)
+        } else {
+            Err(CssColorProtocolError::Terminal)
+        }
     }
     pub(crate) fn consumed_source(
         &self,
     ) -> Result<crate::tokenization::color_tokens::Span, CssColorProtocolError> {
         if matches!(self.state, State::Done(_)) {
-            self.source.ok_or(CssColorProtocolError::WrongSlot)
+            self.source
+                .ok_or(CssColorProtocolError::WrongSlot)?
+                .source()
         } else {
             Err(CssColorProtocolError::Terminal)
         }

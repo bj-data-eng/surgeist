@@ -66,7 +66,7 @@ struct EndSite<'a> {
 impl<'a, 'owner> Events<'a, 'owner> {
     fn append(
         &mut self,
-        data: Data,
+        data: Data<'owner>,
         original: Option<&'a CssComponentValue>,
     ) -> std::result::Result<usize, CssColorProtocolError> {
         let index = self.slots.len();
@@ -675,6 +675,9 @@ impl Builder<'_, '_, '_> {
         let record = self.component_record(index)?;
         let site = match record.component {
             RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token.index,
+            RawComponent::Authored { .. } => {
+                unreachable!("construction consumes source grammar only")
+            }
         };
         self.raw(site)
     }
@@ -692,6 +695,9 @@ impl Builder<'_, '_, '_> {
             .ok()
             .map(|record| match record.component {
                 RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token.index,
+                RawComponent::Authored { .. } => {
+                    unreachable!("construction consumes source grammar only")
+                }
             });
         let location = match (site, self.numeric.ordinary()) {
             (Some(site), NumericInputContext::Components(..)) => {
@@ -808,6 +814,9 @@ impl Builder<'_, '_, '_> {
         ) {
             let site = match self.component_record(index)?.component {
                 RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token.index,
+                RawComponent::Authored { .. } => {
+                    unreachable!("construction consumes source grammar only")
+                }
             };
             CssColorMixPercentage::try_from_component(raw.clone())
                 .map(CssColorMixWeight::literal)
@@ -860,7 +869,13 @@ impl Builder<'_, '_, '_> {
                 CssComponentValueErrorKind::NestingLimit
             };
             let origin = self
-                .raw(recipe.source.start)
+                .raw(
+                    recipe
+                        .site
+                        .source()
+                        .expect("construction consumes only source-derived grammar")
+                        .start,
+                )
                 .map_or(CssValueOrigin::Programmatic, |raw| raw.origin().clone());
             crate::error::invalid_component_value(
                 self.location,
@@ -871,21 +886,32 @@ impl Builder<'_, '_, '_> {
         }
     }
     fn closed<'i>(&self, recipe: Recipe) -> Result<'i, bool> {
-        Ok(match self.raw(recipe.source.start)?.view() {
-            CssComponentValueRef::Function(function) => {
-                !matches!(
-                    function.closing_origin(),
-                    CssValueOrigin::ImplicitClosure { .. }
-                ) && function.values().first_implicit_origin().is_none()
-            }
-            CssComponentValueRef::Block(block) => {
-                !matches!(
-                    block.closing_origin(),
-                    CssValueOrigin::ImplicitClosure { .. }
-                ) && block.values().first_implicit_origin().is_none()
-            }
-            _ => true,
-        })
+        Ok(
+            match self
+                .raw(
+                    recipe
+                        .site
+                        .source()
+                        .expect("construction consumes only source-derived grammar")
+                        .start,
+                )?
+                .view()
+            {
+                CssComponentValueRef::Function(function) => {
+                    !matches!(
+                        function.closing_origin(),
+                        CssValueOrigin::ImplicitClosure { .. }
+                    ) && function.values().first_implicit_origin().is_none()
+                }
+                CssComponentValueRef::Block(block) => {
+                    !matches!(
+                        block.closing_origin(),
+                        CssValueOrigin::ImplicitClosure { .. }
+                    ) && block.values().first_implicit_origin().is_none()
+                }
+                _ => true,
+            },
+        )
     }
     fn recipe<'i>(&self, recipe: Recipe, native: &mut [Option<CssColor>]) -> Result<'i, CssColor> {
         match recipe.kind {
@@ -894,8 +920,15 @@ impl Builder<'_, '_, '_> {
                 Leaf::Transparent => CssColor::transparent(),
                 Leaf::System(value) => CssColor::from_system(value),
                 Leaf::Named(_) => {
-                    let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) =
-                        self.raw(recipe.source.start)?.view()
+                    let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) = self
+                        .raw(
+                            recipe
+                                .site
+                                .source()
+                                .expect("construction consumes only source-derived grammar")
+                                .start,
+                        )?
+                        .view()
                     else {
                         return Err(self.invalid());
                     };
@@ -904,8 +937,15 @@ impl Builder<'_, '_, '_> {
                     )
                 }
                 Leaf::Hex(_) => {
-                    let CssComponentValueRef::Token(CssValueTokenRef::Hash { value, .. }) =
-                        self.raw(recipe.source.start)?.view()
+                    let CssComponentValueRef::Token(CssValueTokenRef::Hash { value, .. }) = self
+                        .raw(
+                            recipe
+                                .site
+                                .source()
+                                .expect("construction consumes only source-derived grammar")
+                                .start,
+                        )?
+                        .view()
                     else {
                         return Err(self.invalid());
                     };

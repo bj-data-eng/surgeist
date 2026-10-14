@@ -149,6 +149,57 @@ pub surgeist_css::CssAttributeMatcher::Includes(alloc::string::String)
 pub surgeist_css::CssAttributeMatcher::Prefix(alloc::string::String)
 pub surgeist_css::CssAttributeMatcher::Substring(alloc::string::String)
 pub surgeist_css::CssAttributeMatcher::Suffix(alloc::string::String)
+pub enum surgeist_css::CssAuthoredColorActionDescription<'css>
+pub surgeist_css::CssAuthoredColorActionDescription::AppendPath(surgeist_css::CssColorPathStep)
+pub surgeist_css::CssAuthoredColorActionDescription::AppendSlot
+pub surgeist_css::CssAuthoredColorActionDescription::AppendSlot::bank: surgeist_css::CssColorBank
+pub surgeist_css::CssAuthoredColorActionDescription::AppendSlot::index: usize
+pub surgeist_css::CssAuthoredColorActionDescription::Compute(surgeist_css::CssColorKernel)
+pub surgeist_css::CssAuthoredColorActionDescription::PrepareSite
+pub surgeist_css::CssAuthoredColorActionDescription::ReadAuthored
+pub surgeist_css::CssAuthoredColorActionDescription::ReadAuthored::observation: surgeist_css::CssAuthoredColorObservation
+pub surgeist_css::CssAuthoredColorActionDescription::ReadAuthored::path: surgeist_css::CssColorPathHandle<'css>
+pub surgeist_css::CssAuthoredColorActionDescription::ReadFact(surgeist_css::CssColorFactRead)
+pub surgeist_css::CssAuthoredColorActionDescription::ReadSite
+pub surgeist_css::CssAuthoredColorActionDescription::ReadSite::index: usize
+pub surgeist_css::CssAuthoredColorActionDescription::ReadSlot
+pub surgeist_css::CssAuthoredColorActionDescription::ReadSlot::bank: surgeist_css::CssColorBank
+pub surgeist_css::CssAuthoredColorActionDescription::ReadSlot::index: usize
+pub surgeist_css::CssAuthoredColorActionDescription::Ready
+pub surgeist_css::CssAuthoredColorActionDescription::ReservePath
+pub surgeist_css::CssAuthoredColorActionDescription::ReservePath::required_len: usize
+pub surgeist_css::CssAuthoredColorActionDescription::RestoreSite
+pub surgeist_css::CssAuthoredColorActionDescription::Stopped
+pub surgeist_css::CssAuthoredColorActionDescription::TruncatePath(usize)
+pub surgeist_css::CssAuthoredColorActionDescription::UpdateSlot
+pub surgeist_css::CssAuthoredColorActionDescription::UpdateSlot::bank: surgeist_css::CssColorBank
+pub surgeist_css::CssAuthoredColorActionDescription::UpdateSlot::index: usize
+pub enum surgeist_css::CssAuthoredColorObservation
+pub surgeist_css::CssAuthoredColorObservation::Child(surgeist_css::CssColorPathStep)
+pub surgeist_css::CssAuthoredColorObservation::ColorHeader
+pub surgeist_css::CssAuthoredColorObservation::ColorPayload
+pub surgeist_css::CssAuthoredColorObservation::HexByte
+pub surgeist_css::CssAuthoredColorObservation::HexByte::offset: usize
+pub surgeist_css::CssAuthoredColorObservation::LiteralHeader
+pub surgeist_css::CssAuthoredColorObservation::NameByte
+pub surgeist_css::CssAuthoredColorObservation::NameByte::offset: usize
+pub surgeist_css::CssAuthoredColorObservation::NumericByte
+pub surgeist_css::CssAuthoredColorObservation::NumericByte::offset: usize
+pub surgeist_css::CssAuthoredColorObservation::NumericChild
+pub surgeist_css::CssAuthoredColorObservation::NumericChild::ordinal: usize
+pub surgeist_css::CssAuthoredColorObservation::NumericHeader
+pub surgeist_css::CssAuthoredColorObservation::NumericLiteral
+pub surgeist_css::CssAuthoredColorObservation::NumericNameHeader
+pub surgeist_css::CssAuthoredColorObservation::NumericSyntax
+pub surgeist_css::CssAuthoredColorObservation::NumericSyntax::index: usize
+pub surgeist_css::CssAuthoredColorObservation::NumericUnit
+pub surgeist_css::CssAuthoredColorObservation::NumericUnit::bytes: usize
+pub surgeist_css::CssAuthoredColorObservation::ProfileHeader
+pub surgeist_css::CssAuthoredColorObservation::ScalarHeader
+pub surgeist_css::CssAuthoredColorObservation::ScalarPayload
+pub enum surgeist_css::CssAuthoredColorOutcome
+pub surgeist_css::CssAuthoredColorOutcome::StandardFailure(surgeist_css::CssAuthoredColorStandardFailure)
+pub surgeist_css::CssAuthoredColorOutcome::Used(surgeist_color::value::Color)
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(surgeist_css::CssFontFaceDescriptorValue)
 pub surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(surgeist_css::CssPendingFontFaceDescriptorValue)
@@ -754,9 +805,22 @@ pub surgeist_css::CssColorOrdinaryResource::AlgorithmRecords
 pub surgeist_css::CssColorOrdinaryResource::ArithmeticRecords
 pub surgeist_css::CssColorOrdinaryResource::EvaluationRecords
 pub surgeist_css::CssColorOrdinaryResource::InputUnits
+pub surgeist_css::CssColorOrdinaryResource::PathSteps
 pub enum surgeist_css::CssColorParseOutcome<'owner, 'facts>
 pub surgeist_css::CssColorParseOutcome::StandardFailure(surgeist_css::CssColorFailureCheckpoint<'owner, 'facts>)
 pub surgeist_css::CssColorParseOutcome::Used(surgeist_css::CssUsedColorCheckpoint<'owner, 'facts>)
+pub enum surgeist_css::CssColorPathReservationStatus
+pub surgeist_css::CssColorPathReservationStatus::AllocationFailed
+pub surgeist_css::CssColorPathReservationStatus::Reserved
+pub enum surgeist_css::CssColorPathStep
+pub surgeist_css::CssColorPathStep::Alpha
+pub surgeist_css::CssColorPathStep::Channel(usize)
+pub surgeist_css::CssColorPathStep::ExpressionOperand(usize)
+pub surgeist_css::CssColorPathStep::First
+pub surgeist_css::CssColorPathStep::MixColor(usize)
+pub surgeist_css::CssColorPathStep::MixWeight(usize)
+pub surgeist_css::CssColorPathStep::Second
+pub surgeist_css::CssColorPathStep::Source
 pub enum surgeist_css::CssColorProfileAvailability
 pub surgeist_css::CssColorProfileAvailability::Absent
 pub surgeist_css::CssColorProfileAvailability::Invalid
@@ -820,6 +884,9 @@ pub fn surgeist_css::CssColorProtocolError::source(&self) -> core::option::Optio
 impl core::fmt::Display for surgeist_css::CssColorProtocolError
 pub fn surgeist_css::CssColorProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssColorResolutionSite
+pub surgeist_css::CssColorResolutionSite::Authored
+pub surgeist_css::CssColorResolutionSite::Authored::origin: core::option::Option<surgeist_css::CssValueOrigin>
+pub surgeist_css::CssColorResolutionSite::Authored::path: surgeist_css::CssColorComponentPath
 pub surgeist_css::CssColorResolutionSite::Source(surgeist_css::CssColorInputRange)
 #[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
 pub surgeist_css::CssColorScalarErrorKind::InvalidComponent
@@ -842,6 +909,13 @@ pub surgeist_css::CssColorSchemeKeyword::Light
 pub surgeist_css::CssColorSchemePreference::Dark
 pub surgeist_css::CssColorSchemePreference::Light
 pub enum surgeist_css::CssColorSlotKind
+pub surgeist_css::CssColorSlotKind::AuthoredColorFrame
+pub surgeist_css::CssColorSlotKind::AuthoredName
+pub surgeist_css::CssColorSlotKind::AuthoredNumber
+pub surgeist_css::CssColorSlotKind::AuthoredNumericFrame
+pub surgeist_css::CssColorSlotKind::AuthoredSite
+pub surgeist_css::CssColorSlotKind::AuthoredStagedComponent
+pub surgeist_css::CssColorSlotKind::AuthoredTraversal
 pub surgeist_css::CssColorSlotKind::DecimalDigit
 pub surgeist_css::CssColorSlotKind::Evaluation
 pub surgeist_css::CssColorSlotKind::Expression
@@ -6504,6 +6578,87 @@ pub fn surgeist_css::CssAudioCue::serialize_specified(&self) -> core::result::Re
 pub fn surgeist_css::CssAudioCue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssAudioCue::try_new(url: surgeist_css::CssUrl, decibel: core::option::Option<surgeist_css::CssDecibelLiteral>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub const fn surgeist_css::CssAudioCue::url(&self) -> &surgeist_css::CssUrl
+pub struct surgeist_css::CssAuthoredColorAction<'step, 'path, 'css, 'authored: 'css, 'facts>
+impl<'path, 'css, 'authored: 'css, 'facts> surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::append_path(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::capacity_observed(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::compute(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub const fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::description(&self) -> surgeist_css::CssAuthoredColorActionDescription<'css>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::layout(&self) -> core::result::Result<surgeist_css::CssAuthoredColorActionLayout, surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::path_handle(&self) -> surgeist_css::CssColorPathHandle<'css>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::path_inspection_layout(&self, handle: surgeist_css::CssColorPathHandle<'css>) -> core::result::Result<surgeist_css::CssColorPathInspectionLayout, surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::path_view(&self, handle: surgeist_css::CssColorPathHandle<'css>) -> core::result::Result<&[surgeist_css::CssColorPathStep], surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::prepare_site(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::read_authored(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::read_slot(self, bank: surgeist_css::CssColorBank, index: usize, slot: &surgeist_css::CssColorSlot<'css>) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::record(&mut self) -> core::result::Result<surgeist_css::CssColorSlot<'css>, surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::reservation_layout(&self) -> core::result::Result<surgeist_css::CssColorPathReservationLayout, surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::reserve_path(&mut self) -> core::result::Result<surgeist_css::CssColorPathCapacityObservation, surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::restore_site(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::truncate_path(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>::written(self, bank: surgeist_css::CssColorBank, index: usize, slot: &surgeist_css::CssColorSlot<'css>) -> core::result::Result<(), surgeist_css::CssColorOperationError>
+impl core::ops::drop::Drop for surgeist_css::CssAuthoredColorAction<'_, '_, '_, '_, '_>
+pub fn surgeist_css::CssAuthoredColorAction<'_, '_, '_, '_, '_>::drop(&mut self)
+pub struct surgeist_css::CssAuthoredColorActionLayout
+pub surgeist_css::CssAuthoredColorActionLayout::authored_read_bytes: usize
+pub surgeist_css::CssAuthoredColorActionLayout::fact_records: [usize; 3]
+pub surgeist_css::CssAuthoredColorActionLayout::kernel: surgeist_css::CssColorKernel
+pub surgeist_css::CssAuthoredColorActionLayout::path_read_bytes: usize
+pub surgeist_css::CssAuthoredColorActionLayout::path_write_bytes: usize
+pub surgeist_css::CssAuthoredColorActionLayout::result_bytes: usize
+pub surgeist_css::CssAuthoredColorActionLayout::slot_read_bytes: usize
+pub surgeist_css::CssAuthoredColorActionLayout::slot_write_bytes: usize
+pub struct surgeist_css::CssAuthoredColorCheckpoint<'css, 'authored, 'facts>
+impl<'authored, 'facts> surgeist_css::CssAuthoredColorCheckpoint<'_, 'authored, 'facts>
+pub const fn surgeist_css::CssAuthoredColorCheckpoint<'_, 'authored, 'facts>::authored(&self) -> &'authored surgeist_css::CssColor
+pub const fn surgeist_css::CssAuthoredColorCheckpoint<'_, 'authored, 'facts>::facts(&self) -> &'facts surgeist_css::CssColorFacts<'facts>
+pub fn surgeist_css::CssAuthoredColorCheckpoint<'_, 'authored, 'facts>::is_current(&self) -> bool
+pub const fn surgeist_css::CssAuthoredColorCheckpoint<'_, 'authored, 'facts>::outcome(&self) -> &surgeist_css::CssAuthoredColorOutcome
+pub struct surgeist_css::CssAuthoredColorCleanupLayout
+pub surgeist_css::CssAuthoredColorCleanupLayout::owned_origin_bytes: usize
+pub surgeist_css::CssAuthoredColorCleanupLayout::path_capacity_bytes: usize
+pub surgeist_css::CssAuthoredColorCleanupLayout::path_header_bytes: usize
+pub surgeist_css::CssAuthoredColorCleanupLayout::path_len: usize
+pub surgeist_css::CssAuthoredColorCleanupLayout::register_bytes: usize
+pub struct surgeist_css::CssAuthoredColorInitializationLayout
+pub surgeist_css::CssAuthoredColorInitializationLayout::fact_identity_bytes: usize
+pub surgeist_css::CssAuthoredColorInitializationLayout::owner_bytes: usize
+pub surgeist_css::CssAuthoredColorInitializationLayout::path_header_bytes: usize
+pub surgeist_css::CssAuthoredColorInitializationLayout::register_bytes: usize
+pub surgeist_css::CssAuthoredColorInitializationLayout::root_reference_bytes: usize
+pub struct surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts>
+impl<'path, 'css, 'authored: 'css, 'facts> surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::abandon(&mut self)
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::action(&self) -> surgeist_css::CssAuthoredColorActionDescription<'css>
+pub const fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::action_bytes() -> usize
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::bank_length(&self, bank: surgeist_css::CssColorBank) -> usize
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::cleanup_layout(&self) -> surgeist_css::CssAuthoredColorCleanupLayout
+pub const fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::initialization_layout() -> surgeist_css::CssAuthoredColorInitializationLayout
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::next_action(&mut self) -> surgeist_css::CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::recover(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>, surgeist_css::CssColorProtocolError>
+pub const fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::register_bytes() -> usize
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::resolve_authored(owner: &'css mut surgeist_css::CssColorOperationOwner, root: &'authored surgeist_css::CssColor, facts: &'facts surgeist_css::CssColorFacts<'facts>, expected: surgeist_css::CssColorFactIdentity, path: &'path mut surgeist_css::CssColorPathBuffer) -> core::result::Result<Self, surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_css::CssAuthoredColorCheckpoint<'css, 'authored, 'facts>, surgeist_css::CssColorProtocolError>
+pub struct surgeist_css::CssAuthoredColorOrdinaryLimits
+pub surgeist_css::CssAuthoredColorOrdinaryLimits::actions: usize
+pub surgeist_css::CssAuthoredColorOrdinaryLimits::algorithm_records: usize
+pub surgeist_css::CssAuthoredColorOrdinaryLimits::arithmetic_records: usize
+pub surgeist_css::CssAuthoredColorOrdinaryLimits::evaluation_records: usize
+pub surgeist_css::CssAuthoredColorOrdinaryLimits::path_steps: usize
+pub struct surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>
+impl<'authored, 'facts> surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>
+pub const fn surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>::authored(&self) -> &'authored surgeist_css::CssColor
+pub const fn surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>::capacity_observation(&self) -> core::option::Option<surgeist_css::CssColorPathCapacityObservation>
+pub const fn surgeist_css::CssAuthoredColorRecovery<'authored, 'facts>::facts(&self) -> &'facts surgeist_css::CssColorFacts<'facts>
+pub struct surgeist_css::CssAuthoredColorResult<'authored, 'facts>
+impl<'authored, 'facts> surgeist_css::CssAuthoredColorResult<'authored, 'facts>
+pub const fn surgeist_css::CssAuthoredColorResult<'authored, 'facts>::authored(&self) -> &'authored surgeist_css::CssColor
+pub const fn surgeist_css::CssAuthoredColorResult<'authored, 'facts>::facts(&self) -> &'facts surgeist_css::CssColorFacts<'facts>
+pub const fn surgeist_css::CssAuthoredColorResult<'authored, 'facts>::outcome(&self) -> &surgeist_css::CssAuthoredColorOutcome
+pub struct surgeist_css::CssAuthoredColorStandardFailure
+pub surgeist_css::CssAuthoredColorStandardFailure::kind: surgeist_css::CssColorStandardFailureKind
+pub surgeist_css::CssAuthoredColorStandardFailure::origin: core::option::Option<surgeist_css::CssValueOrigin>
+pub surgeist_css::CssAuthoredColorStandardFailure::path: surgeist_css::CssColorComponentPath
 pub struct surgeist_css::CssAuthoredDeclarationValue
 impl surgeist_css::CssAuthoredDeclarationValue
 pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
@@ -7353,6 +7508,11 @@ pub const fn surgeist_css::CssColorBankLengths::new(algorithm: usize, arithmetic
 pub struct surgeist_css::CssColorComponentName(_)
 impl surgeist_css::CssColorComponentName
 pub fn surgeist_css::CssColorComponentName::as_str(&self) -> &str
+pub struct surgeist_css::CssColorComponentPath
+impl surgeist_css::CssColorComponentPath
+pub fn surgeist_css::CssColorComponentPath::capacity(&self) -> usize
+pub fn surgeist_css::CssColorComponentPath::capacity_bytes(&self) -> usize
+pub fn surgeist_css::CssColorComponentPath::steps(&self) -> &[surgeist_css::CssColorPathStep]
 pub struct surgeist_css::CssColorFactIdentity
 impl surgeist_css::CssColorFactIdentity
 pub const fn surgeist_css::CssColorFactIdentity::identity(self) -> u64
@@ -7449,6 +7609,48 @@ pub const fn surgeist_css::CssColorPaletteEntry::keyword(self) -> surgeist_css::
 pub const fn surgeist_css::CssColorPaletteEntry::new(keyword: surgeist_css::CssSystemColor, resource: surgeist_css::CssColorFactIdentity, value: surgeist_color::value::Color) -> Self
 pub const fn surgeist_css::CssColorPaletteEntry::resource(self) -> surgeist_css::CssColorFactIdentity
 pub const fn surgeist_css::CssColorPaletteEntry::value(self) -> surgeist_color::value::Color
+pub struct surgeist_css::CssColorPathBuffer
+impl surgeist_css::CssColorPathBuffer
+pub fn surgeist_css::CssColorPathBuffer::capacity(&self) -> usize
+pub fn surgeist_css::CssColorPathBuffer::capacity_bytes(&self) -> usize
+pub const fn surgeist_css::CssColorPathBuffer::capacity_observation(&self) -> core::option::Option<surgeist_css::CssColorPathCapacityObservation>
+pub fn surgeist_css::CssColorPathBuffer::capacity_observed(&mut self) -> core::result::Result<(), surgeist_css::CssColorProtocolError>
+pub fn surgeist_css::CssColorPathBuffer::cleanup(&mut self) -> core::result::Result<(), surgeist_css::CssColorProtocolError>
+pub const fn surgeist_css::CssColorPathBuffer::header_bytes() -> usize
+pub fn surgeist_css::CssColorPathBuffer::is_empty(&self) -> bool
+pub fn surgeist_css::CssColorPathBuffer::len(&self) -> usize
+pub const fn surgeist_css::CssColorPathBuffer::new() -> Self
+impl core::default::Default for surgeist_css::CssColorPathBuffer
+pub fn surgeist_css::CssColorPathBuffer::default() -> Self
+pub struct surgeist_css::CssColorPathCapacityObservation
+impl surgeist_css::CssColorPathCapacityObservation
+pub const fn surgeist_css::CssColorPathCapacityObservation::actual_capacity(self) -> usize
+pub fn surgeist_css::CssColorPathCapacityObservation::actual_capacity_bytes(self) -> usize
+pub const fn surgeist_css::CssColorPathCapacityObservation::actual_len(self) -> usize
+pub const fn surgeist_css::CssColorPathCapacityObservation::old_capacity(self) -> usize
+pub fn surgeist_css::CssColorPathCapacityObservation::old_capacity_bytes(self) -> usize
+pub const fn surgeist_css::CssColorPathCapacityObservation::old_len(self) -> usize
+pub const fn surgeist_css::CssColorPathCapacityObservation::required_len(self) -> usize
+pub const fn surgeist_css::CssColorPathCapacityObservation::status(self) -> surgeist_css::CssColorPathReservationStatus
+pub struct surgeist_css::CssColorPathHandle<'css>
+impl surgeist_css::CssColorPathHandle<'_>
+pub const fn surgeist_css::CssColorPathHandle<'_>::length(self) -> usize
+impl core::cmp::Eq for surgeist_css::CssColorPathHandle<'_>
+impl core::cmp::PartialEq for surgeist_css::CssColorPathHandle<'_>
+pub fn surgeist_css::CssColorPathHandle<'_>::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_css::CssColorPathHandle<'_>
+pub fn surgeist_css::CssColorPathHandle<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssColorPathInspectionLayout
+pub surgeist_css::CssColorPathInspectionLayout::handle_bytes: usize
+pub surgeist_css::CssColorPathInspectionLayout::path_header_bytes: usize
+pub surgeist_css::CssColorPathInspectionLayout::step_read_bytes: usize
+pub struct surgeist_css::CssColorPathReservationLayout
+pub surgeist_css::CssColorPathReservationLayout::header_bytes: usize
+pub surgeist_css::CssColorPathReservationLayout::observation_bytes: usize
+pub surgeist_css::CssColorPathReservationLayout::old_capacity_bytes: usize
+pub surgeist_css::CssColorPathReservationLayout::requested_capacity_bytes: usize
+pub surgeist_css::CssColorPathReservationLayout::required_len: usize
+pub surgeist_css::CssColorPathReservationLayout::step_bytes: usize
 pub struct surgeist_css::CssColorPercentageLiteral
 impl surgeist_css::CssColorPercentageLiteral
 pub const fn surgeist_css::CssColorPercentageLiteral::component(&self) -> &surgeist_css::CssComponentValue
@@ -7569,6 +7771,7 @@ pub struct surgeist_css::CssColorSlot<'owner>
 impl<'owner> surgeist_css::CssColorSlot<'owner>
 pub const fn surgeist_css::CssColorSlot<'owner>::bank(&self) -> surgeist_css::CssColorBank
 pub const fn surgeist_css::CssColorSlot<'owner>::kind(&self) -> surgeist_css::CssColorSlotKind
+pub const fn surgeist_css::CssColorSlot<'owner>::record_bytes() -> usize
 pub struct surgeist_css::CssColorSourceDescriptor
 pub surgeist_css::CssColorSourceDescriptor::consumed: surgeist_css::CssColorInputRange
 pub surgeist_css::CssColorSourceDescriptor::facts: surgeist_css::CssColorFactIdentity
@@ -13554,6 +13757,7 @@ pub fn surgeist_css::parse_used_color<'source, 'facts>(input: surgeist_css::CssC
 pub fn surgeist_css::parse_when_condition(source: &str) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::parse_when_condition_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::property_support_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertySupportMetadata>
+pub fn surgeist_css::resolve_authored_color<'authored, 'facts>(root: &'authored surgeist_css::CssColor, facts: &'facts surgeist_css::CssColorFacts<'facts>, expected: surgeist_css::CssColorFactIdentity, limits: surgeist_css::CssAuthoredColorOrdinaryLimits) -> core::result::Result<surgeist_css::CssAuthoredColorResult<'authored, 'facts>, surgeist_css::CssColorOrdinaryError>
 pub fn surgeist_css::serialize_css_comma_separated_list(items: &[&str]) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::serialize_css_comma_separated_list_with_limits(items: &[&str], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::serialize_css_identifier(value: &str) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>

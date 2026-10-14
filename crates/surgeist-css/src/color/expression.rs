@@ -22,6 +22,14 @@ pub(crate) struct ExpressionRecord {
     record: engine::Record,
     suspended: Option<InputContext>,
 }
+impl ExpressionRecord {
+    pub(crate) const fn authored(record: engine::Record) -> Self {
+        Self {
+            record,
+            suspended: None,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Number {
     pub(crate) value: f64,
@@ -35,20 +43,32 @@ impl Number {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Variable {
     Channel(crate::CssRelativeColorChannel),
-    Profile {
-        name: crate::tokenization::color_tokens::Span,
-    },
+    Profile { name: super::protocol::RecordRange },
+}
+/// A reference retains full source-token identity or its genuine authored site.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OperandReference {
+    Source(ClassifiedToken),
+    Authored { index: usize, site: usize },
+}
+impl OperandReference {
+    pub(crate) const fn index(self) -> usize {
+        match self {
+            Self::Source(token) => token.index,
+            Self::Authored { index, .. } => index,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum NumericLeaf {
     Literal(Number),
     Contextual {
-        token: ClassifiedToken,
+        token: OperandReference,
         unit: crate::CssNumericUnit,
         number: Number,
     },
     Variable {
-        token: ClassifiedToken,
+        token: OperandReference,
         binding: Variable,
     },
 }
@@ -59,7 +79,7 @@ impl NumericLeaf {
             Self::Variable { .. } => Type::NUMBER,
         }
     }
-    fn same(self, other: Self) -> bool {
+    pub(crate) fn same(self, other: Self) -> bool {
         match (self, other) {
             (Self::Literal(a), Self::Literal(b)) => a.same(b),
             (
@@ -87,6 +107,33 @@ impl NumericLeaf {
             _ => false,
         }
     }
+}
+/// One literal-to-math unit projection shared by both real input domains.
+pub(crate) fn converted_literal(
+    value: super::literal::LiteralValue,
+    token: OperandReference,
+    ty: Type,
+) -> NumericLeaf {
+    let factor = match value.unit {
+        Some(unit) => match unit.intrinsic_scale() {
+            Some((_, scale)) => scale,
+            None => {
+                return NumericLeaf::Contextual {
+                    token,
+                    unit,
+                    number: Number {
+                        value: value.value,
+                        ty,
+                    },
+                };
+            }
+        },
+        None => 1.0,
+    };
+    NumericLeaf::Literal(Number {
+        value: value.value * factor,
+        ty,
+    })
 }
 fn variable_same(a: Variable, b: Variable) -> bool {
     match (a, b) {
@@ -170,7 +217,7 @@ pub(crate) struct ExpressionTable<'owner> {
     pub(crate) length: usize,
     pub(crate) root: usize,
     pub(crate) ty: Type,
-    pub(crate) last_token: usize,
+    end: ExpressionEnd,
     pub(crate) closed: bool,
 }
 /// Fixed algorithm metadata. The actual slot lends its anchor and phase when
@@ -181,17 +228,53 @@ pub(crate) struct ExpressionDescriptor {
     length: usize,
     root: usize,
     ty: Type,
-    last_token: usize,
+    end: ExpressionEnd,
     closed: bool,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExpressionEnd {
+    Source { last_token: usize },
+    Authored { site: usize },
+}
+impl ExpressionDescriptor {
+    pub(crate) const fn numeric_type(self) -> Type {
+        self.ty
+    }
+    pub(crate) fn authored(
+        start: usize,
+        length: usize,
+        root: usize,
+        ty: Type,
+        site: usize,
+        closed: bool,
+    ) -> Result<Self, CssColorProtocolError> {
+        if start >= length || root < start || root >= length {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        Ok(Self {
+            start,
+            length,
+            root,
+            ty,
+            end: ExpressionEnd::Authored { site },
+            closed,
+        })
+    }
+}
 impl ExpressionTable<'_> {
+    pub(crate) fn source_last_token(&self) -> Result<usize, CssColorProtocolError> {
+        match self.end {
+            ExpressionEnd::Source { last_token } => Ok(last_token),
+            ExpressionEnd::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
     pub(crate) fn descriptor(&self) -> ExpressionDescriptor {
         ExpressionDescriptor {
             start: self.start,
             length: self.length,
             root: self.root,
             ty: self.ty,
-            last_token: self.last_token,
+            end: self.end,
             closed: self.closed,
         }
     }
@@ -219,7 +302,7 @@ impl ExpressionTable<'_> {
 }
 impl<'owner> ExpressionTable<'owner> {
     pub(crate) fn from_descriptor(
-        lexical: &LexicalTable<'owner>,
+        input: &super::grammar::GrammarInput<'owner>,
         descriptor: ExpressionDescriptor,
     ) -> Result<Self, CssColorProtocolError> {
         let ExpressionDescriptor {
@@ -227,20 +310,28 @@ impl<'owner> ExpressionTable<'owner> {
             length,
             root,
             ty,
-            last_token,
+            end,
             closed,
         } = descriptor;
-        if start >= length || root < start || root >= length || last_token >= lexical.length() {
+        let records = input.records();
+        let site = match (input, end) {
+            (super::grammar::GrammarInput::Source(_), ExpressionEnd::Source { last_token }) => {
+                last_token
+            }
+            (super::grammar::GrammarInput::Authored(_), ExpressionEnd::Authored { site }) => site,
+            _ => return Err(CssColorProtocolError::WrongSlot),
+        };
+        if start >= length || root < start || root >= length || site >= records.length {
             return Err(CssColorProtocolError::WrongIndex);
         }
         Ok(Self {
-            owner: lexical.owner,
-            phase: lexical.phase,
+            owner: records.owner,
+            phase: records.phase,
             start,
             length,
             root,
             ty,
-            last_token,
+            end,
             closed,
         })
     }
@@ -523,7 +614,7 @@ impl<'owner> NumericGrammar<'owner> {
         self.state = State::Leaf(
             token,
             NumericLeaf::Variable {
-                token,
+                token: OperandReference::Source(token),
                 binding: Variable::Channel(channel),
             },
         );
@@ -543,8 +634,13 @@ impl<'owner> NumericGrammar<'owner> {
         self.state = State::Leaf(
             token,
             NumericLeaf::Variable {
-                token,
-                binding: Variable::Profile { name },
+                token: OperandReference::Source(token),
+                binding: Variable::Profile {
+                    name: super::protocol::RecordRange {
+                        start: name.start,
+                        end: name.end,
+                    },
+                },
             },
         );
         Ok(())
@@ -568,32 +664,9 @@ impl<'owner> NumericGrammar<'owner> {
         match &mut self.state {
             State::Number(token, cursor) => {
                 if let LiteralAction::Done(value) = cursor.action() {
-                    let factor = match value.unit {
-                        Some(unit) => match unit.intrinsic_scale() {
-                            Some((_, scale)) => scale,
-                            None => {
-                                self.state = State::Leaf(
-                                    *token,
-                                    NumericLeaf::Contextual {
-                                        token: *token,
-                                        unit,
-                                        number: Number {
-                                            value: value.value,
-                                            ty: value.ty,
-                                        },
-                                    },
-                                );
-                                return Ok(());
-                            }
-                        },
-                        None => 1.0,
-                    };
                     self.state = State::Leaf(
                         *token,
-                        NumericLeaf::Literal(Number {
-                            value: value.value * factor,
-                            ty: value.ty,
-                        }),
+                        converted_literal(value, OperandReference::Source(*token), value.ty),
                     );
                     Ok(())
                 } else {
@@ -724,7 +797,9 @@ impl<'owner> NumericGrammar<'owner> {
             length: self.expression_length,
             root,
             ty,
-            last_token: self.last_token,
+            end: ExpressionEnd::Source {
+                last_token: self.last_token,
+            },
             closed: !self.ended,
         })
     }
@@ -835,11 +910,11 @@ enum EvaluationState {
         index: usize,
     },
     Variable {
-        token: ClassifiedToken,
+        token: OperandReference,
         binding: Variable,
     },
     Unit {
-        token: ClassifiedToken,
+        token: OperandReference,
         unit: crate::CssNumericUnit,
         number: Number,
     },
@@ -853,6 +928,7 @@ pub(crate) struct NumericEvaluation<'owner> {
     index: usize,
     evaluation_start: usize,
     root: Option<Number>,
+    authored_site: Option<usize>,
 }
 impl<'owner> NumericEvaluation<'owner> {
     /// Evaluation begins only after the expression's immutable qualified table
@@ -878,6 +954,7 @@ impl<'owner> NumericEvaluation<'owner> {
             index: table.start,
             evaluation_start,
             root: None,
+            authored_site: None,
         })
     }
     // Constructor and each backward-link observation prove this translation.
@@ -897,11 +974,11 @@ impl<'owner> NumericEvaluation<'owner> {
             EvaluationState::Compute { .. } => EvaluationAction::Compute,
             EvaluationState::Leaf { index, .. } => EvaluationAction::ReadLeaf { index },
             EvaluationState::Variable { token, binding } => EvaluationAction::ResolveVariable {
-                token: token.index,
+                token: token.index(),
                 binding,
             },
             EvaluationState::Unit { token, unit, .. } => EvaluationAction::ResolveUnit {
-                token: token.index,
+                token: token.index(),
                 unit,
             },
             EvaluationState::Append(_) => EvaluationAction::Append {
@@ -911,6 +988,9 @@ impl<'owner> NumericEvaluation<'owner> {
             EvaluationState::Stopped => EvaluationAction::Stopped,
         }
     }
+    pub(crate) const fn authored_site(&self) -> Option<usize> {
+        self.authored_site
+    }
     pub(crate) fn read_expression(
         &mut self,
         index: usize,
@@ -919,7 +999,33 @@ impl<'owner> NumericEvaluation<'owner> {
         if self.action() != (EvaluationAction::ReadExpression { index }) {
             return Err(CssColorProtocolError::WrongAction);
         }
+        if index < self.table.start || index >= self.table.length {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        self.table.qualify(index, slot)?;
+        if let Data::AuthoredTraversal(event) = slot.data {
+            if !matches!(self.table.end, ExpressionEnd::Authored { .. }) {
+                return Err(CssColorProtocolError::WrongSlot);
+            }
+            self.index
+                .checked_add(1)
+                .ok_or(CssColorProtocolError::Overflow)?;
+            self.authored_site = Some(event.site());
+            self.state = EvaluationState::Append(Evaluated::Empty);
+            return Ok(());
+        }
         let record = self.table.record(index, slot)?;
+        if matches!(self.table.end, ExpressionEnd::Authored { .. }) {
+            let site = match record {
+                engine::Record::Node(node) => Some(node.site()),
+                engine::Record::Term(term) => term.parts().4,
+                engine::Record::Factor(factor) => factor.parts().4,
+                engine::Record::Argument(_) | engine::Record::Frame(_) => None,
+            };
+            if let Some(site) = site {
+                self.authored_site = Some(site);
+            }
+        }
         let (previous, operand) = match record {
             engine::Record::Node(node) => {
                 if let Some(closing) = node.closing() {
@@ -930,7 +1036,8 @@ impl<'owner> NumericEvaluation<'owner> {
                     if site < node.site()
                         || (index == self.table.root
                             && (closed != self.table.closed
-                                || (closed && site != self.table.last_token)))
+                                || (closed
+                                    && !matches!(self.table.end, ExpressionEnd::Source { last_token } if site == last_token))))
                     {
                         return Err(CssColorProtocolError::WrongSlot);
                     }
@@ -1035,7 +1142,7 @@ impl<'owner> NumericEvaluation<'owner> {
         let EvaluationState::Variable { token, .. } = self.state else {
             return Err(CssColorProtocolError::WrongAction);
         };
-        if token_index != token.index {
+        if token_index != token.index() {
             return Err(CssColorProtocolError::WrongIndex);
         }
         if number.ty != Type::NUMBER {
@@ -1061,7 +1168,7 @@ impl<'owner> NumericEvaluation<'owner> {
         else {
             return Err(CssColorProtocolError::WrongAction);
         };
-        if token_index != token.index {
+        if token_index != token.index() {
             return Err(CssColorProtocolError::WrongIndex);
         }
         if unit != expected || number.ty != crate::numeric::literal_type(Some(unit), false) {
@@ -1080,7 +1187,7 @@ impl<'owner> NumericEvaluation<'owner> {
         let EvaluationState::Unit { token, number, .. } = self.state else {
             return Err(CssColorProtocolError::WrongAction);
         };
-        if token_index != token.index {
+        if token_index != token.index() {
             return Err(CssColorProtocolError::WrongIndex);
         }
         self.index

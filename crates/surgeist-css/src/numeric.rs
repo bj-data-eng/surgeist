@@ -8,6 +8,7 @@ use crate::{
 use std::fmt;
 
 mod color_expression;
+pub(crate) mod color_operands;
 pub use color_expression::{
     CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
 };

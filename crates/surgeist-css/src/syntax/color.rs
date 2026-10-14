@@ -7,6 +7,7 @@ use super::{
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
 mod inverse;
+pub(crate) mod operands;
 mod recognition;
 pub(crate) use recognition::{numeric_relative_channel, predefined_color_space};
 pub(crate) mod serialization;
@@ -674,6 +675,9 @@ pub struct CssNamedColor {
 }
 
 impl CssNamedColor {
+    pub(crate) const fn checked_rgb(&self) -> [u8; 3] {
+        self.rgb
+    }
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
         let (red, green, blue) = cssparser::color::parse_named_color(&name).ok()?;

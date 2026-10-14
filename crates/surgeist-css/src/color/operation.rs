@@ -6,13 +6,13 @@
 use super::Color;
 use super::component::{ComponentAction, SyntaxFailure};
 use super::facts::{CssColorFactIdentity, CssColorFacts};
-use super::grammar::{ColorGrammar, GrammarAction};
+use super::grammar::{ColorGrammar, GrammarAction, Site};
 use super::protocol::{
     ActionDescription as LexicalAction, CssColorBank, CssColorOperationOwner,
-    CssColorProtocolError, CssColorSlot, Data, LexicalOperation, LexicalTable,
+    CssColorProtocolError, CssColorSlot, Data, LexicalOperation, LexicalTable, RecordTable,
 };
 use super::resolution::{Action as ResolutionAction, Resolution};
-use super::syntax_pass::{SyntaxAction, SyntaxPass};
+use super::syntax_pass::{SyntaxAction, SyntaxPass, ValidatedGrammar};
 use crate::tokenization::bounded::InputKind;
 use crate::tokenization::color_tokens::Span;
 
@@ -32,7 +32,7 @@ pub(crate) enum StandardReason {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct StandardFailure {
     pub(crate) reason: StandardReason,
-    pub(crate) source: Span,
+    pub(crate) site: Site,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -40,7 +40,7 @@ pub(crate) enum Error {
     Resolution(super::resolution::Error),
     Numerical {
         error: super::ColorError,
-        site: Span,
+        site: Site,
     },
 }
 impl From<CssColorProtocolError> for Error {
@@ -150,7 +150,7 @@ enum Phase<'owner, 'facts> {
     },
     Used {
         value: Color,
-        consumed: Span,
+        consumed: Site,
     },
     Standard(StandardFailure),
     Stopped,
@@ -202,14 +202,35 @@ impl<'owner, 'facts> FailureCheckpoint<'owner, 'facts> {
         }
     }
 }
-pub(crate) struct ParseUsed<'owner, 'facts> {
-    lexical: Option<LexicalTable<'owner>>,
-    phase: Phase<'owner, 'facts>,
-    facts: &'facts CssColorFacts<'facts>,
-    expected: CssColorFactIdentity,
+struct SourceContext<'css> {
+    lexical: Option<LexicalTable<'css>>,
     kind: InputKind,
     length: usize,
     request: GrammarRequest,
+}
+enum InputContext<'css> {
+    Source(SourceContext<'css>),
+    Authored(RecordTable<'css>),
+}
+impl<'css> InputContext<'css> {
+    fn records(&self) -> Option<RecordTable<'css>> {
+        match self {
+            Self::Source(source) => source.lexical.map(|table| table.records()),
+            Self::Authored(records) => Some(*records),
+        }
+    }
+    fn source(&self) -> Result<&SourceContext<'css>, CssColorProtocolError> {
+        match self {
+            Self::Source(source) => Ok(source),
+            Self::Authored(_) => Err(CssColorProtocolError::WrongSlot),
+        }
+    }
+}
+pub(crate) struct ColorOperation<'owner, 'facts> {
+    input: InputContext<'owner>,
+    phase: Phase<'owner, 'facts>,
+    facts: &'facts CssColorFacts<'facts>,
+    expected: CssColorFactIdentity,
     banks: [usize; 3],
 }
 fn ordinal(bank: CssColorBank) -> usize {
@@ -219,7 +240,7 @@ fn ordinal(bank: CssColorBank) -> usize {
         CssColorBank::Evaluation => 2,
     }
 }
-impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
+impl<'owner, 'facts> ColorOperation<'owner, 'facts> {
     pub(crate) fn start(
         owner: &'owner mut CssColorOperationOwner,
         kind: InputKind,
@@ -230,15 +251,60 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
     ) -> Result<Self, CssColorProtocolError> {
         let operation = LexicalOperation::start(owner, kind, length)?;
         Ok(Self {
-            lexical: None,
+            input: InputContext::Source(SourceContext {
+                lexical: None,
+                kind,
+                length,
+                request,
+            }),
             phase: Phase::Lexical(operation),
             facts,
             expected,
-            kind,
-            length,
-            request,
             banks: [0; 3],
         })
+    }
+    pub(crate) fn start_authored(
+        grammar: &ValidatedGrammar<'owner>,
+        facts: &'facts CssColorFacts<'facts>,
+        expected: CssColorFactIdentity,
+        banks: [usize; 3],
+    ) -> Result<Self, CssColorProtocolError> {
+        let super::grammar::GrammarInput::Authored(records) = grammar.table.input else {
+            return Err(CssColorProtocolError::WrongSlot);
+        };
+        if grammar.table.end > banks[0]
+            || records.length > banks[0]
+            || grammar.expression_end != banks[1]
+        {
+            return Err(CssColorProtocolError::WrongIndex);
+        }
+        Ok(Self {
+            input: InputContext::Authored(records),
+            phase: Phase::Resolution(Resolution::start(grammar, facts, expected)),
+            facts,
+            expected,
+            banks,
+        })
+    }
+    pub(crate) fn reached_site(&self) -> Result<Site, CssColorProtocolError> {
+        match &self.phase {
+            Phase::Resolution(cursor) => cursor.reached_site(),
+            Phase::Standard(failure) => Ok(failure.site),
+            Phase::Used { consumed, .. } => Ok(*consumed),
+            _ => Err(CssColorProtocolError::WrongAction),
+        }
+    }
+    pub(crate) fn take_authored(
+        self,
+    ) -> Result<Result<Color, StandardFailure>, CssColorProtocolError> {
+        if !matches!(self.input, InputContext::Authored(_)) {
+            return Err(CssColorProtocolError::WrongSlot);
+        }
+        match self.phase {
+            Phase::Used { value, .. } => Ok(Ok(value)),
+            Phase::Standard(failure) => Ok(Err(failure)),
+            _ => Err(CssColorProtocolError::Terminal),
+        }
     }
     pub(crate) fn action(&self) -> Action {
         match &self.phase {
@@ -284,7 +350,7 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
         if index >= self.bank_length(bank) {
             return Err(CssColorProtocolError::WrongIndex.into());
         }
-        if let Some(table) = self.lexical {
+        if let Some(table) = self.input.records() {
             slot.qualify(table.owner, table.phase, index, bank)?;
         }
         let action = self.action();
@@ -404,14 +470,18 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
                 },
                 Action::FailureSource { .. },
             ) if bank == CssColorBank::Algorithm && index == *expected => {
-                let table = self.lexical.ok_or(CssColorProtocolError::WrongAction)?;
+                let table = self
+                    .input
+                    .source()?
+                    .lexical
+                    .ok_or(CssColorProtocolError::WrongAction)?;
                 let super::protocol::LexicalRecord::Token(token) = table.observe(index, slot)?
                 else {
                     return Err(CssColorProtocolError::WrongSlot.into());
                 };
                 self.phase = Phase::Standard(StandardFailure {
                     reason: *reason,
-                    source: token.source,
+                    site: Site::Source(token.source),
                 });
             }
             _ => return Err(CssColorProtocolError::WrongAction.into()),
@@ -509,7 +579,7 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
                 .checked_add(1)
                 .ok_or(CssColorProtocolError::Overflow)?
         };
-        if let Some(table) = self.lexical {
+        if let Some(table) = self.input.records() {
             slot.qualify(table.owner, table.phase, index, bank)?;
         }
         match (&mut self.phase, action) {
@@ -584,15 +654,19 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
         Ok(())
     }
     fn standard_source(&mut self, reason: StandardReason, site: usize) -> Result<(), Error> {
-        let table = self.lexical.ok_or(CssColorProtocolError::WrongAction)?;
+        let table = self
+            .input
+            .source()?
+            .lexical
+            .ok_or(CssColorProtocolError::WrongAction)?;
         self.abandon();
         self.phase = if site == table.length() {
             Phase::Standard(StandardFailure {
                 reason,
-                source: Span {
-                    start: self.length,
-                    end: self.length,
-                },
+                site: Site::Source(Span {
+                    start: self.input.source()?.length,
+                    end: self.input.source()?.length,
+                }),
             })
         } else if site < table.length() {
             Phase::FailureSource {
@@ -625,7 +699,7 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
             let Phase::Resolution(cursor) = &self.phase else {
                 return Err(CssColorProtocolError::WrongAction.into());
             };
-            let site = cursor.reached_source();
+            let site = cursor.reached_site()?;
             self.abandon();
             return Err(Error::Numerical { error, site });
         }
@@ -645,14 +719,27 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
         if let R::Protocol(error) = error {
             return Err(Error::Protocol(error));
         }
+        let site = if reason.is_some() {
+            Some(match &self.input {
+                InputContext::Source(source) => Site::Source(Span {
+                    start: 0,
+                    end: source.length,
+                }),
+                InputContext::Authored(_) => {
+                    let Phase::Resolution(cursor) = &self.phase else {
+                        return Err(CssColorProtocolError::WrongAction.into());
+                    };
+                    cursor.reached_site()?
+                }
+            })
+        } else {
+            None
+        };
         self.abandon();
         if let Some(reason) = reason {
             self.phase = Phase::Standard(StandardFailure {
                 reason,
-                source: Span {
-                    start: 0,
-                    end: self.length,
-                },
+                site: site.expect("standard failure site was prepared above"),
             });
             Ok(())
         } else {
@@ -665,8 +752,8 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
             _ => None,
         }
     }
-    pub(crate) const fn input_kind(&self) -> InputKind {
-        self.kind
+    pub(crate) fn input_kind(&self) -> InputKind {
+        self.input.source().expect("source action front door").kind
     }
     pub(crate) fn kernel(&self) -> super::CssColorKernel {
         use super::CssColorKernel as K;
@@ -691,10 +778,13 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
                     unreachable!()
                 };
                 let table = cursor.finish()?;
-                self.lexical = Some(table);
+                let InputContext::Source(source) = &mut self.input else {
+                    return Err(CssColorProtocolError::WrongSlot.into());
+                };
+                source.lexical = Some(table);
                 self.phase = Phase::Grammar(ColorGrammar::start(
                     &table,
-                    self.request == GrammarRequest::WholeColor,
+                    self.input.source()?.request == GrammarRequest::WholeColor,
                 ));
             }
             Action::PrepareSyntax => {
@@ -726,7 +816,7 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
                 self.abandon();
                 self.phase = Phase::Standard(StandardFailure {
                     reason: StandardReason::ColorGrammar,
-                    source,
+                    site: Site::Source(source),
                 });
             }
             Action::Grammar(GrammarAction::Compute) => {
@@ -764,17 +854,20 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
                 let Phase::Resolution(cursor) = &self.phase else {
                     unreachable!()
                 };
-                let source = cursor.consumed_source()?;
+                let consumed = match &self.input {
+                    InputContext::Source(source) => Site::Source(Span {
+                        start: 0,
+                        end: if source.request == GrammarRequest::WholeColor {
+                            source.length
+                        } else {
+                            cursor.consumed_source()?.end
+                        },
+                    }),
+                    InputContext::Authored(_) => cursor.consumed_site()?,
+                };
                 self.phase = Phase::Used {
                     value: cursor.finish()?,
-                    consumed: Span {
-                        start: 0,
-                        end: if self.request == GrammarRequest::WholeColor {
-                            self.length
-                        } else {
-                            source.end
-                        },
-                    },
+                    consumed,
                 };
             }
             Action::Resolution(_) => {
@@ -790,23 +883,24 @@ impl<'owner, 'facts> ParseUsed<'owner, 'facts> {
         Ok(())
     }
     pub(crate) fn take(self) -> Result<ParseOutcome<'owner, 'facts>, CssColorProtocolError> {
-        let table = self.lexical.ok_or(CssColorProtocolError::Terminal)?;
+        let source = self.input.source()?;
+        let table = source.lexical.ok_or(CssColorProtocolError::Terminal)?;
         let mut context = CheckpointContext {
             owner: table.owner,
             phase: table.phase,
             facts: self.facts,
             expected: self.expected,
-            input_kind: self.kind,
-            input_length: self.length,
-            request: self.request,
+            input_kind: source.kind,
+            input_length: source.length,
+            request: source.request,
             consumed: Span {
                 start: 0,
-                end: self.length,
+                end: source.length,
             },
         };
         match self.phase {
             Phase::Used { value, consumed } => {
-                context.consumed = consumed;
+                context.consumed = consumed.source()?;
                 Ok(ParseOutcome::Used(UsedCheckpoint {
                     context,
                     value,
@@ -884,7 +978,8 @@ mod tests {
         facts: &'facts CssColorFacts<'facts>,
     ) -> Result<ParseOutcome<'owner, 'facts>, Error> {
         let mut cursor =
-            ParseUsed::start(owner, kind, input.len(), request, facts, facts.identity).unwrap();
+            ColorOperation::start(owner, kind, input.len(), request, facts, facts.identity)
+                .unwrap();
         let mut banks = [Vec::new(), Vec::new(), Vec::new()];
         loop {
             let action = cursor.action();
@@ -1087,7 +1182,7 @@ mod tests {
         };
         let failure = checkpoint.failure();
         assert_eq!(failure.reason, StandardReason::ComponentGrammar);
-        assert_eq!(failure.source, Span { start: 4, end: 9 });
+        assert_eq!(failure.site, Site::Source(Span { start: 4, end: 9 }));
         let checkpoint = checkpoint.fallback(Color::opaque_black());
         assert_eq!(checkpoint.standard_failure(), Some(failure));
         assert_eq!(
@@ -1190,7 +1285,7 @@ mod tests {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let mut other = CssColorOperationOwner::new();
-        let mut cursor = ParseUsed::start(
+        let mut cursor = ColorOperation::start(
             &mut owner,
             InputKind::Utf8,
             1,
@@ -1199,7 +1294,7 @@ mod tests {
             facts.identity,
         )
         .unwrap();
-        let mut foreign = ParseUsed::start(
+        let mut foreign = ColorOperation::start(
             &mut other,
             InputKind::Utf8,
             1,

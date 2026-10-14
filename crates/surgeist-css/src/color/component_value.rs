@@ -123,7 +123,7 @@ impl<'owner> ComponentValue<'owner> {
         let component = record
             .checked
             .ok_or(CssColorProtocolError::WrongSlot)?
-            .component(&self.grammar.table.lexical)?;
+            .component(&self.grammar.table.input)?;
         if self
             .binding
             .is_some_and(|binding| !record.context.accepts_binding(binding))
@@ -133,7 +133,7 @@ impl<'owner> ComponentValue<'owner> {
         self.state = match component {
             CheckedComponent::Literal(value) => State::Done(value),
             CheckedComponent::Variable { token, binding } => State::Variable {
-                token: token.index,
+                token: token.index(),
                 binding,
             },
             CheckedComponent::Expression { table, domain } => State::Evaluation {
@@ -153,8 +153,8 @@ impl<'owner> ComponentValue<'owner> {
             return Err(CssColorProtocolError::WrongAction.into());
         }
         slot.qualify(
-            self.grammar.table.lexical.owner,
-            self.grammar.table.lexical.phase,
+            self.grammar.table.input.records().owner,
+            self.grammar.table.input.records().phase,
             index,
             bank,
         )?;
@@ -170,6 +170,12 @@ impl<'owner> ComponentValue<'owner> {
             _ => return Err(CssColorProtocolError::WrongAction.into()),
         }
         Ok(())
+    }
+    pub(crate) fn authored_site(&self) -> Option<usize> {
+        match &self.state {
+            State::Evaluation { cursor, .. } => cursor.authored_site(),
+            _ => None,
+        }
     }
     pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         let State::Evaluation { cursor, .. } = &self.state else {
@@ -364,7 +370,7 @@ mod tests {
             let CheckedComponent::Expression { table, .. } = record
                 .checked
                 .unwrap()
-                .component(&fixture.grammar.table.lexical)
+                .component(&fixture.grammar.table.input)
                 .unwrap()
             else {
                 panic!("expression component")

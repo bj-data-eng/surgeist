@@ -50,13 +50,14 @@ pub struct CssColorOrdinaryLimits {
 /// The actual exhausted ordinary resource, separate from CSS invalidity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorOrdinaryResource {
+    PathSteps,
     InputUnits,
     AlgorithmRecords,
     ArithmeticRecords,
     EvaluationRecords,
     Actions,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CssColorOrdinaryError {
     Operation(CssColorOperationError),
     Limit {
@@ -155,6 +156,10 @@ fn allowed(limits: CssColorOrdinaryLimits, bank: CssColorBank) -> usize {
         CssColorBank::Evaluation => limits.evaluation_records,
     }
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+)]
 fn admit(
     resource: CssColorOrdinaryResource,
     required: usize,
@@ -170,6 +175,10 @@ fn admit(
         })
     }
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+)]
 fn action_count(count: &mut usize, maximum: usize) -> Result<(), CssColorOrdinaryError> {
     let required = count
         .checked_add(1)
@@ -180,6 +189,10 @@ fn action_count(count: &mut usize, maximum: usize) -> Result<(), CssColorOrdinar
 }
 /// Parse to a fixed used value without planning, admitting or creating output.
 /// Every finite action uses the canonical operation and the original source.
+#[expect(
+    clippy::result_large_err,
+    reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
+)]
 pub fn parse_used_color<'source, 'facts>(
     input: CssColorInput<'source>,
     request: CssColorGrammarRequest,
