@@ -2126,6 +2126,9 @@ impl ParseUsage {
 }
 
 #[cfg(test)]
+mod html_value_tests;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn fixed_slot_swap_charges_two_real_slot_moves_and_writes_without_storage_growth() {

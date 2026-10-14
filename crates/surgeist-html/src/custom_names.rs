@@ -163,43 +163,6 @@ pub fn validate_custom_element_name_with<E>(
 mod scanner_tests {
     use super::*;
     #[test]
-    fn controlled_scanner_propagates_actual_cancellation_before_next_unit() {
-        use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
-        let cancellation = crate::HtmlParseCancellation::new();
-        let mut control = ParseControl::new(
-            crate::parser::tree_builder::tests::limits(100),
-            cancellation.clone(),
-        );
-        let name = DocumentString::from("a-b");
-        let mut units = 0;
-        let result = validate_custom_element_name_with(&name, |action| {
-            match action {
-                CustomNameScanAction::Header | CustomNameScanAction::ReservedHeader => {
-                    control.charge(WorkCategory::RecordVisit, 1)?
-                }
-                CustomNameScanAction::Unit => {
-                    if units == 2 {
-                        cancellation.cancel();
-                    }
-                    control.charge(WorkCategory::InspectByte, 2)?;
-                    units += 1;
-                }
-                CustomNameScanAction::ReservedPair => {
-                    control.charge(WorkCategory::InspectByte, 4)?
-                }
-            }
-            Ok::<(), ParseStop>(())
-        });
-        assert_eq!(result, Err(ParseStop::Cancelled));
-        assert_eq!(units, 2);
-        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
-        assert_eq!(
-            control.charge(WorkCategory::RecordVisit, 1),
-            Err(ParseStop::Cancelled)
-        );
-    }
-
-    #[test]
     fn shared_scanner_preserves_literal_native_errors_and_stops_before_rejected_read() {
         for (units, expected) in [
             (vec![], Err(HtmlCustomElementNameError::Empty)),
