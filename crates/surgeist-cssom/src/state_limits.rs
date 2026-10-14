@@ -83,11 +83,11 @@ impl State {
         fn version(total: &mut Option<usize>, value: &CssomInputVersion) {
             add(total, value.identity.len());
         }
-        for input in std::iter::once(&self.context)
+        for input in std::iter::once(self.context.as_ref())
             .chain(
                 self.rules
                     .values()
-                    .filter_map(|rule| rule.selector_inputs.as_ref()),
+                    .filter_map(|rule| rule.selector_inputs.as_deref()),
             )
             .flat_map(|context| &context.inputs)
         {
@@ -138,11 +138,11 @@ impl State {
                 ),
             }
         }
-        for linked in std::iter::once(&self.context)
+        for linked in std::iter::once(self.context.as_ref())
             .chain(
                 self.rules
                     .values()
-                    .filter_map(|rule| rule.selector_inputs.as_ref()),
+                    .filter_map(|rule| rule.selector_inputs.as_deref()),
             )
             .flat_map(|context| &context.linked)
         {
@@ -176,12 +176,13 @@ impl State {
         }
         for block in self.blocks.values() {
             add(&mut entries, block.counter_edits.len());
-            for value in &block.counter_edits {
+            for value in block.counter_edits.iter() {
                 if let Some(origin) = value.origin() {
                     add(&mut strings, origin.source().as_str().len());
                 }
             }
-            if let Some(CssomProjection::Available(selected)) = &block.selected_font_face {
+            if let Some(CssomProjection::Available(selected)) = block.selected_font_face.as_deref()
+            {
                 add(&mut entries, selected.entries().len());
             }
             if let Some(input) = &block.replacement_input {
@@ -189,13 +190,13 @@ impl State {
                 add(&mut entries, input.diagnostics.len());
             }
             add(&mut entries, block.admission_inputs.len());
-            for input in &block.admission_inputs {
+            for input in block.admission_inputs.iter() {
                 version(&mut strings, input);
             }
             if let Some(owner) = &block.owner {
                 version(&mut strings, owner);
             }
-            match &block.data {
+            match block.data() {
                 CssomBlockData::Properties {
                     authored, selected, ..
                 } => {
@@ -243,7 +244,7 @@ impl State {
                 }
                 add(&mut strings, origin.source().as_str().len());
             }
-            match &rule.data {
+            match rule.data() {
                 CssomRuleData::NamedSupports { name, body, .. } => {
                     add(&mut strings, name.as_str().len());
                     add(

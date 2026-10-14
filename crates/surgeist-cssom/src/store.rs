@@ -39,14 +39,14 @@ impl CssomStore {
             },
             owner,
             next_identity: 2,
-            context,
-            sheet_order: Vec::new(),
-            sheets: HashMap::new(),
-            rules: HashMap::new(),
-            blocks: HashMap::new(),
-            lists: HashMap::new(),
-            media: HashMap::new(),
-            maps: HashMap::new(),
+            context: Arc::new(context),
+            sheet_order: Arc::new(Vec::new()),
+            sheets: crate::shared_table::SharedTable::new(),
+            rules: crate::shared_table::SharedTable::new(),
+            blocks: crate::shared_table::SharedTable::new(),
+            lists: crate::shared_table::SharedTable::new(),
+            media: crate::shared_table::SharedTable::new(),
+            maps: crate::shared_table::SharedTable::new(),
         };
         state.check_limits(&limits)?;
         Ok(Self {
@@ -437,13 +437,13 @@ impl CssomBatch {
                 rules,
                 media,
                 owner_rule: None,
-                namespaces,
-                authored,
-                diagnostics,
+                namespaces: Arc::new(namespaces),
+                authored: Arc::new(authored),
+                diagnostics: Arc::new(diagnostics),
             },
         );
         if register {
-            self.staged.sheet_order.push(id.clone());
+            Arc::make_mut(&mut self.staged.sheet_order).push(id.clone());
         }
         let index = self.created.len();
         self.created.push(Created::Sheet(id.clone()));
@@ -530,14 +530,13 @@ impl CssomBatch {
         name: CssPropertyNameRef<'_>,
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.block(id)?;
-            let block = this.staged.blocks.get_mut(id).expect("checked block");
+            let block = this.staged.block(id)?;
             if block.flags.readonly {
                 return Err(CssomError::Source(CssomException::NoModificationAllowed));
             }
             let CssomBlockData::Properties {
                 domain, selected, ..
-            } = &mut block.data
+            } = block.data()
             else {
                 return Err(CssomError::WrongKind);
             };
@@ -545,15 +544,19 @@ impl CssomBatch {
                 CssomProjection::Available(v) => v,
                 CssomProjection::Unavailable(e) => return Err(CssomError::Declaration(e.clone())),
             };
+            if !old
+                .entries()
+                .iter()
+                .any(|entry| entry.property_name() == name)
+            {
+                return Ok(false);
+            }
             let entries = old
                 .entries()
                 .iter()
                 .filter(|v| v.property_name() != name)
                 .cloned()
                 .collect::<Vec<_>>();
-            if entries.len() == old.entries().len() {
-                return Ok(false);
-            }
             let value = match domain {
                 CssomPropertyDomain::Ordinary => {
                     CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
@@ -575,6 +578,15 @@ impl CssomBatch {
                 }
             }
             .map_err(CssomError::Declaration)?;
+            let CssomBlockData::Properties { selected, .. } = this
+                .staged
+                .blocks
+                .get_mut(id)
+                .expect("checked block")
+                .data_mut()
+            else {
+                unreachable!()
+            };
             *selected = CssomProjection::Available(value);
             this.affect(
                 CssomObjectId::Block(id.clone()),
@@ -585,12 +597,15 @@ impl CssomBatch {
     }
     pub fn set_disabled(&mut self, id: &CssomSheetId, disabled: bool) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.sheet(id)?;
-            let sheet = this.staged.sheets.get_mut(id).expect("checked sheet");
-            if sheet.inputs.disabled == disabled {
+            if this.staged.sheet(id)?.inputs.disabled == disabled {
                 return Ok(false);
             }
-            sheet.inputs.disabled = disabled;
+            this.staged
+                .sheets
+                .get_mut(id)
+                .expect("checked sheet")
+                .inputs
+                .disabled = disabled;
             this.affect(CssomObjectId::Sheet(id.clone()), &[CssomChange::Disabled]);
             Ok(true)
         })
@@ -649,9 +664,9 @@ impl CssomBatch {
         self.staged.lists.insert(list, children);
         let sheet = self.staged.sheets.get_mut(id).expect("checked sheet");
         // Imports do not affect namespace bindings; source occurrences are retained.
-        sheet.namespaces = CssNamespaceContext::from_sheet(&authored);
-        sheet.authored = authored;
-        sheet.diagnostics = diagnostics;
+        sheet.namespaces = Arc::new(CssNamespaceContext::from_sheet(&authored));
+        sheet.authored = Arc::new(authored);
+        sheet.diagnostics = Arc::new(diagnostics);
         self.affect(
             CssomObjectId::Sheet(id.clone()),
             &[
@@ -707,12 +722,12 @@ impl CssomBatch {
     ) -> Result<CssomRuleId, CssomError> {
         self.apply(|this| {
             if matches!(
-                this.staged.rule(id)?.data,
+                this.staged.rule(id)?.data(),
                 CssomRuleData::NamedSupports { .. }
             ) {
                 return this.delete_named_supports_child(id, index);
             }
-            let list = match &this.staged.rule(id)?.data {
+            let list = match this.staged.rule(id)?.data() {
                 CssomRuleData::Style { children, .. }
                 | CssomRuleData::Group { children, .. }
                 | CssomRuleData::Page { children, .. } => children.clone(),
@@ -732,11 +747,11 @@ impl CssomBatch {
             .ok_or(CssomError::Source(CssomException::IndexSize))?
             .clone();
         if matches!(
-            &self.staged.rules[&root].authored,
+            self.staged.rules[&root].authored(),
             CssomAuthoredRule::Ordinary(CssRule::Namespace(_))
         ) && members.iter().any(|id| {
             !matches!(
-                &self.staged.rules[id].authored,
+                self.staged.rules[id].authored(),
                 CssomAuthoredRule::Ordinary(CssRule::Namespace(_) | CssRule::Import(_))
             )
         }) {
@@ -770,22 +785,24 @@ impl CssomBatch {
         let list = &self.staged.sheets[id].rules;
         let bindings = self.staged.lists[list]
             .iter()
-            .filter_map(|id| match &self.staged.rules[id].authored {
+            .filter_map(|id| match self.staged.rules[id].authored() {
                 CssomAuthoredRule::Ordinary(CssRule::Namespace(v)) => {
                     Some((v.prefix().cloned(), v.name().clone()))
                 }
                 _ => None,
             })
             .collect::<Vec<_>>();
-        self.staged.sheets.get_mut(id).expect("sheet").namespaces =
-            CssNamespaceContext::from_bindings(bindings);
+        let namespaces = CssNamespaceContext::from_bindings(bindings);
+        if self.staged.sheets[id].namespaces.as_ref() != &namespaces {
+            self.staged.sheets.get_mut(id).expect("sheet").namespaces = Arc::new(namespaces);
+        }
     }
     pub fn update_context(&mut self, context: CssomContext) -> Result<bool, CssomError> {
         self.apply(|this| {
-            if this.staged.context == context {
+            if *this.staged.context == context {
                 return Ok(false);
             }
-            this.staged.context = context;
+            this.staged.context = Arc::new(context);
             this.categories.extend([
                 CssomChange::Origin,
                 CssomChange::Layer,
@@ -842,7 +859,7 @@ impl CssomBatch {
                 resolved_location: old,
                 input: old_input,
                 ..
-            } = &mut this.staged.rules.get_mut(rule).expect("rule").data
+            } = this.staged.rule(rule)?.data()
             else {
                 unreachable!()
             };
@@ -852,10 +869,21 @@ impl CssomBatch {
             {
                 return Ok(false);
             }
+            let CssomRuleData::Import {
+                child_sheet,
+                resolved_location: old,
+                input: old_input,
+                ..
+            } = this.staged.rules.get_mut(rule).expect("rule").data_mut()
+            else {
+                unreachable!()
+            };
             *child_sheet = Some(sheet.clone());
             *old = resolved_location;
             *old_input = Some(input);
-            this.staged.sheets.get_mut(sheet).expect("sheet").owner_rule = Some(rule.clone());
+            if this.staged.sheet(sheet)?.owner_rule.as_ref() != Some(rule) {
+                this.staged.sheets.get_mut(sheet).expect("sheet").owner_rule = Some(rule.clone());
+            }
             this.affect(
                 CssomObjectId::Rule(rule.clone()),
                 &[
@@ -897,7 +925,7 @@ impl CssomBatch {
                         (Some(a), Some(b)) => !a.source().same_snapshot(b.source()),
                         _ => true,
                     }
-                    || match (&a.data, &b.data) {
+                    || match (a.data(), b.data()) {
                         (
                             CssomRuleData::FontFeatureValues {
                                 families: a,
@@ -939,7 +967,7 @@ impl CssomBatch {
                 let a = &self.staged.blocks[id];
                 let b = &self.base.blocks[id];
                 a.flags != b.flags
-                    || match (&a.data, &b.data) {
+                    || match (a.data(), b.data()) {
                         (
                             CssomBlockData::Properties {
                                 selected: CssomProjection::Available(a),

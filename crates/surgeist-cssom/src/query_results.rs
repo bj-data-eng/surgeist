@@ -73,7 +73,7 @@ impl CssomQueryResult {
 }
 impl CssomSnapshot {
     fn query_role(&self, id: &CssomRuleId) -> Result<CssomQueryResultRole, CssomError> {
-        match &self.rule(id)?.data {
+        match self.rule(id)?.data() {
             CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Media(_),
                 ..

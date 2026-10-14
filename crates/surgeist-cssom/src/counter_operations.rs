@@ -5,7 +5,7 @@ use surgeist_css::*;
 
 impl CssomBlock {
     fn counter_entry_count(&self) -> Result<usize, CssomError> {
-        let CssomBlockData::CounterStyle(original) = &self.data else {
+        let CssomBlockData::CounterStyle(original) = self.data() else {
             return Err(CssomError::WrongKind);
         };
         Ok(original
@@ -25,7 +25,7 @@ impl CssomBlock {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<CssCounterStyleDescriptorCollection<'_>, CssomError> {
-        let CssomBlockData::CounterStyle(original) = &self.data else {
+        let CssomBlockData::CounterStyle(original) = self.data() else {
             return Err(CssomError::WrongKind);
         };
         let entries = original
@@ -166,8 +166,9 @@ impl CssomBatch {
                 }
             }
             let current = this.staged.blocks.get_mut(&block).expect("owned block");
-            current.counter_edits.retain(|entry| entry.kind() != kind);
-            current.counter_edits.push(value);
+            let edits = std::sync::Arc::make_mut(&mut current.counter_edits);
+            edits.retain(|entry| entry.kind() != kind);
+            edits.push(value);
             if !this.counter_changes.contains(&block) {
                 this.counter_changes.push(block.clone());
             }
@@ -189,9 +190,7 @@ impl CssomBatch {
     /// CSSOMString setter policy; deliberately accepts empty/raw custom names.
     pub fn set_counter_name(&mut self, id: &CssomRuleId, name: &str) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.rule(id)?;
-            let rule = this.staged.rules.get_mut(id).expect("rule");
-            let CssomRuleData::CounterStyle { name: old, .. } = &mut rule.data else {
+            let CssomRuleData::CounterStyle { name: old, .. } = this.staged.rule(id)?.data() else {
                 return Err(CssomError::WrongKind);
             };
             if [
@@ -215,6 +214,11 @@ impl CssomBatch {
             if old == &name {
                 return Ok(false);
             }
+            let CssomRuleData::CounterStyle { name: old, .. } =
+                this.staged.rules.get_mut(id).expect("rule").data_mut()
+            else {
+                unreachable!()
+            };
             *old = name;
             this.affect(CssomObjectId::Rule(id.clone()), &[CssomChange::Descriptors]);
             Ok(true)

@@ -65,7 +65,7 @@ impl State {
         &self,
         id: &CssomBlockId,
     ) -> Result<&CssSpecifiedDeclarationBlock, CssomError> {
-        match &self.block(id)?.data {
+        match self.block(id)?.data() {
             CssomBlockData::Properties {
                 selected: CssomProjection::Available(value),
                 ..
@@ -81,7 +81,7 @@ impl State {
         &self,
         id: &CssomBlockId,
     ) -> Result<&CssSpecifiedPageDeclarationBlock, CssomError> {
-        match &self.block(id)?.data {
+        match self.block(id)?.data() {
             CssomBlockData::Page {
                 selected: CssomProjection::Available(value),
                 ..
@@ -94,7 +94,7 @@ impl State {
         }
     }
     fn keyframe_view(&self, id: &CssomRuleId) -> Result<CssKeyframeRuleView<'_>, CssomError> {
-        match &self.rule(id)?.data {
+        match self.rule(id)?.data() {
             CssomRuleData::Keyframe { selectors, block } => {
                 CssKeyframeRuleView::try_new(selectors, self.current_properties(block)?)
                     .map_err(CssomError::Keyframe)
@@ -103,7 +103,7 @@ impl State {
         }
     }
     fn margin_view(&self, id: &CssomRuleId) -> Result<CssMarginRuleView<'_>, CssomError> {
-        match &self.rule(id)?.data {
+        match self.rule(id)?.data() {
             CssomRuleData::Margin { name, block } => {
                 CssMarginRuleView::try_new(*name, self.current_properties(block)?)
                     .ok_or(CssomError::WrongKind)
@@ -139,13 +139,13 @@ impl State {
                 maximum: 0,
             });
         }
-        if matches!(root.data, CssomRuleData::Keyframe { .. }) {
+        if matches!(root.data(), CssomRuleData::Keyframe { .. }) {
             return self
                 .keyframe_view(id)?
                 .serialize_cssom_with_limits(limits.css)
                 .map_err(CssomError::Keyframe);
         }
-        if matches!(root.data, CssomRuleData::Margin { .. }) {
+        if matches!(root.data(), CssomRuleData::Margin { .. }) {
             return self
                 .margin_view(id)?
                 .serialize_cssom_with_limits(limits.css)
@@ -162,7 +162,7 @@ impl State {
                     depth += 1;
                     work.depth(depth)?;
                     let rule = self.rule(id)?;
-                    if matches!(rule.data, CssomRuleData::Style { .. }) {
+                    if matches!(rule.data(), CssomRuleData::Style { .. }) {
                         ancestor = CssStyleAncestor::Present;
                     }
                     parent = &rule.parent;
@@ -200,7 +200,7 @@ impl State {
             let rule = self.rule(id)?;
             // Unavailable/source-undefined wrappers fail before descendant
             // scheduling in the native writer. Do not prepare their bodies.
-            let children = match &rule.data {
+            let children = match rule.data() {
                 CssomRuleData::Style { children, .. }
                 | CssomRuleData::Page { children, .. }
                 | CssomRuleData::NamedSupports { children, .. }
@@ -252,12 +252,12 @@ impl State {
             // Page/keyframe children use their actual native leaf view buffers.
             // Those leaf nodes need no standalone writer or graph input.
             if matches!(
-                rule.data,
+                rule.data(),
                 CssomRuleData::Margin { .. } | CssomRuleData::Keyframe { .. }
             ) {
                 continue;
             }
-            let input = match &rule.data {
+            let input = match rule.data() {
                 CssomRuleData::Style { .. } | CssomRuleData::Group { .. } => {
                     let mut current = Vec::new();
                     for child in child_indexes {
@@ -267,7 +267,7 @@ impl State {
                     }
                     children[index].set(current).expect("single assignment");
                     let current = children[index].get().expect("initialized");
-                    match &rule.data {
+                    match rule.data() {
                         CssomRuleData::Style {
                             selectors, block, ..
                         } => match selectors {

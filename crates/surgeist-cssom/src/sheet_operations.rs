@@ -182,7 +182,7 @@ impl CssomBatch {
             for member in members {
                 this.staged.sheet(member)?;
             }
-            if this.staged.sheet_order == members {
+            if this.staged.sheet_order.as_slice() == members {
                 return Ok(false);
             }
             let mut selected = Vec::new();
@@ -193,7 +193,7 @@ impl CssomBatch {
                     maximum: this.limits.max_entries,
                 })?;
             selected.extend_from_slice(members);
-            this.staged.sheet_order = selected;
+            this.staged.sheet_order = std::sync::Arc::new(selected);
             this.affect(
                 CssomObjectId::SheetList(id.clone()),
                 &[CssomChange::SheetMembership, CssomChange::Order],

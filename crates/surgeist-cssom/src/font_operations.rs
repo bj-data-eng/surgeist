@@ -191,12 +191,15 @@ impl CssomBatch {
     /// Atomic maplike clear; original authored occurrences remain independently retained.
     pub fn clear_feature_map(&mut self, id: &CssomFeatureMapId) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.feature_map(id)?;
-            let map = this.staged.maps.get_mut(id).expect("owned map");
-            if map.entries.is_empty() {
+            if this.staged.feature_map(id)?.entries.is_empty() {
                 return Ok(false);
             }
-            map.entries.clear();
+            this.staged
+                .maps
+                .get_mut(id)
+                .expect("owned map")
+                .entries
+                .clear();
             this.affect(
                 CssomObjectId::FeatureMap(id.clone()),
                 &[CssomChange::FeatureMaps],
@@ -309,17 +312,25 @@ impl CssomBatch {
                 maximum: self.limits.max_input_bytes,
             });
         }
-        let CssomRuleData::FontFeatureValues {
-            families,
-            family_input,
-            ..
-        } = &mut self.staged.rules.get_mut(id).expect("owned rule").data
-        else {
+        let CssomRuleData::FontFeatureValues { families, .. } = self.staged.rule(id)?.data() else {
             unreachable!()
         };
         if families.as_slice() == input.value.families() {
             return Ok(false);
         }
+        let CssomRuleData::FontFeatureValues {
+            families,
+            family_input,
+            ..
+        } = self
+            .staged
+            .rules
+            .get_mut(id)
+            .expect("owned rule")
+            .data_mut()
+        else {
+            unreachable!()
+        };
         *families = input.value.families().to_vec();
         *family_input = Some(input);
         self.affect(
@@ -374,8 +385,7 @@ impl CssomBatch {
         value: &[u32],
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.feature_map(id)?;
-            let map = this.staged.maps.get_mut(id).expect("map");
+            let map = this.staged.feature_map(id)?;
             let max = match map.kind {
                 CssFontFeatureValueKind::HistoricalForms | CssFontFeatureValueKind::Styleset => {
                     usize::MAX
@@ -386,10 +396,13 @@ impl CssomBatch {
             if value.len() > max {
                 return Err(CssomError::Source(CssomException::InvalidAccess));
             }
+            if map.entries.iter().any(|old| {
+                old.key == key && matches!(&old.value, CssomFeatureValue::Unsigned(v) if v == value)
+            }) {
+                return Ok(false);
+            }
+            let map = this.staged.maps.get_mut(id).expect("map");
             if let Some(old) = map.entries.iter_mut().find(|v| v.key == key) {
-                if matches!(&old.value,CssomFeatureValue::Unsigned(v) if v==value) {
-                    return Ok(false);
-                }
                 old.value = CssomFeatureValue::Unsigned(value.to_vec());
             } else {
                 map.entries.push(CssomFeatureEntry {
@@ -410,12 +423,16 @@ impl CssomBatch {
         key: &str,
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.feature_map(id)?;
-            let map = this.staged.maps.get_mut(id).expect("map");
+            let map = this.staged.feature_map(id)?;
             let Some(index) = map.entries.iter().position(|v| v.key == key) else {
                 return Ok(false);
             };
-            map.entries.remove(index);
+            this.staged
+                .maps
+                .get_mut(id)
+                .expect("map")
+                .entries
+                .remove(index);
             this.affect(
                 CssomObjectId::FeatureMap(id.clone()),
                 &[CssomChange::FeatureMaps],

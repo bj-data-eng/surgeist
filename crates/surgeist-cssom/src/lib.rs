@@ -29,6 +29,7 @@ mod query_results;
 mod readonly_extensions;
 mod rule_operations;
 mod rule_serialization;
+mod shared_table;
 mod sheet_operations;
 mod sheet_replacement;
 mod state_limits;

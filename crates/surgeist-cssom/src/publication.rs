@@ -53,7 +53,7 @@ impl crate::model::State {
         let mut imports = self
             .rules
             .iter()
-            .filter_map(|(id, v)| match &v.data {
+            .filter_map(|(id, v)| match v.data() {
                 CssomRuleData::Import { input: Some(v), .. } => Some((id.clone(), v.clone())),
                 _ => None,
             })
@@ -65,13 +65,13 @@ impl crate::model::State {
             .blocks
             .iter()
             .filter(|(_, block)| !block.admission_inputs.is_empty())
-            .map(|(id, block)| (id.clone(), block.admission_inputs.clone()))
+            .map(|(id, block)| (id.clone(), (*block.admission_inputs).clone()))
             .collect::<Vec<_>>();
         declaration_admissions.sort_by_key(|(id, _)| id.serial);
         let mut font_family_admissions = self
             .rules
             .iter()
-            .filter_map(|(id, rule)| match &rule.data {
+            .filter_map(|(id, rule)| match rule.data() {
                 CssomRuleData::FontFeatureValues {
                     family_input: Some(input),
                     ..
@@ -102,7 +102,7 @@ impl crate::model::State {
             declaration_admissions,
             font_family_admissions,
             selector_admissions,
-            context: self.context.clone(),
+            context: (*self.context).clone(),
             sheets,
             blocks,
             imports,
@@ -189,20 +189,20 @@ pub enum CssomChanges {
 #[derive(Clone, Debug)]
 pub struct CssomEditGuard {
     pub(crate) revision: CssomRevision,
-    pub(crate) context: CssomContext,
+    pub(crate) context: std::sync::Arc<CssomContext>,
 }
 impl CssomEditGuard {
     pub fn from_snapshot(snapshot: &CssomSnapshot) -> Self {
         Self {
             revision: snapshot.revision().clone(),
-            context: snapshot.context().clone(),
+            context: snapshot.state.context.clone(),
         }
     }
     /// Independently supplied current inputs must match the admitted capture.
     pub fn for_inputs(snapshot: &CssomSnapshot, current: CssomContext) -> Self {
         Self {
             revision: snapshot.revision().clone(),
-            context: current,
+            context: std::sync::Arc::new(current),
         }
     }
 }

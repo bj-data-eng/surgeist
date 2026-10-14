@@ -8,7 +8,7 @@ pub(super) enum DescriptorName {
     FontFace(CssFontFaceDescriptorKind),
 }
 pub(super) fn descriptor_name(block: &CssomBlock, name: &str) -> Option<DescriptorName> {
-    match block.data {
+    match block.data() {
         CssomBlockData::Page { .. } => {
             CssPageDescriptorKind::from_name(name).map(DescriptorName::Page)
         }
@@ -21,14 +21,14 @@ pub(super) fn descriptor_name(block: &CssomBlock, name: &str) -> Option<Descript
 pub(super) fn font_selected(
     block: &CssomBlock,
 ) -> Result<&CssSpecifiedFontFaceDeclarationBlock, CssomError> {
-    match &block.selected_font_face {
+    match block.selected_font_face.as_deref() {
         Some(CssomProjection::Available(selected)) => Ok(selected),
         Some(CssomProjection::Unavailable(error)) => Err(CssomError::FontFace(error.clone())),
         None => Err(CssomError::WrongKind),
     }
 }
 fn page_selected(block: &CssomBlock) -> Result<&CssSpecifiedPageDeclarationBlock, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::Page {
             selected: CssomProjection::Available(selected),
             ..
@@ -209,8 +209,10 @@ impl CssomBatch {
         )
         .map_err(CssomError::FontFace)?;
         let block = self.staged.blocks.get_mut(id).expect("owned block");
-        block.data = CssomBlockData::FontFace(CssFontFaceDescriptors::new(entries));
-        block.selected_font_face = Some(CssomProjection::Available(selected));
+        block.data = std::sync::Arc::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
+            entries,
+        )));
+        block.selected_font_face = Some(std::sync::Arc::new(CssomProjection::Available(selected)));
         Ok(())
     }
     fn replace_font_selected(
@@ -228,7 +230,7 @@ impl CssomBatch {
             .blocks
             .get_mut(id)
             .expect("owned block")
-            .selected_font_face = Some(CssomProjection::Available(selected));
+            .selected_font_face = Some(std::sync::Arc::new(CssomProjection::Available(selected)));
         Ok(())
     }
     pub(super) fn set_descriptor(
@@ -301,12 +303,16 @@ impl CssomBatch {
         id: &CssomBlockId,
         inputs: Vec<CssomInputVersion>,
     ) {
-        let facts = &mut self
+        let previous = &self.staged.blocks[id].admission_inputs;
+        if inputs.iter().all(|input| previous.contains(input)) {
+            return;
+        }
+        let facts = self
             .staged
             .blocks
             .get_mut(id)
             .expect("owned block")
-            .admission_inputs;
+            .admission_inputs_mut();
         for input in inputs {
             if !facts.contains(&input) {
                 facts.push(input);

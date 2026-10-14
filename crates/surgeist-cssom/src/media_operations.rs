@@ -197,8 +197,20 @@ impl CssomBatch {
             if this.staged.media[id] == value {
                 return Ok(false);
             }
-            for sheet in this.staged.sheets.values_mut().filter(|v| &v.media == id) {
-                sheet.inputs.media = value.clone();
+            let sheets = this
+                .staged
+                .sheets
+                .iter()
+                .filter(|(_, sheet)| &sheet.media == id)
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            for sheet in sheets {
+                this.staged
+                    .sheets
+                    .get_mut(&sheet)
+                    .expect("selected sheet")
+                    .inputs
+                    .media = value.clone();
             }
             this.staged.media.insert(id.clone(), value);
             this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);

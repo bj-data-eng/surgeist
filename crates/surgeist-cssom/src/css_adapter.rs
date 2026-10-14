@@ -74,11 +74,11 @@ impl State {
                 parent,
                 owner,
                 flags,
-                data,
-                admission_inputs: Vec::new(),
-                counter_edits: Vec::new(),
+                data: data.into(),
+                admission_inputs: std::sync::Arc::new(Vec::new()),
+                counter_edits: std::sync::Arc::new(Vec::new()),
                 replacement_input: None,
-                selected_font_face,
+                selected_font_face: selected_font_face.map(std::sync::Arc::new),
             },
         );
         Ok(id)
@@ -222,12 +222,12 @@ impl State {
             id.clone(),
             CssomRule {
                 parent,
-                data,
-                authored,
+                data: data.into(),
+                authored: authored.into(),
                 selector_input: None,
                 selector_inputs: None,
                 selector_namespaces: None,
-                admission_diagnostics: Vec::new(),
+                admission_diagnostics: std::sync::Arc::new(Vec::new()),
             },
         );
         self.check_limits(limits)?;
@@ -349,7 +349,7 @@ impl State {
             let mut map = CssomFeatureMap {
                 kind,
                 entries: Vec::new(),
-                authored: Vec::new(),
+                authored: std::sync::Arc::new(Vec::new()),
             };
             for item in v.items() {
                 if let CssFontFeatureValuesItem::Block(block) = item {
@@ -357,7 +357,7 @@ impl State {
                         continue;
                     }
                     for definition in block.definitions() {
-                        map.authored.push(definition.clone());
+                        std::sync::Arc::make_mut(&mut map.authored).push(definition.clone());
                         let value = match definition.value().view() {
                             CssFontFeatureValueRef::Indexes(indexes) => indexes
                                 .iter()

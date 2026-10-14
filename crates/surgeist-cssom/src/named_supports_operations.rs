@@ -111,7 +111,7 @@ impl CssomBatch {
         index: usize,
     ) -> Result<CssomRuleTicket, CssomError> {
         self.staged.named_supports_guard(id)?;
-        let CssomRuleData::NamedSupports { children, .. } = &self.staged.rule(id)?.data else {
+        let CssomRuleData::NamedSupports { children, .. } = self.staged.rule(id)?.data() else {
             return Err(CssomError::WrongKind);
         };
         let list = children.clone();
@@ -143,7 +143,7 @@ impl CssomBatch {
             .rules
             .get_mut(&child)
             .expect("adopted child")
-            .admission_diagnostics = diagnostics;
+            .admission_diagnostics = diagnostics.into();
         self.staged
             .lists
             .get_mut(&list)
@@ -166,7 +166,7 @@ impl CssomBatch {
         index: usize,
     ) -> Result<CssomRuleId, CssomError> {
         self.staged.named_supports_guard(id)?;
-        let CssomRuleData::NamedSupports { children, .. } = &self.staged.rule(id)?.data else {
+        let CssomRuleData::NamedSupports { children, .. } = self.staged.rule(id)?.data() else {
             return Err(CssomError::WrongKind);
         };
         let list = children.clone();
@@ -201,7 +201,7 @@ impl CssomBatch {
             name,
             body,
             children,
-        } = &self.staged.rule(id)?.data
+        } = self.staged.rule(id)?.data()
         else {
             return Err(CssomError::WrongKind);
         };
@@ -213,7 +213,7 @@ impl CssomBatch {
                 maximum: self.limits.max_entries,
             })?;
         for child in &self.staged.lists[children] {
-            let CssomRuleData::SupportsTestChild(child) = &self.staged.rule(child)?.data else {
+            let CssomRuleData::SupportsTestChild(child) = self.staged.rule(child)?.data() else {
                 return Err(CssomError::WrongKind);
             };
             payloads.push(child.as_ref());
@@ -222,8 +222,12 @@ impl CssomBatch {
             .recompose_children_with_limits(&payloads, component_limits(&self.limits))
             .map_err(CssomError::NamedSupports)?;
         validate_body(name, &current, depth, &self.limits)?;
-        let CssomRuleData::NamedSupports { body, .. } =
-            &mut self.staged.rules.get_mut(id).expect("owned rule").data
+        let CssomRuleData::NamedSupports { body, .. } = self
+            .staged
+            .rules
+            .get_mut(id)
+            .expect("owned rule")
+            .data_mut()
         else {
             unreachable!()
         };
@@ -251,7 +255,7 @@ fn current_body<'a>(
     state: &'a State,
     id: &CssomRuleId,
 ) -> Result<&'a CssSupportsTestBody, CssomError> {
-    match &state.rule(id)?.data {
+    match state.rule(id)?.data() {
         CssomRuleData::NamedSupports { body, .. } => Ok(body),
         _ => Err(CssomError::WrongKind),
     }
@@ -270,7 +274,7 @@ impl CssomSnapshot {
         &self,
         id: &CssomRuleId,
     ) -> Result<&CssSupportsTestChild, CssomError> {
-        match &self.rule(id)?.data {
+        match self.rule(id)?.data() {
             CssomRuleData::SupportsTestChild(child) => Ok(child),
             _ => Err(CssomError::WrongKind),
         }

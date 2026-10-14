@@ -21,7 +21,7 @@ pub struct CssomPreparedDeclaration {
     batch: Arc<()>,
     preparation: Arc<()>,
     block: CssomBlockId,
-    context: CssomContext,
+    context: Arc<CssomContext>,
     action: PreparedAction,
     reflect_owner: bool,
     input: Option<CssomDeclarationInput>,
@@ -103,7 +103,7 @@ impl<'a> DeclarationRead<'a> {
             budget.scalar_output(priority)?;
             return Ok(priority.to_owned());
         }
-        if matches!(self.block.data, CssomBlockData::FontFace(_)) {
+        if matches!(self.block.data(), CssomBlockData::FontFace(_)) {
             return Ok(String::new());
         }
         let Some(name) = normalize_in(name, self.block) else {
@@ -199,7 +199,7 @@ fn targets(
         .collect())
 }
 fn properties(block: &CssomBlock) -> Result<Vec<CssSpecifiedDeclarationEntry>, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::Properties {
             selected: CssomProjection::Available(selected),
             ..
@@ -234,7 +234,7 @@ fn selected_properties(
     entries: &[CssSpecifiedDeclarationEntry],
     limits: CssSpecifiedValueSerializationLimits,
 ) -> Result<CssSpecifiedDeclarationBlock, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::Properties { domain, .. } => match domain {
             CssomPropertyDomain::Ordinary => {
                 CssSpecifiedDeclarationBlock::try_from_entries_with_limits(entries, limits)
@@ -254,7 +254,7 @@ fn selected_properties(
     .map_err(CssomError::Declaration)
 }
 fn entry_name(block: &CssomBlock, index: usize) -> Result<&str, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::FontFace(_) => Ok(font_selected(block)?
             .entries()
             .get(index)
@@ -296,7 +296,7 @@ pub(crate) fn serialize_block(
     block: &CssomBlock,
     budget: &mut DeclarationBudget,
 ) -> Result<String, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::FontFace(_) => font_selected(block)?
             .serialize_cssom_with_limits(budget.provider()?)
             .map_err(CssomError::FontFace),
@@ -333,7 +333,7 @@ fn query_value(
         budget.scan(entry_count(block)?)?;
         return descriptor_value(block, descriptor, budget);
     }
-    if matches!(block.data, CssomBlockData::FontFace(_)) {
+    if matches!(block.data(), CssomBlockData::FontFace(_)) {
         return Ok(String::new());
     }
     let Some(name) = normalize_in(name, block) else {
@@ -484,7 +484,7 @@ impl CssomBatch {
             check_input_storage(text, this.limits.max_input_bytes)?;
             let component_limits = budget.input(text)?;
             let (items, diagnostics) =
-                if matches!(this.staged.block(id)?.data, CssomBlockData::Page { .. }) {
+                if matches!(this.staged.block(id)?.data(), CssomBlockData::Page { .. }) {
                     let report = this
                         .staged
                         .context
@@ -515,7 +515,7 @@ impl CssomBatch {
                             .collect::<Vec<_>>(),
                         diagnostics,
                     )
-                } else if matches!(this.staged.block(id)?.data, CssomBlockData::FontFace(_)) {
+                } else if matches!(this.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
                     let (body, diagnostics) =
                         parse_font_face_declaration_block_contents_with_limits(
                             text,
@@ -591,7 +591,7 @@ impl CssomBatch {
             if let Some(kind) = descriptor_name(this.staged.block(id)?, name) {
                 return this.prepare_descriptor(id, kind, name, value, priority, budget);
             }
-            if matches!(this.staged.block(id)?.data, CssomBlockData::FontFace(_)) {
+            if matches!(this.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
                 return Ok(this.preparation(id.clone(), PreparedAction::Noop, Vec::new(), budget));
             }
             let parser_context = this.staged.context.parser_context();
@@ -663,7 +663,7 @@ impl CssomBatch {
             check_resource_diagnostics(&diagnostics)?;
             if let Some(value) = declaration.as_ref()
                 && matches!(
-                    this.staged.block(id)?.data,
+                    this.staged.block(id)?.data(),
                     CssomBlockData::Page { .. }
                         | CssomBlockData::Properties {
                             domain: CssomPropertyDomain::Margin,
@@ -881,23 +881,13 @@ impl CssomBatch {
                     if updated {
                         this.request_owner_update(id, &prepared.budget)?;
                     }
-                    let facts = &mut this
-                        .staged
-                        .blocks
-                        .get_mut(id)
-                        .expect("owned block")
-                        .admission_inputs;
-                    for input in admission_inputs {
-                        if !facts.contains(&input) {
-                            facts.push(input);
-                        }
-                    }
+                    this.add_admission_inputs(id, admission_inputs);
                     this.declaration_changed(id);
                     Ok(CssomDeclarationEditResult::Set { updated })
                 }
                 PreparedAction::Replace(items) => {
                     let previous_empty = entry_count(this.staged.block(id)?)? == 0;
-                    let previous_authored_empty = match &this.staged.block(id)?.data {
+                    let previous_authored_empty = match this.staged.block(id)?.data() {
                         CssomBlockData::Properties {
                             authored:
                                 CssomPropertyOccurrences::Ordinary(v)
@@ -914,7 +904,14 @@ impl CssomBatch {
                         .filter_map(|(ordinal, value)| usable(ordinal, &value).then_some(value))
                         .collect::<Vec<_>>();
                     prepared.budget.scan(retained.len())?;
-                    let page = matches!(this.staged.block(id)?.data, CssomBlockData::Page { .. });
+                    // Existing semantic no-change decision: keep the checked
+                    // provider phases/quotas below, while retaining this record.
+                    let unchanged = previous_empty
+                        && previous_authored_empty
+                        && retained.is_empty()
+                        && previous_input.as_deref() == prepared.input.as_ref()
+                        && *previous_admissions == admission_inputs;
+                    let page = matches!(this.staged.block(id)?.data(), CssomBlockData::Page { .. });
                     if page {
                         let authored = CssPageDeclarationBlock::try_new_with_limits(
                             retained
@@ -936,11 +933,11 @@ impl CssomBatch {
                             .try_specified_with_limits(prepared.budget.provider()?)
                             .map_err(CssomError::Page)?;
                         this.staged.blocks.get_mut(id).expect("owned block").data =
-                            CssomBlockData::Page {
+                            Arc::new(CssomBlockData::Page {
                                 authored,
                                 selected: CssomProjection::Available(selected),
-                            };
-                    } else if matches!(this.staged.block(id)?.data, CssomBlockData::FontFace(_)) {
+                            });
+                    } else if matches!(this.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
                         this.replace_font_contents(id, retained, &mut prepared.budget)?;
                     } else {
                         let declarations = retained
@@ -1000,32 +997,41 @@ impl CssomBatch {
                                 prepared.budget.provider()?,
                             )
                             .map_err(CssomError::Declaration)?;
-                        this.replace_properties(id, entries, &mut prepared.budget)?;
-                        if let CssomBlockData::Properties { authored, .. } =
-                            &mut this.staged.blocks.get_mut(id).expect("owned block").data
-                        {
-                            *authored = CssomPropertyOccurrences::RawContents(
-                                CssDeclarationList::try_new_with_limits(
-                                    admitted,
-                                    prepared.budget.provider()?,
-                                )
-                                .map_err(CssomError::Value)?,
-                            );
+                        if unchanged {
+                            selected_properties(
+                                this.staged.block(id)?,
+                                &entries,
+                                prepared.budget.provider()?,
+                            )?;
+                        } else {
+                            this.replace_properties(id, entries, &mut prepared.budget)?;
+                        }
+                        let occurrences = CssDeclarationList::try_new_with_limits(
+                            admitted,
+                            prepared.budget.provider()?,
+                        )
+                        .map_err(CssomError::Value)?;
+                        if !unchanged {
+                            let CssomBlockData::Properties { authored, .. } = this
+                                .staged
+                                .blocks
+                                .get_mut(id)
+                                .expect("owned block")
+                                .data_mut()
+                            else {
+                                unreachable!()
+                            };
+                            *authored = CssomPropertyOccurrences::RawContents(occurrences);
                         }
                     }
                     if prepared.reflect_owner {
                         this.request_owner_update(id, &prepared.budget)?;
                     }
-                    this.staged
-                        .blocks
-                        .get_mut(id)
-                        .expect("owned block")
-                        .admission_inputs = admission_inputs;
-                    this.staged
-                        .blocks
-                        .get_mut(id)
-                        .expect("owned block")
-                        .replacement_input = prepared.input.take();
+                    if !unchanged {
+                        let block = this.staged.blocks.get_mut(id).expect("owned block");
+                        block.admission_inputs = Arc::new(admission_inputs);
+                        block.replacement_input = prepared.input.take().map(Arc::new);
+                    }
                     if previous_input != this.staged.block(id)?.replacement_input
                         || !previous_empty
                         || !previous_authored_empty
@@ -1063,7 +1069,7 @@ impl CssomBatch {
             }
             return Ok(old);
         }
-        if matches!(self.staged.block(id)?.data, CssomBlockData::FontFace(_)) {
+        if matches!(self.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
             return Ok(old);
         }
         let Some(name) = normalize_in(name, self.staged.block(id)?) else {
@@ -1127,7 +1133,7 @@ impl CssomBatch {
         entries: Vec<SelectedEntry>,
         budget: &mut DeclarationBudget,
     ) -> Result<(), CssomError> {
-        if matches!(self.staged.block(id)?.data, CssomBlockData::Page { .. }) {
+        if matches!(self.staged.block(id)?.data(), CssomBlockData::Page { .. }) {
             let mixed = entries
                 .into_iter()
                 .map(|entry| match entry {
@@ -1146,7 +1152,12 @@ impl CssomBatch {
             .map_err(CssomError::Page)?;
             let CssomBlockData::Page {
                 selected: current, ..
-            } = &mut self.staged.blocks.get_mut(id).expect("owned block").data
+            } = self
+                .staged
+                .blocks
+                .get_mut(id)
+                .expect("owned block")
+                .data_mut()
             else {
                 unreachable!()
             };
@@ -1163,7 +1174,12 @@ impl CssomBatch {
                 selected_properties(self.staged.block(id)?, &properties, budget.provider()?)?;
             let CssomBlockData::Properties {
                 selected: current, ..
-            } = &mut self.staged.blocks.get_mut(id).expect("owned block").data
+            } = self
+                .staged
+                .blocks
+                .get_mut(id)
+                .expect("owned block")
+                .data_mut()
             else {
                 return Err(CssomError::WrongKind);
             };
@@ -1183,7 +1199,7 @@ impl CssomBatch {
             budget.expansion(declaration)?;
         }
         let page = if matches!(
-            block.data,
+            block.data(),
             CssomBlockData::Page { .. }
                 | CssomBlockData::Properties {
                     domain: CssomPropertyDomain::Margin,
@@ -1208,7 +1224,7 @@ impl CssomBatch {
             .map(expand_declaration)
             .collect::<Result<Vec<_>, _>>()
             .map_err(CssomError::Expansion)?;
-        let selected = match block.data {
+        let selected = match block.data() {
             CssomBlockData::Properties {
                 domain: CssomPropertyDomain::Keyframe,
                 ..
@@ -1248,7 +1264,7 @@ fn property_name(name: CssPropertyNameRef<'_>) -> &str {
 }
 
 fn entry_count(block: &CssomBlock) -> Result<usize, CssomError> {
-    match &block.data {
+    match block.data() {
         CssomBlockData::FontFace(_) => Ok(font_selected(block)?.entries().len()),
         CssomBlockData::Properties {
             selected: CssomProjection::Available(selected),
@@ -1280,7 +1296,7 @@ fn selected_entries(
     budget: &mut DeclarationBudget,
 ) -> Result<Vec<SelectedEntry>, CssomError> {
     budget.scan(entry_count(block)?)?;
-    match &block.data {
+    match block.data() {
         CssomBlockData::Page {
             selected: CssomProjection::Available(selected),
             ..
@@ -1312,7 +1328,7 @@ fn page_rejection(error: &CssPageBlockError) -> bool {
 fn normalize_in(name: &str, block: &CssomBlock) -> Option<Name> {
     let svg = CssSvgGlyphOrientationVerticalDeclaration::metadata();
     if name.eq_ignore_ascii_case(svg.name()) {
-        let has_svg = match &block.data {
+        let has_svg = match block.data() {
             CssomBlockData::Properties {
                 selected: CssomProjection::Available(selected),
                 ..
@@ -1333,7 +1349,7 @@ fn normalize_in(name: &str, block: &CssomBlock) -> Option<Name> {
             }
             _ => None,
         };
-        let existing = match &block.data {
+        let existing = match block.data() {
             CssomBlockData::Properties {
                 selected: CssomProjection::Available(selected),
                 ..
