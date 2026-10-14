@@ -565,13 +565,26 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children(HtmlBuilderNode)`, `ArenaWrapper`, `AttributeVector`,
+`Children`, `ArenaWrapper`, `AttributeVector`,
 `AttributeWrapper` and `AttributePlan`. The last role identifies the complete
 attribute group's actual decision/name-plan allocation. Equality is identity
 equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
 generation with checked arithmetic. Attribute storage issues descriptors through
 the same narrow contract for its own vector/shared-wrapper ownership.
+
+Allocation reports never issue construction node handles. A pending creation
+can allocate its child bank before committing a record; aborting it leaves that
+record position available for a later creation. Issuing a handle from the bank's
+position would let it escape before commit and then identify the later node.
+`Children` therefore classifies only the allocation role. Its read-only
+`child_position()` is an owner-local accounting join, like pending-order slot
+metadata; it cannot mint an identity or authorize a mutation or retirement.
+Checked committed-node views remain the authority for issuing node handles.
+Each newly created bank also receives a fresh checked allocation incarnation,
+including when it reuses a position left by an aborted operation. A retained
+report from the retired bank cannot identify the replacement or authorize its
+retirement. Reallocation and actual bank replacement preserve this distinction.
 
 `HtmlConstructionAllocationSnapshot` has read-only accessors for `id`, `role`,
 `initialized_len`, `capacity`, `element_size`, `element_alignment`,
