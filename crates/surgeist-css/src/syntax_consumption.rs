@@ -739,7 +739,6 @@ fn normalize_source<'a>(
         snapshot: window.original.clone(),
         offset: window.range.end,
     });
-    builder.document.source = Some(window.clone());
     let mut frames = Vec::new();
     let mut denied = denied_curly.iter().peekable();
     let mut offset = window.range.start;
@@ -797,6 +796,7 @@ fn normalize_source<'a>(
                     origin: Cow::Owned(origin),
                 },
                 Some(range),
+                Some(&window.original),
             )?;
         }
         offset = end;
@@ -806,6 +806,7 @@ fn normalize_source<'a>(
         "all scanner-proved denied boundaries were consumed"
     );
     finish_raw(builder, frames);
+    builder.document.source = Some(window);
     Ok(())
 }
 
@@ -828,7 +829,7 @@ pub(crate) fn normalize<'a>(
         SyntaxInput::Tokens(tokens) => {
             let mut frames = Vec::new();
             for token in tokens {
-                raw_token(&mut builder, &mut frames, token.clone(), None)?;
+                raw_token(&mut builder, &mut frames, token.clone(), None, None)?;
             }
             finish_raw(&mut builder, frames);
         }
@@ -966,6 +967,7 @@ fn raw_token<'a>(
     frames: &mut Vec<RawFrame>,
     token: SyntaxToken<'a>,
     range: Option<Range<usize>>,
+    original: Option<&CssSourceSnapshot>,
 ) -> Result<(), CssComponentValueError> {
     let kind = token.kind();
     if let TokenKind::Closing(kind) = kind
@@ -973,8 +975,8 @@ fn raw_token<'a>(
     {
         builder.charge(&token, false, frames.len() as u32 + 1)?;
         builder.document.ends[frame.list] = range.as_ref().and_then(|range| {
-            builder.document.source.as_ref().map(|window| SourceSite {
-                snapshot: window.original.clone(),
+            original.map(|snapshot| SourceSite {
+                snapshot: snapshot.clone(),
                 offset: range.start,
             })
         });
