@@ -297,13 +297,13 @@ mod tests {
         assert!(!Arc::ptr_eq(
             textarea_raw(&session.active().unwrap().payloads, &mut c, old)
                 .unwrap()
-                .backing(),
+                .shared_code_units(),
             session
                 .active()
                 .unwrap()
                 .image_source_value(&mut c, native)
                 .unwrap()
-                .backing()
+                .shared_code_units()
         ));
         for expected in [
             [66].as_slice(),
@@ -452,10 +452,10 @@ mod tests {
                 assert!(!Arc::ptr_eq(
                     textarea_raw(&session.active().unwrap().payloads, &mut c, a)
                         .unwrap()
-                        .backing(),
+                        .shared_code_units(),
                     textarea_raw(&session.active().unwrap().payloads, &mut c, b)
                         .unwrap()
-                        .backing()
+                        .shared_code_units()
                 ));
             }
             session
@@ -490,7 +490,14 @@ mod tests {
         );
         let (mut c, mut session, cap, mut lexer, node) = fixture(&request);
         let mut attr = radio_next_attribute(&mut lexer, &mut c);
-        let pointer = attr.as_ref().unwrap().value.value.text().backing().as_ptr();
+        let pointer = attr
+            .as_ref()
+            .unwrap()
+            .value
+            .value
+            .text()
+            .shared_code_units()
+            .as_ptr();
         let HtmlNodeKind::Element(element) = &session.active().unwrap().records[node.index].kind
         else {
             panic!("element")
@@ -501,7 +508,13 @@ mod tests {
             Err(SessionError::AliasedPayload)
         );
         assert_eq!(
-            attr.as_ref().unwrap().value.value.text().backing().as_ptr(),
+            attr.as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr(),
             pointer
         );
         assert_eq!(

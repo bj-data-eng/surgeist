@@ -19,7 +19,13 @@ impl DocumentString {
         }
     }
 
-    pub(crate) fn backing(&self) -> &Arc<Vec<u16>> {
+    /// Adopts immutable UTF-16 backing without copying or normalizing its units.
+    pub fn from_shared_code_units(code_units: Arc<Vec<u16>>) -> Self {
+        Self { code_units }
+    }
+
+    /// Borrows the actual immutable allocation, including its retained capacity.
+    pub fn shared_code_units(&self) -> &Arc<Vec<u16>> {
         &self.code_units
     }
 
@@ -260,40 +266,6 @@ impl OrderedAttributes {
         })
     }
 
-    /// Consumes the actual admitted vector wrapper only after independently
-    /// checking expanded names. No hash table, scalar conversion, or second
-    /// attribute collection is allocated by this private parser producer.
-    pub(crate) fn from_parser_storage(
-        attributes: Arc<Vec<Attribute>>,
-        control: &mut crate::parser::control::ParseControl,
-    ) -> Result<Self, (ParserAttributeError, Arc<Vec<Attribute>>)> {
-        use crate::parser::control::WorkCategory;
-        let checked = (|| {
-            for duplicate in 0..attributes.len() {
-                for first in 0..duplicate {
-                    control.charge(WorkCategory::RecordVisit, 2)?;
-                    let left = attributes[first].name();
-                    let right = attributes[duplicate].name();
-                    let same_namespace = match (left.namespace().uri(), right.namespace().uri()) {
-                        (None, None) => true,
-                        (Some(left), Some(right)) => parser_string_equal(left, right, control)?,
-                        _ => false,
-                    };
-                    if same_namespace
-                        && parser_string_equal(left.local_name(), right.local_name(), control)?
-                    {
-                        return Err(ParserAttributeError::Duplicate { first, duplicate });
-                    }
-                }
-            }
-            Ok(())
-        })();
-        match checked {
-            Ok(()) => Ok(Self { attributes }),
-            Err(error) => Err((error, attributes)),
-        }
-    }
-
     pub(crate) fn backing(&self) -> &Arc<Vec<Attribute>> {
         &self.attributes
     }
@@ -379,31 +351,4 @@ impl fmt::Display for DuplicateAttributeError {
 
 impl Error for DuplicateAttributeError {}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ParserAttributeError {
-    Stop(crate::parser::control::ParseStop),
-    Duplicate { first: usize, duplicate: usize },
-}
-impl From<crate::parser::control::ParseStop> for ParserAttributeError {
-    fn from(stop: crate::parser::control::ParseStop) -> Self {
-        Self::Stop(stop)
-    }
-}
-fn parser_string_equal(
-    left: &DocumentString,
-    right: &DocumentString,
-    control: &mut crate::parser::control::ParseControl,
-) -> Result<bool, ParserAttributeError> {
-    use crate::parser::control::WorkCategory;
-    control.charge(WorkCategory::RecordVisit, 2)?;
-    if left.len() != right.len() {
-        return Ok(false);
-    }
-    for index in 0..left.len() {
-        control.charge(WorkCategory::InspectByte, 4)?;
-        if left.code_units()[index] != right.code_units()[index] {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
+pub(crate) mod bounded;

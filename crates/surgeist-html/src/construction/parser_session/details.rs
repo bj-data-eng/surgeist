@@ -639,7 +639,7 @@ mod tests {
             .value
             .value
             .text()
-            .backing()
+            .shared_code_units()
             .as_ptr();
         assert_eq!(
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
@@ -652,7 +652,7 @@ mod tests {
                 .value
                 .value
                 .text()
-                .backing()
+                .shared_code_units()
                 .as_ptr(),
             original
         );
@@ -928,7 +928,7 @@ mod tests {
                 .value
                 .value
                 .text()
-                .backing()
+                .shared_code_units()
                 .as_ptr();
             if cancelled {
                 request.cancellation().cancel();
@@ -958,7 +958,7 @@ mod tests {
                     .value
                     .value
                     .text()
-                    .backing()
+                    .shared_code_units()
                     .as_ptr(),
                 pointer
             );

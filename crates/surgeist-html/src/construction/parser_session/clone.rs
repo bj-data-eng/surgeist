@@ -344,7 +344,7 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
-        let ordered = match OrderedAttributes::from_parser_storage(backing, c) {
+        let ordered = match validate_parser_attributes(backing, c) {
             Ok(value) => value,
             Err((error, backing)) => {
                 let values = c
@@ -356,10 +356,7 @@ impl SessionStorage {
                     original_len: 0,
                     reversed_pairs: 0,
                 });
-                return Err(match error {
-                    ParserAttributeError::Stop(stop) => stop.into(),
-                    ParserAttributeError::Duplicate { .. } => SessionError::DuplicateAttribute,
-                });
+                return Err(error);
             }
         };
         *storage = Some(AttributeStorage::Frozen {

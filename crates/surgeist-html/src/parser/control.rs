@@ -1355,12 +1355,12 @@ impl ParseControl {
         }
         if allocation.backing.is_some()
             || value.len() as u64 != allocation.units
-            || value.backing().capacity() != allocation.vector_capacity
+            || value.shared_code_units().capacity() != allocation.vector_capacity
             || value.code_units().as_ptr() as usize != allocation.data_pointer
         {
             return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
         }
-        allocation.backing = Some(Arc::downgrade(value.backing()));
+        allocation.backing = Some(Arc::downgrade(value.shared_code_units()));
         Ok(())
     }
     pub(crate) fn require_document_string(
@@ -1429,9 +1429,9 @@ impl ParseControl {
         if allocation
             .backing
             .as_ref()
-            .is_none_or(|backing| backing.as_ptr() != Arc::as_ptr(value.backing()))
+            .is_none_or(|backing| backing.as_ptr() != Arc::as_ptr(value.shared_code_units()))
             || value.len() as u64 != allocation.units
-            || value.backing().capacity() != allocation.vector_capacity
+            || value.shared_code_units().capacity() != allocation.vector_capacity
         {
             return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
         }

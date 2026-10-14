@@ -9,6 +9,8 @@
 mod attributes;
 mod base;
 mod bidi;
+/// Controlled operations over HTML-owned immutable values.
+pub mod bounded;
 mod capture;
 mod color;
 mod construction;

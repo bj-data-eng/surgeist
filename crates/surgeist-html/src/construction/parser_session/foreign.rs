@@ -581,7 +581,7 @@ mod tests {
             {
                 if value == &DocumentString::from("viewbox") {
                     original = Some((
-                        value.backing().as_ptr(),
+                        value.shared_code_units().as_ptr(),
                         storage.observed_origins(maps, &mut c).unwrap()[0]
                             .source
                             .clone(),
@@ -590,7 +590,7 @@ mod tests {
                 }
                 if matches!(location, StringLocation::AttributeName(_, 0)) {
                     adjusted = Some((
-                        value.backing().as_ptr(),
+                        value.shared_code_units().as_ptr(),
                         storage.observed_origins(maps, &mut c).unwrap()[0]
                             .source
                             .clone(),
@@ -1124,7 +1124,7 @@ impl SessionStorage {
                     return Err(stop.into());
                 }
             };
-            let ordered = match OrderedAttributes::from_parser_storage(backing, control) {
+            let ordered = match validate_parser_attributes(backing, control) {
                 Ok(values) => values,
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
@@ -1138,10 +1138,7 @@ impl SessionStorage {
                         original_len,
                         reversed_pairs,
                     });
-                    return Err(match error {
-                        ParserAttributeError::Stop(stop) => stop.into(),
-                        ParserAttributeError::Duplicate { .. } => SessionError::DuplicateAttribute,
-                    });
+                    return Err(error);
                 }
             };
             *storage = Some(AttributeStorage::Frozen {

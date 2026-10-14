@@ -350,19 +350,22 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             (HtmlNodeKind::Text(a), HtmlNodeKind::Text(b))
             | (HtmlNodeKind::Comment(a), HtmlNodeKind::Comment(b)) => {
                 assert_eq!(a, b);
-                assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+                assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
             }
             (HtmlNodeKind::ProcessingInstruction(a), HtmlNodeKind::ProcessingInstruction(b)) => {
                 assert_eq!(a.target(), b.target());
                 assert_eq!(a.data(), b.data());
-                assert!(!Arc::ptr_eq(a.data().backing(), b.data().backing()));
+                assert!(!Arc::ptr_eq(
+                    a.data().shared_code_units(),
+                    b.data().shared_code_units()
+                ));
             }
             (HtmlNodeKind::Element(a), HtmlNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
                 assert_eq!(a.attributes(), b.attributes());
                 assert!(!Arc::ptr_eq(
-                    a.name().local_name().backing(),
-                    b.name().local_name().backing()
+                    a.name().local_name().shared_code_units(),
+                    b.name().local_name().shared_code_units()
                 ));
             }
             _ => panic!("literal shallow clone kind"),
@@ -1170,7 +1173,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
                     location, value, ..
                 } => {
                     !matches!(location, StringLocation::Detached)
-                        || Arc::strong_count(value.backing()) == 1
+                        || Arc::strong_count(value.shared_code_units()) == 1
                 }
                 _ => true,
             });
@@ -1227,7 +1230,14 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
         panic!("real foreign select token")
     };
     let mut input = Some(tag);
-    let original = input.as_ref().unwrap().name.value.text().backing().as_ptr();
+    let original = input
+        .as_ref()
+        .unwrap()
+        .name
+        .value
+        .text()
+        .shared_code_units()
+        .as_ptr();
     let slots = session.active().unwrap().payloads.values.len();
     let result = session.allocate_select_family_for_creation(
         &mut c,
@@ -1247,7 +1257,14 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
         ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
     ));
     assert_eq!(
-        input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+        input
+            .as_ref()
+            .unwrap()
+            .name
+            .value
+            .text()
+            .shared_code_units()
+            .as_ptr(),
         original
     );
     assert_eq!(session.active().unwrap().payloads.values.len(), slots);

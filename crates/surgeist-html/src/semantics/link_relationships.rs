@@ -541,7 +541,7 @@ impl FactsAdmission {
     fn raw(&mut self, raw: &DocumentString) -> Result<(), HtmlRelFactsError> {
         self.work(1)?;
         let bytes = raw
-            .backing()
+            .shared_code_units()
             .capacity()
             .checked_mul(2)
             .and_then(|n| {

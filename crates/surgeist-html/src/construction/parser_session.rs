@@ -22,6 +22,7 @@
 //! preparation ends at step18 and never fabricates a loaded or executed result.
 
 use super::*;
+use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
 use crate::parser::control::{
     ControlIdentity, DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, SharedAllocation,
     StandaloneUnsupported, VectorCapacity, WorkCategory,
@@ -30,7 +31,6 @@ use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
     tokenizer::token::{Doctype, Tag, TagKind, Text, TextOrigin, TokenKind},
 };
-use crate::values::ParserAttributeError;
 use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
 use std::{mem, sync::Weak};
 
@@ -141,6 +141,51 @@ pub(crate) enum ElementInsertionIgnored {
 impl From<ParseStop> for SessionError {
     fn from(value: ParseStop) -> Self {
         Self::Stop(value)
+    }
+}
+
+/// Admits the shared value owner's next real comparison through the original
+/// parser controller. Refusal returns the same allocation for existing cleanup.
+fn validate_parser_attributes(
+    backing: Arc<Vec<Attribute>>,
+    control: &mut ParseControl,
+) -> Result<OrderedAttributes, (SessionError, Arc<Vec<Attribute>>)> {
+    let mut validation = Some(HtmlAttributeStorage::from_shared_attributes(backing).validate());
+    let validation_error = |error| match error {
+        HtmlAttributeValidationError::Duplicate { .. } => SessionError::DuplicateAttribute,
+        HtmlAttributeValidationError::NotReady | HtmlAttributeValidationError::Consumed => {
+            SessionError::AttributeStorageUnavailable
+        }
+    };
+    let result = (|| {
+        while let Some(action) = validation
+            .as_mut()
+            .expect("owned attribute validation")
+            .next_action()
+            .map_err(validation_error)?
+        {
+            let layout = action.layout();
+            if layout.record_visits() != 0 {
+                control.charge(WorkCategory::RecordVisit, layout.record_visits())?;
+            }
+            if layout.inspected_bytes() != 0 {
+                control.charge(WorkCategory::InspectByte, layout.inspected_bytes())?;
+            }
+            action.advance().map_err(validation_error)?;
+        }
+        HtmlAttributeValidation::try_finish(&mut validation)
+            .map(|validated| validated.into_attributes())
+            .map_err(validation_error)
+    })();
+    match result {
+        Ok(attributes) => Ok(attributes),
+        Err(error) => Err((
+            error,
+            validation
+                .expect("refusal retains attribute validation")
+                .abort()
+                .into_shared_attributes(),
+        )),
     }
 }
 
@@ -624,14 +669,14 @@ impl PayloadStorage {
                     let stored = location.value(records, &self.values, index, control)?;
                     cleanup_charge(control, WorkCategory::ProviderCall, 2)?;
                     let expected = if let Some(stored) = stored {
-                        if !Arc::ptr_eq(stored.backing(), value.backing()) {
+                        if !Arc::ptr_eq(stored.shared_code_units(), value.shared_code_units()) {
                             return Err(SessionError::AliasedPayload);
                         }
                         2
                     } else {
                         1
                     };
-                    if Arc::strong_count(value.backing()) != expected {
+                    if Arc::strong_count(value.shared_code_units()) != expected {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
@@ -1681,7 +1726,7 @@ impl SessionStorage {
             } = payload
             {
                 control.charge(WorkCategory::ProviderCall, 1)?;
-                if Arc::ptr_eq(value.backing(), candidate.backing()) {
+                if Arc::ptr_eq(value.shared_code_units(), candidate.shared_code_units()) {
                     return Ok(slot);
                 }
             }
@@ -2270,7 +2315,7 @@ impl SessionStorage {
         };
         let old = textarea_raw(&self.payloads, control, state.raw)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(old.backing()) != 1 {
+        if Arc::strong_count(old.shared_code_units()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
         if reset {
@@ -2356,7 +2401,7 @@ impl SessionStorage {
         control.require_document_string(text.value.allocation(), text.value.text())?;
         text.origins.require_owner(control)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(text.value.text().backing()) != 1 {
+        if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
         Ok(())
@@ -2631,7 +2676,7 @@ impl SessionStorage {
                     return Err(stop.into());
                 }
             };
-            let ordered = match OrderedAttributes::from_parser_storage(backing, control) {
+            let ordered = match validate_parser_attributes(backing, control) {
                 Ok(values) => values,
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
@@ -2645,10 +2690,7 @@ impl SessionStorage {
                         original_len,
                         reversed_pairs,
                     });
-                    return Err(match error {
-                        ParserAttributeError::Stop(stop) => stop.into(),
-                        ParserAttributeError::Duplicate { .. } => SessionError::DuplicateAttribute,
-                    });
+                    return Err(error);
                 }
             };
             *storage = Some(AttributeStorage::Frozen {
@@ -2895,7 +2937,7 @@ impl SessionStorage {
         };
         control.require_document_string(allocation, value)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(value.backing()) != if native { 2 } else { 1 } {
+        if Arc::strong_count(value.shared_code_units()) != if native { 2 } else { 1 } {
             return Err(SessionError::AliasedPayload);
         }
         if let Some(group) = origins {
@@ -7426,7 +7468,7 @@ fn check_formatting_text(
     control.require_document_string(text.value.allocation(), text.value.text())?;
     text.origins.require_disposal_owner(control)?;
     control.charge(WorkCategory::ProviderCall, 1)?;
-    if Arc::strong_count(text.value.text().backing()) != 1 {
+    if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
         return Err(SessionError::AliasedPayload);
     }
     control.charge(WorkCategory::RecordVisit, 1)?;
@@ -7639,7 +7681,7 @@ fn check_disposal_text(control: &mut ParseControl, text: &Text) -> Result<(), Se
     control.require_document_string_for_disposal(text.value.allocation(), text.value.text())?;
     text.origins.require_disposal_owner(control)?;
     cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
-    if Arc::strong_count(text.value.text().backing()) != 1 {
+    if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
         return Err(SessionError::AliasedPayload);
     }
     Ok(())
@@ -9007,6 +9049,88 @@ fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize,
 mod tests {
     use super::*;
 
+    #[test]
+    fn controlled_attribute_validation_preserves_parser_admission_and_refused_backing() {
+        let backing = Arc::new(vec![
+            Attribute::new(
+                QualifiedName::new(Namespace::from_uri("urn:a"), None, "ab"),
+                "left",
+            ),
+            Attribute::new(
+                QualifiedName::new(Namespace::from_uri("urn:a"), None, "ac"),
+                "right",
+            ),
+        ]);
+        // Pair + two string-header pairs = 6 visits. Five namespace and two
+        // local-name comparisons inspect 28 bytes. No copies/providers/reserves.
+        for credits in 0..=34 {
+            let selected = limits()
+                .into_builder()
+                .work_credits(credits)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
+            match validate_parser_attributes(backing.clone(), &mut control) {
+                Ok(attributes) => {
+                    assert_eq!(credits, 34);
+                    assert_eq!(attributes.as_slice().as_ptr(), backing.as_ptr());
+                    assert_eq!(control.usage().work(WorkCategory::RecordVisit), 6);
+                    assert_eq!(control.usage().work(WorkCategory::InspectByte), 28);
+                }
+                Err((error, recovered)) => {
+                    assert!(credits < 34);
+                    assert_eq!(error, SessionError::Stop(control.stop().unwrap()));
+                    assert!(Arc::ptr_eq(&recovered, &backing));
+                    assert_eq!(recovered.capacity(), backing.capacity());
+                    let stop = control.stop();
+                    drop(recovered);
+                    assert_eq!(control.stop(), stop);
+                }
+            }
+            assert_eq!(control.usage().work(WorkCategory::CopyByte), 0);
+            assert_eq!(control.usage().work(WorkCategory::ReserveByte), 0);
+            assert_eq!(control.usage().work(WorkCategory::ProviderCall), 0);
+            assert_eq!(control.usage().actual_capacity_bytes, 0);
+            assert_eq!(Arc::strong_count(&backing), 1);
+        }
+    }
+
+    #[test]
+    fn controlled_attribute_validation_keeps_cancellation_and_first_duplicate_order() {
+        let backing = Arc::new(vec![
+            Attribute::new(QualifiedName::new(Namespace::none(), None, "x"), "left"),
+            Attribute::new(QualifiedName::new(Namespace::none(), None, "x"), "right"),
+        ]);
+        for credits in [7, 8] {
+            let selected = limits()
+                .into_builder()
+                .work_credits(credits)
+                .finish()
+                .unwrap();
+            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
+            let (error, recovered) =
+                validate_parser_attributes(backing.clone(), &mut control).unwrap_err();
+            assert!(Arc::ptr_eq(&recovered, &backing));
+            if credits == 7 {
+                assert_eq!(error, SessionError::Stop(control.stop().unwrap()));
+                assert_eq!(control.usage().work(WorkCategory::InspectByte), 0);
+            } else {
+                assert_eq!(error, SessionError::DuplicateAttribute);
+                assert!(control.stop().is_none());
+                assert_eq!(control.usage().work(WorkCategory::InspectByte), 4);
+            }
+        }
+        let cancellation = HtmlParseCancellation::new();
+        cancellation.cancel();
+        let mut control = ParseControl::new(limits(), cancellation);
+        let (error, recovered) =
+            validate_parser_attributes(backing.clone(), &mut control).unwrap_err();
+        assert_eq!(error, SessionError::Stop(ParseStop::Cancelled));
+        assert!(Arc::ptr_eq(&recovered, &backing));
+        assert_eq!(control.usage().work(WorkCategory::RecordVisit), 0);
+        assert_eq!(control.usage().work(WorkCategory::InspectByte), 0);
+    }
+
     fn output_owner<'a>(
         source: &'a crate::HtmlSource,
         caps: HtmlParseLimits,
@@ -9348,7 +9472,7 @@ mod tests {
                     .current,
                 17
             );
-            let backing = Arc::as_ptr(tag.as_ref().unwrap().name.value.text().backing());
+            let backing = Arc::as_ptr(tag.as_ref().unwrap().name.value.text().shared_code_units());
             assert!(matches!(
                 session.allocate_html_tag_for_creation(
                     &mut c,
@@ -9363,7 +9487,7 @@ mod tests {
                 }))
             ));
             assert_eq!(
-                Arc::as_ptr(tag.as_ref().unwrap().name.value.text().backing()),
+                Arc::as_ptr(tag.as_ref().unwrap().name.value.text().shared_code_units()),
                 backing
             );
             release_token_kind(&mut Some(TokenKind::Tag(tag.take().unwrap())), &mut c).unwrap();
@@ -9649,8 +9773,11 @@ mod tests {
             panic!("text")
         };
         assert!(!Arc::ptr_eq(
-            native.backing(),
-            session.textarea_raw_value(&mut c, &node).unwrap().backing()
+            native.shared_code_units(),
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .shared_code_units()
         ));
         let mut b = next_text(&mut tokenizer, &mut c);
         session
@@ -9877,7 +10004,12 @@ mod tests {
                 .current,
             19
         );
-        let old = Arc::downgrade(session.textarea_raw_value(&mut c, &node).unwrap().backing());
+        let old = Arc::downgrade(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .shared_code_units(),
+        );
         for _ in 0..5 {
             session.parser_stack_removed(&mut c, &node, None).unwrap();
         }
@@ -9897,7 +10029,12 @@ mod tests {
                 .current,
             38
         );
-        let current = Arc::downgrade(session.textarea_raw_value(&mut c, &node).unwrap().backing());
+        let current = Arc::downgrade(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .shared_code_units(),
+        );
         let current_slot = session.textarea_state(&mut c, &node).unwrap().raw;
         let result = session.parser_stack_removed(&mut c, &node, None);
         let first = c.stop().unwrap();
@@ -9954,7 +10091,7 @@ mod tests {
                 &mut c,
                 &[116, 101, 120, 116, 97, 114, 101, 97],
             );
-            let backing = Arc::as_ptr(tag.name.value.text().backing());
+            let backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
             let mut input = Some(tag);
             session.allocate_implicit_body(&mut c, None).unwrap();
             assert_eq!(
@@ -9973,7 +10110,15 @@ mod tests {
             assert!(matches!(result, Err(SessionError::Stop(_))));
             if cap < 21 {
                 assert_eq!(
-                    Arc::as_ptr(input.as_ref().unwrap().name.value.text().backing()),
+                    Arc::as_ptr(
+                        input
+                            .as_ref()
+                            .unwrap()
+                            .name
+                            .value
+                            .text()
+                            .shared_code_units()
+                    ),
                     backing
                 );
             } else {
@@ -11255,7 +11400,7 @@ mod tests {
         };
         assert_eq!(tag.kind, TagKind::End);
         assert!(tag.had_duplicate_attributes);
-        let name = tag.name.value.text().backing().as_ptr();
+        let name = tag.name.value.text().shared_code_units().as_ptr();
         let origins = tag
             .name
             .origins
@@ -11268,7 +11413,7 @@ mod tests {
         session.recover_br_end_tag(&mut c, &mut input).unwrap();
         let tag = input.as_ref().unwrap();
         assert_eq!(tag.kind, TagKind::Start);
-        assert_eq!(tag.name.value.text().backing().as_ptr(), name);
+        assert_eq!(tag.name.value.text().shared_code_units().as_ptr(), name);
         assert_eq!(
             tag.name
                 .origins
@@ -11370,7 +11515,7 @@ mod tests {
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("tag")
             };
-            let name = tag.name.value.text().backing().as_ptr();
+            let name = tag.name.value.text().shared_code_units().as_ptr();
             let mut input = Some(tag);
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let remaining = remaining.map(|value| {
@@ -11391,7 +11536,14 @@ mod tests {
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let result = session.recover_br_end_tag(&mut c, &mut input);
             assert_eq!(
-                input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+                input
+                    .as_ref()
+                    .unwrap()
+                    .name
+                    .value
+                    .text()
+                    .shared_code_units()
+                    .as_ptr(),
                 name
             );
             if remaining.is_none() {
@@ -11465,7 +11617,14 @@ mod tests {
             panic!("tag")
         };
         let mut input = Some(tag);
-        let original = input.as_ref().unwrap().name.value.text().backing().as_ptr();
+        let original = input
+            .as_ref()
+            .unwrap()
+            .name
+            .value
+            .text()
+            .shared_code_units()
+            .as_ptr();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let html = session.allocate_implicit_html(&mut c).unwrap();
         let body = session.allocate_implicit_body(&mut c, None).unwrap();
@@ -11478,7 +11637,14 @@ mod tests {
             Err(SessionError::WrongToken)
         );
         assert_eq!(
-            input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+            input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr(),
             original
         );
         let imported = session
@@ -11493,7 +11659,14 @@ mod tests {
             Err(SessionError::AttributeStorageUnavailable)
         );
         assert_eq!(
-            input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+            input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr(),
             original
         );
         session.allocate_implicit_p(&mut c, None).unwrap();
@@ -11758,7 +11931,13 @@ mod tests {
         for remaining in [0, 1, required / 2, required - 1, required] {
             let mut c = control();
             let mut input = Some(body_lexical_value(&source, &mut c));
-            let original = input.as_ref().unwrap().value.text().backing().as_ptr();
+            let original = input
+                .as_ref()
+                .unwrap()
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr();
             let capacity = c.usage().actual_capacity_bytes;
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
@@ -11773,7 +11952,13 @@ mod tests {
                 input.take().unwrap().release(&mut c).unwrap();
             } else {
                 assert_eq!(
-                    input.as_ref().unwrap().value.text().backing().as_ptr(),
+                    input
+                        .as_ref()
+                        .unwrap()
+                        .value
+                        .text()
+                        .shared_code_units()
+                        .as_ptr(),
                     original
                 );
                 assert_eq!(c.usage().actual_capacity_bytes, capacity);
@@ -11819,7 +12004,7 @@ mod tests {
             .value
             .value
             .text()
-            .backing()
+            .shared_code_units()
             .as_ptr();
         let self_closing = input.as_ref().unwrap().self_closing;
         let duplicate = input.as_ref().unwrap().had_duplicate_attributes;
@@ -11840,7 +12025,7 @@ mod tests {
                 .value
                 .value
                 .text()
-                .backing()
+                .shared_code_units()
                 .as_ptr(),
             value
         );
@@ -11887,7 +12072,14 @@ mod tests {
                 panic!("tag")
             };
             let mut input = Some(tag);
-            let original = input.as_ref().unwrap().name.value.text().backing().as_ptr();
+            let original = input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr();
             let bytes = c.usage().actual_capacity_bytes;
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let before = c.usage().actual_capacity_bytes;
@@ -11913,7 +12105,14 @@ mod tests {
                     }))
                 ));
                 assert_eq!(
-                    input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+                    input
+                        .as_ref()
+                        .unwrap()
+                        .name
+                        .value
+                        .text()
+                        .shared_code_units()
+                        .as_ptr(),
                     original
                 );
                 assert_eq!(c.usage().actual_capacity_bytes, before);
@@ -11999,7 +12198,14 @@ mod tests {
                 panic!("tag")
             };
             let mut input = Some(tag);
-            let original = input.as_ref().unwrap().name.value.text().backing().as_ptr();
+            let original = input
+                .as_ref()
+                .unwrap()
+                .name
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr();
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
             let bytes = c.usage().actual_capacity_bytes;
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -12037,7 +12243,14 @@ mod tests {
                     }))
                 ));
                 assert_eq!(
-                    input.as_ref().unwrap().name.value.text().backing().as_ptr(),
+                    input
+                        .as_ref()
+                        .unwrap()
+                        .name
+                        .value
+                        .text()
+                        .shared_code_units()
+                        .as_ptr(),
                     original
                 );
                 assert_eq!(c.usage().actual_capacity_bytes, bytes);
@@ -12347,10 +12560,16 @@ mod tests {
         let source = crate::HtmlSource::utf8("<a v='\n'>");
         let mut c = control();
         let mut input = Some(body_lexical_value(&source, &mut c));
-        let original = input.as_ref().unwrap().value.text().backing().as_ptr();
+        let original = input
+            .as_ref()
+            .unwrap()
+            .value
+            .text()
+            .shared_code_units()
+            .as_ptr();
         let prefix = split_first_lf(&mut c, &mut input).unwrap().unwrap();
         assert!(input.is_none());
-        assert_eq!(prefix.value.text().backing().as_ptr(), original);
+        assert_eq!(prefix.value.text().shared_code_units().as_ptr(), original);
         prefix.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -12849,7 +13068,7 @@ mod tests {
             .value
             .value
             .text()
-            .backing()
+            .shared_code_units()
             .as_ptr();
         let HtmlNodeKind::Element(e) = &session.active().unwrap().records[a.index].kind else {
             panic!("input")
@@ -12866,7 +13085,7 @@ mod tests {
                 .value
                 .value
                 .text()
-                .backing()
+                .shared_code_units()
                 .as_ptr(),
             pointer
         );
@@ -13097,7 +13316,14 @@ mod tests {
         for admitted in [0, 1, work / 2, work - 1, work] {
             let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
             let mut attr = radio_next_attribute(&mut lexer, &mut c);
-            let pointer = attr.as_ref().unwrap().value.value.text().backing().as_ptr();
+            let pointer = attr
+                .as_ref()
+                .unwrap()
+                .value
+                .value
+                .text()
+                .shared_code_units()
+                .as_ptr();
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(WorkCategory::StateStep, remaining - admitted)
@@ -13116,7 +13342,10 @@ mod tests {
                     Some(SessionError::Stop(first))
                 );
                 if let Some(attr) = &attr {
-                    assert_eq!(attr.value.value.text().backing().as_ptr(), pointer);
+                    assert_eq!(
+                        attr.value.value.text().shared_code_units().as_ptr(),
+                        pointer
+                    );
                 }
             }
             if let Some(attr) = attr.take() {
@@ -13265,7 +13494,10 @@ mod tests {
                 unreachable!()
             };
             if let Some(native) = storage.form_attribute(&mut c, node.index, "value").unwrap() {
-                assert!(!Arc::ptr_eq(native.backing(), internal.backing()));
+                assert!(!Arc::ptr_eq(
+                    native.shared_code_units(),
+                    internal.shared_code_units()
+                ));
             }
             assert!(storage.payloads.values.iter().any(|p| matches!(
                 p,
@@ -14264,7 +14496,7 @@ mod tests {
         let RetainedPayload::String { value: b, .. } = &storage.payloads.values[b] else {
             panic!("cloned raw");
         };
-        assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+        assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
         assert_eq!(a.code_units(), [67, 13, 10]);
         assert_eq!(b.code_units(), [67, 13, 10]);
         let mut buffer = Utf16Buffer::new(&mut c).unwrap();
@@ -14523,7 +14755,7 @@ mod tests {
             let RetainedPayload::String { value: b, .. } = &storage.payloads.values[b] else {
                 panic!("copy raw")
             };
-            assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+            assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
             assert_eq!(a.code_units(), [65, 13, 66, 10, 67]);
             assert_eq!(b.code_units(), [65, 13, 66, 10, 67]);
             // Author-prohibited checked/readonly remain actual native attributes;
@@ -14899,7 +15131,7 @@ mod tests {
         let RetainedPayload::String { value: b, .. } = &storage.payloads.values[raw_b] else {
             unreachable!()
         };
-        assert!(!Arc::ptr_eq(a.backing(), b.backing()));
+        assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
         assert_eq!(a.code_units(), [65, 66, 67]);
         assert_eq!(b.code_units(), [65, 66, 67]);
         let mut buffer = Utf16Buffer::new(&mut c).unwrap();
@@ -18930,7 +19162,7 @@ mod tests {
                 .current,
             17
         );
-        let name_backing = Arc::as_ptr(tag.name.value.text().backing());
+        let name_backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
         let original_origins: Vec<_> = tag
             .name
             .origins
@@ -18966,7 +19198,7 @@ mod tests {
         let retained = input.as_ref().map(|tag| {
             (
                 tag.kind,
-                Arc::as_ptr(tag.name.value.text().backing()),
+                Arc::as_ptr(tag.name.value.text().shared_code_units()),
                 tag.name.value.text().code_units().to_vec(),
                 tag.attributes.len(),
                 tag.name
@@ -25060,7 +25292,7 @@ mod tests {
                     unreachable!()
                 };
                 assert_eq!(b.code_units(), expected);
-                !Arc::ptr_eq(a.backing(), b.backing())
+                !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
             };
             let mut buffer = Utf16Buffer::new(&mut c).unwrap();
             session
@@ -25585,7 +25817,7 @@ mod tests {
                 else {
                     unreachable!()
                 };
-                !Arc::ptr_eq(a.backing(), b.backing())
+                !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
             };
             let storage = session.active_mut().unwrap();
             let copy_slot = storage.payloads.values.iter().position(
@@ -25855,7 +26087,7 @@ mod tests {
                 else {
                     unreachable!()
                 };
-                !Arc::ptr_eq(a.backing(), b.backing())
+                !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
             };
             let slot = session.active().unwrap().payloads.values.iter().position(
                 |p| matches!(p, RetainedPayload::Input { node: Some(id), .. } if *id == copy.index)
@@ -26746,7 +26978,7 @@ mod tests {
             else {
                 unreachable!()
             };
-            !Arc::ptr_eq(a.backing(), b.backing())
+            !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
         };
         let slot = session
             .active()
