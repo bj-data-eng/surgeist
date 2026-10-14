@@ -1231,7 +1231,9 @@ fn serialize_hex(
     }
     if let Some(alpha) = alpha {
         out.push(if modern { " / " } else { ", " })?;
-        out.push(&legacy_byte_alpha(alpha))?;
+        out.push(&crate::specified_serialization::format_binary64(
+            crate::color::alpha::byte_alpha_for_serialization(alpha),
+        ))?;
     }
     out.push(")")?;
     Ok(out.finish())
@@ -1244,17 +1246,6 @@ fn hex_digit(value: u8) -> u8 {
         b'A'..=b'F' => value - b'A' + 10,
         _ => unreachable!("checked hex digit"),
     }
-}
-
-fn legacy_byte_alpha(value: u8) -> String {
-    for places in [2i32, 3] {
-        let factor = 10f64.powi(places);
-        let rounded = (f64::from(value) / 255.0 * factor).round() / factor;
-        if (rounded * 255.0).round() as u8 == value {
-            return crate::specified_serialization::format_binary64(rounded);
-        }
-    }
-    unreachable!("three decimals recover every alpha byte")
 }
 
 fn serialize_rgb(

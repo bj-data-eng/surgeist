@@ -1,5 +1,6 @@
 //! Canonical used serialization, with admitted digit storage and final writes.
 
+use super::alpha::byte_alpha_for_serialization;
 use super::protocol::{CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data};
 use super::used::{CssUsedColor, CssUsedColorError};
 use crate::exact_decimal::DecimalRounding;
@@ -109,7 +110,9 @@ impl Plan {
             pieces[next] = match value.alpha() {
                 None => Piece::None,
                 Some(number) => Piece::Number(if legacy {
-                    value.alpha_byte().map_or(number, legacy_byte_alpha)
+                    value
+                        .alpha_byte()
+                        .map_or(number, byte_alpha_for_serialization)
                 } else {
                     number
                 }),
@@ -118,17 +121,6 @@ impl Plan {
         }
         pieces[next] = Piece::Literal(b")");
         Ok(Self { pieces })
-    }
-}
-
-// Color4 16.1.1 defining steps. The pinned byte-236 example disagrees with
-// step 3; the operation follows the stated integer-rounding algorithm.
-fn legacy_byte_alpha(alpha: u8) -> f64 {
-    let nearest = (u32::from(alpha) * 100 + 127) / 255;
-    if (nearest * 255 + 50) / 100 == u32::from(alpha) {
-        f64::from(nearest) / 100.0
-    } else {
-        f64::from((u32::from(alpha) * 1000 + 127) / 255) / 1000.0
     }
 }
 

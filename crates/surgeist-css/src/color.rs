@@ -1,5 +1,6 @@
 //! Standalone used-color operations over explicit source and facts.
 
+pub(crate) mod alpha;
 pub(crate) mod authored;
 mod used;
 pub use used::{CssUsedColor, CssUsedColorError, CssUsedColorTransformation};

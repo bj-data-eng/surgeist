@@ -212,6 +212,8 @@ fn exact_scales_and_legacy_byte_alpha_follow_the_selected_numeric_phases() {
     for (source, expected) in [
         ("#000000ec", "rgba(0, 0, 0, 0.925)"),
         ("#000000ed", "rgba(0, 0, 0, 0.93)"),
+        ("rgb(0 0 0 / 0.9254901960784314)", "rgba(0, 0, 0, 0.92549)"),
+        ("rgb(0 0 0 / 0.9294117647058824)", "rgba(0, 0, 0, 0.929412)"),
         ("color(srgb 100% 50% 0%)", "color(srgb 1 0.5 0)"),
         ("color(srgb calc(50%) 0 0)", "color(srgb calc(0.5) 0 0)"),
         ("lab(100% 100% -100%)", "lab(100 125 -125)"),
@@ -227,6 +229,59 @@ fn exact_scales_and_legacy_byte_alpha_follow_the_selected_numeric_phases() {
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
+        );
+    }
+}
+
+#[test]
+fn every_byte_alpha_has_recoverable_specified_and_used_serialization() {
+    // Independently enumerate the recoverable hundredths in Color4 16.1.1;
+    // otherwise select the closest thousandth by exact rational distance.
+    // This search is independent of the production policy's direct formula.
+    // The pinned example for 236 conflicts with
+    // its defining steps, which require 0.925; 237 instead recovers as 0.93.
+    for alpha in 0..=u8::MAX {
+        let thousandths = (0..=100u32)
+            .find(|percent| (2 * percent * 255 + 100) / 200 == u32::from(alpha))
+            .map_or_else(
+                || {
+                    (0..=1000u32)
+                        .min_by_key(|candidate| (candidate * 255).abs_diff(u32::from(alpha) * 1000))
+                        .unwrap()
+                },
+                |percent| percent * 10,
+            );
+        let expected = if alpha == 255 {
+            "rgb(0, 0, 0)".to_owned()
+        } else {
+            // At most three decimal places, with unnecessary zeroes omitted.
+            let decimal = format!("{}.{:03}", thousandths / 1000, thousandths % 1000);
+            let decimal = decimal.trim_end_matches('0').trim_end_matches('.');
+            format!("rgba(0, 0, 0, {decimal})")
+        };
+        let source = format!("#000000{alpha:02x}");
+        assert_eq!(
+            color(&source).to_specified_css().unwrap(),
+            expected,
+            "specified {alpha}"
+        );
+        let limits = CssColorOrdinaryLimits {
+            input_units: 1024,
+            algorithm_records: 16_384,
+            arithmetic_records: 4096,
+            evaluation_records: 4096,
+            actions: 4_000_000,
+            output_units: 256,
+        };
+        assert_eq!(
+            serialize_used_color(
+                CssUsedColor::from_srgba8([0, 0, 0, alpha]),
+                CssColorSerializationRequest::Css,
+                limits,
+            )
+            .unwrap(),
+            expected,
+            "used {alpha}",
         );
     }
 }

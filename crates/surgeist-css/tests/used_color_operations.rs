@@ -75,6 +75,37 @@ fn equal_absolute_relative_and_mixed_channels_preserve_selected_serialization() 
 }
 
 #[test]
+fn equal_floating_and_byte_alpha_keep_their_distinct_serialization_policies() {
+    let facts = absent_facts();
+    for (byte, floating, expected_byte, expected_float) in [
+        (
+            236,
+            "rgb(0 0 0 / 0.9254901960784314)",
+            "rgba(0, 0, 0, 0.925)",
+            "rgba(0, 0, 0, 0.92549)",
+        ),
+        (
+            237,
+            "rgb(0 0 0 / 0.9294117647058824)",
+            "rgba(0, 0, 0, 0.93)",
+            "rgba(0, 0, 0, 0.929412)",
+        ),
+    ] {
+        let byte = CssUsedColor::from_srgba8([0, 0, 0, byte]);
+        let floating = value(floating, &facts);
+        assert_eq!(byte.alpha(), floating.alpha());
+        assert_eq!(
+            serialize_used_color(byte, CssColorSerializationRequest::Css, limits()).unwrap(),
+            expected_byte,
+        );
+        assert_eq!(
+            serialize_used_color(floating, CssColorSerializationRequest::Css, limits()).unwrap(),
+            expected_float,
+        );
+    }
+}
+
+#[test]
 fn initial_current_color_reaches_canvas_text_and_only_the_selected_scheme_child() {
     let id = CssColorFactIdentity::new(7, 3);
     let resource = CssColorFactIdentity::new(8, 4);
