@@ -27,33 +27,74 @@ impl SessionStorage {
         let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
             self.node_document_ref(c, root)?;
-            for child in &self.records[root].children {
+            for ordinal in 0..self
+                .construction
+                .node_at(root)
+                .expect("retained construction position")
+                .child_count()
+            {
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                pending.try_push(c, *child)?;
+                let child = self
+                    .construction
+                    .node_at(root)
+                    .expect("retained construction position")
+                    .child_at(ordinal)
+                    .expect("retained child ordinal")
+                    .position();
+                pending.try_push(c, child)?;
             }
             while let Some(node) = pending.try_pop(c)? {
                 self.node_document_ref(c, node)?;
                 c.charge(WorkCategory::RecordVisit, 4)?;
-                let record = &self.records[node];
-                if let Some(shadow) = &record.shadow {
+                let record = self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position");
+                if let Some(shadow) = record.shadow_root() {
+                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    let shadow_contents = self
+                        .construction
+                        .storage()
+                        .node_by_result_id(shadow.contents())
+                        .map_err(|_| SessionError::ForeignNode)?
+                        .position();
                     if self.fragment.is_none() {
                         return Err(SessionError::AssociationMove);
                     }
-                    self.shadow_state(c, shadow.contents.index)?;
+                    self.shadow_state(c, shadow_contents)?;
                     c.charge(
                         WorkCategory::InspectByte,
                         mem::size_of::<HtmlShadowRootProperties>() as u64,
                     )?;
-                    if shadow.properties.clonable() {
-                        self.node_document_ref(c, shadow.contents.index)?;
-                        self.lookup_registry_ref(c, shadow.contents.index)?;
-                        for child in &self.records[shadow.contents.index].children {
+                    if self
+                        .construction
+                        .node_at(shadow_contents)
+                        .expect("retained construction position")
+                        .shadow_properties()
+                        .expect("actual shadow role")
+                        .clonable()
+                    {
+                        self.node_document_ref(c, shadow_contents)?;
+                        self.lookup_registry_ref(c, shadow_contents)?;
+                        for ordinal in 0..self
+                            .construction
+                            .node_at(shadow_contents)
+                            .expect("retained construction position")
+                            .child_count()
+                        {
                             c.charge(WorkCategory::RecordVisit, 1)?;
-                            pending.try_push(c, *child)?;
+                            let child = self
+                                .construction
+                                .node_at(shadow_contents)
+                                .expect("retained construction position")
+                                .child_at(ordinal)
+                                .expect("retained child ordinal")
+                                .position();
+                            pending.try_push(c, child)?;
                         }
                     }
                 }
-                match &record.kind {
+                match record.kind() {
                     HtmlNodeKind::Element(element) => {
                         let namespace = element.name().namespace().uri();
                         let supported = self.fragment.is_some()
@@ -137,17 +178,47 @@ impl SessionStorage {
                     _ => return Err(SessionError::WrongToken),
                 }
 
-                if let Some(contents) = self.records[node].template_contents {
+                if let Some(contents) = self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .template_contents()
+                    .map(|node| node.position())
+                {
                     self.template_slot(c, node)?;
                     self.node_document_ref(c, contents)?;
-                    for child in &self.records[contents].children {
+                    for ordinal in 0..self
+                        .construction
+                        .node_at(contents)
+                        .expect("retained construction position")
+                        .child_count()
+                    {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        pending.try_push(c, *child)?;
+                        let child = self
+                            .construction
+                            .node_at(contents)
+                            .expect("retained construction position")
+                            .child_at(ordinal)
+                            .expect("retained child ordinal")
+                            .position();
+                        pending.try_push(c, child)?;
                     }
                 }
-                for child in &self.records[node].children {
+                for ordinal in 0..self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .child_count()
+                {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    pending.try_push(c, *child)?;
+                    let child = self
+                        .construction
+                        .node_at(node)
+                        .expect("retained construction position")
+                        .child_at(ordinal)
+                        .expect("retained child ordinal")
+                        .position();
+                    pending.try_push(c, child)?;
                 }
             }
             Ok(())
@@ -164,7 +235,13 @@ impl SessionStorage {
         copy: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.records[source].template_contents.is_some() {
+        if self
+            .construction
+            .node_at(source)
+            .expect("retained construction position")
+            .template_contents()
+            .is_some()
+        {
             let (_, source) = self.template_slot(c, source)?;
             let (_, copy) = self.template_slot(c, copy)?;
             let document = self.node_document_ref(c, copy.contents)?;
@@ -202,10 +279,21 @@ impl SessionStorage {
         document: DocumentRef,
     ) -> Result<usize, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        match &self.records[source].kind {
+        match &self
+            .construction
+            .node_at(source)
+            .expect("retained construction position")
+            .kind()
+        {
             HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
             HtmlNodeKind::Text(_) | HtmlNodeKind::Comment(_) => {
-                let text = matches!(self.records[source].kind, HtmlNodeKind::Text(_));
+                let text = matches!(
+                    self.construction
+                        .node_at(source)
+                        .expect("retained construction position")
+                        .kind(),
+                    HtmlNodeKind::Text(_)
+                );
                 let location = if text {
                     StringLocation::Text(source)
                 } else {
@@ -213,7 +301,6 @@ impl SessionStorage {
                 };
                 let source_slot = self.field_slot(c, location)?;
                 let (value, slot) = self.copy_registered_field(c, source_slot)?;
-                let len = value.len();
                 // Admit the registry binding before installing its native
                 // alias. Allocation success and binding must have no fallible
                 // gap, including a stop at the first binding-copy admission.
@@ -239,7 +326,7 @@ impl SessionStorage {
                     },
                 );
                 payload_write::<usize>(c, 1)?;
-                self.usage.utf16_units += len;
+
                 Ok(node.index)
             }
             HtmlNodeKind::ProcessingInstruction(_) => {
@@ -250,9 +337,7 @@ impl SessionStorage {
                 let (target, target_slot) = self.copy_registered_field(c, slot)?;
                 let slot = self.field_slot(c, StringLocation::ProcessingInstructionData(source))?;
                 let (data, data_slot) = self.copy_registered_field(c, slot)?;
-                let len = target.len().checked_add(data.len()).ok_or_else(|| {
-                    c.fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                })?;
+
                 payload_write::<[StringLocation; 2]>(c, 2)?;
                 let node = self.allocate_in_document_owned(
                     c,
@@ -271,7 +356,7 @@ impl SessionStorage {
                     StringLocation::ProcessingInstructionData(node.index),
                 );
                 payload_write::<usize>(c, 1)?;
-                self.usage.utf16_units += len;
+
                 self.bind_pi_map(map, node.index);
                 self.parse_pi_map(c, node.index, map)?;
                 Ok(node.index)
@@ -295,19 +380,22 @@ impl SessionStorage {
         let slot = self.field_slot(c, StringLocation::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(original) = &self.records[source].kind else {
+        let HtmlNodeKind::Element(original) = &self
+            .construction
+            .node_at(source)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         let namespace_present = original.name().namespace().uri().is_some();
-        let (namespace, namespace_slot, namespace_units) = if namespace_present {
+        let (namespace, namespace_slot) = if namespace_present {
             let slot = self.field_slot(c, StringLocation::Namespace(source))?;
             let (namespace, slot) = self.copy_registered_field(c, slot)?;
-            let units = namespace.len();
-            (Namespace::from_uri(namespace), Some(slot), units)
+            (Namespace::from_uri(namespace), Some(slot))
         } else {
-            (Namespace::none(), None, 0)
+            (Namespace::none(), None)
         };
-        let units = name.len() + namespace_units;
         let (values, allocation) = c.new_vector()?;
         if let Err(error) = self.prepare_payload_slot_owned(c) {
             release_vector(c, values, allocation)?;
@@ -404,7 +492,11 @@ impl SessionStorage {
         };
         *element = Some(node.index);
         self.bind_clone_metadata(c, node.index, bindings)?;
-        if base::is_base(&self.records[source]) {
+        if base::is_base(
+            self.construction
+                .node_at(source)
+                .expect("retained construction position"),
+        ) {
             let slot = self.base_slot(c, source)?;
             c.charge(
                 WorkCategory::CopyByte,
@@ -417,9 +509,14 @@ impl SessionStorage {
             self.register_base(c, node.index, domain)?;
         }
         payload_write::<usize>(c, 1)?;
-        self.usage.utf16_units += units;
+
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(original) = &self.records[source].kind else {
+        let HtmlNodeKind::Element(original) = &self
+            .construction
+            .node_at(source)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         let count = original.attributes().len();
@@ -436,7 +533,12 @@ impl SessionStorage {
             )?;
             let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let HtmlNodeKind::Element(original) = &self.records[source].kind else {
+            let HtmlNodeKind::Element(original) = &self
+                .construction
+                .node_at(source)
+                .expect("retained construction position")
+                .kind()
+            else {
                 unreachable!()
             };
             let attribute = &original.attributes().as_slice()[position];
@@ -462,10 +564,6 @@ impl SessionStorage {
             } else {
                 (None, None)
             };
-            let units = name.len()
-                + value.len()
-                + namespace.uri().map_or(0, DocumentString::len)
-                + prefix.as_ref().map_or(0, DocumentString::len);
             let (values, allocation) = c.new_vector()?;
             if let Err(error) = self.prepare_payload_slot_owned(c) {
                 release_vector(c, values, allocation)?;
@@ -522,7 +620,6 @@ impl SessionStorage {
                     stage,
                     start: position,
                     count: 0,
-                    units,
                 },
             )?;
         }
@@ -576,7 +673,12 @@ impl SessionStorage {
             let registry = self.lookup_registry_ref(c, source)?;
             let original = self.element_creation_state(c, source)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let HtmlNodeKind::Element(element) = &self.records[source].kind else {
+            let HtmlNodeKind::Element(element) = &self
+                .construction
+                .node_at(source)
+                .expect("retained construction position")
+                .kind()
+            else {
                 return Err(SessionError::WrongToken);
             };
             let html = exact_ascii(
@@ -839,7 +941,12 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.script {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+            let HtmlNodeKind::Element(element) = &self
+                .construction
+                .node_at(node)
+                .expect("retained construction position")
+                .kind()
+            else {
                 unreachable!()
             };
             if exact_ascii(

@@ -164,10 +164,17 @@ impl ParserArenaSession {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(match &storage.records[index].kind {
-            HtmlNodeKind::Element(value) => Some(value.attributes()),
-            _ => None,
-        })
+        Ok(
+            match &storage
+                .construction
+                .node_at(index)
+                .expect("retained construction position")
+                .kind()
+            {
+                HtmlNodeKind::Element(value) => Some(value.attributes()),
+                _ => None,
+            },
+        )
     }
     pub(crate) fn replace_foreign_nulls(
         &mut self,
@@ -469,7 +476,7 @@ mod tests {
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
-                    assert_eq!(session.active().unwrap().records.len(), 2);
+                    assert_eq!(session.active().unwrap().construction.storage().len(), 2);
                 }
                 let mut pending = input.map(TokenKind::Tag);
                 if pending.is_some() {
@@ -525,7 +532,7 @@ mod tests {
                 _ => assert!(matches!(result, Err(SessionError::Stop(_)))),
             }
             assert!(input.is_some());
-            assert_eq!(session.active().unwrap().records.len(), 2);
+            assert_eq!(session.active().unwrap().construction.storage().len(), 2);
             drop(alias);
             let mut pending = input.map(TokenKind::Tag);
             release_token_kind(&mut pending, &mut c).unwrap();
@@ -695,7 +702,10 @@ mod tests {
                     .active()
                     .unwrap()
                     .payloads
-                    .check_aliases(&session.active().unwrap().records, &mut c)
+                    .check_aliases(
+                        ConstructionView::Active(session.active().unwrap().construction.storage()),
+                        &mut c,
+                    )
                     .unwrap();
             } else {
                 result.unwrap();
@@ -784,7 +794,12 @@ mod tests {
                     completed = true;
                     assert_ne!(index, original.index);
                     let storage = session.active().unwrap();
-                    let HtmlNodeKind::Element(cloned) = &storage.records[index].kind else {
+                    let HtmlNodeKind::Element(cloned) = &storage
+                        .construction
+                        .node_at(index)
+                        .expect("retained construction position")
+                        .kind()
+                    else {
                         panic!("native clone");
                     };
                     assert_eq!(cloned.name().namespace(), &Namespace::svg());
@@ -817,19 +832,18 @@ mod tests {
                             ..
                         }
                     ));
-                    stopped_after_element |= session.active().unwrap().records.len() > 3;
+                    stopped_after_element |=
+                        session.active().unwrap().construction.storage().len() > 3;
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
                 }
                 Err(error) => panic!("qualified clone failure: {error:?}"),
             }
-            match session
-                .active()
-                .unwrap()
-                .payloads
-                .check_aliases(&session.active().unwrap().records, &mut c)
-            {
+            match session.active().unwrap().payloads.check_aliases(
+                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                &mut c,
+            ) {
                 Ok(()) => {}
                 Err(SessionError::Stop(first)) => {
                     // The exact clone cut can stop at the following cleanup
@@ -840,7 +854,12 @@ mod tests {
                         .active()
                         .unwrap()
                         .payloads
-                        .check_aliases(&session.active().unwrap().records, &mut c)
+                        .check_aliases(
+                            ConstructionView::Active(
+                                session.active().unwrap().construction.storage(),
+                            ),
+                            &mut c,
+                        )
                         .unwrap();
                 }
                 Err(error) => panic!("actual clone aliases: {error:?}"),
@@ -1158,7 +1177,6 @@ impl SessionStorage {
                 unreachable!()
             };
             let attributes = values.clone();
-            let count = attributes.len();
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
@@ -1193,8 +1211,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *element = Some(node.index);
-            self.usage.attributes += count;
-            self.usage.utf16_units += units;
+
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)
         })();

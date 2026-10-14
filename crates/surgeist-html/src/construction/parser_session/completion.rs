@@ -58,7 +58,15 @@ impl SessionStorage {
                     WorkCategory::InspectByte,
                     mem::size_of::<StandaloneDocumentState>() as u64,
                 )?;
-                if found || *node != 0 || !matches!(self.records[0].kind, HtmlNodeKind::Document(_))
+                if found
+                    || *node != 0
+                    || !matches!(
+                        self.construction
+                            .node_at(0)
+                            .expect("retained construction position")
+                            .kind(),
+                        HtmlNodeKind::Document(_)
+                    )
                 {
                     return Err(SessionError::CompletionMetadataUnavailable);
                 }
@@ -84,7 +92,14 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !matches!(storage.records[0].kind, HtmlNodeKind::Document(_)) {
+        if !matches!(
+            storage
+                .construction
+                .node_at(0)
+                .expect("retained construction position")
+                .kind(),
+            HtmlNodeKind::Document(_)
+        ) {
             return Err(SessionError::NotDocument);
         }
         for payload in &storage.payloads.values {
@@ -204,7 +219,9 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(c)?;
         storage.validate_completion_facts(c)?;
-        storage.payloads.check_aliases(&storage.records, c)?;
+        storage
+            .payloads
+            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
         let state = self.standalone_document_state(c)?;
         if finished {
             storage.effects.require_freezable(c)?;

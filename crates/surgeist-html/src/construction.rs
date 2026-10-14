@@ -1,5 +1,6 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
+pub(crate) mod bounded;
 pub(crate) mod parser_session;
 
 use crate::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
@@ -7,7 +8,7 @@ use std::{
     error::Error,
     fmt,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 /// The HTML document's selected compatibility mode.
@@ -127,6 +128,30 @@ pub enum HtmlConstructionError {
     ShadowHostMustBeElement,
     /// An element already has a shadow fragment.
     ShadowAlreadyAttached,
+    UnknownNode,
+    WrongNodeKind,
+    RootMove,
+    AssociationMove,
+    WrongSibling,
+    Cycle,
+    AssociationAlreadyOwned,
+    InvalidTemplateAssociation,
+    DuplicateAttribute {
+        first: usize,
+        duplicate: usize,
+    },
+    AttributeNameMismatch,
+    AttributeOrderMismatch,
+    InvalidShadowAssociation,
+    InvalidContentsReference,
+    ParentChildConflict,
+    InvalidOutputRoot,
+    OperationConsumed,
+    OperationNotReady,
+    ForeignAllocation,
+    CapacityMismatch,
+    SharedAllocationAliased,
+    ReleaseUnderflow,
     /// A finite resource limit would be exceeded.
     LimitExceeded {
         resource: HtmlConstructionResource,
@@ -173,8 +198,20 @@ impl Hash for HtmlNodeId {
 /// A checked local handle usable only by the builder that issued it.
 #[derive(Clone, Debug)]
 pub struct HtmlBuilderNode {
-    identity: Arc<Identity>,
+    identity: Weak<Identity>,
     index: usize,
+}
+impl PartialEq for HtmlBuilderNode {
+    fn eq(&self, other: &Self) -> bool {
+        Weak::ptr_eq(&self.identity, &other.identity) && self.index == other.index
+    }
+}
+impl Eq for HtmlBuilderNode {}
+impl Hash for HtmlBuilderNode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity.as_ptr().hash(state);
+        self.index.hash(state);
+    }
 }
 
 /// Lookup rejected an identity from a different immutable result.
@@ -242,6 +279,13 @@ pub struct HtmlProcessingInstruction {
     data: DocumentString,
 }
 impl HtmlProcessingInstruction {
+    /// Stores exact recovered target and data without native-author syntax checks.
+    pub fn new(target: impl Into<DocumentString>, data: impl Into<DocumentString>) -> Self {
+        Self {
+            target: target.into(),
+            data: data.into(),
+        }
+    }
     /// Exact target.
     pub fn target(&self) -> &DocumentString {
         &self.target
@@ -342,6 +386,14 @@ pub struct HtmlElement {
     attributes: OrderedAttributes,
 }
 impl HtmlElement {
+    /// Stores exact element values without fabricating construction history.
+    pub fn new(name: QualifiedName, attributes: OrderedAttributes) -> Self {
+        Self {
+            name,
+            attributes,
+            link_flags: None,
+        }
+    }
     /// Actual construction flags. Imported records without history return None.
     pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
         self.link_flags
@@ -427,25 +479,48 @@ impl HtmlShadowRootProperties {
         self.serializable
     }
 }
-/// A separate shadow fragment associated with its result-local host.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlDeclarativeShadowRoot {
-    host: HtmlNodeId,
-    contents: HtmlNodeId,
-    properties: HtmlShadowRootProperties,
+/// A borrowed local shadow association with properties owned by its fragment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlDeclarativeShadowRoot<'a> {
+    host: &'a HtmlNodeId,
+    contents: &'a HtmlNodeId,
+    properties: &'a HtmlShadowRootProperties,
 }
-impl HtmlDeclarativeShadowRoot {
+impl<'a> HtmlDeclarativeShadowRoot<'a> {
     /// Host element identity.
-    pub fn host(&self) -> &HtmlNodeId {
-        &self.host
+    pub fn host(&self) -> &'a HtmlNodeId {
+        self.host
     }
     /// Associated fragment root identity.
-    pub fn contents(&self) -> &HtmlNodeId {
-        &self.contents
+    pub fn contents(&self) -> &'a HtmlNodeId {
+        self.contents
     }
-    /// Explicit shadow properties.
+    /// Actual properties retained once with the shadow contents.
     pub fn properties(&self) -> HtmlShadowRootProperties {
-        self.properties
+        *self.properties
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ShadowAssociation {
+    host: HtmlNodeId,
+    contents: HtmlNodeId,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateContents {
+    Owned(usize),
+    ShadowReference(usize),
+}
+impl TemplateContents {
+    fn position(self) -> usize {
+        match self {
+            Self::Owned(i) | Self::ShadowReference(i) => i,
+        }
+    }
+    fn kind(self) -> HtmlTemplateContentsKind {
+        match self {
+            Self::Owned(_) => HtmlTemplateContentsKind::Owned,
+            Self::ShadowReference(_) => HtmlTemplateContentsKind::ShadowReference,
+        }
     }
 }
 /// The non-child relationship that owns an associated fragment.
@@ -469,9 +544,11 @@ struct Record {
     kind: HtmlNodeKind,
     parent: Option<usize>,
     children: Vec<usize>,
+    children_generation: u64,
     depth: usize,
-    template_contents: Option<usize>,
-    shadow: Option<HtmlDeclarativeShadowRoot>,
+    template_contents: Option<TemplateContents>,
+    shadow: Option<ShadowAssociation>,
+    shadow_properties: Option<HtmlShadowRootProperties>,
     owner: Option<HtmlFragmentOwner>,
 }
 impl Record {
@@ -480,9 +557,11 @@ impl Record {
             kind,
             parent,
             children: Vec::new(),
+            children_generation: 0,
             depth,
             template_contents: None,
             shadow: None,
+            shadow_properties: None,
             owner: None,
         }
     }
@@ -492,6 +571,12 @@ struct Arena {
     identity: Arc<Identity>,
     records: Vec<Record>,
     usage: HtmlConstructionUsage,
+    records_generation: u64,
+    wrapper_generation: u64,
+    depths_valid: bool,
+    // Shared never-reused namespace for child-bank incarnations and temporary
+    // banks, including every successful reallocation or child-bank replacement.
+    temporary_generation: u64,
 }
 impl Arena {
     fn id(&self, index: usize) -> HtmlNodeId {
@@ -501,7 +586,7 @@ impl Arena {
         }
     }
     fn lookup(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
-        if !Arc::ptr_eq(&self.identity, &id.identity) {
+        if !Arc::ptr_eq(&self.identity, &id.identity) || id.index >= self.records.len() {
             return Err(ForeignHtmlResult);
         }
         Ok(HtmlNode {
@@ -543,11 +628,33 @@ impl<'a> HtmlNode<'a> {
     pub fn template_contents(self) -> Option<HtmlNodeId> {
         self.arena.records[self.index]
             .template_contents
-            .map(|index| self.arena.id(index))
+            .map(|contents| self.arena.id(contents.position()))
     }
     /// Native declarative shadow association, if supplied.
-    pub fn declarative_shadow_root(self) -> Option<&'a HtmlDeclarativeShadowRoot> {
-        self.arena.records[self.index].shadow.as_ref()
+    pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
+        let relation = self.arena.records[self.index].shadow.as_ref()?;
+        Some(HtmlDeclarativeShadowRoot {
+            host: &relation.host,
+            contents: &relation.contents,
+            properties: self.arena.records[relation.contents.index]
+                .shadow_properties
+                .as_ref()
+                .expect("shadow association targets explicit shadow contents"),
+        })
+    }
+    /// Distinguishes an owning template association from a shadow reference.
+    pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
+        self.arena.records[self.index]
+            .template_contents
+            .map(TemplateContents::kind)
+    }
+    /// Whether this fragment was explicitly constructed as shadow contents.
+    pub fn is_shadow_contents(self) -> bool {
+        self.shadow_properties().is_some()
+    }
+    /// Actual shadow properties, including when no local host exists.
+    pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
+        self.arena.records[self.index].shadow_properties
     }
     /// Template or shadow association owning this fragment root.
     pub fn fragment_owner(self) -> Option<&'a HtmlFragmentOwner> {
@@ -560,6 +667,7 @@ impl<'a> HtmlNode<'a> {
 #[derive(Clone, Debug)]
 pub struct HtmlDocument {
     arena: Arc<Arena>,
+    root: usize,
 }
 impl HtmlDocument {
     /// Begins bounded native document construction with an explicit mode.
@@ -575,12 +683,12 @@ impl HtmlDocument {
     pub fn root(&self) -> HtmlNode<'_> {
         HtmlNode {
             arena: &self.arena,
-            index: 0,
+            index: self.root,
         }
     }
     /// Explicit document mode, unaffected by authored doctype text.
     pub fn mode(&self) -> HtmlDocumentMode {
-        match self.arena.records[0].kind {
+        match self.arena.records[self.root].kind {
             HtmlNodeKind::Document(mode) => mode,
             _ => unreachable!("document constructor owns root kind"),
         }
@@ -647,42 +755,50 @@ fn fragment_view(
 
 #[derive(Debug)]
 struct Builder {
-    identity: Arc<Identity>,
-    records: Vec<Record>,
+    storage: Option<bounded::HtmlConstructionStorage>,
     limits: HtmlConstructionLimits,
-    usage: HtmlConstructionUsage,
 }
 impl Builder {
+    fn storage(&self) -> &bounded::HtmlConstructionStorage {
+        self.storage.as_ref().expect("native storage retained")
+    }
     fn new(
         limits: HtmlConstructionLimits,
         kind: HtmlNodeKind,
     ) -> Result<Self, HtmlConstructionError> {
+        let mut initialization = Some(bounded::HtmlConstructionStorage::begin());
+        while let Some(action) = initialization
+            .as_mut()
+            .expect("initialization owner")
+            .next_action()?
+        {
+            action.perform().accept();
+        }
+        let storage =
+            bounded::HtmlConstructionInitialization::try_ready(&mut initialization)?.commit();
         let mut builder = Self {
-            identity: Arc::new(Identity),
-            records: Vec::new(),
+            storage: Some(storage),
             limits,
-            usage: HtmlConstructionUsage::default(),
         };
-        let usage = builder.admit(1, 0, 0, 0, 0)?;
-        builder
-            .records
-            .try_reserve(1)
-            .map_err(|_| HtmlConstructionError::AllocationFailed)?;
-        builder.records.push(Record::new(kind, None, 0));
-        builder.usage = usage;
+        builder.admit(1, 0, 0, 0, 0)?;
+        let command = match kind {
+            HtmlNodeKind::Document(mode) => {
+                bounded::HtmlConstructionCommand::CreateDocument { mode }
+            }
+            HtmlNodeKind::Fragment => bounded::HtmlConstructionCommand::CreateFragment,
+            _ => unreachable!("native root kind"),
+        };
+        builder.apply(command)?;
         Ok(builder)
     }
     fn handle(&self, index: usize) -> HtmlBuilderNode {
-        HtmlBuilderNode {
-            identity: self.identity.clone(),
-            index,
-        }
+        self.storage()
+            .node_at(index)
+            .expect("retained native position")
+            .handle()
     }
     fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
-        if !Arc::ptr_eq(&self.identity, &node.identity) {
-            return Err(HtmlConstructionError::ForeignBuilder);
-        }
-        Ok(node.index)
+        self.storage().position(node)
     }
     fn admit(
         &self,
@@ -697,11 +813,11 @@ impl Builder {
                 .ok_or(HtmlConstructionError::RepresentationExhausted)
         };
         let next = HtmlConstructionUsage {
-            nodes: add(self.usage.nodes, nodes)?,
-            edges: add(self.usage.edges, edges)?,
-            attributes: add(self.usage.attributes, attributes)?,
-            utf16_units: add(self.usage.utf16_units, units)?,
-            depth: self.usage.depth.max(depth),
+            nodes: add(self.storage().usage().nodes, nodes)?,
+            edges: add(self.storage().usage().edges, edges)?,
+            attributes: add(self.storage().usage().attributes, attributes)?,
+            utf16_units: add(self.storage().usage().utf16_units, units)?,
+            depth: self.storage().usage().depth.max(depth),
         };
         for (resource, limit, attempted) in [
             (
@@ -740,114 +856,189 @@ impl Builder {
         }
         Ok(next)
     }
+
+    fn apply(
+        &mut self,
+        command: bounded::HtmlConstructionCommand,
+    ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
+        let storage = self.storage.take().expect("native storage retained");
+        let mut operation = Some(
+            storage
+                .prepare(command)
+                .unwrap_or_else(|_| unreachable!("preparation retains all operands")),
+        );
+        let result = (|| {
+            while let Some(action) = operation
+                .as_mut()
+                .expect("pending native operation")
+                .next_action()?
+            {
+                action
+                    .perform()
+                    .map_err(|failure| failure.into_parts().0)?
+                    .accept();
+            }
+            Ok::<_, HtmlConstructionError>(())
+        })();
+        if let Err(error) = result {
+            let (storage, _, _, mut orders) = operation
+                .take()
+                .expect("refused operation retained")
+                .abort()
+                .into_parts();
+            while let Some(action) = orders.next_action() {
+                action.perform();
+            }
+            self.storage = Some(storage);
+            return Err(error);
+        }
+        match bounded::HtmlConstructionOperation::try_ready(&mut operation)?.commit() {
+            bounded::HtmlConstructionCommit::Changed {
+                storage,
+                created,
+                mut retired_orders,
+                ..
+            } => {
+                while let Some(action) = retired_orders.next_action() {
+                    action.perform();
+                }
+                self.storage = Some(storage);
+                Ok(created)
+            }
+            bounded::HtmlConstructionCommit::Published { .. } => {
+                unreachable!("native mutation is not publication")
+            }
+        }
+    }
+    fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
+        Ok(self.storage().native_depth(index))
+    }
     fn append(
         &mut self,
         parent: &HtmlBuilderNode,
         kind: HtmlNodeKind,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-        let parent = self.index(parent)?;
-        match &self.records[parent].kind {
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_) => {}
-            _ => return Err(HtmlConstructionError::ParentCannotHaveChildren),
+        let parent_position = self.index(parent)?;
+        let parent_view = self
+            .storage()
+            .node_at(parent_position)
+            .expect("checked parent");
+        if !matches!(
+            parent_view.kind(),
+            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+        ) {
+            return Err(HtmlConstructionError::ParentCannotHaveChildren);
         }
-        if self.records[parent].template_contents.is_some() {
+        if parent_view.template_contents().is_some() {
             return Err(HtmlConstructionError::TemplateContentsRequired);
         }
-        let template = matches!(&kind, HtmlNodeKind::Element(element) if element.name.namespace() == &Namespace::html() && element.name.local_name().code_units().iter().copied().eq("template".encode_utf16()));
-        let depth = self.records[parent]
-            .depth
-            .checked_add(1)
-            .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-        let final_depth = depth
-            .checked_add(usize::from(template))
+        let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::KnownHtmlElement::from_name(element.name()) == Some(crate::KnownHtmlElement::Template));
+        let depth = self
+            .depth(parent_position)?
+            .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionError::RepresentationExhausted)?;
         let (attributes, units) = content_usage(&kind)?;
-        let next = self.admit(
+        self.admit(
             1 + usize::from(template),
             1 + usize::from(template),
             attributes,
             units,
-            final_depth,
+            depth,
         )?;
-        self.records
-            .try_reserve(1 + usize::from(template))
-            .map_err(|_| HtmlConstructionError::AllocationFailed)?;
-        self.records[parent]
-            .children
-            .try_reserve(1)
-            .map_err(|_| HtmlConstructionError::AllocationFailed)?;
-        let index = self.records.len();
-        let mut record = Record::new(kind, Some(parent), depth);
-        if template {
-            record.template_contents = Some(index + 1);
+        let previous_usage = self.storage().usage();
+        let previous_len = self.storage().len();
+        let created = self
+            .apply(bounded::HtmlConstructionCommand::Create { kind })?
+            .expect("created native record");
+        if let Err(error) = self.apply(bounded::HtmlConstructionCommand::Insert {
+            node: created.clone(),
+            parent: parent.clone(),
+            before: None,
+        }) {
+            self.storage
+                .as_mut()
+                .expect("refused insert retains storage")
+                .rollback_native_append(previous_len, previous_usage);
+            return Err(error);
         }
-        self.records.push(record);
-        self.records[parent].children.push(index);
-        if template {
-            let mut contents = Record::new(HtmlNodeKind::Fragment, None, final_depth);
-            contents.owner = Some(HtmlFragmentOwner::Template(HtmlNodeId {
-                identity: self.identity.clone(),
-                index,
-            }));
-            self.records.push(contents);
-        }
-        self.usage = next;
-        Ok(self.handle(index))
+        Ok(created)
     }
     fn template_contents(
         &self,
         template: &HtmlBuilderNode,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        Ok(self.records[self.index(template)?]
-            .template_contents
-            .map(|index| self.handle(index)))
+        Ok(self
+            .storage()
+            .node(template)?
+            .template_contents()
+            .map(bounded::HtmlConstructionNode::handle))
     }
     fn shadow(
         &mut self,
         host: &HtmlBuilderNode,
         properties: HtmlShadowRootProperties,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-        let host = self.index(host)?;
-        if !matches!(self.records[host].kind, HtmlNodeKind::Element(_)) {
+        let host_position = self.index(host)?;
+        let view = self.storage().node_at(host_position).expect("checked host");
+        if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
             return Err(HtmlConstructionError::ShadowHostMustBeElement);
         }
-        if self.records[host].shadow.is_some() {
+        if view.shadow_root().is_some() {
             return Err(HtmlConstructionError::ShadowAlreadyAttached);
         }
-        let depth = self.records[host]
-            .depth
+        let depth = self
+            .depth(host_position)?
             .checked_add(1)
             .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-        let next = self.admit(1, 1, 0, 0, depth)?;
-        self.records
-            .try_reserve(1)
-            .map_err(|_| HtmlConstructionError::AllocationFailed)?;
-        let index = self.records.len();
-        let host_id = HtmlNodeId {
-            identity: self.identity.clone(),
-            index: host,
-        };
-        let contents_id = HtmlNodeId {
-            identity: self.identity.clone(),
-            index,
-        };
-        let mut contents = Record::new(HtmlNodeKind::Fragment, None, depth);
-        contents.owner = Some(HtmlFragmentOwner::ShadowHost(host_id.clone()));
-        self.records.push(contents);
-        self.records[host].shadow = Some(HtmlDeclarativeShadowRoot {
-            host: host_id,
-            contents: contents_id,
-            properties,
-        });
-        self.usage = next;
-        Ok(self.handle(index))
+        self.admit(1, 1, 0, 0, depth)?;
+        let previous_usage = self.storage().usage();
+        let previous_len = self.storage().len();
+        let contents = self
+            .apply(bounded::HtmlConstructionCommand::CreateShadowContents { properties })?
+            .expect("created shadow contents");
+        if let Err(error) = self.apply(bounded::HtmlConstructionCommand::AttachShadow {
+            host: host.clone(),
+            contents: contents.clone(),
+        }) {
+            self.storage
+                .as_mut()
+                .expect("refused association retains storage")
+                .rollback_native_append(previous_len, previous_usage);
+            return Err(error);
+        }
+        Ok(contents)
     }
-    fn finish(self) -> Arc<Arena> {
-        Arc::new(Arena {
-            identity: self.identity,
-            records: self.records,
-            usage: self.usage,
-        })
+    fn finish(mut self) -> Arc<Arena> {
+        let root = self.handle(0);
+        let storage = self.storage.take().expect("native storage retained");
+        let mut operation = Some(
+            storage
+                .prepare_finish(root)
+                .unwrap_or_else(|_| unreachable!("native root exists")),
+        );
+        while let Some(action) = operation
+            .as_mut()
+            .expect("native publication owner")
+            .next_action()
+            .expect("native construction invariants")
+        {
+            action
+                .perform()
+                .expect("native construction publication")
+                .accept();
+        }
+        match bounded::HtmlConstructionOperation::try_ready(&mut operation)
+            .expect("native publication ready")
+            .commit()
+        {
+            bounded::HtmlConstructionCommit::Published { result, lease } => {
+                drop(lease);
+                result.into_arena().0
+            }
+            bounded::HtmlConstructionCommit::Changed { .. } => {
+                unreachable!("native finish publishes")
+            }
+        }
     }
 }
 
@@ -911,7 +1102,7 @@ macro_rules! authoring_methods {
         }
         /// Current admitted usage; rejected appends never change it.
         pub fn usage(&self) -> HtmlConstructionUsage {
-            self.builder.usage
+            self.builder.storage().usage()
         }
         /// Appends exact shared element values without HTML normalization or a
         /// general content-conformance check. HTML templates get separate contents.
@@ -992,6 +1183,7 @@ impl HtmlDocumentBuilder {
     pub fn finish(self) -> HtmlDocument {
         HtmlDocument {
             arena: self.builder.finish(),
+            root: 0,
         }
     }
 }

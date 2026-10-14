@@ -57,7 +57,14 @@ impl SessionStorage {
         }
         let root = self.ordinary_root(c, node, detached)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if root == node && self.records[node].children.is_empty() {
+        if root == node
+            && self
+                .construction
+                .node_at(node)
+                .expect("retained construction position")
+                .child_count()
+                == 0
+        {
             return Ok(());
         }
         payload_write::<Option<RadioProgress>>(c, 1)?;

@@ -31,10 +31,14 @@ pub(crate) enum SvgScriptProcessing {
     RestrictedProcessed,
 }
 
-fn local(c: &mut ParseControl, records: &[Record], node: usize) -> Result<bool, SessionError> {
+fn local(
+    c: &mut ParseControl,
+    records: ConstructionView<'_>,
+    node: usize,
+) -> Result<bool, SessionError> {
     c.charge(WorkCategory::RecordVisit, 1)?;
-    let record = records.get(node).ok_or(SessionError::ForeignNode)?;
-    match &record.kind {
+    let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
+    match record.kind() {
         HtmlNodeKind::Element(element) => {
             Ok(exact_ascii(c, element.name().namespace().uri(), SVG)?
                 && exact_ascii(c, Some(element.name().local_name()), "script")?)
@@ -70,7 +74,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<bool, SessionError> {
-        local(c, &self.records, node)
+        local(
+            c,
+            ConstructionView::Active(self.construction.storage()),
+            node,
+        )
     }
     pub(super) fn svg_state_at(
         &self,
@@ -115,7 +123,13 @@ impl SessionStorage {
         if let Some(reason) = self.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
-        if !matches!(self.records[0].kind, HtmlNodeKind::Document(_)) {
+        if !matches!(
+            self.construction
+                .node_at(0)
+                .expect("retained construction position")
+                .kind(),
+            HtmlNodeKind::Document(_)
+        ) {
             return Err(c
                 .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
                 .into());
@@ -190,9 +204,12 @@ impl ParserArenaSession {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if node.owner.as_ptr() != Arc::as_ptr(&storage.identity)
-            || storage.effects.svg_wrapper != Some(node.index)
-        {
+        let position = storage
+            .construction
+            .storage()
+            .position(&node.handle)
+            .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
+        if storage.effects.svg_wrapper != Some(position) {
             return Err(SessionError::SvgScriptMetadataUnavailable);
         }
         storage.process_svg_owned(c, node.index)
@@ -205,9 +222,12 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         c.require_identity(&storage.control)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if node.owner.as_ptr() != Arc::as_ptr(&storage.identity)
-            || storage.effects.svg_wrapper != Some(node.index)
-        {
+        let position = storage
+            .construction
+            .storage()
+            .position(&node.handle)
+            .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
+        if storage.effects.svg_wrapper != Some(position) {
             return Err(SessionError::SvgScriptMetadataUnavailable);
         }
         payload_write::<Option<usize>>(c, 1)?;
@@ -236,19 +256,17 @@ impl FrozenArena {
     ) -> Result<SvgScriptState, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        let arena = match &storage.view {
-            FrozenView::Document(view) => &view.arena,
-            FrozenView::Fragment(view) => &view.arena,
-        };
+        let arena = &storage.view;
         c.charge(WorkCategory::ProviderCall, 1)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
-            return Err(SessionError::ForeignNode);
-        }
-        if !local(c, &arena.records, node.index)? {
+        let position = arena
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
+        if !local(c, ConstructionView::Frozen(arena), position)? {
             return Err(SessionError::SvgScriptMetadataUnavailable);
         }
-        state_at(&storage.payloads, c, node.index).map(|(_, state)| state)
+        state_at(&storage.payloads, c, position).map(|(_, state)| state)
     }
 }
 
@@ -523,8 +541,15 @@ mod tests {
         );
         assert!(session.svg_script_state(&mut c, &node).unwrap().processed);
         assert!(
-            session.active().unwrap().records[contents.index]
-                .children
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(contents.index)
+                .expect("retained construction position")
+                .children()
+                .map(|node| node.position())
+                .collect::<Vec<_>>()
                 .is_empty()
         );
         lexer.release(&mut c).unwrap();
@@ -600,8 +625,14 @@ mod tests {
             Err(SessionError::SvgScriptMetadataUnavailable)
         );
         assert!(
-            session.active().unwrap().records[node.index]
-                .parent
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(node.index)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position())
                 .is_none()
         );
         lexer.release(&mut c).unwrap();
@@ -766,13 +797,26 @@ mod tests {
             )))
         ));
         assert!(
-            session.active().unwrap().records[imported.index]
-                .parent
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(imported.index)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position())
                 .is_none()
         );
         assert!(
-            session.active().unwrap().records[root.index]
-                .children
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(root.index)
+                .expect("retained construction position")
+                .children()
+                .map(|node| node.position())
+                .collect::<Vec<_>>()
                 .iter()
                 .all(|n| *n != imported.index)
         );
@@ -789,7 +833,7 @@ mod tests {
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
-        let nodes = session.active().unwrap().records.len();
+        let nodes = session.active().unwrap().construction.storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         assert_eq!(
             session
@@ -805,7 +849,10 @@ mod tests {
             Some(SessionError::AliasedPayload)
         );
         assert!(input.is_some());
-        assert_eq!(session.active().unwrap().records.len(), nodes);
+        assert_eq!(
+            session.active().unwrap().construction.storage().len(),
+            nodes
+        );
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         drop(alias);
         release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();

@@ -6297,15 +6297,16 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = c.usage().clone();
     kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
-    // Kernel readiness1, target index9, at1, pre-removal qualification14,
-    // get_mut1, post-removal qualification14, removed index9, option5 and
+    // Kernel readiness1, target index10, at1, pre-removal qualification15,
+    // get_mut1, post-removal qualification15, removed index10, option5 and
     // textarea5. Each of the four indices includes the form field plus seven
-    // actual effect-readiness fields, including Range and Radio. Four
+    // actual effect-readiness fields, including Range and Radio, and its shared
+    // handle identity/range qualification reads one additional header. Four
     // HTML namespace comparisons inspect28 units at three credits each; local
     // p length differs from both option and textarea, so no local units read.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        59
+        63
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),

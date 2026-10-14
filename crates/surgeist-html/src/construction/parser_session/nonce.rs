@@ -70,7 +70,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Ok(());
         };
         let count = element.attributes().len();
@@ -90,7 +95,12 @@ impl SessionStorage {
             WorkCategory::InspectByte,
             crate::nonce::NONCE_INSPECTION_BOUND as u64,
         )?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         let attribute = element
@@ -139,18 +149,32 @@ impl SessionStorage {
     ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
         use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
         let mut root = self.ordinary_root(c, node, None)?;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            if matches!(self.records[root].kind, HtmlNodeKind::Document(_)) {
+            if matches!(
+                self.construction
+                    .node_at(root)
+                    .expect("retained construction position")
+                    .kind(),
+                HtmlNodeKind::Document(_)
+            ) {
                 // Every owned construction Document is standalone/inert, with no BC.
                 return Ok((C::NotBrowsingContextConnected, P::Unavailable));
             }
-            if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self.records[root].owner {
+            if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
+                .construction
+                .node_at(root)
+                .expect("retained construction position")
+                .fragment_owner()
+            {
                 c.charge(WorkCategory::ProviderCall, 1)?;
-                if !Arc::ptr_eq(&self.identity, &host.identity) {
-                    return Err(SessionError::ForeignNode);
-                }
-                root = self.ordinary_root(c, host.index, None)?;
+                let host_position = self
+                    .construction
+                    .storage()
+                    .node_by_result_id(host)
+                    .map_err(|_| SessionError::ForeignNode)?
+                    .position();
+                root = self.ordinary_root(c, host_position, None)?;
                 continue;
             }
             if let Some(fragment) = &self.fragment {
@@ -252,7 +276,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Ok(());
         };
         let mut selected = None;
@@ -286,7 +315,12 @@ impl SessionStorage {
             WorkCategory::InspectByte,
             crate::nonce::NONCE_INSPECTION_BOUND as u64,
         )?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         match crate::nonce_insertion_effect(
@@ -340,27 +374,57 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if let Some(shadow) = &self.records[node].shadow {
+        if let Some(shadow) = self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .shadow_root()
+        {
             c.charge(WorkCategory::ProviderCall, 1)?;
-            if !Arc::ptr_eq(&self.identity, &shadow.contents.identity) {
-                return Err(SessionError::ForeignNode);
-            }
-            return Ok(Some(shadow.contents.index));
+            return Ok(Some(
+                self.construction
+                    .storage()
+                    .node_by_result_id(shadow.contents())
+                    .map_err(|_| SessionError::ForeignNode)?
+                    .position(),
+            ));
         }
-        if let Some(child) = self.records[node].children.first() {
-            return Ok(Some(*child));
+        if let Some(child) = self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .child_at(0)
+        {
+            return Ok(Some(child.position()));
         }
         let mut cursor = node;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if cursor == root {
                 return Ok(None);
             }
-            if let Some(parent) = self.records[cursor].parent {
+            if let Some(parent) = self
+                .construction
+                .node_at(cursor)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position())
+            {
                 let mut found = false;
-                for index in 0..self.records[parent].children.len() {
+                for index in 0..self
+                    .construction
+                    .node_at(parent)
+                    .expect("retained construction position")
+                    .child_count()
+                {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let child = self.records[parent].children[index];
+                    let child = self
+                        .construction
+                        .node_at(parent)
+                        .expect("retained construction position")
+                        .child_at(index)
+                        .expect("retained child ordinal")
+                        .position();
                     if found {
                         return Ok(Some(child));
                     }
@@ -370,15 +434,28 @@ impl SessionStorage {
                     return Err(SessionError::WrongSibling);
                 }
                 cursor = parent;
-            } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self.records[cursor].owner {
+            } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
+                .construction
+                .node_at(cursor)
+                .expect("retained construction position")
+                .fragment_owner()
+            {
                 c.charge(WorkCategory::ProviderCall, 1)?;
-                if !Arc::ptr_eq(&self.identity, &host.identity) {
-                    return Err(SessionError::ForeignNode);
-                }
-                cursor = host.index;
+                let host_position = self
+                    .construction
+                    .storage()
+                    .node_by_result_id(host)
+                    .map_err(|_| SessionError::ForeignNode)?
+                    .position();
+                cursor = host_position;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if let Some(child) = self.records[cursor].children.first() {
-                    return Ok(Some(*child));
+                if let Some(child) = self
+                    .construction
+                    .node_at(cursor)
+                    .expect("retained construction position")
+                    .child_at(0)
+                {
+                    return Ok(Some(child.position()));
                 }
             } else {
                 return Err(SessionError::ForeignNode);
@@ -436,10 +513,16 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        self.payloads.check_aliases(&self.records, c)?;
+        self.payloads
+            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         c.charge(
@@ -450,7 +533,6 @@ impl SessionStorage {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
-        let mut old_units = 0;
         for index in 0..element.attributes().len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let attribute = &element.attributes().as_slice()[index];
@@ -467,16 +549,11 @@ impl SessionStorage {
                 crate::HtmlNonceAttributeEffect::Ignore
             ) {
                 position = Some(index);
-                old_units = 5usize
-                    .checked_add(attribute.name().prefix().map_or(0, DocumentString::len))
-                    .and_then(|n| n.checked_add(attribute.value().len()))
-                    .ok_or(SessionError::WrongToken)?;
                 break;
             }
         }
         if let Some(value) = value.take() {
             let (value, value_slot) = self.register_string_owned(c, value, None)?;
-            let units = value.len().checked_add(5).ok_or(SessionError::WrongToken)?;
             let name = literal_string(c, b"nonce")?;
             let (name, name_slot) = self.register_string_owned(c, name, None)?;
             payload_write::<Attribute>(c, 1)?;
@@ -488,7 +565,6 @@ impl SessionStorage {
                     [container, position],
                     incoming,
                     [name_slot, value_slot],
-                    [units, old_units],
                 )?;
                 self.initial_nonce_attribute(c, node, position)
             } else {
@@ -499,7 +575,6 @@ impl SessionStorage {
                     container,
                     incoming,
                     [name_slot, value_slot],
-                    units,
                 )
             }
         } else {
@@ -1026,7 +1101,7 @@ mod tests {
     }
     fn p_node(c: &mut ParseControl, session: &ParserArenaSession) -> ParserNode {
         let storage = session.active().unwrap();
-        let index = storage.records.iter().position(|record|matches!(&record.kind,HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
+        let index = (0..storage.construction.storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
         storage.node(c, index).unwrap()
     }
     #[test]
@@ -1080,7 +1155,16 @@ mod tests {
             .unwrap();
         let storage = session.active().unwrap();
         let parent = storage
-            .node(c, storage.records[node.index].parent.unwrap())
+            .node(
+                c,
+                storage
+                    .construction
+                    .node_at(node.index)
+                    .expect("retained construction position")
+                    .parent()
+                    .map(|node| node.position())
+                    .unwrap(),
+            )
             .unwrap();
         session.insert(c, &parent, &node, None, None).unwrap();
         assert_eq!(

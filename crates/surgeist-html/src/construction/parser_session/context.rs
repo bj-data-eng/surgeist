@@ -189,7 +189,7 @@ impl SessionStorage {
         let binding = self.payloads.values.len();
         self.payloads.values.push(RetainedPayload::NodeDocument {
             node: None,
-            document: DocumentRef::Owned(self.records.len()),
+            document: DocumentRef::Owned(self.construction.storage().len()),
         });
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
@@ -259,8 +259,15 @@ impl ParserArenaSession {
         storage.require(c)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         if storage.fragment.is_some()
-            || storage.records.len() != 1
-            || !matches!(storage.records[0].kind, HtmlNodeKind::Document(_))
+            || storage.construction.storage().len() != 1
+            || !matches!(
+                storage
+                    .construction
+                    .node_at(0)
+                    .expect("retained construction position")
+                    .kind(),
+                HtmlNodeKind::Document(_)
+            )
         {
             return Err(SessionError::ContextUnavailable);
         }
@@ -382,13 +389,23 @@ impl ParserArenaSession {
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?;
         let output = fragment.output.ok_or(SessionError::ContextUnavailable)?;
-        let root = *storage.records[0]
-            .children
-            .first()
-            .ok_or(SessionError::ContextUnavailable)?;
-        if output >= storage.records.len()
-            || root >= storage.records.len()
-            || !matches!(storage.records[output].kind, HtmlNodeKind::Fragment)
+        let root = storage
+            .construction
+            .node_at(0)
+            .ok_or(SessionError::ContextUnavailable)?
+            .child_at(0)
+            .ok_or(SessionError::ContextUnavailable)?
+            .position();
+        if output >= storage.construction.storage().len()
+            || root >= storage.construction.storage().len()
+            || !matches!(
+                storage
+                    .construction
+                    .node_at(output)
+                    .expect("retained construction position")
+                    .kind(),
+                HtmlNodeKind::Fragment
+            )
         {
             return Err(SessionError::ContextUnavailable);
         }
@@ -613,7 +630,13 @@ impl SessionStorage {
             }
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if matches!(self.records[node].kind, HtmlNodeKind::Fragment) {
+        if matches!(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position")
+                .kind(),
+            HtmlNodeKind::Fragment
+        ) {
             return Ok(RegistryRef::Null);
         }
         if self.fragment.is_none() {
@@ -780,16 +803,32 @@ impl SessionStorage {
             return Ok(());
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let shadow = if matches!(self.records[node].kind, HtmlNodeKind::Fragment)
-            && matches!(
-                self.records[node].owner,
-                Some(HtmlFragmentOwner::ShadowHost(_))
-            ) {
+        let shadow = if matches!(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position")
+                .kind(),
+            HtmlNodeKind::Fragment
+        ) && matches!(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position")
+                .fragment_owner(),
+            Some(HtmlFragmentOwner::ShadowHost(_))
+        ) {
             Some(self.shadow_state(c, node)?)
         } else {
             None
         };
-        if shadow.is_none() && !matches!(self.records[node].kind, HtmlNodeKind::Element(_)) {
+        if shadow.is_none()
+            && !matches!(
+                self.construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .kind(),
+                HtmlNodeKind::Element(_)
+            )
+        {
             return Ok(());
         }
         let previous = self.lookup_registry_ref(c, node)?;
@@ -835,7 +874,13 @@ impl SessionStorage {
         let registry = match parent {
             Some(parent)
                 if matches!(previous, RegistryRef::Null)
-                    && !matches!(self.records[parent].kind, HtmlNodeKind::Fragment) =>
+                    && !matches!(
+                        self.construction
+                            .node_at(parent)
+                            .expect("retained construction position")
+                            .kind(),
+                        HtmlNodeKind::Fragment
+                    ) =>
             {
                 self.lookup_registry_ref(c, parent)?
             }
@@ -1019,8 +1064,13 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         let template = storage.index(c, template)?;
-        let (template_slot, state) = storage.template_slot(c, template)?;
-        let HtmlNodeKind::Element(element) = &storage.records[template].kind else {
+        let (template_slot, _) = storage.template_slot(c, template)?;
+        let HtmlNodeKind::Element(element) = &storage
+            .construction
+            .node_at(template)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         let mut mode = None;
@@ -1071,11 +1121,23 @@ impl ParserArenaSession {
             DeclarativeShadowHost::Owned(host) => {
                 let host = storage.index(c, host)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let HtmlNodeKind::Element(element) = &storage.records[host].kind else {
+                let HtmlNodeKind::Element(element) = &storage
+                    .construction
+                    .node_at(host)
+                    .expect("retained construction position")
+                    .kind()
+                else {
                     return Ok(false);
                 };
                 let (eligible, custom) = shadow_host_name(element.name(), c)?;
-                if !eligible || storage.records[host].shadow.is_some() {
+                if !eligible
+                    || storage
+                        .construction
+                        .node_at(host)
+                        .expect("retained construction position")
+                        .shadow_root()
+                        .is_some()
+                {
                     return Ok(false);
                 }
                 let creation = storage.element_creation_state(c, host)?;
@@ -1239,14 +1301,7 @@ impl ParserArenaSession {
                 },
             });
             payload_write::<Option<usize>>(c, 1)?;
-            let root = storage.allocate_in_document_owned(
-                c,
-                HtmlNodeKind::Fragment,
-                false,
-                0,
-                0,
-                Some(document),
-            )?;
+            let root = storage.allocate_shadow_contents(c, properties, document)?;
             let RetainedPayload::Shadow { root: bound, .. } =
                 &mut storage.payloads.values[shadow_slot]
             else {
@@ -1275,22 +1330,39 @@ impl ParserArenaSession {
                 } => Some(*host),
                 _ => None,
             };
-            let depth = if let Some(host) = local_host {
-                storage.depth(c, host, None)? + 1
-            } else {
-                0
-            };
-            c.observe_tree_depth(storage.usage.depth.max(depth) as u64)?;
-            if local_host.is_some() {
-                c.charge(WorkCategory::ProviderCall, 3)?;
-            }
-            if local_host.is_some() {
-                payload_write::<Option<HtmlDeclarativeShadowRoot>>(c, 1)?;
-            }
-            payload_write::<Option<HtmlFragmentOwner>>(c, 1 + u64::from(local_host.is_some()))?;
-            payload_write::<Option<usize>>(c, 2)?;
-            payload_write::<usize>(c, 3 + u64::from(local_host.is_none()))?;
+            payload_write::<Option<usize>>(c, 1)?;
+            payload_write::<usize>(c, 1)?;
             payload_write::<[bool; 3]>(c, 3)?;
+            c.charge(
+                WorkCategory::ProviderCall,
+                2 + u64::from(local_host.is_some()),
+            )?;
+            let template_handle = storage
+                .construction
+                .node_at(template)
+                .ok_or(SessionError::ForeignNode)?
+                .handle();
+            let contents_handle = storage
+                .construction
+                .node_at(root.index)
+                .ok_or(SessionError::ForeignNode)?
+                .handle();
+            let command = if let Some(host) = local_host {
+                bounded::HtmlConstructionCommand::AttachTemplateShadow {
+                    template: template_handle,
+                    host: storage
+                        .construction
+                        .node_at(host)
+                        .ok_or(SessionError::ForeignNode)?
+                        .handle(),
+                    contents: contents_handle,
+                }
+            } else {
+                bounded::HtmlConstructionCommand::SetTemplateShadowContents {
+                    template: template_handle,
+                    contents: contents_handle,
+                }
+            };
             // Preflight the real effect receiver before the fixed native commit.
             let effect = storage
                 .fragment
@@ -1307,45 +1379,19 @@ impl ParserArenaSession {
                 ..
             } = effect
             else {
-                unreachable!()
+                unreachable!("prepared attachment effect")
             };
-            if local_host.is_none() {
-                c.release(HtmlParseResource::ManagedEdges, 1)?;
-            }
+            storage.construction.apply(c, command, &[])?;
             *contents = Some(root.index);
             *declarative = true;
             *available_to_internals = true;
             *keep_registry_null = keep_null;
-            storage.records[state.contents].owner = None;
-            storage.records[template].template_contents = Some(root.index);
             let RetainedPayload::Template { state, .. } =
                 &mut storage.payloads.values[template_slot]
             else {
-                unreachable!()
+                unreachable!("preflighted template metadata")
             };
             state.contents = root.index;
-            if let Some(host) = local_host {
-                storage.records[root.index].owner =
-                    Some(HtmlFragmentOwner::ShadowHost(HtmlNodeId {
-                        identity: storage.identity.clone(),
-                        index: host,
-                    }));
-                storage.records[host].shadow = Some(HtmlDeclarativeShadowRoot {
-                    host: HtmlNodeId {
-                        identity: storage.identity.clone(),
-                        index: host,
-                    },
-                    contents: HtmlNodeId {
-                        identity: storage.identity.clone(),
-                        index: root.index,
-                    },
-                    properties,
-                });
-            } else {
-                storage.usage.edges -= 1;
-            }
-            storage.records[root.index].depth = depth;
-            storage.usage.depth = storage.usage.depth.max(depth);
             Ok::<(), SessionError>(())
         })();
         if let Err(error) = result {
@@ -1680,22 +1726,34 @@ impl SessionStorage {
         document: DocumentRef,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let Some(shadow) = &self.records[source].shadow else {
+        let Some(shadow) = self
+            .construction
+            .node_at(source)
+            .expect("retained construction position")
+            .shadow_root()
+        else {
             return Ok(None);
         };
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        let shadow_contents = self
+            .construction
+            .storage()
+            .node_by_result_id(shadow.contents())
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
         c.charge(
             WorkCategory::InspectByte,
             mem::size_of::<HtmlShadowRootProperties>() as u64,
         )?;
-        if !shadow.properties.clonable() {
+        if !shadow.properties().clonable() {
             return Ok(None);
         }
         c.charge(
             WorkCategory::CopyByte,
             mem::size_of::<HtmlShadowRootProperties>() as u64 + mem::size_of::<usize>() as u64,
         )?;
-        let properties = shadow.properties;
-        let original = shadow.contents.index;
+        let properties = shadow.properties();
+        let original = shadow_contents;
         let state = self.shadow_state(c, original)?;
         let previous = self.lookup_registry_ref(c, original)?;
         let registry = match previous {
@@ -1757,14 +1815,7 @@ impl SessionStorage {
             creation: None,
         });
         payload_write::<Option<usize>>(c, 2)?;
-        let root = self.allocate_in_document_owned(
-            c,
-            HtmlNodeKind::Fragment,
-            false,
-            0,
-            0,
-            Some(document),
-        )?;
+        let root = self.allocate_shadow_contents(c, properties, document)?;
         let RetainedPayload::Shadow { root: bound, .. } = &mut self.payloads.values[fact] else {
             unreachable!()
         };
@@ -1774,31 +1825,22 @@ impl SessionStorage {
             unreachable!()
         };
         *bound = Some(root.index);
-        let depth = self.depth(c, copy, None)? + 1;
-        c.observe_tree_depth(self.usage.depth.max(depth) as u64)?;
-        c.charge(WorkCategory::ProviderCall, 3)?;
-        payload_write::<Option<HtmlFragmentOwner>>(c, 1)?;
-        payload_write::<Option<HtmlDeclarativeShadowRoot>>(c, 1)?;
-        payload_write::<usize>(c, 3)?;
-        c.acquire(HtmlParseResource::ManagedEdges, 1)?;
-        self.records[root.index].owner = Some(HtmlFragmentOwner::ShadowHost(HtmlNodeId {
-            identity: self.identity.clone(),
-            index: copy,
-        }));
-        self.records[copy].shadow = Some(HtmlDeclarativeShadowRoot {
-            host: HtmlNodeId {
-                identity: self.identity.clone(),
-                index: copy,
-            },
-            contents: HtmlNodeId {
-                identity: self.identity.clone(),
-                index: root.index,
-            },
-            properties,
-        });
-        self.records[root.index].depth = depth;
-        self.usage.depth = self.usage.depth.max(depth);
-        self.usage.edges += 1;
+        c.charge(WorkCategory::ProviderCall, 2)?;
+        let host = self
+            .construction
+            .node_at(copy)
+            .ok_or(SessionError::ForeignNode)?
+            .handle();
+        let contents = self
+            .construction
+            .node_at(root.index)
+            .ok_or(SessionError::ForeignNode)?
+            .handle();
+        self.construction.apply(
+            c,
+            bounded::HtmlConstructionCommand::AttachShadow { host, contents },
+            &[(HtmlParseResource::ManagedEdges, 1)],
+        )?;
         Ok(Some((original, root.index)))
     }
 }
@@ -1811,12 +1853,9 @@ pub(crate) struct TemplateCacheState<N = ParserNode> {
 
 impl FrozenStorage {
     #[cfg(test)]
-    fn context_arena<'a>(&'a self, c: &mut ParseControl) -> Result<&'a Arena, SessionError> {
+    fn context_arena(&self, c: &mut ParseControl) -> Result<&HtmlConstructionResult, SessionError> {
         c.require_identity(&self.control)?;
-        Ok(match &self.view {
-            FrozenView::Document(document) => &document.arena,
-            FrozenView::Fragment(fragment) => &fragment.arena,
-        })
+        Ok(&self.view)
     }
     #[cfg(test)]
     fn context_index(
@@ -1827,24 +1866,25 @@ impl FrozenStorage {
         let arena = self.context_arena(c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
-            return Err(SessionError::ForeignNode);
-        }
-        Ok(node.index)
+        Ok(arena
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position())
     }
     #[cfg(test)]
     fn context_node(&self, c: &mut ParseControl, index: usize) -> Result<HtmlNodeId, SessionError> {
         let arena = self.context_arena(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if index >= arena.records.len() {
+        if index >= arena.len() {
             return Err(SessionError::ForeignNode);
         }
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlNodeId>(c, 1)?;
-        Ok(HtmlNodeId {
-            identity: arena.identity.clone(),
-            index,
-        })
+        Ok(arena
+            .node_at(index)
+            .expect("qualified retained context node")
+            .as_node()
+            .id())
     }
     #[cfg(test)]
     fn context_registry(
@@ -1986,7 +2026,13 @@ impl FrozenArena {
         let index = storage.context_index(c, node)?;
         let arena = storage.context_arena(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !matches!(arena.records[index].kind, HtmlNodeKind::Document(_)) {
+        if !matches!(
+            arena
+                .node_at(index)
+                .ok_or(SessionError::ForeignNode)?
+                .kind(),
+            HtmlNodeKind::Document(_)
+        ) {
             return Err(SessionError::NotDocument);
         }
         for payload in &storage.payloads.values {
@@ -2029,7 +2075,7 @@ impl FrozenArena {
                         let arena = storage.context_arena(c)?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         if !matches!(
-                            arena.records.get(*index).map(|r| &r.kind),
+                            arena.node_at(*index).map(|r| r.kind()),
                             Some(HtmlNodeKind::Document(_))
                         ) {
                             return Err(SessionError::NotDocument);
@@ -2171,7 +2217,7 @@ pub(crate) fn registry_binding_layout() -> usize {
 }
 pub struct FrozenFragmentEffects<'a> {
     storage: &'a FrozenStorage,
-    arena: &'a Arena,
+    arena: &'a HtmlConstructionResult,
     fragment: &'a FragmentContextStorage,
 }
 pub enum FrozenFragmentHost<'a> {
@@ -2225,14 +2271,11 @@ impl<'a> FrozenFragmentEffects<'a> {
         self.storage.payloads.values.len()
     }
     fn node(&self, index: usize) -> Result<HtmlNode<'a>, SessionError> {
-        self.arena
-            .records
-            .get(index)
-            .ok_or(SessionError::ForeignNode)?;
-        Ok(HtmlNode {
-            arena: self.arena,
-            index,
-        })
+        Ok(self
+            .arena
+            .node_at(index)
+            .ok_or(SessionError::ForeignNode)?
+            .as_node())
     }
     /// Exactly one actual effect slot; there is no hidden ordinal scan.
     pub(crate) fn get(
@@ -2314,10 +2357,7 @@ impl FrozenArena {
         &self,
     ) -> Result<FrozenFragmentEffects<'_>, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let arena = match &storage.view {
-            FrozenView::Document(document) => &document.arena,
-            FrozenView::Fragment(fragment) => &fragment.arena,
-        };
+        let arena = &storage.view;
         let fragment = storage
             .fragment
             .as_ref()
@@ -2349,12 +2389,8 @@ impl FrozenArena {
                     WorkCategory::InspectByte,
                     mem::size_of::<HtmlNodeKind>() as u64,
                 )?;
-                let record = view
-                    .arena
-                    .records
-                    .get(index)
-                    .ok_or(SessionError::ForeignNode)?;
-                if fragment && !matches!(record.kind, HtmlNodeKind::Fragment) {
+                let record = view.arena.node_at(index).ok_or(SessionError::ForeignNode)?;
+                if fragment && !matches!(record.kind(), HtmlNodeKind::Fragment) {
                     return Err(SessionError::ContextUnavailable);
                 }
                 Ok(())
@@ -2371,7 +2407,13 @@ impl FrozenArena {
                         .capture()
                         .document_at(*document)
                         .map_err(|_| SessionError::ContextUnavailable)?;
-                    if !matches!(view.arena.records[*inert].kind, HtmlNodeKind::Document(_)) {
+                    if !matches!(
+                        view.arena
+                            .node_at(*inert)
+                            .expect("qualified context node")
+                            .kind(),
+                        HtmlNodeKind::Document(_)
+                    ) {
                         return Err(SessionError::ContextUnavailable);
                     }
                 }
@@ -2443,10 +2485,7 @@ impl<'a> FrozenFragmentEffects<'a> {
 }
 impl FrozenFragmentRegistryBinding<'_> {
     pub fn node(&self) -> HtmlNode<'_> {
-        HtmlNode {
-            arena: self.node.arena,
-            index: self.node.index,
-        }
+        self.node
     }
     pub fn registry(&self) -> &FrozenFragmentRegistry<'_> {
         &self.registry
@@ -2673,7 +2712,14 @@ mod tests {
         };
         assert_eq!(&actual, request.context().target_document());
         assert_eq!(
-            session.active().unwrap().records[moved.index].parent,
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(moved.index)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position()),
             Some(destination.index)
         );
         drop(actual);
@@ -2912,7 +2958,13 @@ mod tests {
                 assert_eq!(bootstrap.root.index, 1);
                 assert_eq!(bootstrap.output.index, 2);
                 assert!(matches!(
-                    session.active().unwrap().records[bootstrap.output.index].kind,
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .node_at(bootstrap.output.index)
+                        .expect("retained construction position")
+                        .kind(),
                     HtmlNodeKind::Fragment
                 ));
             } else {
@@ -2961,7 +3013,7 @@ mod tests {
             )))
         ));
         assert!(session.active().unwrap().fragment.is_none());
-        assert_eq!(session.active().unwrap().records.len(), 1);
+        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         assert_eq!(
             c.stop(),
@@ -3181,7 +3233,7 @@ mod tests {
                 assert!(
                     matches!(first,ParseStop::LimitExceeded {resource:actual,..} if actual==resource)
                 );
-                assert_eq!(session.active().unwrap().records.len(), 3);
+                assert_eq!(session.active().unwrap().construction.storage().len(), 3);
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(first))

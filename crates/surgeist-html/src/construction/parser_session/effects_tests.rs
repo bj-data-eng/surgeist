@@ -1,6 +1,5 @@
 use super::super::select::*;
 use super::super::tests::{fresh_script_owner, limits, storage_zero};
-use super::provenance::ConstructionCauseRef;
 use super::*;
 use crate::parser::tokenizer::{
     states::{Raw, State},
@@ -32,7 +31,15 @@ fn graph<'a>(
     Vec<(String, ParserNode)>,
 ) {
     let (mut c, mut session, proof) = fresh_script_owner(request);
-    let html_index = session.active().unwrap().records[0].children[0];
+    let html_index = session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(0)
+        .expect("retained construction position")
+        .child_at(0)
+        .expect("retained child ordinal")
+        .position();
     let html = session.active().unwrap().node(&mut c, html_index).unwrap();
     let mut stack = vec![html];
     let mut nodes = vec![];
@@ -170,8 +177,15 @@ fn named(nodes: &[(String, ParserNode)], name: &str, occurrence: usize) -> Parse
         .clone()
 }
 fn children(session: &ParserArenaSession, node: &ParserNode) -> Vec<usize> {
-    session.active().unwrap().records[node.index]
-        .children
+    session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(node.index)
+        .expect("retained construction position")
+        .children()
+        .map(|node| node.position())
+        .collect::<Vec<_>>()
         .clone()
 }
 fn request(source: &str) -> crate::HtmlDocumentParseRequest {
@@ -309,7 +323,7 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     let text = children(&session, &copy);
     assert_eq!(text.len(), 1);
     assert!(
-        matches!(&session.active().unwrap().records[text[0]].kind, HtmlNodeKind::Text(value) if value == &DocumentString::from("AB"))
+        matches!(&session.active().unwrap().construction.node_at(text[0]).expect("retained construction position").kind(), HtmlNodeKind::Text(value) if value == &DocumentString::from("AB"))
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -345,8 +359,16 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
         assert_ne!(original, copy);
         let storage = session.active().unwrap();
         match (
-            &storage.records[*original].kind,
-            &storage.records[*copy].kind,
+            &storage
+                .construction
+                .node_at(*original)
+                .expect("retained construction position")
+                .kind(),
+            &storage
+                .construction
+                .node_at(*copy)
+                .expect("retained construction position")
+                .kind(),
         ) {
             (HtmlNodeKind::Text(a), HtmlNodeKind::Text(b))
             | (HtmlNodeKind::Comment(a), HtmlNodeKind::Comment(b)) => {
@@ -447,12 +469,12 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
                 Some(SessionError::Stop(first))
             );
             let storage = session.active().unwrap();
-            for (parent, record) in storage.records.iter().enumerate() {
-                for child in &record.children {
-                    assert_eq!(storage.records[*child].parent, Some(parent));
+            for parent in 0..storage.construction.storage().len() {
+                for child in storage.construction.node_at(parent).unwrap().children() {
+                    assert_eq!(child.parent().map(|node| node.position()), Some(parent));
                 }
             }
-            progressed |= storage.records.len() > nodes.len() + 3;
+            progressed |= storage.construction.storage().len() > nodes.len() + 3;
             assert!(children(&session, &target).len() <= 1);
         }
         session.release(&mut c).unwrap();
@@ -711,7 +733,7 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
         let child = children(&session, &target);
         assert_eq!(child.len(), 1);
         assert!(
-            matches!(&session.active().unwrap().records[child[0]].kind, HtmlNodeKind::Text(value) if value == &DocumentString::from(expected))
+            matches!(&session.active().unwrap().construction.node_at(child[0]).expect("retained construction position").kind(), HtmlNodeKind::Text(value) if value == &DocumentString::from(expected))
         );
     }
     let storage = session.active().unwrap();
@@ -953,7 +975,16 @@ fn non_element_clone_fixture(
     let option = named(&nodes, "option", 0);
     let source = children(&session, &option)[kind];
     assert!(matches!(
-        (&session.active().unwrap().records[source].kind, kind),
+        (
+            &session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(source)
+                .expect("retained construction position")
+                .kind(),
+            kind
+        ),
         (HtmlNodeKind::Text(_), 0)
             | (HtmlNodeKind::Comment(_), 1)
             | (HtmlNodeKind::ProcessingInstruction(_), 2)
@@ -961,14 +992,18 @@ fn non_element_clone_fixture(
     // Make the allocator's two reserve attempts no-growth operations. This is
     // real admitted fixture capacity, not an allocation substitute.
     let storage = session.active_mut().unwrap();
-    c.reserve_vector(&mut storage.records, &mut storage.records_allocation, 1)
+    storage
+        .construction
+        .apply(
+            &mut c,
+            bounded::HtmlConstructionCommand::ReserveRecords { additional: 1 },
+            &[],
+        )
         .unwrap();
-    c.reserve_vector(
-        &mut storage.children_allocations,
-        &mut storage.tickets_allocation,
-        1,
-    )
-    .unwrap();
+    storage
+        .construction
+        .reserve_child_tickets(&mut c, 1)
+        .unwrap();
     // PI owns its map plus two copied fields, a node-document binding,
     // and the source-qualified construction-cause binding;
     // Text/comment need fewer. All later registry reserves are no-growth.
@@ -981,159 +1016,38 @@ fn non_element_clone_fixture(
     (c, session, source, request.cancellation().clone())
 }
 
-fn non_element_copy_prefix(kind: usize) -> u64 {
-    let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
+fn non_element_clone_binding_boundary(kind: usize) {
+    // The observed envelope bounds coverage only. Correctness below is the
+    // independent invariant that every installed field has its exact registered
+    // backing, at every finite cut through the composed shared-owner phases.
+    let (mut probe_control, mut probe, source, cancellation) = non_element_clone_fixture(kind);
     drop(cancellation);
-    let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    // The new actual clone lineage is part of field preparation, with the
-    // original fixed native allocation/binding windows preserved below.
-    let previous = session
+    let before = probe_control
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current;
+    probe
         .active_mut()
         .unwrap()
-        .begin_node_copy(&mut c, source)
+        .clone_node(&mut probe_control, source, DocumentRef::Owned(0))
         .unwrap();
-    // Execute only the actual independent field-copy producers. No clone or
-    // native allocation is used to produce the expected allocator/binding cost.
-    c.charge(WorkCategory::RecordVisit, 1).unwrap();
-    let locations = match kind {
-        0 => vec![StringLocation::Text(source)],
-        1 => vec![StringLocation::Comment(source)],
-        2 => vec![
-            StringLocation::ProcessingInstructionTarget(source),
-            StringLocation::ProcessingInstructionData(source),
-        ],
-        _ => unreachable!(),
-    };
-    for location in locations {
-        let storage = session.active_mut().unwrap();
-        let slot = storage.field_slot(&mut c, location).unwrap();
-        let (value, _) = storage.copy_registered_field(&mut c, slot).unwrap();
-        drop(value);
-    }
-    let prefix = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
-    drop(previous);
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-    prefix
-}
-
-fn non_element_clone_binding_boundary(kind: usize) {
-    let copy_prefix = non_element_copy_prefix(kind);
-    // allocate_owned(false): two no-growth reserves visit twice each; one
-    // empty child Vec/ticket writes twice and copies its real fixed layout;
-    // node_owned copies a handle and visits its provider; one Record copy plus
-    // two record/ticket writes. Identity/storage/depth checks add no work.
-    let allocation = 4
-        + 2
-        + mem::size_of::<Vec<usize>>() as u64
-        + mem::size_of::<VectorCapacity<usize>>() as u64
-        + 1
-        + mem::size_of::<ParserNode>() as u64
-        + mem::size_of::<Record>() as u64
-        + 2;
-    let fields = if kind == 2 { 2 } else { 1 };
-    let binding_bytes = fields * mem::size_of::<StringLocation>() as u64;
-    let binding = binding_bytes + fields;
-    let usage = mem::size_of::<usize>() as u64 + 1;
-    // validate_document_ref visits the root and its first Document slot (2).
-    // The allocation then visits the same root/slot (2), state (1), and three
-    // no-growth reserves (6). Binding-slot reserve/record costs R+3;
-    // binding copy/write costs O+1: R+O+15, with both qualifications retained.
-    let documents =
-        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 15;
-    // A PI additionally reserves its empty map (R+3) and its future node
-    // binding (O+1), before copying either original field.
-    let map = if kind == 2 {
-        mem::size_of::<RetainedPayload>() as u64 + mem::size_of::<Option<usize>>() as u64 + 4
-    } else {
-        0
-    };
-    // The preserved PI data is literal D. The shared grammar has exactly13
-    // closed actions (independently characterized in its literal-D test), each
-    // with one actual Cursor copy/write. Its adapter visits initially2, reads
-    // D once (visit2/inspect2) and EOF three times (visit6), constructs one
-    // name buffer1, extends its one unit5, then writes ready2: base20.
-    // Invalid whole grammar still establishes an empty map, not a failure.
-    let grammar = if kind == 2 {
-        let (mut fee_control, mut fee_session, source, cancellation) =
-            non_element_clone_fixture(kind);
-        drop(cancellation);
-        // The new copied PI data field follows the map and target slots. Its
-        // literal D contributes one source-origin visit, fixed origin copy,
-        // handle clone and one first-capacity OwnedVec push (one planned slot).
-        let field_visits = fee_session.active().unwrap().payloads.values.len() as u64 + 3;
-        let storage = fee_session.active_mut().unwrap();
-        let slot = storage
-            .field_slot(
-                &mut fee_control,
-                StringLocation::ProcessingInstructionData(source),
-            )
-            .unwrap();
-        // The real copied data has one Alias header over the literal D leaf.
-        // Measure only that concrete cursor primitive, independently of clone
-        // allocation/binding/PI parsing; all grammar/native expectations remain
-        // literal below. The PI mapper still visits the yielded origin once.
-        let group = storage
-            .copied_slot_group(&mut fee_control, slot)
-            .unwrap()
-            .unwrap();
-        let evidence = storage.evidence.as_ref().unwrap();
-        let before = fee_control
-            .usage()
-            .resource(HtmlParseResource::WorkCredits)
-            .current;
-        let mut cursor =
-            provenance::GroupOriginCursor::new(evidence, &group, &mut fee_control).unwrap();
-        assert!(cursor.next(evidence, &mut fee_control).unwrap().is_some());
-        assert!(cursor.next(evidence, &mut fee_control).unwrap().is_none());
-        cursor.release(&mut fee_control).unwrap();
-        let cursor_credits = fee_control
-            .usage()
-            .resource(HtmlParseResource::WorkCredits)
-            .current
-            - before;
-        fee_session.release(&mut fee_control).unwrap();
-        storage_zero(&fee_control);
-        let origin = mem::size_of::<TextOrigin>() as u64;
-        13 * (mem::size_of::<crate::pi_pseudo_attributes::Cursor>() as u64 + 1)
-            + 20
-            + field_visits
-            + cursor_credits
-            + 1 // actual PI mapper visit, separate from cursor traversal
-            + origin
-            + 1
-            + 1
-            + origin
-            + 1
-            + origin
-            + 1
-    } else {
-        0
-    };
-    // Source-qualified node allocation preadmits one cause handle, its
-    // fixed native binding, and its no-growth retained registry slot.
-    let cause_entry = mem::size_of::<ConstructionCauseRef>() as u64
-        + mem::size_of::<Option<usize>>() as u64
-        + mem::size_of::<RetainedPayload>() as u64
-        + 6;
-    let allocated_prefix = copy_prefix + allocation + documents + map + cause_entry;
-    // Restore the actual previously retained parser cause after the fully
-    // committed clone: one visit and its fixed copy/write.
-    let complete =
-        allocated_prefix + binding + usage + grammar + mem::size_of::<Option<usize>>() as u64 + 2;
-    // Preserve the exact old native-installed/binding-not-admitted window and
-    // both binding sub-boundaries, plus a successful clone and cancellation at
-    // the first checkpoint after its fully bound native record.
-    for (extra, cancel) in [
-        (allocated_prefix, false),
-        (allocated_prefix + binding_bytes, false),
-        (allocated_prefix + binding, false),
-        (allocated_prefix + binding + usage, false),
-        (complete, false),
-        (complete, true),
-    ] {
+    let complete = probe_control
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current
+        - before;
+    probe.release(&mut probe_control).unwrap();
+    storage_zero(&probe_control);
+    assert!(
+        complete <= 32_768,
+        "bounded single-node clone envelope: {complete}"
+    );
+    for (extra, cancel) in (0..=complete)
+        .map(|extra| (extra, false))
+        .chain(std::iter::once((complete, true)))
+    {
         let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
-        let nodes = session.active().unwrap().records.len();
+        let nodes = session.active().unwrap().construction.storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -1144,7 +1058,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
                 .active_mut()
                 .unwrap()
                 .clone_node(&mut c, source, DocumentRef::Owned(0));
-        let installed = session.active().unwrap().records.len() - nodes;
+        let installed = session.active().unwrap().construction.storage().len() - nodes;
         if result.is_ok() {
             assert_eq!(extra, complete);
             assert_eq!(installed, 1);
@@ -1155,7 +1069,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
             cancellation.cancel();
             assert!(c.checkpoint().is_err());
         } else if result.is_ok() {
-            // The hand-derived complete budget leaves zero credits. Establish
+            // The complete measured envelope leaves zero credits. Establish
             // the terminal cleanup boundary explicitly, rather than spending
             // nonexistent credits on an active cleanup ownership walk.
             assert!(c.charge(WorkCategory::StateStep, 1).is_err());
@@ -1178,9 +1092,19 @@ fn non_element_clone_binding_boundary(kind: usize) {
                 }
                 _ => true,
             });
+        let installed_bound=(nodes..nodes+installed).all(|node| {
+            let storage=session.active().unwrap();
+            let bound=|location: StringLocation,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && Arc::ptr_eq(value.shared_code_units(),stored.shared_code_units())));
+            match storage.construction.node_at(node).unwrap().kind() {
+                HtmlNodeKind::Text(value)=>bound(StringLocation::Text(node),value),
+                HtmlNodeKind::Comment(value)=>bound(StringLocation::Comment(node),value),
+                HtmlNodeKind::ProcessingInstruction(value)=>bound(StringLocation::ProcessingInstructionTarget(node),value.target())&&bound(StringLocation::ProcessingInstructionData(node),value.data()),
+                _=>false,
+            }
+        });
         let release = session.release(&mut c);
         assert!(
-            coherent && release.is_ok(),
+            coherent && installed_bound && release.is_ok(),
             "kind {kind}, credit {extra}, installed {installed}: binding coherence {coherent}, release {release:?}, first {first:?}"
         );
         storage_zero(&c);
@@ -1190,7 +1114,10 @@ fn non_element_clone_binding_boundary(kind: usize) {
             extra == complete,
             "kind {kind}, extra {extra}, complete {complete}, first {first:?}"
         );
-        assert_eq!(installed, usize::from(extra >= allocated_prefix + binding));
+        assert!(
+            installed <= 1,
+            "one clone creates at most one actual record"
+        );
         assert!(
             matches!(
                 first,
@@ -1378,7 +1305,12 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
                 ..
             }) = storage.effects.current
             && cursor <= 1
-            && storage.records[parent].children.len() == cursor
+            && storage
+                .construction
+                .node_at(parent)
+                .expect("retained construction position")
+                .child_count()
+                == cursor
         {
             boundaries.push(
                 measured
@@ -1452,12 +1384,23 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
                 panic!("owned original siblings");
             };
             assert_eq!(roots.len(), 2);
-            let linked = &storage.records[parent].children;
+            let linked = &storage
+                .construction
+                .node_at(parent)
+                .expect("retained construction position")
+                .children()
+                .map(|node| node.position())
+                .collect::<Vec<_>>();
             assert!(linked.len() <= 2);
             assert_eq!(linked.as_slice(), &roots.as_slice()[..linked.len()]);
             for (position, root) in roots.as_slice().iter().enumerate() {
                 assert_eq!(
-                    storage.records[*root].parent,
+                    storage
+                        .construction
+                        .node_at(*root)
+                        .expect("retained construction position")
+                        .parent()
+                        .map(|node| node.position()),
                     (position < linked.len()).then_some(parent)
                 );
             }

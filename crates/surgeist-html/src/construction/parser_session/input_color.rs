@@ -444,7 +444,12 @@ impl SessionStorage {
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(integrity(c));
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
@@ -948,7 +953,12 @@ mod tests {
                     result.unwrap();
                     assert!(attr.is_none());
                     let storage = session.active().unwrap();
-                    let HtmlNodeKind::Element(element) = &storage.records[node.index].kind else {
+                    let HtmlNodeKind::Element(element) = &storage
+                        .construction
+                        .node_at(node.index)
+                        .expect("retained construction position")
+                        .kind()
+                    else {
                         panic!("actual element");
                     };
                     assert_eq!(element.attributes().len(), 2);
@@ -1043,8 +1053,13 @@ mod tests {
                         }))
                     ));
                     let first = c.stop();
-                    let HtmlNodeKind::Element(element) =
-                        &session.active().unwrap().records[node.index].kind
+                    let HtmlNodeKind::Element(element) = &session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .node_at(node.index)
+                        .expect("retained construction position")
+                        .kind()
                     else {
                         panic!("actual element");
                     };

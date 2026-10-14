@@ -5507,3 +5507,66 @@ mod owned_fragment_details_completion_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod shadow_reference_alias_characterization {
+    use super::*;
+
+    #[test]
+    fn local_and_captured_shadow_reference_alias_refusal_retains_original_frozen_owner() {
+        for source in [
+            "<template shadowrootmode=open><p>A</p></template>",
+            "<div><template shadowrootmode=open><p>A</p></template></div>",
+        ] {
+            let request = tests::shadow_request(source, true);
+            let mut input = Some(initialized_driver(&request));
+            tests::complete(input.as_mut().unwrap());
+            let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+            let mut parts = completed.freeze_parts().unwrap();
+            let (template, shadow) = {
+                let arena = parts.arena.as_ref().unwrap();
+                let effect = arena
+                    .declarative_shadow(&mut parts.control, 0)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(effect.source.source(), request.source().identity());
+                assert_eq!(
+                    request.source().text(effect.source).unwrap(),
+                    crate::DocumentString::from("<template shadowrootmode=open>")
+                );
+                (effect.template, effect.contents)
+            };
+            let original_root = parts.fragment().unwrap().root().id();
+            let alias = parts.fragment().unwrap().clone();
+            let capacity = parts.control.usage().actual_capacity_bytes;
+            assert!(parts.release().is_err());
+            let first_stop = parts.control.stop();
+            assert_eq!(
+                first_stop,
+                Some(ParseStop::InternalInvariant(
+                    crate::parser::control::Invariant::SharedAllocationAliased
+                ))
+            );
+            assert!(parts.arena.is_some());
+            assert_eq!(parts.control.usage().actual_capacity_bytes, capacity);
+            assert_eq!(parts.source_binding().0, request.source().identity());
+            assert!(parts.fragment().is_err());
+            let fragment = parts.arena.as_ref().unwrap().fragment().unwrap();
+            assert_eq!(fragment.root().id(), original_root);
+            // Pinned HTML877d template step7.11.6 readback remains exact even
+            // while recovery is refused by an independently retained arena alias.
+            assert_eq!(
+                fragment.node(&template).unwrap().template_contents(),
+                Some(shadow.clone())
+            );
+            let p = fragment.node(&shadow).unwrap().children().next().unwrap();
+            let text = fragment.node(&p).unwrap().children().next().unwrap();
+            assert!(matches!(fragment.node(&text).unwrap().kind(),
+                crate::HtmlNodeKind::Text(value) if value.code_units() == [65]));
+            drop(alias);
+            parts.release().unwrap();
+            crate::parser::tree_builder::tests::assert_released(&parts.control);
+            assert_eq!(parts.control.stop(), first_stop);
+        }
+    }
+}

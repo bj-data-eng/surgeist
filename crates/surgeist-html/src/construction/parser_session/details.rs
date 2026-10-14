@@ -61,7 +61,12 @@ impl SessionStorage {
         position: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         let attr = &element.attributes().as_slice()[position];
@@ -123,7 +128,14 @@ impl SessionStorage {
         }
         let root = self.ordinary_root(c, node, None)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if root == node && self.records[node].children.is_empty() {
+        if root == node
+            && self
+                .construction
+                .node_at(node)
+                .expect("retained construction position")
+                .child_count()
+                == 0
+        {
             return Ok(());
         }
         self.start_effect(
@@ -219,7 +231,7 @@ impl SessionStorage {
         };
         let AttributeStorage::Removing {
             values,
-            allocation,
+            mut allocation,
             mut shared,
             element,
             index,
@@ -231,24 +243,26 @@ impl SessionStorage {
             unreachable!()
         };
         drop(values);
-        let HtmlNodeKind::Element(element_record) = &mut self.records[node].kind else {
-            unreachable!()
-        };
-        let result = if let Some(position) = position {
-            c.shift_attribute_slot(
-                element_record.attributes.parser_backing_mut(),
-                &mut shared,
-                &allocation,
-                position,
-            )
-        } else {
-            c.pop_attribute_slot(
-                element_record.attributes.parser_backing_mut(),
-                &mut shared,
-                &allocation,
-            )
-            .map(drop)
-        };
+        let result = (|| {
+            self.construction.begin_attributes(
+                c,
+                node,
+                HtmlConstructionAttributeEditMode::Slots,
+            )?;
+            let group = self.construction.attribute_edit();
+            let slot = if let Some(position) = position {
+                group.swap_adjacent(position)
+            } else {
+                group.pop()
+            }
+            .map_err(|e| construction_owner::construction_error(c, e))?;
+            let ready = prepare_attribute_slot(c, slot, &mut shared, &mut allocation)?;
+            if position.is_none() {
+                c.release(HtmlParseResource::ManagedAttributes, 1)?;
+            }
+            drop(ready.commit());
+            Ok::<_, SessionError>(())
+        })();
         if result.is_ok() {
             if position.is_some() {
                 shifted += 1;
@@ -256,7 +270,17 @@ impl SessionStorage {
                 popped = true;
             }
         }
-        let values = element_record.attributes.clone();
+        let HtmlNodeKind::Element(element_record) = self
+            .construction
+            .storage()
+            .node_at(node)
+            .expect("retained element")
+            .kind()
+        else {
+            unreachable!()
+        };
+        c.restore_attribute_weak(element_record.attributes().backing(), &mut shared);
+        let values = element_record.attributes().clone();
         *storage = Some(AttributeStorage::Removing {
             values,
             allocation,
@@ -274,7 +298,12 @@ impl SessionStorage {
         {
             cancellation.cancel();
         }
-        result.map_err(Into::into)
+        if result.is_ok() {
+            self.construction.finish_attributes(c)?;
+        } else {
+            self.construction.abort_attributes(c)?;
+        }
+        result
     }
 }
 
@@ -356,7 +385,13 @@ mod tests {
             .unwrap()
     }
     fn attributes(session: &ParserArenaSession, node: &ParserNode) -> Vec<(Vec<u16>, Vec<u16>)> {
-        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[node.index].kind
+        let HtmlNodeKind::Element(element) = &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(node.index)
+            .expect("retained construction position")
+            .kind()
         else {
             unreachable!()
         };
@@ -424,7 +459,10 @@ mod tests {
             .active()
             .unwrap()
             .payloads
-            .check_aliases(&session.active().unwrap().records, &mut c)
+            .check_aliases(
+                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                &mut c,
+            )
             .unwrap();
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -628,7 +666,13 @@ mod tests {
         let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let mut input = attribute(&mut lexer, &mut c);
-        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[node.index].kind
+        let HtmlNodeKind::Element(element) = &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(node.index)
+            .expect("retained construction position")
+            .kind()
         else {
             unreachable!()
         };

@@ -43,7 +43,7 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 RetainedPayload::Base { node, frozen, .. } => {
                     let node = node.ok_or(SessionError::WrongToken)?;
-                    if !base::is_base(&arena.records[node]) {
+                    if !base::is_base(arena.node_at(node).expect("qualified metadata node")) {
                         return Err(SessionError::WrongToken);
                     }
                     if let Some(frozen) = frozen {
@@ -60,7 +60,9 @@ impl<'a> PreparedReportStorage<'a> {
                     let node = node.ok_or(SessionError::WrongToken)?;
                     checked_node(arena, node, c)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = &arena.records[node].kind else {
+                    let HtmlNodeKind::Element(element) =
+                        arena.node_at(node).expect("qualified metadata node").kind()
+                    else {
                         return Err(SessionError::WrongToken);
                     };
                     if element.link_flags().is_none() {
@@ -124,7 +126,9 @@ impl<'a> PreparedReportStorage<'a> {
                         WorkCategory::InspectByte,
                         crate::nonce::NONCE_INSPECTION_BOUND as u64,
                     )?;
-                    let HtmlNodeKind::Element(element) = &arena.records[node].kind else {
+                    let HtmlNodeKind::Element(element) =
+                        arena.node_at(node).expect("qualified metadata node").kind()
+                    else {
                         return Err(SessionError::NonceMetadataUnavailable);
                     };
                     if !crate::nonce::nonce_element(element.name()) {
@@ -212,7 +216,7 @@ fn checked_document(
     match document {
         DocumentRef::Owned(index) => {
             if !matches!(
-                arena(storage).records.get(index).map(|record| &record.kind),
+                arena(storage).node_at(index).map(|record| record.kind()),
                 Some(HtmlNodeKind::Document(_))
             ) {
                 return Err(SessionError::NodeDocumentUnavailable);
@@ -231,23 +235,30 @@ fn checked_document(
     }
     Ok(())
 }
-fn arena(storage: &FrozenStorage) -> &Arena {
-    match &storage.view {
-        FrozenView::Document(view) => &view.arena,
-        FrozenView::Fragment(view) => &view.arena,
-    }
+fn arena(storage: &FrozenStorage) -> &HtmlConstructionResult {
+    &storage.view
 }
-fn checked_node(arena: &Arena, node: usize, c: &mut ParseControl) -> Result<(), SessionError> {
+fn checked_node(
+    arena: &HtmlConstructionResult,
+    node: usize,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
     c.charge(WorkCategory::RecordVisit, 1)?;
-    if node >= arena.records.len() {
+    if node >= arena.len() {
         return Err(SessionError::ForeignNode);
     }
     Ok(())
 }
-fn checked_select(arena: &Arena, node: usize, c: &mut ParseControl) -> Result<(), SessionError> {
+fn checked_select(
+    arena: &HtmlConstructionResult,
+    node: usize,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
     checked_node(arena, node, c)?;
     c.charge(WorkCategory::RecordVisit, 1)?;
-    let HtmlNodeKind::Element(element) = &arena.records[node].kind else {
+    let HtmlNodeKind::Element(element) =
+        arena.node_at(node).expect("qualified metadata node").kind()
+    else {
         return Err(SessionError::SelectMetadataUnavailable);
     };
     if !exact_ascii(
@@ -328,7 +339,7 @@ impl ReportStorage {
 }
 pub struct MetadataCursor<'a> {
     storage: &'a FrozenStorage,
-    arena: &'a Arena,
+    arena: &'a HtmlConstructionResult,
     next: usize,
 }
 pub enum MetadataStep<'a> {
@@ -358,7 +369,7 @@ impl<'a> MetadataCursor<'a> {
 /// supply a raw payload index or mix this lender with another result's arena.
 pub struct MetadataRef<'a> {
     storage: &'a FrozenStorage,
-    arena: &'a Arena,
+    arena: &'a HtmlConstructionResult,
     payload: &'a RetainedPayload,
 }
 pub enum MetadataDocument<'a> {
@@ -463,10 +474,7 @@ impl<'a> MetadataRef<'a> {
         ))
     }
     pub fn node(&self) -> HtmlNode<'a> {
-        HtmlNode {
-            arena: self.arena,
-            index: metadata_node(self.payload).expect("issued metadata node"),
-        }
+        self.native(metadata_node(self.payload).expect("issued metadata node"))
     }
     pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
         match self.payload {
@@ -481,10 +489,10 @@ impl<'a> MetadataRef<'a> {
         value
     }
     fn native(&self, index: usize) -> HtmlNode<'a> {
-        HtmlNode {
-            arena: self.arena,
-            index,
-        }
+        self.arena
+            .node_at(index)
+            .expect("qualified metadata node")
+            .as_node()
     }
     fn document_ref(&self, document: DocumentRef) -> MetadataDocument<'a> {
         match document {
@@ -615,13 +623,9 @@ impl<'a> MetadataRef<'a> {
     }
     pub(crate) fn form(&self) -> Option<(&'a FormAssociationState, Option<HtmlNode<'a>>)> {
         match self.payload {
-            RetainedPayload::FormAssociation { state, .. } => Some((
-                state,
-                state.owner.map(|index| HtmlNode {
-                    arena: self.arena,
-                    index,
-                }),
-            )),
+            RetainedPayload::FormAssociation { state, .. } => {
+                Some((state, state.owner.map(|index| self.native(index))))
+            }
             _ => None,
         }
     }
@@ -677,28 +681,16 @@ impl<'a> MetadataRef<'a> {
 
 impl MetadataTemplate<'_> {
     pub fn contents(&self) -> HtmlNode<'_> {
-        HtmlNode {
-            arena: self.contents.arena,
-            index: self.contents.index,
-        }
+        self.contents
     }
     pub fn target(&self) -> Option<HtmlNode<'_>> {
-        self.target.as_ref().map(|n| HtmlNode {
-            arena: n.arena,
-            index: n.index,
-        })
+        self.target
     }
     pub fn start(&self) -> Option<HtmlNode<'_>> {
-        self.start.as_ref().map(|n| HtmlNode {
-            arena: n.arena,
-            index: n.index,
-        })
+        self.start
     }
     pub fn end(&self) -> Option<HtmlNode<'_>> {
-        self.end.as_ref().map(|n| HtmlNode {
-            arena: n.arena,
-            index: n.index,
-        })
+        self.end
     }
 }
 

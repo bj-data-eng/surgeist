@@ -73,7 +73,7 @@ impl fmt::Display for HtmlAttributeValidationError {
 impl Error for HtmlAttributeValidationError {}
 
 #[derive(Clone, Copy, Debug)]
-enum Phase {
+pub(crate) enum Phase {
     Pair,
     NamespaceLength,
     NamespaceUnit { offset: usize, len: usize },
@@ -179,18 +179,6 @@ impl HtmlAttributeValidation {
             self.storage.attributes[self.duplicate].name(),
         )
     }
-
-    fn strings(&self, namespace: bool) -> (&DocumentString, &DocumentString) {
-        let (left, right) = self.names();
-        if namespace {
-            (
-                left.namespace().uri().expect("namespace pair was checked"),
-                right.namespace().uri().expect("namespace pair was checked"),
-            )
-        } else {
-            (left.local_name(), right.local_name())
-        }
-    }
 }
 
 /// One non-replayable comparison borrowing its original cursor exclusively.
@@ -202,82 +190,24 @@ pub struct HtmlAttributeValidationAction<'a> {
 impl HtmlAttributeValidationAction<'_> {
     /// Returns work admitted before calling [`Self::advance`].
     pub fn layout(&self) -> HtmlAttributeValidationLayout {
-        match self.validation.phase {
-            Phase::Pair | Phase::NamespaceLength | Phase::LocalLength => {
-                HtmlAttributeValidationLayout {
-                    record_visits: 2,
-                    inspected_bytes: 0,
-                }
-            }
-            Phase::NamespaceUnit { .. } | Phase::LocalUnit { .. } => {
-                HtmlAttributeValidationLayout {
-                    record_visits: 0,
-                    inspected_bytes: 4,
-                }
-            }
-            Phase::Finished => unreachable!("a finished cursor cannot issue an action"),
-        }
+        comparison_layout(self.validation.phase)
     }
 
     /// Performs only this action's admitted read and advances its cursor.
     /// A duplicate is latched before returning its first refusal.
     pub fn advance(self) -> Result<(), HtmlAttributeValidationError> {
         let validation = self.validation;
-        match validation.phase {
-            Phase::Pair => {
-                let (left, right) = validation.names();
-                match (left.namespace().uri(), right.namespace().uri()) {
-                    (None, None) => validation.phase = Phase::LocalLength,
-                    (Some(_), Some(_)) => validation.phase = Phase::NamespaceLength,
-                    _ => validation.next_pair(),
-                }
-            }
-            Phase::NamespaceLength | Phase::LocalLength => {
-                let namespace = matches!(validation.phase, Phase::NamespaceLength);
-                let (left, right) = validation.strings(namespace);
-                if left.len() != right.len() {
-                    validation.next_pair();
-                } else if left.is_empty() {
-                    if namespace {
-                        validation.phase = Phase::LocalLength;
-                    } else {
-                        return validation.duplicate();
-                    }
-                } else {
-                    let len = left.len();
-                    validation.phase = if namespace {
-                        Phase::NamespaceUnit { offset: 0, len }
-                    } else {
-                        Phase::LocalUnit { offset: 0, len }
-                    };
-                }
-            }
-            Phase::NamespaceUnit { offset, len } | Phase::LocalUnit { offset, len } => {
-                let namespace = matches!(validation.phase, Phase::NamespaceUnit { .. });
-                let (left, right) = validation.strings(namespace);
-                if left.code_units()[offset] != right.code_units()[offset] {
-                    validation.next_pair();
-                } else if offset + 1 == len {
-                    if namespace {
-                        validation.phase = Phase::LocalLength;
-                    } else {
-                        return validation.duplicate();
-                    }
-                } else {
-                    validation.phase = if namespace {
-                        Phase::NamespaceUnit {
-                            offset: offset + 1,
-                            len,
-                        }
-                    } else {
-                        Phase::LocalUnit {
-                            offset: offset + 1,
-                            len,
-                        }
-                    };
-                }
-            }
-            Phase::Finished => unreachable!("a finished cursor cannot issue an action"),
+        let (left, right) = validation.names();
+        match advance_comparison(
+            validation.phase,
+            left.namespace().uri(),
+            left.local_name(),
+            right.namespace().uri(),
+            right.local_name(),
+        ) {
+            ComparisonStep::Continue(phase) => validation.phase = phase,
+            ComparisonStep::Different => validation.next_pair(),
+            ComparisonStep::Equal => return validation.duplicate(),
         }
         Ok(())
     }
@@ -291,10 +221,112 @@ pub struct HtmlValidatedAttributes {
 }
 
 impl HtmlValidatedAttributes {
+    /// Borrows the exact validated order without publishing or copying storage.
+    pub fn as_slice(&self) -> &[Attribute] {
+        &self.storage.attributes
+    }
     /// Publishes exact input order while moving the original shared backing.
     pub fn into_attributes(self) -> OrderedAttributes {
         OrderedAttributes {
             attributes: self.storage.attributes,
         }
+    }
+}
+
+pub(crate) enum ComparisonStep {
+    Continue(Phase),
+    Different,
+    Equal,
+}
+pub(crate) fn comparison_layout(phase: Phase) -> HtmlAttributeValidationLayout {
+    match phase {
+        Phase::Pair | Phase::NamespaceLength | Phase::LocalLength => {
+            HtmlAttributeValidationLayout {
+                record_visits: 2,
+                inspected_bytes: 0,
+            }
+        }
+        Phase::NamespaceUnit { .. } | Phase::LocalUnit { .. } => HtmlAttributeValidationLayout {
+            record_visits: 0,
+            inspected_bytes: 4,
+        },
+        Phase::Finished => unreachable!("finished comparison has no action"),
+    }
+}
+pub(crate) fn advance_comparison(
+    phase: Phase,
+    left_namespace: Option<&DocumentString>,
+    left_local: &DocumentString,
+    right_namespace: Option<&DocumentString>,
+    right_local: &DocumentString,
+) -> ComparisonStep {
+    use ComparisonStep::{Continue, Different, Equal};
+    match phase {
+        Phase::Pair => match (left_namespace, right_namespace) {
+            (None, None) => Continue(Phase::LocalLength),
+            (Some(_), Some(_)) => Continue(Phase::NamespaceLength),
+            _ => Different,
+        },
+        Phase::NamespaceLength | Phase::LocalLength => {
+            let namespace = matches!(phase, Phase::NamespaceLength);
+            let (left, right) = if namespace {
+                (
+                    left_namespace.expect("checked namespace"),
+                    right_namespace.expect("checked namespace"),
+                )
+            } else {
+                (left_local, right_local)
+            };
+            if left.len() != right.len() {
+                Different
+            } else if left.is_empty() {
+                if namespace {
+                    Continue(Phase::LocalLength)
+                } else {
+                    Equal
+                }
+            } else if namespace {
+                Continue(Phase::NamespaceUnit {
+                    offset: 0,
+                    len: left.len(),
+                })
+            } else {
+                Continue(Phase::LocalUnit {
+                    offset: 0,
+                    len: left.len(),
+                })
+            }
+        }
+        Phase::NamespaceUnit { offset, len } | Phase::LocalUnit { offset, len } => {
+            let namespace = matches!(phase, Phase::NamespaceUnit { .. });
+            let (left, right) = if namespace {
+                (
+                    left_namespace.expect("checked namespace"),
+                    right_namespace.expect("checked namespace"),
+                )
+            } else {
+                (left_local, right_local)
+            };
+            if left.code_units()[offset] != right.code_units()[offset] {
+                Different
+            } else if offset + 1 == len {
+                if namespace {
+                    Continue(Phase::LocalLength)
+                } else {
+                    Equal
+                }
+            } else if namespace {
+                Continue(Phase::NamespaceUnit {
+                    offset: offset + 1,
+                    len,
+                })
+            } else {
+                Continue(Phase::LocalUnit {
+                    offset: offset + 1,
+                    len,
+                })
+            }
+        }
+        Phase::Finished => unreachable!("finished comparison has no action"),
     }
 }

@@ -64,6 +64,190 @@ pub surgeist_html::bounded::HtmlAttributeValidationError::NotReady
 impl core::error::Error for surgeist_html::bounded::HtmlAttributeValidationError
 impl core::fmt::Display for surgeist_html::bounded::HtmlAttributeValidationError
 pub fn surgeist_html::bounded::HtmlAttributeValidationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlConstructionActionDescription<'a>
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::auxiliary_entries_released: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::depth_observation: core::option::Option<usize>
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::initialized_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::record_writes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::usage: surgeist_html::HtmlConstructionUsage
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Compare
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Compare::inspected_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::CopyChildOrderSource
+pub surgeist_html::bounded::HtmlConstructionActionDescription::CopyChildOrderSource::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::CopyChildOrderSource::record_visits: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildOrder
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildOrder::initialized_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildOrder::parent_position: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildOrder::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildOrder::slot: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::element_alignment: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::element_size: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::position: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeChildren::record_writes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeIdentity
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeIdentity::initialized_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeIdentity::payload_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::InitializeIdentity::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Inspect
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Inspect::inspected_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Inspect::record_visits: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Preflight
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Preflight::usage: surgeist_html::HtmlConstructionUsage
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareAllocationReport
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareAllocationReport::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareAllocationReport::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareAllocationReport::record_visits: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers::count: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers::record_writes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PushChildOrder
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PushChildOrder::auxiliary_entries: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PushChildOrder::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PushChildOrder::record_writes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::PushChildOrder::slot: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve::allocation: &'a surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve::growth: surgeist_html::bounded::HtmlConstructionGrowth
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve::minimum_capacity: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve::report_provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Reserve::required_len: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Share
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Share::allocation: &'a surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Share::report_provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::ShareReferences
+pub surgeist_html::bounded::HtmlConstructionActionDescription::ShareReferences::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::ShareReferences::provider_calls: usize
+pub enum surgeist_html::bounded::HtmlConstructionAllocationRole
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::ArenaWrapper
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::AttributePlan
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::Children
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::Identity
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::PendingChildOrder
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::PendingChildOrder::parent_position: usize
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::PendingChildOrder::slot: usize
+pub surgeist_html::bounded::HtmlConstructionAllocationRole::Records
+pub enum surgeist_html::bounded::HtmlConstructionAttributeDescription<'a>
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Commit
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Commit::usage: surgeist_html::HtmlConstructionUsage
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Commit::work: surgeist_html::bounded::HtmlConstructionAttributeWork
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Compare
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Compare::prior_index: core::option::Option<usize>
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Compare::work: surgeist_html::bounded::HtmlConstructionAttributeWork
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::InitializeNameWitness(surgeist_html::bounded::HtmlConstructionAttributeWork)
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::Inspect(surgeist_html::bounded::HtmlConstructionAttributeWork)
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::PrepareAllocationReport(surgeist_html::bounded::HtmlConstructionAttributeWork)
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReserveAttributes
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReserveAttributes::before: surgeist_html::bounded::HtmlConstructionAttributeCapacity
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReserveAttributes::minimum_capacity: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReserveAttributes::work: surgeist_html::bounded::HtmlConstructionAttributeWork
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReservePlan
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReservePlan::allocation: &'a surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReservePlan::minimum_capacity: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::ReservePlan::work: surgeist_html::bounded::HtmlConstructionAttributeWork
+pub surgeist_html::bounded::HtmlConstructionAttributeDescription::UniqueBacking(surgeist_html::bounded::HtmlConstructionAttributeWork)
+impl surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>::prior_index(&self) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>::work(&self) -> surgeist_html::bounded::HtmlConstructionAttributeWork
+pub enum surgeist_html::bounded::HtmlConstructionAttributeEditMode
+pub surgeist_html::bounded::HtmlConstructionAttributeEditMode::NamedMerge
+pub surgeist_html::bounded::HtmlConstructionAttributeEditMode::NamedMerge::candidate_count: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeEditMode::Slots
+pub enum surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription
+pub surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription::Allocation
+pub surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription::NameWitness
+pub surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription::NameWitness::auxiliary_entries: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription::NameWitness::provider_calls: usize
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlConstructionCommand
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachShadow
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachShadow::contents: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachShadow::host: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachTemplateShadow
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachTemplateShadow::contents: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachTemplateShadow::host: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::AttachTemplateShadow::template: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::CheckChildTransfer
+pub surgeist_html::bounded::HtmlConstructionCommand::CheckChildTransfer::from: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::CheckChildTransfer::to: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::Create
+pub surgeist_html::bounded::HtmlConstructionCommand::Create::kind: surgeist_html::HtmlNodeKind
+pub surgeist_html::bounded::HtmlConstructionCommand::CreateDocument
+pub surgeist_html::bounded::HtmlConstructionCommand::CreateDocument::mode: surgeist_html::HtmlDocumentMode
+pub surgeist_html::bounded::HtmlConstructionCommand::CreateFragment
+pub surgeist_html::bounded::HtmlConstructionCommand::CreateShadowContents
+pub surgeist_html::bounded::HtmlConstructionCommand::CreateShadowContents::properties: surgeist_html::HtmlShadowRootProperties
+pub surgeist_html::bounded::HtmlConstructionCommand::Detach
+pub surgeist_html::bounded::HtmlConstructionCommand::Detach::node: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::DetachShadow
+pub surgeist_html::bounded::HtmlConstructionCommand::DetachShadow::host: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::Insert
+pub surgeist_html::bounded::HtmlConstructionCommand::Insert::before: core::option::Option<surgeist_html::HtmlBuilderNode>
+pub surgeist_html::bounded::HtmlConstructionCommand::Insert::node: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::Insert::parent: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::Publish
+pub surgeist_html::bounded::HtmlConstructionCommand::Publish::root: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::ReassignTemplateContents
+pub surgeist_html::bounded::HtmlConstructionCommand::ReassignTemplateContents::contents: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::ReassignTemplateContents::template: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceAttributes
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceAttributes::attributes: surgeist_html::bounded::HtmlValidatedAttributes
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceAttributes::element: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceContent
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceContent::content: surgeist_html::bounded::HtmlConstructionContent
+pub surgeist_html::bounded::HtmlConstructionCommand::ReplaceContent::node: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::ReserveRecords
+pub surgeist_html::bounded::HtmlConstructionCommand::ReserveRecords::additional: usize
+pub surgeist_html::bounded::HtmlConstructionCommand::SetDocumentMode
+pub surgeist_html::bounded::HtmlConstructionCommand::SetDocumentMode::document: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::SetDocumentMode::mode: surgeist_html::HtmlDocumentMode
+pub surgeist_html::bounded::HtmlConstructionCommand::SetLinkFlags
+pub surgeist_html::bounded::HtmlConstructionCommand::SetLinkFlags::element: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::SetLinkFlags::flags: surgeist_html::HtmlLinkFlags
+pub surgeist_html::bounded::HtmlConstructionCommand::SetTemplateShadowContents
+pub surgeist_html::bounded::HtmlConstructionCommand::SetTemplateShadowContents::contents: surgeist_html::HtmlBuilderNode
+pub surgeist_html::bounded::HtmlConstructionCommand::SetTemplateShadowContents::template: surgeist_html::HtmlBuilderNode
+pub enum surgeist_html::bounded::HtmlConstructionCommit
+pub surgeist_html::bounded::HtmlConstructionCommit::Changed
+pub surgeist_html::bounded::HtmlConstructionCommit::Changed::created: core::option::Option<surgeist_html::HtmlBuilderNode>
+pub surgeist_html::bounded::HtmlConstructionCommit::Changed::retired_orders: surgeist_html::bounded::HtmlConstructionOrderRetirement
+pub surgeist_html::bounded::HtmlConstructionCommit::Changed::storage: surgeist_html::bounded::HtmlConstructionStorage
+pub surgeist_html::bounded::HtmlConstructionCommit::Changed::transfers: [core::option::Option<surgeist_html::bounded::HtmlConstructionChildOrderTransfer>; 2]
+pub surgeist_html::bounded::HtmlConstructionCommit::Published
+pub surgeist_html::bounded::HtmlConstructionCommit::Published::lease: surgeist_html::bounded::HtmlConstructionLease
+pub surgeist_html::bounded::HtmlConstructionCommit::Published::result: surgeist_html::bounded::HtmlConstructionResult
+pub enum surgeist_html::bounded::HtmlConstructionContent
+pub surgeist_html::bounded::HtmlConstructionContent::Comment(surgeist_html::DocumentString)
+pub surgeist_html::bounded::HtmlConstructionContent::Doctype(surgeist_html::HtmlDoctype)
+pub surgeist_html::bounded::HtmlConstructionContent::ElementName(surgeist_html::QualifiedName)
+pub surgeist_html::bounded::HtmlConstructionContent::ProcessingInstruction(surgeist_html::HtmlProcessingInstruction)
+pub surgeist_html::bounded::HtmlConstructionContent::Text(surgeist_html::DocumentString)
+pub enum surgeist_html::bounded::HtmlConstructionGrowth
+pub surgeist_html::bounded::HtmlConstructionGrowth::Exact
+pub surgeist_html::bounded::HtmlConstructionGrowth::Geometric
+pub enum surgeist_html::bounded::HtmlConstructionResult
+pub surgeist_html::bounded::HtmlConstructionResult::Document(surgeist_html::HtmlDocument)
+pub surgeist_html::bounded::HtmlConstructionResult::Fragment(surgeist_html::HtmlFragment)
+impl surgeist_html::bounded::HtmlConstructionResult
+pub fn surgeist_html::bounded::HtmlConstructionResult::document(&self) -> core::option::Option<&surgeist_html::HtmlDocument>
+pub fn surgeist_html::bounded::HtmlConstructionResult::fragment(&self) -> core::option::Option<&surgeist_html::HtmlFragment>
+pub fn surgeist_html::bounded::HtmlConstructionResult::is_empty(&self) -> bool
+pub fn surgeist_html::bounded::HtmlConstructionResult::len(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionResult::node(&self, id: &surgeist_html::HtmlNodeId) -> core::result::Result<surgeist_html::HtmlNode<'_>, surgeist_html::ForeignHtmlResult>
+pub fn surgeist_html::bounded::HtmlConstructionResult::node_at(&self, position: usize) -> core::option::Option<surgeist_html::bounded::HtmlConstructionNode<'_>>
+pub fn surgeist_html::bounded::HtmlConstructionResult::node_by_result_id(&self, id: &surgeist_html::HtmlNodeId) -> core::result::Result<surgeist_html::bounded::HtmlConstructionNode<'_>, surgeist_html::ForeignHtmlResult>
+pub fn surgeist_html::bounded::HtmlConstructionResult::position(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<usize, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionResult::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub enum surgeist_html::bounded::HtmlConstructionRetirementDescription<'a>
+pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Allocation(&'a surgeist_html::bounded::HtmlConstructionAllocationSnapshot)
+pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload
+pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload::initialized_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload::position: usize
 pub enum surgeist_html::bounded::HtmlCustomNameScanAction
 pub surgeist_html::bounded::HtmlCustomNameScanAction::Header
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedHeader
@@ -400,6 +584,222 @@ pub struct surgeist_html::bounded::HtmlAttributeValidationLayout
 impl surgeist_html::bounded::HtmlAttributeValidationLayout
 pub fn surgeist_html::bounded::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
 pub fn surgeist_html::bounded::HtmlAttributeValidationLayout::record_visits(self) -> u64
+pub struct surgeist_html::bounded::HtmlConstructionAbort
+impl surgeist_html::bounded::HtmlConstructionAbort
+pub fn surgeist_html::bounded::HtmlConstructionAbort::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionCommand, core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>, surgeist_html::bounded::HtmlConstructionOrderRetirement)
+pub struct surgeist_html::bounded::HtmlConstructionAction<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionAction<'a>
+pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionActionDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::perform(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionObservation<'a>, surgeist_html::bounded::HtmlConstructionActionFailure>
+pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::storage_view(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionStorage>
+pub struct surgeist_html::bounded::HtmlConstructionActionFailure
+impl surgeist_html::bounded::HtmlConstructionActionFailure
+pub fn surgeist_html::bounded::HtmlConstructionActionFailure::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
+pub fn surgeist_html::bounded::HtmlConstructionActionFailure::into_parts(self) -> (surgeist_html::HtmlConstructionError, core::option::Option<surgeist_html::bounded::HtmlConstructionAllocationSnapshot>)
+pub fn surgeist_html::bounded::HtmlConstructionActionFailure::reason(&self) -> &surgeist_html::HtmlConstructionError
+pub struct surgeist_html::bounded::HtmlConstructionAllocationId
+impl surgeist_html::bounded::HtmlConstructionAllocationId
+pub fn surgeist_html::bounded::HtmlConstructionAllocationId::same_owner_role(&self, other: &Self) -> bool
+impl core::cmp::Eq for surgeist_html::bounded::HtmlConstructionAllocationId
+impl core::cmp::PartialEq for surgeist_html::bounded::HtmlConstructionAllocationId
+pub fn surgeist_html::bounded::HtmlConstructionAllocationId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+impl surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::capacity(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::child_position(&self) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::element_alignment(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::element_size(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::id(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationId
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::initialized_len(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::payload_bytes(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::pending_child_order_slot(&self) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::role(&self) -> surgeist_html::bounded::HtmlConstructionAllocationRole
+pub fn surgeist_html::bounded::HtmlConstructionAllocationSnapshot::wrapper_payload_bytes(&self) -> usize
+pub struct surgeist_html::bounded::HtmlConstructionAttributeAction<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionAttributeAction<'a>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeAction<'a>::perform(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeObservation<'a>, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>
+impl<'e, 'n> surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'_, 'e, 'n>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<bool, surgeist_html::HtmlConstructionError>
+impl core::ops::drop::Drop for surgeist_html::bounded::HtmlConstructionAttributeCandidate<'_, '_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'_, '_>::drop(&mut self)
+pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>
+impl<'a, 'e, 'n> surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>::description(&self) -> surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>::perform(self, prior: core::option::Option<&'n surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>
+impl surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'_, '_, '_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'_, '_, '_>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'_, '_, '_>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeCapacity
+pub surgeist_html::bounded::HtmlConstructionAttributeCapacity::capacity: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeCapacity::initialized_len: usize
+impl surgeist_html::bounded::HtmlConstructionAttributeCapacity
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCapacity::element_alignment(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCapacity::element_size(self) -> usize
+pub struct surgeist_html::bounded::HtmlConstructionAttributeCompletion
+impl surgeist_html::bounded::HtmlConstructionAttributeCompletion
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCompletion::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionAttributePlanRetirement)
+pub struct surgeist_html::bounded::HtmlConstructionAttributeEdit
+impl surgeist_html::bounded::HtmlConstructionAttributeEdit
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::abort(self) -> surgeist_html::bounded::HtmlConstructionAttributeCompletion
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::append<'a>(&'a mut self, incoming: &'a mut alloc::vec::Vec<surgeist_html::Attribute>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'a>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::begin(storage: surgeist_html::bounded::HtmlConstructionStorage, element: surgeist_html::HtmlBuilderNode, mode: surgeist_html::bounded::HtmlConstructionAttributeEditMode) -> core::result::Result<Self, surgeist_html::bounded::HtmlConstructionAttributeRejection>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::candidate<'e, 'n>(&'e mut self, index: usize, name: &'n surgeist_html::DocumentString) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::capacity(&self) -> surgeist_html::bounded::HtmlConstructionAttributeCapacity
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::decision(&self, index: usize) -> core::result::Result<bool, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeAction<'_>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::pop(&mut self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::replace<'a>(&'a mut self, index: usize, incoming: &'a mut core::option::Option<surgeist_html::Attribute>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'a>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::reserve(&mut self, additional: usize) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::selected_count(&self) -> core::result::Result<usize, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::storage_view(&self) -> &surgeist_html::bounded::HtmlConstructionStorage
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::swap_adjacent(&mut self, index: usize) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCompletion, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeObservation<'a>
+impl surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
+pub struct surgeist_html::bounded::HtmlConstructionAttributePlanRetirement
+impl surgeist_html::bounded::HtmlConstructionAttributePlanRetirement
+pub fn surgeist_html::bounded::HtmlConstructionAttributePlanRetirement::next_action(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeRejection
+impl surgeist_html::bounded::HtmlConstructionAttributeRejection
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::HtmlBuilderNode, surgeist_html::bounded::HtmlConstructionAttributeEditMode, surgeist_html::HtmlConstructionError)
+pub struct surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'a>
+impl surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>::description(&self) -> surgeist_html::bounded::HtmlConstructionAttributeRetirementDescription
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>::perform(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeSlot<'a>
+impl<'e> surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::capacity(&self) -> surgeist_html::bounded::HtmlConstructionAttributeCapacity
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'_, 'e>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'e>, surgeist_html::HtmlConstructionError>
+impl core::ops::drop::Drop for surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>::drop(&mut self)
+pub struct surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>
+impl<'a, 'e> surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>::description(&self) -> surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>::perform(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'a, 'e>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'a, 'e>
+impl surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'_, '_>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'_, '_>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'_, '_>::capacity(&self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeCapacity>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlotObservation<'_, '_>::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionAttributeWork
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::atomic_layout_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::auxiliary_entries: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::inspected_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::record_visits: usize
+pub surgeist_html::bounded::HtmlConstructionAttributeWork::record_writes: usize
+pub struct surgeist_html::bounded::HtmlConstructionChildOrderTransfer
+impl surgeist_html::bounded::HtmlConstructionChildOrderTransfer
+pub fn surgeist_html::bounded::HtmlConstructionChildOrderTransfer::into_parts(self) -> (usize, surgeist_html::bounded::HtmlConstructionAllocationSnapshot, surgeist_html::bounded::HtmlConstructionAllocationSnapshot)
+pub fn surgeist_html::bounded::HtmlConstructionChildOrderTransfer::position(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionChildOrderTransfer::source(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub fn surgeist_html::bounded::HtmlConstructionChildOrderTransfer::target(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub struct surgeist_html::bounded::HtmlConstructionInitialization
+impl surgeist_html::bounded::HtmlConstructionInitialization
+pub fn surgeist_html::bounded::HtmlConstructionInitialization::abort(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
+pub fn surgeist_html::bounded::HtmlConstructionInitialization::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionInitializationAction<'_>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionInitialization::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyInitialization, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionInitializationAction<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionInitializationAction<'a>
+pub fn surgeist_html::bounded::HtmlConstructionInitializationAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionActionDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionInitializationAction<'a>::perform(self) -> surgeist_html::bounded::HtmlConstructionInitializationObservation<'a>
+pub struct surgeist_html::bounded::HtmlConstructionInitializationObservation<'a>
+impl surgeist_html::bounded::HtmlConstructionInitializationObservation<'_>
+pub fn surgeist_html::bounded::HtmlConstructionInitializationObservation<'_>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionInitializationObservation<'_>::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub struct surgeist_html::bounded::HtmlConstructionLease
+impl surgeist_html::bounded::HtmlConstructionLease
+pub fn surgeist_html::bounded::HtmlConstructionLease::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub fn surgeist_html::bounded::HtmlConstructionLease::try_recover(result: &mut core::option::Option<surgeist_html::bounded::HtmlConstructionResult>, lease: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionRecovery, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionNode<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionNode<'a>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::as_node(self) -> surgeist_html::HtmlNode<'a>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::check_container(self) -> core::result::Result<(), surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::check_detachment(self) -> core::result::Result<(), surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::check_reference_child_of(self, parent: Self) -> core::result::Result<(), surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::child_at(self, ordinal: usize) -> core::option::Option<Self>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::child_count(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = Self> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::fragment_owner(self) -> core::option::Option<&'a surgeist_html::HtmlFragmentOwner>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::handle(self) -> surgeist_html::HtmlBuilderNode
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::is_shadow_contents(self) -> bool
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::kind(self) -> &'a surgeist_html::HtmlNodeKind
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::parent(self) -> core::option::Option<Self>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::position(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::shadow_properties(self) -> core::option::Option<surgeist_html::HtmlShadowRootProperties>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::HtmlDeclarativeShadowRoot<'a>>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::template_contents(self) -> core::option::Option<Self>
+pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::HtmlTemplateContentsKind>
+pub struct surgeist_html::bounded::HtmlConstructionObservation<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionObservation<'a>
+pub fn surgeist_html::bounded::HtmlConstructionObservation<'a>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionObservation<'a>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
+pub struct surgeist_html::bounded::HtmlConstructionOperation
+impl surgeist_html::bounded::HtmlConstructionOperation
+pub fn surgeist_html::bounded::HtmlConstructionOperation::abort(self) -> surgeist_html::bounded::HtmlConstructionAbort
+pub fn surgeist_html::bounded::HtmlConstructionOperation::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAction<'_>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionOperation::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyOperation, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionOrderRetirement
+impl surgeist_html::bounded::HtmlConstructionOrderRetirement
+pub fn surgeist_html::bounded::HtmlConstructionOrderRetirement::next_action(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionOrderRetirementAction<'_>>
+pub struct surgeist_html::bounded::HtmlConstructionOrderRetirementAction<'a>
+impl surgeist_html::bounded::HtmlConstructionOrderRetirementAction<'_>
+pub fn surgeist_html::bounded::HtmlConstructionOrderRetirementAction<'_>::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub fn surgeist_html::bounded::HtmlConstructionOrderRetirementAction<'_>::perform(self) -> surgeist_html::bounded::HtmlConstructionRetired
+pub struct surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'a>
+impl surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'_>
+pub fn surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'_>::commit(self) -> core::option::Option<surgeist_html::Attribute>
+pub struct surgeist_html::bounded::HtmlConstructionReadyInitialization
+impl surgeist_html::bounded::HtmlConstructionReadyInitialization
+pub fn surgeist_html::bounded::HtmlConstructionReadyInitialization::abort(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
+pub fn surgeist_html::bounded::HtmlConstructionReadyInitialization::commit(self) -> surgeist_html::bounded::HtmlConstructionStorage
+pub struct surgeist_html::bounded::HtmlConstructionReadyOperation
+impl surgeist_html::bounded::HtmlConstructionReadyOperation
+pub fn surgeist_html::bounded::HtmlConstructionReadyOperation::abort(self) -> surgeist_html::bounded::HtmlConstructionAbort
+pub fn surgeist_html::bounded::HtmlConstructionReadyOperation::commit(self) -> surgeist_html::bounded::HtmlConstructionCommit
+pub struct surgeist_html::bounded::HtmlConstructionRecovery
+impl surgeist_html::bounded::HtmlConstructionRecovery
+pub fn surgeist_html::bounded::HtmlConstructionRecovery::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionRetired)
+pub struct surgeist_html::bounded::HtmlConstructionRejection
+impl surgeist_html::bounded::HtmlConstructionRejection
+pub fn surgeist_html::bounded::HtmlConstructionRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionCommand, surgeist_html::HtmlConstructionError)
+pub struct surgeist_html::bounded::HtmlConstructionRetired
+impl surgeist_html::bounded::HtmlConstructionRetired
+pub fn surgeist_html::bounded::HtmlConstructionRetired::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
+pub struct surgeist_html::bounded::HtmlConstructionRetirement
+impl surgeist_html::bounded::HtmlConstructionRetirement
+pub fn surgeist_html::bounded::HtmlConstructionRetirement::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionRetirementAction<'_>>, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionRetirementAction<'a>
+impl surgeist_html::bounded::HtmlConstructionRetirementAction<'_>
+pub fn surgeist_html::bounded::HtmlConstructionRetirementAction<'_>::description(&self) -> surgeist_html::bounded::HtmlConstructionRetirementDescription<'_>
+pub fn surgeist_html::bounded::HtmlConstructionRetirementAction<'_>::perform(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
+pub struct surgeist_html::bounded::HtmlConstructionStorage
+impl surgeist_html::bounded::HtmlConstructionStorage
+pub fn surgeist_html::bounded::HtmlConstructionStorage::begin() -> surgeist_html::bounded::HtmlConstructionInitialization
+pub fn surgeist_html::bounded::HtmlConstructionStorage::is_empty(&self) -> bool
+pub fn surgeist_html::bounded::HtmlConstructionStorage::len(&self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionStorage::node(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::bounded::HtmlConstructionNode<'_>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::node_at(&self, position: usize) -> core::option::Option<surgeist_html::bounded::HtmlConstructionNode<'_>>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::node_by_result_id(&self, id: &surgeist_html::HtmlNodeId) -> core::result::Result<surgeist_html::bounded::HtmlConstructionNode<'_>, surgeist_html::ForeignHtmlResult>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::position(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<usize, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare(self, command: surgeist_html::bounded::HtmlConstructionCommand) -> core::result::Result<surgeist_html::bounded::HtmlConstructionOperation, surgeist_html::bounded::HtmlConstructionRejection>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare_finish(self, root: surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::bounded::HtmlConstructionOperation, surgeist_html::bounded::HtmlConstructionRejection>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::result_id(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::HtmlNodeId, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::retire(self) -> surgeist_html::bounded::HtmlConstructionRetirement
+pub fn surgeist_html::bounded::HtmlConstructionStorage::usage(&self) -> surgeist_html::HtmlConstructionUsage
 pub struct surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 impl<'raw> surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 pub fn surgeist_html::bounded::HtmlMediaFieldMatch<'raw>::attribute(&self) -> &'raw surgeist_html::Attribute
@@ -512,6 +912,7 @@ pub fn surgeist_html::bounded::HtmlTimeElementInterpretationStep::outcome(self) 
 pub fn surgeist_html::bounded::HtmlTimeElementInterpretationStep::poll_after(self) -> bool
 pub struct surgeist_html::bounded::HtmlValidatedAttributes
 impl surgeist_html::bounded::HtmlValidatedAttributes
+pub fn surgeist_html::bounded::HtmlValidatedAttributes::as_slice(&self) -> &[surgeist_html::Attribute]
 pub fn surgeist_html::bounded::HtmlValidatedAttributes::into_attributes(self) -> surgeist_html::OrderedAttributes
 pub struct surgeist_html::bounded::IconSizeCursor<'a>
 impl<'a> surgeist_html::bounded::IconSizeCursor<'a>
@@ -1310,16 +1711,39 @@ pub surgeist_html::HtmlCommandState::Standard(surgeist_html::HtmlStandardCommand
 pub surgeist_html::HtmlCommandState::Unknown
 #[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
 pub surgeist_html::HtmlConstructionError::AllocationFailed
+pub surgeist_html::HtmlConstructionError::AssociationAlreadyOwned
+pub surgeist_html::HtmlConstructionError::AssociationMove
+pub surgeist_html::HtmlConstructionError::AttributeNameMismatch
+pub surgeist_html::HtmlConstructionError::AttributeOrderMismatch
+pub surgeist_html::HtmlConstructionError::CapacityMismatch
+pub surgeist_html::HtmlConstructionError::Cycle
+pub surgeist_html::HtmlConstructionError::DuplicateAttribute
+pub surgeist_html::HtmlConstructionError::DuplicateAttribute::duplicate: usize
+pub surgeist_html::HtmlConstructionError::DuplicateAttribute::first: usize
+pub surgeist_html::HtmlConstructionError::ForeignAllocation
 pub surgeist_html::HtmlConstructionError::ForeignBuilder
+pub surgeist_html::HtmlConstructionError::InvalidContentsReference
+pub surgeist_html::HtmlConstructionError::InvalidOutputRoot
+pub surgeist_html::HtmlConstructionError::InvalidShadowAssociation
+pub surgeist_html::HtmlConstructionError::InvalidTemplateAssociation
 pub surgeist_html::HtmlConstructionError::LimitExceeded
 pub surgeist_html::HtmlConstructionError::LimitExceeded::attempted: usize
 pub surgeist_html::HtmlConstructionError::LimitExceeded::limit: usize
 pub surgeist_html::HtmlConstructionError::LimitExceeded::resource: surgeist_html::HtmlConstructionResource
+pub surgeist_html::HtmlConstructionError::OperationConsumed
+pub surgeist_html::HtmlConstructionError::OperationNotReady
 pub surgeist_html::HtmlConstructionError::ParentCannotHaveChildren
+pub surgeist_html::HtmlConstructionError::ParentChildConflict
+pub surgeist_html::HtmlConstructionError::ReleaseUnderflow
 pub surgeist_html::HtmlConstructionError::RepresentationExhausted
+pub surgeist_html::HtmlConstructionError::RootMove
 pub surgeist_html::HtmlConstructionError::ShadowAlreadyAttached
 pub surgeist_html::HtmlConstructionError::ShadowHostMustBeElement
+pub surgeist_html::HtmlConstructionError::SharedAllocationAliased
 pub surgeist_html::HtmlConstructionError::TemplateContentsRequired
+pub surgeist_html::HtmlConstructionError::UnknownNode
+pub surgeist_html::HtmlConstructionError::WrongNodeKind
+pub surgeist_html::HtmlConstructionError::WrongSibling
 impl core::error::Error for surgeist_html::HtmlConstructionError
 impl core::fmt::Display for surgeist_html::HtmlConstructionError
 pub fn surgeist_html::HtmlConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -4981,6 +5405,11 @@ impl surgeist_html::HtmlBooleanAuthorContextReadback
 pub fn surgeist_html::HtmlBooleanAuthorContextReadback::attribute_report(&self) -> &surgeist_html::HtmlAttributeReport<bool>
 pub fn surgeist_html::HtmlBooleanAuthorContextReadback::evidence(&self) -> &surgeist_html::HtmlBooleanAuthorContextEvidence
 pub struct surgeist_html::HtmlBuilderNode
+impl core::cmp::Eq for surgeist_html::HtmlBuilderNode
+impl core::cmp::PartialEq for surgeist_html::HtmlBuilderNode
+pub fn surgeist_html::HtmlBuilderNode::eq(&self, other: &Self) -> bool
+impl core::hash::Hash for surgeist_html::HtmlBuilderNode
+pub fn surgeist_html::HtmlBuilderNode::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_html::HtmlCapture(_)
 impl surgeist_html::HtmlCapture
 pub fn surgeist_html::HtmlCapture::definition(&self, id: &surgeist_html::HtmlCaptureDefinitionId) -> core::result::Result<&surgeist_html::HtmlCustomElementDefinition, surgeist_html::HtmlCaptureError>
@@ -5295,11 +5724,11 @@ pub fn surgeist_html::HtmlDate::to_document_string(&self) -> surgeist_html::Docu
 pub fn surgeist_html::HtmlDate::year(&self) -> &surgeist_html::HtmlYear
 impl surgeist_html::HtmlDate
 pub fn surgeist_html::HtmlDate::input_coordinate(&self) -> surgeist_html::HtmlInputTemporalCoordinate
-pub struct surgeist_html::HtmlDeclarativeShadowRoot
-impl surgeist_html::HtmlDeclarativeShadowRoot
-pub fn surgeist_html::HtmlDeclarativeShadowRoot::contents(&self) -> &surgeist_html::HtmlNodeId
-pub fn surgeist_html::HtmlDeclarativeShadowRoot::host(&self) -> &surgeist_html::HtmlNodeId
-pub fn surgeist_html::HtmlDeclarativeShadowRoot::properties(&self) -> surgeist_html::HtmlShadowRootProperties
+pub struct surgeist_html::HtmlDeclarativeShadowRoot<'a>
+impl<'a> surgeist_html::HtmlDeclarativeShadowRoot<'a>
+pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::contents(&self) -> &'a surgeist_html::HtmlNodeId
+pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::host(&self) -> &'a surgeist_html::HtmlNodeId
+pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::properties(&self) -> surgeist_html::HtmlShadowRootProperties
 pub struct surgeist_html::HtmlDefaultButton
 impl surgeist_html::HtmlDefaultButton
 pub fn surgeist_html::HtmlDefaultButton::form_owner(&self) -> &surgeist_html::HtmlFormOwner
@@ -5466,6 +5895,7 @@ impl surgeist_html::HtmlElement
 pub fn surgeist_html::HtmlElement::attributes(&self) -> &surgeist_html::OrderedAttributes
 pub fn surgeist_html::HtmlElement::link_flags(&self) -> core::option::Option<surgeist_html::HtmlLinkFlags>
 pub fn surgeist_html::HtmlElement::name(&self) -> &surgeist_html::QualifiedName
+pub fn surgeist_html::HtmlElement::new(name: surgeist_html::QualifiedName, attributes: surgeist_html::OrderedAttributes) -> Self
 pub struct surgeist_html::HtmlElementReferenceFact
 impl surgeist_html::HtmlElementReferenceFact
 pub fn surgeist_html::HtmlElementReferenceFact::key(&self) -> surgeist_html::HtmlElementReferenceKey
@@ -6550,12 +6980,15 @@ pub fn surgeist_html::HtmlNextDocumentIconInput::new(previous: surgeist_html::Ht
 pub struct surgeist_html::HtmlNode<'a>
 impl<'a> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
-pub fn surgeist_html::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<&'a surgeist_html::HtmlDeclarativeShadowRoot>
+pub fn surgeist_html::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<surgeist_html::HtmlDeclarativeShadowRoot<'a>>
 pub fn surgeist_html::HtmlNode<'a>::fragment_owner(self) -> core::option::Option<&'a surgeist_html::HtmlFragmentOwner>
 pub fn surgeist_html::HtmlNode<'a>::id(self) -> surgeist_html::HtmlNodeId
+pub fn surgeist_html::HtmlNode<'a>::is_shadow_contents(self) -> bool
 pub fn surgeist_html::HtmlNode<'a>::kind(self) -> &'a surgeist_html::HtmlNodeKind
 pub fn surgeist_html::HtmlNode<'a>::parent(self) -> core::option::Option<surgeist_html::HtmlNodeId>
+pub fn surgeist_html::HtmlNode<'a>::shadow_properties(self) -> core::option::Option<surgeist_html::HtmlShadowRootProperties>
 pub fn surgeist_html::HtmlNode<'a>::template_contents(self) -> core::option::Option<surgeist_html::HtmlNodeId>
+pub fn surgeist_html::HtmlNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::HtmlTemplateContentsKind>
 pub struct surgeist_html::HtmlNodeId
 impl core::cmp::Eq for surgeist_html::HtmlNodeId
 impl core::cmp::PartialEq for surgeist_html::HtmlNodeId
@@ -7145,6 +7578,7 @@ pub fn surgeist_html::HtmlParticipationProducerId::eq(&self, other: &Self) -> bo
 pub struct surgeist_html::HtmlProcessingInstruction
 impl surgeist_html::HtmlProcessingInstruction
 pub fn surgeist_html::HtmlProcessingInstruction::data(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlProcessingInstruction::new(target: impl core::convert::Into<surgeist_html::DocumentString>, data: impl core::convert::Into<surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::HtmlProcessingInstruction::target(&self) -> &surgeist_html::DocumentString
 impl core::convert::From<surgeist_html::HtmlAuthoredProcessingInstruction> for surgeist_html::HtmlProcessingInstruction
 pub fn surgeist_html::HtmlProcessingInstruction::from(value: surgeist_html::HtmlAuthoredProcessingInstruction) -> Self

@@ -12,10 +12,7 @@ pub(crate) fn prepare_public_readers(
     let frozen = input.as_ref().ok_or(SessionError::Consumed)?;
     let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
     c.require_identity(&storage.control)?;
-    let records = match &storage.view {
-        FrozenView::Document(v) => &v.arena.records,
-        FrozenView::Fragment(v) => &v.arena.records,
-    };
+    let records = ConstructionView::Frozen(&storage.view);
     c.charge(WorkCategory::RecordVisit, 1)?;
     let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
     payload_write::<AssociationView<'_>>(c, 1)?;
@@ -25,16 +22,20 @@ pub(crate) fn prepare_public_readers(
         c.charge(WorkCategory::InspectByte, mem::size_of::<T>() as u64)?;
         Ok(())
     }
-    fn node(records: &[Record], c: &mut ParseControl, index: usize) -> Result<(), SessionError> {
+    fn node(
+        records: ConstructionView<'_>,
+        c: &mut ParseControl,
+        index: usize,
+    ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if records.get(index).is_none() {
+        if records.node_at(index).is_none() {
             return Err(SessionError::ForeignNode);
         }
         Ok(())
     }
     fn location(
         storage: &FrozenStorage,
-        records: &[Record],
+        records: ConstructionView<'_>,
         c: &mut ParseControl,
         location: StringLocation,
     ) -> Result<(), SessionError> {
@@ -86,7 +87,7 @@ pub(crate) fn prepare_public_readers(
     }
     fn retired_location(
         storage: &FrozenStorage,
-        records: &[Record],
+        records: ConstructionView<'_>,
         c: &mut ParseControl,
         value: StringLocation,
     ) -> Result<(), SessionError> {

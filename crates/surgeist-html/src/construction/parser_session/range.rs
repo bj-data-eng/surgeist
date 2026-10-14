@@ -574,7 +574,12 @@ impl SessionStorage {
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {

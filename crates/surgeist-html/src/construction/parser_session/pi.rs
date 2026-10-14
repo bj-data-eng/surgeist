@@ -74,7 +74,12 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         use crate::pi_pseudo_attributes::{Action, Cursor, Field, Name, Reply};
         c.charge(WorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::ProcessingInstruction(pi) = &self.records[node].kind else {
+        let HtmlNodeKind::ProcessingInstruction(pi) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         let mut cursor = Cursor::new(pi.data().len());
@@ -86,7 +91,11 @@ impl SessionStorage {
                 let reply = match action {
                     Action::Read(offset) => {
                         c.charge(WorkCategory::RecordVisit, 2)?;
-                        let HtmlNodeKind::ProcessingInstruction(pi) = &self.records[node].kind
+                        let HtmlNodeKind::ProcessingInstruction(pi) = &self
+                            .construction
+                            .node_at(node)
+                            .expect("retained construction position")
+                            .kind()
                         else {
                             return Err(SessionError::WrongToken);
                         };
@@ -357,17 +366,15 @@ impl FrozenArena {
     ) -> Result<Option<&'a DocumentString>, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        let arena = match &storage.view {
-            FrozenView::Document(d) => &d.arena,
-            FrozenView::Fragment(f) => &f.arena,
-        };
+        let arena = &storage.view;
         c.charge(WorkCategory::ProviderCall, 1)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
-            return Err(SessionError::ForeignNode);
-        }
+        let position = arena
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
         if !matches!(
-            arena.records[node.index].kind,
+            arena.node_at(position).unwrap().kind(),
             HtmlNodeKind::ProcessingInstruction(_)
         ) {
             return Err(SessionError::WrongToken);
@@ -379,7 +386,7 @@ impl FrozenArena {
                 values,
                 ready,
             } = payload
-                && *bound == node.index
+                && *bound == position
             {
                 if !ready {
                     return Err(SessionError::ProcessingInstructionMapUnavailable);

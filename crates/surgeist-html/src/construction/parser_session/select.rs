@@ -167,7 +167,13 @@ impl SessionStorage {
                 stage: TargetStage::Replace,
             } => {
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.records[target].children.is_empty() {
+                if self
+                    .construction
+                    .node_at(target)
+                    .expect("retained construction position")
+                    .child_count()
+                    == 0
+                {
                     if fragment.is_none() {
                         return self.write_current_effect(c, None);
                     }
@@ -182,7 +188,13 @@ impl SessionStorage {
                     );
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let child = self.records[target].children[0];
+                let child = self
+                    .construction
+                    .node_at(target)
+                    .expect("retained construction position")
+                    .child_at(0)
+                    .expect("retained child ordinal")
+                    .position();
                 self.remove_index(c, child)
             }
             EffectFrame::UpdateTarget {
@@ -212,11 +224,23 @@ impl SessionStorage {
                 cursor,
             } => {
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if cursor == self.records[option].children.len() {
+                if cursor
+                    == self
+                        .construction
+                        .node_at(option)
+                        .expect("retained construction position")
+                        .child_count()
+                {
                     return self.write_current_effect(c, None);
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let child = self.records[option].children[cursor];
+                let child = self
+                    .construction
+                    .node_at(option)
+                    .expect("retained construction position")
+                    .child_at(cursor)
+                    .expect("retained child ordinal")
+                    .position();
                 let document = self.node_document_ref(c, child)?;
                 let copy = self.clone_node(c, child, document)?;
                 self.write_current_effect(
@@ -256,7 +280,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             let Some(ancestor) = next else {
                 return Ok(false);
             };
@@ -379,7 +403,7 @@ impl SessionStorage {
         self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
         let mut nearest = None;
         let mut next = self.ordinary_parent(c, node, None)?;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             let Some(ancestor) = next else {
                 return Ok(nearest);
             };
@@ -446,7 +470,13 @@ impl SessionStorage {
         self.selectedness_setting(c, node, None)?;
         // Fresh parser-created select has no children at syntax3537 reset.
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !self.records[node].children.is_empty() {
+        if self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .child_count()
+            != 0
+        {
             return Err(SessionError::WrongToken);
         }
         Ok(())
@@ -458,7 +488,12 @@ impl SessionStorage {
         position: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 3)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         let attribute = element
@@ -523,7 +558,7 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
         let mut group = false;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             let Some(node) = next else { return Ok(None) };
             for barrier in ["datalist", "hr", "option"] {
                 if self.html_local(c, node, barrier)? {
@@ -554,7 +589,7 @@ impl SessionStorage {
             return Ok(true);
         }
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.records.len() {
+        for _ in 0..self.construction.storage().len() {
             let Some(node) = next else { return Ok(false) };
             for barrier in ["option", "select", "datalist", "hr"] {
                 if self.html_local(c, node, barrier)? {
@@ -755,16 +790,14 @@ impl FrozenArena {
     ) -> Result<SelectMetadata, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        let arena = match &storage.view {
-            FrozenView::Document(view) => &view.arena,
-            FrozenView::Fragment(view) => &view.arena,
-        };
+        let arena = &storage.view;
         c.charge(WorkCategory::ProviderCall, 1)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !Arc::ptr_eq(&node.identity, &arena.identity) || node.index >= arena.records.len() {
-            return Err(SessionError::ForeignNode);
-        }
-        Ok(retained_select_metadata(&storage.payloads, c, node.index)?.1)
+        let position = arena
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
+        Ok(retained_select_metadata(&storage.payloads, c, position)?.1)
     }
     #[cfg(test)]
     pub(crate) fn select_state(

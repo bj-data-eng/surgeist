@@ -347,8 +347,19 @@ impl SessionStorage {
                     }),
                 )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if let Some(shadow) = &self.records[node].shadow {
-                    let contents = shadow.contents.index;
+                if let Some(shadow) = self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .shadow_root()
+                {
+                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    let contents = self
+                        .construction
+                        .storage()
+                        .node_by_result_id(shadow.contents())
+                        .map_err(|_| SessionError::ForeignNode)?
+                        .position();
                     self.shadow_state(c, contents)?;
                     self.start_effect(
                         c,
@@ -360,7 +371,13 @@ impl SessionStorage {
                     )?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.records[node].template_contents.is_some() {
+                if self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .template_contents()
+                    .is_some()
+                {
                     let (_, template) = self.template_slot(c, node)?;
                     let target = self.appropriate_contents_document(c, document)?;
                     if self.node_document_ref(c, template.contents)? != target {
@@ -389,7 +406,14 @@ impl SessionStorage {
                     }),
                 )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.records[node].parent.is_some() {
+                if self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .parent()
+                    .map(|node| node.position())
+                    .is_some()
+                {
                     self.remove_index(c, node)?;
                 }
                 Ok(())
@@ -409,7 +433,13 @@ impl SessionStorage {
                 document,
             } => {
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if cursor == self.records[source].children.len() {
+                if cursor
+                    == self
+                        .construction
+                        .node_at(source)
+                        .expect("retained construction position")
+                        .child_count()
+                {
                     self.write_current_effect(c, None)?;
                     if let Some((source, copy)) = self.clone_shadow(c, source, copy, document)? {
                         self.start_effect(
@@ -425,7 +455,13 @@ impl SessionStorage {
                     return Ok(());
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let child = self.records[source].children[cursor];
+                let child = self
+                    .construction
+                    .node_at(source)
+                    .expect("retained construction position")
+                    .child_at(cursor)
+                    .expect("retained child ordinal")
+                    .position();
                 let copied = self.clone_node(c, child, document)?;
                 self.write_current_effect(
                     c,
@@ -448,7 +484,13 @@ impl SessionStorage {
                         document,
                     },
                 )?;
-                if self.records[child].template_contents.is_some() {
+                if self
+                    .construction
+                    .node_at(child)
+                    .expect("retained construction position")
+                    .template_contents()
+                    .is_some()
+                {
                     self.start_effect(
                         c,
                         EffectFrame::AppendClone {
@@ -647,7 +689,13 @@ impl SessionStorage {
                         || (self.html_local(c, node, "optgroup")?
                             && self.ancestor_optgroup(c, node, root, detached)?)));
             next = if excluded {
-                next_ordinary_view_after_subtree(&self.records, c, root, node, detached)?
+                next_ordinary_view_after_subtree(
+                    ConstructionView::Active(self.construction.storage()),
+                    c,
+                    root,
+                    node,
+                    detached,
+                )?
             } else {
                 self.next_view_node(c, root, node, detached)?
             };
@@ -740,7 +788,11 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
     ) -> Result<(), SessionError> {
-        if base::is_base(&self.records[node]) {
+        if base::is_base(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position"),
+        ) {
             self.base_change(c, node, detached, false)?;
         }
         if !removal && self.html_local(c, node, "input")? {

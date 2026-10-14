@@ -116,13 +116,22 @@ impl SessionStorage {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if removed {
                     payload_write::<crate::HtmlLinkFlags>(c, 1)?;
-                    let HtmlNodeKind::Element(e) = &mut self.records[node].kind else {
+                    let view = self
+                        .construction
+                        .node_at(node)
+                        .ok_or(SessionError::ForeignNode)?;
+                    let HtmlNodeKind::Element(e) = view.kind() else {
                         return Err(SessionError::WrongToken);
                     };
-                    let flags = e.link_flags.as_mut().ok_or(SessionError::WrongToken)?;
-                    // This effect is issued only after the actual existing disabled
-                    // field has been removed by this owner.
+                    let mut flags = e.link_flags().ok_or(SessionError::WrongToken)?;
                     flags.disabled_removed();
+                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    let element = view.handle();
+                    self.construction.apply(
+                        c,
+                        bounded::HtmlConstructionCommand::SetLinkFlags { element, flags },
+                        &[],
+                    )?;
                 }
                 Ok(())
             }
@@ -135,7 +144,12 @@ impl SessionStorage {
                 let (association, _) = find_form_association_state(&self.payloads, c, node)?
                     .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
                 let container = self.element_attribute_container(c, node)?;
-                let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+                let HtmlNodeKind::Element(element) = &self
+                    .construction
+                    .node_at(node)
+                    .expect("retained construction position")
+                    .kind()
+                else {
                     unreachable!()
                 };
                 let mut position = None;
@@ -211,7 +225,6 @@ impl SessionStorage {
         container: usize,
         incoming: Attribute,
         fields: [usize; 2],
-        units: usize,
     ) -> Result<(), SessionError> {
         let [name_slot, value_slot] = fields;
         let (values, allocation) = c.new_vector()?;
@@ -258,7 +271,12 @@ impl SessionStorage {
         self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
         self.edit_attributes(c, node, container, stage, 1, false)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(record) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(record) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         let start = record.attributes().len();
@@ -271,7 +289,6 @@ impl SessionStorage {
                 stage,
                 start,
                 count: 1,
-                units,
             },
         )?;
         Ok(())
@@ -283,38 +300,15 @@ impl SessionStorage {
         location: [usize; 2],
         incoming: Attribute,
         fields: [usize; 2],
-        unit_counts: [usize; 2],
     ) -> Result<(), SessionError> {
         let [container, position] = location;
         let [name_slot, value_slot] = fields;
-        let [units, old_units] = unit_counts;
         payload_write::<Option<Attribute>>(c, 1)?;
         let mut incoming = Some(incoming);
         let replace = (|| {
-            // Both old original groups retire before the admitted native
-            // swap. Every error drops only this local alias; the actual
-            // registered backing/tickets remain reachable in the owner.
-            for slot in 0..self.payloads.values.len() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if matches!(&self.payloads.values[slot], RetainedPayload::String { location: StringLocation::AttributeName(o,p) | StringLocation::AttributeValue(o,p) | StringLocation::AttributeNamespace(o,p) | StringLocation::AttributePrefix(o,p), .. } if *o == container && *p == position)
-                {
-                    self.retire_field_group(c, slot)?;
-                }
-            }
-            // All old/new fixed locations and usage are admitted before
-            // the slot swap, so no fallible rebind follows the commit.
+            // All fixed registry progress is admitted before the generic ready
+            // boundary; old source history retires while that owner is exclusive.
             payload_write::<[StringLocation; 6]>(c, 6)?;
-            payload_write::<usize>(c, 1)?;
-            let Some(updated_units) = self
-                .usage
-                .utf16_units
-                .checked_sub(old_units)
-                .and_then(|old| old.checked_add(units))
-            else {
-                return c
-                    .representation(HtmlParseResource::BufferedUtf16Units)
-                    .map_err(Into::into);
-            };
             let mut old_slots = [None; 4];
             for (slot, payload) in self.payloads.values.iter().enumerate() {
                 c.charge(WorkCategory::RecordVisit, 1)?;
@@ -347,36 +341,14 @@ impl SessionStorage {
             payload_write::<Option<AttributeStorage>>(c, 2)?;
             payload_write::<OrderedAttributes>(c, 1)?;
             c.charge(WorkCategory::ProviderCall, 2)?;
-            let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
-                unreachable!()
-            };
-            let AttributeStorage::Frozen {
-                values,
-                allocation,
-                mut shared,
-                element,
-            } = backing.take().expect("qualified attributes")
-            else {
-                unreachable!()
-            };
-            drop(values);
-            let HtmlNodeKind::Element(record) = &mut self.records[node].kind else {
-                unreachable!()
-            };
-            let result = c.replace_attribute_slot(
-                record.attributes.parser_backing_mut(),
-                &mut shared,
-                &allocation,
+            let old = self.replace_attribute_storage(
+                c,
+                node,
+                container,
                 position,
                 &mut incoming,
-            );
-            *backing = Some(AttributeStorage::Frozen {
-                values: record.attributes.clone(),
-                allocation,
-                shared,
-                element,
-            });
-            let old = result?;
+                &old_slots,
+            )?;
             for slot in old_slots.into_iter().flatten() {
                 self.bind_string(slot, StringLocation::Detached);
             }
@@ -388,7 +360,7 @@ impl SessionStorage {
                 value_slot,
                 StringLocation::AttributeValue(container, position),
             );
-            self.usage.utf16_units = updated_units;
+
             drop(old);
             Ok::<_, SessionError>(())
         })();
@@ -402,23 +374,25 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<(), SessionError> {
-        self.payloads.check_aliases(&self.records, c)?;
+        self.payloads
+            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         let mut selected = None;
-        let mut units = 0;
         for (index, attr) in element.attributes().as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 2)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
             {
                 selected = Some(index);
-                units = attr.name().local_name().len()
-                    + attr.value().len()
-                    + attr.name().prefix().map_or(0, DocumentString::len);
                 break;
             }
         }
@@ -525,9 +499,12 @@ impl SessionStorage {
             shared,
             element,
         });
-        self.usage.attributes -= 1;
-        self.usage.utf16_units -= units;
-        if base::is_base(&self.records[node]) && local == "href" {
+        if base::is_base(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position"),
+        ) && local == "href"
+        {
             self.base_change(c, node, None, true)?;
         }
         Ok(())
@@ -550,7 +527,9 @@ impl ParserArenaSession {
         if !storage.html_local(c, node, family.local())? {
             return Err(SessionError::WrongToken);
         }
-        storage.payloads.check_aliases(&storage.records, c)?;
+        storage
+            .payloads
+            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
         let attr = input.as_ref().ok_or(SessionError::Consumed)?;
         c.require_source_range(&attr.source)?;
         check_formatting_text(c, &attr.name, &attr.source)?;
@@ -619,8 +598,12 @@ impl ParserArenaSession {
         }
         let container = storage.element_attribute_container(c, node)?;
         let mut position = None;
-        let mut old_units = 0;
-        let HtmlNodeKind::Element(element) = &storage.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &storage
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             unreachable!()
         };
         for (index, old) in element.attributes().as_slice().iter().enumerate() {
@@ -629,7 +612,6 @@ impl ParserArenaSession {
                 && exact_ascii(c, Some(old.name().local_name()), local)?
             {
                 position = Some(index);
-                old_units = old.name().local_name().len() + old.value().len();
                 break;
             }
         }
@@ -653,8 +635,6 @@ impl ParserArenaSession {
                 }
             };
             let (value, value_slot) = storage.register_text(c, attr.value)?;
-            c.charge(WorkCategory::RecordVisit, 2)?;
-            let units = name.len() + value.len();
             payload_write::<Attribute>(c, 1)?;
             let incoming = Attribute::new(QualifiedName::new(Namespace::none(), None, name), value);
             if let Some(position) = position {
@@ -664,7 +644,6 @@ impl ParserArenaSession {
                     [container, position],
                     incoming,
                     [name_slot, value_slot],
-                    [units, old_units],
                 )?;
             } else {
                 storage.append_registered_attribute(
@@ -673,7 +652,6 @@ impl ParserArenaSession {
                     container,
                     incoming,
                     [name_slot, value_slot],
-                    units,
                 )?;
             }
             storage.managed_change(c, node, effect)?;

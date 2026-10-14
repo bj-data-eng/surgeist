@@ -30,3 +30,5 @@ pub use crate::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
+
+pub use crate::construction::bounded::*;

@@ -18,7 +18,14 @@ fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
     }
 }
 fn flags(session: &ParserArenaSession, node: &ParserNode) -> crate::HtmlLinkFlags {
-    let HtmlNodeKind::Element(e) = &session.active().unwrap().records[node.index].kind else {
+    let HtmlNodeKind::Element(e) = &session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(node.index)
+        .expect("retained construction position")
+        .kind()
+    else {
         panic!("link")
     };
     e.link_flags().unwrap()
@@ -99,11 +106,24 @@ fn actual_link_disabled_removal_readdition_rel_change_and_clone_use_canonical_fl
     assert!(session.active().unwrap().payloads.values.iter().any(
         |p| matches!(p,RetainedPayload::Link{node:Some(n),parser_document:None}if *n==copy.index)
     ));
-    let HtmlNodeKind::Element(original) = &session.active().unwrap().records[node.index].kind
+    let HtmlNodeKind::Element(original) = &session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(node.index)
+        .expect("retained construction position")
+        .kind()
     else {
         unreachable!()
     };
-    let HtmlNodeKind::Element(cloned) = &session.active().unwrap().records[copy.index].kind else {
+    let HtmlNodeKind::Element(cloned) = &session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(copy.index)
+        .expect("retained construction position")
+        .kind()
+    else {
         unreachable!()
     };
     assert_eq!(original.attributes(), cloned.attributes());

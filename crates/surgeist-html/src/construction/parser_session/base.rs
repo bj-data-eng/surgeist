@@ -27,8 +27,8 @@ std::thread_local! {
 
 /// A fixed filter, at most 4+28 native name units. It does not scan attributes,
 /// registers, ancestors or source; the owning transition already polls.
-pub(super) fn is_base(record: &Record) -> bool {
-    let HtmlNodeKind::Element(element) = &record.kind else {
+pub(super) fn is_base(record: bounded::HtmlConstructionNode<'_>) -> bool {
+    let HtmlNodeKind::Element(element) = record.kind() else {
         return false;
     };
     element.name().local_name().code_units() == [98, 97, 115, 101]
@@ -71,7 +71,12 @@ impl ParserArenaSession {
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
         let index = self.active()?.index(c, node)?;
-        if !is_base(&self.active()?.records[index]) {
+        if !is_base(
+            self.active()?
+                .construction
+                .node_at(index)
+                .expect("retained construction position"),
+        ) {
             return Ok(());
         }
         capability.validate_session(c, self)?;
@@ -99,7 +104,11 @@ impl SessionStorage {
         node: usize,
         domain: ResponseDomain,
     ) -> Result<(), SessionError> {
-        if !is_base(&self.records[node]) {
+        if !is_base(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position"),
+        ) {
             return Ok(());
         }
         self.prepare_payload_slot_owned(c)?;
@@ -146,7 +155,12 @@ impl SessionStorage {
         let mut next = Some(document);
         while let Some(node) = next {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if is_base(&self.records[node]) && self.form_attribute(c, node, "href")?.is_some() {
+            if is_base(
+                self.construction
+                    .node_at(node)
+                    .expect("retained construction position"),
+            ) && self.form_attribute(c, node, "href")?.is_some()
+            {
                 return Ok(Some(node));
             }
             next = self.next_view_node(c, document, node, detached)?;
@@ -163,7 +177,11 @@ impl SessionStorage {
         href_changed: bool,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
-        if !is_base(&self.records[node]) {
+        if !is_base(
+            self.construction
+                .node_at(node)
+                .expect("retained construction position"),
+        ) {
             return Ok(());
         }
         let base_slot = self.base_slot(c, node)?;
@@ -307,7 +325,12 @@ impl SessionStorage {
             } = payload
             {
                 let node = node.ok_or(SessionError::WrongToken)?;
-                if !is_base(&self.records[node]) || frozen.response == Response::Pending {
+                if !is_base(
+                    self.construction
+                        .node_at(node)
+                        .expect("retained construction position"),
+                ) || frozen.response == Response::Pending
+                {
                     return Err(c
                         .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                         .into());
@@ -517,8 +540,22 @@ mod tests {
             })
             .unwrap();
         let first_after = first(&session);
-        let parent_after = session.active().unwrap().records[base.index].parent;
-        let attributes = match &session.active().unwrap().records[base.index].kind {
+        let parent_after = session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(base.index)
+            .expect("retained construction position")
+            .parent()
+            .map(|node| node.position());
+        let attributes = match &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(base.index)
+            .expect("retained construction position")
+            .kind()
+        {
             HtmlNodeKind::Element(element) => element
                 .attributes()
                 .iter()
@@ -685,7 +722,12 @@ mod tests {
             // Real pre-insert owner commits topology/effect retention. This test
             // then selects its immediate intrinsic base hook, not a public
             // insertion total or an invented checkpoint.
-            let before = storage.records[root.index].children.first().copied();
+            let before = storage
+                .construction
+                .node_at(root.index)
+                .expect("retained construction position")
+                .child_at(0)
+                .map(|node| node.position());
             storage
                 .insert_indices_with_cause(
                     &mut c,
@@ -695,8 +737,25 @@ mod tests {
                     InsertionCause::Parser,
                 )
                 .unwrap();
-            assert_eq!(storage.records[root.index].children[0], base.index);
-            assert_eq!(storage.records[base.index].parent, Some(root.index));
+            assert_eq!(
+                storage
+                    .construction
+                    .node_at(root.index)
+                    .expect("retained construction position")
+                    .child_at(0)
+                    .expect("retained child ordinal")
+                    .position(),
+                base.index
+            );
+            assert_eq!(
+                storage
+                    .construction
+                    .node_at(base.index)
+                    .expect("retained construction position")
+                    .parent()
+                    .map(|node| node.position()),
+                Some(root.index)
+            );
             let position = |predicate: fn(&RetainedPayload) -> bool| {
                 storage.payloads.values.iter().position(predicate).unwrap() as u64 + 1
             };
@@ -786,7 +845,17 @@ mod tests {
         );
         assert!(frozen(&session, &base).is_none());
         assert_eq!(first(&session), None);
-        assert_eq!(session.active().unwrap().records[base.index].parent, None);
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(base.index)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position()),
+            None
+        );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
@@ -854,7 +923,14 @@ mod tests {
             DocumentRef::Owned(0)
         );
         assert_value(&session, &copy, "https://base.test/A");
-        let alias = match &session.active().unwrap().records[copy.index].kind {
+        let alias = match &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(copy.index)
+            .expect("retained construction position")
+            .kind()
+        {
             HtmlNodeKind::Element(element) => element.attributes().clone(),
             _ => unreachable!(),
         };
@@ -891,7 +967,14 @@ mod tests {
         );
         assert!(frozen(&session, &base).unwrap().1 == Response::Pending);
         assert_eq!(
-            session.active().unwrap().records[base.index].parent,
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(base.index)
+                .expect("retained construction position")
+                .parent()
+                .map(|node| node.position()),
             Some(root.index)
         );
         let at_stop = c.first_stop_usage().unwrap().clone();
@@ -941,7 +1024,14 @@ mod tests {
                 .set_nonce_content(&mut c, base.index, Some(value));
         let observer_unfired = CANCEL_AFTER_BINDING.with(|slot| slot.borrow_mut().take().is_some());
         let first_after = first(&session);
-        let parent_after = session.active().unwrap().records[base.index].parent;
+        let parent_after = session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(base.index)
+            .expect("retained construction position")
+            .parent()
+            .map(|node| node.position());
         let frozen_after = frozen(&session, &base);
         let nonce_after = if result.is_ok() {
             Some(
@@ -954,7 +1044,14 @@ mod tests {
         } else {
             None
         };
-        let attributes = match &session.active().unwrap().records[base.index].kind {
+        let attributes = match &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(base.index)
+            .expect("retained construction position")
+            .kind()
+        {
             HtmlNodeKind::Element(element) => element
                 .attributes()
                 .iter()

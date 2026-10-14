@@ -125,22 +125,30 @@ impl<'a> NativeView<'a> {
         )?;
         self.control
             .charge(WorkCategory::CopyByte, mem::size_of::<NativeKind>() as u64)?;
-        Ok(match &self.storage.records[index].kind {
-            HtmlNodeKind::Document(mode) => NativeKind::Document(*mode),
-            HtmlNodeKind::Fragment => NativeKind::Fragment,
-            HtmlNodeKind::Element(element) => NativeKind::Element(self.name(element.name())),
-            HtmlNodeKind::Text(text) => NativeKind::Text(self.string(text)),
-            HtmlNodeKind::Comment(text) => NativeKind::Comment(self.string(text)),
-            HtmlNodeKind::ProcessingInstruction(pi) => NativeKind::ProcessingInstruction {
-                target: self.string(pi.target()),
-                data: self.string(pi.data()),
+        Ok(
+            match &self
+                .storage
+                .construction
+                .node_at(index)
+                .expect("retained construction position")
+                .kind()
+            {
+                HtmlNodeKind::Document(mode) => NativeKind::Document(*mode),
+                HtmlNodeKind::Fragment => NativeKind::Fragment,
+                HtmlNodeKind::Element(element) => NativeKind::Element(self.name(element.name())),
+                HtmlNodeKind::Text(text) => NativeKind::Text(self.string(text)),
+                HtmlNodeKind::Comment(text) => NativeKind::Comment(self.string(text)),
+                HtmlNodeKind::ProcessingInstruction(pi) => NativeKind::ProcessingInstruction {
+                    target: self.string(pi.target()),
+                    data: self.string(pi.data()),
+                },
+                HtmlNodeKind::Doctype(doctype) => NativeKind::Doctype {
+                    name: self.string(doctype.name()),
+                    public_id: doctype.public_id().map(|s| self.string(s)),
+                    system_id: doctype.system_id().map(|s| self.string(s)),
+                },
             },
-            HtmlNodeKind::Doctype(doctype) => NativeKind::Doctype {
-                name: self.string(doctype.name()),
-                public_id: doctype.public_id().map(|s| self.string(s)),
-                system_id: doctype.system_id().map(|s| self.string(s)),
-            },
-        })
+        )
     }
     #[cfg(test)]
     pub(crate) fn unit(
@@ -166,7 +174,13 @@ impl<'a> NativeView<'a> {
             WorkCategory::InspectByte,
             mem::size_of::<HtmlNodeKind>() as u64,
         )?;
-        match &self.storage.records[index].kind {
+        match &self
+            .storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .kind()
+        {
             HtmlNodeKind::Element(element) => Ok(element.attributes().len()),
             _ => Err(SessionError::WrongToken),
         }
@@ -179,7 +193,13 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<NativeAttribute<'a>>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.storage.records[index].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         if position >= element.attributes().len() {
@@ -204,7 +224,12 @@ impl<'a> NativeView<'a> {
     pub(crate) fn child_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(self.storage.records[index].children.len())
+        Ok(self
+            .storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .child_count())
     }
     #[cfg(test)]
     pub(crate) fn child_at(
@@ -214,20 +239,37 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        if position >= self.storage.records[index].children.len() {
+        if position
+            >= self
+                .storage
+                .construction
+                .node_at(index)
+                .expect("retained construction position")
+                .child_count()
+        {
             return Ok(None);
         }
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        let child = self.storage.records[index].children[position];
+        let child = self
+            .storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .child_at(position)
+            .expect("retained child ordinal")
+            .position();
         self.storage.node(self.control, child).map(Some)
     }
     #[cfg(test)]
     pub(crate) fn parent(&mut self, node: &ParserNode) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        self.storage.records[index]
-            .parent
-            .map(|parent| self.storage.node(self.control, parent))
+        self.storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .parent()
+            .map(|parent| self.storage.node(self.control, parent.position()))
             .transpose()
     }
     #[cfg(test)]
@@ -237,21 +279,26 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        self.storage.records[index]
-            .template_contents
-            .map(|contents| self.storage.node(self.control, contents))
+        self.storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .template_contents()
+            .map(|contents| self.storage.node(self.control, contents.position()))
             .transpose()
     }
     #[cfg(test)]
     fn association_node(&mut self, node: &HtmlNodeId) -> Result<ParserNode, SessionError> {
         self.storage.require(self.control)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        if !Arc::ptr_eq(&node.identity, &self.storage.identity)
-            || node.index >= self.storage.records.len()
-        {
-            return Err(SessionError::ForeignNode);
-        }
-        self.storage.node(self.control, node.index)
+        let position = self
+            .storage
+            .construction
+            .storage()
+            .node_by_result_id(node)
+            .map_err(|_| SessionError::ForeignNode)?
+            .position();
+        self.storage.node(self.control, position)
     }
     #[cfg(test)]
     pub(crate) fn fragment_owner(
@@ -260,7 +307,13 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<NativeFragmentOwner>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        match &self.storage.records[index].owner {
+        match &self
+            .storage
+            .construction
+            .node_at(index)
+            .expect("retained construction position")
+            .fragment_owner()
+        {
             Some(HtmlFragmentOwner::Template(owner)) => self
                 .association_node(owner)
                 .map(|node| Some(NativeFragmentOwner::Template(node))),
@@ -295,7 +348,13 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<NativeShadow>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
-        let Some(shadow) = &self.storage.records[index].shadow else {
+        let Some(shadow) = self
+            .storage
+            .construction
+            .node_at(index)
+            .ok_or(SessionError::ForeignNode)?
+            .shadow_root()
+        else {
             return Ok(None);
         };
         self.control.charge(

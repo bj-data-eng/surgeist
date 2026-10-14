@@ -20,7 +20,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self.records[node].kind else {
+        let HtmlNodeKind::Element(element) = &self
+            .construction
+            .node_at(node)
+            .expect("retained construction position")
+            .kind()
+        else {
             return Err(SessionError::WrongToken);
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
@@ -180,7 +185,7 @@ impl SessionStorage {
 
 #[cfg(test)]
 pub(super) fn append_native_input_value(
-    records: &[Record],
+    records: ConstructionView<'_>,
     payloads: &PayloadStorage,
     c: &mut ParseControl,
     node: usize,
@@ -190,7 +195,11 @@ pub(super) fn append_native_input_value(
     c.charge(WorkCategory::RecordVisit, 1)?;
     let (_, raw, _) = find_input_state(payloads, c, node).map(|(raw, state)| (node, raw, state))?;
     let internal = textarea_raw(payloads, c, raw)?.code_units();
-    let HtmlNodeKind::Element(element) = &records[node].kind else {
+    let HtmlNodeKind::Element(element) = records
+        .node_at(node)
+        .ok_or(SessionError::ForeignNode)?
+        .kind()
+    else {
         return Err(SessionError::WrongToken);
     };
     let mut content = None;
@@ -498,7 +507,13 @@ mod tests {
             .text()
             .shared_code_units()
             .as_ptr();
-        let HtmlNodeKind::Element(element) = &session.active().unwrap().records[node.index].kind
+        let HtmlNodeKind::Element(element) = &session
+            .active()
+            .unwrap()
+            .construction
+            .node_at(node.index)
+            .expect("retained construction position")
+            .kind()
         else {
             panic!("element")
         };

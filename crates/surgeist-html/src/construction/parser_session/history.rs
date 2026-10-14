@@ -21,7 +21,9 @@ impl ParserArenaSession {
     ) -> Result<FrozenHistory, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        storage.payloads.check_aliases(&storage.records, c)?;
+        storage
+            .payloads
+            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
@@ -230,11 +232,9 @@ impl<'a> PreparedHistory<'a> {
         let arena = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = arena.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        let native = match &storage.view {
-            FrozenView::Document(view) => &view.arena,
-            FrozenView::Fragment(view) => &view.arena,
-        };
-        storage.payloads.check_aliases(&native.records, c)?;
+        storage
+            .payloads
+            .check_aliases(ConstructionView::Frozen(&storage.view), c)?;
         storage.effects.require_freezable(c)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -512,11 +512,11 @@ impl HistoryOrigin<'_> {
 impl FrozenHistory {
     pub(super) fn native_node(&self, index: usize) -> HtmlNode<'_> {
         let storage = self.arena.storage.as_ref().expect("qualified history");
-        let arena = match &storage.view {
-            FrozenView::Document(v) => &v.arena,
-            FrozenView::Fragment(v) => &v.arena,
-        };
-        HtmlNode { arena, index }
+        storage
+            .view
+            .node_at(index)
+            .expect("qualified history destination")
+            .as_node()
     }
 }
 
@@ -1024,14 +1024,19 @@ mod tests {
     fn immutable_history_alias_refusal_cancel_and_foreign_control_preserve_transfer_and_retry() {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, _) = projected(&source);
-        let alias = session
-            .active()
-            .unwrap()
-            .records
-            .iter()
-            .find_map(|record| match &record.kind {
-                HtmlNodeKind::Text(value) => Some(value.clone()),
-                _ => None,
+        let alias = (0..session.active().unwrap().construction.storage().len())
+            .find_map(|position| {
+                match session
+                    .active()
+                    .unwrap()
+                    .construction
+                    .node_at(position)
+                    .unwrap()
+                    .kind()
+                {
+                    HtmlNodeKind::Text(value) => Some(value.clone()),
+                    _ => None,
+                }
             })
             .unwrap();
         assert!(matches!(
