@@ -194,10 +194,11 @@ transformations and resolved serialization owned by
 consumes both directly and owns its original controller, fallback, transformation
 order and publication. Each consuming crate owns its adapter; the root facade
 supplies optional composition. Style owns contextual property/profile facts and
-runtime owns resource retrieval. Source-based standalone operations and HTML
-Color construction are implemented; a checked-authored used-color feeder and
-the physical HTML crate split remain unimplemented. The owning issue retains
-its separate contextual CSSOM and quirky-color/CSS.supports acceptance.
+runtime owns resource retrieval. Source-based and checked-authored standalone
+resolution, controlled numerical continuations and HTML Color construction are
+implemented. HTML values, parsing and semantics have separate crate owners. The
+owning issue retains its separate contextual CSSOM and
+quirky-color/CSS.supports acceptance.
 
 HTML remains at `877d6146487f15b15bc8dd0e3c625063a37b456a`. Its
 [color-well update](html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#update-a-color-well-control-color)
