@@ -617,24 +617,27 @@ locates and qualifies operands; parser supplies construction records and source
 provenance. Neither consumer copies those algorithms.
 
 The following private reaches need deliberate public bounded operations. Names
-in this table identify the existing source units; only the listed producer
-operations and their operand/result/error types belong in `surgeist_html::bounded`.
+in this table identify the existing source units and actual consuming operations;
+their producer operations and checked operand/result/error types belong in
+`surgeist_html::bounded`.
 Private representation fields become getters or checked constructors, not public
 fields. No operation accepts a parser or semantic controller.
 
 | Existing unit and actual consumer | Selected HTML boundary |
 | --- | --- |
 | `HtmlValueInterpreter::admit_attribute_raw`; semantic attribute helpers throughout `semantics/` | Public `admit_attribute_raw`; checks optional UTF-16 length without cloning/allocating. Reports are assembled only through owner operations. `time_element_report_from_attempts` stays private: a public caller cannot assert that arbitrary attempts belong to arbitrary raw text. |
-| `numeric::{try_parse_integer, IntegerUnitStep, IntegerUnitStepResult, IntegerUnitStepError, try_floating_point_number, FloatingPointParseMode, FloatingPointParseResult, FloatingPointAllocationError}`; semantic ordinals/range/time/dimensions | Export bounded parse/materialization/step operations and checked result/error accessors. Preserve requested/actual capacity accounting on both success and failure. |
+| `numeric::{try_parse_integer, IntegerUnitStep, IntegerUnitStepResult, IntegerUnitStepError, try_floating_point_number, FloatingPointParseMode, FloatingPointParseResult, FloatingPointAllocationError}`; semantic ordinals/range/time/dimensions | Export bounded parse/materialization/step operations and checked result/error accessors, including integer-prefix scanning, long-integer interpretation and capped nonnegative recovery used by image dimensions, tabindex, select and inheritance. Preserve requested/actual capacity accounting on both success and failure. |
 | `NumericMaterialized`, `NumericMaterializationFailure`, `NumericMaterializationError` and current bounded methods on integer/decimal/rational values; semantic time/dimensions | Export the bounded materialization result/error domain and the exact existing `try_*` operations with their work-bound methods; values retain private canonical digits. |
 | `numeric::natural_ratio::{NaturalDigits, NaturalProduct, NaturalComparison, NaturalDifference}`; `semantics/natural_dimensions.rs` | Export immutable borrowed operands and bounded arithmetic cursor operations; semantic resource/host qualification stays in semantics. |
 | `numeric::range` and its ingress/best/lattice cursors; `construction/parser_session/range.rs` | Export the numerical request/reply/cursor boundary, scratch roles and exact layout descriptions; scratch allocation stays with parser, not HTML. |
 | `temporal::{TemporalAlternative, TemporalPhase, BorrowedTemporalPlan, BorrowedYear, BorrowedDate, BorrowedDurationPlan, BorrowedGlobalDateTime, recognize_time_alternative, temporal_recognition_work_bound}`; `semantics/time_element.rs` | HTML owns `HtmlTimeElementInterpretation`, retaining one raw operand and its recognition/materialization phases. Its bounded actions describe recognition, numeric allocation and owner assembly before execution; only its completed operation creates the report. The listed borrowed plans remain private to HTML. Temporal input-coordinate conversion belongs in a distinct HTML module under #1181, retaining its current API. |
-| `tokens::{SpaceTokenCursor, SpaceTokenStep, CommaTokenCursor, CommaTokenRange, ascii_whitespace}`; semantic rel/microdata/meta | Export allocation-free token cursors and read-only ranges, preserving source order and repeated/empty-field behavior. |
-| `attributes::{TargetRecovery, input_readonly_applies, stylesheet_link_context_work_bound, WritingSuggestionsProcessing}`; semantic base/control/text/attribute context | Export the local recovery/classification operations with immutable checked results; structural selection remains semantics. |
+| `tokens::{SpaceTokenCursor, SpaceTokenStep, ascii_whitespace}`; semantic rel/microdata/meta | Export the allocation-free space-token cursor and read-only ranges, preserving source order and repeated tokens. Comma-token primitives stay private to HTML's input/value operations. Include the local hash-name scanner and its missing-value result used by image-map interpretation. |
+| `attributes::{TargetRecovery, input_readonly_applies, stylesheet_link_context_work_bound, WritingSuggestionsProcessing}`; semantic base/control/text/attribute context | Export the local recovery/classification operations with immutable checked results, including embedded-dimension applicability. Structural selection remains semantics. Existing public form-name, id, map-name and is-attribute interpretation owns report assembly; expose its bounded work metadata rather than private arbitrary report assemblers. |
+| `attributes::autocomplete`; semantic autocomplete | Export the actual controlled materialization operation, its work bound, limits and capacity-bearing success/failure observations. Field recognition and valid report assembly remain one HTML-owned operation. |
+| `attributes::microdata`; semantic microdata | Provide bounded token-report production retaining its actual raw operand and token-list kind. Preserve source ranges, duplicate selection, dot/colon classification and their admission order. Keep token/report fields private; no caller-asserted raw/range constructor certifies a report. |
 | `attributes::token_declarations::{IconSizeCursor, IconSizeShape}` and `attributes::media::media_field`; semantic relationship selectors/media facts | Export local cursor and field selection only; resource/CSS producer attestations remain semantics. |
-| `media::ThemeColorNameCursor`; semantic meta-author checks | Export its local allocation-free name recognition cursor. |
-| `rel::{RelMeter, RelInputs, interpret, classify}`; semantic relationships | Export bounded interpretation with private-field `RelInputs` constructed from explicit operands. Keep the small meter callback boundary because both native interpretation and semantic sessions implement its actual admission behavior. `RelData` remains private; HTML creates the valid report. |
+| `media::ThemeColorNameCursor` and media attribute reports; semantic meta-author/media checks | Export the local allocation-free name recognition cursor. Report production retains the actual value/name operands and completes their interpretation under admitted actions; `HtmlMediaAttributeReport::observed` stays private and cannot certify arbitrary raw/role/value/placement tuples. |
+| `rel::{RelMeter, RelInputs, interpret, classify}`; semantic relationships | Export bounded interpretation with private-field `RelInputs` constructed from explicit operands. Include role/comparison operations and owner-checked occurrence updates and aggregate refresh over the actual report. Keep the small meter callback boundary because both native interpretation and semantic sessions implement its actual admission behavior. `RelData` and unchecked occurrence mutation remain private; HTML creates the valid report. |
 | `custom_names::{validate_custom_element_name_with, CustomNameScanAction}`; parser creation and semantic definition lookup | Export the local bounded validation action API; capture/registry policy remains in semantics. |
 | `pi_pseudo_attributes::{Cursor, Action, Reply, Field, Name, Error}` and `template_markers::{Target, First, Siblings, first}`; parser PI/template and semantic template selection | Export bounded grammar/marker transitions, with checked reply order and no parser metadata. |
 | `nonce::{NONCE_INSPECTION_BOUND, nonce_element}`; semantic nonce and parser nonce effects | Export local inspection bound and element applicability; exact capture history and parser source provenance stay with their consumers. |
@@ -680,6 +683,253 @@ invent an accounting total, or construct a full report from a processed state.
 Allocation-free attribute-report setup from #1176 and
 semantic test/context admission consolidation from #1178 remain owner-local
 changes under this map.
+
+#### Controlled local report completion
+
+The following protocols select the new bounded APIs for rel, media and
+microdata. They are extraction requirements, not claims that these APIs are
+already implemented. Each ordinary interpreter and its bounded adapter use the
+same HTML-owned rule kernel. Semantics continues to own tree traversal, external
+fact qualification and its existing admission controller.
+
+`HtmlRelInterpretation<'raw>`, `HtmlMediaInterpretation<'raw>` and
+`HtmlMicrodataTokenInterpretation<'raw>` are concrete retained owners with private
+state, original borrowed operands and any actual output allocations. They are
+not cloneable. Allocation-free initialization retains the operands before the
+first fallible action. Their borrowing actions return the original consumer admission or
+cancellation error unchanged. Once such an error occurs, the owner becomes
+`Stopped`: its allocations and operands remain retained, no report or aggregate
+readback is available, and subsequent operations perform no useful work. HTML
+does not clone or replace the consumer's first failure. Protocol refusals before
+execution, such as a wrong phase or invalid refinement, leave the owner unchanged.
+An explicit borrowing `stop` operation latches the same stopped state without
+work when the consumer fails between HTML actions, such as during external-fact
+lookup; it does not accept, copy or replace that consumer error.
+
+Each owner has `try_finish(&mut Option<Self>) -> Result<Report, Error>`, with its
+own existing report and concrete error type. `Consumed` means the slot was empty;
+`NotReady` means required actions remain; `Stopped` means execution failed.
+These refusals preserve `Some` and its exact backing. Only an owner whose report
+assembly has already succeeded is removed from the slot. Finishing moves that
+report without scanning, charging, cloning or allocating. `abort(self)` drops
+unpublished backing and returns the original borrowed inputs, without further
+observations or admission. Actual capacities already observed by semantics keep
+their existing accounting treatment; abort does not refund cumulative nested
+output or allocated-byte usage.
+Domain action errors also distinguish wrong phase, checked operand/refinement
+refusal and the existing raw-admission error. Actual allocation failure remains
+observable by the reservation controller and is mapped to its original failure;
+all such execution failures retain the owner and prevent publication.
+
+#### Rel interpretation and refinement
+
+The rel owner retains the actual `RelInputs<'raw>` used by initial
+interpretation: role, rel, rev, href, imagesrcset, itemprop, title, type hint and
+as-destination. These are borrowed operands or fixed values, not reconstructed
+from `RelData`, which does not retain all of them. `RelInputs` has private fields
+and a constructor taking these explicit operands. Initial interpretation keeps
+the existing `interpret` work, reservation and raw-sharing order. The owner
+holds its occurrence vector and single data-record vector; it introduces no
+second report, raw clone or accounting ledger.
+
+After initial interpretation, readbacks lend the retained role, original raw
+operands and occurrences, including spelling, source, ranges, keyword, effect
+and registry-resolution status. They do not expose aggregate fields. The caller
+can finish this initial result directly, as ordinary interpretation and noopener
+processing currently do. Alternatively it explicitly begins refinement. This
+choice is irreversible: a refining owner cannot publish the initial aggregates.
+
+A borrowing refinement operation checks the actual retained occurrence index
+before mutation. The occurrence must come from `rel`, have original `Unknown`
+spelling, and have an index strictly greater than every previously applied
+refinement. Out-of-range, wrong-source, wrong-spelling, repeated and out-of-order
+updates are distinct checked refusals. Validation uses the owner's actual
+occurrence; there is no transferable array-index proof or unchecked public
+mutation. Each accepted update executes after the existing four-unit semantic
+admission and takes one checked `HtmlRelRefinement`:
+
+| Refinement | HTML-owned change |
+| --- | --- |
+| `Unavailable` | No keyword or effect; registry unresolved. |
+| `NoEffect` | No keyword or effect; registry resolved. |
+| `Standard(keyword)` | Retain that keyword, derive its standard effect from the retained role, and mark registry resolved. |
+| `Extension(effect)` | No standard keyword; use the explicitly supplied nonstandard effect and mark registry resolved. Reject `InternalResource` and `StylesheetModifier`, and reject `Annotation` for the Link role, matching the existing extension policy. |
+
+Registry lookup, synonym/canonical qualification and supported-token facts stay
+in semantics. The refinement domain does not certify those external facts and
+does not accept an arbitrary keyword/effect/resolved triple. Standard effects
+are derived by the existing role-dependent HTML rule, including effects that
+are forbidden for nonstandard extensions.
+
+`refresh` takes the owner and its small admission meter, with no independent
+`RelInputs` argument. It runs the existing `summarize`, five-unit aggregate
+admission and `image_source_preload` sequence against the retained original
+inputs. Mutations during this sequence remain private. Only complete success
+makes the coherent report ready; failure leaves a stopped owner with no stale
+aggregate view. This avoids rollback copies even when `summarize` has already
+changed occurrence effects or preload admission fails after aggregate writes.
+
+The semantic adapter preserves its present sequence: select and admit all nine
+attribute operands; derive the role and as-destination; run initial HTML
+interpretation; inspect occurrences and obtain external facts; begin refinement;
+apply source-ordered updates at their existing four-unit checkpoints; refresh
+even when there were no updates; then finish and derive downstream meanings.
+Noopener's scratch-accounted initial-only path finishes without another summary.
+The completed report supplies a read-only registry-resolution accessor; its data
+and mutation helpers remain private.
+
+These requirements follow the actual
+[rel kernel](../../crates/surgeist-html/src/rel.rs),
+[relationship adapter](../../crates/surgeist-html/src/semantics/link_relationships.rs)
+and [noopener adapter](../../crates/surgeist-html/src/semantics/link_relationships/noopener.rs).
+
+#### Media interpretation with deferred name recognition
+
+The media owner retains the actual element name and supplied media/name
+attribute references. Name supply has three distinct states: `NotSupplied`,
+`SuppliedAbsent` and `Present(attribute)`. Explicit absence records the
+consumer's supplied operand; it does not certify complete capture traversal.
+Traversal completeness and external fact qualification remain semantic policy.
+
+Field matching is performed during the original attribute lookup, not by
+rescanning its selected result. A narrow HTML-owned media-field matcher checks
+the actual immutable candidate's namespace and local name for `Media` or `Name`.
+Its private result retains that same borrowed candidate and expected field;
+neither arbitrary matching flags nor a result paired with a different attribute
+can be supplied to the owner. The semantic adapter still selects the first
+matching candidate, admitting the existing candidate and per-unit reads before
+the matcher executes them. It reports absence explicitly when traversal finds
+none. Ordinary supplied-attribute interpretation uses the same matching kernel
+and retains its existing `DifferentAttribute` or `DifferentContext` outcomes.
+
+The owner's actions separately admit the raw media value, inspect the element
+namespace, derive the role from the actual element name, and, for Meta, supply
+and admit the selected name operand. Namespace and role classification use the
+existing HTML kernels at the semantic adapter's current namespace/known-name
+checkpoints; they accept no caller-asserted role. Partial readbacks expose these
+completed local decisions so semantics can take its existing foreign-namespace
+and inapplicable-element exits. The ordinary driver can instead continue to
+produce its existing inapplicable attribute report. Supplying a name twice or
+in the wrong phase is a refusal; an ordinary supplied name on a non-Meta element
+retains the existing `DifferentContext` result.
+
+Value actions use `HtmlMediaValueCursor`: one admitted unit per `InspectUnit`
+and four for `Finish`, including its fixed keyword comparison. Completed value
+classification is readable before any theme-color name scan or final report.
+Semantics then obtains external media facts and makes its existing grammar,
+condition and role-specific decisions. For Meta it explicitly starts the
+retained name cursor at the current one-unit start checkpoint and admits each
+advance by one unit. This action is required for semantic theme-color processing
+even when media is absent. `SuppliedAbsent` produces false; `NotSupplied` refuses
+an explicitly requested theme-color scan. No name scan is hidden in value
+classification or repeated during report assembly.
+
+Placement is derived by HTML from completed applicability, role, media presence
+and name state/result. It is unapplied for inapplicable/non-Meta inputs,
+`NotSpecified` for absent media, unchecked when a needed name was not supplied,
+and otherwise allowed or forbidden by the theme-color result. The ordinary
+`media` driver may finish with an unchecked name; ordinary `media_for_meta` may
+skip name recognition when absent media already determines placement. The
+semantic driver still requests recognition then, because its processing result
+also depends on the name.
+
+Ordinary `media_for_meta` retains its existing raw-length admission priority:
+it checks both supplied media and name operands before namespace/role
+classification, including for a foreign or inapplicable element. This ordinary
+front-door schedule differs from the semantic schedule above; both reuse the
+same local recognition and placement kernels without repeating those scans.
+
+Report assembly is a distinct action after the semantic adapter's existing
+outer-record reservation and one-unit write admission. It shares each actual
+supplied attribute once and derives the report from retained decisions; it
+accepts no caller-supplied role/value/placement tuple. The owner itself needs no
+variable allocation. External grammar, uniqueness and processing readbacks
+remain semantics-owned. `HtmlMediaAttributeReport::observed` stays private.
+
+This order is required by the existing
+[media semantic adapter](../../crates/surgeist-html/src/semantics/media.rs),
+[ordinary report kernel](../../crates/surgeist-html/src/attributes/media.rs)
+and [media cursors](../../crates/surgeist-html/src/media.rs).
+
+#### Microdata token production
+
+The microdata owner retains the original optional raw string and
+`HtmlMicrodataTokenKind`, its space-token cursor, private token vector, current
+range, prior-token comparison position, first duplicate result and punctuation
+scan position/result. Source ranges come only from that cursor over that raw
+operand. No public constructor accepts independently supplied tokens or ranges.
+Missing/empty inputs, duplicates and dot/colon presence are normal report
+outcomes, not protocol or processing failures.
+
+After the semantic adapter's existing attribute lookup and raw admission, the
+owner exposes the following ordered actions. Each admission precedes the named
+read or mutation; a refusal prevents that action and stops the owner.
+
+1. For present raw input, admit `SpaceTokenCursor::BEGIN_WORK` before cursor
+   creation. Each loop then admits one unit for its header, followed by
+   `STEP_WORK` when the cursor inspects a unit or two units otherwise, before
+   stepping. Preserve both admissions, including the final `Done` iteration.
+2. For each emitted token, visit prior tokens in order: admit one unit per
+   candidate, one for the length comparison, and two per compared unit pair when
+   lengths match. Stop comparison at the first mismatch and select the first
+   equal prior token as `duplicate_of`; comparison is case-sensitive.
+3. Admit one unit before reading each current-token unit for dot/colon
+   classification. Visit every unit even after a match, preserving the current
+   semantic charge sequence.
+4. Request the fixed one-token reservation described below, then admit one unit
+   before committing that token. A failed reservation or write admission cannot
+   publish the token or a report; any capacity already obtained remains owned.
+5. After `Done`, or directly for absent raw input, admit one unit before sharing
+   the original raw string and assembling the report. Only then is finish ready.
+
+The ordinary interpreter drives the same token-production kernel with ordinary
+admission. The existing report's kind-specific processing-token and local-author
+rules stay authoritative; in particular ItemProp suppresses duplicate processing
+tokens. This protocol preserves the actual checkpoints in
+[`md_tokens`](../../crates/surgeist-html/src/semantics/microdata.rs) while moving
+token/report assembly into the
+[HTML microdata owner](../../crates/surgeist-html/src/attributes/microdata.rs).
+
+#### Opaque reservations and failure accounting
+
+The small rel meter retains its work callback. Its reservation callback receives
+`HtmlRelReservation<'_>`, an opaque borrowing guard over the owner's actual
+occurrence or single data-record vector, instead of `&mut Vec<T>`. Microdata
+uses a concrete `HtmlMicrodataTokenReservation<'_>` over its actual token vector.
+Each guard describes only the current fixed request for one additional record:
+actual length, capacity and record byte size, plus one checked reservation
+operation. That operation reserves exactly the pending required length using
+`try_reserve_exact`, at most once; when existing capacity suffices, the same
+operation completes without allocation after the existing one-unit admission.
+The guard exposes neither record mutation nor
+a vector/slice escape, and accepts no arbitrary additional count. Dropping an
+unexecuted guard performs no reservation; successful callback return without a
+completed required reservation is a protocol refusal, never permission to push.
+
+Semantics factors its existing private `reserve_records` implementation to
+accept this fixed reservation operation; ordinary Vec reservations delegate to
+the same implementation. This is an owner-local helper, not a new public
+allocation framework. Preserve its exact order: initial poll; checked needed
+length; existing-capacity one-unit admission; otherwise requested growth/resource
+and byte checks; one-unit allocation admission; actual reservation; actual
+capacity/resource/byte accounting; actual-limit checks; final poll. Neither HTML
+nor a second semantic helper copies that ledger formula.
+
+On a post-reservation limit or cancellation error, the original consumer error
+is returned while the stopped interpretation retains the enlarged actual
+vector and all original borrowed operands. The guard permits observing actual
+capacity after either reservation success or failure so the existing consumer
+records growth at the same checkpoint. No new record is committed after that
+failure. Noopener's scratch adapter records capacity changes even on error and
+releases its actual scratch retention when the owner is dropped; the existing
+cumulative byte accounting remains unchanged. Nested output capacities retain
+their existing cumulative treatment. Finishing cannot hide a late poll or
+allocation, and neither abort nor refusal can replace the consumer's first stop.
+
+The authoritative accounting body is
+[`HtmlSemanticSession::reserve_records`](../../crates/surgeist-html/src/semantics.rs);
+the concrete guards protect private HTML storage while allowing that existing
+controller to remain authoritative.
 
 ### Native and parsed values entering semantics
 
