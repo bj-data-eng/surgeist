@@ -1,5 +1,6 @@
 //! Direct canonical-snapshot adaptation into the HTML semantic owner.
 
+mod base;
 mod control;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
@@ -43,10 +44,32 @@ use crate::{
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
     work: usize,
+    base: Option<BaseCapturePolicy>,
 }
 impl DomHtmlCaptureLimits {
     pub fn new(subjects: usize, work: usize) -> Self {
-        Self { subjects, work }
+        Self {
+            subjects,
+            work,
+            base: None,
+        }
+    }
+    /// Explicit producer capture-fact formation limits. Validation work is
+    /// cumulative across this capture and subsequent Slot reconstruction;
+    /// record/unit limits bound each retained fact formation independently of
+    /// canonical retained observations and adapter subject/work admission.
+    pub fn with_base_facts(
+        mut self,
+        records: usize,
+        utf16_units: usize,
+        validation_work: usize,
+    ) -> Self {
+        self.base = Some(BaseCapturePolicy {
+            records,
+            units: utf16_units,
+            work: validation_work,
+        });
+        self
     }
     pub fn subjects(self) -> usize {
         self.subjects
@@ -54,6 +77,13 @@ impl DomHtmlCaptureLimits {
     pub fn work(self) -> usize {
         self.work
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BaseCapturePolicy {
+    records: usize,
+    units: usize,
+    work: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,6 +103,7 @@ pub enum DomHtmlCaptureError {
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
     Inert(surgeist_html_semantics::HtmlInertFactError),
     Controls(surgeist_html_semantics::HtmlControlFactsError),
+    BaseFacts(surgeist_html_semantics::HtmlBaseFactsError),
     OutputDefaults(surgeist_html_semantics::HtmlOutputDefaultError),
     ElementReferences(surgeist_html_semantics::HtmlElementReferenceFactsError),
     ResourceLimit {
@@ -100,6 +131,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Language(e) => Some(e),
             Self::Inert(e) => Some(e),
             Self::Controls(e) => Some(e),
+            Self::BaseFacts(e) => Some(e),
             Self::OutputDefaults(e) => Some(e),
             Self::ElementReferences(e) => Some(e),
             Self::ResourceLimit { .. }
@@ -151,6 +183,8 @@ pub struct DomHtmlCapture {
     context: HtmlSemanticContext,
     entries: Vec<Entry>,
     output_default_units: usize,
+    base_policy: Option<BaseCapturePolicy>,
+    base_work: usize,
 }
 impl DomHtmlCapture {
     pub fn basis(&self) -> DomDocumentStamp {
@@ -541,6 +575,10 @@ impl DomSnapshot {
                         HtmlCapturedCustomElementState::Known(element.custom_element_state()),
                         definition,
                     )?;
+                    if let Some(link) = node.as_link() {
+                        control.charge(1)?;
+                        builder.establish_link_history(&subject, link.history())?;
+                    }
                     if let Some(nonce) = element.nonce() {
                         builder.establish_element_nonce(&subject, nonce.clone())?;
                     }
@@ -688,21 +726,25 @@ impl DomSnapshot {
             ),
         )
         .map_err(DomHtmlCaptureError::Language)?;
-        let context = HtmlSemanticContext::new(
+        let input = control::with_native_state(
+            control::native_input(self, &entries, &mut control)?.with_language_direction(language),
+            self,
             &capture,
-            revision,
-            control::with_native_state(
-                control::native_input(self, &entries, &mut control)?
-                    .with_language_direction(language),
-                self,
-                &capture,
-                &entries,
-                &mut control,
-                capture_limits.utf16_units(),
-            )?,
-            control.limits.subjects,
-        )
-        .map_err(DomHtmlCaptureError::Context)?;
+            &entries,
+            &mut control,
+            capture_limits.utf16_units(),
+        )?;
+        let base_policy = control.limits.base;
+        let (input, base_work) = base::with_facts(
+            input,
+            self,
+            &capture,
+            &entries,
+            &mut control,
+            base_policy.map(|p| (p, 0)),
+        )?;
+        let context = HtmlSemanticContext::new(&capture, revision, input, control.limits.subjects)
+            .map_err(DomHtmlCaptureError::Context)?;
         control.charge(1)?;
         Ok(DomHtmlCapture {
             source: self.clone(),
@@ -712,6 +754,8 @@ impl DomSnapshot {
             context,
             entries,
             output_default_units: capture_limits.utf16_units(),
+            base_policy,
+            base_work,
         })
     }
 }

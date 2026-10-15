@@ -169,6 +169,8 @@ impl DomElement {
                 NativeFamily::Option(crate::DomOptionState::default())
             }
             Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
+            Requirement::KnownHtml(KnownHtmlElement::Base) => NativeFamily::Base,
+            Requirement::KnownHtml(KnownHtmlElement::Link) => NativeFamily::Link,
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
             Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
                 NativeFamily::Selectedcontent(false)
@@ -264,6 +266,12 @@ impl DomElement {
             NativeFamily::Output(state) => Some(std::sync::Arc::make_mut(state)),
             _ => None,
         }
+    }
+    pub(crate) fn is_base(&self) -> bool {
+        matches!(self.family, NativeFamily::Base)
+    }
+    pub(crate) fn is_link(&self) -> bool {
+        matches!(self.family, NativeFamily::Link)
     }
     pub(crate) fn is_details(&self) -> bool {
         matches!(self.family, NativeFamily::Details)

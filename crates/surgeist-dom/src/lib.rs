@@ -108,6 +108,7 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
+mod base;
 mod batch;
 mod button;
 mod control;
@@ -136,6 +137,7 @@ mod template;
 mod textarea;
 mod view_transition;
 
+pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,

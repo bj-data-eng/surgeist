@@ -513,6 +513,93 @@ Insertion runs common steps over inserted shadow-including descendants; this nat
 proves nonce content remains visible without inventing CSP facts. No API attaches
 a browsing context or advances the closed common tuple into interactive state.
 
+Native HTML Base retains a nullable historical frozen URL record, its actual
+freezing Document, full external influencing revision and response disposition.
+Documents retain their actual first ordinary-tree Base-with-href and separately
+qualified base facts. Becoming first or changing the current first's exact
+null-namespace href freezes immediately, including selection revealed by removal.
+Shadow roots and Template contents are separate trees. Losing first position,
+removing href, detaching and adoption preserve old frozen history; ownerDocument
+and freezing Document remain distinct. Clone/import starts unfrozen, then copied
+attributes and actual insertion run fresh hooks. Native immutable installation
+has the same fresh cause, without replaying parser history.
+
+`DomBatch::bind_native_base_facts` consumes an exact `DomDocumentStamp` and the
+producer's immutable `HtmlParseBaseFacts`. This explicitly binds external
+observations to that actual native about:blank/UTF8 environment. The supplied
+opaque encoding identity is bound to the known native encoding, rather than
+interpreted as a charset label. The operation changes no URL/encoding metadata
+and accepts no arbitrary parsed environment: srcdoc/about-base/nonblank or
+contradictory known URL observations reject. Existing bindings reject foreign
+producers and equal-revision fallback/encoding identity substitutions. A changed
+same-producer full revision is an explicit newly qualified observation binding;
+it does not itself refreeze historical state. Every supplied observation must
+match the actual fallback record identity, encoding identity and full revision;
+reached freezing additionally matches exact raw UTF16 href. Missing observations
+or CSP permission refuse atomically. No URL parser or CSP interpreter is copied.
+
+`DomLimits::with_base_processing` bounds aggregate actual retained observation
+capacity and cumulative DOM qualification/scan/response work per batch, default0.
+Canonical string admission counts fact-formation UTF16 extent and each retained
+frozen URL serialization. Input facts are formed under the semantic producer's
+own finite `HtmlBaseFactsLimits`; DOM does not claim that its work budget covers
+work already performed by that external constructor. Scans are stackless and
+poll every visit/comparison; no traversal bank is allocated. Failed/cancelled
+binding or freezing preserves the old facts, first binding, attributes and
+history together. Constructor-only paths need no configured Base processing.
+
+`DomHtmlCaptureLimits::with_base_facts(records, utf16_units, validation_work)`
+selects the separate producer fact-formation limits explicitly. Adapter vectors
+obey the existing subject/work domains; record/unit limits apply to each retained
+formation, and producer validation work is cumulative across initial capture and
+Slot reconstruction. A newly supplied Slot ceiling includes already consumed
+work. Semantic query sessions retain their own caller-selected limits. Canonical
+Link history joins the actual capture. Frozen rows bind the current nodeDocument
+and href as required by the producer, while the canonical historical freezing
+Document stays separate. The producer accepts one full revision for document
+rows; captures containing differently qualified bound Documents reject with
+`RevisionMismatch` rather than inventing a shared revision. The independent
+Base href getter still uses declared parse results even when CSP blocked the
+historical frozen URL.
+
+HTML's shared `select_frozen_base` owns failure/data/javascript/CSP-block fallback
+and successful selection. Successful assignment precedes actual native response
+qualification. Current Scripts have real `Uninitialized` results, including
+speculationrules-typed Scripts: native Disabled preparation supplies no result
+callback. The actual shadow-inclusive response walk reads those states. Native
+Documents have never been active in a navigable, so node navigable is null and
+HTML877d76574's top-level guard returns before flag/task access. Current batch
+commands and host observations admit no UI recipient or selector/style executor.
+DOM publishes actual `DocumentBase` invalidation and frozen `ElementState` changes;
+`NativeFactsPublished` certifies that bounded canonical publication, not UI,
+CSSOM or task delivery. Identical qualified refreezes whose actual state/effects
+remain unchanged are canonical no-ops, without fabricated history counters.
+
+Native Link retains shared `HtmlLinkFlags` and its nullable creating-parser
+Document. Only actual null-namespace disabled removal enables the historical flag;
+readdition/adoption preserve it and clone/native installation start fresh. Native
+creation also establishes an actual null associated stylesheet, and Documents
+start with the source-initial empty render-blocking set (HTML877d7480–7481).
+No admitted native command installs a Link sheet or enters that set; structural
+View Transition CSSOM identities establish no Link association. The actual
+href/rel/disabled/insertion guards read the current native no-BC environment:
+stylesheet, modulepreload, preload, prefetch, preconnect, dns-prefetch and expect
+processing triggers require browsing-context connectedness. Disabled-set has no
+associated sheet to disable; id/anchor-name processing iterates the actual empty
+render-blocking set. This proves no general render-blocked Boolean. Actual HTML
+Anchor creation remains unadmitted, so its name-hook coverage is conditional;
+ordinary name attributes on other Elements are exclusion evidence.
+
+Icon/manifest/alternate-feed/search UI, discovery and service uses have no admitted
+native recipient; this owner advertises no supported processing-token registry.
+Pingback's external processing remains unsupported, without a blanket no-BC
+claim. Resource-bearing sheet/set/environment state refuses precisely through
+`LinkProcessingUnavailable`. Future retained parsed installation must transfer
+actual facts, frozen history, flags and remapped Document references under its
+own cause before installation hooks; native fresh initialization cannot erase
+unknown resources/history. Current public Document destruction remains
+unadmitted; this unit neither widens it nor pins historical references.
+
 Native HTML Details derives open state solely from exact null-namespace `open`
 presence. Generic name/open changes and per-node insertion consume HTML's shared
 Details rules. Groups use equal nonempty exact UTF16 names in the same ordinary

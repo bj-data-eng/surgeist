@@ -148,22 +148,30 @@ impl DomHtmlCapture {
         )
         .map_err(DomHtmlCaptureError::Inert)?;
         control.charge(1)?;
-        self.context = HtmlSemanticContext::new(
+        let input = super::control::with_native_state(
+            super::control::native_input(&self.source, &self.entries, &mut control)?
+                .with_language_direction(language)
+                .with_inert(flat_revision, Some(inert)),
+            &self.source,
             &self.capture,
-            revision,
-            super::control::with_native_state(
-                super::control::native_input(&self.source, &self.entries, &mut control)?
-                    .with_language_direction(language)
-                    .with_inert(flat_revision, Some(inert)),
-                &self.source,
-                &self.capture,
-                &self.entries,
-                &mut control,
-                self.output_default_units,
-            )?,
-            control.limits.subjects,
-        )
-        .map_err(DomHtmlCaptureError::Context)?;
+            &self.entries,
+            &mut control,
+            self.output_default_units,
+        )?;
+        let policy = limits.adapter.base.or(self.base_policy);
+        let (input, base_work) = super::base::with_facts(
+            input,
+            &self.source,
+            &self.capture,
+            &self.entries,
+            &mut control,
+            policy.map(|p| (p, self.base_work)),
+        )?;
+        self.context =
+            HtmlSemanticContext::new(&self.capture, revision, input, control.limits.subjects)
+                .map_err(DomHtmlCaptureError::Context)?;
+        self.base_policy = policy;
+        self.base_work = base_work;
         control.charge(1)?;
         Ok(self)
     }

@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod attributes;
+mod base;
 mod children;
 mod control;
 mod details;
@@ -58,6 +59,7 @@ pub enum DomResource {
     SelectTasks,
     DetailsToggleIntentions,
     DetailsToggleOutput,
+    BaseObservations,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -106,6 +108,11 @@ pub enum DomError {
     SelectValueQueriesUnconfigured,
     SelectCapture(surgeist_html_semantics::HtmlCaptureError),
     SelectSemantic(surgeist_html_semantics::HtmlSemanticFailure),
+    LinkProcessingUnavailable,
+    BaseFacts(crate::DomBaseFactsError),
+    BaseWorkLimit {
+        limit: u64,
+    },
     SelectWorkLimit {
         limit: u64,
     },
@@ -158,6 +165,8 @@ pub struct DomLimits {
     input_scratch: usize,
     input_work: u64,
     details_intentions: usize,
+    base_observations: usize,
+    base_work: u64,
     select_tasks: usize,
     select_scratch: usize,
     select_work: u64,
@@ -215,6 +224,8 @@ impl DomLimits {
             input_scratch: 0,
             input_work: 0,
             details_intentions: 0,
+            base_observations: 0,
+            base_work: 0,
             select_tasks: 0,
             select_scratch: 0,
             select_work: 0,
@@ -307,6 +318,29 @@ impl DomLimits {
     ) -> Self {
         self.select_value_queries = Some((capture, semantics));
         self
+    }
+    /// Aggregate actual observation capacity and cumulative native Base work.
+    /// Immutable fact strings and frozen URL serializations also consume the
+    /// canonical string-unit limit. Stackless scans need no traversal bank.
+    pub fn with_base_processing(
+        mut self,
+        observation_records: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if observation_records
+            > isize::MAX as usize / size_of::<surgeist_html_semantics::HtmlBaseParseObservation>()
+        {
+            return Err(DomError::InvalidLimit(DomResource::BaseObservations));
+        }
+        self.base_observations = observation_records;
+        self.base_work = work;
+        Ok(self)
+    }
+    pub fn base_observation_records(self) -> usize {
+        self.base_observations
+    }
+    pub fn base_work(self) -> u64 {
+        self.base_work
     }
     /// Retained raw Details transitions, including staged cancellation evidence.
     /// Scans use canonical node/string/command bounds and per-step cancellation.
@@ -407,6 +441,8 @@ impl DomUsage {
 pub enum DomChange {
     /// Template contents ownership or a Document's appropriate-owner cache changed.
     TemplateRelations,
+    /// Recompute Document-scoped URL/base-dependent facts and consumers.
+    DocumentBase(DocumentId),
     SlotManual(NodeId),
     SlotAssignedNodes(NodeId),
     ManualAssignment(NodeId),
@@ -560,6 +596,9 @@ pub(crate) struct Node {
     pub(crate) option_select: Option<NodeId>,
     pub(crate) form_past_names: Option<crate::form::FormPastNames<NodeId>>,
     pub(crate) script: Option<crate::script::ScriptState<NodeId>>,
+    pub(crate) base: Option<crate::base::BaseState<NodeId>>,
+    pub(crate) base_document: Option<crate::base::BaseDocument<NodeId>>,
+    pub(crate) link: Option<crate::base::LinkState<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -687,6 +726,23 @@ impl Dom {
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
+        let mut records = 0usize;
+        for slot in &self.state.slots {
+            if let Some(node) = &slot.node {
+                records = records
+                    .checked_add(
+                        node.base_document
+                            .as_ref()
+                            .map_or(0, crate::base::BaseDocument::records),
+                    )
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
+        }
+        admit(
+            records,
+            limits.base_observations,
+            DomResource::BaseObservations,
+        )?;
         admit(
             self.state.slot_reference_count(),
             limits.slot_references,
@@ -962,11 +1018,16 @@ struct DraftNode {
     option_select: Option<Key>,
     form_past_names: Option<crate::form::FormPastNames<Key>>,
     script: Option<crate::script::ScriptState<Key>>,
+    base: Option<crate::base::BaseState<Key>>,
+    base_document: Option<crate::base::BaseDocument<Key>>,
+    link: Option<crate::base::LinkState<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
     basis: DomStamp,
+    base_work: std::cell::Cell<u64>,
+    base_work_limit: u64,
     view_transitions: DraftTransitions,
     signal_slots: Vec<Key>,
     notification_queued: bool,
@@ -1036,6 +1097,19 @@ impl Draft {
                 Some(DraftNode {
                     document: Key::Existing(node.document.0.slot),
                     kind: node.kind.clone(),
+                    base: node
+                        .base
+                        .as_ref()
+                        .map(|b| b.map(|id| Key::Existing(id.slot))),
+                    base_document: node
+                        .base_document
+                        .as_ref()
+                        .map(|b| b.map(|id| Key::Existing(id.slot)))
+                        .transpose()?,
+                    link: node
+                        .link
+                        .as_ref()
+                        .map(|b| b.map(|id| Key::Existing(id.slot))),
                     script: node
                         .script
                         .map(|value| value.map(|id| Key::Existing(id.slot))),
@@ -1082,6 +1156,8 @@ impl Draft {
                 owner: dom.owner,
                 revision: dom.revision,
             },
+            base_work: std::cell::Cell::new(0),
+            base_work_limit: dom.limits.base_work,
             view_transitions: DraftTransitions::new(&dom.state.view_transitions)?,
             signal_slots: map_keys(&dom.state.signal_slots, cancelled)?,
             notification_queued: dom.state.notification_queued,
@@ -1202,9 +1278,18 @@ impl Draft {
             .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
         let script = matches!(&kind, DomNodeKind::Element(element) if element.is_html_script())
             .then(crate::script::ScriptState::fresh);
+        let base = matches!(&kind,DomNodeKind::Element(e) if e.is_base())
+            .then(crate::base::BaseState::fresh);
+        let link = matches!(&kind,DomNodeKind::Element(e) if e.is_link())
+            .then(crate::base::LinkState::fresh);
+        let base_document =
+            matches!(&kind, DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
         self.created.push(Some(DraftNode {
             document,
             kind,
+            base,
+            link,
+            base_document,
             parent: None,
             children: Vec::new(),
             shadow_root: None,
@@ -1237,6 +1322,9 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::BindNativeBaseFacts { basis, facts } => {
+                self.bind_base_facts(basis, facts, limits, cancelled)?
+            }
             Command::Select { node, edit } => {
                 let key = self.resolve(node)?;
                 self.select_edit(key, edit, limits, cancelled)?;
@@ -1493,6 +1581,11 @@ impl Draft {
                     .expect("owned closure");
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
+                    self.units -= node.base.as_ref().map_or(0, crate::base::BaseState::units);
+                    self.units -= node
+                        .base_document
+                        .as_ref()
+                        .map_or(0, crate::base::BaseDocument::units);
                     self.units -= form::name_units(node.form_past_names.as_ref(), cancelled)?;
                     self.retire_form_relations(key, cancelled)?;
                     self.slot_retirement(key, limits, cancelled)?;
@@ -1663,6 +1756,16 @@ impl Draft {
                 continue;
             };
             let source = self.node(key)?;
+            if source
+                .base
+                .as_ref()
+                .and_then(|b| b.frozen.as_ref())
+                .is_some_and(|f| f.response == crate::base::Response::Pending)
+            {
+                return Err(DomError::BaseFacts(crate::DomBaseFactsError::Missing(
+                    surgeist_html_semantics::HtmlBaseMissing::ResponseDomain,
+                )));
+            }
             let mut children = Vec::new();
             reserve(&mut children, source.children.len())?;
             children.extend(source.children.iter().copied().map(id));
@@ -1683,6 +1786,13 @@ impl Draft {
                 reflected_targets: source.reflected_targets.map(|targets| targets.map(id)),
                 control_owner: source.control_owner.map(id),
                 option_select: source.option_select.map(id),
+                base: source.base.as_ref().map(|b| b.map(id)),
+                base_document: source
+                    .base_document
+                    .as_ref()
+                    .map(|b| b.map(id))
+                    .transpose()?,
+                link: source.link.as_ref().map(|b| b.map(id)),
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -1714,6 +1824,7 @@ impl Draft {
             units: self.units,
         };
         let mut changes = difference(dom.owner, &dom.state, &state)?;
+
         for (operation, select) in cancellations {
             reserve(&mut changes, 1)?;
             changes.push(DomChange::SelectTaskCancelled {
@@ -1846,11 +1957,24 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                         || node.reflected_targets != current.reflected_targets
                         || node.control_owner != current.control_owner
                         || node.form_past_names != current.form_past_names
+                        || node.base != current.base
+                        || node.link != current.link
                         || node.script != current.script
                         || node.option_select != current.option_select)
                 {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::ElementState(id));
+                }
+                if node.base != current.base
+                    && let Some(frozen) = current.base.as_ref().and_then(|b| b.frozen.as_ref())
+                {
+                    let change = DomChange::DocumentBase(DocumentId(frozen.document));
+                    reserve(&mut changes, 1)?;
+                    changes.push(change);
+                }
+                if node.base_document != current.base_document {
+                    reserve(&mut changes, 1)?;
+                    changes.push(DomChange::DocumentBase(DocumentId(id)));
                 }
                 let kind_change = if intrinsic_changed {
                     Some(

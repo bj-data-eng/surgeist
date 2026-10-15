@@ -15,6 +15,8 @@ use surgeist_html::{
 pub(super) enum NativeFamily {
     Common,
     Details,
+    Base,
+    Link,
     Template(surgeist_html::HtmlTemplateFreshInsertionState),
     Form(surgeist_html::HtmlFormNativeState),
     Fieldset(crate::DomFieldsetState),
@@ -54,6 +56,8 @@ impl NativeFamily {
             Self::Form(_)
             | Self::Common
             | Self::Details
+            | Self::Base
+            | Self::Link
             | Self::Template(_)
             | Self::Option(_)
             | Self::Optgroup

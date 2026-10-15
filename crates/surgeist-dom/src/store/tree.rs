@@ -345,6 +345,7 @@ impl Draft {
             self.script_removing_node(key, cancel)?;
             self.select_removal(key, limits, cancel)?;
             self.control_removing_node(key, cancel)?;
+            self.base_tree_change(key, limits, cancel)?;
         }
         Ok(())
     }
@@ -415,6 +416,7 @@ impl Draft {
                 }
             }
             self.control_insertion_node(key, cancel)?;
+            self.base_tree_change(key, limits, cancel)?;
             self.select_insertion(key, limits, cancel)?;
             self.details_exclusivity(
                 key,

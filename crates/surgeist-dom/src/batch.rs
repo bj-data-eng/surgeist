@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    BindNativeBaseFacts {
+        basis: DomDocumentStamp,
+        facts: surgeist_html_semantics::HtmlParseBaseFacts,
+    },
     Select {
         node: NodeOperand,
         edit: crate::select::Edit,
@@ -196,6 +200,21 @@ impl Default for DomBatch {
 }
 
 impl DomBatch {
+    /// Binds external observations to this exact native about:blank/UTF8
+    /// Document. The encoding token is explicitly bound to that actual
+    /// encoding; its identity is never interpreted as a charset label.
+    /// This changes no URL/encoding metadata and does not itself refreeze Base.
+    pub fn bind_native_base_facts(
+        &mut self,
+        basis: DomDocumentStamp,
+        facts: &surgeist_html_semantics::HtmlParseBaseFacts,
+    ) {
+        self.commands.push(Command::BindNativeBaseFacts {
+            basis,
+            facts: facts.clone(),
+        });
+    }
+
     pub fn new() -> Self {
         Self {
             owner: Arc::new(BatchIdentity),

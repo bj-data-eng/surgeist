@@ -214,6 +214,14 @@ impl Draft {
             Some(&details_new_value),
             limits,
             cancelled,
+        )?;
+        self.base_attribute_change(
+            node,
+            &changed,
+            old_value.as_ref(),
+            Some(&details_new_value),
+            limits,
+            cancelled,
         )
     }
 
@@ -272,7 +280,8 @@ impl Draft {
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)?;
         self.select_attribute(node, &changed, AttributeChange::Removed, limits, cancelled)?;
-        self.details_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)
+        self.details_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)?;
+        self.base_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)
     }
 
     fn publish_element(

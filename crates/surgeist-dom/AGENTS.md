@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
+Common profiles plus actual native Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -326,3 +326,27 @@ and checked, and private create/destroy closures free of fabricated IDs. Exact
 retirement cancels untransferred recipients with target/operation/state evidence.
 Transferred historical targets require fresh exact-generation validation by their
 actual task owner. DOM owns no Runtime task tracker or ToggleEvent dispatch.
+
+Base stores actual nullable frozen history with freezing Document/full revision
+and response, separately from current ownerDocument. Use exact first ordinary
+Document-tree Base/href hooks at attribute/insertion/removal points; preserve
+history after detach/adopt/lost href, and fresh-initialize clone/native installation.
+The exact-stamp native facts binding attests opaque URL/encoding identities against
+actual known about:blank/UTF8, never arbitrary parsed metadata or default CSP truth.
+Validate complete influencing inputs and raw UTF16 before shared frozen selection.
+Bound aggregate actual observation capacity, canonical retained units and cumulative
+DOM work independently from producer input formation. Base capture formation has
+explicit record/unit/work limits; validation work remains cumulative through Slot
+reconstruction. Preserve current capture nodeDocument binding separately from
+historical freezing provenance; differently qualified bound Document rows cannot
+be merged into the producer's single revision domain.
+Native response proof reads real uninitialized Script results and the exact null
+node-navigable guard, then publishes DocumentBase/ElementState change coverage.
+Do not fabricate UI/style/task delivery or persistent counters for identical no-ops.
+Link consumes shared disabled-removal flags and actual nullable parser Document.
+Its native null stylesheet/initial empty render-blocking set and exact BC-connected
+trigger guards establish the bounded processing prefix, not a generic render-blocked
+false or resource-service implementation. Reject resource-bearing state explicitly;
+VT CSSOM bindings are no Link sheet installation. Anchor name processing remains
+conditional on actual Anchor admission. Future parsed/resources ingress has a
+separate cause and cannot copy native closed proof or erase retained history.
