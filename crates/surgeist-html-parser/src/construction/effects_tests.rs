@@ -8,6 +8,84 @@ use crate::parser::tokenizer::{
 };
 use crate::parser::tree_builder::ConstructionCapability;
 
+// Literal HTML #selectedness-setting-algorithm oracles exercise the existing
+// callable parser boundary before its language decisions are shared with DOM.
+fn normalization_case(source: &str, selected: [bool; 3], expected: [bool; 3], changed: bool) {
+    let request = request(source);
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let select = named(&nodes, "select", 0);
+    let options = [0, 1, 2].map(|i| named(&nodes, "option", i));
+    for (index, option) in options.iter().enumerate() {
+        let storage = session.active_mut().unwrap();
+        let (slot, SelectMetadata::Option(mut state)) =
+            storage.select_metadata(&mut c, option.index).unwrap()
+        else {
+            panic!("actual option metadata")
+        };
+        state.flags = HtmlOptionFlags::new(selected[index], index != 1);
+        storage
+            .set_select_metadata(&mut c, slot, SelectMetadata::Option(state))
+            .unwrap();
+    }
+    assert_eq!(
+        session
+            .active_mut()
+            .unwrap()
+            .selectedness_setting(&mut c, select.index, None)
+            .unwrap(),
+        changed
+    );
+    for (index, option) in options.iter().enumerate() {
+        let flags = session.option_state(&mut c, option).unwrap().flags;
+        assert_eq!(flags.selectedness(), expected[index]);
+        assert_eq!(flags.dirtiness(), index != 1);
+    }
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn select_normalization_keeps_last_selected_even_when_disabled_and_preserves_dirty_flags() {
+    normalization_case(
+        "<body><select><option>A</option><option>B</option><option disabled>C</option></select></body>",
+        [true, true, true],
+        [false, false, true],
+        true,
+    );
+    normalization_case(
+        "<body><select multiple><option>A</option><option>B</option><option disabled>C</option></select></body>",
+        [true, true, true],
+        [true, true, true],
+        false,
+    );
+}
+
+#[test]
+fn select_normalization_fallback_requires_display_size_one_and_first_enabled_option() {
+    for size in ["", " size=1", " size=bad", " size=1tail"] {
+        normalization_case(
+            &format!("<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"),
+            [false, false, false],
+            [false, true, false],
+            true,
+        );
+    }
+    for size in [" size=0", " size=-0", " size=2", " multiple"] {
+        normalization_case(
+            &format!("<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"),
+            [false, false, false],
+            [false, false, false],
+            false,
+        );
+    }
+    normalization_case(
+        "<body><select><option disabled>A</option><option disabled>B</option><option disabled>C</option></select></body>",
+        [false, false, false],
+        [false, false, false],
+        false,
+    );
+}
+
 fn next(
     lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
     c: &mut ParseControl,
