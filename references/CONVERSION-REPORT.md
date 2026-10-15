@@ -697,3 +697,39 @@ while the contribution's review consumes them. The exact existing
 [WHATWG terms and supplemental attribution](../licenses/whatwg/NOTICE.md#intrinsic-html-source-supplements--2026-10-13)
 remain linked. These checks establish source fidelity and navigation, not
 implementation correctness, browser behavior, external fact truth or conformance.
+
+## Hosted Document activity source retention — 2026-10-15
+
+The [bounded reference](html-hosted-document-activity--877d6146487f--f8564ea4758e.md)
+retains complete selected clauses from the already retained HTML revision
+`877d6146487f15b15bc8dd0e3c625063a37b456a`: active Document at raw70877–70880
+with its70876 opening algorithm wrapper; Document browsing-context definition
+and complete createDocument/removed-iframe note71636–71642; fully-active heading/
+definition and child-navigable interaction restriction71919–71932. Surrounding
+chapters and the following example remain outside the bounded selection.
+
+Complete original: 14,930,614 bytes, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The three original fragments, preserving their LF endings and joined by one
+extra LF between fragments, have SHA-256
+`f8564ea4758e8af4bdd7ee661325dfe6565013d25796121e84e924efe8e225eb`.
+This bounded-input hash supplies the filename suffix. Final Markdown SHA-256 is
+`81ea7b382ff9b9f6137c4185afd3e6c0bedc8ffe69b9a76ab733a6798fe1bb99`;
+it identifies the representation, not an original page or different edition.
+Existing original-source identities and historical counts are unchanged.
+
+Conversion on 2026-10-15 uses literal semantic HTML inside Markdown, adding only
+editorial headings/provenance and rebasing internal fragment hrefs to the same
+immutable snapshot. Exact reversal of that href transformation recovers every
+selected body byte. Independent HTML-parser token comparison preserves text,
+links, IDs, code/variables/definitions, algorithm wrappers and note class.
+No words or operative branches are repaired or paraphrased. All four owning
+Markdown documents passed validation and LF/trailing-whitespace checks; local
+license and attribution links resolve. No software/source acquisition, source scripts,
+browser implementation, Cargo or documentation build is involved.
+
+The existing exact WHATWG LICENSE hash was checked. Copyright, CC BY 4.0 prose
+terms, BSD source-code distinction and disclosed changes are recorded in the
+[supplemental notice](../licenses/whatwg/NOTICE.md#hosted-document-activity-clauses--2026-10-15)
+and reference. These checks establish bounded source fidelity and navigation,
+not hosted lifecycle implementation or conformance.

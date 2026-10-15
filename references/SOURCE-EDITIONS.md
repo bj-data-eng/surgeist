@@ -312,7 +312,19 @@ suppress recognized contributions. The active Document policy, ancestor/CSP
 and popup composition, navigation and enforcement remain external operations.
 This additional representation adds no source identity or edition change.
 
-The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing and scripting-state clauses. The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
+The [hosted Document activity clauses](html-hosted-document-activity--877d6146487f--f8564ea4758e.md)
+retain the complete active-document definition (original70877–70880, including
+its70876 wrapper), Document browsing-context definition and createDocument/
+removed-iframe note (71636–71642), and fully-active definition plus child-navigable
+interaction restriction (71919–71932). They use the same HTML877d original above;
+bounded original-fragment SHA-256 is
+`f8564ea4758e8af4bdd7ee661325dfe6565013d25796121e84e924efe8e225eb`.
+For #136/#1124 this supplies the selected active-entry/Document/container relation
+and preserves closed native createDocument semantics. It retains no surrounding
+navigation chapter or subsequent example and adds no newer edition, browser
+override or hosted lifecycle implementation.
+
+The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing, scripting-state and bounded hosted Document activity clauses. The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
 
 The previous live [language/direction](dom-html-language-direction--editor-capture-20261010--494ac341fe2b.md), [interaction](dom-html-host-interaction--editor-capture-20261010--8a01a8043e7c.md), [HTML selector facts](dom-html-host-selector-facts--editor-capture-20261010--07d421b207b3.md) and [table processing](style-specialized-determinations-html-tables--editor-capture-20261011--7e90e654e94f.md) captures remain historical source identities and original decision evidence. For unstarted HTML language and HTML-supplied host facts, this pinned baseline supersedes those bounded live source selections. This changes source selection, not completed implementation provenance or the separately selected WHATWG DOM foundation. The repository LICENSE pin previously associated with those live captures did not identify their served chapter bytes; the new immutable full snapshot does identify this retained HTML edition.
 

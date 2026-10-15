@@ -217,3 +217,34 @@ to portions incorporated into code, not as an alternative prose license.
 The [edition map](../../references/SOURCE-EDITIONS.md#remaining-intrinsic-html-source-clauses)
 and [conversion report](../../references/CONVERSION-REPORT.md#intrinsic-html-supplements--2026-10-13)
 record scope and fidelity; this reference addition makes no implementation claim.
+
+## Hosted Document activity clauses — 2026-10-15
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded hosted Document reference](../../references/html-hosted-document-activity--877d6146487f--f8564ea4758e.md)
+retains the complete active-document definition, Document browsing-context
+definition and createDocument/removed-iframe note, and fully-active definition
+with the child-navigable interaction restriction from the existing immutable HTML
+snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`. Complete original SHA-256:
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Original ranges70876–70880,71636–71642 and71919–71932 form bounded input SHA-256
+`f8564ea4758e8af4bdd7ee661325dfe6565013d25796121e84e924efe8e225eb`.
+Surrounding chapters and the subsequent example are not included.
+
+Changes by Surgeist on 2026-10-15 comprise offline bounded extraction, explanatory
+Markdown headings/provenance and absolute same-edition fragment links. Source
+bodies remain literal semantic HTML inside Markdown; original words, IDs,
+inline semantics, algorithm wrappers and informative-note class are preserved.
+No source scripts executed, operative branches paraphrased, implementation code
+ingested or newer edition selected. No endorsement is implied.
+
+The existing exact [LICENSE](LICENSE), SHA-256
+`85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`,
+covers this specification prose under Creative Commons Attribution 4.0
+International. The BSD 3-Clause provision applies only to portions incorporated
+into source code, not as an alternative license for Markdown prose.
+The [edition map](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
+and [conversion report](../../references/CONVERSION-REPORT.md#hosted-document-activity-source-retention--2026-10-15)
+record the bounded source use and fidelity; this adds no hosted/browser
+implementation or new original source identity.
