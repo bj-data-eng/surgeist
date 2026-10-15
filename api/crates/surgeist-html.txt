@@ -2680,6 +2680,22 @@ pub surgeist_html::HtmlOlType::UpperRoman
 impl surgeist_html::HtmlOlType
 pub fn surgeist_html::HtmlOlType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlOlType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlOutputAction
+pub surgeist_html::HtmlOutputAction::ClearDefaultOverride
+pub surgeist_html::HtmlOutputAction::Complete
+pub surgeist_html::HtmlOutputAction::ReadDefaultValue
+pub surgeist_html::HtmlOutputAction::ReplaceAllWithReadDefault
+pub surgeist_html::HtmlOutputAction::ReplaceAllWithSuppliedValue
+pub surgeist_html::HtmlOutputAction::StoreReadDefaultAsOverride
+pub surgeist_html::HtmlOutputAction::StoreSuppliedValueAsOverride
+pub enum surgeist_html::HtmlOutputDefaultSource
+pub surgeist_html::HtmlOutputDefaultSource::DescendantText
+pub surgeist_html::HtmlOutputDefaultSource::Override
+pub enum surgeist_html::HtmlOutputOperation
+pub surgeist_html::HtmlOutputOperation::DefaultValueSetter
+pub surgeist_html::HtmlOutputOperation::DefaultValueSetter::has_override: bool
+pub surgeist_html::HtmlOutputOperation::Reset
+pub surgeist_html::HtmlOutputOperation::ValueSetter
 pub enum surgeist_html::HtmlParsedSrcsetDescriptor
 pub surgeist_html::HtmlParsedSrcsetDescriptor::Density(surgeist_html::HtmlFloatingPointNumber)
 pub surgeist_html::HtmlParsedSrcsetDescriptor::Unspecified
@@ -4673,6 +4689,15 @@ pub fn surgeist_html::HtmlOrderedTokenSet::tokens(&self) -> &[surgeist_html::Htm
 impl core::cmp::Eq for surgeist_html::HtmlOrderedTokenSet
 impl core::cmp::PartialEq for surgeist_html::HtmlOrderedTokenSet
 pub fn surgeist_html::HtmlOrderedTokenSet::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlOutputCursor
+impl surgeist_html::HtmlOutputCursor
+pub fn surgeist_html::HtmlOutputCursor::acknowledge(&mut self, completed: surgeist_html::HtmlOutputAction) -> core::result::Result<(), surgeist_html::HtmlOutputCursorError>
+pub const fn surgeist_html::HtmlOutputCursor::action(&self) -> surgeist_html::HtmlOutputAction
+pub const fn surgeist_html::HtmlOutputCursor::new(operation: surgeist_html::HtmlOutputOperation) -> Self
+pub struct surgeist_html::HtmlOutputCursorError
+impl core::error::Error for surgeist_html::HtmlOutputCursorError
+impl core::fmt::Display for surgeist_html::HtmlOutputCursorError
+pub fn surgeist_html::HtmlOutputCursorError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlParsedDuration
 impl surgeist_html::HtmlParsedDuration
 pub fn surgeist_html::HtmlParsedDuration::new(seconds: surgeist_html::HtmlNonNegativeDecimal) -> Self
@@ -5391,6 +5416,7 @@ pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedN
 pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect
+pub const fn surgeist_html::output_default_source(has_override: bool) -> surgeist_html::HtmlOutputDefaultSource
 pub fn surgeist_html::reflected_element_attribute_change(reflected: surgeist_html::KnownHtmlAttribute, changed: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
 pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument

@@ -6,6 +6,140 @@
 
 use crate::HtmlInputValueComparison;
 
+/// Actual source of an output element's default value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlOutputDefaultSource {
+    Override,
+    DescendantText,
+}
+
+/// Select from established actual override presence, including present-empty.
+/// Missing capture evidence is not a false presence observation. The caller
+/// reads its real nullable override or ordinary descendant Text as selected.
+pub const fn output_default_source(has_override: bool) -> HtmlOutputDefaultSource {
+    if has_override {
+        HtmlOutputDefaultSource::Override
+    } else {
+        HtmlOutputDefaultSource::DescendantText
+    }
+}
+
+/// One output value/defaultValue setter or per-control reset operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlOutputOperation {
+    ValueSetter,
+    /// Presence of the actual nullable override when the operation begins.
+    DefaultValueSetter {
+        has_override: bool,
+    },
+    Reset,
+}
+
+/// The next source-ordered Output operation for the consuming owner to perform.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlOutputAction {
+    /// Resolve the actual default using output_default_source and retain it.
+    ReadDefaultValue,
+    StoreReadDefaultAsOverride,
+    ReplaceAllWithSuppliedValue,
+    StoreSuppliedValueAsOverride,
+    ReplaceAllWithReadDefault,
+    ClearDefaultOverride,
+    Complete,
+}
+
+/// An acknowledgement that does not match the pending action, or is terminal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlOutputCursorError;
+
+impl std::fmt::Display for HtmlOutputCursorError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("output acknowledgement does not match its pending action")
+    }
+}
+
+impl std::error::Error for HtmlOutputCursorError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OutputPhase {
+    ReadForValue,
+    StoreReadDefault,
+    ReplaceSupplied,
+    StoreSupplied,
+    ReadForReset,
+    ReplaceDefault,
+    ClearOverride,
+    Complete,
+}
+
+/// Fixed, allocation-free Output setter/reset order from HTML's
+/// [output rules](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-output-element).
+///
+/// The consumer owns actual nullable override/string storage, supplied/read
+/// strings, tree replacement, admission, cancellation and publication. Acknowledge
+/// an action only after its real operation succeeds. ReadDefaultValue uses the
+/// pre-replacement tree/override. No string is normalized and equal strings do
+/// not skip the required tree replacement. Reset clears override only after its
+/// replacement, while a value setter stores the read default before replacing.
+/// This is not a form-wide event-bearing reset or a capture-availability model.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlOutputCursor {
+    phase: OutputPhase,
+}
+
+impl HtmlOutputCursor {
+    pub const fn new(operation: HtmlOutputOperation) -> Self {
+        let phase = match operation {
+            HtmlOutputOperation::ValueSetter => OutputPhase::ReadForValue,
+            HtmlOutputOperation::DefaultValueSetter {
+                has_override: false,
+            } => OutputPhase::ReplaceSupplied,
+            HtmlOutputOperation::DefaultValueSetter { has_override: true } => {
+                OutputPhase::StoreSupplied
+            }
+            HtmlOutputOperation::Reset => OutputPhase::ReadForReset,
+        };
+        Self { phase }
+    }
+
+    pub const fn action(&self) -> HtmlOutputAction {
+        match self.phase {
+            OutputPhase::ReadForValue | OutputPhase::ReadForReset => {
+                HtmlOutputAction::ReadDefaultValue
+            }
+            OutputPhase::StoreReadDefault => HtmlOutputAction::StoreReadDefaultAsOverride,
+            OutputPhase::ReplaceSupplied => HtmlOutputAction::ReplaceAllWithSuppliedValue,
+            OutputPhase::StoreSupplied => HtmlOutputAction::StoreSuppliedValueAsOverride,
+            OutputPhase::ReplaceDefault => HtmlOutputAction::ReplaceAllWithReadDefault,
+            OutputPhase::ClearOverride => HtmlOutputAction::ClearDefaultOverride,
+            OutputPhase::Complete => HtmlOutputAction::Complete,
+        }
+    }
+
+    /// A mismatched acknowledgement or one after Complete preserves the cursor.
+    /// Never acknowledge missing observations or failed/unperformed operations.
+    pub fn acknowledge(
+        &mut self,
+        completed: HtmlOutputAction,
+    ) -> Result<(), HtmlOutputCursorError> {
+        if completed != self.action() {
+            return Err(HtmlOutputCursorError);
+        }
+        let next = match self.phase {
+            OutputPhase::ReadForValue => OutputPhase::StoreReadDefault,
+            OutputPhase::StoreReadDefault => OutputPhase::ReplaceSupplied,
+            OutputPhase::ReadForReset => OutputPhase::ReplaceDefault,
+            OutputPhase::ReplaceDefault => OutputPhase::ClearOverride,
+            OutputPhase::ReplaceSupplied
+            | OutputPhase::StoreSupplied
+            | OutputPhase::ClearOverride => OutputPhase::Complete,
+            OutputPhase::Complete => return Err(HtmlOutputCursorError),
+        };
+        self.phase = next;
+        Ok(())
+    }
+}
+
 /// Additional Input/textarea value-setter effects after generic value clamping.
 /// The caller executes the selected effect with actual value length and platform
 /// direction support; this decision does not itself move a cursor or selection.
