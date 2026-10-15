@@ -2396,6 +2396,7 @@ pub fn surgeist_html::HtmlInputType::into_attribute(self) -> surgeist_html::Attr
 impl surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputType::is_selectable(self) -> bool
 pub fn surgeist_html::HtmlInputType::sanitization(self) -> surgeist_html::HtmlInputValueSanitization
+pub const fn surgeist_html::HtmlInputType::uses_current_value_for_directionality(self) -> bool
 pub fn surgeist_html::HtmlInputType::value_mode(self) -> surgeist_html::HtmlInputValueMode
 impl surgeist_html::HtmlInputType
 pub fn surgeist_html::HtmlInputType::missing_value_default() -> Self

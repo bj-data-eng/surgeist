@@ -368,21 +368,9 @@ impl HtmlLanguageDirectionFacts {
                     .map_err(|_| {
                         HtmlLanguageDirectionError::InapplicableCurrentValue(fact.subject.clone())
                     })?;
-                matches!(
-                    state.intrinsic(),
-                    Some(
-                        HtmlInputType::Hidden
-                            | HtmlInputType::Text
-                            | HtmlInputType::Search
-                            | HtmlInputType::Telephone
-                            | HtmlInputType::Url
-                            | HtmlInputType::Email
-                            | HtmlInputType::Password
-                            | HtmlInputType::Submit
-                            | HtmlInputType::Reset
-                            | HtmlInputType::Button
-                    )
-                )
+                state
+                    .intrinsic()
+                    .is_some_and(|kind| kind.uses_current_value_for_directionality())
             } else {
                 false
             };
@@ -1001,19 +989,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     let kind = self.known(element)?;
                     let control = kind == Some(KnownHtmlElement::Textarea)
                         || (kind == Some(KnownHtmlElement::Input)
-                            && matches!(
-                                self.direction_input_type(element)?,
-                                HtmlInputType::Hidden
-                                    | HtmlInputType::Text
-                                    | HtmlInputType::Search
-                                    | HtmlInputType::Telephone
-                                    | HtmlInputType::Url
-                                    | HtmlInputType::Email
-                                    | HtmlInputType::Password
-                                    | HtmlInputType::Submit
-                                    | HtmlInputType::Reset
-                                    | HtmlInputType::Button
-                            ));
+                            && self
+                                .direction_input_type(element)?
+                                .uses_current_value_for_directionality());
                     if control {
                         let value = self
                             .control_current_value(&id)?

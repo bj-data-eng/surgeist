@@ -12,6 +12,26 @@
 use crate::{DocumentString, HtmlInputType};
 
 impl HtmlInputType {
+    /// Whether this Input state uses its current value for auto directionality.
+    ///
+    /// HTML877d #auto-directionality-form-associated-elements selects these
+    /// states. This rule neither resolves directionality nor supplies a current
+    /// value; adapters retain actual value facts and their bounded reads.
+    pub const fn uses_current_value_for_directionality(self) -> bool {
+        matches!(
+            self,
+            Self::Hidden
+                | Self::Text
+                | Self::Search
+                | Self::Telephone
+                | Self::Url
+                | Self::Email
+                | Self::Password
+                | Self::Submit
+                | Self::Reset
+                | Self::Button
+        )
+    }
     pub fn value_mode(self) -> HtmlInputValueMode {
         match self {
             Self::Hidden | Self::Submit | Self::Reset | Self::Button | Self::Image => {
