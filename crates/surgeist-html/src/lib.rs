@@ -22,6 +22,7 @@ mod input;
 mod integration_points;
 mod interpretation;
 mod media;
+mod native_initialization;
 mod nonce;
 mod numeric;
 mod pi_pseudo_attributes;
@@ -54,6 +55,10 @@ pub use input::*;
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
 pub use media::*;
+pub use native_initialization::{
+    HtmlNativeClosedElementState, HtmlNativeClosedHtmlState, HtmlNativeCommonState,
+    HtmlNativeFreshNonce, HtmlNativeInitialization, HtmlNativeInitializationRequirement,
+};
 pub use nonce::{
     HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
     HtmlNonceAttributeEffect, HtmlNonceConnection, HtmlNonceDocumentEnvironment,

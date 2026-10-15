@@ -1,4 +1,5 @@
 //! Nonce content and cryptographic-slot decisions, HTML 877d §2.5.6.
+use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
 use crate::{DocumentString, QualifiedName};
 
 /// Actual captured cryptographic slot; content attributes are independent.
@@ -83,9 +84,9 @@ fn exact(value: &DocumentString, literal: &[u8]) -> bool {
 pub fn nonce_element(name: &QualifiedName) -> bool {
     name.namespace().uri().is_some_and(|uri| {
         [
-            b"http://www.w3.org/1999/xhtml".as_slice(),
-            b"http://www.w3.org/2000/svg",
-            b"http://www.w3.org/1998/Math/MathML",
+            HTML_NAMESPACE_URI.as_bytes(),
+            SVG_NAMESPACE_URI.as_bytes(),
+            MATHML_NAMESPACE_URI.as_bytes(),
         ]
         .iter()
         .any(|literal| exact(uri, literal))

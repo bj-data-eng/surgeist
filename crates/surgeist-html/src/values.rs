@@ -2,6 +2,10 @@
 
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
+pub(crate) const HTML_NAMESPACE_URI: &str = "http://www.w3.org/1999/xhtml";
+pub(crate) const SVG_NAMESPACE_URI: &str = "http://www.w3.org/2000/svg";
+pub(crate) const MATHML_NAMESPACE_URI: &str = "http://www.w3.org/1998/Math/MathML";
+
 /// An immutable sequence of exact UTF-16 code units.
 ///
 /// Isolated surrogates, whitespace, and null code units are preserved. Lengths
@@ -142,17 +146,17 @@ impl Namespace {
 
     /// Returns the HTML namespace.
     pub fn html() -> Self {
-        Self::from_uri("http://www.w3.org/1999/xhtml")
+        Self::from_uri(HTML_NAMESPACE_URI)
     }
 
     /// Returns the SVG namespace.
     pub fn svg() -> Self {
-        Self::from_uri("http://www.w3.org/2000/svg")
+        Self::from_uri(SVG_NAMESPACE_URI)
     }
 
     /// Returns the MathML namespace.
     pub fn mathml() -> Self {
-        Self::from_uri("http://www.w3.org/1998/Math/MathML")
+        Self::from_uri(MATHML_NAMESPACE_URI)
     }
 
     /// Constructs namespace identity from a URI, mapping an empty URI to none.
