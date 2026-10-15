@@ -14,6 +14,7 @@ use std::{
 
 mod attributes;
 mod construction;
+mod text_append;
 pub(crate) use construction::ConstructionAllocation;
 
 const WORK_COUNT: usize = 8;
@@ -717,7 +718,15 @@ impl ParseControl {
         vector: &Vec<T>,
         additional: usize,
     ) -> Result<Option<ReservationPlan>, ParseStop> {
-        let Some(exact) = ReservationPlan::for_vec(vector, additional)? else {
+        self.geometric_capacity::<T>(vector.len(), vector.capacity(), additional)
+    }
+    fn geometric_capacity<T>(
+        &self,
+        len: usize,
+        capacity: usize,
+        additional: usize,
+    ) -> Result<Option<ReservationPlan>, ParseStop> {
+        let Some(exact) = ReservationPlan::for_capacity::<T>(len, capacity, additional)? else {
             return Ok(None);
         };
         let current = self
@@ -745,15 +754,10 @@ impl ParseControl {
         let representation = || ParseStop::RepresentationExhausted {
             resource: HtmlParseResource::ManagedCapacityBytes,
         };
-        let required = vector
-            .len()
-            .checked_add(additional)
-            .ok_or_else(representation)?;
-        let target = required.max(vector.capacity().saturating_mul(2)).min(slots);
+        let required = len.checked_add(additional).ok_or_else(representation)?;
+        let target = required.max(capacity.saturating_mul(2)).min(slots);
         Ok(Some(ReservationPlan {
-            additional: target
-                .checked_sub(vector.len())
-                .ok_or_else(representation)?,
+            additional: target.checked_sub(len).ok_or_else(representation)?,
             old_bytes: exact.old_bytes,
             new_bytes: target
                 .checked_mul(size_of::<T>())
@@ -1507,17 +1511,22 @@ pub(crate) struct ReservationPlan {
 }
 impl ReservationPlan {
     fn for_vec<T>(vector: &Vec<T>, additional: usize) -> Result<Option<Self>, ParseStop> {
+        Self::for_capacity::<T>(vector.len(), vector.capacity(), additional)
+    }
+    fn for_capacity<T>(
+        len: usize,
+        capacity: usize,
+        additional: usize,
+    ) -> Result<Option<Self>, ParseStop> {
         if size_of::<T>() == 0 {
             return Err(ParseStop::InternalInvariant(Invariant::ZeroSizedStorage));
         }
-        let length =
-            vector
-                .len()
-                .checked_add(additional)
-                .ok_or(ParseStop::RepresentationExhausted {
-                    resource: HtmlParseResource::ManagedCapacityBytes,
-                })?;
-        if length <= vector.capacity() {
+        let length = len
+            .checked_add(additional)
+            .ok_or(ParseStop::RepresentationExhausted {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+            })?;
+        if length <= capacity {
             return Ok(None);
         }
         let layout = |slots: usize| {
@@ -1531,7 +1540,7 @@ impl ReservationPlan {
         };
         Ok(Some(Self {
             additional,
-            old_bytes: layout(vector.capacity())?,
+            old_bytes: layout(capacity)?,
             new_bytes: layout(length)?,
         }))
     }

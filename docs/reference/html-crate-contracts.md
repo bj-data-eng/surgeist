@@ -390,6 +390,66 @@ scan, uncharged state or fabricated capacity satisfies this contract. This
 clarification selects the boundary; implementation and independent acceptance
 review must still establish it.
 
+#### Controlled text append
+
+`HtmlConstructionTextAppend` exclusively consumes the same
+`HtmlConstructionStorage`, an existing checked Text handle and an immutable
+incoming `DocumentString`. Its admitted actions inspect the actual target,
+choose unique reuse or preservation, initialize/reserve backing, copy bounded
+prefix/tail chunks, preflight, qualify final exclusivity and prepare Ready.
+No mutable Vec/Arc or reusable uniqueness assertion escapes. Foreign/wrong-kind
+refusal returns the original operands through abort.
+
+Unique means the actual Arc has one strong owner and no Weak references. Shared
+original backing is preserved by copying its prefix once into a separate
+aggregate. A unique aggregate reuses its capacity. Each UTF-16 copy action has
+at most 128 units (256 bytes). Reserve describes required and preferred capacity;
+the default preference doubles actual capacity, while a consumer may select an
+admitted minimum between required and preferred. Actual capacity and the known
+Vec payload inside Arc are observed before a post-provider stop. Opaque Arc
+headers and allocator internals remain the existing provider limitations.
+
+Only the actual Preflight action lends the original storage. Read-only candidate
+backing is available before final tail qualification so its real allocation
+ticket can be bound and suspended. Final qualification repeats actual Arc
+exclusivity; no storage/backing lender remains after it succeeds. Pending tail
+writes cannot be observed through a construction result. Ready commits the new
+logical usage and native value using prepaid moves; node identity and topology
+remain unchanged.
+
+Abort truncates initialized tail only when reusing the native backing, retaining
+any successful capacity growth. A separate preservation copy returns all its
+actually initialized units for stopped-owner retention and disposal; the
+original native text was never changed. Completion returns the same storage,
+node and incoming operand, plus any distinct backing whose ownership must be
+retained or retired. Capacity snapshots observe dimensions, not accounting or
+release authority.
+
+Parser keeps immutable lexical leaves and original/incoming/trigger relations.
+Its aggregate ticket moves to the next real registry row when backing is reused;
+the old row retains historical group identity without another materialized
+prefix. On refusal, the old native text/current ticket are restored. Actual
+failed copy backing and its original ticket remain with the stopped session
+until explicit cleanup. First-stop usage and admitted work are never refunded.
+
+A controller-admitted dense append-field index joins each permanent record to
+its current Text ticket and optional textarea metadata row. Each lookup still
+qualifies the actual registry location/ticket. Creation prepares real entries;
+clone binds a distinct current field; detach preserves the record's association.
+Publication transfers the index with its owner and cleanup releases its actual
+entries/capacity. Script, textarea/reset and selectedcontent readers continue to
+observe the coherent native tree after each committed insertion.
+
+The selected copy/lookup bounds cover these mechanisms, not every HTML
+algorithm. In unique-growth episodes without clipping, prior capacities form a
+geometric series, so conservative relocation bounds and explicit prefix/incoming
+copies are linear in final text size. Controller clipping retains the original
+capacity/overlap/layout gates; it is not an unconditional doubling promise.
+Tests distinguish modeled `CopyByte` (including fixed metadata), actual index
+visits, conservative allocator relocation bounds and wall-clock time. Holding
+additional aliases, arbitrary capacity selections or unrelated releases does
+not establish the same amortized bound.
+
 #### Construction operation payloads and failures
 
 The public operation signature is

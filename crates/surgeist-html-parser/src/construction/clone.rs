@@ -305,6 +305,9 @@ impl SessionStorage {
                 // alias. Allocation success and binding must have no fallible
                 // gap, including a stop at the first binding-copy admission.
                 payload_write::<StringLocation>(c, 1)?;
+                if text {
+                    payload_write::<Option<usize>>(c, 1)?;
+                }
                 let node = self.allocate_in_document_owned(
                     c,
                     if text {
@@ -874,6 +877,9 @@ impl SessionStorage {
         node: usize,
         bindings: CloneBindings,
     ) -> Result<(), SessionError> {
+        if bindings.textarea.is_some() {
+            payload_write::<Option<usize>>(c, 1)?;
+        }
         for slot in [
             bindings.details,
             bindings.link,
@@ -904,6 +910,9 @@ impl SessionStorage {
                 | RetainedPayload::SvgScript { node: bound, .. } => *bound = Some(node),
                 _ => return Err(SessionError::WrongToken),
             }
+        }
+        if let Some(slot) = bindings.textarea {
+            self.payloads.append_fields[node].textarea = Some(slot);
         }
         Ok(())
     }
@@ -1128,6 +1137,30 @@ impl SessionStorage {
         c: &mut ParseControl,
         location: StringLocation,
     ) -> Result<usize, SessionError> {
+        if let StringLocation::Text(node) = location {
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            let slot = self
+                .payloads
+                .append_fields
+                .get(node)
+                .ok_or(SessionError::ForeignNode)?
+                .text
+                .ok_or(SessionError::WrongToken)?;
+            let Some(RetainedPayload::String {
+                location: StringLocation::Text(owner),
+                value,
+                allocation,
+                ..
+            }) = self.payloads.values.get(slot)
+            else {
+                return Err(SessionError::WrongToken);
+            };
+            if *owner != node {
+                return Err(SessionError::WrongToken);
+            }
+            c.require_document_string(allocation, value)?;
+            return Ok(slot);
+        }
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {

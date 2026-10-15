@@ -9,6 +9,9 @@ pub use attribute_edit::*;
 mod operations;
 pub use operations::*;
 
+mod text_append;
+pub use text_append::*;
+
 /// One hidden allocation's role in a construction owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAllocationRole {

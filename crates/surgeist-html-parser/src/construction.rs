@@ -75,6 +75,9 @@ use provenance::{FieldCopy, OriginGroupRef};
 mod select;
 mod svg;
 mod template;
+mod text_append;
+#[cfg(test)]
+mod text_append_tests;
 pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
 use effects::ConstructionEffects;
 pub(crate) use foreign::ForeignNamespace;
@@ -298,6 +301,8 @@ struct SessionStorage {
     cancel_after_details_shift: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
     cancel_after_radio_peer: Option<crate::HtmlParseCancellation>,
+    #[cfg(test)]
+    cancel_after_text_append_chunk: Option<crate::HtmlParseCancellation>,
     control: ControlIdentity,
     effects: ConstructionEffects,
     evidence: Option<ParseEvidence>,
@@ -320,6 +325,7 @@ struct SessionStorage {
     standalone_ineligibility: Option<StandaloneUnsupported>,
     construction: ConstructionOwner,
     payloads: PayloadStorage,
+    failed_text_append: Option<text_append::FailedTextAppend>,
 }
 
 use crate::bounded::HtmlConstructionResult;
@@ -341,8 +347,17 @@ struct FrozenStorage {
 struct PayloadStorage {
     values: Vec<RetainedPayload>,
     allocation: VectorCapacity<RetainedPayload>,
+    append_fields: Vec<AppendFields>,
+    append_fields_allocation: VectorCapacity<AppendFields>,
     preexisting_units: usize,
     preexisting_attributes: usize,
+}
+/// Derived joins into the actual payload registry. Dense record positions are
+/// append-only; a join never substitutes for the row's location or ticket.
+#[derive(Clone, Copy, Default)]
+struct AppendFields {
+    text: Option<usize>,
+    textarea: Option<usize>,
 }
 enum RetainedPayload {
     Nonce {
@@ -766,8 +781,19 @@ impl PayloadStorage {
         let Self {
             mut values,
             allocation,
+            append_fields,
+            append_fields_allocation,
             ..
         } = self;
+        let append_entries = append_fields.len() as u64;
+        release_vector(control, append_fields, append_fields_allocation)
+            .expect("actual append-field index capacity");
+        release_logical(
+            control,
+            owner,
+            HtmlParseResource::AuxiliaryEntries,
+            append_entries,
+        );
         let entries = values.len() as u64;
         // Attribute containers own references to registered string backings.
         // Dispose containers first; reverse-pop then retains the real Vec until
@@ -1077,11 +1103,21 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
+        let (append_fields, append_fields_allocation) = match control.new_vector() {
+            Ok(value) => value,
+            Err(stop) => {
+                release_vector(control, values, allocation)?;
+                construction.retire(control)?;
+                return Err(stop.into());
+            }
+        };
         let mut session = Self {
             #[cfg(test)]
             cancel_after_details_shift: None,
             #[cfg(test)]
             cancel_after_radio_peer: None,
+            #[cfg(test)]
+            cancel_after_text_append_chunk: None,
             control: control.identity(),
             effects,
             evidence: None,
@@ -1100,9 +1136,12 @@ impl SessionStorage {
             cancel_after_range_ingress: None,
             standalone_ineligibility: None,
             construction,
+            failed_text_append: None,
             payloads: PayloadStorage {
                 values,
                 allocation,
+                append_fields,
+                append_fields_allocation,
                 preexisting_units: 0,
                 preexisting_attributes: 0,
             },
@@ -1293,12 +1332,14 @@ impl SessionStorage {
         control.require_identity(&self.control)?;
         let count = 1 + usize::from(template);
         let cause_slots = self.prepare_node_causes(control, count)?;
+        // Each record retains its original child-ticket slot and one derived
+        // append-field cell; payload metadata rows remain separately admitted.
         let requests = [
             (HtmlParseResource::ManagedNodes, count as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
             (HtmlParseResource::ManagedAttributes, attributes as u64),
             (HtmlParseResource::ManagedUtf16Units, units as u64),
-            (HtmlParseResource::AuxiliaryEntries, count as u64),
+            (HtmlParseResource::AuxiliaryEntries, (2 * count) as u64),
         ];
         control.check_acquire_many(&requests)?;
         // Preserve the original node/edge/logical preflight before preparing
@@ -1316,6 +1357,17 @@ impl SessionStorage {
             payload_write::<Option<usize>>(control, 1)?;
         }
         let index = self.construction.len();
+        control.reserve_vector_geometric(
+            &mut self.payloads.append_fields,
+            &mut self.payloads.append_fields_allocation,
+            count,
+        )?;
+        control.admit_atomic_layout(mem::size_of::<AppendFields>())?;
+        control.charge(
+            WorkCategory::CopyByte,
+            (count * mem::size_of::<AppendFields>()) as u64,
+        )?;
+        control.charge(WorkCategory::RecordWrite, (2 * count) as u64)?;
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
         control.charge(WorkCategory::RecordVisit, 3)?;
         let handle = self
@@ -1332,6 +1384,9 @@ impl SessionStorage {
             handle,
             index: position,
         };
+        for _ in 0..count {
+            self.payloads.append_fields.push(AppendFields::default());
+        }
         if let Some(slot) = nonce_slot {
             let RetainedPayload::Nonce { node, .. } = &mut self.payloads.values[slot] else {
                 unreachable!()
@@ -2841,16 +2896,7 @@ impl SessionStorage {
             )
         });
         let old_ticket = if let Some(index) = preceding {
-            let mut ticket = None;
-            for position in 0..self.payloads.values.len() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
-                if matches!(&self.payloads.values[position], RetainedPayload::String { location: StringLocation::Text(owner), .. } if *owner == index)
-                {
-                    ticket = Some(position);
-                    break;
-                }
-            }
-            Some(ticket.ok_or(SessionError::WrongToken)?)
+            Some(self.field_slot(control, StringLocation::Text(index))?)
         } else {
             None
         };
@@ -2881,108 +2927,21 @@ impl SessionStorage {
         let text = input.take().expect("verified text");
         let (value, ticket) = self.register_text(control, text)?;
         if let Some(index) = preceding {
-            let HtmlNodeKind::Text(old) = &self
-                .construction
-                .node_at(index)
-                .expect("retained construction position")
-                .kind()
-            else {
-                unreachable!()
-            };
-            control.charge(WorkCategory::RecordVisit, 2)?;
-            let offset = old.len();
-            let added = value.len();
-            let mut merged = Utf16Buffer::new(control)?;
-            if let Err(stop) = merged
-                .extend_units(old.code_units(), control)
-                .and_then(|()| merged.extend_units(value.code_units(), control))
-            {
-                merged.release(control)?;
-                return Err(stop.into());
-            }
-            let merged = merged.freeze(control)?;
-            let group = match self.merge_field_groups(
+            self.append_registered_text(
                 control,
-                old_ticket.expect("registered preceding text"),
-                ticket,
-                offset,
-                offset + added,
-            ) {
-                Ok(group) => group,
-                Err(error) => {
-                    merged.release(control)?;
-                    return Err(error);
-                }
-            };
-            let (merged, merged_ticket) =
-                self.register_group_string_owned(control, merged, group)?;
-            let node = self.node(control, index)?;
-            let children_changed = self.textarea_slot(control, parent_index)?.is_some()
-                || self.html_local(control, parent_index, "script")?;
-            if children_changed {
-                payload_write::<Option<FormEffects>>(control, 1)?;
-            }
-            control.charge(
-                WorkCategory::CopyByte,
-                mem::size_of::<DocumentString>() as u64,
-            )?;
-            control.charge(WorkCategory::ProviderCall, 1)?;
-            control.charge(WorkCategory::RecordWrite, 4)?;
-            if dispose_old {
-                payload_write::<RetainedPayload>(control, 2)?;
-            }
-            control.charge(WorkCategory::ProviderCall, 1)?;
-            let handle = self
-                .construction
-                .node_at(index)
-                .ok_or(SessionError::ForeignNode)?
-                .handle();
-            let ready = self.construction.prepare_mutation(
-                control,
-                bounded::HtmlConstructionCommand::ReplaceContent {
-                    node: handle,
-                    content: bounded::HtmlConstructionContent::Text(merged),
+                text_append::RegisteredTextAppend {
+                    parent: parent_index,
+                    index,
+                    old_slot: old_ticket.expect("registered preceding text"),
+                    incoming_slot: ticket,
+                    incoming: value,
+                    dispose_old,
                 },
-            )?;
-            if let Err(error) =
-                self.retire_field_group(control, old_ticket.expect("registered preceding text"))
-            {
-                self.construction.abort_prepared(control, ready)?;
-                return Err(error);
-            }
-            // Fixed commit after all fallible work. The old and incoming backing
-            // remain owned and fully charged, detached from the live native slot.
-            self.bind_string(
-                old_ticket.expect("registered preceding text"),
-                StringLocation::Detached,
-            );
-            self.bind_string(merged_ticket, StringLocation::Text(index));
-            self.construction.adopt_mutation(control, ready.commit())?;
-            if dispose_old {
-                self.dispose_aggregate_string(
-                    control,
-                    old_ticket.expect("registered preceding text"),
-                )?;
-            }
-            if children_changed {
-                self.effects.form = Some(FormEffects {
-                    root: parent_index,
-                    old_parent: None,
-                    new_parent: Some(parent_index),
-                    stage: FormEffectStage::InsertionChildren,
-                    insert: false,
-                    cause: InsertionCause::NonParser,
-                    next: None,
-                    pass: FormEffectPass::Local,
-                });
-                self.drain_form_effects(control)?;
-            }
-            Ok(Some(TextInsertion {
-                _node: node,
-                _offset: offset,
-            }))
+            )
+            .map(Some)
         } else {
             control.charge(WorkCategory::RecordWrite, 2)?;
+            payload_write::<Option<usize>>(control, 1)?;
             let node = self.allocate_prepared_owned(
                 control,
                 creation_command(HtmlNodeKind::Text(value)),
@@ -3083,6 +3042,9 @@ impl SessionStorage {
             unreachable!()
         };
         *current = location;
+        if let StringLocation::Text(node) = location {
+            self.payloads.append_fields[node].text = Some(index);
+        }
     }
     /// Same parser-owned HTML root, real slots and original lexical origins.
     /// Imported/native attribute backing requires a later admitted importer.
@@ -4910,7 +4872,13 @@ impl SessionStorage {
             standalone_ineligibility: _,
             construction,
             payloads,
+            failed_text_append,
+            #[cfg(test)]
+                cancel_after_text_append_chunk: _,
         } = self;
+        if let Some(failed) = failed_text_append {
+            failed.release(control);
+        }
         if let Some(fragment) = fragment {
             fragment
                 .release(control, &owner)
@@ -5906,6 +5874,7 @@ impl ParserArenaSession {
                 // Actual fresh node has no children. Its already admitted empty
                 // raw is therefore exactly child text; reset precedes association.
                 payload_write::<Option<usize>>(control, 1)?;
+                payload_write::<Option<usize>>(control, 1)?;
                 payload_write::<TextareaState>(control, 1)?;
                 let RetainedPayload::Textarea { node: bound, state } =
                     &mut storage.payloads.values[textarea]
@@ -5914,6 +5883,7 @@ impl ParserArenaSession {
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
+                storage.payloads.append_fields[node.index].textarea = Some(textarea);
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
                     cancellation.cancel();
@@ -7064,10 +7034,17 @@ impl ParserArenaSession {
             standalone_ineligibility: _,
             construction,
             payloads,
+            failed_text_append,
+            #[cfg(test)]
+                cancel_after_text_append_chunk: _,
         } = self
             .storage
             .take()
             .expect("successful preparation retains active storage");
+        assert!(
+            failed_text_append.is_none(),
+            "stopped append cannot publish"
+        );
         let view = match result {
             bounded::HtmlConstructionResult::Document(value) => {
                 HtmlConstructionResult::Document(value)
@@ -9012,22 +8989,30 @@ fn find_textarea_state(
     control: &mut ParseControl,
     node: usize,
 ) -> Result<Option<(usize, TextareaState)>, SessionError> {
-    for slot in 0..payloads.values.len() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::Textarea {
-            node: Some(owner),
-            state,
-        } = &payloads.values[slot]
-            && *owner == node
-        {
-            control.charge(
-                WorkCategory::CopyByte,
-                mem::size_of::<TextareaState>() as u64,
-            )?;
-            return Ok(Some((slot, *state)));
-        }
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    let fields = payloads
+        .append_fields
+        .get(node)
+        .ok_or(SessionError::ForeignNode)?;
+    let Some(slot) = fields.textarea else {
+        return Ok(None);
+    };
+    control.charge(WorkCategory::RecordVisit, 1)?;
+    let Some(RetainedPayload::Textarea {
+        node: Some(owner),
+        state,
+    }) = payloads.values.get(slot)
+    else {
+        return Err(SessionError::WrongToken);
+    };
+    if *owner != node {
+        return Err(SessionError::WrongToken);
     }
-    Ok(None)
+    control.charge(
+        WorkCategory::CopyByte,
+        mem::size_of::<TextareaState>() as u64,
+    )?;
+    Ok(Some((slot, *state)))
 }
 
 fn admitted_input_string<'a>(
@@ -9627,7 +9612,8 @@ mod tests {
     #[test]
     fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        for cap in [17, 18] {
+        // Three existing native records own three append-index entries.
+        for cap in [20, 21] {
             let source = crate::HtmlSource::utf8("<output>");
             let mut c = ParseControl::new(
                 limits()
@@ -9657,7 +9643,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                17
+                20
             );
             let backing = Arc::as_ptr(tag.as_ref().unwrap().name.value.text().shared_code_units());
             assert!(matches!(
@@ -10199,13 +10185,13 @@ mod tests {
     fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
         // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
         // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =16. Three actual nodes
-        // add three auxiliary slots, so baseline13. The finite cap18
+        // add three native tickets and three append-index entries. The finite cap27
         // admits initial lexical/topology staging, then five reset slots;
         // the next reset retains the current raw and latches the slot cap.
         let source = crate::HtmlSource::utf8("<textarea>A");
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(24)
+            .auxiliary_entries(27)
             .finish()
             .unwrap();
         let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
@@ -10219,7 +10205,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            19
+            22
         );
         let old = Arc::downgrade(
             session
@@ -10238,7 +10224,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            24
+            27
         );
         assert_eq!(
             c.usage()
@@ -10285,7 +10271,8 @@ mod tests {
     #[test]
     fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        for cap in [19, 20, 21] {
+        // Document/html/body own three new index entries before subject creation.
+        for cap in [22, 23, 24] {
             let source = crate::HtmlSource::utf8("<textarea>");
             let mut c = ParseControl::new(
                 limits()
@@ -10315,7 +10302,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                17
+                20
             );
             let result = session.allocate_html_tag_for_creation(
                 &mut c,
@@ -10325,7 +10312,7 @@ mod tests {
                 crate::construction::CreationContext::Ordinary,
             );
             assert!(matches!(result, Err(SessionError::Stop(_))));
-            if cap < 21 {
+            if cap < 24 {
                 assert_eq!(
                     Arc::as_ptr(
                         input
@@ -11271,7 +11258,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            session.active().unwrap().construction.storage().len() as u64
+            2 * session.active().unwrap().construction.storage().len() as u64
                 + session.active().unwrap().payloads.values.len() as u64
         );
         session.release(&mut c).unwrap();
@@ -11619,7 +11606,8 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                storage.construction.storage().len() as u64 + storage.payloads.values.len() as u64
+                2 * storage.construction.storage().len() as u64
+                    + storage.payloads.values.len() as u64
             );
             if result.is_err() {
                 assert!(session.freeze(&mut c).is_err());
@@ -12069,7 +12057,7 @@ mod tests {
         // Retaining the lexer across the operation adds 22 real lexical rows:
         // two occurrence/cause pairs and 18 syntax/name/value parts. Seven
         // input origins coexist with seven partition origins (22+7+7=36).
-        for (maps, auxiliary, succeeds) in [(35, 26, false), (36, 25, false), (36, 26, true)] {
+        for (maps, auxiliary, succeeds) in [(35, 30, false), (36, 29, false), (36, 30, true)] {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
@@ -12098,7 +12086,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                19
+                23
             );
             let capacity = c.usage().actual_capacity_bytes;
             let result = partition_body_text(&mut c, &mut input);
@@ -12114,7 +12102,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
-                    26
+                    30
                 );
                 runs.release(&mut c).unwrap();
             } else {
@@ -12133,7 +12121,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    19
+                    23
                 );
                 release_token_kind(&mut input.take().map(TokenKind::Text), &mut c).unwrap();
             }
@@ -17630,7 +17618,8 @@ mod tests {
         // Ten stops after metadata but before document/native preflight;
         // fourteen stops at native-ticket admission after lexical transfer.
         // Root/html/script causes add three slots; html/script nonce backings add four.
-        for cap in [14, 21, 22] {
+        // Existing Document/html add two index entries; completed script adds a third.
+        for cap in [16, 24, 25] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head><script>"),
                 limits()
@@ -17660,10 +17649,10 @@ mod tests {
                 crate::construction::CreationContext::Ordinary,
                 &capability,
             );
-            assert_eq!(incoming.is_some(), cap == 14);
+            assert_eq!(incoming.is_some(), cap == 16);
             assert_eq!(
                 session.active().unwrap().construction.storage().len(),
-                if cap == 22 { 3 } else { 2 }
+                if cap == 25 { 3 } else { 2 }
             );
             let count = session
                 .active()
@@ -17673,14 +17662,14 @@ mod tests {
                 .iter()
                 .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
                 .count();
-            if cap == 22 {
+            if cap == 25 {
                 result.unwrap();
                 assert_eq!(count, 1);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    22
+                    25
                 );
             } else {
                 assert!(matches!(
@@ -17706,7 +17695,7 @@ mod tests {
             assert_eq!(c.stop(), first);
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                if cap == 22 { 3 } else { 2 }
+                if cap == 25 { 3 } else { 2 }
             );
         }
     }
@@ -18531,7 +18520,7 @@ mod tests {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
-                    .auxiliary_entries(17)
+                    .auxiliary_entries(20)
                     .finish()
                     .unwrap(),
                 HtmlParseCancellation::new(),
@@ -18572,8 +18561,8 @@ mod tests {
                 stop,
                 ParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
-                    current: 17,
-                    requested_delta: 2,
+                    current: 20,
+                    requested_delta: 3,
                     ..
                 }
             ));
@@ -19742,7 +19731,7 @@ mod tests {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
-                .auxiliary_entries(17)
+                .auxiliary_entries(20)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),
@@ -19765,12 +19754,13 @@ mod tests {
         // the image's actual intended parent is the attached HTML container.
         let _body = session.allocate_implicit_body(&mut c, None).unwrap();
         // Root/html/body own three actual record tickets, six field payload slots, four document facts, and four nonce slots.
+        // Three append-index entries accompany those records.
         // No auxiliary entry remains for the image's required metadata slot.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            17
+            20
         );
         let name_backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
         let original_origins: Vec<_> = tag
@@ -19857,9 +19847,9 @@ mod tests {
             result.err(),
             Some(SessionError::Stop(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                limit: 17,
-                current: 17,
-                requested_delta: 2,
+                limit: 20,
+                current: 20,
+                requested_delta: 3,
             }))
         );
         assert_eq!(topology, original_topology);
@@ -20082,7 +20072,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            25
+            29
         );
         assert_eq!(session.root(&mut c).unwrap_err(), SessionError::Stop(stop));
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -20125,7 +20115,8 @@ mod tests {
     #[test]
     fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        for cap in [25, 24] {
+        // Four completed records each retain an actual append-index entry.
+        for cap in [29, 28] {
             let source = crate::HtmlSource::utf8("<img>");
             let mut c = ParseControl::new(
                 limits()
@@ -20143,7 +20134,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                17
+                20
             );
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("img")
@@ -20157,7 +20148,7 @@ mod tests {
                 crate::construction::CreationContext::Ordinary,
             );
             assert!(input.is_none());
-            if cap == 25 {
+            if cap == 29 {
                 let image = result.unwrap();
                 assert_form_owner(&session, &mut c, &image, None, false);
                 // Actual name/namespace/attributes + record ticket + metadata + two nonce slots.
@@ -20165,14 +20156,14 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    25
+                    29
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        limit: 24,
+                        limit: 28,
                         ..
                     }))
                 ));
@@ -20890,7 +20881,7 @@ mod tests {
             .finish()
             .unwrap()
     }
-    fn control() -> ParseControl {
+    pub(super) fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
     }
     fn element(namespace: Namespace, local: &str) -> HtmlElement {
@@ -21856,7 +21847,7 @@ mod tests {
         }
     }
 
-    fn owned_text(c: &mut ParseControl, units: &[u16]) -> Text {
+    pub(super) fn owned_text(c: &mut ParseControl, units: &[u16]) -> Text {
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(units.to_vec()));
         let mut value = Utf16Buffer::new(c).unwrap();
         value.extend_units(units, c).unwrap();
@@ -21903,7 +21894,7 @@ mod tests {
             had_duplicate_attributes: false,
         }
     }
-    fn native_text(session: &ParserArenaSession, node: &ParserNode) -> Vec<u16> {
+    pub(super) fn native_text(session: &ParserArenaSession, node: &ParserNode) -> Vec<u16> {
         let HtmlNodeKind::Text(value) = &session
             .active()
             .unwrap()
@@ -21930,7 +21921,7 @@ mod tests {
             assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
         }
     }
-    fn lexical_kind(
+    pub(super) fn lexical_kind(
         tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
     ) -> TokenKind {
@@ -22994,7 +22985,7 @@ mod tests {
 
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(1)
+            .auxiliary_entries(2)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -23005,8 +22996,8 @@ mod tests {
             session.insert_text(&mut c, &root, None, &mut input, None),
             Err(SessionError::Stop(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                limit: 1,
-                current: 1,
+                limit: 2,
+                current: 2,
                 requested_delta: 1
             }))
         ));
@@ -23016,7 +23007,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            1
+            2
         );
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -24476,11 +24467,11 @@ mod tests {
                 limits()
                     .into_builder()
                     .source_map_entries((8 * count - 1 - usize::from(one_short)) as u64)
-                    // Retained descriptors/tickets (2N+3), indexed cause/group
+                    // Retained descriptors/tickets/index (2N+5), indexed cause/group
                     // slots (4N-2), and at most (2N-1) pending links coexist.
                     // All fixture causes lack source, so the closure is empty.
                     // Only N256 changes; smaller caps/work limits stay fixed.
-                    .auxiliary_entries((8 * count) as u64)
+                    .auxiliary_entries((8 * count + 2) as u64)
                     .finish()
                     .unwrap()
             } else {
@@ -24574,7 +24565,7 @@ mod tests {
                     retained
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    (2 * count + 3) as u64
+                    (2 * count + 5) as u64
                 );
             }
             let projection = session.prepare_native_associations(&mut c, &source);
@@ -24613,7 +24604,7 @@ mod tests {
                     projected
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water
-                        <= (8 * count) as u64
+                        <= (8 * count + 2) as u64
                 );
             }
             assert_eq!(
@@ -25939,7 +25930,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            3
+            5
         );
         let committed = owner
             .continue_pending(&mut c, pending, &[(HtmlParseResource::ManagedEdges, 1)])
@@ -25958,7 +25949,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            2
+            4
         );
         let b = session
             .allocate_element(&mut c, element(Namespace::none(), "b"))
@@ -25974,7 +25965,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            5
+            8
         );
         let committed = owner
             .continue_pending(&mut c, pending, &[(HtmlParseResource::ManagedEdges, 1)])
@@ -25993,7 +25984,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            3
+            6
         );
         session.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -26003,7 +25994,7 @@ mod tests {
     fn inserted_index_copy_work_boundary_stops_before_any_scratch_slot_is_initialized() {
         let selected = limits()
             .into_builder()
-            .auxiliary_entries(3)
+            .auxiliary_entries(5)
             .finish()
             .unwrap();
         let work_limit = selected.work_credits();
@@ -26036,7 +26027,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    2
+                    4
                 );
                 break;
             }
@@ -26056,7 +26047,7 @@ mod tests {
 
     #[test]
     fn one_scratch_slot_exact_limit_succeeds_and_one_short_preserves_topology() {
-        for (auxiliary_limit, succeeds) in [(3, true), (2, false)] {
+        for (auxiliary_limit, succeeds) in [(5, true), (4, false)] {
             let mut selected = limits();
             selected = selected
                 .into_builder()
@@ -26096,14 +26087,14 @@ mod tests {
                         .usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
-                    3
+                    5
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 2,
+                        current: 4,
                         requested_delta: 1,
                         ..
                     }))
@@ -26142,7 +26133,7 @@ mod tests {
                     .usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2
+                4
             );
             session.release(&mut control).unwrap();
             assert_eq!(
@@ -26165,7 +26156,7 @@ mod tests {
 
     #[test]
     fn simultaneous_cross_parent_orders_require_both_live_scratch_sequences() {
-        for (auxiliary_limit, succeeds) in [(9, true), (8, false)] {
+        for (auxiliary_limit, succeeds) in [(15, true), (14, false)] {
             let mut selected = limits();
             selected = selected
                 .into_builder()
@@ -26224,14 +26215,14 @@ mod tests {
                         .usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
-                    9
+                    15
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 8,
+                        current: 14,
                         requested_delta: 1,
                         ..
                     }))
@@ -26268,7 +26259,7 @@ mod tests {
                     .usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                6
+                12
             );
             assert_eq!(
                 control
@@ -26307,7 +26298,7 @@ mod tests {
     fn partially_initialized_order_cap_stop_releases_only_its_one_admitted_entry() {
         let selected = limits()
             .into_builder()
-            .auxiliary_entries(5)
+            .auxiliary_entries(9)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -26337,7 +26328,7 @@ mod tests {
                         error,
                         SessionError::Stop(ParseStop::LimitExceeded {
                             resource: HtmlParseResource::AuxiliaryEntries,
-                            current: 5,
+                            current: 9,
                             requested_delta: 1,
                             ..
                         })
@@ -26350,7 +26341,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            5
+            9
         );
         let first = c.stop();
         let work = c.usage().resource(HtmlParseResource::WorkCredits);
@@ -26359,7 +26350,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            4
+            8
         );
         assert_eq!(c.usage().actual_capacity_bytes, capacity_before);
         assert_eq!(c.stop(), first);
@@ -26464,7 +26455,8 @@ mod tests {
         // adds three native records, five document/template facts, and the
         // three name/namespace/attribute owners: completed total16 including two template nonce slots. The
         // metadata/native preflight alone needs3+8=11 before lexical take.
-        for cap in [10, 15, 16] {
+        // Four new append-index entries join the completed native records.
+        for cap in [14, 19, 20] {
             let source = crate::HtmlSource::utf8("<template>");
             let mut c = ParseControl::new(
                 limits()
@@ -26491,14 +26483,14 @@ mod tests {
                 None,
                 CreationContext::Ordinary,
             );
-            if cap == 16 {
+            if cap == 20 {
                 let node = result.unwrap();
                 assert!(input.is_none());
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    16
+                    20
                 );
                 assert_eq!(session.active().unwrap().construction.storage().len(), 4);
                 assert!(
@@ -26515,10 +26507,10 @@ mod tests {
                 assert!(
                     matches!(first, ParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
                 );
-                assert_eq!(input.is_some(), cap == 10);
+                assert_eq!(input.is_some(), cap == 14);
                 assert_eq!(
                     session.active().unwrap().construction.storage().len(),
-                    if cap == 10 { 1 } else { 2 }
+                    if cap == 14 { 1 } else { 2 }
                 );
                 assert_eq!(
                     session.freeze(&mut c).err(),

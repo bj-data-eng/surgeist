@@ -29,6 +29,11 @@ impl DocumentString {
         &self.code_units
     }
 
+    /// The construction owner alone mutates uniquely held pending backing.
+    pub(crate) fn construction_backing_mut(&mut self) -> &mut Arc<Vec<u16>> {
+        &mut self.code_units
+    }
+
     /// Returns the exact stored UTF-16 sequence.
     pub fn code_units(&self) -> &[u16] {
         &self.code_units

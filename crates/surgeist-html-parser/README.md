@@ -18,7 +18,11 @@ The parser depends directly on HTML values and
 services CSS grammar and Color numerical actions through the original parser
 controller. It owns source validation, recovery, construction effects, work and
 allocation tickets, cancellation, first failure and stopped-owner cleanup.
-HTML owns the actual shared immutable tree storage and its generic invariants.
+HTML owns the actual shared immutable tree storage and its generic invariants. Its
+[controlled text append](../../docs/reference/html-crate-contracts.md#controlled-text-append)
+reuses unique aggregate backing while retaining immutable history leaves; the
+parser indexes current text tickets and textarea metadata with actual admitted
+capacity and cleanup.
 
 The document profile is fresh ordinary Disabled execution. Fragments retain
 qualified Inert/Disabled context facts. JavaScript execution, resource fetching,

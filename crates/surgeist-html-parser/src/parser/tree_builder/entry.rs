@@ -605,7 +605,7 @@ mod tests {
             HtmlSource::utf8(""),
             limits()
                 .into_builder()
-                .auxiliary_entries(1)
+                .auxiliary_entries(2)
                 .finish()
                 .unwrap(),
         );
@@ -614,15 +614,15 @@ mod tests {
             entry.failure(),
             Some(InitializationFailure::Stopped(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                limit: 1,
-                current: 1,
+                limit: 2,
+                current: 2,
                 requested_delta: 1
             }))
         ));
         let first = entry.at_stop().unwrap().clone();
-        // The actual Document admits one child-ticket auxiliary slot before
-        // the completion metadata slot requests the second. The nested stage
-        // constructor already cleaned its Document when new returns; the
+        // The actual Document admits its child-ticket slot and one append-field
+        // index entry before the next metadata slot requests a third. The nested
+        // stage constructor already cleaned its Document when new returns; the
         // controller's first latch alone retains its admitted capacity.
         assert_eq!(first.resource(HtmlParseResource::ManagedNodes).current, 1);
         assert!(first.actual_capacity_bytes > 0);

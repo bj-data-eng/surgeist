@@ -252,6 +252,32 @@ pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Allocation(&'
 pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload
 pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload::initialized_bytes: usize
 pub surgeist_html::bounded::HtmlConstructionRetirementDescription::Payload::position: usize
+pub enum surgeist_html::bounded::HtmlConstructionTextAppendDescription
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Commit
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Commit::usage: surgeist_html::HtmlConstructionUsage
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Commit::work: surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyPrefix
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyPrefix::offset: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyPrefix::units: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyPrefix::work: surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyTail
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyTail::offset: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyTail::units: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::CopyTail::work: surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::InitializeBacking(surgeist_html::bounded::HtmlConstructionTextAppendWork)
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Inspect(surgeist_html::bounded::HtmlConstructionTextAppendWork)
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Preflight
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Preflight::usage: surgeist_html::HtmlConstructionUsage
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Preflight::work: surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::QualifyTail(surgeist_html::bounded::HtmlConstructionTextAppendWork)
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Reserve
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Reserve::before: surgeist_html::bounded::HtmlConstructionTextAppendCapacity
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Reserve::preferred_capacity: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Reserve::required_capacity: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::Reserve::work: surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendDescription::SelectBacking(surgeist_html::bounded::HtmlConstructionTextAppendWork)
+impl surgeist_html::bounded::HtmlConstructionTextAppendDescription
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendDescription::work(self) -> surgeist_html::bounded::HtmlConstructionTextAppendWork
 pub enum surgeist_html::bounded::HtmlCustomNameScanAction
 pub surgeist_html::bounded::HtmlCustomNameScanAction::Header
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedHeader
@@ -807,6 +833,51 @@ pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare_finish(self, roo
 pub fn surgeist_html::bounded::HtmlConstructionStorage::result_id(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::HtmlNodeId, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionStorage::retire(self) -> surgeist_html::bounded::HtmlConstructionRetirement
 pub fn surgeist_html::bounded::HtmlConstructionStorage::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::bounded::HtmlConstructionTextAppend
+impl surgeist_html::bounded::HtmlConstructionTextAppend
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::abort(self) -> surgeist_html::bounded::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::backing(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::begin(storage: surgeist_html::bounded::HtmlConstructionStorage, node: surgeist_html::HtmlBuilderNode, incoming: surgeist_html::DocumentString) -> Self
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::capacity(&self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionTextAppendCapacity>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionTextAppendAction<'_>>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::preserves_original(&self) -> bool
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionTextAppendReady, surgeist_html::HtmlConstructionError>
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>
+impl<'a> surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>::backing(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionTextAppendDescription
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>::perform(self, minimum_capacity: core::option::Option<usize>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionTextAppendObservation<'a>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>::storage_view(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionStorage>
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendCapacity
+impl surgeist_html::bounded::HtmlConstructionTextAppendCapacity
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::capacity(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::data_address(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::element_alignment(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::element_size(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::initialized_len(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::payload_bytes(self) -> usize
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCapacity::wrapper_payload_bytes(self) -> usize
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendCompletion
+impl surgeist_html::bounded::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendCompletion::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::HtmlBuilderNode, surgeist_html::DocumentString, core::option::Option<surgeist_html::DocumentString>)
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendObservation<'a>
+impl surgeist_html::bounded::HtmlConstructionTextAppendObservation<'_>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendObservation<'_>::accept(self)
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendObservation<'_>::backing(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendObservation<'_>::capacity(&self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionTextAppendCapacity>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendObservation<'_>::preserves_original(&self) -> bool
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendReady
+impl surgeist_html::bounded::HtmlConstructionTextAppendReady
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendReady::abort(self) -> surgeist_html::bounded::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::HtmlConstructionTextAppendReady::commit(self) -> surgeist_html::bounded::HtmlConstructionTextAppendCompletion
+pub struct surgeist_html::bounded::HtmlConstructionTextAppendWork
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::atomic_layout_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::copied_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::inspected_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::provider_calls: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_visits: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_writes: usize
+pub surgeist_html::bounded::HtmlConstructionTextAppendWork::relocation_bound_bytes: usize
 pub struct surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 impl<'raw> surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 pub fn surgeist_html::bounded::HtmlMediaFieldMatch<'raw>::attribute(&self) -> &'raw surgeist_html::Attribute

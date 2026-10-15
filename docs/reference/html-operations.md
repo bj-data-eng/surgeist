@@ -2322,7 +2322,13 @@ The same fresh driver consumes the actual AfterHead handoff and continues throug
 ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
-storage, preserving order and exact origins. Late head delegation removes the
+storage, preserving order and exact origins. Text insertion uses the shared
+[controlled append owner](../../crates/surgeist-html/src/construction/bounded/text_append.rs):
+immutable history leaves remain unchanged, while a uniquely held aggregate reuses
+its admitted geometric capacity. A derived current-ticket/textarea index avoids
+registry walks; source/provenance, immediate native readers and stopped cleanup
+remain with the original parser controller. These bounds concern append copying
+and lookup, rather than every tree effect or text reconstruction. Late head delegation removes the
 stored head entry by identity and restores the actual insertion mode.
 Other resettable control creation retains untouched-token continuations when
 its required machinery is unavailable.

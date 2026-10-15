@@ -1682,13 +1682,34 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<(), SessionError> {
-        let RetainedPayload::String {
-            origins: Some(group),
-            location,
-            ..
-        } = &self.payloads.values[slot]
-        else {
-            return Ok(());
+        self.retire_field_group_at(c, slot, None)
+    }
+    /// The exclusive append owner suspended this aggregate's actual backing.
+    /// Its historical row still owns the same immutable group.
+    pub(super) fn retire_text_append_group(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        node: usize,
+    ) -> Result<(), SessionError> {
+        self.retire_field_group_at(c, slot, Some(StringLocation::Text(node)))
+    }
+    fn retire_field_group_at(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        suspended: Option<StringLocation>,
+    ) -> Result<(), SessionError> {
+        let (group, location) = match &self.payloads.values[slot] {
+            RetainedPayload::String {
+                origins: Some(group),
+                location,
+                ..
+            } => (group, *location),
+            RetainedPayload::HistoricalString { origins } => {
+                (origins, suspended.ok_or(SessionError::WrongToken)?)
+            }
+            _ => return Ok(()),
         };
         group.require_disposal_owner(c)?;
         let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
@@ -1706,7 +1727,7 @@ impl SessionStorage {
                 rule: None,
                 family: None,
                 original_cause: None,
-                retired_destination: Some(*location),
+                retired_destination: Some(location),
                 original_node: None,
                 intended_parent: None,
                 original: Some(index),
@@ -1732,8 +1753,13 @@ impl SessionStorage {
         offset: usize,
         total: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins: left, .. } = &self.payloads.values[old] else {
-            return Err(SessionError::WrongToken);
+        if self.evidence.is_none() {
+            return Ok(None);
+        }
+        let left = match &self.payloads.values[old] {
+            RetainedPayload::String { origins, .. } => origins.as_ref(),
+            RetainedPayload::HistoricalString { origins } => Some(origins),
+            _ => return Err(SessionError::WrongToken),
         };
         let RetainedPayload::String { origins: right, .. } = &self.payloads.values[incoming] else {
             return Err(SessionError::WrongToken);
@@ -1764,8 +1790,7 @@ impl SessionStorage {
         };
         let group = evidence.merge_groups(
             c,
-            left.as_ref()
-                .or(missing_left.as_ref())
+            left.or(missing_left.as_ref())
                 .ok_or(SessionError::WrongToken)?,
             right
                 .as_ref()

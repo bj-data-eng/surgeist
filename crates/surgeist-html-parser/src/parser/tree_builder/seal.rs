@@ -588,9 +588,11 @@ mod tests {
 
     #[test]
     fn owned_nested_initialization_cleanup_keeps_canonical_capacity_observation() {
+        // The Document retains its child-ticket and append-field index entries
+        // before the next metadata slot requests one additional entry.
         let limits = work_limits(1_000_000)
             .into_builder()
-            .auxiliary_entries(1)
+            .auxiliary_entries(2)
             .finish()
             .unwrap();
         let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(
@@ -602,8 +604,8 @@ mod tests {
             Some(super::super::entry::InitializationFailure::Stopped(
                 crate::parser::control::ParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
-                    limit: 1,
-                    current: 1,
+                    limit: 2,
+                    current: 2,
                     requested_delta: 1,
                 }
             ))

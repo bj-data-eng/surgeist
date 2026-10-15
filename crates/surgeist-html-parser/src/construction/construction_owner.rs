@@ -616,21 +616,6 @@ impl ConstructionOwner {
     ) -> Result<HtmlConstructionCommit, SessionError> {
         Ok(self.prepare_pending(control, pending, requests)?.commit())
     }
-    pub(super) fn prepare_mutation(
-        &mut self,
-        control: &mut ParseControl,
-        command: HtmlConstructionCommand,
-    ) -> Result<HtmlConstructionReadyOperation, SessionError> {
-        let pending = self.start(control, command)?;
-        self.prepare_pending(control, pending, &[])
-    }
-    pub(super) fn abort_prepared(
-        &mut self,
-        control: &mut ParseControl,
-        ready: HtmlConstructionReadyOperation,
-    ) -> Result<(), SessionError> {
-        self.restore_aborted(control, ready.abort())
-    }
     fn prepare_pending(
         &mut self,
         control: &mut ParseControl,

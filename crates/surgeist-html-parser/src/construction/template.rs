@@ -501,7 +501,10 @@ impl SessionStorage {
         c.check_acquire_many(&[
             (HtmlParseResource::ManagedNodes, native as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
-            (HtmlParseResource::AuxiliaryEntries, (native + facts) as u64),
+            (
+                HtmlParseResource::AuxiliaryEntries,
+                (2 * native + facts) as u64,
+            ),
         ])?;
         self.construction.apply(
             c,
