@@ -170,7 +170,6 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
             "template",
             Requirement::KnownHtml(KnownHtmlElement::Template),
         ),
-        (HTML, "frame", Requirement::HtmlFrame),
         (SVG, "script", Requirement::SvgScript),
     ] {
         let before = dom.snapshot();

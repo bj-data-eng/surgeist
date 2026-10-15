@@ -9,8 +9,9 @@ impl Draft {
     ) -> Result<(), DomError> {
         // Removal precedes the document test, including same-document adoption.
         // Supported common profiles retain nonce/common state during adoption;
-        // registry objects and special families remain unexposed.
-        self.remove(node);
+        // Frame's actual null child-content is likewise preserved; adoption
+        // does not create a new element or reset its family payload.
+        self.remove(node, cancelled)?;
         if self.node(node)?.document == document {
             return Ok(());
         }
@@ -166,7 +167,7 @@ impl Draft {
         // Unlike insert's per-child adoption, replace explicitly adopts its
         // supplied node first, including a DocumentFragment and its subtree.
         self.adopt(node, self.node(parent)?.document, cancelled)?;
-        self.remove(child);
+        self.remove(child, cancelled)?;
         self.insert_validated(node, parent, before, cancelled)
     }
 
@@ -199,11 +200,11 @@ impl Draft {
         if fragment {
             for child in &moving {
                 check_cancel(cancelled)?;
-                self.remove(*child);
+                self.remove(*child, cancelled)?;
             }
         }
         let document = self.node(parent)?.document;
-        for child in moving {
+        for &child in &moving {
             check_cancel(cancelled)?;
             self.adopt(child, document, cancelled)?;
             let target = self.node_mut(parent);
@@ -217,6 +218,12 @@ impl Draft {
             target.children.insert(index, child);
             self.node_mut(child).parent = Some(parent);
             self.common_insertion_steps(child, &mut || check_cancel(cancelled))?;
+        }
+        // Post-connection follows all actual insertion/common steps, including
+        // all transferred fragment children. Each Frame checks current
+        // shadow-including connectedness and its actual node document.
+        for child in moving {
+            self.frame_post_connection_steps(child, &mut || check_cancel(cancelled))?;
         }
         Ok(())
     }

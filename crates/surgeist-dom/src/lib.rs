@@ -12,6 +12,8 @@
 //! relations and follow atomic adoption, clone/import and owned destruction.
 //! Native Canvas-none and Marquee families retain HTML-owned state and execute
 //! their actual attribute/value transitions without allocating pixels or animation.
+//! Native Frame retains actual null child-content and consumes source-qualified
+//! post-connection, src and removing decisions without navigation capability.
 //! Slot assignment and remaining special families require their real adapters.
 //!
 //! ```

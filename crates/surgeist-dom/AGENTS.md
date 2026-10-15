@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -53,8 +53,15 @@ start/stop preserve the index. DOM clone/import creates fresh on/index0 instead
 of copying stopped state. Canvas copied attributes run their real hooks. Neither
 family installs pixels, contexts, animation or rendering increments. Keep native null browsing context/never-navigable
 proof independent of XML class. Nonce attributes, IDL slot edits, insertion and
-cloning consume HTML's rules; content and cryptographic slot are independent
-stored/accounted strings. Keep ElementState and Attributes change coverage distinct.
+cloning consume HTML's rules. Frame retains actual null child-content; its
+post-connection guard reads the current node document after insertion/common
+steps and only when shadow-including connected. Exact src changes and removal
+consume the shared null-content decisions. Removal runs after detach, visits
+ordinary and owned shadow descendants and stays cancellable/atomic. Clone/import
+fresh-initializes Frame and applies actual copied attributes; adoption preserves
+the existing family value. No Window, child navigable ID or host capability is
+fabricated. Nonce content and cryptographic slot are independent stored/accounted
+strings. Keep ElementState and Attributes change coverage distinct.
 Common closed focus/internals/click/reaction/popover values remain current state.
 Generic import reads only its supplied immutable capture, never a same-number
 live slot. It allocates fresh target identities; caller tickets map separately

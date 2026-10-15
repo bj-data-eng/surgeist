@@ -6,8 +6,8 @@ use surgeist_html::bounded::{
     IntegerPrefixScanner, IntegerUnitStepError, NumericMaterializationError,
 };
 use surgeist_html::{
-    HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlMarqueeState, HtmlNonNegativeInteger,
-    KnownHtmlAttribute,
+    HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlFrameNullContent, HtmlMarqueeState,
+    HtmlNonNegativeInteger, KnownHtmlAttribute,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,6 +15,7 @@ pub(super) enum NativeFamily {
     Common,
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
+    Frame(HtmlFrameNullContent),
 }
 
 impl NativeFamily {
@@ -27,7 +28,7 @@ impl NativeFamily {
         }
         match self {
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
-            Self::Common | Self::Marquee(_) => Some(0),
+            Self::Common | Self::Marquee(_) | Self::Frame(_) => Some(0),
         }
     }
 
@@ -37,6 +38,20 @@ impl NativeFamily {
         attributes: &[Attribute],
         admit: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
+        if let Self::Frame(state) = self {
+            // Source Frame src set/change/removal processing first requires
+            // non-null content. Actual expanded identity is tested, not the
+            // qualified spelling used by an ordinary attribute operation.
+            if name.namespace().uri().is_none()
+                && name.local_name().code_units() == [0x73, 0x72, 0x63]
+            {
+                admit()?;
+                if state.src_change_requires_processing() {
+                    unreachable!("stored Frame null content cannot process src attributes")
+                }
+            }
+            return Ok(Self::Frame(*state));
+        }
         if !matches!(self, Self::Canvas(_)) || dimension(name).is_none() {
             return Ok(self.clone());
         }

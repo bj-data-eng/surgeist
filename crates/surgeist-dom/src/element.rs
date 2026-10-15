@@ -5,7 +5,7 @@ use crate::{
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
-    HtmlCanvasNoneState, HtmlMarqueeState, HtmlNativeCommonState,
+    HtmlCanvasNoneState, HtmlFrameNullContent, HtmlMarqueeState, HtmlNativeCommonState,
     HtmlNativeInitializationRequirement as Requirement, KnownHtmlElement,
 };
 mod family;
@@ -98,6 +98,7 @@ impl DomElement {
                 NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
             }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
+            Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
         };
         let common = initialization.common();
@@ -141,6 +142,15 @@ impl DomElement {
     pub fn marquee_state(&self) -> Option<HtmlMarqueeState> {
         match self.family {
             NativeFamily::Marquee(state) => Some(state),
+            _ => None,
+        }
+    }
+    /// The actual Frame null-content relationship, or another family's
+    /// inapplicability. This reads stored state; it never reconstructs a child
+    /// relationship from attributes or fills unknown imported facts.
+    pub fn frame_null_content(&self) -> Option<HtmlFrameNullContent> {
+        match self.family {
+            NativeFamily::Frame(state) => Some(state),
             _ => None,
         }
     }

@@ -15,6 +15,7 @@ use crate::{
 
 mod attributes;
 mod document;
+mod frame;
 mod import;
 mod shadow;
 mod tree;
@@ -769,13 +770,17 @@ impl Draft {
         self.node(key)?;
         Ok(key)
     }
-    fn remove(&mut self, node: Key) {
+    fn remove(&mut self, node: Key, cancelled: &AtomicBool) -> Result<(), DomError> {
         if let Some(parent) = self.node(node).expect("staged node").parent {
             self.node_mut(parent)
                 .children
                 .retain(|child| *child != node);
             self.node_mut(node).parent = None;
+            // HTML removing steps observe the already detached subtree. Its
+            // ordinary and shadow descendants retain their old node documents.
+            self.frame_removing_steps(node, &mut || check_cancel(cancelled))?;
         }
+        Ok(())
     }
     fn allocate(
         &mut self,
@@ -930,7 +935,7 @@ impl Draft {
             }
             Command::Detach(node) => {
                 let node = self.resolve(node)?;
-                self.remove(node);
+                self.remove(node, cancelled)?;
             }
             Command::Adopt { node, document } => {
                 let node = self.resolve(node)?;

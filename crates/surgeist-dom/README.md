@@ -82,7 +82,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee families,
+and actual native HTML Canvas/Marquee/Frame families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -122,6 +122,20 @@ ordinary and hosted shadow trees. New family state reports `ElementState`
 independently of raw `Attributes`; equal recovered dimensions with changed raw
 spelling report only Attributes. Failed/cancelled edits roll back both domains.
 
+Native HTML Frame retains the actual initially null child-content relationship,
+read through `frame_null_content()`. Its content document/window are null; it
+potentially delays load by type but causes no actual child load delay. Frame
+post-connection runs after insertion/common steps and only when still
+shadow-including connected, using the actual node document's known-null browsing
+context. That source guard returns before creating a child or processing src.
+Exact null-namespace src changes and removing steps consume HTML's null-content
+decisions without URL interpretation, child destruction or navigation effects.
+Removal visits the actual ordinary and owned shadow subtree after detachment.
+Clone/import creates fresh null family state and copies actual attributes;
+adoption preserves state and IDs while changing the real node document. Frame
+owns no additional strings and fabricates no Window, child identity or host
+capability. Iframe and other resource families still require their own adapters.
+
 HTML/SVG/MathML Elements retain a real initially empty cryptographic nonce slot.
 Exact null-namespace `nonce` attribute changes update it, removal clears it, and
 `set_nonce` changes only the slot. Case/namespace mismatches do not affect it.
@@ -135,7 +149,7 @@ a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include native form/control relations and values, template hosted
-contents/inert documents, HTML/SVG script state and preparation, frame/iframe
+contents/inert documents, HTML/SVG script state and preparation, iframe
 navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
