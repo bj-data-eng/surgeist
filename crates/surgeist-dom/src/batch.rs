@@ -43,6 +43,15 @@ pub(crate) enum Creation {
     Fragment,
     Text(DocumentString),
     Comment(DocumentString),
+    ProcessingInstruction {
+        target: DocumentString,
+        data: DocumentString,
+    },
+    DocumentType {
+        name: DocumentString,
+        public_id: DocumentString,
+        system_id: DocumentString,
+    },
 }
 
 #[derive(Debug)]
@@ -120,6 +129,40 @@ impl DomBatch {
     ) -> CreatedNode {
         self.create(Creation::Comment(data.into()), Some(document.into()))
     }
+    /// Creates a PI using DOM's XML Name target rule and initial ?> rejection.
+    /// Validation and pseudo-attribute derivation happen atomically at apply.
+    pub fn create_processing_instruction(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        target: impl Into<DocumentString>,
+        data: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::ProcessingInstruction {
+                target: target.into(),
+                data: data.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Creates a doctype under DOM's relaxed name rule. Empty names are valid;
+    /// public/system identifiers are exact strings without extra XML checks.
+    pub fn create_document_type(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        name: impl Into<DocumentString>,
+        public_id: impl Into<DocumentString>,
+        system_id: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::DocumentType {
+                name: name.into(),
+                public_id: public_id.into(),
+                system_id: system_id.into(),
+            },
+            Some(document.into()),
+        )
+    }
     /// Inserts before the reference child, or appends for None. A fragment moves
     /// its children and becomes empty. Cross-document insertion is unsupported.
     pub fn insert_before(
@@ -144,7 +187,8 @@ impl DomBatch {
     }
     /// CharacterData replacement using UTF-16 code-unit offsets and counts.
     /// An excessive count truncates to the remaining length; offset past the
-    /// end is IndexSize. The operation accepts Text and Comment.
+    /// end is IndexSize. The operation accepts Text, Comment and PI. PI data
+    /// edits recompute pseudo-attributes without repeating creation validation.
     pub fn replace_data(
         &mut self,
         node: impl Into<NodeOperand>,

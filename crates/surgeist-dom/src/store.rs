@@ -8,8 +8,8 @@ use std::{
 
 use crate::batch::{BatchIdentity, Command, Creation};
 use crate::{
-    CreatedNode, DocumentId, DocumentString, DomBatch, DomNodeKind, DomOwnerId, DomRevision,
-    DomSnapshot, DomStamp, NodeId, NodeOperand,
+    CreatedNode, DocumentId, DocumentString, DomBatch, DomDocumentType, DomNodeKind, DomOwnerId,
+    DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
 };
 
 /// Configured capacity whose admission would be exceeded.
@@ -33,6 +33,7 @@ pub enum DomError {
     WrongNodeKind,
     WrongDocument,
     HierarchyRequest,
+    InvalidCharacter,
     NotFound,
     InvalidDestruction,
     CrossDocumentInsertionUnsupported,
@@ -333,7 +334,7 @@ impl Dom {
         let mut draft = Draft::new(self, batch.owner)?;
         for command in batch.commands {
             check_cancel(cancelled)?;
-            draft.apply(command, self.limits)?;
+            draft.apply(command, self.limits, cancelled)?;
         }
         check_cancel(cancelled)?;
         draft.finish(self)
@@ -484,14 +485,14 @@ fn admit(value: usize, limit: usize, resource: DomResource) -> Result<(), DomErr
         Ok(())
     }
 }
-fn check_cancel(cancelled: &AtomicBool) -> Result<(), DomError> {
+pub(crate) fn check_cancel(cancelled: &AtomicBool) -> Result<(), DomError> {
     if cancelled.load(Ordering::Acquire) {
         Err(DomError::Cancelled)
     } else {
         Ok(())
     }
 }
-fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<(), DomError> {
+pub(crate) fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<(), DomError> {
     values
         .try_reserve(additional)
         .map_err(|_| DomError::AllocationFailed)
@@ -617,7 +618,12 @@ impl Draft {
             self.node_mut(node).parent = None;
         }
     }
-    fn apply(&mut self, command: Command, limits: DomLimits) -> Result<(), DomError> {
+    fn apply(
+        &mut self,
+        command: Command,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         match command {
             Command::Create { kind, document } => {
                 let key = Key::Created(self.created.len());
@@ -630,21 +636,56 @@ impl Draft {
                 } else {
                     key
                 };
-                let kind = match kind {
-                    Creation::Document => DomNodeKind::Document,
-                    Creation::Fragment => DomNodeKind::DocumentFragment,
-                    Creation::Text(data) => DomNodeKind::Text(data),
-                    Creation::Comment(data) => DomNodeKind::Comment(data),
-                };
-                let units = self
-                    .units
-                    .checked_add(kind_units(&kind))
-                    .ok_or(DomError::RepresentationExhausted)?;
                 let nodes = self
                     .nodes
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
                 admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
+                let raw_units = match &kind {
+                    Creation::Document | Creation::Fragment => Some(0),
+                    Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
+                    Creation::ProcessingInstruction { target, data } => {
+                        target.len().checked_add(data.len())
+                    }
+                    Creation::DocumentType {
+                        name,
+                        public_id,
+                        system_id,
+                    } => name
+                        .len()
+                        .checked_add(public_id.len())
+                        .and_then(|units| units.checked_add(system_id.len())),
+                }
+                .ok_or(DomError::RepresentationExhausted)?;
+                admit(
+                    self.units
+                        .checked_add(raw_units)
+                        .ok_or(DomError::RepresentationExhausted)?,
+                    limits.units,
+                    DomResource::StringCodeUnits,
+                )?;
+                let kind = match kind {
+                    Creation::Document => DomNodeKind::Document,
+                    Creation::Fragment => DomNodeKind::DocumentFragment,
+                    Creation::Text(data) => DomNodeKind::Text(data),
+                    Creation::Comment(data) => DomNodeKind::Comment(data),
+                    Creation::ProcessingInstruction { target, data } => {
+                        DomNodeKind::ProcessingInstruction(DomProcessingInstruction::new(
+                            target, data, cancelled,
+                        )?)
+                    }
+                    Creation::DocumentType {
+                        name,
+                        public_id,
+                        system_id,
+                    } => {
+                        DomNodeKind::DocumentType(DomDocumentType::new(name, public_id, system_id)?)
+                    }
+                };
+                let units = self
+                    .units
+                    .checked_add(kind_units(&kind)?)
+                    .ok_or(DomError::RepresentationExhausted)?;
                 admit(units, limits.units, DomResource::StringCodeUnits)?;
                 reserve(&mut self.created, 1)?;
                 self.created.push(Some(DraftNode {
@@ -678,7 +719,7 @@ impl Draft {
                     .expect("owned subtree");
                     pending.extend(node.children);
                     self.nodes -= 1;
-                    self.units -= kind_units(&node.kind);
+                    self.units -= kind_units(&node.kind)?;
                 }
             }
             Command::ReplaceData {
@@ -688,8 +729,14 @@ impl Draft {
                 data,
             } => {
                 let node = self.resolve(node)?;
+                let previous_units = kind_units(&self.node(node)?.kind)?;
+                let fixed_units = match &self.node(node)?.kind {
+                    DomNodeKind::ProcessingInstruction(value) => value.target().len(),
+                    _ => 0,
+                };
                 let previous = match &self.node(node)?.kind {
                     DomNodeKind::Text(data) | DomNodeKind::Comment(data) => data,
+                    DomNodeKind::ProcessingInstruction(value) => value.data(),
                     _ => return Err(DomError::WrongNodeKind),
                 };
                 if offset > previous.len() {
@@ -699,22 +746,31 @@ impl Draft {
                 let length = (previous.len() - removed)
                     .checked_add(data.len())
                     .ok_or(DomError::RepresentationExhausted)?;
-                let units = (self.units - previous.len())
-                    .checked_add(length)
+                let raw_units = (self.units - previous_units)
+                    .checked_add(fixed_units)
+                    .and_then(|units| units.checked_add(length))
                     .ok_or(DomError::RepresentationExhausted)?;
-                admit(units, limits.units, DomResource::StringCodeUnits)?;
+                admit(raw_units, limits.units, DomResource::StringCodeUnits)?;
                 let mut value = Vec::new();
                 reserve(&mut value, length)?;
                 value.extend_from_slice(&previous.code_units()[..offset]);
                 value.extend_from_slice(data.code_units());
                 value.extend_from_slice(&previous.code_units()[offset + removed..]);
                 let value = DocumentString::from_utf16(value);
-                let target = self.node_mut(node);
-                target.kind = if matches!(target.kind, DomNodeKind::Text(_)) {
-                    DomNodeKind::Text(value)
-                } else {
-                    DomNodeKind::Comment(value)
+                let kind = match &self.node(node)?.kind {
+                    DomNodeKind::Text(_) => DomNodeKind::Text(value),
+                    DomNodeKind::Comment(_) => DomNodeKind::Comment(value),
+                    DomNodeKind::ProcessingInstruction(instruction) => {
+                        DomNodeKind::ProcessingInstruction(instruction.with_data(value, cancelled)?)
+                    }
+                    _ => unreachable!("checked CharacterData kind"),
                 };
+                let units = (self.units - previous_units)
+                    .checked_add(kind_units(&kind)?)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                admit(units, limits.units, DomResource::StringCodeUnits)?;
+                let target = self.node_mut(node);
+                target.kind = kind;
                 self.units = units;
             }
             Command::Insert {
@@ -744,6 +800,17 @@ impl Draft {
                     return Err(DomError::NotFound);
                 }
                 if self.node(node)?.kind == DomNodeKind::Document {
+                    return Err(DomError::HierarchyRequest);
+                }
+                if matches!(self.node(node)?.kind, DomNodeKind::DocumentType(_))
+                    && (self.node(parent)?.kind != DomNodeKind::Document
+                        || self.node(parent)?.children.iter().any(|child| {
+                            matches!(
+                                self.node(*child).expect("staged child").kind,
+                                DomNodeKind::DocumentType(_)
+                            )
+                        }))
+                {
                     return Err(DomError::HierarchyRequest);
                 }
                 if self.node(node)?.document != self.node(parent)?.document {
@@ -884,10 +951,14 @@ impl Draft {
         })
     }
 }
-fn kind_units(kind: &DomNodeKind) -> usize {
+fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
     match kind {
-        DomNodeKind::Text(data) | DomNodeKind::Comment(data) => data.len(),
-        _ => 0,
+        DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Ok(data.len()),
+        DomNodeKind::ProcessingInstruction(value) => {
+            value.units().ok_or(DomError::RepresentationExhausted)
+        }
+        DomNodeKind::DocumentType(value) => value.units().ok_or(DomError::RepresentationExhausted),
+        _ => Ok(0),
     }
 }
 fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChange>, DomError> {

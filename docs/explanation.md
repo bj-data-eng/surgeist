@@ -57,7 +57,8 @@ and source establish those boundaries; no old-package reexports are retained.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
 document identity, mutation and snapshots with a bounded non-element tree:
-Document, ordinary DocumentFragment, Text and Comment nodes. It consumes HTML's
+Document, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
+DocumentType nodes. It consumes HTML's
 exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits and
 owned snapshots establish the foundation; element creation and its HTML state,
 adoption/import, shadow trees and facade replacement remain later contributions.

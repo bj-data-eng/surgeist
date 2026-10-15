@@ -3,7 +3,7 @@
 Apply the root guide and focused PISCT skills. This crate owns canonical live
 identity, exclusive mutation, immutable snapshots and change coverage. Consume
 HTML-owned string/value contracts directly; HTML language interpretation stays
-with its producer. The crate README states the currently bounded four-kind
+with its producer. The crate README states the currently bounded six-kind
 surface. Do not fabricate missing HTML/control/template/registry/script state
 when extending construction or add compatibility wrappers around retained.
 
@@ -12,6 +12,9 @@ document membership, source ownerDocument readback, storage ownership and tree
 root are distinct. Keep generation/revision exhaustion checked and rejected
 batches atomic, including slot allocation and history. Root owns workspace,
 facade composition, architecture documentation and generated API artifacts.
+PI construction uses the shared bounded XML Name predicates and PI
+pseudo-attribute cursor; do not replace its target grammar with relaxed element
+validation or HTML authoring restrictions. Doctype names use DOM's relaxed rule.
 
 From repository root through bounded `pisct run`:
 

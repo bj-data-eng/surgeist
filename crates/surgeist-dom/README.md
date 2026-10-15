@@ -1,16 +1,19 @@
 # surgeist-dom
 
 Canonical native document ownership with atomic edits and owned immutable
-snapshots. This initial contribution supports Document, ordinary
-DocumentFragment, Text and Comment. It directly consumes HTML's exact UTF-16
-`DocumentString`; it has no parser, runtime, CSSOM or facade dependency.
+snapshots. The native contribution supports Document, ordinary DocumentFragment,
+Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
+HTML's exact UTF-16 `DocumentString`; it has no parser, runtime, CSSOM or facade
+dependency.
 
 `Dom::new` requires explicit finite `DomLimits` for managed nodes, stored string
 code units, commands per batch, and retained change-history entries and bytes.
 Detached nodes count toward the live limits. Logical string lengths count each
-node's stored units even when immutable backing is shared. Limits do not promise
-a total heap bound: caller-owned batches, snapshot/report retention, allocator
-bookkeeping and temporary transaction preparation are separate. A limit update
+node's stored units even when immutable backing is shared, including PI targets,
+data and derived pseudo-attribute map fields, and all three doctype strings.
+Limits do not promise a total heap bound: caller-owned batches, snapshot/report
+retention, allocator bookkeeping and temporary transaction preparation are
+separate. A limit update
 cannot lower live capacity below admitted usage; smaller history bounds discard
 coverage without mutating document state.
 
@@ -24,12 +27,27 @@ existing node with an equal fresh node does. Revision and owner exhaustion rejec
 without wrapping; a destroyed slot whose generation is exhausted is retired.
 
 The supported mutations insert/move nodes, transfer a fragment's children in
-order, detach, destroy detached non-Document subtrees, and replace Text/Comment
-data using UTF-16 code-unit offsets. Documents reject Text children. A fragment
-is emptied by insertion and never becomes an ordinary child. Reference-child
-membership and cycles are validated before publication. Cross-document insertion
+order, detach, destroy detached non-Document subtrees, and replace Text/Comment/PI
+data using UTF-16 code-unit offsets. Documents reject Text children and accept
+at most one doctype. Doctypes cannot be inserted into fragments or have children.
+A fragment is emptied by insertion and never becomes an ordinary child.
+Reference-child membership and cycles are validated before publication.
+An attached doctype must be explicitly detached before reinsertion; direct
+pre-insertion validation still sees the document's existing doctype.
+Cross-document insertion
 is explicitly unsupported until adoption is implemented. No mutation invokes
 callbacks, runs scripts or performs host effects.
+
+PI construction validates the target using the DOM-delegated XML Name
+production and rejects initial data containing `?>`. It does not apply HTML's
+stricter native authoring grammar or reserved-target exclusions. CharacterData
+replacement preserves arbitrary exact units, including `?>`, and recomputes the
+whole-string XML pseudo-attribute map through HTML's shared grammar cursor.
+Invalid pseudo-attributes leave an empty map and preserve raw data. This does
+not implement PI attribute setters, style loading or live ranges. Doctype
+construction uses DOM's relaxed name validation, including valid empty names;
+public and system identifiers remain exact strings. `node_name()` returns the
+source-defined fixed name, PI target or doctype name for each exposed kind.
 
 `DomSnapshot` owns immutable storage for every managed node, including detached
 nodes and multiple documents. It survives later edits, destruction and the
@@ -50,8 +68,8 @@ immediately before publication; the final cancellation observation is the
 publication boundary.
 
 Element/attribute construction, HTML document metadata and native initialization,
-PI/doctype nodes, shadow trees, adoption/import, HTML installation and semantic
-capture adapters are not exposed yet. This crate does not claim complete DOM or
+shadow trees, adoption/import, HTML installation and semantic capture adapters
+are not exposed yet. This crate does not claim complete DOM or
 HTML conformance or replace the retained/facade integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
@@ -59,7 +77,10 @@ contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074)
 
 The selected [DOM foundation capture](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md)
 at revision `3071e5f269448350fdea79bb284eedaf17bc431e` supplies ordinary
-tree/pre-insertion, fragment transfer, ownerDocument and CharacterData rules.
+tree/pre-insertion, fragment transfer, ownerDocument, nodeName, PI/doctype
+construction and CharacterData rules. PI targets and pseudo-attribute maps use
+the retained [XML grammar](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
+and [XML-stylesheet pseudo-attribute rules](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md).
 The issue's selected native ownership, finite admission, atomic publication and
 snapshot policies supplement that bounded source surface. Existing retained
 atomicity and no-op tests supplied reuse evidence; its ownerless IDs,

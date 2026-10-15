@@ -142,7 +142,8 @@ implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.
 
 `surgeist-dom` begins the canonical live tree owner with Document, ordinary
-DocumentFragment, Text and Comment nodes, atomic edits, finite caller limits and
+DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType nodes,
+atomic edits, finite caller limits and
 owned snapshots. Its crate guide records this bounded surface. Element creation,
 HTML state integration, adoption/import and shadow trees remain contribution work;
 the existing retained facade is not replaced by this foundation.

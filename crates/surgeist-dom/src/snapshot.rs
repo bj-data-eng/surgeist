@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::store::{Node, State};
 use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
+use crate::{DomDocumentType, DomProcessingInstruction};
 
 /// The complete node kinds supported by this contribution.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -10,6 +11,8 @@ pub enum DomNodeKind {
     DocumentFragment,
     Text(DocumentString),
     Comment(DocumentString),
+    ProcessingInstruction(DomProcessingInstruction),
+    DocumentType(DomDocumentType),
 }
 
 /// Owned immutable state, including detached nodes and all documents.
@@ -120,6 +123,17 @@ impl<'a> DomNode<'a> {
     pub fn kind(self) -> &'a DomNodeKind {
         &self.node.kind
     }
+    /// DOM nodeName readback; PI targets and doctype names preserve exact units.
+    pub fn node_name(self) -> DocumentString {
+        match &self.node.kind {
+            DomNodeKind::Document => "#document".into(),
+            DomNodeKind::DocumentFragment => "#document-fragment".into(),
+            DomNodeKind::Text(_) => "#text".into(),
+            DomNodeKind::Comment(_) => "#comment".into(),
+            DomNodeKind::ProcessingInstruction(value) => value.target().clone(),
+            DomNodeKind::DocumentType(value) => value.name().clone(),
+        }
+    }
     /// Checked document view, including for documents discovered by enumeration.
     pub fn as_document(self) -> Option<DomDocument<'a>> {
         (self.node.kind == DomNodeKind::Document).then_some(DomDocument {
@@ -140,6 +154,7 @@ impl<'a> DomNode<'a> {
     pub fn data(self) -> Option<&'a DocumentString> {
         match &self.node.kind {
             DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Some(data),
+            DomNodeKind::ProcessingInstruction(value) => Some(value.data()),
             _ => None,
         }
     }

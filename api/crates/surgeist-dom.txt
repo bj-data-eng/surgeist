@@ -18,6 +18,7 @@ pub surgeist_dom::DomError::ForeignBatch
 pub surgeist_dom::DomError::ForeignOwner
 pub surgeist_dom::DomError::HierarchyRequest
 pub surgeist_dom::DomError::IndexSize
+pub surgeist_dom::DomError::InvalidCharacter
 pub surgeist_dom::DomError::InvalidDestruction
 pub surgeist_dom::DomError::InvalidLimit(surgeist_dom::DomResource)
 pub surgeist_dom::DomError::NotFound
@@ -47,6 +48,8 @@ pub enum surgeist_dom::DomNodeKind
 pub surgeist_dom::DomNodeKind::Comment(surgeist_html::values::DocumentString)
 pub surgeist_dom::DomNodeKind::Document
 pub surgeist_dom::DomNodeKind::DocumentFragment
+pub surgeist_dom::DomNodeKind::DocumentType(surgeist_dom::DomDocumentType)
+pub surgeist_dom::DomNodeKind::ProcessingInstruction(surgeist_dom::DomProcessingInstruction)
 pub surgeist_dom::DomNodeKind::Text(surgeist_html::values::DocumentString)
 pub enum surgeist_dom::DomResource
 pub surgeist_dom::DomResource::Commands
@@ -88,7 +91,9 @@ pub struct surgeist_dom::DomBatch
 impl surgeist_dom::DomBatch
 pub fn surgeist_dom::DomBatch::create_comment(&mut self, document: impl core::convert::Into<surgeist_dom::NodeOperand>, data: impl core::convert::Into<surgeist_html::values::DocumentString>) -> surgeist_dom::CreatedNode
 pub fn surgeist_dom::DomBatch::create_document(&mut self) -> surgeist_dom::CreatedNode
+pub fn surgeist_dom::DomBatch::create_document_type(&mut self, document: impl core::convert::Into<surgeist_dom::NodeOperand>, name: impl core::convert::Into<surgeist_html::values::DocumentString>, public_id: impl core::convert::Into<surgeist_html::values::DocumentString>, system_id: impl core::convert::Into<surgeist_html::values::DocumentString>) -> surgeist_dom::CreatedNode
 pub fn surgeist_dom::DomBatch::create_fragment(&mut self, document: impl core::convert::Into<surgeist_dom::NodeOperand>) -> surgeist_dom::CreatedNode
+pub fn surgeist_dom::DomBatch::create_processing_instruction(&mut self, document: impl core::convert::Into<surgeist_dom::NodeOperand>, target: impl core::convert::Into<surgeist_html::values::DocumentString>, data: impl core::convert::Into<surgeist_html::values::DocumentString>) -> surgeist_dom::CreatedNode
 pub fn surgeist_dom::DomBatch::create_text(&mut self, document: impl core::convert::Into<surgeist_dom::NodeOperand>, data: impl core::convert::Into<surgeist_html::values::DocumentString>) -> surgeist_dom::CreatedNode
 pub fn surgeist_dom::DomBatch::destroy(&mut self, node: impl core::convert::Into<surgeist_dom::NodeOperand>)
 pub fn surgeist_dom::DomBatch::detach(&mut self, node: impl core::convert::Into<surgeist_dom::NodeOperand>)
@@ -118,6 +123,11 @@ pub struct surgeist_dom::DomDocumentStamp
 impl surgeist_dom::DomDocumentStamp
 pub fn surgeist_dom::DomDocumentStamp::document(self) -> surgeist_dom::DocumentId
 pub fn surgeist_dom::DomDocumentStamp::store(self) -> surgeist_dom::DomStamp
+pub struct surgeist_dom::DomDocumentType
+impl surgeist_dom::DomDocumentType
+pub fn surgeist_dom::DomDocumentType::name(&self) -> &surgeist_html::values::DocumentString
+pub fn surgeist_dom::DomDocumentType::public_id(&self) -> &surgeist_html::values::DocumentString
+pub fn surgeist_dom::DomDocumentType::system_id(&self) -> &surgeist_html::values::DocumentString
 pub struct surgeist_dom::DomLimits
 impl surgeist_dom::DomLimits
 pub fn surgeist_dom::DomLimits::commands_per_batch(self) -> usize
@@ -134,10 +144,17 @@ pub fn surgeist_dom::DomNode<'a>::data(self) -> core::option::Option<&'a surgeis
 pub fn surgeist_dom::DomNode<'a>::id(self) -> surgeist_dom::NodeId
 pub fn surgeist_dom::DomNode<'a>::is_connected(self) -> bool
 pub fn surgeist_dom::DomNode<'a>::kind(self) -> &'a surgeist_dom::DomNodeKind
+pub fn surgeist_dom::DomNode<'a>::node_name(self) -> surgeist_html::values::DocumentString
 pub fn surgeist_dom::DomNode<'a>::owner_document(self) -> core::option::Option<surgeist_dom::DocumentId>
 pub fn surgeist_dom::DomNode<'a>::parent(self) -> core::option::Option<surgeist_dom::NodeId>
 pub fn surgeist_dom::DomNode<'a>::root(self) -> surgeist_dom::NodeId
 pub struct surgeist_dom::DomOwnerId(_)
+pub struct surgeist_dom::DomProcessingInstruction
+impl surgeist_dom::DomProcessingInstruction
+pub fn surgeist_dom::DomProcessingInstruction::attribute(&self, name: &surgeist_html::values::DocumentString) -> core::option::Option<&surgeist_html::values::DocumentString>
+pub fn surgeist_dom::DomProcessingInstruction::attributes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = (&surgeist_html::values::DocumentString, &surgeist_html::values::DocumentString)>
+pub fn surgeist_dom::DomProcessingInstruction::data(&self) -> &surgeist_html::values::DocumentString
+pub fn surgeist_dom::DomProcessingInstruction::target(&self) -> &surgeist_html::values::DocumentString
 pub struct surgeist_dom::DomRevision(_)
 impl surgeist_dom::DomRevision
 pub fn surgeist_dom::DomRevision::get(self) -> u64
