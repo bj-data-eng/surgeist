@@ -69,6 +69,31 @@ pub struct DomDocumentMetadata {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomNativeDocumentEnvironment {
     input: DomNativeInputPlatform,
+    svg_scripts: ClosedSvgScriptProcessing,
+}
+
+/// Native-owner qualification, independent of browsing-context or scripting
+/// flags. Only the private native environment constructor establishes it.
+///
+/// All native entrypoints admit inert strings/values and canonical identities,
+/// never network/data/same-document script acquisition, inline/external execution,
+/// executable handlers/listeners, SVG load/error recipients or script acquisition,
+/// execution or notification callback/task/resource/event outputs. Host
+/// observations are selection facts only; Slot
+/// intentions cannot represent an SVG event. Native fragment installation creates
+/// fresh values; snapshot import clones another checked native owner. Neither
+/// admits retained script resources/history. A future capability-bearing front
+/// must qualify its real transition before it can retain this closed witness.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ClosedSvgScriptProcessing {
+    _sealed: (),
+}
+impl ClosedSvgScriptProcessing {
+    /// Tiny step3 remains real while acquisition, execution and unobservable
+    /// notification are omitted under the independently established closed owner.
+    pub(crate) fn mark_processed(self, flags: &mut surgeist_html::SvgScriptFlags) {
+        flags.mark_processed();
+    }
 }
 
 /// Established native selection capabilities, independent of browsing context.
@@ -104,7 +129,13 @@ impl DomNativeInputPlatform {
 }
 impl DomNativeDocumentEnvironment {
     pub(crate) const fn new(input: DomNativeInputPlatform) -> Self {
-        Self { input }
+        Self {
+            input,
+            svg_scripts: ClosedSvgScriptProcessing { _sealed: () },
+        }
+    }
+    pub(crate) const fn svg_script_processing(self) -> ClosedSvgScriptProcessing {
+        self.svg_scripts
     }
     pub const fn input_platform(self) -> DomNativeInputPlatform {
         self.input

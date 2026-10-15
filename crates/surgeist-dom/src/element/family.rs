@@ -23,6 +23,7 @@ pub(super) enum NativeFamily {
     Output(Arc<crate::DomOutputState>),
     Slot,
     Script,
+    SvgScript(crate::svg_script::SvgScriptState),
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
     Frame(HtmlFrameNullContent),
@@ -49,6 +50,7 @@ impl NativeFamily {
             | Self::Template(_)
             | Self::Slot
             | Self::Script
+            | Self::SvgScript(_)
             | Self::Marquee(_)
             | Self::Frame(_)
             | Self::Iframe(_) => Some(0),

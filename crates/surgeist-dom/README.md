@@ -85,7 +85,8 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template/Script families,
+and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/
+Textarea/Output/Template/Script and SVG Script families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -93,7 +94,7 @@ includes the actual empty reaction queue/unset click flag, and the HTML-only
 closed focus/internals/popover tuple. Exposed operations preserve those values.
 Special built-ins lacking their actual family adapter reject atomically with
 `NativeInitializationRequired` carrying the exact HTML-owned requirement. SVG
-lowercase script is one such requirement; uppercase Script is ordinary SVG.
+lowercase script has its actual native state; uppercase Script is ordinary SVG.
 
 Native HTML Canvas retains HTML's actual none-context state: no bound context,
 origin-clean true and a transparent-black bitmap description. Exact no-namespace
@@ -320,8 +321,43 @@ detach and immutable snapshot copying preserve established preparation history.
 Historic preparation documents stay in capture association closure, without
 declaring their unrelated trees complete or adding a fake semantic Script fact.
 Native APIs admit no arbitrary parser/processed-history installation; that cause
-must preserve/remap real metadata separately. SVG Script and resource-capable
-preparation remain outside this native HTML contribution.
+must preserve/remap real metadata separately. Resource-capable preparation
+remains outside this native HTML contribution.
+
+Native SVG Script has a separate checked `DomNode::as_svg_script()` view over
+HTML's `SvgScriptFlags` and its actual `DomSvgScriptOrigin::{Native, Clone}`.
+Fresh native creation is unprocessed. The selected Tiny four-step operation uses
+DOM3071 shadow-including connectedness and the existing static post-connection
+list: hosted roots precede a host's ordinary descendants, and inserted roots keep
+source order. An eligible false bit becomes true even for empty content, unusual
+type, absent/empty/data/same-document/external href or inert handler attributes.
+No HTML empty/type/async/preparation guards or restart hooks are imported.
+Ordinary Template contents and detached hosts remain disconnected; Slot assignment
+alone does not connect them. Removal and later href/content edits do not restart.
+
+Native constructors establish a private immutable closed SVG processing witness:
+all network/data/same-document script acquisition and inline/external execution
+are disabled, and no admitted SVG load/error recipient, executable handler,
+callback, retained task, event or resource output can observe omitted notification.
+This follows the actual constructor/command/host/output boundary, independently
+of null browsing context or HTML Disabled. Authored handler strings are inert
+UTF-16 data; existing Slot intentions remain real and deliverable. The processing
+step consumes that witness from the script's actual node Document, which can
+differ from its shadow-connected host's Document. No URL is classified, fetched
+or decoded, no success/error/event/promise is fabricated, and no execution occurs.
+A future resource/recipient or retained-history installation front must implement
+its actual qualified transition before using this closed premise.
+
+Clone/import copies the actual true or false bit through the shared clone rule,
+sets Clone cause after copied attributes and before parent insertion, and uses
+the target native environment. Adoption preserves state/cause. An insert followed
+by detach can therefore leave a required state-only ElementState change despite
+unchanged final topology. Snapshots/captures retain their original state. Native
+fragment installation uses fresh native cause and these same insertion hooks;
+it does not certify parsed/resource history. Scalar state adds no retained string
+cost. Processing reuses the finite canonical-node static traversal and fallible
+buffers with per-node cancellation; it introduces no task queue or numeric quota.
+SVG use-instance trees and resource-capable processing remain separate domains.
 
 Native HTML Fieldset retains its actual form-owner relation, native unset parser
 flag and initially empty custom-validity message. `fieldset_state()` reads the
@@ -438,7 +474,7 @@ a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include other native form/control relations and values,
-SVG script state and resource-capable HTML preparation, resource-capable
+resource-capable HTML preparation, resource-capable
 iframe navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.

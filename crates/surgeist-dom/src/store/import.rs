@@ -197,6 +197,16 @@ impl Draft {
                 .flags
                 .clone_already_started_from(original.flags);
         }
+        if let Some(original) = original
+            .as_element()
+            .and_then(crate::DomElement::svg_script_state)
+        {
+            let DomNodeKind::Element(element) = &mut self.node_mut(copy).kind else {
+                unreachable!("fresh SVG Script Element")
+            };
+            *element.svg_script_state_mut().expect("fresh SVG Script") =
+                original.clone_for_element();
+        }
         if let Some(original) = original.as_input() {
             self.clone_input_overlay(copy, original.state(), limits, cancelled)?;
         }

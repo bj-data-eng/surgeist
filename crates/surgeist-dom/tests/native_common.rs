@@ -170,7 +170,11 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
             "audio",
             Requirement::KnownHtml(KnownHtmlElement::Audio),
         ),
-        (SVG, "script", Requirement::SvgScript),
+        (
+            HTML,
+            "select",
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Select),
+        ),
     ] {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();

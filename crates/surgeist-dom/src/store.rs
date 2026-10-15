@@ -28,6 +28,7 @@ mod reflected;
 mod script;
 mod shadow;
 mod slot;
+mod svg_script;
 mod template;
 mod textarea;
 mod tree;
@@ -847,6 +848,8 @@ struct Draft {
     units: usize,
     native_environment: crate::DomNativeDocumentEnvironment,
     input_processing: input_processing::InputProcessing,
+    #[cfg(test)]
+    svg_processing_trace: Option<svg_script::ProcessingTrace>,
 }
 struct Prepared {
     state: State,
@@ -919,6 +922,8 @@ impl Draft {
         }
         Ok(Self {
             owner,
+            #[cfg(test)]
+            svg_processing_trace: None,
             native_environment: dom.native_environment,
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,

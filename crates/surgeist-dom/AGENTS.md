@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Template/HTML-Script families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -137,6 +137,22 @@ the actual already-started overlay before parent append; adopt/detach/snapshots
 preserve history. Capture closes historic document refs conservatively. No
 parser controller, SVG admission, fabricated error/result/callback, execution or
 metadata-installation default is permitted by this closed native prefix.
+Native SVG Script independently consumes the shared actual processed flag and
+clone rule, retaining Native/Clone cause without parser provenance. Establish a
+sealed immutable native-owner qualification for ALL script acquisition sources,
+inline/external execution and relevant notification recipients/channels, from
+the real constructor/commands/host/output boundaries. Null BC and Disabled alone
+are insufficient. Resolve the witness from the actual node Document, separately
+from shadow-including connectivity. Use the one existing static postconnection
+walk; do not add HTML empty/type/href/async guards or attribute/children restart
+hooks. Template hosts do not connect; actual hosted ShadowRoots do. Copy both
+true and false flags after attributes and before clone append; adopt preserves.
+Keep source step3 writes even when final topology returns to its former shape.
+No acquisition/execution/fake notification is performed. Slot intentions remain
+independent real effects. Future recipient/resource/retained-history admission
+must qualify its own transition; do not add a dead capability toggle or fabricate
+unavailable proof. Scalar storage and traversal use existing canonical bounds,
+fallible static-list buffers and per-node cancellation, not numeric/Slot quotas.
 Generic import reads only its supplied immutable capture, never a same-number
 live slot. It allocates fresh target identities; caller tickets map separately
 from private imported descendant allocations. Clone trusted canonical name and

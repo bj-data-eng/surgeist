@@ -78,6 +78,7 @@ impl Draft {
             if self.shadow_connected(key, cancel)? {
                 self.navigable_post_connection_node(key, &mut || check_cancel(cancel))?;
                 self.script_post_connection(key, cancel)?;
+                self.svg_script_post_connection(key, cancel)?;
             }
         }
         Ok(())

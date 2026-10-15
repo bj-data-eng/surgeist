@@ -38,6 +38,10 @@
 //! Native HTML Script retains complete supported state and real document history.
 //! Source-ordered preparation reaches the actual Disabled return without fetching
 //! or executing; attributes, children and CharacterData invoke their real hooks.
+//! Native SVG Script separately retains the exact processed flag and Native/Clone
+//! cause. The shared static shadow-including insertion walk consumes the actual
+//! node Document's private closed acquisition/execution/notification witness.
+//! This makes the processed write without a loader, executor or SVG event output.
 //! Explicit native HTML fragment installation preserves immutable component
 //! fields and UTF-16 through that same canonical owner, including real native
 //! Template contents and Script hooks. It returns a source-qualified historical
@@ -125,6 +129,7 @@ mod shadow;
 mod slot;
 mod snapshot;
 mod store;
+mod svg_script;
 mod template;
 mod textarea;
 mod view_transition;
@@ -172,6 +177,7 @@ pub use surgeist_html::{
     Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, HtmlShadowRootMode,
     HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
+pub use svg_script::{DomSvgScript, DomSvgScriptOrigin};
 pub use template::{DomTemplate, DomTemplateDocumentRole};
 pub use textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};
 pub use view_transition::{

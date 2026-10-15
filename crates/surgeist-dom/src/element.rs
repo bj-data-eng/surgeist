@@ -132,6 +132,9 @@ impl DomElement {
                 NativeFamily::Iframe(HtmlIframeNativeState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Script) => NativeFamily::Script,
+            Requirement::SvgScript => {
+                NativeFamily::SvgScript(crate::svg_script::SvgScriptState::fresh())
+            }
             Requirement::KnownHtml(KnownHtmlElement::Slot) => {
                 let Some(surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments) =
                     initialization.slot()
@@ -287,6 +290,20 @@ impl DomElement {
     }
     pub(crate) fn is_slot(&self) -> bool {
         matches!(self.family, NativeFamily::Slot)
+    }
+    pub(crate) fn svg_script_state(&self) -> Option<&crate::svg_script::SvgScriptState> {
+        match &self.family {
+            NativeFamily::SvgScript(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn svg_script_state_mut(
+        &mut self,
+    ) -> Option<&mut crate::svg_script::SvgScriptState> {
+        match &mut self.family {
+            NativeFamily::SvgScript(state) => Some(state),
+            _ => None,
+        }
     }
     pub(crate) fn is_html_script(&self) -> bool {
         matches!(self.family, NativeFamily::Script)
