@@ -1,6 +1,22 @@
 //! Intrinsic owner-document selection from HTML877d
 //! #appropriate-template-contents-owner-document.
 
+/// Initial insertion references for an actually newly created HTML template.
+///
+/// HTML's [template rule](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-template-element)
+/// initializes the insertion target and both insertion markers to null. Native
+/// and parser creation share this tuple; the token does not establish either
+/// origin, an element identity, contents ownership or patching capability.
+/// Consumers materialize their actual reference slots only at fresh creation.
+/// Installed or retained history must be preserved through its own adapter,
+/// never erased by applying fresh initialization. This is not current-state
+/// evidence after the consumer has changed any insertion reference.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTemplateFreshInsertionState {
+    /// The insertion target, start marker and end marker are all initially null.
+    NullTargetAndMarkers,
+}
+
 /// Which actual document must own an HTML template's separate contents.
 ///
 /// This decision contains no identities and does not create or adopt nodes.

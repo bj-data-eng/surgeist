@@ -8,7 +8,9 @@
 //! This is neither parser recovery nor WebIDL prototype construction.
 
 use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
-use crate::{HtmlNativeFormAssociationKind, KnownHtmlElement, QualifiedName};
+use crate::{
+    HtmlNativeFormAssociationKind, HtmlTemplateFreshInsertionState, KnownHtmlElement, QualifiedName,
+};
 
 /// Required native family initialization in addition to the common baseline.
 ///
@@ -58,6 +60,17 @@ impl HtmlNativeInitialization {
     }
     pub const fn common(&self) -> HtmlNativeCommonState {
         self.common
+    }
+    /// Fresh insertion references for the actual HTML template requirement.
+    /// The consumer creates the separate contents and owns all reference slots;
+    /// this token cannot reset installed or retained insertion history.
+    pub const fn template_insertion(&self) -> Option<HtmlTemplateFreshInsertionState> {
+        match self.requirement {
+            HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Template) => {
+                Some(HtmlTemplateFreshInsertionState::NullTargetAndMarkers)
+            }
+            _ => None,
+        }
     }
     /// HTML877d #manually-assigned-nodes starts an actual native slot empty.
     /// The consumer materializes the identity-bearing ordered set; this value

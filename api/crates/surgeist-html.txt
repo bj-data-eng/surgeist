@@ -3045,6 +3045,8 @@ pub enum surgeist_html::HtmlTemplateContentsOwnerDocument
 pub surgeist_html::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument
 pub surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument
 pub surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument
+pub enum surgeist_html::HtmlTemplateFreshInsertionState
+pub surgeist_html::HtmlTemplateFreshInsertionState::NullTargetAndMarkers
 pub enum surgeist_html::HtmlTemporalError
 pub surgeist_html::HtmlTemporalError::DayOutOfRange
 pub surgeist_html::HtmlTemporalError::HourOutOfRange
@@ -4430,6 +4432,7 @@ impl surgeist_html::HtmlNativeInitialization
 pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlNativeCommonState
 pub const fn surgeist_html::HtmlNativeInitialization::requirement(&self) -> surgeist_html::HtmlNativeInitializationRequirement
 pub const fn surgeist_html::HtmlNativeInitialization::slot(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshSlot>
+pub const fn surgeist_html::HtmlNativeInitialization::template_insertion(&self) -> core::option::Option<surgeist_html::HtmlTemplateFreshInsertionState>
 pub struct surgeist_html::HtmlNavigableTargetName
 impl surgeist_html::HtmlNavigableTargetName
 pub fn surgeist_html::HtmlNavigableTargetName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlNavigableTargetError>

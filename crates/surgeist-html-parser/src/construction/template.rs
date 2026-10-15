@@ -2,6 +2,7 @@
 //! HTML 877d6146487f: appropriate template contents owner, creation and adoption.
 
 use super::*;
+use surgeist_html::HtmlTemplateFreshInsertionState;
 
 /// A real Document node qualified by the issuing arena. The index is private.
 #[cfg(test)]
@@ -40,6 +41,18 @@ pub(super) struct TemplateMetadata {
     pub(super) target: Option<usize>,
     pub(super) start: Option<usize>,
     pub(super) end: Option<usize>,
+}
+impl TemplateMetadata {
+    fn fresh(contents: usize, insertion: HtmlTemplateFreshInsertionState) -> Self {
+        match insertion {
+            HtmlTemplateFreshInsertionState::NullTargetAndMarkers => Self {
+                contents,
+                target: None,
+                start: None,
+                end: None,
+            },
+        }
+    }
 }
 pub(crate) struct TemplateState {
     pub(crate) contents: ParserNode,
@@ -475,12 +488,10 @@ impl SessionStorage {
             let facts = self.payloads.values.len();
             self.payloads.values.push(RetainedPayload::Template {
                 node: None,
-                state: TemplateMetadata {
-                    contents: self.construction.storage().len() + 1,
-                    target: None,
-                    start: None,
-                    end: None,
-                },
+                state: TemplateMetadata::fresh(
+                    self.construction.storage().len() + 1,
+                    HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                ),
             });
             return Ok(Some(PreparedDocuments {
                 binding: None,
@@ -552,12 +563,10 @@ impl SessionStorage {
             let slot = self.payloads.values.len();
             self.payloads.values.push(RetainedPayload::Template {
                 node: None,
-                state: TemplateMetadata {
-                    contents: self.construction.storage().len() + 1,
-                    target: None,
-                    start: None,
-                    end: None,
-                },
+                state: TemplateMetadata::fresh(
+                    self.construction.storage().len() + 1,
+                    HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                ),
             });
             Some(slot)
         } else {

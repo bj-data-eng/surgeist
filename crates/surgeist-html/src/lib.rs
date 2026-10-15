@@ -97,7 +97,10 @@ pub use rel::*;
 pub use script_flags::HtmlScriptFlags;
 pub use script_type::HtmlScriptKind;
 pub use svg_script_flags::SvgScriptFlags;
-pub use template_state::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document};
+pub use template_state::{
+    HtmlTemplateContentsOwnerDocument, HtmlTemplateFreshInsertionState,
+    template_contents_owner_document,
+};
 pub use temporal::*;
 pub use tokens::{
     HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlDuplicateTokenError, HtmlOrderedTokenSet,
