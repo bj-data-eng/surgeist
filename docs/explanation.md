@@ -59,8 +59,9 @@ and source establish those boundaries; no old-package reexports are retained.
 document identity, mutation and snapshots with a bounded non-element tree:
 Document, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
 DocumentType nodes. It consumes HTML's
-exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits and
-owned snapshots establish the foundation; element creation and its HTML state,
+exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
+canonical native Document metadata and owned snapshots establish the foundation;
+element creation and its HTML state,
 adoption/import, shadow trees and facade replacement remain later contributions.
 DOM will own importing HTML construction values and adapting captured DOM facts
 to HTML-owned interpretation. Native authoring

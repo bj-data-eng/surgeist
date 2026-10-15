@@ -4,6 +4,9 @@ use surgeist_dom::{
     DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource,
 };
 
+// Each native Document retains application/xml, UTF-8 and about:blank.
+const DOCUMENT_UNITS: usize = 31;
+
 fn limits() -> DomLimits {
     DomLimits::new(64, 2048, 128, 16, 65536).unwrap()
 }
@@ -184,7 +187,10 @@ fn pi_map_uses_shared_whole_string_rules_and_keeps_raw_data_exact() {
         .collect::<Vec<_>>();
     assert_eq!(names, ["a", "b"]);
     let raw_units = raw.encode_utf16().count();
-    assert_eq!(dom.usage().string_code_units(), 5 + raw_units + 1 + 4 + 1);
+    assert_eq!(
+        dom.usage().string_code_units(),
+        DOCUMENT_UNITS + 5 + raw_units + 1 + 4 + 1
+    );
 }
 
 #[test]
@@ -212,7 +218,7 @@ fn invalid_pi_pseudo_attributes_clear_the_whole_map_without_rejecting_the_node()
         assert_eq!(value.attributes().len(), 0);
         assert_eq!(
             dom.usage().string_code_units(),
-            6 + data.encode_utf16().count()
+            DOCUMENT_UNITS + 6 + data.encode_utf16().count()
         );
     }
 }
@@ -265,16 +271,16 @@ fn pi_character_data_replacement_updates_maps_and_preserves_old_snapshots() {
 
 #[test]
 fn pi_replacement_can_remove_old_map_capacity_at_the_exact_live_string_limit() {
-    let mut dom = Dom::new(DomLimits::new(4, 8, 8, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(4, DOCUMENT_UNITS + 8, 8, 8, 8192).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "a='1'");
     let pi = apply(&mut dom, batch).created(&pi).unwrap().unwrap();
-    assert_eq!(dom.usage().string_code_units(), 8);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS + 8);
     let mut edit = DomBatch::new();
     edit.replace_data(pi, 0, usize::MAX, "invalid");
     apply(&mut dom, edit);
-    assert_eq!(dom.usage().string_code_units(), 8);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS + 8);
     assert_eq!(
         dom.snapshot().node(pi).unwrap().data(),
         Some(&DocumentString::from("invalid"))
@@ -306,7 +312,10 @@ fn doctype_names_use_relaxed_rule_including_empty_and_identifiers_are_lossless()
         };
         assert_eq!(value.public_id(), &public);
         assert_eq!(value.system_id(), &system);
-        assert_eq!(dom.usage().string_code_units(), name.len() + 5);
+        assert_eq!(
+            dom.usage().string_code_units(),
+            DOCUMENT_UNITS + name.len() + 5
+        );
     }
     for name in [
         "bad name",
@@ -390,7 +399,7 @@ fn document_allows_pi_comments_and_one_doctype_but_fragment_rejects_doctype() {
 
 #[test]
 fn new_node_strings_and_derived_pi_map_are_admitted_atomically() {
-    let mut dom = Dom::new(DomLimits::new(8, 7, 16, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 7, 16, 8, 8192).unwrap()).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let document = apply(&mut dom, setup).document(&document).unwrap();
@@ -401,7 +410,7 @@ fn new_node_strings_and_derived_pi_map_are_admitted_atomically() {
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::ResourceLimit {
             resource: DomResource::StringCodeUnits,
-            limit: 7
+            limit: DOCUMENT_UNITS + 7
         }
     );
     let mut batch = DomBatch::new();
@@ -410,12 +419,12 @@ fn new_node_strings_and_derived_pi_map_are_admitted_atomically() {
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::ResourceLimit {
             resource: DomResource::StringCodeUnits,
-            limit: 7
+            limit: DOCUMENT_UNITS + 7
         }
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage().managed_nodes(), 1);
-    assert_eq!(dom.usage().string_code_units(), 0);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS);
 }
 
 #[test]
@@ -442,7 +451,7 @@ fn pi_offsets_count_utf16_units_and_noop_replacement_preserves_revision() {
         old.node(pi).unwrap().data().unwrap().code_units(),
         [0x41, 0xd83d, 0xde00, 0xd800]
     );
-    assert_eq!(dom.usage().string_code_units(), 5);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS + 5);
     let stamp = current.stamp();
     let mut edit = DomBatch::new();
     edit.replace_data(pi, 2, 1, DocumentString::from_utf16(vec![0xdfff]));
@@ -452,7 +461,7 @@ fn pi_offsets_count_utf16_units_and_noop_replacement_preserves_revision() {
 
 #[test]
 fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
-    let mut dom = Dom::new(DomLimits::new(8, 7, 16, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 7, 16, 8, 8192).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "x");
@@ -465,7 +474,7 @@ fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
         dom.apply(edit, &AtomicBool::new(false)).unwrap_err(),
         DomError::ResourceLimit {
             resource: DomResource::StringCodeUnits,
-            limit: 7
+            limit: DOCUMENT_UNITS + 7
         }
     );
     assert_eq!(dom.usage(), usage);
@@ -484,7 +493,7 @@ fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
 
 #[test]
 fn destroying_pi_and_doctype_reclaims_all_stored_strings_without_breaking_old_capture() {
-    let mut dom = Dom::new(DomLimits::new(8, 11, 16, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 11, 16, 8, 8192).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "a='1'");
@@ -493,7 +502,7 @@ fn destroying_pi_and_doctype_reclaims_all_stored_strings_without_breaking_old_ca
     let pi = commit.created(&pi).unwrap().unwrap();
     let doctype = commit.created(&doctype).unwrap().unwrap();
     let old = dom.snapshot();
-    assert_eq!(dom.usage().string_code_units(), 11);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS + 11);
     let mut edit = DomBatch::new();
     edit.destroy(pi);
     edit.destroy(doctype);
@@ -502,7 +511,7 @@ fn destroying_pi_and_doctype_reclaims_all_stored_strings_without_breaking_old_ca
         report.changes().changes(),
         [DomChange::Destroyed(pi), DomChange::Destroyed(doctype)]
     );
-    assert_eq!(dom.usage().string_code_units(), 0);
+    assert_eq!(dom.usage().string_code_units(), DOCUMENT_UNITS);
     assert_eq!(dom.usage().managed_nodes(), 1);
     assert_eq!(dom.snapshot().node(pi).unwrap_err(), DomError::StaleNode);
     assert_eq!(

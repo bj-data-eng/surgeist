@@ -15,6 +15,11 @@ facade composition, architecture documentation and generated API artifacts.
 PI construction uses the shared bounded XML Name predicates and PI
 pseudo-attribute cursor; do not replace its target grammar with relaxed element
 validation or HTML authoring restrictions. Doctype names use DOM's relaxed rule.
+Native Document metadata follows the selected document defaults (capture
+lines 2110–2112), including a fresh opaque origin and known-null registry.
+Stored content type, encoding name and URL count toward string admission;
+doctype edits do not infer compatibility mode. Keep metadata and origin
+identity within the same staged publication and immutable snapshot as the tree.
 
 From repository root through bounded `pisct run`:
 

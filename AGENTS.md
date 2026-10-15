@@ -143,7 +143,7 @@ must not introduce a Surgeist HTML dialect.
 
 `surgeist-dom` begins the canonical live tree owner with Document, ordinary
 DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType nodes,
-atomic edits, finite caller limits and
+atomic edits, finite caller limits, canonical native Document metadata and
 owned snapshots. Its crate guide records this bounded surface. Element creation,
 HTML state integration, adoption/import and shadow trees remain contribution work;
 the existing retained facade is not replaced by this foundation.

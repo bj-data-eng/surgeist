@@ -23,12 +23,14 @@
 #![deny(unfulfilled_lint_expectations)]
 
 mod batch;
+mod document;
 mod identity;
 mod node_values;
 mod snapshot;
 mod store;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
+pub use document::{DomDocumentClass, DomDocumentMetadata, DomDocumentRegistry, DomOpaqueOrigin};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use snapshot::{DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomSnapshot};
@@ -36,4 +38,4 @@ pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
     DomUsage,
 };
-pub use surgeist_html::DocumentString;
+pub use surgeist_html::{DocumentString, HtmlDocumentMode};

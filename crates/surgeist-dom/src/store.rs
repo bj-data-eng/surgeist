@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::batch::{BatchIdentity, Command, Creation};
+use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
     CreatedNode, DocumentId, DocumentString, DomBatch, DomDocumentType, DomNodeKind, DomOwnerId,
     DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
@@ -629,7 +630,7 @@ impl Draft {
                 let key = Key::Created(self.created.len());
                 let document = if let Some(document) = document {
                     let document = self.resolve(document)?;
-                    if self.node(document)?.kind != DomNodeKind::Document {
+                    if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
                         return Err(DomError::WrongNodeKind);
                     }
                     document
@@ -642,7 +643,8 @@ impl Draft {
                     .ok_or(DomError::RepresentationExhausted)?;
                 admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
                 let raw_units = match &kind {
-                    Creation::Document | Creation::Fragment => Some(0),
+                    Creation::Document => Some(NATIVE_DOCUMENT_STRING_UNITS),
+                    Creation::Fragment => Some(0),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data } => {
                         target.len().checked_add(data.len())
@@ -665,7 +667,7 @@ impl Draft {
                     DomResource::StringCodeUnits,
                 )?;
                 let kind = match kind {
-                    Creation::Document => DomNodeKind::Document,
+                    Creation::Document => DomNodeKind::Document(DomDocumentMetadata::native()),
                     Creation::Fragment => DomNodeKind::DocumentFragment,
                     Creation::Text(data) => DomNodeKind::Text(data),
                     Creation::Comment(data) => DomNodeKind::Comment(data),
@@ -704,7 +706,7 @@ impl Draft {
             Command::Destroy(node) => {
                 let node = self.resolve(node)?;
                 if self.node(node)?.parent.is_some()
-                    || self.node(node)?.kind == DomNodeKind::Document
+                    || matches!(self.node(node)?.kind, DomNodeKind::Document(_))
                 {
                     return Err(DomError::InvalidDestruction);
                 }
@@ -782,7 +784,7 @@ impl Draft {
                 let parent = self.resolve(parent)?;
                 if !matches!(
                     self.node(parent)?.kind,
-                    DomNodeKind::Document | DomNodeKind::DocumentFragment
+                    DomNodeKind::Document(_) | DomNodeKind::DocumentFragment
                 ) {
                     return Err(DomError::HierarchyRequest);
                 }
@@ -799,11 +801,11 @@ impl Draft {
                 }) {
                     return Err(DomError::NotFound);
                 }
-                if self.node(node)?.kind == DomNodeKind::Document {
+                if matches!(self.node(node)?.kind, DomNodeKind::Document(_)) {
                     return Err(DomError::HierarchyRequest);
                 }
                 if matches!(self.node(node)?.kind, DomNodeKind::DocumentType(_))
-                    && (self.node(parent)?.kind != DomNodeKind::Document
+                    && (!matches!(self.node(parent)?.kind, DomNodeKind::Document(_))
                         || self.node(parent)?.children.iter().any(|child| {
                             matches!(
                                 self.node(*child).expect("staged child").kind,
@@ -829,7 +831,7 @@ impl Draft {
                 } else {
                     vec![node]
                 };
-                if self.node(parent)?.kind == DomNodeKind::Document
+                if matches!(self.node(parent)?.kind, DomNodeKind::Document(_))
                     && moving.iter().any(|key| {
                         matches!(
                             self.node(*key).expect("staged child").kind,
@@ -883,7 +885,7 @@ impl Draft {
         for (index, node) in self.created.iter().enumerate() {
             documents.push(
                 node.as_ref()
-                    .is_some_and(|node| node.kind == DomNodeKind::Document),
+                    .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
             );
             let Some(_) = node else {
                 created.push(None);
@@ -953,6 +955,7 @@ impl Draft {
 }
 fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
     match kind {
+        DomNodeKind::Document(value) => value.units().ok_or(DomError::RepresentationExhausted),
         DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Ok(data.len()),
         DomNodeKind::ProcessingInstruction(value) => {
             value.units().ok_or(DomError::RepresentationExhausted)

@@ -108,7 +108,7 @@ impl DomBatch {
         self.commands.push(Command::Create { kind, document });
         ticket
     }
-    /// Creates an empty generic Document; no HTML document metadata is claimed.
+    /// Creates an empty native XML Document with the selected DOM defaults.
     pub fn create_document(&mut self) -> CreatedNode {
         self.create(Creation::Document, None)
     }

@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use crate::store::{Node, State};
 use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
-use crate::{DomDocumentType, DomProcessingInstruction};
+use crate::{DomDocumentMetadata, DomDocumentType, DomProcessingInstruction};
 
 /// The complete node kinds supported by this contribution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DomNodeKind {
-    Document,
+    Document(DomDocumentMetadata),
     DocumentFragment,
     Text(DocumentString),
     Comment(DocumentString),
@@ -45,7 +45,7 @@ impl DomSnapshot {
         })
     }
     pub fn document(&self, id: DocumentId) -> Result<DomDocument<'_>, DomError> {
-        if self.node(id.node())?.kind() != &DomNodeKind::Document {
+        if !matches!(self.node(id.node())?.kind(), DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
         Ok(DomDocument { snapshot: self, id })
@@ -76,6 +76,18 @@ pub struct DomDocument<'a> {
 impl<'a> DomDocument<'a> {
     pub fn id(self) -> DocumentId {
         self.id
+    }
+    /// Canonical metadata belonging to this exact captured document revision.
+    pub fn metadata(self) -> &'a DomDocumentMetadata {
+        let DomNodeKind::Document(metadata) = self
+            .snapshot
+            .node(self.id.node())
+            .expect("captured document")
+            .kind()
+        else {
+            unreachable!("checked document view")
+        };
+        metadata
     }
     pub fn stamp(self) -> DomDocumentStamp {
         DomDocumentStamp {
@@ -126,7 +138,7 @@ impl<'a> DomNode<'a> {
     /// DOM nodeName readback; PI targets and doctype names preserve exact units.
     pub fn node_name(self) -> DocumentString {
         match &self.node.kind {
-            DomNodeKind::Document => "#document".into(),
+            DomNodeKind::Document(_) => "#document".into(),
             DomNodeKind::DocumentFragment => "#document-fragment".into(),
             DomNodeKind::Text(_) => "#text".into(),
             DomNodeKind::Comment(_) => "#comment".into(),
@@ -136,14 +148,14 @@ impl<'a> DomNode<'a> {
     }
     /// Checked document view, including for documents discovered by enumeration.
     pub fn as_document(self) -> Option<DomDocument<'a>> {
-        (self.node.kind == DomNodeKind::Document).then_some(DomDocument {
+        matches!(self.node.kind, DomNodeKind::Document(_)).then_some(DomDocument {
             snapshot: self.snapshot,
             id: DocumentId(self.id),
         })
     }
     /// DOM's ownerDocument getter: None for Document, otherwise node document.
     pub fn owner_document(self) -> Option<DocumentId> {
-        (self.node.kind != DomNodeKind::Document).then_some(self.node.document)
+        (!matches!(self.node.kind, DomNodeKind::Document(_))).then_some(self.node.document)
     }
     pub fn parent(self) -> Option<NodeId> {
         self.node.parent
@@ -173,10 +185,12 @@ impl<'a> DomNode<'a> {
         id
     }
     pub fn is_connected(self) -> bool {
-        self.snapshot
-            .node(self.root())
-            .expect("snapshot root invariant")
-            .kind()
-            == &DomNodeKind::Document
+        matches!(
+            self.snapshot
+                .node(self.root())
+                .expect("snapshot root invariant")
+                .kind(),
+            DomNodeKind::Document(_)
+        )
     }
 }

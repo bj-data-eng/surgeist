@@ -18,6 +18,7 @@ fn cancelled_prepared_changes_leave_slots_generations_and_history_untouched() {
     let usage = dom.usage();
     let mut edit = DomBatch::new();
     edit.destroy(old);
+    edit.create_document();
     edit.create_text(document, "not published");
     let prepared = dom.prepare(edit, &cancel).unwrap();
     cancel.store(true, Ordering::Release);

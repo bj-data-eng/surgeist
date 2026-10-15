@@ -10,7 +10,9 @@ dependency.
 code units, commands per batch, and retained change-history entries and bytes.
 Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
-data and derived pseudo-attribute map fields, and all three doctype strings.
+data and derived pseudo-attribute map fields, all three doctype strings, and
+each document's content type, encoding name and URL serialization (31 units for
+the native defaults).
 Limits do not promise a total heap bound: caller-owned batches, snapshot/report
 retention, allocator bookkeeping and temporary transaction preparation are
 separate. A limit update
@@ -57,6 +59,17 @@ belongs to itself for membership; its `owner_document()` getter returns `None`.
 A detached node keeps its owner document while its ordinary root and
 connectedness change.
 
+Native `create_document()` establishes an XML document with `application/xml`
+content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative
+shadow roots disabled and a known-null custom element registry. A checked
+document view exposes these canonical values through `metadata()`. Each native
+document has a fresh opaque origin, distinct across documents and stores even
+when their URLs match. Cloning an origin preserves its identity; URL spellings
+and source labels do not establish origins. Metadata and origins are staged
+privately with the rest of the batch, and old snapshots retain them. Ordinary
+doctype edits do not change document mode. Host/imported metadata and registry
+objects have no admission API yet.
+
 Each commit reports complete changed domains for this supported surface.
 `changes_since` returns chronological records for an exact covered interval or
 typed `FullRecomputeRequired`, never a successful incomplete delta. History is
@@ -67,7 +80,7 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-Element/attribute construction, HTML document metadata and native initialization,
+Element/attribute construction, HTML document creation and native initialization,
 shadow trees, adoption/import, HTML installation and semantic capture adapters
 are not exposed yet. This crate does not claim complete DOM or
 HTML conformance or replace the retained/facade integrations. Those remaining
@@ -77,7 +90,8 @@ contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074)
 
 The selected [DOM foundation capture](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md)
 at revision `3071e5f269448350fdea79bb284eedaf17bc431e` supplies ordinary
-tree/pre-insertion, fragment transfer, ownerDocument, nodeName, PI/doctype
+tree/pre-insertion, fragment transfer, ownerDocument, native document metadata,
+nodeName, PI/doctype
 construction and CharacterData rules. PI targets and pseudo-attribute maps use
 the retained [XML grammar](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
 and [XML-stylesheet pseudo-attribute rules](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md).
