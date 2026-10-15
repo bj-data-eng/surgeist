@@ -968,9 +968,12 @@ impl HtmlValueInterpreter {
                 }
                 HtmlValueRecoveryState::Value(_) => return None,
             };
-            multiple
-                .intrinsic()
-                .map(|present| ((if *present { 4_u128 } else { 1_u128 }).into(), origin))
+            multiple.intrinsic().map(|present| {
+                (
+                    (u128::from(crate::select::select_display_size_default(*present))).into(),
+                    origin,
+                )
+            })
         });
         Ok(HtmlSelectSizeReport {
             attribute,

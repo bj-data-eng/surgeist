@@ -5,10 +5,10 @@
 
 use crate::bounded::validate_custom_element_name;
 use crate::{
-    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlDoctype, HtmlDocumentMode,
-    HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlHeaderDeliveredCsp,
-    HtmlNonceDocumentEnvironment, HtmlParserScriptingMode, HtmlShadowRootProperties, Namespace,
-    OrderedAttributes, QualifiedName,
+    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlCustomElementState,
+    HtmlDoctype, HtmlDocumentMode, HtmlFragmentInsertionMode, HtmlFragmentTokenizerState,
+    HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlParserScriptingMode,
+    HtmlShadowRootProperties, Namespace, OrderedAttributes, QualifiedName,
 };
 use std::{
     collections::HashSet,
@@ -102,15 +102,6 @@ impl HtmlCaptureDefinitionId {
     pub fn registry(&self) -> &HtmlCaptureRegistryId {
         &self.registry
     }
-}
-/// Actual DOM custom-element state, independent of names and current attributes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlCustomElementState {
-    Undefined,
-    Failed,
-    Uncustomized,
-    Precustomized,
-    Custom,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedCustomElementState {

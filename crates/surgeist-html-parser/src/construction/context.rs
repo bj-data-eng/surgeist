@@ -157,18 +157,23 @@ impl SessionStorage {
         let crate::HtmlCapturedNodeKind::Document(facts) = node.kind() else {
             unreachable!("qualified captured document")
         };
-        match facts.template_role() {
-            crate::HtmlTemplateDocumentRole::InertTemplate => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                payload_write::<DocumentRef>(c, 1)?;
-                return Ok(DocumentRef::Captured(document.clone()));
-            }
+        let created_by_template_owner_algorithm = match facts.template_role() {
+            crate::HtmlTemplateDocumentRole::InertTemplate => true,
             crate::HtmlTemplateDocumentRole::Unavailable => {
                 return Err(SessionError::ContextFactUnavailable(
                     crate::HtmlCaptureFact::TemplateDocumentRole,
                 ));
             }
-            crate::HtmlTemplateDocumentRole::Ordinary => {}
+            crate::HtmlTemplateDocumentRole::Ordinary => false,
+        };
+        // This branch does not consult a cache or class fact. The shared rule
+        // ignores its cache argument for an actual algorithm-created document.
+        if template_contents_owner_document(created_by_template_owner_algorithm, false)
+            == HtmlTemplateContentsOwnerDocument::CurrentDocument
+        {
+            c.charge(WorkCategory::ProviderCall, 1)?;
+            payload_write::<DocumentRef>(c, 1)?;
+            return Ok(DocumentRef::Captured(document.clone()));
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
         if capture
@@ -178,20 +183,24 @@ impl SessionStorage {
             c.charge(WorkCategory::ProviderCall, 1)?;
         }
         payload_write::<crate::HtmlCapturedTemplateCache>(c, 1)?;
-        match capture
+        let cached = match capture
             .template_document_cache(document)
             .map_err(|_| SessionError::ContextUnavailable)?
         {
-            crate::HtmlCapturedTemplateCache::Document(index) => {
-                self.validate_captured_document(c, &index)?;
-                return Ok(DocumentRef::Captured(index));
-            }
+            crate::HtmlCapturedTemplateCache::Document(index) => Some(index),
             crate::HtmlCapturedTemplateCache::Unavailable => {
                 return Err(SessionError::ContextFactUnavailable(
                     crate::HtmlCaptureFact::TemplateDocumentCache,
                 ));
             }
-            crate::HtmlCapturedTemplateCache::Absent => {}
+            crate::HtmlCapturedTemplateCache::Absent => None,
+        };
+        if template_contents_owner_document(false, cached.is_some())
+            == HtmlTemplateContentsOwnerDocument::AssociatedInertDocument
+        {
+            let index = cached.expect("shared rule selected actual captured associated owner");
+            self.validate_captured_document(c, &index)?;
+            return Ok(DocumentRef::Captured(index));
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
         let class = facts.document_class();
@@ -792,11 +801,7 @@ impl SessionStorage {
             is_value.map(|text| text.value.text()),
             html,
         )?;
-        let state = if potential_definition {
-            crate::HtmlCustomElementState::Undefined
-        } else {
-            crate::HtmlCustomElementState::Uncustomized
-        };
+        let state = custom_element_state_without_definition(html, potential_definition);
         let saved_is = if let Some(text) = is_value {
             let copy = copy_formatting_text(c, text)?;
             let (value, slot) = self.register_text(c, copy)?;

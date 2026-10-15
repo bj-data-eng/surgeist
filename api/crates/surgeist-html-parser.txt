@@ -811,7 +811,7 @@ pub fn surgeist_html_parser::HtmlParseLimitsBuilder::work_credits(self, cap: u64
 pub struct surgeist_html_parser::HtmlParseMetadata<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetadata<'a>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::base_frozen(&self) -> core::option::Option<core::option::Option<surgeist_html_parser::HtmlParseBase<'a>>>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::creation(&self) -> core::option::Option<(surgeist_html_semantics::capture::HtmlCustomElementState, core::option::Option<&'a surgeist_html::values::DocumentString>)>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::creation(&self) -> core::option::Option<(surgeist_html::custom_element_state::HtmlCustomElementState, core::option::Option<&'a surgeist_html::values::DocumentString>)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_base_facts(&self) -> core::option::Option<&'a surgeist_html_semantics::base::HtmlParseBaseFacts>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_facts(&self) -> core::option::Option<(surgeist_html_semantics::capture::HtmlDocumentClass, bool, core::option::Option<surgeist_html::construction::HtmlNode<'a>>)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_first_base(&self) -> core::option::Option<core::option::Option<surgeist_html::construction::HtmlNode<'a>>>

@@ -12,6 +12,7 @@ pub mod bounded;
 mod color;
 mod construction;
 mod control_values;
+mod custom_element_state;
 mod custom_names;
 mod details_rules;
 mod fragment_initialization;
@@ -25,7 +26,9 @@ mod pi_pseudo_attributes;
 mod rel;
 mod script_flags;
 mod script_type;
+mod select;
 mod template_markers;
+mod template_state;
 mod temporal;
 mod tokens;
 mod values;
@@ -35,6 +38,7 @@ pub use attributes::*;
 pub use color::*;
 pub use construction::*;
 pub use control_values::*;
+pub use custom_element_state::{HtmlCustomElementState, custom_element_state_without_definition};
 pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
 pub use fragment_initialization::{
@@ -59,6 +63,7 @@ pub use numeric::{
 pub use rel::*;
 pub use script_flags::HtmlScriptFlags;
 pub use script_type::HtmlScriptKind;
+pub use template_state::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document};
 pub use temporal::*;
 pub use tokens::{
     HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlDuplicateTokenError, HtmlOrderedTokenSet,

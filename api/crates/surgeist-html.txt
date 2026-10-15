@@ -333,6 +333,14 @@ pub enum surgeist_html::bounded::HtmlMicrodataTokenStep
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::Complete
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::Continue
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::TokenCommitted
+pub enum surgeist_html::bounded::HtmlOptionDisabledAncestor
+pub surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue
+pub surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled
+pub surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled
+pub enum surgeist_html::bounded::HtmlOptionSelectAncestorAction
+pub surgeist_html::bounded::HtmlOptionSelectAncestorAction::Continue
+pub surgeist_html::bounded::HtmlOptionSelectAncestorAction::NearestSelect
+pub surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect
 pub enum surgeist_html::bounded::HtmlPiPseudoAttributeAction
 pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Begin(surgeist_html::bounded::HtmlPiPseudoAttributeField)
 pub surgeist_html::bounded::HtmlPiPseudoAttributeAction::Commit
@@ -392,6 +400,63 @@ pub surgeist_html::bounded::HtmlRelRefinement::Unavailable
 pub enum surgeist_html::bounded::HtmlScriptTypeWork
 pub surgeist_html::bounded::HtmlScriptTypeWork::InspectByte(u64)
 pub surgeist_html::bounded::HtmlScriptTypeWork::RecordVisit(u64)
+pub enum surgeist_html::bounded::HtmlSelectAction
+pub surgeist_html::bounded::HtmlSelectAction::Complete
+pub surgeist_html::bounded::HtmlSelectAction::Complete::normalization_changed: bool
+pub surgeist_html::bounded::HtmlSelectAction::ReadDisabled
+pub surgeist_html::bounded::HtmlSelectAction::ReadDisabled::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectAction::ReadDisplaySize
+pub surgeist_html::bounded::HtmlSelectAction::ReadSelectedness
+pub surgeist_html::bounded::HtmlSelectAction::ReadSelectedness::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectAction::ResetOption
+pub surgeist_html::bounded::HtmlSelectAction::ResetOption::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectAction::ResetSelectFlags
+pub surgeist_html::bounded::HtmlSelectAction::UpdateSelectedcontent
+pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness
+pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::selected: bool
+pub enum surgeist_html::bounded::HtmlSelectCursorError
+pub surgeist_html::bounded::HtmlSelectCursorError::MultipleContext
+pub surgeist_html::bounded::HtmlSelectCursorError::Reply
+impl core::error::Error for surgeist_html::bounded::HtmlSelectCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlSelectCursorError
+pub fn surgeist_html::bounded::HtmlSelectCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlSelectFirstSelectedAction
+pub surgeist_html::bounded::HtmlSelectFirstSelectedAction::Complete(surgeist_html::bounded::HtmlSelectFirstSelection)
+pub surgeist_html::bounded::HtmlSelectFirstSelectedAction::ReadSelectedness
+pub surgeist_html::bounded::HtmlSelectFirstSelectedAction::ReadSelectedness::ordinal: usize
+pub enum surgeist_html::bounded::HtmlSelectFirstSelection
+pub surgeist_html::bounded::HtmlSelectFirstSelection::NoSelection
+pub surgeist_html::bounded::HtmlSelectFirstSelection::Selected
+pub surgeist_html::bounded::HtmlSelectFirstSelection::Selected::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectFirstSelection::Unavailable
+pub enum surgeist_html::bounded::HtmlSelectOperation
+pub surgeist_html::bounded::HtmlSelectOperation::AskForReset
+pub surgeist_html::bounded::HtmlSelectOperation::MultipleAdded
+pub surgeist_html::bounded::HtmlSelectOperation::MultipleRemoved
+pub surgeist_html::bounded::HtmlSelectOperation::Normalize
+pub surgeist_html::bounded::HtmlSelectOperation::ResetControl
+pub surgeist_html::bounded::HtmlSelectOperation::ResetSelectedness
+pub surgeist_html::bounded::HtmlSelectOperation::ResetSelectedness::has_changed: bool
+pub enum surgeist_html::bounded::HtmlSelectOptionRule
+pub surgeist_html::bounded::HtmlSelectOptionRule::Descend
+pub surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune
+pub surgeist_html::bounded::HtmlSelectOptionRule::Prune
+pub enum surgeist_html::bounded::HtmlSelectReply
+pub surgeist_html::bounded::HtmlSelectReply::Applied
+pub surgeist_html::bounded::HtmlSelectReply::Disabled(bool)
+pub surgeist_html::bounded::HtmlSelectReply::DisplaySizeIsOne(bool)
+pub surgeist_html::bounded::HtmlSelectReply::Selectedness(bool)
+pub enum surgeist_html::bounded::HtmlSelectedcontentAncestorAction
+pub surgeist_html::bounded::HtmlSelectedcontentAncestorAction::Continue
+pub surgeist_html::bounded::HtmlSelectedcontentAncestorAction::RememberNearestSelect
+pub surgeist_html::bounded::HtmlSelectedcontentAncestorAction::StopDisabled
+pub enum surgeist_html::bounded::HtmlSelectedcontentUpdate
+pub surgeist_html::bounded::HtmlSelectedcontentUpdate::Clear
+pub surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren
+pub surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+pub surgeist_html::bounded::HtmlSelectedcontentUpdate::Unavailable
 pub enum surgeist_html::bounded::HtmlSpaceTokenStep
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Continue
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Done
@@ -928,6 +993,10 @@ pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::is_empty(&self
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::len(&self) -> usize
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::record_size(&self) -> usize
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::try_reserve(&mut self) -> core::result::Result<(), surgeist_html::bounded::HtmlMicrodataTokenInterpretationError>
+pub struct surgeist_html::bounded::HtmlOptionSelectAncestors
+impl surgeist_html::bounded::HtmlOptionSelectAncestors
+pub fn surgeist_html::bounded::HtmlOptionSelectAncestors::finish_complete(&mut self) -> surgeist_html::bounded::HtmlOptionSelectAncestorAction
+pub fn surgeist_html::bounded::HtmlOptionSelectAncestors::observe(&mut self, kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlOptionSelectAncestorAction
 pub struct surgeist_html::bounded::HtmlPiPseudoAttributeCursor
 impl surgeist_html::bounded::HtmlPiPseudoAttributeCursor
 pub fn surgeist_html::bounded::HtmlPiPseudoAttributeCursor::action(&self) -> core::option::Option<surgeist_html::bounded::HtmlPiPseudoAttributeAction>
@@ -960,6 +1029,21 @@ pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::content(explicit: core:
 pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::preparation(explicit: core::option::Option<&'a surgeist_html::DocumentString>, language: core::option::Option<&'a surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::required_work(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlScriptTypeWork>
 pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::result(&self) -> core::option::Option<core::option::Option<surgeist_html::HtmlScriptKind>>
+pub struct surgeist_html::bounded::HtmlSelectCursor
+impl surgeist_html::bounded::HtmlSelectCursor
+pub fn surgeist_html::bounded::HtmlSelectCursor::action(&self) -> surgeist_html::bounded::HtmlSelectAction
+pub fn surgeist_html::bounded::HtmlSelectCursor::new(operation: surgeist_html::bounded::HtmlSelectOperation, multiple: bool, option_count: usize) -> core::result::Result<Self, surgeist_html::bounded::HtmlSelectCursorError>
+pub fn surgeist_html::bounded::HtmlSelectCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlSelectReply) -> core::result::Result<(), surgeist_html::bounded::HtmlSelectCursorError>
+pub struct surgeist_html::bounded::HtmlSelectFirstSelectedCursor
+impl surgeist_html::bounded::HtmlSelectFirstSelectedCursor
+pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::action(&self) -> surgeist_html::bounded::HtmlSelectFirstSelectedAction
+pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::new(option_count: usize) -> Self
+pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::reply(&mut self, selected: core::option::Option<bool>) -> core::result::Result<(), surgeist_html::bounded::HtmlSelectCursorError>
+pub struct surgeist_html::bounded::HtmlSelectedcontentAncestors
+impl surgeist_html::bounded::HtmlSelectedcontentAncestors
+pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::disabled(&self) -> bool
+pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::has_nearest_select(&self) -> bool
+pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::observe(&mut self, kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlSelectedcontentAncestorAction
 pub struct surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 impl<'a> surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::BEGIN_WORK: usize
@@ -1173,9 +1257,13 @@ pub fn surgeist_html::bounded::is_xml_name_start_code_point(cp: u32) -> bool
 pub fn surgeist_html::bounded::match_media_field<'raw, E>(attribute: &'raw surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlMediaFieldMatch<'raw>>, E>
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::media_field_matches(attribute: &surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField) -> bool
+pub fn surgeist_html::bounded::option_disabled_ancestor(kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlOptionDisabledAncestor
 pub fn surgeist_html::bounded::parse_integer_long(input: &surgeist_html::DocumentString) -> core::result::Result<core::option::Option<i32>, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::parse_nonnegative_integer_capped(input: &surgeist_html::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::rel_ascii_keyword(units: &[u16], keyword: &str) -> bool
+pub const fn surgeist_html::bounded::select_display_size_default(multiple: bool) -> u8
+pub fn surgeist_html::bounded::select_option_rule(kind: core::option::Option<surgeist_html::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::HtmlSelectOptionRule
+pub fn surgeist_html::bounded::selectedcontent_update(multiple: bool, disabled: bool, first_selected: surgeist_html::bounded::HtmlSelectFirstSelection) -> surgeist_html::bounded::HtmlSelectedcontentUpdate
 pub fn surgeist_html::bounded::stack_reset_insertion_mode<E>(compare: impl core::ops::function::FnMut(&'static str) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlFragmentInsertionMode>, E>
 pub fn surgeist_html::bounded::stylesheet_link_context_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::template_marker_first(target: surgeist_html::bounded::HtmlTemplateMarkerTarget, name_matches: bool) -> surgeist_html::bounded::HtmlTemplateMarkerFirst
@@ -1705,6 +1793,12 @@ pub surgeist_html::HtmlCustomElementNameError::ReservedName
 impl core::error::Error for surgeist_html::HtmlCustomElementNameError
 impl core::fmt::Display for surgeist_html::HtmlCustomElementNameError
 pub fn surgeist_html::HtmlCustomElementNameError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlCustomElementState
+pub surgeist_html::HtmlCustomElementState::Custom
+pub surgeist_html::HtmlCustomElementState::Failed
+pub surgeist_html::HtmlCustomElementState::Precustomized
+pub surgeist_html::HtmlCustomElementState::Uncustomized
+pub surgeist_html::HtmlCustomElementState::Undefined
 pub enum surgeist_html::HtmlDateOrTime
 pub surgeist_html::HtmlDateOrTime::Date(surgeist_html::HtmlDate)
 pub surgeist_html::HtmlDateOrTime::Global(surgeist_html::HtmlParsedGlobalDateTime)
@@ -2769,6 +2863,10 @@ pub surgeist_html::HtmlTableHeaderScopeState::Keyword(surgeist_html::HtmlTableHe
 pub enum surgeist_html::HtmlTemplateContentsKind
 pub surgeist_html::HtmlTemplateContentsKind::Owned
 pub surgeist_html::HtmlTemplateContentsKind::ShadowReference
+pub enum surgeist_html::HtmlTemplateContentsOwnerDocument
+pub surgeist_html::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument
+pub surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument
+pub surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument
 pub enum surgeist_html::HtmlTemporalError
 pub surgeist_html::HtmlTemporalError::DayOutOfRange
 pub surgeist_html::HtmlTemporalError::HourOutOfRange
@@ -4920,6 +5018,7 @@ pub fn surgeist_html::VocabularySource::retained_capture_sha256(self) -> &'stati
 pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
+pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
@@ -4931,3 +5030,4 @@ pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::Qua
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
+pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument

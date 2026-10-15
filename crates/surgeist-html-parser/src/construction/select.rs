@@ -4,6 +4,10 @@
 use super::effects::{EffectFrame, FragmentStage, IntrinsicTask, TargetStage, WorkListKind};
 use super::*;
 use crate::{HtmlOptionFlags, HtmlSelectFlags};
+use surgeist_html::bounded::{
+    HtmlSelectAction, HtmlSelectCursor, HtmlSelectFirstSelectedAction,
+    HtmlSelectFirstSelectedCursor, HtmlSelectFirstSelection, HtmlSelectOperation, HtmlSelectReply,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
@@ -98,7 +102,12 @@ impl SessionStorage {
                 else {
                     return Err(SessionError::SelectMetadataUnavailable);
                 };
-                if state.disabled {
+                if surgeist_html::bounded::selectedcontent_update(
+                    false,
+                    state.disabled,
+                    HtmlSelectFirstSelection::Unavailable,
+                ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+                {
                     return Ok(());
                 }
                 let option = self.first_selected_option(c, select)?;
@@ -302,21 +311,35 @@ impl SessionStorage {
         select: usize,
     ) -> Result<Option<usize>, SessionError> {
         let list = self.retain_work_list(c, select, WorkListKind::Options { detached: None })?;
-        payload_write::<(usize, Option<usize>)>(c, 2)?;
-        let mut cursor = 0;
-        let mut selected = None;
-        while let Some(node) = self.work_list_node(c, list, cursor)? {
-            let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
-                return Err(SessionError::SelectMetadataUnavailable);
-            };
-            if state.flags.selectedness() {
-                payload_write::<Option<usize>>(c, 1)?;
-                selected = Some(node);
-                break;
+        let count = self.work_list_len(c, list)?;
+        payload_write::<HtmlSelectFirstSelectedCursor>(c, 1)?;
+        let mut cursor = HtmlSelectFirstSelectedCursor::new(count);
+        let selected = loop {
+            match cursor.action() {
+                HtmlSelectFirstSelectedAction::ReadSelectedness { ordinal } => {
+                    let node = self
+                        .work_list_node(c, list, ordinal)?
+                        .ok_or(SessionError::WrongToken)?;
+                    let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
+                        return Err(SessionError::SelectMetadataUnavailable);
+                    };
+                    payload_write::<HtmlSelectFirstSelectedCursor>(c, 1)?;
+                    cursor
+                        .reply(Some(state.flags.selectedness()))
+                        .map_err(|_| SessionError::WrongToken)?;
+                }
+                HtmlSelectFirstSelectedAction::Complete(selection) => {
+                    match surgeist_html::bounded::selectedcontent_update(false, false, selection) {
+                        surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
+                            break Some(self.work_list_node(c, list, ordinal)?.ok_or(SessionError::WrongToken)?);
+                        }
+                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Clear => break None,
+                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Unavailable => return Err(SessionError::SelectMetadataUnavailable),
+                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip => return Err(SessionError::WrongToken),
+                    }
+                }
             }
-            payload_write::<usize>(c, 1)?;
-            cursor += 1;
-        }
+        };
         self.release_work_list(c, list)?;
         Ok(selected)
     }
@@ -325,7 +348,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         select: usize,
     ) -> Result<(), SessionError> {
-        if self.form_attribute(c, select, "multiple")?.is_some() {
+        if surgeist_html::bounded::selectedcontent_update(
+            self.form_attribute(c, select, "multiple")?.is_some(),
+            false,
+            HtmlSelectFirstSelection::Unavailable,
+        ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+        {
             return Ok(());
         }
         let list = self.retain_work_list(c, select, WorkListKind::SelectedTargets)?;
@@ -402,28 +430,37 @@ impl SessionStorage {
         };
         state.disabled = false;
         self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
+        payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::HtmlSelectedcontentAncestors::default();
         let mut nearest = None;
         let mut next = self.ordinary_parent(c, node, None)?;
         for _ in 0..self.construction.storage().len() {
             let Some(ancestor) = next else {
                 return Ok(nearest);
             };
-            if self.html_local(c, ancestor, "select")? {
-                if nearest.is_none() {
+            let kind = if self.html_local(c, ancestor, "select")? {
+                Some(KnownHtmlElement::Select)
+            } else if self.html_local(c, ancestor, "option")? {
+                Some(KnownHtmlElement::Option)
+            } else if self.html_local(c, ancestor, "selectedcontent")? {
+                Some(KnownHtmlElement::Selectedcontent)
+            } else {
+                None
+            };
+            payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
+            match decisions.observe(kind) {
+                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::RememberNearestSelect => {
                     payload_write::<Option<usize>>(c, 1)?;
                     nearest = Some(ancestor);
                     next = self.ordinary_parent(c, ancestor, None)?;
                     continue;
                 }
-                state.disabled = true;
-            } else if self.html_local(c, ancestor, "option")?
-                || self.html_local(c, ancestor, "selectedcontent")?
-            {
-                state.disabled = true;
-            }
-            if state.disabled {
-                self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
-                return Ok(nearest);
+                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::StopDisabled => {
+                    state.disabled = decisions.disabled();
+                    self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
+                    return Ok(nearest);
+                }
+                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::Continue => {}
             }
             next = self.ordinary_parent(c, ancestor, None)?;
         }
@@ -558,23 +595,47 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        let mut group = false;
+        payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::HtmlOptionSelectAncestors::default();
         for _ in 0..self.construction.storage().len() {
-            let Some(node) = next else { return Ok(None) };
-            for barrier in ["datalist", "hr", "option"] {
-                if self.html_local(c, node, barrier)? {
-                    return Ok(None);
+            let Some(node) = next else {
+                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                return match decisions.finish_complete() {
+                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => Ok(None),
+                    _ => Err(SessionError::WrongToken),
+                };
+            };
+            for barrier in [
+                KnownHtmlElement::Datalist,
+                KnownHtmlElement::Hr,
+                KnownHtmlElement::Option,
+            ] {
+                if self.html_local(c, node, barrier.local_name())? {
+                    payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                    return match decisions.observe(Some(barrier)) {
+                        surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => {
+                            Ok(None)
+                        }
+                        _ => Err(SessionError::WrongToken),
+                    };
                 }
             }
             if self.html_local(c, node, "optgroup")? {
-                if group {
+                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                if decisions.observe(Some(KnownHtmlElement::Optgroup))
+                    == surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect
+                {
                     return Ok(None);
                 }
-                payload_write::<bool>(c, 1)?;
-                group = true;
             }
             if self.html_local(c, node, "select")? {
-                return Ok(Some(node));
+                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                return match decisions.observe(Some(KnownHtmlElement::Select)) {
+                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NearestSelect => {
+                        Ok(Some(node))
+                    }
+                    _ => Err(SessionError::WrongToken),
+                };
             }
             next = self.ordinary_parent(c, node, detached)?;
         }
@@ -592,13 +653,22 @@ impl SessionStorage {
         let mut next = self.ordinary_parent(c, node, detached)?;
         for _ in 0..self.construction.storage().len() {
             let Some(node) = next else { return Ok(false) };
-            for barrier in ["option", "select", "datalist", "hr"] {
-                if self.html_local(c, node, barrier)? {
-                    return Ok(false);
+            for kind in [
+                KnownHtmlElement::Option,
+                KnownHtmlElement::Select,
+                KnownHtmlElement::Datalist,
+                KnownHtmlElement::Hr,
+                KnownHtmlElement::Optgroup,
+            ] {
+                if self.html_local(c, node, kind.local_name())? {
+                    match surgeist_html::bounded::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled => return Ok(false),
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                            return Ok(self.form_attribute(c, node, "disabled")?.is_some());
+                        }
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue => {}
+                    }
                 }
-            }
-            if self.html_local(c, node, "optgroup")? {
-                return Ok(self.form_attribute(c, node, "disabled")?.is_some());
             }
             next = self.ordinary_parent(c, node, detached)?;
         }
@@ -610,7 +680,9 @@ impl SessionStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         let multiple = self.form_attribute(c, node, "multiple")?.is_some();
-        let fallback = if multiple { 4 } else { 1 };
+        let fallback = usize::from(surgeist_html::bounded::select_display_size_default(
+            multiple,
+        ));
         let Some(value) = self.form_attribute(c, node, "size")? else {
             return Ok(fallback);
         };
@@ -657,50 +729,53 @@ impl SessionStorage {
             return Ok(false);
         }
         let list = self.retain_work_list(c, select, WorkListKind::Options { detached })?;
-        let mut cursor = 0;
-        payload_write::<(Option<usize>, Option<usize>, bool, usize)>(c, 4)?;
-        let mut first = None;
-        let mut last = None;
-        let mut changed = false;
-        while let Some(node) = self.work_list_node(c, list, cursor)? {
-            let (_, metadata) = self.select_metadata(c, node)?;
-            let SelectMetadata::Option(state) = metadata else {
-                return Err(SessionError::SelectMetadataUnavailable);
-            };
-            if state.flags.selectedness() {
-                if let Some(previous) = last {
-                    let (slot, SelectMetadata::Option(mut previous_state)) =
-                        self.select_metadata(c, previous)?
+        let count = self.work_list_len(c, list)?;
+        payload_write::<HtmlSelectCursor>(c, 1)?;
+        let mut cursor = HtmlSelectCursor::new(HtmlSelectOperation::Normalize, false, count)
+            .map_err(|_| SessionError::WrongToken)?;
+        let changed = loop {
+            let reply = match cursor.action() {
+                HtmlSelectAction::ReadSelectedness { ordinal } => {
+                    let node = self
+                        .work_list_node(c, list, ordinal)?
+                        .ok_or(SessionError::WrongToken)?;
+                    let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
+                        return Err(SessionError::SelectMetadataUnavailable);
+                    };
+                    HtmlSelectReply::Selectedness(state.flags.selectedness())
+                }
+                HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
+                    let node = self
+                        .work_list_node(c, list, ordinal)?
+                        .ok_or(SessionError::WrongToken)?;
+                    let (slot, SelectMetadata::Option(mut state)) =
+                        self.select_metadata(c, node)?
                     else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
-                    previous_state.flags.set_selectedness_for_select(false);
-                    self.set_select_metadata(c, slot, SelectMetadata::Option(previous_state))?;
-                    payload_write::<bool>(c, 1)?;
-                    changed = true;
+                    state.flags.set_selectedness_for_select(selected);
+                    self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+                    HtmlSelectReply::Applied
                 }
-                payload_write::<Option<usize>>(c, 1)?;
-                last = Some(node);
-            }
-            if first.is_none() && !self.option_disabled(c, node, detached)? {
-                payload_write::<Option<usize>>(c, 1)?;
-                first = Some(node);
-            }
-            payload_write::<usize>(c, 1)?;
-            cursor += 1;
-        }
-        if last.is_none()
-            && let Some(first) = first
-            && self.select_size(c, select)? == 1
-        {
-            let (slot, SelectMetadata::Option(mut state)) = self.select_metadata(c, first)? else {
-                return Err(SessionError::SelectMetadataUnavailable);
+                HtmlSelectAction::ReadDisabled { ordinal } => {
+                    let node = self
+                        .work_list_node(c, list, ordinal)?
+                        .ok_or(SessionError::WrongToken)?;
+                    HtmlSelectReply::Disabled(self.option_disabled(c, node, detached)?)
+                }
+                HtmlSelectAction::ReadDisplaySize => {
+                    HtmlSelectReply::DisplaySizeIsOne(self.select_size(c, select)? == 1)
+                }
+                HtmlSelectAction::Complete {
+                    normalization_changed,
+                } => break normalization_changed,
+                _ => return Err(SessionError::WrongToken),
             };
-            state.flags.set_selectedness_for_select(true);
-            self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
-            payload_write::<bool>(c, 1)?;
-            changed = true;
-        }
+            // The actual constant-state language cursor replaces the old four
+            // locals. Admit its real representation before each transition.
+            payload_write::<HtmlSelectCursor>(c, 1)?;
+            cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
+        };
         self.release_work_list(c, list)?;
         Ok(changed)
     }

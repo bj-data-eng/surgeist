@@ -381,13 +381,21 @@ impl SessionStorage {
         let RetainedPayload::Document { state, class, .. } = self.payloads.values[slot] else {
             unreachable!()
         };
-        match state {
-            DocumentState::InertTemplate => Ok(DocumentRef::Owned(document)),
-            DocumentState::Ordinary { inert: Some(inert) } => {
+        let inert = match state {
+            DocumentState::Ordinary { inert } => inert,
+            DocumentState::InertTemplate => None,
+        };
+        match template_contents_owner_document(
+            matches!(state, DocumentState::InertTemplate),
+            inert.is_some(),
+        ) {
+            HtmlTemplateContentsOwnerDocument::CurrentDocument => Ok(DocumentRef::Owned(document)),
+            HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
+                let inert = inert.expect("shared rule selected actual associated owner");
                 self.document_slot(c, inert)?;
                 Ok(DocumentRef::Owned(inert))
             }
-            DocumentState::Ordinary { inert: None } => {
+            HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
                 // Both finite facts are admitted before the native Document is
                 // installed. No fallible alias/binding gap follows allocation.
                 self.prepare_payload_slot_owned(c)?;

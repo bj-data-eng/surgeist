@@ -678,6 +678,29 @@ impl SessionStorage {
             _ => self.next_view_node(c, root, root, detached)?,
         };
         while let Some(node) = next {
+            let option_rule = if matches!(kind, WorkListKind::Options { .. }) {
+                let mut recognized = None;
+                for candidate in [
+                    KnownHtmlElement::Option,
+                    KnownHtmlElement::Select,
+                    KnownHtmlElement::Hr,
+                    KnownHtmlElement::Datalist,
+                    KnownHtmlElement::Optgroup,
+                ] {
+                    if self.html_local(c, node, candidate.local_name())? {
+                        recognized = Some(candidate);
+                        break;
+                    }
+                }
+                let inside_optgroup = recognized == Some(KnownHtmlElement::Optgroup)
+                    && self.ancestor_optgroup(c, node, root, detached)?;
+                Some(surgeist_html::bounded::select_option_rule(
+                    recognized,
+                    inside_optgroup,
+                ))
+            } else {
+                None
+            };
             let include = match kind {
                 WorkListKind::PostConnection | WorkListKind::FragmentChildren => true,
                 WorkListKind::SelectedTargets => {
@@ -692,7 +715,10 @@ impl SessionStorage {
                         false
                     }
                 }
-                WorkListKind::Options { .. } => self.html_local(c, node, "option")?,
+                WorkListKind::Options { .. } => {
+                    option_rule
+                        == Some(surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune)
+                }
             };
             if include {
                 let RetainedPayload::WorkList(Some(list)) = &mut self.payloads.values[slot] else {
@@ -702,13 +728,13 @@ impl SessionStorage {
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
             }
             let excluded = matches!(kind, WorkListKind::FragmentChildren)
-                || (matches!(kind, WorkListKind::Options { .. })
-                    && (include
-                        || self.html_local(c, node, "select")?
-                        || self.html_local(c, node, "hr")?
-                        || self.html_local(c, node, "datalist")?
-                        || (self.html_local(c, node, "optgroup")?
-                            && self.ancestor_optgroup(c, node, root, detached)?)));
+                || matches!(
+                    option_rule,
+                    Some(
+                        surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune
+                            | surgeist_html::bounded::HtmlSelectOptionRule::Prune
+                    )
+                );
             next = if excluded {
                 next_ordinary_view_after_subtree(
                     ConstructionView::Active(self.construction.storage()),
@@ -768,6 +794,19 @@ impl SessionStorage {
             cursor: 0,
             cause,
         })
+    }
+    pub(super) fn work_list_len(
+        &self,
+        c: &mut ParseControl,
+        slot: usize,
+    ) -> Result<usize, SessionError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::WorkList(Some(list))) = self.payloads.values.get(slot) else {
+            return Err(SessionError::WrongToken);
+        };
+        list.require_disposal_owner(c)?;
+        c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+        Ok(list.len())
     }
     pub(super) fn work_list_node(
         &self,

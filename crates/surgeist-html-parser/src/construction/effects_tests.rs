@@ -64,7 +64,9 @@ fn select_normalization_keeps_last_selected_even_when_disabled_and_preserves_dir
 fn select_normalization_fallback_requires_display_size_one_and_first_enabled_option() {
     for size in ["", " size=1", " size=bad", " size=1tail"] {
         normalization_case(
-            &format!("<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"),
+            &format!(
+                "<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"
+            ),
             [false, false, false],
             [false, true, false],
             true,
@@ -72,7 +74,9 @@ fn select_normalization_fallback_requires_display_size_one_and_first_enabled_opt
     }
     for size in [" size=0", " size=-0", " size=2", " multiple"] {
         normalization_case(
-            &format!("<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"),
+            &format!(
+                "<body><select{size}><option disabled>A</option><option>B</option><option>C</option></select></body>"
+            ),
             [false, false, false],
             [false, false, false],
             false,

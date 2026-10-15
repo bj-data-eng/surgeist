@@ -11,3 +11,4 @@ mod semantics;
 pub use base::*;
 pub use capture::*;
 pub use semantics::*;
+pub use surgeist_html::HtmlCustomElementState;
