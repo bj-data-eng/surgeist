@@ -3,23 +3,24 @@
 `surgeist-template` is a Rust library for authors of Surgeist templates and the
 tools that process them. It parses strict template syntax into typed nodes,
 validates elements and attributes against explicit registries, and generates
-Rust construction source.
+Rust source that constructs the same authored AST through public constructors.
 
 The current V1 surface supports elements, interpolation, conditionals, and
-iteration. Expressions remain symbolic; runtime evaluation, host integration,
-and cross-crate lowering belong outside this crate.
+iteration. Expressions remain symbolic; runtime evaluation and host policy belong
+to their consuming owners. Template owns its direct HTML/DOM integration as those
+separate adapters are contributed.
 
 ## Start
 
-From this checkout, run the focused parse → validate → generate test:
+From the repository root, run the compiled generated-output consumer:
 
 ```sh
-cargo test --offline -p surgeist-template --test template_v1 \
-  renders_validated_component_with_expression_attribute_and_interpolation_child -- --exact
+pisct run --timeout-seconds 900 -- cargo test --offline --locked -j 1 \
+  -p surgeist --test template_generated_rust
 ```
 
-Expect one passing test. It checks the exact generated construction string,
-including an expression attribute and an interpolated child. See
+Expect one passing test. It compiles and executes the actual generated Rust,
+checks literal symbolic values and spans, and revalidates the authored result. See
 [getting started](docs/getting-started.md) for prerequisites and the Rust example.
 
 ## Documentation

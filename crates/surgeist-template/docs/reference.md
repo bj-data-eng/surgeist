@@ -95,12 +95,27 @@ and `_FILES`. See [expr.rs](../src/expr.rs) and [parser.rs](../src/parser.rs).
 
 ## Generated source
 
-`render_to_rust` emits one Rust expression string using calls under
-`::surgeist::template`, including `template`, `native`, `component`, attribute
-constructors, `text`, `expr`, `if_else`, and `for_each`. Expressions become
-symbolic string arguments; they are not resolved to Rust variables or evaluated.
-The exact formatting contract is implemented in [render.rs](../src/render.rs)
-and checked by the rendering cases in [tests/template_v1.rs](../tests/template_v1.rs).
+`render_to_rust` emits one complete Rust expression with result type
+`surgeist::template::TemplateDocument`. It uses actual public AST constructors
+through the facade, with fully qualified names. Typed expressions remain symbolic;
+no expression evaluation or source reparse occurs. Spans retain their authored
+coordinates, rather than identifying the generated Rust file. Float literals use
+`f64::from_bits` so all bit patterns survive. Callers validate the constructed
+document against their actual registries before obtaining `ValidatedTemplate`.
+The root compiled-consumer test exercises [render.rs](../src/render.rs) output.
+
+## Native authored construction
+
+`TemplateDocument::from_nodes` and the `Node` constructors build the same authored
+model as parsing. `Node::if_block` returns `AstConstructionError::EmptyIfBranches`
+when no initial branch is supplied. Checked names, paths and attributes use their
+existing constructors; registry validation remains separate.
+
+`SourcePos::try_new` requires nonzero line and column, with a zero-based byte
+offset. `SourceSpan::try_new` requires ordered byte and line/column endpoints and
+identical coordinates for a zero-byte range. `SpanError` reports the violated
+condition. These are caller-supplied diagnostic coordinates, not a source-buffer
+identity or proof of membership or containment.
 
 ## Diagnostics and verification sources
 

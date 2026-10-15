@@ -358,7 +358,8 @@ impl<'a> Parser<'a> {
             branches,
             else_children,
             SourceSpan::new_unchecked(start, self.cursor.pos()),
-        ))
+        )
+        .expect("the initial if branch was parsed before the alternative branches"))
     }
 
     fn parse_foreach(

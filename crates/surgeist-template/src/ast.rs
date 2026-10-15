@@ -8,8 +8,8 @@ pub struct TemplateDocument {
 }
 
 impl TemplateDocument {
-    #[allow(dead_code)]
-    pub(crate) fn from_nodes(nodes: Vec<Node>) -> Self {
+    /// Constructs an authored document. Registry validation remains separate.
+    pub fn from_nodes(nodes: Vec<Node>) -> Self {
         Self { nodes }
     }
 
@@ -28,8 +28,8 @@ pub enum Node {
 }
 
 impl Node {
-    #[allow(dead_code)]
-    pub(crate) fn element(
+    /// Constructs an authored element without selecting a registry.
+    pub fn element(
         name: ElementName,
         attributes: Vec<Attribute>,
         children: Vec<Node>,
@@ -43,34 +43,34 @@ impl Node {
         })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn text(value: impl Into<String>, span: SourceSpan) -> Self {
+    pub fn text(value: impl Into<String>, span: SourceSpan) -> Self {
         Self::Text(TextNode {
             value: value.into(),
             span,
         })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn interpolation(expr: Expr, span: SourceSpan) -> Self {
+    pub fn interpolation(expr: Expr, span: SourceSpan) -> Self {
         Self::Interpolation(InterpolationNode { expr, span })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn if_block(
+    /// Constructs a symbolic conditional with at least its initial branch.
+    pub fn if_block(
         branches: Vec<IfBranch>,
         else_children: Vec<Node>,
         span: SourceSpan,
-    ) -> Self {
-        Self::If(IfNode {
+    ) -> Result<Self, AstConstructionError> {
+        if branches.is_empty() {
+            return Err(AstConstructionError::EmptyIfBranches);
+        }
+        Ok(Self::If(IfNode {
             branches,
             else_children,
             span,
-        })
+        }))
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn foreach(
+    pub fn foreach(
         collection: Expr,
         item_name: VariableName,
         children: Vec<Node>,
@@ -85,6 +85,11 @@ impl Node {
             span,
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AstConstructionError {
+    EmptyIfBranches,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,12 +1,20 @@
 use crate::expr::{BinaryOp, Expr, Literal, PathSegment, UnaryOp, VariablePath};
+use crate::span::{SourcePos, SourceSpan};
 use crate::validate::{
     ValidatedAttrPart, ValidatedAttrValue, ValidatedAttribute, ValidatedElement, ValidatedForEach,
-    ValidatedIf, ValidatedIfBranch, ValidatedNode, ValidatedTemplate,
+    ValidatedIf, ValidatedNode, ValidatedTemplate,
 };
 
+const TEMPLATE: &str = "::surgeist::template";
+
+/// Emits a Rust expression constructing an authored TemplateDocument through
+/// the facade's real public AST constructors. Names, symbolic expressions and
+/// diagnostic spans are retained; the result requires registry validation.
+///
+/// This operation neither evaluates expressions nor constructs a live DOM.
 pub fn render_to_rust(template: &ValidatedTemplate) -> String {
     format!(
-        "::surgeist::template::template(vec![{}])",
+        "{TEMPLATE}::TemplateDocument::from_nodes(::std::vec![{}])",
         render_nodes(template.nodes())
     )
 }
@@ -17,254 +25,223 @@ fn render_nodes(nodes: &[ValidatedNode]) -> String {
 
 fn render_node(node: &ValidatedNode) -> String {
     match node {
-        ValidatedNode::NativeElement(element) => render_native_element(element),
-        ValidatedNode::ComponentElement(element) => render_component_element(element),
-        ValidatedNode::Text(text) => {
-            format!(
-                "::surgeist::template::text({})",
-                render_string(text.value())
-            )
+        ValidatedNode::NativeElement(element) => {
+            render_element(element, element.name().as_str(), "native")
         }
-        ValidatedNode::Interpolation(interpolation) => {
-            format!(
-                "::surgeist::template::expr({})",
-                render_expr_arg(interpolation.expr())
-            )
+        ValidatedNode::ComponentElement(element) => {
+            render_element(element, element.name().as_str(), "component")
         }
-        ValidatedNode::If(if_node) => render_if(if_node),
-        ValidatedNode::ForEach(for_each) => render_for_each(for_each),
+        ValidatedNode::Text(text) => format!(
+            "{TEMPLATE}::Node::text({}, {})",
+            render_string(text.value()),
+            render_span(text.span())
+        ),
+        ValidatedNode::Interpolation(interpolation) => format!(
+            "{TEMPLATE}::Node::interpolation({}, {})",
+            render_expr(interpolation.expr()),
+            render_span(interpolation.span())
+        ),
+        ValidatedNode::If(conditional) => render_if(conditional),
+        ValidatedNode::ForEach(iteration) => render_for_each(iteration),
     }
 }
 
-fn render_native_element(element: &ValidatedElement<crate::NativeElementName>) -> String {
+fn render_element<Name>(element: &ValidatedElement<Name>, name: &str, kind: &str) -> String {
     format!(
-        "::surgeist::template::native({}, vec![{}], vec![{}])",
-        render_string(element.name().as_str()),
-        render_attributes(element.attributes()),
-        render_nodes(element.children())
+        "{TEMPLATE}::Node::element({TEMPLATE}::ElementName::{kind}({}).expect(\"validated element name\"), ::std::vec![{}], ::std::vec![{}], {})",
+        render_string(name),
+        element
+            .attributes()
+            .iter()
+            .map(render_attribute)
+            .collect::<Vec<_>>()
+            .join(", "),
+        render_nodes(element.children()),
+        render_span(element.span())
     )
-}
-
-fn render_component_element(element: &ValidatedElement<crate::ComponentName>) -> String {
-    format!(
-        "::surgeist::template::component({}, vec![{}], vec![{}])",
-        render_string(element.name().as_str()),
-        render_attributes(element.attributes()),
-        render_nodes(element.children())
-    )
-}
-
-fn render_attributes(attributes: &[ValidatedAttribute]) -> String {
-    attributes
-        .iter()
-        .map(render_attribute)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn render_attribute(attribute: &ValidatedAttribute) -> String {
-    let name = render_string(attribute.name().as_str());
-    match attribute.value() {
-        ValidatedAttrValue::Bool => {
-            format!("::surgeist::template::attr_bool({name})")
-        }
+    let value = match attribute.value() {
+        ValidatedAttrValue::Bool => format!("{TEMPLATE}::AttrValue::Bool"),
         ValidatedAttrValue::Static(value) => {
-            format!(
-                "::surgeist::template::attr_static({name}, {})",
-                render_string(value)
-            )
+            format!("{TEMPLATE}::AttrValue::Static({})", owned_string(value))
         }
         ValidatedAttrValue::Expression(expr) => {
-            format!(
-                "::surgeist::template::attr_expr({name}, {})",
-                render_expr_arg(expr)
-            )
+            format!("{TEMPLATE}::AttrValue::Expression({})", render_expr(expr))
         }
-        ValidatedAttrValue::Interpolated(parts) => {
-            format!(
-                "::surgeist::template::attr_interpolated({name}, vec![{}])",
-                render_attr_parts(parts)
-            )
-        }
-    }
-}
-
-fn render_attr_parts(parts: &[ValidatedAttrPart]) -> String {
-    parts
-        .iter()
-        .map(|part| match part {
-            ValidatedAttrPart::Text(text) => {
-                format!("::surgeist::template::attr_text({})", render_string(text))
-            }
-            ValidatedAttrPart::Expr(expr) => {
-                format!(
-                    "::surgeist::template::attr_expr_part({})",
-                    render_expr_arg(expr)
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn render_if(if_node: &ValidatedIf) -> String {
+        ValidatedAttrValue::Interpolated(parts) => format!(
+            "{TEMPLATE}::AttrValue::Interpolated(::std::vec![{}])",
+            parts
+                .iter()
+                .map(|part| match part {
+                    ValidatedAttrPart::Text(value) =>
+                        format!("{TEMPLATE}::AttrPart::Text({})", owned_string(value)),
+                    ValidatedAttrPart::Expr(expr) =>
+                        format!("{TEMPLATE}::AttrPart::Expr({})", render_expr(expr)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
     format!(
-        "::surgeist::template::if_else(vec![{}], vec![{}])",
-        render_if_branches(if_node.branches()),
-        render_nodes(if_node.else_children())
+        "{TEMPLATE}::Attribute::try_new({}, {value}, {}).expect(\"validated attribute name\")",
+        render_string(attribute.name().as_str()),
+        render_span(attribute.span())
     )
 }
 
-fn render_if_branches(branches: &[ValidatedIfBranch]) -> String {
-    branches
+fn render_if(conditional: &ValidatedIf) -> String {
+    let branches = conditional
+        .branches()
         .iter()
         .map(|branch| {
             format!(
-                "::surgeist::template::if_branch({}, vec![{}])",
-                render_expr_arg(branch.condition()),
+                "{TEMPLATE}::IfBranch::new({}, ::std::vec![{}])",
+                render_expr(branch.condition()),
                 render_nodes(branch.children())
             )
         })
         .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn render_for_each(for_each: &ValidatedForEach) -> String {
+        .join(", ");
     format!(
-        "::surgeist::template::for_each({}, {}, vec![{}], vec![{}])",
-        render_expr_arg(for_each.collection()),
-        render_string(for_each.item_name().as_str()),
-        render_nodes(for_each.children()),
-        render_nodes(for_each.else_children())
+        "{TEMPLATE}::Node::if_block(::std::vec![{branches}], ::std::vec![{}], {}).expect(\"conditional has an initial branch\")",
+        render_nodes(conditional.else_children()),
+        render_span(conditional.span())
     )
 }
 
-fn render_expr_arg(expr: &Expr) -> String {
-    render_string(&expr_source(expr))
+fn render_for_each(iteration: &ValidatedForEach) -> String {
+    format!(
+        "{TEMPLATE}::Node::foreach({}, {TEMPLATE}::VariableName::try_new({}).expect(\"validated iteration binding\"), ::std::vec![{}], ::std::vec![{}], {})",
+        render_expr(iteration.collection()),
+        render_string(iteration.item_name().as_str()),
+        render_nodes(iteration.children()),
+        render_nodes(iteration.else_children()),
+        render_span(iteration.span())
+    )
 }
 
-fn expr_source(expr: &Expr) -> String {
+fn render_expr(expr: &Expr) -> String {
     match expr {
-        Expr::Literal(literal) => literal_source(literal),
-        Expr::Variable(path) => variable_path_source(path),
-        Expr::Unary { op, expr } => {
-            format!("({}{})", render_unary_op(*op), expr_source(expr))
+        Expr::Literal(literal) => {
+            let value = match literal {
+                Literal::String(value) => format!("String({})", owned_string(value)),
+                Literal::Int(value) => format!("Int({value}i64)"),
+                Literal::Float(value) => format!(
+                    "Float(::core::primitive::f64::from_bits({}u64))",
+                    value.to_bits()
+                ),
+                Literal::Bool(value) => format!("Bool({value})"),
+                Literal::Null => "Null".to_owned(),
+            };
+            format!("{TEMPLATE}::Expr::Literal({TEMPLATE}::Literal::{value})")
         }
-        Expr::Binary { op, left, right } => {
-            format!(
-                "({} {} {})",
-                expr_source(left),
-                render_binary_op(*op),
-                expr_source(right)
-            )
-        }
+        Expr::Variable(path) => render_path(path),
+        Expr::Unary { op, expr } => format!(
+            "{TEMPLATE}::Expr::Unary {{ op: {TEMPLATE}::UnaryOp::{}, expr: ::std::boxed::Box::new({}) }}",
+            match op {
+                UnaryOp::Not => "Not",
+                UnaryOp::Neg => "Neg",
+            },
+            render_expr(expr)
+        ),
+        Expr::Binary { op, left, right } => format!(
+            "{TEMPLATE}::Expr::Binary {{ op: {TEMPLATE}::BinaryOp::{}, left: ::std::boxed::Box::new({}), right: ::std::boxed::Box::new({}) }}",
+            binary_variant(*op),
+            render_expr(left),
+            render_expr(right)
+        ),
     }
 }
 
-fn literal_source(literal: &Literal) -> String {
-    match literal {
-        Literal::String(value) => render_string(value),
-        Literal::Int(value) => value.to_string(),
-        Literal::Float(value) if value.is_nan() => "NaN".to_owned(),
-        Literal::Float(value) if value.is_infinite() && value.is_sign_positive() => {
-            "inf".to_owned()
-        }
-        Literal::Float(value) if value.is_infinite() => "-inf".to_owned(),
-        Literal::Float(value) => value.to_string(),
-        Literal::Bool(true) => "true".to_owned(),
-        Literal::Bool(false) => "false".to_owned(),
-        Literal::Null => "null".to_owned(),
-    }
+fn render_path(path: &VariablePath) -> String {
+    let segments = path.segments().iter().map(|segment| match segment {
+        PathSegment::Field(field) => format!(
+            "{TEMPLATE}::PathSegment::Field({TEMPLATE}::PathField::try_new({}).expect(\"validated path field\"))",
+            render_string(field.as_str())
+        ),
+        PathSegment::Index(index) => format!("{TEMPLATE}::PathSegment::Index({TEMPLATE}::PathIndex::new({}u64))", index.get()),
+    }).collect::<Vec<_>>().join(", ");
+    format!(
+        "{TEMPLATE}::Expr::Variable({TEMPLATE}::VariablePath::try_new({}, ::std::vec![{segments}]).expect(\"validated symbolic path\"))",
+        render_string(path.root())
+    )
 }
 
-fn variable_path_source(path: &VariablePath) -> String {
-    let mut rendered = String::from("$");
-    rendered.push_str(path.root());
-    for segment in path.segments() {
-        match segment {
-            PathSegment::Field(field) => {
-                rendered.push('.');
-                rendered.push_str(field.as_str());
-            }
-            PathSegment::Index(index) => {
-                rendered.push('[');
-                rendered.push_str(&index.get().to_string());
-                rendered.push(']');
-            }
-        }
-    }
-    rendered
-}
-
-fn render_unary_op(op: UnaryOp) -> &'static str {
+fn binary_variant(op: BinaryOp) -> &'static str {
     match op {
-        UnaryOp::Not => "!",
-        UnaryOp::Neg => "-",
+        BinaryOp::Or => "Or",
+        BinaryOp::And => "And",
+        BinaryOp::Eq => "Eq",
+        BinaryOp::Ne => "Ne",
+        BinaryOp::Gt => "Gt",
+        BinaryOp::Ge => "Ge",
+        BinaryOp::Lt => "Lt",
+        BinaryOp::Le => "Le",
+        BinaryOp::Add => "Add",
+        BinaryOp::Sub => "Sub",
+        BinaryOp::Mul => "Mul",
+        BinaryOp::Div => "Div",
+        BinaryOp::Rem => "Rem",
     }
 }
 
-fn render_binary_op(op: BinaryOp) -> &'static str {
-    match op {
-        BinaryOp::Or => "||",
-        BinaryOp::And => "&&",
-        BinaryOp::Eq => "==",
-        BinaryOp::Ne => "!=",
-        BinaryOp::Gt => ">",
-        BinaryOp::Ge => ">=",
-        BinaryOp::Lt => "<",
-        BinaryOp::Le => "<=",
-        BinaryOp::Add => "+",
-        BinaryOp::Sub => "-",
-        BinaryOp::Mul => "*",
-        BinaryOp::Div => "/",
-        BinaryOp::Rem => "%",
-    }
+fn render_span(span: SourceSpan) -> String {
+    format!(
+        "{TEMPLATE}::SourceSpan::try_new({}, {}).expect(\"ordered template span\")",
+        render_position(span.start()),
+        render_position(span.end())
+    )
+}
+
+fn render_position(position: SourcePos) -> String {
+    format!(
+        "{TEMPLATE}::SourcePos::try_new({}usize, {}usize, {}usize).expect(\"nonzero template coordinates\")",
+        position.line(),
+        position.column(),
+        position.byte()
+    )
+}
+
+fn owned_string(value: &str) -> String {
+    format!("::std::string::String::from({})", render_string(value))
 }
 
 fn render_string(value: &str) -> String {
-    let mut rendered = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => rendered.push_str("\\\\"),
-            '"' => rendered.push_str("\\\""),
-            '\n' => rendered.push_str("\\n"),
-            '\r' => rendered.push_str("\\r"),
-            '\t' => rendered.push_str("\\t"),
-            ch if ch.is_control() => {
-                rendered.push_str("\\u{");
-                rendered.push_str(&format!("{:x}", ch as u32));
-                rendered.push('}');
-            }
-            ch => rendered.push(ch),
-        }
-    }
-    rendered.push('"');
-    rendered
+    // Rust's string Debug representation is a quoted, escaped Rust literal.
+    format!("{value:?}")
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::expr::{Expr, Literal};
-
-    use super::expr_source;
+    use super::render_expr;
+    use crate::{Expr, Literal};
 
     #[test]
-    fn expression_source_escapes_string_literals_deterministically() {
-        let expr = Expr::Literal(Literal::String("line\n\"quoted\"\\tail".to_owned()));
-
-        assert_eq!(expr_source(&expr), r#""line\n\"quoted\"\\tail""#);
+    fn float_source_uses_exact_bits_for_negative_zero_and_nonfinite_payloads() {
+        for bits in [
+            0x8000_0000_0000_0000,
+            0x7ff0_0000_0000_0000,
+            0xfff0_0000_0000_0000,
+            0x7ff8_0000_0000_0042,
+        ] {
+            assert_eq!(
+                render_expr(&Expr::Literal(Literal::Float(f64::from_bits(bits)))),
+                format!(
+                    "::surgeist::template::Expr::Literal(::surgeist::template::Literal::Float(::core::primitive::f64::from_bits({bits}u64)))"
+                )
+            );
+        }
     }
 
     #[test]
-    fn expression_source_renders_non_finite_floats_deterministically() {
-        assert_eq!(expr_source(&Expr::Literal(Literal::Float(f64::NAN))), "NaN");
+    fn string_literal_source_retains_controls_quotes_backslashes_and_unicode() {
         assert_eq!(
-            expr_source(&Expr::Literal(Literal::Float(f64::INFINITY))),
-            "inf"
-        );
-        assert_eq!(
-            expr_source(&Expr::Literal(Literal::Float(f64::NEG_INFINITY))),
-            "-inf"
+            render_expr(&Expr::Literal(Literal::String(
+                "Ω\n\"quoted\"\\tail\0".to_owned()
+            ))),
+            r#"::surgeist::template::Expr::Literal(::surgeist::template::Literal::String(::std::string::String::from("Ω\n\"quoted\"\\tail\0")))"#
         );
     }
 }

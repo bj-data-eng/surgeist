@@ -32,15 +32,27 @@ callers can connect structured failures to authored text. See the
 
 ## Symbolic generation and ownership
 
-Rendering currently means code generation. The renderer writes construction
-calls under `::surgeist::template` and passes expression source as strings.
-For example, `$user.name` remains symbolic, and `$match` does not become a Rust
-identifier. The rendering tests assert those strings; they do not establish
-that a host implements the emitted calls or evaluates the expressions.
+Rendering means code generation. The renderer emits one Rust expression using
+real public constructors under `::surgeist::template`. Its value is an authored
+`TemplateDocument`, preserving typed expressions, native/component names, ordered
+attributes and children, control flow and diagnostic spans. `$user.name` remains
+a typed variable path, and `$match` does not become a Rust identifier. Floating
+point literals retain their exact bits, including negative zero and NaN payloads.
+The root compiled-consumer test executes generated Rust and revalidates its result.
+
+Native callers can also construct the same AST. Checked positions require
+one-based line/column coordinates; spans reject reversed ranges and inconsistent
+zero-length ranges. Coordinates are diagnostic metadata without a source-buffer
+identity. An `if` node requires its initial branch. Name/path construction checks
+intrinsic syntax, while unknown elements/attributes and unsupported value forms
+remain the registry validator's responsibility. Native construction and generated
+output cannot construct a `ValidatedTemplate` directly.
 
 This workspace crate owns strict template and DSL authoring contracts:
-parsing, validation, and source generation. The root `surgeist` facade owns
-host integration and cross-crate lowering. It also owns the API generator and
-generated API audit artifacts; this crate's source remains authoritative for
-its implementation. These boundaries are recorded in
+parsing, native AST construction, validation and source generation. Template owns
+its direct HTML/DOM adapters as those contributions are implemented. Runtime
+evaluation and host policy remain external to this crate. Repository root owns
+workspace wiring, the `surgeist` facade and integration verification, including
+the compiled consumer, and the API generator and generated audit artifacts. This crate's
+source remains authoritative for its implementation. These boundaries are recorded in
 [AGENTS.md](../AGENTS.md) and [src/lib.rs](../src/lib.rs).

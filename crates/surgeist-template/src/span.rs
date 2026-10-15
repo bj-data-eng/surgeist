@@ -6,6 +6,15 @@ pub struct SourcePos {
 }
 
 impl SourcePos {
+    /// Constructs diagnostic coordinates: one-based line/column, zero-based byte.
+    /// These coordinates do not identify or certify membership in a source buffer.
+    pub const fn try_new(line: usize, column: usize, byte: usize) -> Result<Self, SpanError> {
+        if line == 0 || column == 0 {
+            return Err(SpanError::InvalidPosition { line, column });
+        }
+        Ok(Self { line, column, byte })
+    }
+
     #[allow(dead_code)]
     pub(crate) const fn new_unchecked(line: usize, column: usize, byte: usize) -> Self {
         Self { line, column, byte }
@@ -31,8 +40,8 @@ pub struct SourceSpan {
 }
 
 impl SourceSpan {
-    #[cfg(test)]
-    pub(crate) fn try_new(start: SourcePos, end: SourcePos) -> Result<Self, SpanError> {
+    /// Constructs an ordered diagnostic range, without a source-buffer identity.
+    pub fn try_new(start: SourcePos, end: SourcePos) -> Result<Self, SpanError> {
         if end.byte < start.byte {
             return Err(SpanError::EndBeforeStart { start, end });
         }
@@ -66,9 +75,9 @@ impl SourceSpan {
     }
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpanError {
+    InvalidPosition { line: usize, column: usize },
     EndBeforeStart { start: SourcePos, end: SourcePos },
     InconsistentZeroLengthSpan { start: SourcePos, end: SourcePos },
 }
@@ -102,8 +111,8 @@ mod tests {
     }
 
     #[test]
-    fn source_positions_are_not_publicly_constructible() {
-        let pos = SourcePos::new_unchecked(3, 2, 19);
+    fn source_positions_retain_supplied_diagnostic_coordinates() {
+        let pos = SourcePos::try_new(3, 2, 19).unwrap();
 
         assert_eq!(pos.line(), 3);
         assert_eq!(pos.column(), 2);

@@ -1,7 +1,8 @@
 use surgeist_template::{
-    AttrPart, AttrValue, AttributeKind, AttributeRule, AttributeSpec, BinaryOp, ComponentRegistry,
-    ComponentSpec, Expr, Literal, NativeElementRegistry, NativeElementSpec, Node, ParseErrorKind,
-    PathSegment, RegistryError, UnaryOp, ValidationErrorKind, parse_template, render_to_rust,
+    AttrPart, AttrValue, Attribute, AttributeKind, AttributeRule, AttributeSpec, BinaryOp,
+    ComponentRegistry, ComponentSpec, ElementName, Expr, Literal, NativeElementRegistry,
+    NativeElementSpec, Node, ParseErrorKind, PathField, PathSegment, RegistryError, SourcePos,
+    SourceSpan, TemplateDocument, UnaryOp, ValidationErrorKind, VariablePath, parse_template,
     validate_template,
 };
 
@@ -527,7 +528,7 @@ fn parent_unknown_component_error_wins_over_child_validation() {
 }
 
 #[test]
-fn renders_validated_component_with_expression_attribute_and_interpolation_child() {
+fn native_component_with_symbolic_children_matches_strict_parsing() {
     let document = parse_template(r#"<Panel count={$count}>Hello {$user.name}</Panel>"#)
         .expect("template parses");
     let native = NativeElementRegistry::try_from_specs(Vec::new()).expect("valid native registry");
@@ -544,14 +545,42 @@ fn renders_validated_component_with_expression_attribute_and_interpolation_child
     .expect("valid component registry");
     let validated = validate_template(&document, &native, &components).expect("template validates");
 
+    let authored = TemplateDocument::from_nodes(vec![Node::element(
+        ElementName::component("Panel").unwrap(),
+        vec![
+            Attribute::try_new(
+                "count",
+                AttrValue::Expression(Expr::Variable(
+                    VariablePath::try_new("count", vec![]).unwrap(),
+                )),
+                diagnostic_range(7, 21),
+            )
+            .unwrap(),
+        ],
+        vec![
+            Node::text("Hello ", diagnostic_range(22, 28)),
+            Node::interpolation(
+                Expr::Variable(
+                    VariablePath::try_new(
+                        "user",
+                        vec![PathSegment::Field(PathField::try_new("name").unwrap())],
+                    )
+                    .unwrap(),
+                ),
+                diagnostic_range(28, 40),
+            ),
+        ],
+        diagnostic_range(0, 48),
+    )]);
+    assert_eq!(authored, document);
     assert_eq!(
-        render_to_rust(&validated),
-        r#"::surgeist::template::template(vec![::surgeist::template::component("Panel", vec![::surgeist::template::attr_expr("count", "$count")], vec![::surgeist::template::text("Hello "), ::surgeist::template::expr("$user.name")])])"#
+        validate_template(&authored, &native, &components).unwrap(),
+        validated
     );
 }
 
 #[test]
-fn renders_keyword_variable_expression_as_symbolic_string() {
+fn native_keyword_variable_remains_symbolic_through_validation() {
     let document = parse_template(r#"<Panel value={$match} />"#).expect("template parses");
     let native = NativeElementRegistry::try_from_specs(Vec::new()).expect("valid native registry");
     let components = ComponentRegistry::try_from_specs(vec![
@@ -567,8 +596,32 @@ fn renders_keyword_variable_expression_as_symbolic_string() {
     .expect("valid component registry");
     let validated = validate_template(&document, &native, &components).expect("template validates");
 
+    let authored = TemplateDocument::from_nodes(vec![Node::element(
+        ElementName::component("Panel").unwrap(),
+        vec![
+            Attribute::try_new(
+                "value",
+                AttrValue::Expression(Expr::Variable(
+                    VariablePath::try_new("match", vec![]).unwrap(),
+                )),
+                diagnostic_range(7, 21),
+            )
+            .unwrap(),
+        ],
+        vec![],
+        diagnostic_range(0, 24),
+    )]);
+    assert_eq!(authored, document);
     assert_eq!(
-        render_to_rust(&validated),
-        r#"::surgeist::template::template(vec![::surgeist::template::component("Panel", vec![::surgeist::template::attr_expr("value", "$match")], vec![])])"#
+        validate_template(&authored, &native, &components).unwrap(),
+        validated
     );
+}
+
+fn diagnostic_range(start: usize, end: usize) -> SourceSpan {
+    SourceSpan::try_new(
+        SourcePos::try_new(1, start + 1, start).unwrap(),
+        SourcePos::try_new(1, end + 1, end).unwrap(),
+    )
+    .unwrap()
 }

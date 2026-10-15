@@ -7,12 +7,15 @@ facts; it grants no additional authority. The root guide prohibits executable
 `unsafe` in all Surgeist-owned Rust.
 
 This crate owns strict template parsing, registry-driven validation, and Rust source
-generation. Expressions remain symbolic. Runtime evaluation, host integration,
-and cross-crate lowering remain outside this crate. `render_to_rust` in
-`src/render.rs` produces construction expressions from a `ValidatedTemplate`.
+generation and native authored AST construction. Expressions remain symbolic.
+Runtime evaluation and host policy remain outside this crate. `render_to_rust`
+in `src/render.rs` produces a Rust expression constructing `TemplateDocument`
+from a `ValidatedTemplate`; the authored result requires registry validation.
 
-Consume sibling public front doors. Cross-crate lowering and composition remain
-at the root boundary defined by the root guide.
+Consume sibling public front doors directly. Template owns its HTML/DOM adapters
+as those contributions are implemented. Root owns workspace wiring, the facade,
+integration verification and generated API artifacts; it is not a mandatory
+lowering path. This Rust-generation unit adds no runtime evaluator or DOM adapter.
 
 ## Sources
 
@@ -43,8 +46,10 @@ Cargo build/check/test commands may use `--offline --locked` to preserve the
 shared product resolution; command inventory is not a requirement to run every
 suite for each change.
 
-Verification includes source-module tests and `tests/template_v1.rs`. Keep
-generated Rust safe and validated-template expressions symbolic.
+Verification includes source-module tests, `tests/template_v1.rs` and
+`tests/native_ast.rs`. The root `tests/template_generated_rust.rs` compiles and
+executes actual generated Rust against the real facade. Keep generated Rust safe
+and validated-template expressions symbolic.
 
 ```sh
 cargo check -p surgeist-template
