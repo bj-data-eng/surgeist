@@ -298,14 +298,27 @@ fn foreign_store_and_wrong_document_are_distinct_from_stale_ids() {
     );
     let mut edit = DomBatch::new();
     edit.insert_before(node, second, None);
-    assert_eq!(
-        left.apply(edit, &AtomicBool::new(false)).unwrap_err(),
-        DomError::CrossDocumentInsertionUnsupported
-    );
+    apply(&mut left, edit);
     assert_eq!(
         left.snapshot().node(node).unwrap().owner_document(),
-        Some(first)
+        Some(second)
     );
+    assert_eq!(
+        left.snapshot()
+            .document(first)
+            .unwrap()
+            .node(node)
+            .unwrap_err(),
+        DomError::WrongDocument
+    );
+    let before = left.snapshot().stamp();
+    let mut foreign = DomBatch::new();
+    foreign.insert_before(node, other, None);
+    assert_eq!(
+        left.apply(foreign, &AtomicBool::new(false)).unwrap_err(),
+        DomError::ForeignOwner
+    );
+    assert_eq!(left.snapshot().stamp(), before);
 }
 
 #[test]
