@@ -26,6 +26,7 @@ mod iframe;
 mod input;
 mod input_color;
 mod input_image;
+mod input_range;
 mod integration_points;
 mod interpretation;
 mod marquee;

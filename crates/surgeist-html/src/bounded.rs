@@ -58,3 +58,9 @@ pub use crate::select::{
 pub use crate::slot_assign::{
     HtmlSlotAssignAction, HtmlSlotAssignCursor, HtmlSlotAssignCursorError, HtmlSlotAssignReply,
 };
+
+pub use crate::input_range::{
+    HtmlInputRangeNumber, HtmlInputRangeReplacement, HtmlInputRangeSanitizationAction,
+    HtmlInputRangeSanitizationCursor, HtmlInputRangeSanitizationReply,
+    HtmlInputRangeSanitizationReplyError, HtmlInputRangeValue,
+};

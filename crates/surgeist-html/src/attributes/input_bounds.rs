@@ -643,33 +643,8 @@ pub fn select_input_numeric_constraints(
     let range = state == HtmlInputType::Range;
     let (minimum, minimum_origin) = bound(min, range.then(|| number(0.0)));
     let (maximum, maximum_origin) = bound(max, range.then(|| number(100.0)));
-    let (allowed_step, step_origin) = match step {
-        HtmlInputNumericStep::Any => (None, HtmlInputNumericStepOrigin::Any),
-        HtmlInputNumericStep::Absent => (
-            Some(number(1.0)),
-            HtmlInputNumericStepOrigin::MissingDefault,
-        ),
-        HtmlInputNumericStep::Failed => (
-            Some(number(1.0)),
-            HtmlInputNumericStepOrigin::ParseFailureDefault,
-        ),
-        HtmlInputNumericStep::Value(value) if value.value() > 0.0 => {
-            (Some(value), HtmlInputNumericStepOrigin::Recovered)
-        }
-        HtmlInputNumericStep::Value(_) => (
-            Some(number(1.0)),
-            HtmlInputNumericStepOrigin::NonPositiveDefault,
-        ),
-    };
-    let (step_base, step_base_origin) = match (min, value) {
-        (HtmlInputNumericContent::Value(value), _) => {
-            (value, HtmlInputNumericStepBaseOrigin::MinimumContent)
-        }
-        (_, HtmlInputNumericContent::Value(value)) => {
-            (value, HtmlInputNumericStepBaseOrigin::ValueContent)
-        }
-        _ => (number(0.0), HtmlInputNumericStepBaseOrigin::Zero),
-    };
+    let (allowed_step, step_origin) = select_numeric_step(step);
+    let (step_base, step_base_origin) = select_numeric_step_base(min, value);
     let limit_author = match (minimum, maximum) {
         (Some(minimum), Some(maximum)) if minimum.value() > maximum.value() => {
             HtmlInputNumericLimitAuthorState::MinimumExceedsMaximum
@@ -688,6 +663,66 @@ pub fn select_input_numeric_constraints(
         step_base_origin,
         limit_author,
     })
+}
+
+fn select_numeric_step(
+    step: HtmlInputNumericStep,
+) -> (Option<HtmlFloatingPointNumber>, HtmlInputNumericStepOrigin) {
+    match step {
+        HtmlInputNumericStep::Any => (None, HtmlInputNumericStepOrigin::Any),
+        HtmlInputNumericStep::Absent => (
+            Some(number(1.0)),
+            HtmlInputNumericStepOrigin::MissingDefault,
+        ),
+        HtmlInputNumericStep::Failed => (
+            Some(number(1.0)),
+            HtmlInputNumericStepOrigin::ParseFailureDefault,
+        ),
+        HtmlInputNumericStep::Value(value) if value.value() > 0.0 => {
+            (Some(value), HtmlInputNumericStepOrigin::Recovered)
+        }
+        HtmlInputNumericStep::Value(_) => (
+            Some(number(1.0)),
+            HtmlInputNumericStepOrigin::NonPositiveDefault,
+        ),
+    }
+}
+
+fn select_numeric_step_base(
+    min: HtmlInputNumericContent,
+    value: HtmlInputNumericContent,
+) -> (HtmlFloatingPointNumber, HtmlInputNumericStepBaseOrigin) {
+    match (min, value) {
+        (HtmlInputNumericContent::Value(value), _) => {
+            (value, HtmlInputNumericStepBaseOrigin::MinimumContent)
+        }
+        (_, HtmlInputNumericContent::Value(value)) => {
+            (value, HtmlInputNumericStepBaseOrigin::ValueContent)
+        }
+        _ => (number(0.0), HtmlInputNumericStepBaseOrigin::Zero),
+    }
+}
+
+impl HtmlInputNumericConstraints {
+    /// Update only the later observed step/base facts. Bound observations and
+    /// their missing/failed origins remain exactly those already selected.
+    pub(crate) fn update_step_value(
+        &mut self,
+        step: HtmlInputNumericStep,
+        value: HtmlInputNumericContent,
+    ) {
+        let minimum_content = if self.minimum_origin == HtmlInputNumericBoundOrigin::Recovered {
+            HtmlInputNumericContent::Value(self.minimum.expect("recovered numeric minimum"))
+        } else {
+            HtmlInputNumericContent::Absent
+        };
+        let (allowed_step, step_origin) = select_numeric_step(step);
+        let (step_base, step_base_origin) = select_numeric_step_base(minimum_content, value);
+        self.allowed_step = allowed_step;
+        self.step_origin = step_origin;
+        self.step_base = step_base;
+        self.step_base_origin = step_base_origin;
+    }
 }
 
 fn bound_origin(side: &HtmlInputNumericAttributeReport) -> HtmlInputNumericBoundOrigin {

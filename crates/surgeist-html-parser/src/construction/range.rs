@@ -652,6 +652,11 @@ impl SessionStorage {
         slot: usize,
         source: usize,
     ) -> Result<(), SessionError> {
+        use crate::bounded::{
+            HtmlInputRangeNumber, HtmlInputRangeReplacement as B,
+            HtmlInputRangeSanitizationAction as A, HtmlInputRangeSanitizationCursor,
+            HtmlInputRangeSanitizationReply as R, HtmlInputRangeValue,
+        };
         let source_edge = self.range_payload_edge(c, source)?;
         let current = self.input_raw_slot(c, slot)?;
         let state = self.read_input_state(c, slot)?;
@@ -659,9 +664,6 @@ impl SessionStorage {
         let RetainedPayload::Input { complete, .. } = &self.payloads.values[slot] else {
             return Err(integrity(c));
         };
-        // This adapter is called only during actual fresh/clone initialization.
-        // A source equal to that incomplete input's admitted empty current is a
-        // real fresh empty stage, not a fabricated lexical field or reference.
         let fresh_empty = !*complete
             && !state.flags.dirty_value()
             && source == current
@@ -671,7 +673,7 @@ impl SessionStorage {
         } else {
             RangeOriginal::Group(source_edge)
         };
-        let (valid, mut value) = self.range_parse(c, source, FloatingPointParseMode::Author)?;
+        let (valid, value) = self.range_parse(c, source, FloatingPointParseMode::Author)?;
         let (min, min_operand) = self.range_content(c, node, "min")?;
         let (max, max_operand) = self.range_content(c, node, "max")?;
         let mut operands = [
@@ -680,208 +682,200 @@ impl SessionStorage {
             RangeOperand::NotConsulted,
             RangeOperand::NotConsulted,
         ];
-        payload_write::<crate::HtmlInputNumericConstraints>(c, 1)?;
-        let bounds = crate::select_input_numeric_constraints(
-            min,
-            max,
-            HtmlInputNumericStep::Absent,
-            HtmlInputNumericContent::Absent,
-            crate::HtmlInputType::Range,
-        )
-        .expect("literal Range is a numeric constraint state");
-        let minimum = bounds.minimum().ok_or_else(|| integrity(c))?.value();
-        let maximum = bounds.maximum().ok_or_else(|| integrity(c))?.value();
-        let mut replaced = false;
-        if !valid {
-            if maximum < minimum {
-                value = Some(minimum.to_bits());
-            } else {
-                payload_write::<RangeMidpointCursor>(c, 1)?;
-                let cursor = RangeMidpointCursor::new(minimum.to_bits(), maximum.to_bits())
-                    .map_err(|_| integrity(c))?;
-                payload_write::<Option<Machine>>(c, 1)?;
-                self.range_stage(c)?.machine = Some(Machine::midpoint(cursor));
-                self.execute_range(c)?;
-                let Some(cursor) = self
-                    .range_stage(c)?
-                    .machine
-                    .as_ref()
-                    .and_then(|machine| machine.midpoint.as_ref())
-                else {
-                    return Err(integrity(c));
-                };
-                value = cursor.result();
-            }
-            let branch = if maximum < minimum {
-                RangeBranch::InvalidDefaultMinimum
-            } else {
-                RangeBranch::InvalidDefaultMidpoint
-            };
-            let default_value = value.ok_or_else(|| integrity(c))?;
-            self.range_emit(
-                c,
-                slot,
-                default_value,
-                RangeComputation {
-                    branch,
-                    original,
-                    operands,
-                    minimum: Some(bounds.minimum_origin()),
-                    maximum: Some(bounds.maximum_origin()),
-                    step: None,
-                    base: None,
-                },
+        payload_write::<HtmlInputRangeValue>(c, 1)?;
+        let value = match (valid, value) {
+            (false, _) => HtmlInputRangeValue::InvalidGrammar,
+            (true, None) => HtmlInputRangeValue::ConversionFailed,
+            (true, Some(bits)) => HtmlInputRangeValue::Finite(
+                HtmlInputRangeNumber::try_from(f64::from_bits(bits)).map_err(|_| integrity(c))?,
+            ),
+        };
+        payload_write::<HtmlInputRangeSanitizationCursor>(c, 1)?;
+        let mut policy = HtmlInputRangeSanitizationCursor::new(value, min, max);
+        loop {
+            // New source-policy receiver/action/reply work is explicit. Numeric
+            // requests below retain their existing independent service charges.
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(
+                WorkCategory::InspectByte,
+                mem::size_of::<HtmlInputRangeSanitizationCursor>() as u64,
             )?;
-            let current = self.input_raw_slot(c, slot)?;
-            original = RangeOriginal::Group(self.range_payload_edge(c, current)?);
-            replaced = true;
-        }
-        if let Some(bits) = value {
-            let current = f64::from_bits(bits);
-            if current < minimum {
-                value = Some(minimum.to_bits());
-                self.range_emit(
-                    c,
-                    slot,
-                    minimum.to_bits(),
-                    RangeComputation {
-                        branch: RangeBranch::Underflow,
-                        original,
-                        operands,
-                        minimum: Some(bounds.minimum_origin()),
-                        maximum: Some(bounds.maximum_origin()),
-                        step: None,
-                        base: None,
-                    },
-                )?;
-                let current = self.input_raw_slot(c, slot)?;
-                original = RangeOriginal::Group(self.range_payload_edge(c, current)?);
-                replaced = true;
-            } else if maximum >= minimum && current > maximum {
-                value = Some(maximum.to_bits());
-                self.range_emit(
-                    c,
-                    slot,
-                    maximum.to_bits(),
-                    RangeComputation {
-                        branch: RangeBranch::Overflow,
-                        original,
-                        operands,
-                        minimum: Some(bounds.minimum_origin()),
-                        maximum: Some(bounds.maximum_origin()),
-                        step: None,
-                        base: None,
-                    },
-                )?;
-                let current = self.input_raw_slot(c, slot)?;
-                original = RangeOriginal::Group(self.range_payload_edge(c, current)?);
-                replaced = true;
-            }
-        }
-        let step_slot = self.range_attribute_slot(c, node, "step")?;
-        let step = if let Some(step_slot) = step_slot {
-            let edge = self.range_payload_edge(c, step_slot)?;
-            let any = {
-                let raw = admitted_input_string(&self.payloads, c, step_slot)?;
-                let keyword_len = HtmlInputNumericStep::ANY_KEYWORD.len();
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                let mut any = raw.len() == keyword_len;
-                if any {
-                    for index in 0..keyword_len {
-                        c.charge(WorkCategory::InspectByte, 2)?;
-                        c.charge(WorkCategory::StateStep, 1)?;
-                        if !HtmlInputNumericStep::any_keyword_unit_matches(
-                            index,
-                            raw.code_units()[index],
-                        ) {
-                            any = false;
-                            break;
-                        }
-                    }
+            payload_write::<A>(c, 1)?;
+            let reply = match policy.action() {
+                A::Midpoint { minimum, maximum } => {
+                    payload_write::<RangeMidpointCursor>(c, 1)?;
+                    let cursor = RangeMidpointCursor::new(
+                        minimum.value().to_bits(),
+                        maximum.value().to_bits(),
+                    )
+                    .map_err(|_| integrity(c))?;
+                    payload_write::<Option<Machine>>(c, 1)?;
+                    self.range_stage(c)?.machine = Some(Machine::midpoint(cursor));
+                    self.execute_range(c)?;
+                    let Some(cursor) = self
+                        .range_stage(c)?
+                        .machine
+                        .as_ref()
+                        .and_then(|machine| machine.midpoint.as_ref())
+                    else {
+                        return Err(integrity(c));
+                    };
+                    R::Midpoint(
+                        HtmlInputRangeNumber::try_from(f64::from_bits(
+                            cursor.result().ok_or_else(|| integrity(c))?,
+                        ))
+                        .map_err(|_| integrity(c))?,
+                    )
                 }
-                any
-            };
-            if any {
-                operands[2] = RangeOperand::Any(edge);
-                HtmlInputNumericStep::Any
-            } else {
-                let (_, result) =
-                    self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
-                match result {
-                    Some(bits) => {
-                        operands[2] = RangeOperand::Finite(edge);
-                        HtmlInputNumericStep::Value(
-                            crate::HtmlFloatingPointNumber::try_from(f64::from_bits(bits))
-                                .map_err(|_| integrity(c))?,
+                A::Replace { value, branch } => {
+                    let step = branch == B::StepCorrection;
+                    payload_write::<(
+                        crate::HtmlInputNumericBoundOrigin,
+                        crate::HtmlInputNumericBoundOrigin,
+                    )>(c, 1)?;
+                    let (minimum, maximum) = policy.bound_origins();
+                    let (step_origin, base_origin) = if step {
+                        payload_write::<Option<crate::HtmlInputNumericConstraints>>(c, 1)?;
+                        let constraints = policy.constraints().ok_or_else(|| integrity(c))?;
+                        (
+                            Some(constraints.step_origin()),
+                            Some(constraints.step_base_origin()),
                         )
+                    } else {
+                        (None, None)
+                    };
+                    let branch = match branch {
+                        B::InvalidDefaultMinimum => RangeBranch::InvalidDefaultMinimum,
+                        B::InvalidDefaultMidpoint => RangeBranch::InvalidDefaultMidpoint,
+                        B::Underflow => RangeBranch::Underflow,
+                        B::Overflow => RangeBranch::Overflow,
+                        B::StepCorrection => RangeBranch::StepCorrection,
+                    };
+                    self.range_emit(
+                        c,
+                        slot,
+                        value.value().to_bits(),
+                        RangeComputation {
+                            branch,
+                            original,
+                            operands,
+                            minimum: Some(minimum),
+                            maximum: Some(maximum),
+                            step: step_origin,
+                            base: base_origin,
+                        },
+                    )?;
+                    if !step {
+                        let current = self.input_raw_slot(c, slot)?;
+                        original = RangeOriginal::Group(self.range_payload_edge(c, current)?);
                     }
-                    None => {
-                        operands[2] = RangeOperand::ConversionFailed(edge);
-                        HtmlInputNumericStep::Failed
-                    }
+                    R::Applied
                 }
-            }
-        } else {
-            operands[2] = RangeOperand::Absent;
-            HtmlInputNumericStep::Absent
-        };
-        let (content, content_operand) = if matches!(min, HtmlInputNumericContent::Value(_)) {
-            (HtmlInputNumericContent::Absent, RangeOperand::NotConsulted)
-        } else {
-            self.range_content(c, node, "value")?
-        };
-        operands[3] = content_operand;
-        payload_write::<crate::HtmlInputNumericConstraints>(c, 1)?;
-        let constraints = crate::select_input_numeric_constraints(
-            min,
-            max,
-            step,
-            content,
-            crate::HtmlInputType::Range,
-        )
-        .expect("literal Range is a numeric constraint state");
-        if let (Some(bits), Some(step)) = (value, constraints.allowed_step()) {
-            payload_write::<RangeLatticeCursor>(c, 1)?;
-            let cursor = RangeLatticeCursor::new(
-                bits,
-                minimum.to_bits(),
-                (maximum >= minimum).then_some(maximum.to_bits()),
-                constraints.step_base().value().to_bits(),
-                step.value().to_bits(),
-            )
-            .map_err(|_| integrity(c))?;
-            payload_write::<Option<Machine>>(c, 1)?;
-            self.range_stage(c)?.machine = Some(Machine::lattice(cursor));
-            self.execute_range(c)?;
-            let Some(cursor) = self
-                .range_stage(c)?
-                .machine
-                .as_ref()
-                .and_then(|machine| machine.lattice.as_ref())
-            else {
-                return Err(integrity(c));
+                A::ReadStep => {
+                    let step_slot = self.range_attribute_slot(c, node, "step")?;
+                    let step = if let Some(step_slot) = step_slot {
+                        let edge = self.range_payload_edge(c, step_slot)?;
+                        let any = {
+                            let raw = admitted_input_string(&self.payloads, c, step_slot)?;
+                            let keyword_len = HtmlInputNumericStep::ANY_KEYWORD.len();
+                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            let mut any = raw.len() == keyword_len;
+                            if any {
+                                for index in 0..keyword_len {
+                                    c.charge(WorkCategory::InspectByte, 2)?;
+                                    c.charge(WorkCategory::StateStep, 1)?;
+                                    if !HtmlInputNumericStep::any_keyword_unit_matches(
+                                        index,
+                                        raw.code_units()[index],
+                                    ) {
+                                        any = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            any
+                        };
+                        if any {
+                            operands[2] = RangeOperand::Any(edge);
+                            HtmlInputNumericStep::Any
+                        } else {
+                            let (_, result) =
+                                self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
+                            match result {
+                                Some(bits) => {
+                                    operands[2] = RangeOperand::Finite(edge);
+                                    HtmlInputNumericStep::Value(
+                                        crate::HtmlFloatingPointNumber::try_from(f64::from_bits(
+                                            bits,
+                                        ))
+                                        .map_err(|_| integrity(c))?,
+                                    )
+                                }
+                                None => {
+                                    operands[2] = RangeOperand::ConversionFailed(edge);
+                                    HtmlInputNumericStep::Failed
+                                }
+                            }
+                        }
+                    } else {
+                        operands[2] = RangeOperand::Absent;
+                        HtmlInputNumericStep::Absent
+                    };
+                    R::Step(step)
+                }
+                A::ReadValueContent => {
+                    let (content, operand) = self.range_content(c, node, "value")?;
+                    operands[3] = operand;
+                    R::ValueContent(content)
+                }
+                A::Lattice {
+                    current,
+                    minimum,
+                    maximum,
+                    base,
+                    step,
+                } => {
+                    payload_write::<RangeLatticeCursor>(c, 1)?;
+                    let cursor = RangeLatticeCursor::new(
+                        current.value().to_bits(),
+                        minimum.value().to_bits(),
+                        maximum.map(|value| value.value().to_bits()),
+                        base.value().to_bits(),
+                        step.value().to_bits(),
+                    )
+                    .map_err(|_| integrity(c))?;
+                    payload_write::<Option<Machine>>(c, 1)?;
+                    self.range_stage(c)?.machine = Some(Machine::lattice(cursor));
+                    self.execute_range(c)?;
+                    let Some(cursor) = self
+                        .range_stage(c)?
+                        .machine
+                        .as_ref()
+                        .and_then(|machine| machine.lattice.as_ref())
+                    else {
+                        return Err(integrity(c));
+                    };
+                    R::Lattice(
+                        cursor
+                            .result()
+                            .ok_or_else(|| integrity(c))?
+                            .map(|bits| {
+                                HtmlInputRangeNumber::try_from(f64::from_bits(bits))
+                                    .map_err(|_| integrity(c))
+                            })
+                            .transpose()?,
+                    )
+                }
+                A::Complete => break,
             };
-            if let Some(selected) = cursor.result().ok_or_else(|| integrity(c))?
-                && selected != bits
-            {
-                self.range_emit(
-                    c,
-                    slot,
-                    selected,
-                    RangeComputation {
-                        branch: RangeBranch::StepCorrection,
-                        original,
-                        operands,
-                        minimum: Some(constraints.minimum_origin()),
-                        maximum: Some(constraints.maximum_origin()),
-                        step: Some(constraints.step_origin()),
-                        base: Some(constraints.step_base_origin()),
-                    },
-                )?;
-                replaced = true;
-            }
+            payload_write::<R>(c, 1)?;
+            // reply() transactionally copies the fixed receiver once. Do not
+            // hide this fee in unchanged arithmetic/scratch servicing.
+            payload_write::<HtmlInputRangeSanitizationCursor>(c, 1)?;
+            policy.reply(reply).map_err(|_| integrity(c))?;
         }
-        if !replaced {
+        if !policy.replaced() {
             let field = provenance::copy_generated_input_value(
                 &self.payloads,
                 self.evidence.as_ref(),

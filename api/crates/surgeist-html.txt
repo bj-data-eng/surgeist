@@ -325,6 +325,38 @@ pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::RemovingOrMoving::has_own
 pub enum surgeist_html::bounded::HtmlFragmentNameTest<'a>
 pub surgeist_html::bounded::HtmlFragmentNameTest::HtmlNamespace
 pub surgeist_html::bounded::HtmlFragmentNameTest::Local(&'a [&'static str])
+pub enum surgeist_html::bounded::HtmlInputRangeReplacement
+pub surgeist_html::bounded::HtmlInputRangeReplacement::InvalidDefaultMidpoint
+pub surgeist_html::bounded::HtmlInputRangeReplacement::InvalidDefaultMinimum
+pub surgeist_html::bounded::HtmlInputRangeReplacement::Overflow
+pub surgeist_html::bounded::HtmlInputRangeReplacement::StepCorrection
+pub surgeist_html::bounded::HtmlInputRangeReplacement::Underflow
+pub enum surgeist_html::bounded::HtmlInputRangeSanitizationAction
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Complete
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice::base: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice::current: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice::maximum: core::option::Option<surgeist_html::bounded::HtmlInputRangeNumber>
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice::minimum: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Lattice::step: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Midpoint
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Midpoint::maximum: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Midpoint::minimum: surgeist_html::bounded::HtmlInputRangeNumber
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::ReadStep
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::ReadValueContent
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Replace
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Replace::branch: surgeist_html::bounded::HtmlInputRangeReplacement
+pub surgeist_html::bounded::HtmlInputRangeSanitizationAction::Replace::value: surgeist_html::bounded::HtmlInputRangeNumber
+pub enum surgeist_html::bounded::HtmlInputRangeSanitizationReply
+pub surgeist_html::bounded::HtmlInputRangeSanitizationReply::Applied
+pub surgeist_html::bounded::HtmlInputRangeSanitizationReply::Lattice(core::option::Option<surgeist_html::bounded::HtmlInputRangeNumber>)
+pub surgeist_html::bounded::HtmlInputRangeSanitizationReply::Midpoint(surgeist_html::bounded::HtmlInputRangeNumber)
+pub surgeist_html::bounded::HtmlInputRangeSanitizationReply::Step(surgeist_html::HtmlInputNumericStep)
+pub surgeist_html::bounded::HtmlInputRangeSanitizationReply::ValueContent(surgeist_html::HtmlInputNumericContent)
+pub enum surgeist_html::bounded::HtmlInputRangeValue
+pub surgeist_html::bounded::HtmlInputRangeValue::ConversionFailed
+pub surgeist_html::bounded::HtmlInputRangeValue::Finite(surgeist_html::bounded::HtmlInputRangeNumber)
+pub surgeist_html::bounded::HtmlInputRangeValue::InvalidGrammar
 pub enum surgeist_html::bounded::HtmlIntegrationPointComparison
 pub surgeist_html::bounded::HtmlIntegrationPointComparison::AsciiCaseInsensitive
 pub surgeist_html::bounded::HtmlIntegrationPointComparison::Exact
@@ -1062,6 +1094,26 @@ impl surgeist_html::bounded::HtmlFormOwnerResetCursor
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::action(&self) -> surgeist_html::bounded::HtmlFormOwnerResetAction
 pub const fn surgeist_html::bounded::HtmlFormOwnerResetCursor::new(listed: bool, has_current_owner: bool) -> Self
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlFormOwnerResetReply) -> core::result::Result<(), surgeist_html::bounded::HtmlFormOwnerResetCursorError>
+pub struct surgeist_html::bounded::HtmlInputRangeNumber(_)
+impl surgeist_html::bounded::HtmlInputRangeNumber
+pub fn surgeist_html::bounded::HtmlInputRangeNumber::value(self) -> f64
+impl core::convert::From<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::bounded::HtmlInputRangeNumber
+pub fn surgeist_html::bounded::HtmlInputRangeNumber::from(value: surgeist_html::HtmlFloatingPointNumber) -> Self
+impl core::convert::TryFrom<f64> for surgeist_html::bounded::HtmlInputRangeNumber
+pub type surgeist_html::bounded::HtmlInputRangeNumber::Error = surgeist_html::HtmlNonFiniteNumberError
+pub fn surgeist_html::bounded::HtmlInputRangeNumber::try_from(value: f64) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::bounded::HtmlInputRangeSanitizationCursor
+impl surgeist_html::bounded::HtmlInputRangeSanitizationCursor
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::action(&self) -> surgeist_html::bounded::HtmlInputRangeSanitizationAction
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::bound_origins(&self) -> (surgeist_html::HtmlInputNumericBoundOrigin, surgeist_html::HtmlInputNumericBoundOrigin)
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::constraints(&self) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::new(value: surgeist_html::bounded::HtmlInputRangeValue, min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent) -> Self
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::replaced(&self) -> bool
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlInputRangeSanitizationReply) -> core::result::Result<(), surgeist_html::bounded::HtmlInputRangeSanitizationReplyError>
+pub struct surgeist_html::bounded::HtmlInputRangeSanitizationReplyError
+impl core::error::Error for surgeist_html::bounded::HtmlInputRangeSanitizationReplyError
+impl core::fmt::Display for surgeist_html::bounded::HtmlInputRangeSanitizationReplyError
+pub fn surgeist_html::bounded::HtmlInputRangeSanitizationReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 impl<'raw> surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 pub fn surgeist_html::bounded::HtmlMediaFieldMatch<'raw>::attribute(&self) -> &'raw surgeist_html::Attribute
@@ -3954,6 +4006,8 @@ pub fn surgeist_html::HtmlFloatingPointNumber::value(&self) -> f64
 impl surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlFloatingPointNumber::into_input_max_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlFloatingPointNumber::into_input_min_attribute(self) -> surgeist_html::Attribute
+impl core::convert::From<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::bounded::HtmlInputRangeNumber
+pub fn surgeist_html::bounded::HtmlInputRangeNumber::from(value: surgeist_html::HtmlFloatingPointNumber) -> Self
 impl core::convert::TryFrom<f64> for surgeist_html::HtmlFloatingPointNumber
 pub type surgeist_html::HtmlFloatingPointNumber::Error = surgeist_html::HtmlNonFiniteNumberError
 pub fn surgeist_html::HtmlFloatingPointNumber::try_from(value: f64) -> core::result::Result<Self, Self::Error>
