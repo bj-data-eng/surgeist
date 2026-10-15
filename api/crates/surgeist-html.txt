@@ -4155,10 +4155,13 @@ pub fn surgeist_html::HtmlInputSanitizationCursor<'a>::retain_unit(&self, unit: 
 pub struct surgeist_html::HtmlInputSelection
 impl surgeist_html::HtmlInputSelection
 pub fn surgeist_html::HtmlInputSelection::clamp(self, actual_value_len: usize, support: surgeist_html::HtmlInputEmptySelectionSupport) -> Self
-pub fn surgeist_html::HtmlInputSelection::cursor(offset: usize) -> Self
+pub fn surgeist_html::HtmlInputSelection::cursor(offset: usize, direction: surgeist_html::HtmlInputSelectionDirection) -> Self
 pub fn surgeist_html::HtmlInputSelection::cursor_position(self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlInputSelection::direction(self) -> surgeist_html::HtmlInputSelectionDirection
+pub fn surgeist_html::HtmlInputSelection::initial(none_support: surgeist_html::HtmlInputNoneDirectionSupport) -> Self
 pub fn surgeist_html::HtmlInputSelection::selection(start: usize, end: usize, direction: surgeist_html::HtmlInputSelectionDirection) -> core::result::Result<Self, surgeist_html::HtmlInputInvalidSelectionRange>
 pub fn surgeist_html::HtmlInputSelection::selection_range(self) -> core::option::Option<(usize, usize, surgeist_html::HtmlInputSelectionDirection)>
+pub fn surgeist_html::HtmlInputSelection::set_direction(self, requested: surgeist_html::HtmlInputSelectionDirection, none_support: surgeist_html::HtmlInputNoneDirectionSupport) -> Self
 pub struct surgeist_html::HtmlInputSizeReport
 impl surgeist_html::HtmlInputSizeReport
 pub fn surgeist_html::HtmlInputSizeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability

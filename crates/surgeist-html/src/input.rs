@@ -950,19 +950,22 @@ pub enum HtmlInputSelectionDirection {
     Forward,
     Backward,
 }
-/// Qualified actual position. No direction/platform support is inferred.
+/// Position and direction are independent source state. A cursor retains its
+/// direction too; a generic value clamp does not reset that direction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SelectionState {
+enum SelectionPosition {
     Cursor(usize),
-    Selection {
-        start: usize,
-        end: usize,
-        direction: HtmlInputSelectionDirection,
-    },
+    Selection { start: usize, end: usize },
 }
+/// Actual UTF-16 selection position and independent retained direction.
+///
+/// This value does not choose platform support. Retained constructors preserve
+/// established facts; initial and explicit direction writes consume the actual
+/// none-direction support. No DOM identity, events or platform policy is stored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputSelection {
-    state: SelectionState,
+    position: SelectionPosition,
+    direction: HtmlInputSelectionDirection,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputInvalidSelectionRange {
@@ -983,11 +986,25 @@ pub enum HtmlInputEmptySelectionSupport {
     Unsupported,
 }
 impl HtmlInputSelection {
-    pub fn cursor(offset: usize) -> Self {
+    /// Source initial cursor zero with direction resolved from actual support.
+    /// This is not a platform default or a selected headless environment.
+    pub fn initial(none_support: HtmlInputNoneDirectionSupport) -> Self {
+        Self::cursor(
+            0,
+            HtmlInputSelectionDirection::None.resolve_none(none_support),
+        )
+    }
+    /// Retain an actual cursor and its established direction, without applying
+    /// a new platform's policy. Source direction changes use `set_direction`.
+    pub fn cursor(offset: usize, direction: HtmlInputSelectionDirection) -> Self {
         Self {
-            state: SelectionState::Cursor(offset),
+            position: SelectionPosition::Cursor(offset),
+            direction,
         }
     }
+    /// Retain an actual ordered selection and its established direction.
+    /// This is not the event-bearing set-selection-range algorithm and does
+    /// not establish that an empty range is supported by an environment.
     pub fn selection(
         start: usize,
         end: usize,
@@ -997,60 +1014,65 @@ impl HtmlInputSelection {
             Err(HtmlInputInvalidSelectionRange { start, end })
         } else {
             Ok(Self {
-                state: SelectionState::Selection {
-                    start,
-                    end,
-                    direction,
-                },
+                position: SelectionPosition::Selection { start, end },
+                direction,
             })
         }
     }
+    /// Actual direction for either a cursor or a selection.
+    pub fn direction(self) -> HtmlInputSelectionDirection {
+        self.direction
+    }
+    /// Local set-the-selection-direction step, using actual none support.
+    /// Call only for a source direction write; clamping/adoption do not select
+    /// this step merely because the current environment's support differs.
+    pub fn set_direction(
+        mut self,
+        requested: HtmlInputSelectionDirection,
+        none_support: HtmlInputNoneDirectionSupport,
+    ) -> Self {
+        self.direction = requested.resolve_none(none_support);
+        self
+    }
     pub fn cursor_position(self) -> Option<usize> {
-        if let SelectionState::Cursor(position) = self.state {
+        if let SelectionPosition::Cursor(position) = self.position {
             Some(position)
         } else {
             None
         }
     }
     pub fn selection_range(self) -> Option<(usize, usize, HtmlInputSelectionDirection)> {
-        if let SelectionState::Selection {
-            start,
-            end,
-            direction,
-        } = self.state
-        {
-            Some((start, end, direction))
+        if let SelectionPosition::Selection { start, end } = self.position {
+            Some((start, end, self.direction))
         } else {
             None
         }
     }
     /// HTML's relevant-value change clamp; fixed work, no string read.
-    pub fn clamp(self, actual_value_len: usize, support: HtmlInputEmptySelectionSupport) -> Self {
-        match self.state {
-            SelectionState::Cursor(offset) => Self::cursor(offset.min(actual_value_len)),
-            SelectionState::Selection {
-                start,
-                end,
-                direction,
-            } => {
+    /// Direction is preserved even when a range collapses into a cursor.
+    pub fn clamp(
+        mut self,
+        actual_value_len: usize,
+        support: HtmlInputEmptySelectionSupport,
+    ) -> Self {
+        self.position = match self.position {
+            SelectionPosition::Cursor(offset) => {
+                SelectionPosition::Cursor(offset.min(actual_value_len))
+            }
+            SelectionPosition::Selection { start, end } => {
                 let start = start.min(actual_value_len);
                 let end = end.min(actual_value_len);
                 if support == HtmlInputEmptySelectionSupport::Unsupported
                     && start == actual_value_len
                     && end == actual_value_len
                 {
-                    Self::cursor(actual_value_len)
+                    SelectionPosition::Cursor(actual_value_len)
                 } else {
-                    Self {
-                        state: SelectionState::Selection {
-                            start,
-                            end,
-                            direction,
-                        },
-                    }
+                    SelectionPosition::Selection { start, end }
                 }
             }
-        }
+        };
+        self
     }
 }
 /// Additional Value setter effect only; evaluate after actual generic clamping.

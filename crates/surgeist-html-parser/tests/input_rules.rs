@@ -415,7 +415,7 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
         input_value_setter_finish(
             HtmlInputType::Hidden,
             different,
-            HtmlInputSelection::cursor(1)
+            HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward)
         ),
         NoAdditionalEffect
     );
@@ -432,7 +432,7 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
         input_value_setter_finish(
             HtmlInputType::Text,
             different,
-            HtmlInputSelection::cursor(1).clamp(4, Supported)
+            HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward).clamp(4, Supported)
         ),
         SetEndCursorUnselectAndNoneDirection
     );
@@ -442,7 +442,11 @@ fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
         NoAdditionalEffect
     );
     assert_eq!(
-        input_value_setter_finish(HtmlInputType::Text, equal, HtmlInputSelection::cursor(1)),
+        input_value_setter_finish(
+            HtmlInputType::Text,
+            equal,
+            HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward)
+        ),
         NoAdditionalEffect
     );
     let shortened = compare(&[97, 98, 99, 100], &[120]);
@@ -483,7 +487,7 @@ fn native_sanitized_equal_value_still_sets_dirty_without_replacing_default_or_cu
         input_value_setter_finish(
             HtmlInputType::Text,
             equal,
-            HtmlInputSelection::cursor(1)
+            HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward)
                 .clamp(current.len(), HtmlInputEmptySelectionSupport::Supported)
         ),
         HtmlInputValueSetterFinish::NoAdditionalEffect
@@ -496,13 +500,13 @@ fn selection_range_validation_clamping_and_direction_use_actual_capabilities() {
     let invalid = HtmlInputSelection::selection(2, 1, Forward).unwrap_err();
     assert_eq!((invalid.start(), invalid.end()), (2, 1));
     assert_eq!(
-        HtmlInputSelection::cursor(9)
+        HtmlInputSelection::cursor(9, HtmlInputSelectionDirection::Forward)
             .clamp(3, HtmlInputEmptySelectionSupport::Supported)
             .cursor_position(),
         Some(3)
     );
     assert_eq!(
-        HtmlInputSelection::cursor(1)
+        HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward)
             .clamp(3, HtmlInputEmptySelectionSupport::Supported)
             .cursor_position(),
         Some(1)
