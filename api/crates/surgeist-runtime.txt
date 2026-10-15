@@ -116,6 +116,30 @@ pub surgeist_runtime::ResourceStatus::Loading
 pub surgeist_runtime::ResourceStatus::Ready
 pub surgeist_runtime::ResourceStatus::Refreshing
 pub surgeist_runtime::ResourceStatus::Stale
+pub enum surgeist_runtime::RuntimeDomHostError
+pub surgeist_runtime::RuntimeDomHostError::AssociationCapacity
+pub surgeist_runtime::RuntimeDomHostError::AssociationCapacity::limit: usize
+pub surgeist_runtime::RuntimeDomHostError::AssociationCapacity::required: usize
+pub surgeist_runtime::RuntimeDomHostError::BindingDomBasisMismatch
+pub surgeist_runtime::RuntimeDomHostError::BindingDomBasisMismatch::actual: surgeist_dom::snapshot::DomDocumentStamp
+pub surgeist_runtime::RuntimeDomHostError::BindingDomBasisMismatch::expected: surgeist_dom::snapshot::DomDocumentStamp
+pub surgeist_runtime::RuntimeDomHostError::DomSubject
+pub surgeist_runtime::RuntimeDomHostError::DomSubject::error: surgeist_dom::store::DomError
+pub surgeist_runtime::RuntimeDomHostError::DomSubject::node: surgeist_dom::identity::NodeId
+pub surgeist_runtime::RuntimeDomHostError::DuplicateDomElement(surgeist_dom::identity::NodeId)
+pub surgeist_runtime::RuntimeDomHostError::DuplicateSurfaceElement(surgeist_runtime::SurfaceElementRef)
+pub surgeist_runtime::RuntimeDomHostError::ForeignRuntime
+pub surgeist_runtime::RuntimeDomHostError::Host(surgeist_dom::host::DomHostError)
+pub surgeist_runtime::RuntimeDomHostError::MissingAssociation(surgeist_runtime::SurfaceElementRef)
+pub surgeist_runtime::RuntimeDomHostError::RepresentationExhausted
+pub surgeist_runtime::RuntimeDomHostError::Surface(surgeist_runtime::SurfaceError)
+pub surgeist_runtime::RuntimeDomHostError::ValidationWork
+pub surgeist_runtime::RuntimeDomHostError::ValidationWork::limit: usize
+pub surgeist_runtime::RuntimeDomHostError::ValidationWork::required: usize
+impl core::error::Error for surgeist_runtime::RuntimeDomHostError
+pub fn surgeist_runtime::RuntimeDomHostError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::RuntimeDomHostError
+pub fn surgeist_runtime::RuntimeDomHostError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_runtime::RuntimeDrainErrorCode
 pub surgeist_runtime::RuntimeDrainErrorCode::StateVersionOverflow
 pub surgeist_runtime::RuntimeDrainErrorCode::SurfaceInvalidationOverflow
@@ -195,6 +219,7 @@ pub surgeist_runtime::SurfaceErrorCode::EmptyRoute
 pub surgeist_runtime::SurfaceErrorCode::IneligibleElementTarget
 pub surgeist_runtime::SurfaceErrorCode::InvalidLifecycleTransition
 pub surgeist_runtime::SurfaceErrorCode::InvalidRoutePhaseOrder
+pub surgeist_runtime::SurfaceErrorCode::InvalidSurfaceReplacement
 pub surgeist_runtime::SurfaceErrorCode::MissingElementPhase
 pub surgeist_runtime::SurfaceErrorCode::MissingRouteTarget
 pub surgeist_runtime::SurfaceErrorCode::MultipleRouteTargets
@@ -744,6 +769,10 @@ pub fn surgeist_runtime::Runtime<State, R, Input>::unsubscribe(&mut self, key: &
 pub fn surgeist_runtime::Runtime<State, R, Input>::update_surface(&mut self, surface: surgeist_runtime::SurfaceRef, update: impl core::ops::function::FnOnce(&mut surgeist_runtime::UiSurface) -> core::result::Result<(), surgeist_runtime::SurfaceError>) -> core::result::Result<(), surgeist_runtime::SurfaceError>
 pub fn surgeist_runtime::Runtime<State, R, Input>::validate_element(&self, reference: surgeist_runtime::SurfaceElementRef, phase: surgeist_runtime::ElementPhase) -> core::result::Result<(), surgeist_runtime::SurfaceError>
 pub fn surgeist_runtime::Runtime<State, R, Input>::validate_route(&self, route: &surgeist_runtime::SurfaceRoute) -> core::result::Result<surgeist_runtime::SurfaceElementRef, surgeist_runtime::SurfaceError>
+impl<State, R, Input> surgeist_runtime::Runtime<State, R, Input>
+pub fn surgeist_runtime::Runtime<State, R, Input>::bind_dom_host(&self, surface: surgeist_runtime::SurfaceRef, document: surgeist_dom::snapshot::DomDocument<'_>, associations: alloc::vec::Vec<(surgeist_runtime::SurfaceElementRef, surgeist_dom::identity::NodeId)>, domains: surgeist_dom::host::DomHostDomains, limits: surgeist_runtime::SurfaceDomBindingLimits) -> core::result::Result<surgeist_runtime::RuntimeDomHost, surgeist_runtime::RuntimeDomHostError>
+pub fn surgeist_runtime::Runtime<State, R, Input>::capture_dom_host(&self, host: &mut surgeist_runtime::RuntimeDomHost, document: surgeist_dom::snapshot::DomDocument<'_>) -> core::result::Result<surgeist_runtime::RuntimeDomHostPublication, surgeist_runtime::RuntimeDomHostError>
+pub fn surgeist_runtime::Runtime<State, R, Input>::rebind_dom_host(&self, host: &mut surgeist_runtime::RuntimeDomHost, document: surgeist_dom::snapshot::DomDocument<'_>, associations: alloc::vec::Vec<(surgeist_runtime::SurfaceElementRef, surgeist_dom::identity::NodeId)>, limits: surgeist_runtime::SurfaceDomBindingLimits) -> core::result::Result<(), surgeist_runtime::RuntimeDomHostError>
 impl core::default::Default for surgeist_runtime::Runtime<(), (), ()>
 pub fn surgeist_runtime::Runtime<(), (), ()>::default() -> Self
 pub struct surgeist_runtime::RuntimeBudget
@@ -759,6 +788,18 @@ pub const fn surgeist_runtime::RuntimeBudget::with_max_task_inputs(self, value: 
 pub const fn surgeist_runtime::RuntimeBudget::with_max_ui_inputs(self, value: usize) -> Self
 impl core::default::Default for surgeist_runtime::RuntimeBudget
 pub fn surgeist_runtime::RuntimeBudget::default() -> Self
+pub struct surgeist_runtime::RuntimeDomHost
+impl surgeist_runtime::RuntimeDomHost
+pub fn surgeist_runtime::RuntimeDomHost::changes_since(&self, from: core::option::Option<&surgeist_dom::host::DomHostStamp>) -> core::result::Result<surgeist_dom::host::DomHostChangeCoverage, surgeist_dom::host::DomHostError>
+pub fn surgeist_runtime::RuntimeDomHost::document(&self) -> surgeist_dom::snapshot::DomDocumentStamp
+pub fn surgeist_runtime::RuntimeDomHost::domains(&self) -> surgeist_dom::host::DomHostDomains
+pub fn surgeist_runtime::RuntimeDomHost::latest(&self) -> core::option::Option<&surgeist_dom::host::DomHostCapture>
+pub fn surgeist_runtime::RuntimeDomHost::surface(&self) -> surgeist_runtime::SurfaceRef
+pub struct surgeist_runtime::RuntimeDomHostPublication
+impl surgeist_runtime::RuntimeDomHostPublication
+pub fn surgeist_runtime::RuntimeDomHostPublication::publication(&self) -> &surgeist_dom::host::DomHostPublication
+pub fn surgeist_runtime::RuntimeDomHostPublication::surface(&self) -> surgeist_runtime::SurfaceRef
+pub fn surgeist_runtime::RuntimeDomHostPublication::window(&self) -> surgeist_runtime::WindowId
 pub struct surgeist_runtime::RuntimeDrainError
 impl surgeist_runtime::RuntimeDrainError
 pub const fn surgeist_runtime::RuntimeDrainError::code(&self) -> surgeist_runtime::RuntimeDrainErrorCode
@@ -962,6 +1003,11 @@ pub const surgeist_runtime::SubscriptionTargetKindId::SERVICE: Self
 pub const surgeist_runtime::SubscriptionTargetKindId::TASK: Self
 pub fn surgeist_runtime::SubscriptionTargetKindId::as_str(&self) -> &str
 pub fn surgeist_runtime::SubscriptionTargetKindId::new(value: impl core::convert::Into<alloc::string::String>) -> Self
+pub struct surgeist_runtime::SurfaceDomBindingLimits
+impl surgeist_runtime::SurfaceDomBindingLimits
+pub fn surgeist_runtime::SurfaceDomBindingLimits::association_capacity(self) -> usize
+pub const fn surgeist_runtime::SurfaceDomBindingLimits::new(association_capacity: usize, validation_work: usize) -> Self
+pub fn surgeist_runtime::SurfaceDomBindingLimits::validation_work(self) -> usize
 pub struct surgeist_runtime::SurfaceElementRef
 impl surgeist_runtime::SurfaceElementRef
 pub const fn surgeist_runtime::SurfaceElementRef::element_id(&self) -> surgeist_runtime::ElementId

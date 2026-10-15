@@ -165,6 +165,7 @@ mod command;
 mod coord;
 mod descriptor;
 mod diagnostic;
+mod dom_host;
 mod effect;
 mod event;
 mod ids;
@@ -199,6 +200,9 @@ pub use descriptor::{
 };
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
+};
+pub use dom_host::{
+    RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

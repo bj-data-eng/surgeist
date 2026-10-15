@@ -91,6 +91,18 @@ belongs to itself for membership; its `owner_document()` getter returns `None`.
 A detached node keeps its owner document while its ordinary root and
 connectedness change.
 
+`DomHostPublisher` captures complete fixed focus/hover element-selection
+observations from an external producer against one exact `DomDocumentStamp`.
+Supported absence, unsupported capability and inapplicability remain distinct.
+Its immutable source identity includes the selected domain configuration; checked
+`HostStateRevision` advances only when observations change. DOM-only revisions
+require explicit whole-domain recomputation without advancing equal host facts.
+Captures retain exact historical values independently of the publisher. Complete
+adjacent coverage is bounded to two domains, with explicit fallback for older
+history and whole-domain invalidation for availability changes. This boundary
+does not implement HTML focus policy, pointer processing or canonical controls;
+Runtime owns its concrete surface-selection association and capture adapter.
+
 Native `create_document()` establishes an XML document with `application/xml`
 content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative
 shadow roots disabled and a known-null custom element registry. A checked

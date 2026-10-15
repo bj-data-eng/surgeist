@@ -11,8 +11,9 @@ scheduling, and provenance. Domain parsers, resolvers, algorithms, backends, and
 concrete task execution policy remain outside this crate. Task cancellation,
 progress, admission, and Tokio execution belong to `surgeist-task`.
 
-Consume sibling public front doors. Cross-crate lowering and composition remain
-at the root boundary defined by the root guide.
+Consume sibling public front doors. Runtime owns its adapters to lower-level
+contracts, including the canonical DOM host capture join; root owns workspace
+wiring and facade composition.
 
 ## Sources
 

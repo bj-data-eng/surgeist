@@ -151,6 +151,9 @@ namespace-aware element creation, HTML state integration and shadow
 trees remain contribution work;
 the existing retained facade is not replaced by this foundation.
 DOM depends directly on HTML and consumes its exact `DocumentString`.
+DOM's immutable external focus/hover captures use exact canonical document
+stamps and a separate host source/revision. Runtime directly consumes DOM and
+owns the adapter from its actual surface selections and checked associations.
 Its planned integration owns importing HTML construction values and adapting
 canonical snapshots to HTML semantic operations. `surgeist-html` owns
 typed HTML construction; `surgeist-template` retains template syntax, symbolic

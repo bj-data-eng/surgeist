@@ -66,6 +66,12 @@ exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
 canonical native Document metadata and owned snapshots establish the foundation;
 HTML and namespace-aware element creation, shadow trees and facade
 replacement remain later contributions.
+DOM also validates immutable external focus/hover selection captures against an
+exact canonical document stamp. Runtime owns the direct adapter from its actual
+surface selections, with checked associations between surface elements and DOM
+nodes. Host source identity and revisions stay separate from canonical edits and
+render acknowledgements. These selections do not establish full HTML focus or
+pointer processing.
 DOM will own importing HTML construction values and adapting captured DOM facts
 to HTML-owned interpretation. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.

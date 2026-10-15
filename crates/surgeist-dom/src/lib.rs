@@ -43,6 +43,7 @@
 mod batch;
 mod document;
 mod element;
+mod host;
 mod identity;
 mod names;
 mod node_values;
@@ -52,6 +53,11 @@ mod store;
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use document::{DomDocumentClass, DomDocumentMetadata, DomOpaqueOrigin, DomRegistryBinding};
 pub use element::{DomElement, DomElementDefinition};
+pub use host::{
+    DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
+    DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
+    DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
+};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use snapshot::{DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomSnapshot};

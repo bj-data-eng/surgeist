@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     error::Error,
     fmt,
+    sync::Arc,
 };
 
 use super::{
@@ -325,6 +326,7 @@ impl<T: fmt::Debug> Error for RuntimeQueueError<T> {}
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Runtime<State = (), R = (), Input = ()> {
+    pub(crate) dom_host_owner: Arc<()>,
     state: State,
     reducer: R,
     state_version: StateVersion,
@@ -354,6 +356,7 @@ impl<State, R, Input> Runtime<State, R, Input> {
         queue_policy: RuntimeQueuePolicy,
     ) -> Self {
         Self {
+            dom_host_owner: Arc::new(()),
             state,
             reducer,
             state_version: StateVersion::initial(),
@@ -447,6 +450,9 @@ impl<State, R, Input> Runtime<State, R, Input> {
     /// Failed updates leave both the surface registry and observer subscriptions
     /// unchanged. A generation change or first terminal transition removes the
     /// subscriptions for the prior current registration before the new state commits.
+    /// The callback must mutate the supplied draft. Substituting a fresh surface
+    /// or an escaped earlier draft returns [`SurfaceErrorCode::InvalidSurfaceReplacement`]
+    /// without publishing any of its state.
     ///
     /// ```
     /// use surgeist_runtime::{
@@ -483,7 +489,14 @@ impl<State, R, Input> Runtime<State, R, Input> {
         let current = self.current_surface(surface)?;
         let was_terminal = is_terminal(current.lifecycle());
         let mut staged = current.staged_clone();
+        let expected_update = staged.update_identity();
         update(&mut staged)?;
+        if staged.update_identity() != expected_update {
+            return Err(SurfaceError::new(
+                SurfaceErrorCode::InvalidSurfaceReplacement,
+                "surface update substituted a value outside its current staging operation",
+            ));
+        }
 
         let cleanup_observer = (staged.surface_ref() != surface
             || (!was_terminal && is_terminal(staged.lifecycle())))
@@ -732,7 +745,7 @@ impl<State, R, Input> Runtime<State, R, Input> {
         self.diagnostics.push(diagnostic);
     }
 
-    fn current_surface(&self, surface: SurfaceRef) -> Result<&UiSurface, SurfaceError> {
+    pub(crate) fn current_surface(&self, surface: SurfaceRef) -> Result<&UiSurface, SurfaceError> {
         let Some(current) = self.surfaces.get(&surface.surface_id()) else {
             return Err(SurfaceError::new(
                 SurfaceErrorCode::UnknownSurface,

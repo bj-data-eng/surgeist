@@ -3939,6 +3939,9 @@ version = "0.1.0"
 [[package]]
 name = "surgeist-runtime"
 version = "0.1.0"
+dependencies = [
+ "surgeist-dom",
+]
 
 [[package]]
 name = "surgeist-shape"

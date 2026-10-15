@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
+    sync::Arc,
 };
 
 use super::{
@@ -721,6 +722,8 @@ pub enum SurfaceErrorCode {
     UnknownSurface,
     /// The requested lifecycle successor is not allowed from the current phase.
     InvalidLifecycleTransition,
+    /// An update callback substituted a value from outside its current staging operation.
+    InvalidSurfaceReplacement,
     /// A terminal surface cannot perform the requested local operation.
     TerminalSurface,
     /// A reference belongs to a different surface ID.
@@ -797,9 +800,32 @@ impl Error for SurfaceError {
     }
 }
 
+// A fresh authorization for each private staging operation. UiSurface deliberately
+// has no public Clone: callbacks must not duplicate a draft's authorization.
+#[derive(Clone)]
+pub(crate) struct SurfaceUpdateIdentity(Arc<()>);
+
+impl SurfaceUpdateIdentity {
+    fn new() -> Self {
+        Self(Arc::new(()))
+    }
+}
+impl PartialEq for SurfaceUpdateIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for SurfaceUpdateIdentity {}
+impl fmt::Debug for SurfaceUpdateIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SurfaceUpdateIdentity")
+    }
+}
+
 #[derive(Debug)]
 /// One registered UI surface with generation-qualified identity and lifecycle state.
 pub struct UiSurface {
+    update_identity: SurfaceUpdateIdentity,
     id: SurfaceId,
     window_id: WindowId,
     root: SurfaceRoot,
@@ -823,6 +849,7 @@ impl UiSurface {
         root: SurfaceRoot,
     ) -> Result<Self, SurfaceError> {
         Ok(Self {
+            update_identity: SurfaceUpdateIdentity::new(),
             id,
             window_id,
             root,
@@ -865,6 +892,8 @@ impl UiSurface {
 
     pub(crate) fn staged_clone(&self) -> Self {
         Self {
+            // Never share authorization with a committed or escaped earlier draft.
+            update_identity: SurfaceUpdateIdentity::new(),
             id: self.id,
             window_id: self.window_id,
             root: self.root.clone(),
@@ -879,6 +908,10 @@ impl UiSurface {
             last_rendered_state_version: self.last_rendered_state_version,
             last_rendered_invalidation_generation: self.last_rendered_invalidation_generation,
         }
+    }
+
+    pub(crate) fn update_identity(&self) -> SurfaceUpdateIdentity {
+        self.update_identity.clone()
     }
 
     pub(crate) fn assign_registration_generation(&mut self, generation: SurfaceGeneration) {
@@ -1303,7 +1336,7 @@ impl UiSurface {
         Ok(())
     }
 
-    fn ensure_not_terminal(&self) -> Result<(), SurfaceError> {
+    pub(crate) fn ensure_not_terminal(&self) -> Result<(), SurfaceError> {
         if self.lifecycle.is_terminal() {
             return Err(SurfaceError::new(
                 SurfaceErrorCode::TerminalSurface,
