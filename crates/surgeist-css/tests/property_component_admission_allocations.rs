@@ -204,6 +204,96 @@ fn check_missing_var(failures: &mut Vec<String>) {
     }
 }
 
+fn measure_source_stripe(source: &str, flex: bool) -> Stats {
+    let region = Region::new(GLOBAL);
+    let report = black_box(surgeist_css::parse_style_attribute(black_box(source)));
+    let stats = region.change();
+
+    assert!(
+        report.is_clean(),
+        "a complete stripe calculation is admitted"
+    );
+    assert_eq!(report.syntax().len(), 1);
+    let known = report.syntax()[0].known().unwrap();
+    assert_eq!(known.property(), CssKnownProperty::OutlineColor);
+    let surgeist_css::CssKnownPropertyValueRef::OutlineColor(value) =
+        known.property_value().unwrap()
+    else {
+        panic!("outline-color retains its typed image");
+    };
+    let image = value.value().image_1d().unwrap();
+    assert_eq!(image.stripes().stripes().len(), 1);
+    let thickness = image.stripes().stripes()[0].thickness().unwrap();
+    let components = match thickness {
+        surgeist_css::CssStripeThickness::Flex(value) if flex => {
+            value.calculation().unwrap().components()
+        }
+        surgeist_css::CssStripeThickness::LengthPercentage(value) if !flex => {
+            value.value().calculation().unwrap().components()
+        }
+        _ => panic!("the literal fr/px unit selects its independent typed domain"),
+    };
+    let expected = if flex {
+        "stripes(red calc(1fr))"
+    } else {
+        "stripes(red calc(1px))"
+    };
+    assert_eq!(image.serialize_specified().unwrap(), expected);
+    let start = source.find("calc(").unwrap();
+    assert_eq!(
+        components.serialize().unwrap().as_css(),
+        &source[start..source.len() - 1]
+    );
+    let CssValueOrigin::Parsed(origin) = components.items()[0].origin() else {
+        panic!("calculation retains its actual source occurrence");
+    };
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(origin.span().start().byte_offset().value(), start);
+    let surgeist_css::CssComponentValueRef::Function(function) = components.items()[0].view()
+    else {
+        panic!("retained calculation root");
+    };
+    let original = image.stripes().original_component().unwrap();
+    assert_same_snapshot(original.origin(), components.items()[0].origin());
+    assert_same_snapshot(function.closing_origin(), components.items()[0].origin());
+    drop(report);
+    stats
+}
+
+fn check_source_stripe_selection(failures: &mut Vec<String>) {
+    let growth = [true, false].map(|flex| {
+        let unit = if flex { "fr" } else { "px" };
+        let sources = [SMALL_COMMENT_BYTES, LARGE_COMMENT_BYTES].map(|length| {
+            format!(
+                "outline-color:stripes(red calc(1{unit}/*{}*/))",
+                "x".repeat(length)
+            )
+        });
+        for source in &sources {
+            let _ = measure_source_stripe(source, flex);
+        }
+        let stats = sources
+            .each_ref()
+            .map(|source| measure_source_stripe(source, flex));
+        let growth = requested_bytes(stats[1]).saturating_sub(requested_bytes(stats[0]));
+        println!(
+            "source-stripe-{unit}: small={:?}; large={:?}; retained byte growth={growth}",
+            stats[0], stats[1]
+        );
+        growth
+    });
+    // Equal-length fr/px source values retain the same authored payload and one
+    // typed calculation graph each. Choosing the first root cannot justify an
+    // additional payload-sized input copy compared with the fallback root.
+    let difference = growth[0].abs_diff(growth[1]);
+    println!(
+        "source-stripe-selection: growth difference={difference}; allowance={MAX_ADMISSION_BYTE_GROWTH}; typed domains, exact retained spelling and original snapshots passed"
+    );
+    if difference > MAX_ADMISSION_BYTE_GROWTH {
+        failures.push(format!("source stripe selection copied its owned graph: growth difference {difference} exceeds {MAX_ADMISSION_BYTE_GROWTH}"));
+    }
+}
+
 fn main() {
     let mut failures = Vec::new();
     for outcome in [Outcome::GlobalInitial, Outcome::RootSemicolon] {
@@ -231,5 +321,6 @@ fn main() {
         drop(large);
     }
     check_missing_var(&mut failures);
+    check_source_stripe_selection(&mut failures);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
