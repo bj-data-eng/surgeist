@@ -24,6 +24,25 @@ const COMMON: &str = "article section nav aside hgroup header footer address
 dt dd figure figcaption main search em strong small s cite dfn abbr ruby rt rp
 code var samp kbd sub sup i b u mark bdi bdo wbr summary noscript div span";
 
+// These interfaces add reflection, child-text operations or current-tree
+// queries, rather than another mutable native initialization slot. Heading and
+// modification interfaces are shared definitions; body event execution remains
+// a separately admitted capability. CommonHtml describes fulfilled native
+// initialization, not identical WebIDL interfaces.
+const REFLECTED_QUERY_COMMON: &str = "html head title body p hr pre blockquote
+ol ul menu li dl q data time br ins del map datalist label legend progress meter
+table caption colgroup col tbody thead tfoot tr td th h1 h2 h3 h4 h5 h6";
+
+#[test]
+fn reflected_child_text_and_tree_query_elements_need_only_common_initialization() {
+    assert_eq!(REFLECTED_QUERY_COMMON.split_whitespace().count(), 41);
+    for local in REFLECTED_QUERY_COMMON.split_whitespace() {
+        let initial = html(local);
+        assert_eq!(initial.requirement(), R::CommonHtml, "{local}");
+        assert_common(initial, true, true);
+    }
+}
+
 #[test]
 fn all_113_normative_modern_names_preserve_their_exact_requirement() {
     // Complete concrete names from normative DOM-interface definition blocks,
@@ -39,6 +58,7 @@ tbody td template textarea tfoot th thead time title tr track u ul var video wbr
     assert_eq!(modern.split_whitespace().count(), 113);
     assert_eq!(K::ALL.len(), 113);
     assert_eq!(COMMON.split_whitespace().count(), 41);
+    assert_eq!(REFLECTED_QUERY_COMMON.split_whitespace().count(), 41);
     for local in modern.split_whitespace() {
         let requirement = html(local).requirement();
         let form = match local {
@@ -54,7 +74,11 @@ tbody td template textarea tfoot th thead time title tr track u ul var video wbr
         };
         if let Some(form) = form {
             assert_eq!(requirement, R::NativeForm(form), "{local}");
-        } else if COMMON.split_whitespace().any(|expected| expected == local) {
+        } else if COMMON
+            .split_whitespace()
+            .chain(REFLECTED_QUERY_COMMON.split_whitespace())
+            .any(|expected| expected == local)
+        {
             assert_eq!(requirement, R::CommonHtml, "{local}");
         } else {
             let R::KnownHtml(element) = requirement else {
@@ -81,14 +105,28 @@ listing xmp dir font param frameset";
 #[test]
 fn known_specials_never_fall_through_as_common() {
     for (local, element) in [
-        ("script", K::Script),
-        ("template", K::Template),
-        ("option", K::Option),
-        ("selectedcontent", K::Selectedcontent),
-        ("details", K::Details),
-        ("link", K::Link),
-        ("canvas", K::Canvas),
+        ("a", K::A),
+        ("area", K::Area),
         ("audio", K::Audio),
+        ("base", K::Base),
+        ("canvas", K::Canvas),
+        ("details", K::Details),
+        ("dialog", K::Dialog),
+        ("embed", K::Embed),
+        ("form", K::Form),
+        ("iframe", K::Iframe),
+        ("link", K::Link),
+        ("meta", K::Meta),
+        ("optgroup", K::Optgroup),
+        ("option", K::Option),
+        ("picture", K::Picture),
+        ("script", K::Script),
+        ("selectedcontent", K::Selectedcontent),
+        ("slot", K::Slot),
+        ("source", K::Source),
+        ("style", K::Style),
+        ("template", K::Template),
+        ("track", K::Track),
         ("video", K::Video),
     ] {
         assert_eq!(html(local).requirement(), R::KnownHtml(element));
