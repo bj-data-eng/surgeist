@@ -245,8 +245,9 @@ fn language_sum(left: usize, right: usize) -> Result<usize, HtmlLanguageDirectio
         .ok_or(HtmlLanguageDirectionError::RepresentationExhausted)
 }
 impl HtmlLanguageDirectionFacts {
-    /// Moves bounded facts. Complete assignments must be unique slottables of
-    /// the established shadow host. Named roots require ordinary child order;
+    /// Moves bounded facts. Known empty stored assignments need no host or
+    /// topology. Nonempty assignments must be unique slottables of the
+    /// established shadow host. Named roots require ordinary child order;
     /// manual roots retain the supplied assignment order. Source history
     /// and actual control values are host-established, not reconstructed here.
     pub fn new(
@@ -429,6 +430,9 @@ impl HtmlLanguageDirectionFacts {
                     limit: limits.assigned_nodes,
                     required: assigned_capacity,
                 });
+            }
+            if nodes.is_empty() {
+                continue;
             }
             let (host, named) = validation.slot_host(capture, &fact.slot)?;
             let mut host_children = if named && !nodes.is_empty() {
