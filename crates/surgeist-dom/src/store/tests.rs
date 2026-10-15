@@ -1,6 +1,52 @@
 use super::*;
 
 #[test]
+fn cancelled_family_publication_preserves_dimensions_marquee_slots_history_and_allocations() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let canvas = batch.create_element_ns(
+        &document,
+        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        "canvas",
+    );
+    let moving = batch.create_element_ns(
+        &document,
+        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        "marquee",
+    );
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let canvas = commit.created(&canvas).unwrap().unwrap();
+    let moving = commit.created(&moving).unwrap().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(canvas, "width", "12345");
+    batch.stop_marquee(moving);
+    batch.create_element_ns(
+        document,
+        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        "canvas",
+    );
+    let prepared = dom.prepare(batch, &cancel).unwrap();
+    cancel.store(true, Ordering::Release);
+    assert_eq!(
+        dom.publish(prepared, &cancel).unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(*dom.state, *before.state);
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+}
+
+#[test]
 fn cancelled_common_nonce_publication_preserves_all_state_and_history() {
     let mut dom = dom();
     let cancel = AtomicBool::new(false);

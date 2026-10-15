@@ -108,6 +108,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         value: DocumentString,
     },
+    SetMarqueeRunning {
+        node: NodeOperand,
+        running: bool,
+    },
     RemoveAttribute {
         node: NodeOperand,
         namespace: Option<Namespace>,
@@ -390,6 +394,20 @@ impl DomBatch {
         self.commands.push(Command::SetNonce {
             node: node.into(),
             value: value.into(),
+        });
+    }
+    /// Turns a native HTML Marquee on without changing its loop index.
+    pub fn start_marquee(&mut self, node: impl Into<NodeOperand>) {
+        self.commands.push(Command::SetMarqueeRunning {
+            node: node.into(),
+            running: true,
+        });
+    }
+    /// Turns a native HTML Marquee off without changing its loop index.
+    pub fn stop_marquee(&mut self, node: impl Into<NodeOperand>) {
+        self.commands.push(Command::SetMarqueeRunning {
+            node: node.into(),
+            running: false,
         });
     }
     pub fn create_text(

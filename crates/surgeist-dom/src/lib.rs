@@ -8,6 +8,8 @@
 //! Namespace-aware common HTML/SVG/MathML elements retain actual shared common
 //! state and nonce lifecycle. Native ShadowRoots retain distinct host/ordinary
 //! relations and follow atomic adoption, clone/import and owned destruction.
+//! Native Canvas-none and Marquee families retain HTML-owned state and execute
+//! their actual attribute/value transitions without allocating pixels or animation.
 //! Slot assignment and remaining special families require their real adapters.
 //!
 //! ```

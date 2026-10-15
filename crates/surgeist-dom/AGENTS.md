@@ -28,8 +28,16 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Only source-proved common profiles are admitted until each special-family adapter
-performs its real state/hooks. Keep native null browsing context/never-navigable
+Common profiles plus actual native Canvas-none/Marquee families are admitted;
+other special families require their real state/hooks. Canvas consumes shared
+bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
+retained non-default canonical digit strings independently of attributes, and
+admit raw storage before scans plus the exact final total. Keep large family
+payloads immutable behind Arc; never hide an unchecked String clone in snapshot
+or transaction copying. Marquee retains actual on/off and native loop index0;
+start/stop preserve the index. DOM clone/import creates fresh on/index0 instead
+of copying stopped state. Canvas copied attributes run their real hooks. Neither
+family installs pixels, contexts, animation or rendering increments. Keep native null browsing context/never-navigable
 proof independent of XML class. Nonce attributes, IDL slot edits, insertion and
 cloning consume HTML's rules; content and cryptographic slot are independent
 stored/accounted strings. Keep ElementState and Attributes change coverage distinct.

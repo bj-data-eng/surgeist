@@ -78,7 +78,8 @@ does not rewrite saved creation state.
 
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
-It admits generic XML namespaces and source-proved common HTML/SVG/MathML profiles,
+It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
+and actual native HTML Canvas/Marquee families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -87,6 +88,32 @@ closed focus/internals/popover tuple. Exposed operations preserve those values.
 Special built-ins lacking their actual family adapter reject atomically with
 `NativeInitializationRequired` carrying the exact HTML-owned requirement. SVG
 lowercase script is one such requirement; uppercase Script is ordinary SVG.
+
+Native HTML Canvas retains HTML's actual none-context state: no bound context,
+origin-clean true and a transparent-black bitmap description. Exact no-namespace
+width/height attribute changes use shared HTML prefix recovery and update the
+source bitmap dimensions, including zero and integers beyond machine magnitude.
+Missing or failed values use the shared300×150 defaults. These are bitmap
+dimensions, distinct from unsigned-long reflected IDL values. Redundant sets
+have no extra none-mode reset action. No pixels, drawing context, image handle
+or width×height allocation is fabricated. `canvas_none_state()` exposes the
+current shared value. Each retained non-default canonical dimension's ASCII
+digits count as stored UTF-16 independently of the raw attribute; inline numeric
+defaults own no digit string. Immutable Arc storage prevents transaction and
+snapshot copies from cloning unbounded integer Strings.
+
+Native HTML Marquee retains HTML's actual initially-on state and closed current
+loop index0. `start_marquee` and `stop_marquee` batch commands change only the
+on/off state; repeated assignments are semantic no-ops. `marquee_state()` exposes
+that current value. Rendering-layer loop increments and animation scheduling
+have no admission API. Snapshots preserve stopped state, while native DOM
+clone/import initializes a fresh on/index0 Marquee. Canvas clone/import similarly
+initializes fresh none state and derives dimensions from copied attributes through
+their actual change steps. Neither family adds tree/adoption/CharacterData hooks
+beyond the existing applicable common effects. They remain coherent inside
+ordinary and hosted shadow trees. New family state reports `ElementState`
+independently of raw `Attributes`; equal recovered dimensions with changed raw
+spelling report only Attributes. Failed/cancelled edits roll back both domains.
 
 HTML/SVG/MathML Elements retain a real initially empty cryptographic nonce slot.
 Exact null-namespace `nonce` attribute changes update it, removal clears it, and

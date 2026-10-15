@@ -115,15 +115,27 @@ impl Draft {
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        let old_units = position.map_or(Ok(0), |position| {
-            attribute_units(&element.attributes().as_slice()[position])
-        })?;
+        let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
         let nonce = nonce_after_attribute(element, replacement.name(), Some(replacement.value()));
-        let units = (self.units - old_units - element.nonce().map_or(0, DocumentString::len))
+        let old_attribute = position.map_or(Ok(0), |index| {
+            attribute_units(&element.attributes().as_slice()[index])
+        })?;
+        // Admit raw caller storage before numerical scans/materialization. The
+        // old derived digits are excluded: a shrinking replacement may remove
+        // them. Final admission below counts the complete candidate exactly.
+        let base = self.units
+            - old_attribute
+            - element.nonce().map_or(0, DocumentString::len)
+            - element
+                .family_units()
+                .ok_or(DomError::RepresentationExhausted)?;
+        let minimum = base
             .checked_add(attribute_units(&replacement)?)
             .and_then(|units| units.checked_add(nonce.as_ref().map_or(0, DocumentString::len)))
             .ok_or(DomError::RepresentationExhausted)?;
-        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        admit(minimum, limits.units, DomResource::StringCodeUnits)?;
+        let changed = replacement.name().clone();
+        let mut staged = element.clone();
         let mut attributes = copy(element.attributes().as_slice())?;
         if let Some(position) = position {
             attributes[position] = replacement;
@@ -132,15 +144,11 @@ impl Draft {
             attributes.push(replacement);
         }
         let attributes = publish_attributes(attributes, cancelled)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
-            unreachable!("checked Element")
-        };
-        element.set_attributes(attributes);
+        staged.apply_attributes(attributes, &changed, cancelled)?;
         if let Some(nonce) = nonce {
-            element.set_nonce(nonce);
+            staged.set_nonce(nonce);
         }
-        self.units = units;
-        Ok(())
+        self.publish_element(node, old_units, staged, limits)
     }
 
     pub(super) fn remove_attribute(
@@ -148,6 +156,7 @@ impl Draft {
         node: Key,
         namespace: Option<Namespace>,
         name: DocumentString,
+        limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
@@ -166,20 +175,32 @@ impl Draft {
             return Ok(());
         };
         let removed = &element.attributes().as_slice()[position];
+        let changed = removed.name().clone();
         let nonce = nonce_after_attribute(element, removed.name(), None);
-        let units =
-            self.units - attribute_units(removed)? - element.nonce().map_or(0, DocumentString::len)
-                + nonce.as_ref().map_or(0, DocumentString::len);
+        let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
+        let mut staged = element.clone();
         let mut attributes = copy(element.attributes().as_slice())?;
         attributes.remove(position);
         let attributes = publish_attributes(attributes, cancelled)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
-            unreachable!("checked Element")
-        };
-        element.set_attributes(attributes);
+        staged.apply_attributes(attributes, &changed, cancelled)?;
         if let Some(nonce) = nonce {
-            element.set_nonce(nonce);
+            staged.set_nonce(nonce);
         }
+        self.publish_element(node, old_units, staged, limits)
+    }
+
+    fn publish_element(
+        &mut self,
+        node: Key,
+        old_units: usize,
+        staged: DomElement,
+        limits: DomLimits,
+    ) -> Result<(), DomError> {
+        let units = (self.units - old_units)
+            .checked_add(staged.units().ok_or(DomError::RepresentationExhausted)?)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        self.node_mut(node).kind = DomNodeKind::Element(staged);
         self.units = units;
         Ok(())
     }

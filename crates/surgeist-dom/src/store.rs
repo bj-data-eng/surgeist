@@ -50,6 +50,7 @@ pub enum DomError {
     NotSupported,
     NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement),
     NonceInapplicable,
+    MarqueeInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
     InvalidDestruction,
@@ -945,13 +946,20 @@ impl Draft {
                 let node = self.resolve(node)?;
                 self.set_nonce(node, value, limits, cancelled)?;
             }
+            Command::SetMarqueeRunning { node, running } => {
+                let node = self.resolve(node)?;
+                let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
+                    return Err(DomError::WrongNodeKind);
+                };
+                element.set_marquee_running(running)?;
+            }
             Command::RemoveAttribute {
                 node,
                 namespace,
                 name,
             } => {
                 let node = self.resolve(node)?;
-                self.remove_attribute(node, namespace, name, cancelled)?;
+                self.remove_attribute(node, namespace, name, limits, cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node)?;

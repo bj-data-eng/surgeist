@@ -96,8 +96,9 @@ impl Draft {
                 return Err(DomError::NotSupported);
             }
             DomNodeKind::Element(element) => {
-                // Recreate actual common initialization from the captured name.
-                // Special families cannot enter this canonical surface yet.
+                // Recreate actual common/family initialization from the name.
+                // Canvas dimensions follow copied attrs; Marquee starts on/0.
+                // Snapshot Rust Clone is deliberately a different operation.
                 // Attribute change steps precede source nonce cloning below.
                 DomNodeKind::Element(element.clone_initialized(cancelled)?)
             }

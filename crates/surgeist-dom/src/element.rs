@@ -4,7 +4,12 @@ use crate::{
     OrderedAttributes, QualifiedName,
 };
 use std::sync::atomic::AtomicBool;
-use surgeist_html::{HtmlNativeCommonState, HtmlNativeInitializationRequirement as Requirement};
+use surgeist_html::{
+    HtmlCanvasNoneState, HtmlMarqueeState, HtmlNativeCommonState,
+    HtmlNativeInitializationRequirement as Requirement, KnownHtmlElement,
+};
+mod family;
+use family::NativeFamily;
 
 /// Definition association established by this native generic creation surface.
 /// Registry/definition object admission is a separate, unexposed capability.
@@ -25,6 +30,7 @@ pub struct DomElement {
     saved_is: Option<DocumentString>,
     common: HtmlNativeCommonState,
     nonce: Option<DocumentString>,
+    family: NativeFamily,
     captured_in_view_transition: bool,
 }
 
@@ -64,13 +70,17 @@ impl DomElement {
             surgeist_html::bounded::native_element_initialization_with(&name, |_| {
                 crate::store::check_cancel(cancelled)
             })?;
-        match initialization.requirement() {
+        let family = match initialization.requirement() {
             Requirement::GenericElement
             | Requirement::CommonHtml
             | Requirement::CommonSvg
-            | Requirement::CommonMathml => {}
+            | Requirement::CommonMathml => NativeFamily::Common,
+            Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
+                NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
+            }
+            Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
-        }
+        };
         let common = initialization.common();
         let html = common.html().is_some();
         let custom_name = html
@@ -89,6 +99,7 @@ impl DomElement {
             saved_is,
             common,
             nonce: common.nonce().map(|_| DocumentString::from("")),
+            family,
             captured_in_view_transition: false,
         })
     }
@@ -99,6 +110,31 @@ impl DomElement {
     /// Cryptographic nonce slot, independent of content. None means inapplicable.
     pub fn nonce(&self) -> Option<&DocumentString> {
         self.nonce.as_ref()
+    }
+    /// Actual none-mode Canvas state, or inapplicability for another family.
+    pub fn canvas_none_state(&self) -> Option<&HtmlCanvasNoneState> {
+        match &self.family {
+            NativeFamily::Canvas(state) => Some(state),
+            _ => None,
+        }
+    }
+    /// Actual native Marquee state, including its closed zero loop index.
+    pub fn marquee_state(&self) -> Option<HtmlMarqueeState> {
+        match self.family {
+            NativeFamily::Marquee(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_marquee_running(&mut self, running: bool) -> Result<(), DomError> {
+        let NativeFamily::Marquee(state) = &mut self.family else {
+            return Err(DomError::MarqueeInapplicable);
+        };
+        if running {
+            state.start();
+        } else {
+            state.stop();
+        }
+        Ok(())
     }
     pub(crate) fn set_nonce(&mut self, nonce: DocumentString) {
         self.nonce = Some(nonce);
@@ -117,6 +153,7 @@ impl DomElement {
             && self.saved_is == other.saved_is
             && self.common == other.common
             && self.nonce == other.nonce
+            && self.family == other.family
     }
     pub fn name(&self) -> &QualifiedName {
         &self.name
@@ -153,13 +190,28 @@ impl DomElement {
             .get(namespace, local_name)
             .map(|attribute| attribute.value())
     }
-    pub(crate) fn set_attributes(&mut self, attributes: OrderedAttributes) {
+    pub(crate) fn apply_attributes(
+        &mut self,
+        attributes: OrderedAttributes,
+        changed: &QualifiedName,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.family = self
+            .family
+            .after_attribute(changed, attributes.as_slice(), &mut || {
+                crate::store::check_cancel(cancelled)
+            })?;
         self.attributes = attributes;
+        Ok(())
+    }
+    pub(crate) fn family_units(&self) -> Option<usize> {
+        self.family.units()
     }
     pub(crate) fn units(&self) -> Option<usize> {
         let mut units = name_units(&self.name)?
             .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?
             .checked_add(self.nonce.as_ref().map_or(0, DocumentString::len))?;
+        units = units.checked_add(self.family.units()?)?;
         for attribute in self.attributes.iter() {
             units = units
                 .checked_add(name_units(attribute.name())?)?
