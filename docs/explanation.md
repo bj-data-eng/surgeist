@@ -12,7 +12,7 @@ Domain ownership still matters. The
 [architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
 uses direct subsystem dependencies: each consumer owns integration with its
 lower-level inputs, alongside its algorithms, models and backend adapters.
-CSSOM owns its CSS integration; the planned DOM owns its HTML integration.
+CSSOM owns its CSS integration; DOM owns its HTML integration.
 Tests exercise those actual dependencies without requiring the application
 facade. Runtime owns scheduling and coherent publication; the facade provides
 application builders, reexports and bootstrap. `surgeist-test` owns
@@ -56,16 +56,20 @@ are implemented as three packages with direct acyclic dependencies. Manifests
 and source establish those boundaries; no old-package reexports are retained.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
-document identity, mutation and snapshots with a bounded native XML tree:
-Document, generic XML Element, ordinary DocumentFragment, Text, Comment,
-ProcessingInstruction and DocumentType nodes. Ordered namespaced attributes
+document identity, mutation and snapshots with native XML Documents, namespaced
+Elements, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
+DocumentType nodes. Ordered namespaced attributes
 and same-store adoption use that same mutation owner. Import copies a checked
 immutable source capture into fresh target identities, including across stores.
 It consumes HTML's
 exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
-canonical native Document metadata and owned snapshots establish the foundation;
-HTML and namespace-aware element creation, shadow trees and facade
-replacement remain later contributions.
+canonical native Document metadata and owned snapshots establish the foundation.
+Namespace-aware creation consumes HTML-owned common initialization requirements;
+applicable nonce slots remain separate from content attributes through edits,
+cloning and import. A native document retains its actual null browsing context
+and never-navigable state independently of its XML class. Remaining special
+family hooks, HTML document creation, shadow trees and facade replacement remain
+contribution work.
 DOM also validates immutable external focus/hover selection captures against an
 exact canonical document stamp. Runtime owns the direct adapter from its actual
 surface selections, with checked associations between surface elements and DOM

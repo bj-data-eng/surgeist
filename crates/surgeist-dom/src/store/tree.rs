@@ -8,8 +8,8 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         // Removal precedes the document test, including same-document adoption.
-        // Only generic no-namespace Elements exist in this capability surface;
-        // HTML family, registry-object and hosted-tree hooks are inapplicable.
+        // Supported common profiles retain nonce/common state during adoption;
+        // registry objects, hosted trees and special families remain unexposed.
         self.remove(node);
         if self.node(node)?.document == document {
             return Ok(());
@@ -183,9 +183,9 @@ impl Draft {
             return Ok(());
         }
         reserve(&mut self.node_mut(parent).children, moving.len())?;
-        // Fragment removal completes before any insertion; the generic XML
-        // surface has no applicable language children-changed/post-connection
-        // effects. All relation changes still use the same ordered primitives.
+        // Fragment removal completes before any insertion. Supported common
+        // profiles have no children-changed family effect; each inserted
+        // subtree runs its applicable common insertion steps below.
         if fragment {
             for child in &moving {
                 check_cancel(cancelled)?;
@@ -206,7 +206,121 @@ impl Draft {
             });
             target.children.insert(index, child);
             self.node_mut(child).parent = Some(parent);
+            self.common_insertion_steps(child, &mut || check_cancel(cancelled))?;
         }
         Ok(())
+    }
+
+    fn common_insertion_steps(
+        &self,
+        root: Key,
+        admit_step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        use surgeist_html::{
+            HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceConnection,
+            HtmlNonceInsertionEffect,
+        };
+        let mut pending = Vec::new();
+        reserve(&mut pending, 1)?;
+        pending.push(root);
+        while let Some(key) = pending.pop() {
+            admit_step()?;
+            let node = self.node(key)?;
+            reserve(&mut pending, node.children.len())?;
+            pending.extend(node.children.iter().rev().copied());
+            let DomNodeKind::Element(element) = &node.kind else {
+                continue;
+            };
+            let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
+                unreachable!("canonical node document")
+            };
+            // This is an established native environment fact, independent of
+            // class or connectedness. No CSP observation is invented.
+            let connection = match document.native_environment().browsing_context() {
+                HtmlBrowsingContextPresence::Absent => {
+                    HtmlNonceConnection::NotBrowsingContextConnected
+                }
+                HtmlBrowsingContextPresence::Unavailable | HtmlBrowsingContextPresence::Present => {
+                    HtmlNonceConnection::Unavailable
+                }
+            };
+            let mut content = None;
+            for attribute in element.attributes().iter() {
+                admit_step()?;
+                if attribute.name().namespace().uri().is_none()
+                    && attribute.name().local_name().code_units() == [0x6e, 0x6f, 0x6e, 0x63, 0x65]
+                {
+                    content = Some(attribute.value());
+                    break;
+                }
+            }
+            match surgeist_html::nonce_insertion_effect(
+                element.name(),
+                content,
+                connection,
+                HtmlHeaderDeliveredCsp::Unavailable,
+            ) {
+                HtmlNonceInsertionEffect::KeepContent => {}
+                HtmlNonceInsertionEffect::Unavailable(missing) => {
+                    return Err(DomError::NonceEnvironmentUnavailable(missing));
+                }
+                HtmlNonceInsertionEffect::HideContentPreservingSlot => {
+                    unreachable!("native null browsing context cannot hide nonce content")
+                }
+            }
+            // Closed HTML popovers are hidden, so their removal/attribute hide
+            // steps return without changing state. Never-navigable documents
+            // are not fully active, discharging the autofocus insertion guard.
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancellation_during_common_descendant_insertion_keeps_publication_unchanged() {
+        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 8, 8192).unwrap()).unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let parent = batch.create_element_ns(
+            &document,
+            crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+            "div",
+        );
+        let child = batch.create_element_ns(
+            &document,
+            crate::Namespace::from_uri("http://www.w3.org/2000/svg"),
+            "g",
+        );
+        batch.set_attribute(&child, "nonce", "child");
+        batch.insert_before(&child, &parent, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let parent = commit.created(&parent).unwrap().unwrap();
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity)).unwrap();
+        let key = draft.resolve(parent.into()).unwrap();
+        draft
+            .set_nonce(key, "unpublished".into(), dom.limits(), &cancel)
+            .unwrap();
+        let mut visited = 0;
+        assert_eq!(
+            draft.common_insertion_steps(key, &mut || {
+                visited += 1;
+                if visited == 2 {
+                    cancel.store(true, Ordering::Release);
+                }
+                check_cancel(&cancel)
+            }),
+            Err(DomError::Cancelled)
+        );
+        assert_eq!(visited, 2);
+        drop(draft);
+        assert_eq!(*dom.state, *before.state);
+        assert_eq!(dom.usage(), usage);
     }
 }

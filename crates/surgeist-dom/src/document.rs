@@ -61,6 +61,25 @@ pub struct DomDocumentMetadata {
     mode: HtmlDocumentMode,
     allow_declarative_shadow_roots: bool,
     registry: DomRegistryBinding,
+    environment: DomNativeDocumentEnvironment,
+}
+
+/// Native documents have never been associated with a navigable and have no
+/// browsing context. This proof is independent of the document's XML/HTML class.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomNativeDocumentEnvironment {
+    closed: (),
+}
+impl DomNativeDocumentEnvironment {
+    pub const fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
+        surgeist_html::HtmlBrowsingContextPresence::Absent
+    }
+    pub const fn has_ever_had_navigable(&self) -> bool {
+        false
+    }
+    pub const fn is_fully_active(&self) -> bool {
+        false
+    }
 }
 
 impl DomDocumentMetadata {
@@ -74,6 +93,7 @@ impl DomDocumentMetadata {
             mode: HtmlDocumentMode::NoQuirks,
             allow_declarative_shadow_roots: false,
             registry: DomRegistryBinding::Null,
+            environment: DomNativeDocumentEnvironment { closed: () },
         }
     }
     pub fn class(&self) -> DomDocumentClass {
@@ -100,6 +120,9 @@ impl DomDocumentMetadata {
     }
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
         self.registry
+    }
+    pub fn native_environment(&self) -> DomNativeDocumentEnvironment {
+        self.environment
     }
     pub(crate) fn units(&self) -> Option<usize> {
         self.content_type

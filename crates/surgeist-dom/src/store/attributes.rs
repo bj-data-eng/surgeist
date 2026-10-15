@@ -27,6 +27,29 @@ fn publish_attributes(
 }
 
 impl Draft {
+    pub(super) fn set_nonce(
+        &mut self,
+        node: Key,
+        value: DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancelled)?;
+        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
+            return Err(DomError::WrongNodeKind);
+        };
+        let old = element.nonce().ok_or(DomError::NonceInapplicable)?.len();
+        let units = (self.units - old)
+            .checked_add(value.len())
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
+            unreachable!("checked Element")
+        };
+        element.set_nonce(value);
+        self.units = units;
+        Ok(())
+    }
     pub(super) fn set_attribute(
         &mut self,
         node: Key,
@@ -95,8 +118,10 @@ impl Draft {
         let old_units = position.map_or(Ok(0), |position| {
             attribute_units(&element.attributes().as_slice()[position])
         })?;
-        let units = (self.units - old_units)
+        let nonce = nonce_after_attribute(element, replacement.name(), Some(replacement.value()));
+        let units = (self.units - old_units - element.nonce().map_or(0, DocumentString::len))
             .checked_add(attribute_units(&replacement)?)
+            .and_then(|units| units.checked_add(nonce.as_ref().map_or(0, DocumentString::len)))
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let mut attributes = copy(element.attributes().as_slice())?;
@@ -111,6 +136,9 @@ impl Draft {
             unreachable!("checked Element")
         };
         element.set_attributes(attributes);
+        if let Some(nonce) = nonce {
+            element.set_nonce(nonce);
+        }
         self.units = units;
         Ok(())
     }
@@ -137,7 +165,11 @@ impl Draft {
         let Some(position) = position else {
             return Ok(());
         };
-        let units = self.units - attribute_units(&element.attributes().as_slice()[position])?;
+        let removed = &element.attributes().as_slice()[position];
+        let nonce = nonce_after_attribute(element, removed.name(), None);
+        let units =
+            self.units - attribute_units(removed)? - element.nonce().map_or(0, DocumentString::len)
+                + nonce.as_ref().map_or(0, DocumentString::len);
         let mut attributes = copy(element.attributes().as_slice())?;
         attributes.remove(position);
         let attributes = publish_attributes(attributes, cancelled)?;
@@ -145,7 +177,23 @@ impl Draft {
             unreachable!("checked Element")
         };
         element.set_attributes(attributes);
+        if let Some(nonce) = nonce {
+            element.set_nonce(nonce);
+        }
         self.units = units;
         Ok(())
+    }
+}
+
+fn nonce_after_attribute(
+    element: &DomElement,
+    attribute: &crate::QualifiedName,
+    value: Option<&DocumentString>,
+) -> Option<DocumentString> {
+    use surgeist_html::HtmlNonceAttributeEffect;
+    match surgeist_html::nonce_attribute_change(element.name(), attribute, value) {
+        HtmlNonceAttributeEffect::Ignore => element.nonce().cloned(),
+        HtmlNonceAttributeEffect::ClearSlot => Some("".into()),
+        HtmlNonceAttributeEffect::CopyValue(value) => Some(value.clone()),
     }
 }

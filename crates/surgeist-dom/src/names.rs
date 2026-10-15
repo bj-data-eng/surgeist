@@ -11,7 +11,11 @@ pub(crate) fn valid_element_local_name(
     name: &DocumentString,
     cancelled: &AtomicBool,
 ) -> Result<bool, DomError> {
-    let Some((&first, rest)) = name.code_units().split_first() else {
+    valid_element_units(name.code_units(), cancelled)
+}
+
+fn valid_element_units(name: &[u16], cancelled: &AtomicBool) -> Result<bool, DomError> {
+    let Some((&first, rest)) = name.split_first() else {
         return Ok(false);
     };
     if matches!(first, 0x41..=0x5a | 0x61..=0x7a) {
@@ -58,10 +62,33 @@ fn exact(value: &DocumentString, text: &str) -> bool {
     value.code_units().iter().copied().eq(text.encode_utf16())
 }
 
+#[derive(Clone, Copy)]
+enum NameContext {
+    Element,
+    Attribute,
+}
+
 /// Validation precedes allocation/splitting, preserving the source error order.
 pub(crate) fn attribute_name(
     namespace: Namespace,
     qualified: DocumentString,
+    cancelled: &AtomicBool,
+) -> Result<QualifiedName, DomError> {
+    extracted_name(namespace, qualified, NameContext::Attribute, cancelled)
+}
+
+pub(crate) fn element_name(
+    namespace: Namespace,
+    qualified: DocumentString,
+    cancelled: &AtomicBool,
+) -> Result<QualifiedName, DomError> {
+    extracted_name(namespace, qualified, NameContext::Element, cancelled)
+}
+
+fn extracted_name(
+    namespace: Namespace,
+    qualified: DocumentString,
+    context: NameContext,
     cancelled: &AtomicBool,
 ) -> Result<QualifiedName, DomError> {
     let mut split = None;
@@ -85,13 +112,19 @@ pub(crate) fn attribute_name(
         }
     }
     let local = &qualified.code_units()[split.map_or(0, |at| at + 1)..];
-    if local.is_empty() {
-        return Err(DomError::InvalidCharacter);
-    }
-    for &unit in local {
-        crate::store::check_cancel(cancelled)?;
-        if forbidden_common(unit) || unit == 0x3d {
+    if matches!(context, NameContext::Element) {
+        if !valid_element_units(local, cancelled)? {
             return Err(DomError::InvalidCharacter);
+        }
+    } else {
+        if local.is_empty() {
+            return Err(DomError::InvalidCharacter);
+        }
+        for &unit in local {
+            crate::store::check_cancel(cancelled)?;
+            if forbidden_common(unit) || unit == 0x3d {
+                return Err(DomError::InvalidCharacter);
+            }
         }
     }
     let prefix_is = |text: &str| {

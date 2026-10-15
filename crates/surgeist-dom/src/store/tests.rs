@@ -1,5 +1,47 @@
 use super::*;
 
+#[test]
+fn cancelled_common_nonce_publication_preserves_all_state_and_history() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element_ns(
+        &document,
+        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        "div",
+    );
+    batch.set_attribute(&element, "nonce", "content");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let mut batch = DomBatch::new();
+    batch.set_nonce(element, "unpublished");
+    batch.insert_before(element, document, None);
+    let transient = batch.create_element_ns(
+        document,
+        crate::Namespace::from_uri("http://www.w3.org/2000/svg"),
+        "g",
+    );
+    batch.set_nonce(&transient, "also-unpublished");
+    let prepared = dom.prepare(batch, &cancel).unwrap();
+    cancel.store(true, Ordering::Release);
+    assert_eq!(
+        dom.publish(prepared, &cancel).unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(*dom.state, *before.state);
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+}
+
 fn dom() -> Dom {
     Dom::new(DomLimits::new(32, 256, 64, 8, 8192).unwrap()).unwrap()
 }

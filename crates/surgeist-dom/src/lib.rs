@@ -1,11 +1,12 @@
-//! Canonical ownership for a bounded native XML document tree.
+//! Canonical ownership for a bounded native document tree.
 //!
 //! One [`Dom`] exclusively mutates its documents. Batches publish atomically,
 //! and owned snapshots retain their exact identities and data after later edits.
 //! Generic XML Element creation, captured generic import and same-store adoption
 //! are supported. Explicitly initialized View Transitions retain canonical
 //! structural state and real CSSOM associations, without rendering resources.
-//! HTML/native namespace-family initialization is not exposed.
+//! Namespace-aware common HTML/SVG/MathML elements retain actual shared common
+//! state and nonce lifecycle. Special families require their complete adapters.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -54,7 +55,10 @@ mod store;
 mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
-pub use document::{DomDocumentClass, DomDocumentMetadata, DomOpaqueOrigin, DomRegistryBinding};
+pub use document::{
+    DomDocumentClass, DomDocumentMetadata, DomNativeDocumentEnvironment, DomOpaqueOrigin,
+    DomRegistryBinding,
+};
 pub use element::{DomElement, DomElementDefinition};
 pub use host::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,

@@ -47,6 +47,9 @@ pub enum DomError {
     InvalidCharacter,
     Namespace,
     NotSupported,
+    NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement),
+    NonceInapplicable,
+    NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
     InvalidDestruction,
     IndexSize,
@@ -223,6 +226,7 @@ pub enum DomChange {
     Destroyed(NodeId),
     Data(NodeId),
     Attributes(NodeId),
+    ElementState(NodeId),
     NodeDocument(NodeId),
     Parent(NodeId),
     Children(NodeId),
@@ -822,6 +826,13 @@ impl Draft {
                     Creation::Document => Some(NATIVE_DOCUMENT_STRING_UNITS),
                     Creation::Fragment => Some(0),
                     Creation::Element(name) => Some(name.len()),
+                    // A QName separator is not stored in prefix/local fields.
+                    // This cheap lower bound cannot reject an exact-capacity
+                    // prefixed name; allocate admits the complete actual kind.
+                    Creation::ElementNs { namespace, name } => name
+                        .len()
+                        .saturating_sub(1)
+                        .checked_add(namespace.uri().map_or(0, DocumentString::len)),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data } => {
                         target.len().checked_add(data.len())
@@ -848,6 +859,9 @@ impl Draft {
                     Creation::Fragment => DomNodeKind::DocumentFragment,
                     Creation::Element(name) => {
                         DomNodeKind::Element(DomElement::native(name, cancelled)?)
+                    }
+                    Creation::ElementNs { namespace, name } => {
+                        DomNodeKind::Element(DomElement::native_ns(namespace, name, cancelled)?)
                     }
                     Creation::Text(data) => DomNodeKind::Text(data),
                     Creation::Comment(data) => DomNodeKind::Comment(data),
@@ -904,6 +918,10 @@ impl Draft {
             } => {
                 let node = self.resolve(node)?;
                 self.set_attribute(node, namespace, name, value, limits, cancelled)?;
+            }
+            Command::SetNonce { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_nonce(node, value, limits, cancelled)?;
             }
             Command::RemoveAttribute {
                 node,
@@ -1158,10 +1176,17 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 }
                 let intrinsic_changed = match (&node.kind, &current.kind) {
                     (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
-                        !before.same_intrinsic_state(after)
+                        before.attributes() != after.attributes()
                     }
                     _ => node.kind != current.kind,
                 };
+                if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
+                    (&node.kind, &current.kind)
+                    && !before.same_nonattribute_state(after)
+                {
+                    reserve(&mut changes, 1)?;
+                    changes.push(DomChange::ElementState(id));
+                }
                 let kind_change = if intrinsic_changed {
                     Some(
                         if matches!(

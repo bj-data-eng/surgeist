@@ -1,4 +1,4 @@
-//! Generic DOM clone/import over a checked immutable source capture.
+//! Supported native DOM clone/import over a checked immutable source capture.
 use super::*;
 
 struct Frame {
@@ -64,11 +64,10 @@ impl Draft {
         let kind = match original.kind() {
             DomNodeKind::Document(_) => return Err(DomError::NotSupported),
             DomNodeKind::Element(element) => {
-                // The current canonical constructor admits only generic
-                // no-namespace Elements, with known-null bindings/saved-is.
-                // Recreate their actual native state; do not copy state owned
-                // by future HTML/control/template/script/registry capabilities.
-                DomNodeKind::Element(element.clone_generic()?)
+                // Recreate actual common initialization from the captured name.
+                // Special families cannot enter this canonical surface yet.
+                // Attribute change steps precede source nonce cloning below.
+                DomNodeKind::Element(element.clone_initialized(cancelled)?)
             }
             // These immutable value payloads contain exact intrinsic fields
             // and no foreign node/document references. In particular PI clone
@@ -87,6 +86,9 @@ impl Draft {
             for attribute in element.attributes().iter() {
                 check_cancel(cancelled)?;
                 self.append_cloned_attribute(copy, attribute.clone(), limits, cancelled)?;
+            }
+            if let Some(nonce) = element.nonce() {
+                self.set_nonce(copy, nonce.clone(), limits, cancelled)?;
             }
         }
         Ok(copy)

@@ -1,7 +1,7 @@
 # surgeist-dom
 
 Canonical native document ownership with atomic edits and owned immutable
-snapshots. The native contribution supports Document, generic XML Element,
+snapshots. The native contribution supports Document, native Element,
 ordinary DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
 HTML's exact UTF-16 `DocumentString`, `QualifiedName`, `Attribute` and
 `OrderedAttributes`, CSS's checked `CssViewTransitionIdent`, and CSSOM's real
@@ -15,7 +15,8 @@ node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
 each document's content type, encoding name and URL serialization (31 units for
 the native defaults). Element names and every attribute's namespace URI,
-prefix, local name and value count as separate logical stored slots.
+prefix, local name and value count as separate logical stored slots. An applicable
+cryptographic nonce slot counts independently of its content attribute.
 Limits do not promise a total heap bound: caller-owned batches, snapshot/report
 retention, allocator bookkeeping and temporary transaction preparation are
 separate. A limit update
@@ -71,8 +72,37 @@ DOM name validation, not an XML QName regex or HTML authoring validation. A name
 such as `input` or `template` has no HTML family semantics in this namespace.
 Registry and definition bindings are known-null, saved creation `is` is absent,
 and shared HTML rules establish the uncustomized state. A later `is` attribute
-does not rewrite saved creation state. Namespace-aware Element creation and HTML,
-SVG or MathML native initialization have no public constructor yet.
+does not rewrite saved creation state.
+
+`create_element_ns` validates the selected relaxed Element QName rules and derives
+native initialization from the actual expanded name through HTML's shared producer.
+It admits generic XML namespaces and source-proved common HTML/SVG/MathML profiles,
+preserving prefix, case and exact UTF-16. It does not apply HTML content-model
+validation or parser aliases. Registry/definition are known-null; actual valid
+HTML custom names establish Undefined state through shared rules. Common state
+includes the actual empty reaction queue/unset click flag, and the HTML-only
+closed focus/internals/popover tuple. Exposed operations preserve those values.
+Special built-ins lacking their actual family adapter reject atomically with
+`NativeInitializationRequired` carrying the exact HTML-owned requirement. SVG
+lowercase script is one such requirement; uppercase Script is ordinary SVG.
+
+HTML/SVG/MathML Elements retain a real initially empty cryptographic nonce slot.
+Exact null-namespace `nonce` attribute changes update it, removal clears it, and
+`set_nonce` changes only the slot. Case/namespace mismatches do not affect it.
+State-only edits report `ElementState`, separately from `Attributes`, and advance
+the same DOM revision. Clone/import appends actual attributes through their change
+steps, then copies the captured nonce slot. Native Document environment stores
+real null browsing-context and never-navigable proof independently of XML class.
+Insertion runs common steps over inserted descendants; this native environment
+proves nonce content remains visible without inventing CSP facts. No API attaches
+a browsing context or advances the closed common tuple into interactive state.
+
+This common contribution does not complete native HTML. Remaining exact producer
+requirements include native form/control relations and values, template hosted
+contents/inert documents, HTML/SVG script state and preparation, frame/iframe
+navigables, link/style associations, details/dialog state, and resource/media
+families. Their real initialization and applicable attribute/tree/adoption hooks
+must join before admission; a requirement error is not a permanent HTML dialect.
 
 Attribute edits use ordered expanded identity `(namespace, local_name)`. Ordinary
 name operations select the first exact qualified spelling; a newly set literal
@@ -113,7 +143,7 @@ when their URLs match. Cloning an origin preserves its identity; URL spellings
 and source labels do not establish origins. Metadata and origins are staged
 privately with the rest of the batch, and old snapshots retain them. Ordinary
 doctype edits do not change document mode. Host/imported metadata and registry
-objects have no admission API yet.
+objects have no admission API yet. Native environment proof also survives captures.
 
 `import_node` reads a checked node from an owned immutable `DomSnapshot` and
 copies it into a target Document with fresh identities and a detached root.
@@ -123,8 +153,8 @@ walks ordinary children in order without recursive native calls. Exact attribute
 names/prefixes/values are appended through the same admitted attribute writer;
 PI cloning copies its current target/data, including `?>` introduced by a later
 CharacterData edit, without repeating initial PI construction validation.
-Document import is `NotSupported`. Generic XML import includes no HTML family,
-shadow-tree or registry-object installation. The returned batch ticket names
+Document import is `NotSupported`. Supported common import includes no special
+HTML family, shadow-tree or registry-object installation. The returned batch ticket names
 only the imported root; descendant IDs become available from the committed
 snapshot. Native tickets before or after that root remain independent of its
 private descendant allocations. Failure/cancellation publishes none of them,

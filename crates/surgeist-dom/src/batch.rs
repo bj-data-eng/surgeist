@@ -46,6 +46,10 @@ pub(crate) enum Creation {
     Document,
     Fragment,
     Element(DocumentString),
+    ElementNs {
+        namespace: Namespace,
+        name: DocumentString,
+    },
     Text(DocumentString),
     Comment(DocumentString),
     ProcessingInstruction {
@@ -94,6 +98,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         namespace: Option<Namespace>,
         name: DocumentString,
+        value: DocumentString,
+    },
+    SetNonce {
+        node: NodeOperand,
         value: DocumentString,
     },
     RemoveAttribute {
@@ -338,6 +346,30 @@ impl DomBatch {
         local_name: impl Into<DocumentString>,
     ) -> CreatedNode {
         self.create(Creation::Element(local_name.into()), Some(document.into()))
+    }
+    /// Namespace-aware native creation with DOM element-name validation.
+    /// Known families without their complete native adapter are rejected at apply.
+    pub fn create_element_ns(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(
+            Creation::ElementNs {
+                namespace,
+                name: qualified_name.into(),
+            },
+            Some(document.into()),
+        )
+    }
+    /// Changes the applicable cryptographic nonce slot without changing content.
+    /// An Element outside HTML/SVG/MathML rejects this operation.
+    pub fn set_nonce(&mut self, node: impl Into<NodeOperand>, value: impl Into<DocumentString>) {
+        self.commands.push(Command::SetNonce {
+            node: node.into(),
+            value: value.into(),
+        });
     }
     pub fn create_text(
         &mut self,

@@ -4,6 +4,7 @@ use crate::{
     OrderedAttributes, QualifiedName,
 };
 use std::sync::atomic::AtomicBool;
+use surgeist_html::{HtmlNativeCommonState, HtmlNativeInitializationRequirement as Requirement};
 
 /// Definition association established by this native generic creation surface.
 /// Registry/definition object admission is a separate, unexposed capability.
@@ -12,11 +13,8 @@ pub enum DomElementDefinition {
     Null,
 }
 
-/// Canonical generic XML Element state, captured with its owner and tree.
-///
-/// The native creator currently produces no-namespace elements only. A local
-/// name such as `input` or `template` does not create an HTML element. This
-/// private-field value cannot be used to bypass DOM validation or native hooks.
+/// Canonical supported native Element state, captured with its owner and tree.
+/// Private fields prevent bypassing name validation and native initialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomElement {
     name: QualifiedName,
@@ -25,6 +23,8 @@ pub struct DomElement {
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
     saved_is: Option<DocumentString>,
+    common: HtmlNativeCommonState,
+    nonce: Option<DocumentString>,
     captured_in_view_transition: bool,
 }
 
@@ -36,33 +36,72 @@ impl DomElement {
         if !valid_element_local_name(&local_name, cancelled)? {
             return Err(DomError::InvalidCharacter);
         }
-        Ok(Self::generic(
+        Self::initialize(
             QualifiedName::new(Namespace::none(), None, local_name),
             None,
-        ))
+            cancelled,
+        )
     }
-    /// DOM single-node cloning uses trusted canonical name fields, not the
-    /// public native name constructor. Other namespaces need their real family
-    /// initialization before they can enter this import capability.
-    pub(crate) fn clone_generic(&self) -> Result<Self, DomError> {
-        if self.name.namespace().uri().is_some() || self.name.prefix().is_some() {
-            return Err(DomError::NotSupported);
+    pub(crate) fn native_ns(
+        namespace: Namespace,
+        qualified: DocumentString,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let name = crate::names::element_name(namespace, qualified, cancelled)?;
+        Self::initialize(name, None, cancelled)
+    }
+    /// Initialize trusted captured name fields; copied attributes and the
+    /// source nonce slot are applied separately in source cloning order.
+    pub(crate) fn clone_initialized(&self, cancelled: &AtomicBool) -> Result<Self, DomError> {
+        Self::initialize(self.name.clone(), self.saved_is.clone(), cancelled)
+    }
+    fn initialize(
+        name: QualifiedName,
+        saved_is: Option<DocumentString>,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let initialization =
+            surgeist_html::bounded::native_element_initialization_with(&name, |_| {
+                crate::store::check_cancel(cancelled)
+            })?;
+        match initialization.requirement() {
+            Requirement::GenericElement
+            | Requirement::CommonHtml
+            | Requirement::CommonSvg
+            | Requirement::CommonMathml => {}
+            requirement => return Err(DomError::NativeInitializationRequired(requirement)),
         }
-        Ok(Self::generic(self.name.clone(), self.saved_is.clone()))
-    }
-    fn generic(name: QualifiedName, saved_is: Option<DocumentString>) -> Self {
-        Self {
+        let common = initialization.common();
+        let html = common.html().is_some();
+        let custom_name = html
+            && (saved_is.is_some()
+                || surgeist_html::bounded::validate_custom_element_name_with(
+                    name.local_name(),
+                    |_| crate::store::check_cancel(cancelled),
+                )?
+                .is_ok());
+        Ok(Self {
             name,
             attributes: OrderedAttributes::default(),
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
-            custom_state: surgeist_html::custom_element_state_without_definition(
-                false,
-                saved_is.is_some(),
-            ),
+            custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
             saved_is,
+            common,
+            nonce: common.nonce().map(|_| DocumentString::from("")),
             captured_in_view_transition: false,
-        }
+        })
+    }
+    /// Actual closed common tuple. Exposed operations preserve its values.
+    pub fn common_state(&self) -> HtmlNativeCommonState {
+        self.common
+    }
+    /// Cryptographic nonce slot, independent of content. None means inapplicable.
+    pub fn nonce(&self) -> Option<&DocumentString> {
+        self.nonce.as_ref()
+    }
+    pub(crate) fn set_nonce(&mut self, nonce: DocumentString) {
+        self.nonce = Some(nonce);
     }
     pub fn captured_in_view_transition(&self) -> bool {
         self.captured_in_view_transition
@@ -70,13 +109,14 @@ impl DomElement {
     pub(crate) fn set_captured_in_view_transition(&mut self, captured: bool) {
         self.captured_in_view_transition = captured;
     }
-    pub(crate) fn same_intrinsic_state(&self, other: &Self) -> bool {
+    pub(crate) fn same_nonattribute_state(&self, other: &Self) -> bool {
         self.name == other.name
-            && self.attributes == other.attributes
             && self.registry == other.registry
             && self.definition == other.definition
             && self.custom_state == other.custom_state
             && self.saved_is == other.saved_is
+            && self.common == other.common
+            && self.nonce == other.nonce
     }
     pub fn name(&self) -> &QualifiedName {
         &self.name
@@ -118,7 +158,8 @@ impl DomElement {
     }
     pub(crate) fn units(&self) -> Option<usize> {
         let mut units = name_units(&self.name)?
-            .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?;
+            .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?
+            .checked_add(self.nonce.as_ref().map_or(0, DocumentString::len))?;
         for attribute in self.attributes.iter() {
             units = units
                 .checked_add(name_units(attribute.name())?)?

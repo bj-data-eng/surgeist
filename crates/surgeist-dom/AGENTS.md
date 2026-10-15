@@ -26,12 +26,19 @@ records. DOM's relaxed name/namespace checks differ from XML PI target grammar.
 Attribute NS updates retain existing prefix/order. Insertion adopts transferred
 fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
-replacement excludes exactly its child. No HTML/SVG/MathML constructor exists
-until the consuming adapter performs the applicable native state/hooks.
+replacement excludes exactly its child. Namespace-aware creation consumes HTML's
+actual-name native requirement/common initializer; never copy its family inventory.
+Only source-proved common profiles are admitted until each special-family adapter
+performs its real state/hooks. Keep native null browsing context/never-navigable
+proof independent of XML class. Nonce attributes, IDL slot edits, insertion and
+cloning consume HTML's rules; content and cryptographic slot are independent
+stored/accounted strings. Keep ElementState and Attributes change coverage distinct.
+Common closed focus/internals/click/reaction/popover values remain current state.
 Generic import reads only its supplied immutable capture, never a same-number
 live slot. It allocates fresh target identities; caller tickets map separately
 from private imported descendant allocations. Clone trusted canonical name and
-attribute fields through actual generic initialization/append steps. PI clone
+attribute fields through actual common initialization/append steps, then copy
+the source nonce slot through its cloning step. PI clone
 preserves current data without new-construction `?>` validation. Keep traversal
 iterative and all copied nodes/strings admitted with the rest of the batch.
 
