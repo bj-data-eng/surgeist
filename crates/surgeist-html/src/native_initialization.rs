@@ -175,6 +175,10 @@ fn known_requirement(element: KnownHtmlElement) -> HtmlNativeInitializationRequi
     if let Some(kind) = HtmlNativeFormAssociationKind::from_element(element) {
         return R::NativeForm(kind);
     }
+    // The first 41 cases cover HTMLElement-only definitions plus div/span's
+    // reflected interfaces. The next 41 reflected/child-text/tree-query
+    // interfaces also require only common native initialization. Common does not
+    // equate WebIDL interfaces or grant execution, navigation, rendering or queries.
     match element {
         E::Article
         | E::Section
@@ -216,7 +220,48 @@ fn known_requirement(element: KnownHtmlElement) -> HtmlNativeInitializationRequi
         | E::Summary
         | E::Noscript
         | E::Div
-        | E::Span => R::CommonHtml,
+        | E::Span
+        | E::Html
+        | E::Head
+        | E::Title
+        | E::Body
+        | E::P
+        | E::Hr
+        | E::Pre
+        | E::Blockquote
+        | E::Ol
+        | E::Ul
+        | E::Menu
+        | E::Li
+        | E::Dl
+        | E::Q
+        | E::Data
+        | E::Time
+        | E::Br
+        | E::Ins
+        | E::Del
+        | E::Map
+        | E::Datalist
+        | E::Label
+        | E::Legend
+        | E::Progress
+        | E::Meter
+        | E::Table
+        | E::Caption
+        | E::Colgroup
+        | E::Col
+        | E::Tbody
+        | E::Thead
+        | E::Tfoot
+        | E::Tr
+        | E::Td
+        | E::Th
+        | E::H1
+        | E::H2
+        | E::H3
+        | E::H4
+        | E::H5
+        | E::H6 => R::CommonHtml,
         _ => R::KnownHtml(element),
     }
 }
