@@ -18,3 +18,9 @@ cargo fmt --all -- --check
 
 Vocabulary generation stays here. Parser character references and semantic bidi
 data/generators stay with their actual owners. Root owns generated API audits.
+
+Slot assignment owns only the HTML manual-intent transition. Consumers retain
+actual IDs/ordered sets and execute the final target-root DOM assignment step;
+never refresh former roots to force stored assignment and current query results
+into one inverse. Raw duplicates still execute transfer effects before ordered
+set append deduplication. Fresh-slot evidence does not certify current emptiness.

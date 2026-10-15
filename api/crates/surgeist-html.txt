@@ -544,6 +544,33 @@ pub surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren
 pub surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren::ordinal: usize
 pub surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
 pub surgeist_html::bounded::HtmlSelectedcontentUpdate::Unavailable
+pub enum surgeist_html::bounded::HtmlSlotAssignAction
+pub surgeist_html::bounded::HtmlSlotAssignAction::AppendIncomingToPendingSet
+pub surgeist_html::bounded::HtmlSlotAssignAction::AppendIncomingToPendingSet::ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::AssignSlottablesForTargetRoot
+pub surgeist_html::bounded::HtmlSlotAssignAction::BeginPendingManualSet
+pub surgeist_html::bounded::HtmlSlotAssignAction::ClearPreviousManualInverse
+pub surgeist_html::bounded::HtmlSlotAssignAction::ClearPreviousManualInverse::previous_ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::CompareIncoming
+pub surgeist_html::bounded::HtmlSlotAssignAction::CompareIncoming::ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::CompareIncoming::previous_ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::Complete
+pub surgeist_html::bounded::HtmlSlotAssignAction::ReadIncomingManualAssignment
+pub surgeist_html::bounded::HtmlSlotAssignAction::ReadIncomingManualAssignment::ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::RemoveIncomingFromReferredManualSet
+pub surgeist_html::bounded::HtmlSlotAssignAction::RemoveIncomingFromReferredManualSet::ordinal: usize
+pub surgeist_html::bounded::HtmlSlotAssignAction::ReplaceTargetManualSet
+pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget
+pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget::ordinal: usize
+pub enum surgeist_html::bounded::HtmlSlotAssignCursorError
+pub surgeist_html::bounded::HtmlSlotAssignCursorError::Reply
+impl core::error::Error for surgeist_html::bounded::HtmlSlotAssignCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlSlotAssignCursorError
+pub fn surgeist_html::bounded::HtmlSlotAssignCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlSlotAssignReply
+pub surgeist_html::bounded::HtmlSlotAssignReply::Applied
+pub surgeist_html::bounded::HtmlSlotAssignReply::ManualAssignmentPresent(bool)
+pub surgeist_html::bounded::HtmlSlotAssignReply::SameNode(bool)
 pub enum surgeist_html::bounded::HtmlSpaceTokenStep
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Continue
 pub surgeist_html::bounded::HtmlSpaceTokenStep::Done
@@ -1143,6 +1170,11 @@ impl surgeist_html::bounded::HtmlSelectedcontentAncestors
 pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::disabled(&self) -> bool
 pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::has_nearest_select(&self) -> bool
 pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::observe(&mut self, kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlSelectedcontentAncestorAction
+pub struct surgeist_html::bounded::HtmlSlotAssignCursor
+impl surgeist_html::bounded::HtmlSlotAssignCursor
+pub fn surgeist_html::bounded::HtmlSlotAssignCursor::action(&self) -> surgeist_html::bounded::HtmlSlotAssignAction
+pub const fn surgeist_html::bounded::HtmlSlotAssignCursor::new(previous_manual_count: usize, raw_incoming_count: usize) -> Self
+pub fn surgeist_html::bounded::HtmlSlotAssignCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlSlotAssignReply) -> core::result::Result<(), surgeist_html::bounded::HtmlSlotAssignCursorError>
 pub struct surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 impl<'a> surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::BEGIN_WORK: usize
@@ -2486,6 +2518,8 @@ pub const fn surgeist_html::HtmlNativeFormAssociationKind::from_element(element:
 pub const fn surgeist_html::HtmlNativeFormAssociationKind::listed(self) -> bool
 pub enum surgeist_html::HtmlNativeFreshNonce
 pub surgeist_html::HtmlNativeFreshNonce::Empty
+pub enum surgeist_html::HtmlNativeFreshSlot
+pub surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments
 pub enum surgeist_html::HtmlNativeInitializationRequirement
 pub surgeist_html::HtmlNativeInitializationRequirement::CommonHtml
 pub surgeist_html::HtmlNativeInitializationRequirement::CommonMathml
@@ -4363,6 +4397,7 @@ pub struct surgeist_html::HtmlNativeInitialization
 impl surgeist_html::HtmlNativeInitialization
 pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlNativeCommonState
 pub const fn surgeist_html::HtmlNativeInitialization::requirement(&self) -> surgeist_html::HtmlNativeInitializationRequirement
+pub const fn surgeist_html::HtmlNativeInitialization::slot(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshSlot>
 pub struct surgeist_html::HtmlNavigableTargetName
 impl surgeist_html::HtmlNavigableTargetName
 pub fn surgeist_html::HtmlNavigableTargetName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlNavigableTargetError>

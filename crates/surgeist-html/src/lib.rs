@@ -34,6 +34,7 @@ mod script_flags;
 mod script_preparation;
 mod script_type;
 mod select;
+mod slot_assign;
 mod svg_script_flags;
 mod template_markers;
 mod template_state;
@@ -63,7 +64,8 @@ pub use marquee::HtmlMarqueeState;
 pub use media::*;
 pub use native_initialization::{
     HtmlNativeClosedElementState, HtmlNativeClosedHtmlState, HtmlNativeCommonState,
-    HtmlNativeFreshNonce, HtmlNativeInitialization, HtmlNativeInitializationRequirement,
+    HtmlNativeFreshNonce, HtmlNativeFreshSlot, HtmlNativeInitialization,
+    HtmlNativeInitializationRequirement,
 };
 pub use nonce::{
     HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,

@@ -54,3 +54,7 @@ pub use crate::select::{
     HtmlSelectedcontentAncestors, HtmlSelectedcontentUpdate, option_disabled_ancestor,
     select_display_size_default, select_option_rule, selectedcontent_update,
 };
+
+pub use crate::slot_assign::{
+    HtmlSlotAssignAction, HtmlSlotAssignCursor, HtmlSlotAssignCursorError, HtmlSlotAssignReply,
+};

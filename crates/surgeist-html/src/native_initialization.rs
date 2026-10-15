@@ -59,6 +59,23 @@ impl HtmlNativeInitialization {
     pub const fn common(&self) -> HtmlNativeCommonState {
         self.common
     }
+    /// HTML877d #manually-assigned-nodes starts an actual native slot empty.
+    /// The consumer materializes the identity-bearing ordered set; this value
+    /// is creation evidence, not a current-empty flag after later assignment.
+    pub const fn slot(&self) -> Option<HtmlNativeFreshSlot> {
+        match self.requirement {
+            HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Slot) => {
+                Some(HtmlNativeFreshSlot::EmptyManualAssignments)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Fresh HTML slot manual intent, with node identity/storage owned by DOM.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlNativeFreshSlot {
+    EmptyManualAssignments,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
