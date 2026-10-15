@@ -2,6 +2,7 @@
 //! HTML 877d6146487f #frames and #child-navigables define these local facts.
 
 use crate::HtmlBrowsingContextPresence;
+use crate::child_navigable::NullChildNavigable;
 
 /// The first decision of frame's HTML element post-connection steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,7 +49,7 @@ pub const fn frame_post_connection(
 /// leaves this null-content domain; it cannot keep using these decisions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFrameNullContent {
-    closed: (),
+    content: NullChildNavigable,
 }
 
 impl HtmlFrameNullContent {
@@ -57,23 +58,25 @@ impl HtmlFrameNullContent {
     /// Adoption preserves an existing actual relationship instead of invoking
     /// this initializer. This value does not perform either DOM algorithm.
     pub const fn fresh() -> Self {
-        Self { closed: () }
+        Self {
+            content: NullChildNavigable::fresh(),
+        }
     }
 
     pub const fn content_navigable_is_null(&self) -> bool {
-        true
+        self.content.is_null()
     }
 
     /// The content-document getter returns null before origin comparison when
     /// content navigable is null (#concept-bcc-content-document).
     pub const fn content_document_is_null(&self) -> bool {
-        true
+        self.content.content_document_is_null()
     }
 
     /// The content-window getter returns null before WindowProxy access when
     /// content navigable is null (#content-window).
     pub const fn content_window_is_null(&self) -> bool {
-        true
+        self.content.content_window_is_null()
     }
 
     /// A frame is always an element type that potentially delays the load event
@@ -85,13 +88,13 @@ impl HtmlFrameNullContent {
     /// The actual delay rule requires non-null content navigable before any
     /// child load conditions (#potentially-delays-the-load-event).
     pub const fn delays_load(&self) -> bool {
-        false
+        self.content.delays_load()
     }
 
     /// A frame src set, change or removal processes attributes only with a
     /// non-null content navigable (#frames); its value need not be read here.
     pub const fn src_change_requires_processing(&self) -> bool {
-        false
+        !self.content.is_null()
     }
 
     /// Frame removing steps invoke destroy-a-child-navigable. That algorithm
@@ -99,6 +102,6 @@ impl HtmlFrameNullContent {
     /// navigation/history effects. This decision describes that null branch;
     /// it does not suppress other applicable HTML or DOM removing steps.
     pub const fn removal_requires_child_destruction(&self) -> bool {
-        false
+        self.content.removal_requires_child_destruction()
     }
 }

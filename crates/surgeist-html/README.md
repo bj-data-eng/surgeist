@@ -34,6 +34,20 @@ that relationship remains null. `frame_post_connection` preserves the exact
 browsing-context guard, including an unavailable fact; the consuming live owner
 retains child identity, navigation capability and all three mutation hooks.
 
+`HtmlIframeNativeState` represents the actual fresh never-browsing-context,
+unprocessed/null-child phase, with initially false current-navigation-lazy and
+null timing/resumption values. Its srcdoc/src/sandbox/removal decisions stop at
+the actual null-content guards; loading changes use the shared semantic loading
+states and return when native resumption is null. `iframe_post_connection`
+checks the current node-document browsing context before sandbox parsing or
+child creation. Exact absent, present-empty and token-valued sandbox attributes
+remain distinct; independent local directive flags are not live sandbox policy.
+Current null content alone cannot reinitialize processed/imported history.
+Clone-as-new and retained-state installation are distinct causes; adoption
+preserves established state. This type grants no numeric sandbox readback,
+resource-capable transition, navigation or default-allow policy. Future child or
+context creation needs its actual initialization before policy consumption.
+
 `HtmlNewlineNormalizer` applies Infra's CR LF/CR normalization one raw UTF-16
 unit at a time, preserving all other units. Keep its state across chunks of one
 string; a trailing CR emits LF immediately and needs no finish step. Consumers

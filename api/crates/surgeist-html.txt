@@ -2114,6 +2114,10 @@ pub surgeist_html::HtmlIconSizeError::ZeroDimension
 impl core::error::Error for surgeist_html::HtmlIconSizeError
 impl core::fmt::Display for surgeist_html::HtmlIconSizeError
 pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlIframePostConnectionDecision
+pub surgeist_html::HtmlIframePostConnectionDecision::Continue
+pub surgeist_html::HtmlIframePostConnectionDecision::NeedsBrowsingContext
+pub surgeist_html::HtmlIframePostConnectionDecision::Return
 pub enum surgeist_html::HtmlImageAttributeAuthorState
 pub surgeist_html::HtmlImageAttributeAuthorState::Conforming
 pub surgeist_html::HtmlImageAttributeAuthorState::Missing
@@ -3999,6 +4003,23 @@ pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlT
 pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
 pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
+pub struct surgeist_html::HtmlIframeNativeState
+impl surgeist_html::HtmlIframeNativeState
+pub const fn surgeist_html::HtmlIframeNativeState::content_document_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::content_navigable_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::content_window_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::current_navigation_was_lazy_loaded(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::delays_load(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::fresh() -> Self
+pub const fn surgeist_html::HtmlIframeNativeState::lazy_load_resumption_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::pending_resource_timing_start_time_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::pending_resource_timing_url_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::potentially_delays_load(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::removal_requires_child_destruction(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::sandbox_change_requires_processing(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::sandbox_removal_requires_clearing(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::src_change_requires_processing(&self) -> bool
+pub const fn surgeist_html::HtmlIframeNativeState::srcdoc_change_requires_processing(&self) -> bool
 pub struct surgeist_html::HtmlInputColorSerialization
 impl surgeist_html::HtmlInputColorSerialization
 pub fn surgeist_html::HtmlInputColorSerialization::html_compatible(&self) -> bool
@@ -5267,6 +5288,8 @@ pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInv
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
 pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
 pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
+pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool
+pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlIframePostConnectionDecision
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
 pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool

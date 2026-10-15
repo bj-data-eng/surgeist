@@ -10,6 +10,7 @@ mod attributes;
 /// Controlled operations over HTML-owned immutable values.
 pub mod bounded;
 mod canvas;
+mod child_navigable;
 mod color;
 mod construction;
 mod control_values;
@@ -20,6 +21,7 @@ mod form_association;
 mod form_owner;
 mod fragment_initialization;
 mod frame;
+mod iframe;
 mod input;
 mod integration_points;
 mod interpretation;
@@ -59,6 +61,10 @@ pub use fragment_initialization::{
     fragment_insertion_mode, fragment_tokenizer_state,
 };
 pub use frame::{HtmlFrameNullContent, HtmlFramePostConnectionDecision, frame_post_connection};
+pub use iframe::{
+    HtmlIframeNativeState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
+    iframe_post_connection,
+};
 pub use input::*;
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
