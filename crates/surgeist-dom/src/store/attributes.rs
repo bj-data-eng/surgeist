@@ -64,6 +64,34 @@ impl Draft {
             element.attributes().as_slice()[position].name().clone()
         });
         let replacement = Attribute::new(name, value);
+        self.write_attribute(node, position, replacement, limits, cancelled)
+    }
+
+    /// Exact canonical records are already name/uniqueness-validated by their
+    /// captured source. Cloning appends them without replaying a namespace-aware
+    /// constructor, which would misinterpret literal unnamespaced `xml:lang`.
+    pub(super) fn append_cloned_attribute(
+        &mut self,
+        node: Key,
+        attribute: Attribute,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.write_attribute(node, None, attribute, limits, cancelled)
+    }
+
+    fn write_attribute(
+        &mut self,
+        node: Key,
+        position: Option<usize>,
+        replacement: Attribute,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        check_cancel(cancelled)?;
+        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
+            return Err(DomError::WrongNodeKind);
+        };
         let old_units = position.map_or(Ok(0), |position| {
             attribute_units(&element.attributes().as_slice()[position])
         })?;

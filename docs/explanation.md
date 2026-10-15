@@ -59,10 +59,12 @@ and source establish those boundaries; no old-package reexports are retained.
 document identity, mutation and snapshots with a bounded native XML tree:
 Document, generic XML Element, ordinary DocumentFragment, Text, Comment,
 ProcessingInstruction and DocumentType nodes. Ordered namespaced attributes
-and same-store adoption use that same mutation owner. It consumes HTML's
+and same-store adoption use that same mutation owner. Import copies a checked
+immutable source capture into fresh target identities, including across stores.
+It consumes HTML's
 exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
 canonical native Document metadata and owned snapshots establish the foundation;
-HTML and namespace-aware element creation, import, shadow trees and facade
+HTML and namespace-aware element creation, shadow trees and facade
 replacement remain later contributions.
 DOM will own importing HTML construction values and adapting captured DOM facts
 to HTML-owned interpretation. Native authoring

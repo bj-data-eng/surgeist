@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod attributes;
+mod import;
 mod tree;
 
 /// Configured capacity whose admission would be exceeded.
@@ -528,6 +529,9 @@ struct Draft {
     existing: Vec<Option<DraftNode>>,
     generations: Vec<u64>,
     created: Vec<Option<DraftNode>>,
+    // Caller creation tickets exclude private allocations such as imported
+    // descendants. They must not be interpreted as allocation indices.
+    tickets: Vec<Key>,
     nodes: usize,
     units: usize,
 }
@@ -568,6 +572,7 @@ impl Draft {
             existing,
             generations,
             created: Vec::new(),
+            tickets: Vec::new(),
             nodes: dom.state.nodes,
             units: dom.state.units,
         })
@@ -603,15 +608,11 @@ impl Draft {
                 if !Arc::ptr_eq(&self.owner, &ticket.owner) {
                     return Err(DomError::ForeignBatch);
                 }
-                if self
-                    .created
+                self.tickets
                     .get(ticket.index)
-                    .and_then(Option::as_ref)
-                    .is_none()
-                {
-                    return Err(DomError::UnavailableCreation);
-                }
-                Key::Created(ticket.index)
+                    .copied()
+                    .filter(|key| self.node(*key).is_ok())
+                    .ok_or(DomError::UnavailableCreation)?
             }
         };
         self.node(key)?;
@@ -624,6 +625,39 @@ impl Draft {
                 .retain(|child| *child != node);
             self.node_mut(node).parent = None;
         }
+    }
+    fn allocate(
+        &mut self,
+        kind: DomNodeKind,
+        document: Key,
+        limits: DomLimits,
+    ) -> Result<Key, DomError> {
+        let nodes = self
+            .nodes
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
+        let units = self
+            .units
+            .checked_add(kind_units(&kind)?)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        reserve(&mut self.created, 1)?;
+        let key = Key::Created(self.created.len());
+        self.created.push(Some(DraftNode {
+            document,
+            kind,
+            parent: None,
+            children: Vec::new(),
+        }));
+        self.nodes = nodes;
+        self.units = units;
+        Ok(key)
+    }
+    fn register_ticket(&mut self, key: Key) -> Result<(), DomError> {
+        reserve(&mut self.tickets, 1)?;
+        self.tickets.push(key);
+        Ok(())
     }
     fn apply(
         &mut self,
@@ -694,20 +728,22 @@ impl Draft {
                         DomNodeKind::DocumentType(DomDocumentType::new(name, public_id, system_id)?)
                     }
                 };
-                let units = self
-                    .units
-                    .checked_add(kind_units(&kind)?)
-                    .ok_or(DomError::RepresentationExhausted)?;
-                admit(units, limits.units, DomResource::StringCodeUnits)?;
-                reserve(&mut self.created, 1)?;
-                self.created.push(Some(DraftNode {
-                    document,
-                    kind,
-                    parent: None,
-                    children: Vec::new(),
-                }));
-                self.nodes = nodes;
-                self.units = units;
+                let key = self.allocate(kind, document, limits)?;
+                self.register_ticket(key)?;
+            }
+            Command::Import {
+                snapshot,
+                source,
+                document,
+                subtree,
+            } => {
+                let document = self.resolve(document)?;
+                if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+                    return Err(DomError::WrongNodeKind);
+                }
+                let key =
+                    self.import_node(&snapshot, source, document, subtree, limits, cancelled)?;
+                self.register_ticket(key)?;
             }
             Command::Detach(node) => {
                 let node = self.resolve(node)?;
@@ -855,17 +891,11 @@ impl Draft {
             });
             occupants.push(self.existing[index].as_ref().map(|_| Key::Existing(index)));
         }
-        let mut created = Vec::new();
-        let mut documents = Vec::new();
-        reserve(&mut created, self.created.len())?;
-        reserve(&mut documents, self.created.len())?;
+        let mut allocated_ids = Vec::new();
+        reserve(&mut allocated_ids, self.created.len())?;
         for (index, node) in self.created.iter().enumerate() {
-            documents.push(
-                node.as_ref()
-                    .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
-            );
             let Some(_) = node else {
-                created.push(None);
+                allocated_ids.push(None);
                 continue;
             };
             let slot = occupants
@@ -886,7 +916,7 @@ impl Draft {
                 slots.len() - 1
             };
             occupants[slot] = Some(Key::Created(index));
-            created.push(Some(NodeId {
+            allocated_ids.push(Some(NodeId {
                 owner: dom.owner,
                 slot,
                 generation: slots[slot].generation,
@@ -898,7 +928,7 @@ impl Draft {
                 slot,
                 generation: dom.state.slots[slot].generation,
             },
-            Key::Created(index) => created[index].expect("surviving creation reference"),
+            Key::Created(index) => allocated_ids[index].expect("surviving creation reference"),
         };
         for (slot, key) in occupants.into_iter().enumerate() {
             let Some(key) = key else {
@@ -921,6 +951,21 @@ impl Draft {
             units: self.units,
         };
         let changes = difference(dom.owner, &dom.state, &state)?;
+        let mut created = Vec::new();
+        let mut documents = Vec::new();
+        reserve(&mut created, self.tickets.len())?;
+        reserve(&mut documents, self.tickets.len())?;
+        for ticket in &self.tickets {
+            let Key::Created(index) = *ticket else {
+                unreachable!("creation ticket allocation")
+            };
+            created.push(allocated_ids[index]);
+            documents.push(
+                self.created[index]
+                    .as_ref()
+                    .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
+            );
+        }
         Ok(Prepared {
             state,
             owner: self.owner,

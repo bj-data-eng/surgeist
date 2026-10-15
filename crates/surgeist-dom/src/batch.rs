@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{DocumentId, DocumentString, Namespace, NodeId};
+use crate::{DocumentId, DocumentString, DomSnapshot, Namespace, NodeId};
 
 #[derive(Debug)]
 pub(crate) struct BatchIdentity;
@@ -61,6 +61,12 @@ pub(crate) enum Command {
         kind: Creation,
         document: Option<NodeOperand>,
     },
+    Import {
+        snapshot: DomSnapshot,
+        source: NodeId,
+        document: NodeOperand,
+        subtree: bool,
+    },
     Insert {
         node: NodeOperand,
         parent: NodeOperand,
@@ -120,13 +126,42 @@ impl DomBatch {
             creations: 0,
         }
     }
-    fn create(&mut self, kind: Creation, document: Option<NodeOperand>) -> CreatedNode {
+    fn ticket(&mut self) -> CreatedNode {
         let ticket = CreatedNode {
             owner: self.owner.clone(),
             index: self.creations,
         };
         self.creations += 1;
+        ticket
+    }
+    fn create(&mut self, kind: Creation, document: Option<NodeOperand>) -> CreatedNode {
+        let ticket = self.ticket();
         self.commands.push(Command::Create { kind, document });
+        ticket
+    }
+    /// Clones a captured non-Document node into the target Document, with fresh
+    /// identities and a detached root. `subtree` includes ordinary descendants;
+    /// Element attributes are copied in either mode. Source reads use this
+    /// exact immutable snapshot, including when its live source was destroyed.
+    ///
+    /// Only the currently exposed generic XML surface is supported. HTML,
+    /// shadow-tree and registry-object installation have no import capability.
+    /// The returned ticket is usable by later commands and resolves only after
+    /// a successful publication; descendant identities are then in the snapshot.
+    pub fn import_node(
+        &mut self,
+        snapshot: &DomSnapshot,
+        source: NodeId,
+        target_document: impl Into<NodeOperand>,
+        subtree: bool,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::Import {
+            snapshot: snapshot.clone(),
+            source,
+            document: target_document.into(),
+            subtree,
+        });
         ticket
     }
     /// Creates an empty native XML Document with the selected DOM defaults.

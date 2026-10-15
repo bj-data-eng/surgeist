@@ -35,14 +35,32 @@ impl DomElement {
         if !valid_element_local_name(&local_name, cancelled)? {
             return Err(DomError::InvalidCharacter);
         }
-        Ok(Self {
-            name: QualifiedName::new(Namespace::none(), None, local_name),
+        Ok(Self::generic(
+            QualifiedName::new(Namespace::none(), None, local_name),
+            None,
+        ))
+    }
+    /// DOM single-node cloning uses trusted canonical name fields, not the
+    /// public native name constructor. Other namespaces need their real family
+    /// initialization before they can enter this import capability.
+    pub(crate) fn clone_generic(&self) -> Result<Self, DomError> {
+        if self.name.namespace().uri().is_some() || self.name.prefix().is_some() {
+            return Err(DomError::NotSupported);
+        }
+        Ok(Self::generic(self.name.clone(), self.saved_is.clone()))
+    }
+    fn generic(name: QualifiedName, saved_is: Option<DocumentString>) -> Self {
+        Self {
+            name,
             attributes: OrderedAttributes::default(),
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
-            custom_state: surgeist_html::custom_element_state_without_definition(false, false),
-            saved_is: None,
-        })
+            custom_state: surgeist_html::custom_element_state_without_definition(
+                false,
+                saved_is.is_some(),
+            ),
+            saved_is,
+        }
     }
     pub fn name(&self) -> &QualifiedName {
         &self.name

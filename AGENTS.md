@@ -144,9 +144,10 @@ must not introduce a Surgeist HTML dialect.
 `surgeist-dom` begins the canonical live tree owner with Document, generic XML
 Element, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
 DocumentType nodes. It provides ordered namespaced attributes, atomic edits,
-same-store adoption, finite caller limits, canonical native Document metadata
-and owned snapshots. Its crate guide records this bounded surface. HTML and
-namespace-aware element creation, import, HTML state integration and shadow
+same-store adoption, immutable-capture import with fresh target identities,
+finite caller limits, canonical native Document metadata and owned snapshots.
+Its crate guide records this bounded surface. HTML and
+namespace-aware element creation, HTML state integration and shadow
 trees remain contribution work;
 the existing retained facade is not replaced by this foundation.
 DOM depends directly on HTML and consumes its exact `DocumentString`.

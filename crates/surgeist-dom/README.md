@@ -102,6 +102,23 @@ privately with the rest of the batch, and old snapshots retain them. Ordinary
 doctype edits do not change document mode. Host/imported metadata and registry
 objects have no admission API yet.
 
+`import_node` reads a checked node from an owned immutable `DomSnapshot` and
+copies it into a target Document with fresh identities and a detached root.
+The source can belong to another store or retain nodes already destroyed in its
+live store. Shallow import still copies every Element attribute; deep import
+walks ordinary children in order without recursive native calls. Exact attribute
+names/prefixes/values are appended through the same admitted attribute writer;
+PI cloning copies its current target/data, including `?>` introduced by a later
+CharacterData edit, without repeating initial PI construction validation.
+Document import is `NotSupported`. Generic XML import includes no HTML family,
+shadow-tree or registry-object installation. The returned batch ticket names
+only the imported root; descendant IDs become available from the committed
+snapshot. Native tickets before or after that root remain independent of its
+private descendant allocations. Failure/cancellation publishes none of them,
+and destroying the unpublished imported subtree is a semantic no-op. Copied
+nodes and all logical string slots consume target limits even when immutable
+string backing is shared with the source capture.
+
 Each commit reports complete changed domains for this supported surface,
 including `Attributes` and `NodeDocument`. Ordered `Children` changes also cover
 derived Element-sibling/index changes.
@@ -115,7 +132,7 @@ immediately before publication; the final cancellation observation is the
 publication boundary.
 
 HTML document creation and HTML/SVG/MathML native Element initialization,
-shadow trees, cross-store import, HTML installation and semantic capture adapters
+shadow trees, HTML installation and semantic capture adapters
 are not exposed yet. This crate does not claim complete DOM or
 HTML conformance or replace the retained/facade integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),

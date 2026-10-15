@@ -28,6 +28,12 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. No HTML/SVG/MathML constructor exists
 until the consuming adapter performs the applicable native state/hooks.
+Generic import reads only its supplied immutable capture, never a same-number
+live slot. It allocates fresh target identities; caller tickets map separately
+from private imported descendant allocations. Clone trusted canonical name and
+attribute fields through actual generic initialization/append steps. PI clone
+preserves current data without new-construction `?>` validation. Keep traversal
+iterative and all copied nodes/strings admitted with the rest of the batch.
 
 From repository root through bounded `pisct run`:
 
