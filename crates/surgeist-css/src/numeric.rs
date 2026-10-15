@@ -946,7 +946,7 @@ impl CssTreeCountingFunction {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum NodeKind {
     Value(Box<CssComponentValue>),
     Size,
@@ -987,7 +987,7 @@ impl NodeKind {
         }
     }
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(crate) struct CssCalculationExpression {
     kind: NodeKind,
     admits_pure_context: bool,
@@ -996,6 +996,87 @@ pub(crate) struct CssCalculationExpression {
     components: Option<CssComponentValues>,
     syntax: Vec<CssComponentValue>,
     closing: Option<CssValueOrigin>,
+}
+impl Clone for CssCalculationExpression {
+    fn clone(&self) -> Self {
+        // Operator nodes add numerical depth between admitted nested functions.
+        // Rebuild bottom-up so that cloning never recurses through that tree.
+        let mut pending = vec![(self, None)];
+        let mut completed = Vec::<Self>::new();
+        while let Some((node, start)) = pending.pop() {
+            let Some(start) = start else {
+                pending.push((node, Some(completed.len())));
+                match &node.kind {
+                    NodeKind::Sum(values) => {
+                        pending.extend(values.iter().rev().map(|(_, child)| (child, None)));
+                    }
+                    NodeKind::Product(values) => {
+                        pending.extend(values.iter().rev().map(|(_, child)| (child, None)));
+                    }
+                    NodeKind::Group(child) => pending.push((child, None)),
+                    NodeKind::Function { args, .. } => {
+                        pending.extend(args.iter().rev().flatten().map(|child| (child, None)));
+                    }
+                    NodeKind::Value(_)
+                    | NodeKind::Size
+                    | NodeKind::Constant(_)
+                    | NodeKind::Variable(_)
+                    | NodeKind::ProfileChannel(_)
+                    | NodeKind::TreeCounting(_) => {}
+                }
+                continue;
+            };
+            // Each finish event owns exactly the completed suffix for its
+            // children, in their original order. Function rebuilding also
+            // retains the positions of absent arguments.
+            let mut children = completed.drain(start..);
+            let mut next = || children.next().expect("completed numerical child");
+            let kind = match &node.kind {
+                NodeKind::Value(value) => NodeKind::Value(value.clone()),
+                NodeKind::Size => NodeKind::Size,
+                NodeKind::Constant(value) => NodeKind::Constant(*value),
+                NodeKind::Variable(channel) => NodeKind::Variable(*channel),
+                NodeKind::ProfileChannel(name) => NodeKind::ProfileChannel(name.clone()),
+                NodeKind::TreeCounting(function) => NodeKind::TreeCounting(*function),
+                NodeKind::Sum(values) => NodeKind::Sum(
+                    values
+                        .iter()
+                        .map(|(operator, _)| (*operator, next()))
+                        .collect(),
+                ),
+                NodeKind::Product(values) => NodeKind::Product(
+                    values
+                        .iter()
+                        .map(|(operator, _)| (*operator, next()))
+                        .collect(),
+                ),
+                NodeKind::Group(_) => NodeKind::Group(Box::new(next())),
+                NodeKind::Function {
+                    function,
+                    args,
+                    strategy,
+                } => NodeKind::Function {
+                    function: *function,
+                    args: args
+                        .iter()
+                        .map(|arg| arg.as_ref().map(|_| next()))
+                        .collect(),
+                    strategy: *strategy,
+                },
+            };
+            drop(children);
+            completed.push(Self {
+                kind,
+                admits_pure_context: node.admits_pure_context,
+                ty: node.ty,
+                origin: node.origin.clone(),
+                components: node.components.clone(),
+                syntax: node.syntax.clone(),
+                closing: node.closing.clone(),
+            });
+        }
+        completed.pop().expect("completed numerical root")
+    }
 }
 impl CssCalculationExpression {
     /// Cached bottom-up admission of the complete typed tree. Checking reuse at
