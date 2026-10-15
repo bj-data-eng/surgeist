@@ -129,6 +129,81 @@ fn requested_bytes(stats: Stats) -> usize {
         .expect("bounded fixture allocation arithmetic")
 }
 
+// A comment-only var() has no custom-property name. Its missing-name rejection
+// retains a small closing-boundary error, never an authored output string.
+fn missing_var_fixture(comment_bytes: usize) -> CssComponentValues {
+    let source = format!("var(/*{}*/)", "x".repeat(comment_bytes));
+    let values = parse_component_values(&source).expect("complete var function and comment");
+    assert_eq!(values.items().len(), 1);
+    let surgeist_css::CssComponentValueRef::Function(function) = values.items()[0].view() else {
+        panic!("original var function");
+    };
+    assert_eq!(function.values().items().len(), 1);
+    assert!(matches!(
+        function.values().items()[0].view(),
+        surgeist_css::CssComponentValueRef::Comment(_)
+    ));
+    values
+}
+
+fn measure_missing_var(
+    values: &CssComponentValues,
+    name: &surgeist_css::CssCustomPropertyName,
+) -> Stats {
+    let input = values.clone();
+    let surgeist_css::CssComponentValueRef::Function(function) = input.items()[0].view() else {
+        panic!("original var function");
+    };
+    let expected_closing = function.closing_origin().clone();
+    let region = Region::new(GLOBAL);
+    let result = black_box(parse_property_value(
+        CssPropertyNameRef::Custom(name),
+        black_box(input),
+        CssImportance::Normal,
+    ));
+    let stats = region.change();
+
+    let error = result.expect_err("a comment cannot supply var()'s required name");
+    assert!(matches!(
+        error.kind(),
+        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
+    ));
+    let CssSerializedOrigin::Token(actual_closing) = error.origin() else {
+        panic!("explicit closing delimiter retains its original token origin: {error:?}");
+    };
+    assert_eq!(actual_closing, &expected_closing);
+    assert_same_snapshot(actual_closing, &expected_closing);
+    let CssValueOrigin::Parsed(original) = actual_closing else {
+        panic!("explicit closing delimiter is parsed from the actual fixture");
+    };
+    let start = original.span().start().byte_offset().value();
+    let end = original.span().end().byte_offset().value();
+    assert_eq!(&original.source().as_str()[start..end], ")");
+    assert_eq!(end, original.source().as_str().len());
+    drop(error);
+    stats
+}
+
+fn check_missing_var(failures: &mut Vec<String>) {
+    let name = surgeist_css::CssCustomPropertyName::try_new("--x").unwrap();
+    let small = missing_var_fixture(SMALL_COMMENT_BYTES);
+    let large = missing_var_fixture(LARGE_COMMENT_BYTES);
+    let _ = measure_missing_var(&small, &name);
+    let _ = measure_missing_var(&large, &name);
+    let small_stats = measure_missing_var(&small, &name);
+    let large_stats = measure_missing_var(&large, &name);
+    let growth = requested_bytes(large_stats).saturating_sub(requested_bytes(small_stats));
+    println!(
+        "missing-var-name: comment bytes {} -> {}; small={small_stats:?}; large={large_stats:?}; admission byte growth={growth}; allowance={MAX_ADMISSION_BYTE_GROWTH}; UnexpectedEnd and original explicit closing token passed",
+        SMALL_COMMENT_BYTES, LARGE_COMMENT_BYTES,
+    );
+    if growth > MAX_ADMISSION_BYTE_GROWTH {
+        failures.push(format!(
+            "missing-var-name admission copied payload-sized input: byte growth {growth} exceeds {MAX_ADMISSION_BYTE_GROWTH}"
+        ));
+    }
+}
+
 fn main() {
     let mut failures = Vec::new();
     for outcome in [Outcome::GlobalInitial, Outcome::RootSemicolon] {
@@ -155,5 +230,6 @@ fn main() {
         drop(small);
         drop(large);
     }
+    check_missing_var(&mut failures);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
