@@ -30,6 +30,7 @@ mod newlines;
 mod nonce;
 mod numeric;
 mod pi_pseudo_attributes;
+mod reflected_element;
 mod rel;
 mod script_flags;
 mod script_preparation;
@@ -79,6 +80,10 @@ pub use numeric::{
     HtmlFloatingPointNumber, HtmlInteger, HtmlNegativeIntegerError, HtmlNonFiniteNumberError,
     HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericRangeError,
     HtmlRationalError, HtmlSignedDecimal,
+};
+pub use reflected_element::{
+    HtmlReflectedElementSetter, HtmlReflectedElementSetterEffect,
+    reflected_element_attribute_change,
 };
 pub use rel::*;
 pub use script_flags::HtmlScriptFlags;

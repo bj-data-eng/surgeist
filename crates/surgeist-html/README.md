@@ -39,6 +39,13 @@ unit at a time, preserving all other units. Keep its state across chunks of one
 string; a trailing CR emits LF immediately and needs no finish step. Consumers
 own per-unit admission, cancellation and output storage.
 
+`reflected_element_attribute_change` owns the exact name/namespace clear rule
+for caller-established nullable Element reflected properties, including redundant
+attribute sets. `HtmlReflectedElementSetter` supplies the asymmetric null/non-null
+setter effects in source order. Consumers retain actual weak identities and
+complete each effect, including nested attribute changes, before requesting the
+next. Qualified target lookup remains with HTML semantics.
+
 Shared strings and attributes expose immutable allocation views. Controlled
 validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree

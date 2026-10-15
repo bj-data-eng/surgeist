@@ -2699,6 +2699,11 @@ pub surgeist_html::HtmlReferrerPolicy::UnsafeUrl
 impl surgeist_html::HtmlReferrerPolicy
 pub fn surgeist_html::HtmlReferrerPolicy::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlReferrerPolicy::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlReflectedElementSetterEffect
+pub surgeist_html::HtmlReflectedElementSetterEffect::ClearExplicitTarget
+pub surgeist_html::HtmlReflectedElementSetterEffect::RemoveContentAttribute
+pub surgeist_html::HtmlReflectedElementSetterEffect::SetEmptyContentAttribute
+pub surgeist_html::HtmlReflectedElementSetterEffect::SetExplicitTargetFromSuppliedElement
 pub enum surgeist_html::HtmlRelAddressAuthor
 pub surgeist_html::HtmlRelAddressAuthor::MissingHrefAndImagesrcset
 pub surgeist_html::HtmlRelAddressAuthor::NotRequired
@@ -4631,6 +4636,11 @@ impl surgeist_html::HtmlProgressNumberReport
 pub fn surgeist_html::HtmlProgressNumberReport::attribute(&self) -> &surgeist_html::HtmlAttributeReport<()>
 pub fn surgeist_html::HtmlProgressNumberReport::author(&self) -> surgeist_html::HtmlProgressNumberAuthorState
 pub fn surgeist_html::HtmlProgressNumberReport::common(&self) -> core::option::Option<&surgeist_html::HtmlValueReport<surgeist_html::HtmlFloatingPointNumber, surgeist_html::HtmlFloatingPointNumber>>
+pub struct surgeist_html::HtmlReflectedElementSetter
+impl surgeist_html::HtmlReflectedElementSetter
+pub const fn surgeist_html::HtmlReflectedElementSetter::element() -> Self
+pub fn surgeist_html::HtmlReflectedElementSetter::next_effect(&mut self) -> core::option::Option<surgeist_html::HtmlReflectedElementSetterEffect>
+pub const fn surgeist_html::HtmlReflectedElementSetter::null() -> Self
 pub struct surgeist_html::HtmlRelOccurrence
 impl surgeist_html::HtmlRelOccurrence
 pub fn surgeist_html::HtmlRelOccurrence::applicability(&self) -> surgeist_html::HtmlRelTokenApplicability
@@ -5263,5 +5273,6 @@ pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedN
 pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect
+pub fn surgeist_html::reflected_element_attribute_change(reflected: surgeist_html::KnownHtmlAttribute, changed: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
 pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument
