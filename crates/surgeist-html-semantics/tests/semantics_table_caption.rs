@@ -317,6 +317,7 @@ fn template_and_shadow_associations_are_not_ordinary_caption_children() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

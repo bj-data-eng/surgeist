@@ -572,6 +572,7 @@ fn shadow_and_template_host_associations_are_not_ordinary_tree_edges() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

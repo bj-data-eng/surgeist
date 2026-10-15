@@ -1857,12 +1857,17 @@ impl HtmlCaptureBuilder {
     }
     /// Captures an existing shadow root and all its explicit source metadata.
     /// This records producer facts; it does not attach anything to a live host.
+    /// The root's actual document is independent of its retained host: internal
+    /// DOM replacement/adoption can change it without changing that association.
     pub fn add_shadow_root(
         &mut self,
+        document: &HtmlCaptureBuilderSubject,
         host: &HtmlCaptureBuilderSubject,
         properties: HtmlCapturedShadowProperties,
         registry: HtmlCaptureRegistryInput,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
+        let document = self.index(document)?;
+        self.require(document, HtmlCaptureSubjectKind::Document)?;
         let h = self.index(host)?;
         self.require(h, HtmlCaptureSubjectKind::Element)?;
         let HtmlCapturedNodeKind::Element(e) = &self.data.records[h].kind else {
@@ -1884,7 +1889,6 @@ impl HtmlCaptureBuilder {
         self.depth(depth)?;
         reserve(&mut self.data.records[h].dependents, 1)?;
         reserve(&mut self.data.records, 1)?;
-        let document = self.data.records[h].document;
         let i = self.data.records.len();
         self.data.records.push(Record {
             kind: HtmlCapturedNodeKind::Fragment(HtmlCapturedFragment {

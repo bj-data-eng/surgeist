@@ -370,6 +370,7 @@ fn hosted_template_and_shadow_contents_never_supply_direct_captions() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

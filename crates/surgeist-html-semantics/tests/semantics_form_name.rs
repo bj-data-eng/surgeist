@@ -455,6 +455,7 @@ fn shadow_and_template_associations_are_excluded_from_document_forms() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

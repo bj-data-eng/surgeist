@@ -194,6 +194,7 @@ fn shadow_presence_preserves_unknown_absence_and_closed_root_presence() {
     builder.establish_no_shadow_root(&hosts[1]).unwrap();
     builder
         .add_shadow_root(
+            &document,
             &hosts[2],
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

@@ -295,6 +295,7 @@ fn hosted_roots_do_not_substitute_host_for_immediate_parent() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let root = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

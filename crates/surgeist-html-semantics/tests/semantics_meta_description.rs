@@ -396,6 +396,7 @@ fn template_and_shadow_contents_do_not_join_host_document_metadata() {
         );
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

@@ -118,10 +118,12 @@ fn direction(report: &HtmlSemanticReport) -> HtmlDirectionality {
 }
 fn shadow(
     b: &mut HtmlCaptureBuilder,
+    document: &HtmlCaptureBuilderSubject,
     host: &HtmlCaptureBuilderSubject,
     mode: HtmlSlotAssignment,
 ) -> HtmlCaptureBuilderSubject {
     b.add_shadow_root(
+        document,
         host,
         HtmlCapturedShadowProperties::new(
             HtmlShadowRootProperties::new(HtmlShadowRootMode::Closed, mode, false, false, false),
@@ -211,7 +213,7 @@ fn svg_lang_applies_literal_xml_lang_does_not_and_empty_stops_inheritance() {
 fn language_shadow_inherits_host_for_text_and_preserves_original_source() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[("lang", "XYzzy")]);
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let child = text(&mut b, &d, "text");
     b.establish_children(&root, std::slice::from_ref(&child))
         .unwrap();
@@ -506,7 +508,7 @@ fn utf16_surrogates_and_nonbmp_first_strong_use_selected_unicode_properties() {
 fn shadow_inheritance_and_contained_slot_return_host_directionality() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[("dir", "rtl")]);
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let auto = element(&mut b, &d, "div", &[("dir", "auto")]);
     let slot = element(&mut b, &d, "slot", &[]);
     let later = text(&mut b, &d, "English");
@@ -533,7 +535,7 @@ fn manual_slot_assignment_order_is_preserved_and_assigned_root_exclusion_applies
     let excluded = element(&mut b, &d, "bdi", &[]); // No children required for the excluded root.
     b.establish_children(&host, &[a.clone(), rtl.clone(), excluded.clone()])
         .unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Manual);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Manual);
     let slot = element(&mut b, &d, "slot", &[("dir", "auto")]);
     b.establish_children(&root, std::slice::from_ref(&slot))
         .unwrap();
@@ -566,7 +568,7 @@ fn empty_assignment_uses_fallback_children_unavailable_is_missing() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[]);
     b.establish_children(&host, &[]).unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[("dir", "auto")]);
     let t = text(&mut b, &d, "א");
     b.establish_children(&slot, &[t]).unwrap();
@@ -608,7 +610,7 @@ fn assignment_all_excluded_defaults_ltr_without_using_slot_fallback() {
     let excluded = element(&mut b, &d, "span", &[("dir", "ltr")]);
     b.establish_children(&host, std::slice::from_ref(&excluded))
         .unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[("dir", "auto")]);
     let t = text(&mut b, &d, "א");
     b.establish_children(&slot, &[t]).unwrap();
@@ -812,7 +814,7 @@ fn named_assignment_rejects_reordered_duplicate_foreign_and_wrong_parent_nodes()
     let outsider = text(&mut b, &d, "foreign parent");
     b.establish_children(&outside, std::slice::from_ref(&outsider))
         .unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[]);
     let second = element(&mut b, &d, "slot", &[]);
     b.establish_children(&root, &[slot.clone(), second.clone()])
@@ -865,7 +867,7 @@ fn named_assignment_rejects_reordered_duplicate_foreign_and_wrong_parent_nodes()
 fn known_empty_assignment_does_not_require_uninspected_host_children() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[]);
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[("dir", "auto")]);
     b.establish_children(&slot, &[]).unwrap();
     b.establish_children(&root, std::slice::from_ref(&slot))
@@ -893,7 +895,7 @@ fn known_empty_assignment_does_not_require_uninspected_host_children() {
 fn assigned_capacity_cap_applies_before_node_inspection() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[]);
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Manual);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Manual);
     let slot = element(&mut b, &d, "slot", &[]);
     b.establish_children(&root, std::slice::from_ref(&slot))
         .unwrap();
@@ -1058,7 +1060,7 @@ fn language_slot_uses_shadow_host_without_consulting_assignment_or_control_facts
     let assigned = element(&mut b, &d, "span", &[("lang", "assigned-tag")]);
     b.establish_children(&host, std::slice::from_ref(&assigned))
         .unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[]);
     b.establish_children(&root, std::slice::from_ref(&slot))
         .unwrap();
@@ -1111,7 +1113,7 @@ fn assigned_neutral_element_continues_to_later_text_without_ltr_substitution() {
     let rtl = text(&mut b, &d, "א");
     b.establish_children(&host, &[neutral.clone(), rtl.clone()])
         .unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let slot = element(&mut b, &d, "slot", &[("dir", "auto")]);
     b.establish_children(&root, std::slice::from_ref(&slot))
         .unwrap();
@@ -1143,7 +1145,7 @@ fn contained_shadow_slot_can_evaluate_an_auto_host_iteratively() {
     let host = element(&mut b, &d, "div", &[("dir", "auto")]);
     let rtl = text(&mut b, &d, "א");
     b.establish_children(&host, &[rtl]).unwrap();
-    let root = shadow(&mut b, &host, HtmlSlotAssignment::Named);
+    let root = shadow(&mut b, &d, &host, HtmlSlotAssignment::Named);
     let outer = element(&mut b, &d, "div", &[("dir", "auto")]);
     let slot = element(&mut b, &d, "slot", &[]);
     let later = text(&mut b, &d, "a");

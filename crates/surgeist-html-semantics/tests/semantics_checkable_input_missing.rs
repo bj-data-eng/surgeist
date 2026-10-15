@@ -924,6 +924,7 @@ fn shadow_and_template_associations_never_replace_ordinary_group_edges() {
             fragment
         } else {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

@@ -358,6 +358,7 @@ fn separate_template_and_shadow_contents_are_not_grouping_children() {
         let host = html(&mut b, &d, if shadow { "div" } else { "template" });
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

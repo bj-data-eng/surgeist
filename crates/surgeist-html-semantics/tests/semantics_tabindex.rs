@@ -484,6 +484,7 @@ fn summary_default_does_not_cross_template_or_shadow_host_associations() {
         let host = html(&mut b, &d, if shadow { "details" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

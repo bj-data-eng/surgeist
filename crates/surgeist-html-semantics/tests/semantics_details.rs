@@ -667,6 +667,7 @@ fn groups_and_summary_predicates_do_not_cross_shadow_or_template_host_associatio
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

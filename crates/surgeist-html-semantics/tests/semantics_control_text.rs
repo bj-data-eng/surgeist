@@ -394,6 +394,7 @@ fn shadow_and_template_associated_text_is_excluded_but_ordinary_host_text_remain
         let host = html(&mut b, &d, if shadow { "div" } else { "template" });
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

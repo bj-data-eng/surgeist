@@ -1135,6 +1135,7 @@ fn shadow_tree_uniqueness_has_no_host_document_scope_or_cross_tree_duplicate() {
     );
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

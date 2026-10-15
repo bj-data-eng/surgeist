@@ -323,6 +323,7 @@ fn template_and_shadow_associations_are_excluded_but_real_ordinary_children_rema
         let host = html(&mut b, &d, if shadow { "div" } else { "template" });
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

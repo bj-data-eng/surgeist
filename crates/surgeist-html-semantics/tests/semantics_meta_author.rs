@@ -641,6 +641,7 @@ fn template_and_shadow_associations_do_not_join_charset_population() {
         );
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

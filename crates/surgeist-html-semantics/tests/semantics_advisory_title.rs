@@ -390,6 +390,7 @@ fn document_shadow_and_template_fragment_parents_stop_without_host_substitution(
     let host = element(&mut b, &d, "div", vec![attr("title", "host title")]);
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

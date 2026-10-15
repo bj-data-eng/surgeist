@@ -1127,6 +1127,7 @@ fn hosted_template_and_shadow_candidates_are_outside_ordinary_document_discovery
         );
         let subtree = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

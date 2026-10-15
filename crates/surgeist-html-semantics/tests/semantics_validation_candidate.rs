@@ -514,6 +514,7 @@ fn unknown_ancestry_is_missing_and_datalist_does_not_cross_shadow_or_template_ho
         );
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

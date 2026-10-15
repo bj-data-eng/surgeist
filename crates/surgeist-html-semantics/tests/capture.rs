@@ -220,6 +220,7 @@ fn shadow_reference_preserves_existing_host_and_registry() {
     let template = element(&mut builder, &doc, Namespace::html(), "template");
     let shadow = builder
         .add_shadow_root(
+            &doc,
             &host,
             captured_shadow_properties(),
             HtmlCaptureRegistryInput::Registry(registry.clone()),
@@ -251,6 +252,319 @@ fn shadow_reference_preserves_existing_host_and_registry() {
     assert!(
         matches!(capture.node(host_id.subject()).unwrap().shadow_root(), Some(HtmlCapturedShadowRoot::Present(id)) if id.subject() == &capture.subject_id(&shadow).unwrap())
     );
+}
+
+#[test]
+fn hosted_shadow_root_retains_its_actual_document_without_changing_the_host() {
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let host_document = builder
+        .add_document(
+            HtmlDocumentMode::Quirks,
+            HtmlScriptingStatus::Enabled,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    let root_document = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let host = element(&mut builder, &host_document, Namespace::html(), "div");
+    let light = builder.add_text(&host_document, "light".into()).unwrap();
+    let shadow = builder
+        .add_shadow_root(
+            &root_document,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let text = builder
+        .add_text(
+            &root_document,
+            DocumentString::from_utf16(vec![0xd800, 13, 10]),
+        )
+        .unwrap();
+    builder
+        .establish_children(&host_document, std::slice::from_ref(&host))
+        .unwrap();
+    builder.establish_children(&root_document, &[]).unwrap();
+    builder
+        .establish_children(&host, std::slice::from_ref(&light))
+        .unwrap();
+    builder
+        .establish_children(&shadow, std::slice::from_ref(&text))
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let host_document_id = capture.subject_id(&host_document).unwrap();
+    let root_document_id = capture.subject_id(&root_document).unwrap();
+    let host_id = capture
+        .element_id(&capture.subject_id(&host).unwrap())
+        .unwrap();
+    let shadow_id = capture.subject_id(&shadow).unwrap();
+    for (subject, document) in [
+        (&host, &host_document_id),
+        (&light, &host_document_id),
+        (&shadow, &root_document_id),
+        (&text, &root_document_id),
+    ] {
+        assert_eq!(
+            capture
+                .node(&capture.subject_id(subject).unwrap())
+                .unwrap()
+                .node_document()
+                .subject(),
+            document
+        );
+    }
+    let root = capture.node(&shadow_id).unwrap();
+    assert_eq!(
+        root.host(),
+        Some(HtmlCapturedHost::Element(host_id.clone()))
+    );
+    assert_eq!(root.parent(), HtmlCapturedParent::Root);
+    assert_eq!(root.lookup_registry(), HtmlCapturedRegistry::Null);
+    assert!(matches!(
+        capture.node(host_id.subject()).unwrap().shadow_root(),
+        Some(HtmlCapturedShadowRoot::Present(id)) if id.subject() == &shadow_id
+    ));
+    assert_eq!(capture.nearest_form(&host_id).unwrap(), None);
+    let HtmlCapturedNodeKind::Text(value) = capture
+        .node(&capture.subject_id(&text).unwrap())
+        .unwrap()
+        .kind()
+    else {
+        panic!("text")
+    };
+    assert_eq!(value.code_units(), [0xd800, 13, 10]);
+
+    let old = capture.clone();
+    let mut next = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let next_document = document(&mut next, HtmlScriptingStatus::Disabled);
+    let next_host = element(&mut next, &next_document, Namespace::html(), "span");
+    next.add_shadow_root(
+        &next_document,
+        &next_host,
+        captured_shadow_properties(),
+        HtmlCaptureRegistryInput::Unavailable,
+    )
+    .unwrap();
+    let next = next.finish().unwrap();
+    assert_eq!(
+        next.node(&shadow_id).unwrap_err(),
+        HtmlCaptureError::ForeignCapture
+    );
+    assert_eq!(
+        old.node(&shadow_id).unwrap().node_document().subject(),
+        &root_document_id
+    );
+    assert_eq!(
+        old.node(host_id.subject())
+            .unwrap()
+            .node_document()
+            .subject(),
+        &host_document_id
+    );
+    assert_eq!(
+        old.node(&shadow_id).unwrap().host(),
+        Some(HtmlCapturedHost::Element(host_id))
+    );
+}
+
+#[test]
+fn shadow_root_document_and_host_validation_refuse_without_partial_association() {
+    let mut foreign = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let foreign_document = document(&mut foreign, HtmlScriptingStatus::Disabled);
+    let foreign_host = element(&mut foreign, &foreign_document, Namespace::html(), "div");
+    let foreign_registry = foreign.add_registry(None).unwrap();
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let host_document = document(&mut builder, HtmlScriptingStatus::Enabled);
+    let root_document = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let host = element(&mut builder, &host_document, Namespace::html(), "div");
+    let before = builder.usage();
+    assert_eq!(
+        builder.add_shadow_root(
+            &host,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Registry(foreign_registry)
+        ),
+        Err(HtmlCaptureError::WrongKind {
+            expected: HtmlCaptureSubjectKind::Document,
+            actual: HtmlCaptureSubjectKind::Element
+        })
+    );
+    assert_eq!(builder.usage(), before);
+    for (document, host, error) in [
+        (&foreign_document, &host, HtmlCaptureError::ForeignBuilder),
+        (
+            &root_document,
+            &foreign_host,
+            HtmlCaptureError::ForeignBuilder,
+        ),
+        (
+            &root_document,
+            &host_document,
+            HtmlCaptureError::WrongKind {
+                expected: HtmlCaptureSubjectKind::Element,
+                actual: HtmlCaptureSubjectKind::Document,
+            },
+        ),
+    ] {
+        assert_eq!(
+            builder.add_shadow_root(
+                document,
+                host,
+                captured_shadow_properties(),
+                HtmlCaptureRegistryInput::Null
+            ),
+            Err(error)
+        );
+        assert_eq!(builder.usage(), before);
+    }
+    let shadow = builder
+        .add_shadow_root(
+            &root_document,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let after = builder.usage();
+    assert_eq!(
+        builder.add_shadow_root(
+            &host_document,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null
+        ),
+        Err(HtmlCaptureError::AssociationAlreadyEstablished)
+    );
+    assert_eq!(builder.usage(), after);
+    let capture = builder.finish().unwrap();
+    assert_eq!(capture.usage().subjects(), 4);
+    let root = capture.node(&capture.subject_id(&shadow).unwrap()).unwrap();
+    assert_eq!(
+        root.node_document().subject(),
+        &capture.subject_id(&root_document).unwrap()
+    );
+    assert!(matches!(root.children(), HtmlCapturedChildren::Unavailable));
+    assert_eq!(
+        capture
+            .node(&capture.subject_id(&host).unwrap())
+            .unwrap()
+            .node_document()
+            .subject(),
+        &capture.subject_id(&host_document).unwrap()
+    );
+}
+
+#[test]
+fn shadow_root_document_independence_preserves_exact_admission_and_ordinary_edges() {
+    for (subjects, relationships, depth, resource, limit, required) in [
+        (3, 5, 1, HtmlCaptureResource::Subjects, 3, 4),
+        (4, 4, 1, HtmlCaptureResource::Relationships, 4, 5),
+        (4, 5, 0, HtmlCaptureResource::Depth, 0, 1),
+    ] {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(subjects, relationships, 0, 256, depth, 0, 0),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let host_document = document(&mut builder, HtmlScriptingStatus::Enabled);
+        let root_document = document(&mut builder, HtmlScriptingStatus::Disabled);
+        let host = element(&mut builder, &host_document, Namespace::html(), "div");
+        let before = builder.usage();
+        assert_eq!(
+            builder.add_shadow_root(
+                &root_document,
+                &host,
+                captured_shadow_properties(),
+                HtmlCaptureRegistryInput::Null
+            ),
+            Err(HtmlCaptureError::LimitExceeded {
+                resource,
+                limit,
+                required
+            })
+        );
+        assert_eq!(builder.usage(), before);
+        let capture = builder.finish().unwrap();
+        assert_eq!(capture.usage().subjects(), 3);
+        assert_eq!(
+            capture
+                .node(&capture.subject_id(&host).unwrap())
+                .unwrap()
+                .shadow_root(),
+            Some(HtmlCapturedShadowRoot::Unavailable)
+        );
+    }
+    let mut exact = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(4, 5, 0, 256, 1, 0, 0),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let host_document = document(&mut exact, HtmlScriptingStatus::Enabled);
+    let root_document = document(&mut exact, HtmlScriptingStatus::Disabled);
+    let host = element(&mut exact, &host_document, Namespace::html(), "div");
+    exact
+        .add_shadow_root(
+            &root_document,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let exact = exact.finish().unwrap();
+    assert_eq!(exact.usage().subjects(), 4);
+    assert_eq!(exact.usage().relationships(), 5);
+    assert_eq!(exact.usage().depth(), 1);
+    let mut builder = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let first = document(&mut builder, HtmlScriptingStatus::Enabled);
+    let second = document(&mut builder, HtmlScriptingStatus::Disabled);
+    let host = element(&mut builder, &first, Namespace::html(), "div");
+    let shadow = builder
+        .add_shadow_root(
+            &second,
+            &host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let wrong_child = builder.add_text(&first, "wrong document".into()).unwrap();
+    let before = builder.usage();
+    assert_eq!(
+        builder.establish_children(&shadow, &[wrong_child]),
+        Err(HtmlCaptureError::DocumentMismatch)
+    );
+    assert_eq!(builder.usage(), before);
+    let cycle_host = element(&mut builder, &first, Namespace::html(), "div");
+    let cycle_root = builder
+        .add_shadow_root(
+            &first,
+            &cycle_host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let before = builder.usage();
+    assert_eq!(
+        builder.establish_children(&cycle_root, std::slice::from_ref(&cycle_host)),
+        Err(HtmlCaptureError::Cycle)
+    );
+    assert_eq!(builder.usage(), before);
+    let capture = builder.finish().unwrap();
+    let cycle_host = capture
+        .element_id(&capture.subject_id(&cycle_host).unwrap())
+        .unwrap();
+    assert_eq!(
+        capture.nearest_form(&cycle_host),
+        Err(HtmlCaptureError::MissingFact {
+            subject: Some(cycle_host.subject().clone()),
+            fact: HtmlCaptureFact::Parent
+        })
+    );
+    assert!(matches!(
+        capture
+            .node(&capture.subject_id(&shadow).unwrap())
+            .unwrap()
+            .children(),
+        HtmlCapturedChildren::Unavailable
+    ));
 }
 
 #[test]
@@ -1327,6 +1641,7 @@ fn closed_shadow_presence_and_hosted_registry_require_no_captured_children() {
     );
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(properties, true, true, false),
             HtmlCaptureRegistryInput::Registry(reg.clone()),

@@ -139,9 +139,11 @@ fn heading(c: &HtmlCapture, cx: &HtmlSemanticContext, n: &HtmlCaptureBuilderSubj
 }
 fn shadow(
     b: &mut HtmlCaptureBuilder,
+    document: &HtmlCaptureBuilderSubject,
     host: &HtmlCaptureBuilderSubject,
 ) -> HtmlCaptureBuilderSubject {
     b.add_shadow_root(
+        document,
         host,
         HtmlCapturedShadowProperties::new(
             HtmlShadowRootProperties::new(
@@ -385,7 +387,7 @@ fn shadow_and_template_fragments_stop_editability_and_translation_but_not_headin
         ],
     );
     b.establish_root(&host).unwrap();
-    let root = shadow(&mut b, &host);
+    let root = shadow(&mut b, &d, &host);
     let plain = b.add_fragment(&d).unwrap();
     let in_shadow = element(&mut b, &d, "h2", &[]);
     let in_plain = element(&mut b, &d, "h2", &[]);
@@ -1041,7 +1043,7 @@ fn global_facts_reject_stale_host_revision_and_duplicate_spellcheck_records() {
 fn shadow_spellcheck_does_not_inherit_host_getter_and_invalid_policy_is_rejected() {
     let (mut b, d) = builder();
     let host = element(&mut b, &d, "div", &[("spellcheck", "false")]);
-    let root = shadow(&mut b, &host);
+    let root = shadow(&mut b, &d, &host);
     let child = element(&mut b, &d, "span", &[]);
     b.establish_parent(&child, &root).unwrap();
     let c = b.finish().unwrap();

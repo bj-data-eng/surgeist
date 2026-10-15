@@ -508,6 +508,7 @@ fn document_lookup_excludes_shadow_and_template_associations() {
     b.establish_children(&host, &[]).unwrap();
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

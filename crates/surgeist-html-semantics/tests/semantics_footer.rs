@@ -509,6 +509,7 @@ fn template_and_shadow_hosts_do_not_supply_sectioning_ancestry() {
         children(&mut b, &section, std::slice::from_ref(&host));
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

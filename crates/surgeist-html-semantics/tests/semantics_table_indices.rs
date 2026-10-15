@@ -592,6 +592,7 @@ fn template_and_shadow_hosts_never_substitute_for_ordinary_parent_or_grandparent
         let host = html(&mut b, &d, if shadow { "div" } else { "template" });
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

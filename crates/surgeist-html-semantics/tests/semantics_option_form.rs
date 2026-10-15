@@ -439,6 +439,7 @@ fn shadow_and_template_fragments_do_not_substitute_host_select() {
         let host = html(&mut b, &d, if shadow { "select" } else { "template" }, &[]);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

@@ -371,6 +371,7 @@ fn shadow_and_template_hosts_do_not_supply_ordinary_labels() {
         let host = element(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

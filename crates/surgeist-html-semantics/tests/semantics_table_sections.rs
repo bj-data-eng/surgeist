@@ -323,6 +323,7 @@ fn template_and_shadow_associations_do_not_supply_direct_sections() {
             let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
             let f = if shadow {
                 b.add_shadow_root(
+                    &d,
                     &host,
                     HtmlCapturedShadowProperties::new(
                         HtmlShadowRootProperties::new(

@@ -651,6 +651,7 @@ fn descendant_text_does_not_cross_template_contents_or_shadow_roots() {
         let host = element(&mut b, &d, if shadow { "div" } else { "template" }, vec![]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

@@ -227,9 +227,11 @@ fn flag(r: &HtmlSemanticReport) -> &HtmlSemanticValue<bool> {
 }
 fn shadow(
     b: &mut HtmlCaptureBuilder,
+    document: &HtmlCaptureBuilderSubject,
     host: &HtmlCaptureBuilderSubject,
 ) -> HtmlCaptureBuilderSubject {
     b.add_shadow_root(
+        document,
         host,
         HtmlCapturedShadowProperties::new(
             HtmlShadowRootProperties::new(
@@ -410,7 +412,7 @@ fn shadow_connectedness_crosses_host_but_id_lookup_and_ancestor_forms_do_not() {
     b.establish_children(&outer, std::slice::from_ref(&host))
         .unwrap();
     b.establish_children(&d, &[outer]).unwrap();
-    let root = shadow(&mut b, &host);
+    let root = shadow(&mut b, &d, &host);
     let e = element(&mut b, &d, "input", &[("form", "outer")]);
     let no_attr = element(&mut b, &d, "input", &[]);
     b.establish_children(&e, &[]).unwrap();
@@ -433,7 +435,7 @@ fn shadow_explicit_form_targets_same_shadow_tree_when_host_is_connected() {
     let host = element(&mut b, &d, "div", &[]);
     b.establish_children(&d, std::slice::from_ref(&host))
         .unwrap();
-    let root = shadow(&mut b, &host);
+    let root = shadow(&mut b, &d, &host);
     let target = element(&mut b, &d, "form", &[("id", "x")]);
     let e = element(&mut b, &d, "input", &[("form", "x")]);
     b.establish_children(&root, &[target.clone(), e.clone()])
@@ -564,7 +566,7 @@ fn label_in_shadow_tree_does_not_target_light_dom_id_or_follow_assigned_nodes() 
     b.establish_children(&host, &[target]).unwrap();
     b.establish_children(&d, std::slice::from_ref(&host))
         .unwrap();
-    let root = shadow(&mut b, &host);
+    let root = shadow(&mut b, &d, &host);
     let label = element(&mut b, &d, "label", &[("for", "x")]);
     b.establish_children(&label, &[]).unwrap();
     b.establish_children(&root, std::slice::from_ref(&label))

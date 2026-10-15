@@ -417,6 +417,7 @@ fn actual_fragment_children_count_without_crossing_template_or_shadow_associatio
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, None);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

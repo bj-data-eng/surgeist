@@ -446,6 +446,7 @@ fn shadow_and_template_associations_are_not_ordinary_lookup_edges() {
         let fragment = if shadow {
             builder
                 .add_shadow_root(
+                    &document,
                     &host,
                     HtmlCapturedShadowProperties::new(
                         HtmlShadowRootProperties::new(
@@ -849,6 +850,7 @@ fn unrelated_roots_and_associated_contents_do_not_supply_a_missing_name_witness(
         let fragment = if shadow {
             builder
                 .add_shadow_root(
+                    &document,
                     &host,
                     HtmlCapturedShadowProperties::new(
                         HtmlShadowRootProperties::new(

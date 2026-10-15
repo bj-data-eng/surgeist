@@ -1069,6 +1069,7 @@ fn document_and_item_walks_exclude_hosted_template_and_shadow_contents() {
         let host = el(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

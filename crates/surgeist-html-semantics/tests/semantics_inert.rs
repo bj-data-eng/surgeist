@@ -220,6 +220,7 @@ fn assigned_node_inherits_from_actual_flat_slot_instead_of_ordinary_parent() {
     let light = element(&mut b, &d, "button", &[]);
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

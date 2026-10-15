@@ -773,6 +773,7 @@ fn detached_option_and_ordinary_host_children_do_not_include_shadow_or_template_
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

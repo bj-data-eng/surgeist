@@ -746,6 +746,7 @@ fn shadow_and_template_content_options_are_not_ordinary_select_descendants() {
         };
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

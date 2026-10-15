@@ -375,6 +375,7 @@ fn shadow_and_template_hosts_are_not_ordinary_ismap_ancestors() {
             .unwrap();
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

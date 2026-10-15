@@ -1828,6 +1828,7 @@ fn shadow_host_attributes_are_not_ordinary_inheritance() {
     );
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

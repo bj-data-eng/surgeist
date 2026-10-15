@@ -19,3 +19,10 @@ cargo fmt --all -- --check
 Preserve exact source/fact identities, first reached failure, actual retained
 allocations and explicit cleanup. Root owns API audit generation. See the
 [crate README](README.md) for supported capability limits and attribution.
+
+Shadow-root capture takes its actual Document independently of the associated
+host. Internal DOM replacement/adoption can change the root's node document
+without changing that association; never infer or equalize their documents.
+Preserve reciprocal host/root facts, source-qualified construction observations,
+ordinary parent/child document consistency, ownership checks and atomic refusal.
+This is capture of existing state, not a live attachment or public adoption API.

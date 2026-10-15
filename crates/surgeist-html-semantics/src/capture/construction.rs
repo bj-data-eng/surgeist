@@ -836,10 +836,12 @@ fn import(
                         let host = find(map, host, control)?
                             .and_then(|i| map.entries[i].subject.as_ref())
                             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
-                        if builder.data.records[host.index].document != document.index {
-                            return Err(HtmlCaptureError::DocumentMismatch.into());
-                        }
-                        builder.add_shadow_root(host, properties, observed.registry.clone())?
+                        builder.add_shadow_root(
+                            document,
+                            host,
+                            properties,
+                            observed.registry.clone(),
+                        )?
                     } else {
                         builder.add_shadow_fragment(
                             document,

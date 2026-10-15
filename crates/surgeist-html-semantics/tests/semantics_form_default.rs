@@ -732,6 +732,7 @@ fn template_and_shadow_hosts_are_not_ordinary_traversal_edges() {
         let host = element(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

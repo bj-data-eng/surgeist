@@ -628,6 +628,7 @@ fn template_contents_and_shadow_associations_do_not_join_ordinary_marker_trees()
         let host = element(&mut b, &d, if shadow { "div" } else { "template" }, vec![]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

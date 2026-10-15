@@ -852,6 +852,7 @@ fn shadow_and_template_contents_are_not_ordinary_collection_descendants() {
         let host = element(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let fragment = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

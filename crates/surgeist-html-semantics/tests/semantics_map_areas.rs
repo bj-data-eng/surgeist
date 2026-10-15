@@ -254,6 +254,7 @@ fn shadow_and_template_contents_are_excluded_but_ordinary_host_children_particip
         let host = html(&mut b, &d, if shadow { "div" } else { "template" }, &[]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(

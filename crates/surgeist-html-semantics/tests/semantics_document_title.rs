@@ -733,6 +733,7 @@ fn shadow_root_title_never_enters_document_selection() {
     let host = html(&mut b, &d, "div");
     let shadow = b
         .add_shadow_root(
+            &d,
             &host,
             HtmlCapturedShadowProperties::new(
                 HtmlShadowRootProperties::new(

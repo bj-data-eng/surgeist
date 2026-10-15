@@ -479,9 +479,11 @@ fn explicit_target_needs_no_content_id_or_children_when_scope_is_proved() {
 }
 fn shadow(
     b: &mut HtmlCaptureBuilder,
+    document: &HtmlCaptureBuilderSubject,
     host: &HtmlCaptureBuilderSubject,
 ) -> HtmlCaptureBuilderSubject {
     b.add_shadow_root(
+        document,
         host,
         HtmlCapturedShadowProperties::new(
             HtmlShadowRootProperties::new(
@@ -503,7 +505,7 @@ fn shadow(
 fn shadow_source_can_explicitly_reference_outer_tree_but_content_cannot() {
     let (mut b, d) = builder();
     let host = html(&mut b, &d, "div", &[]);
-    let sr = shadow(&mut b, &host);
+    let sr = shadow(&mut b, &d, &host);
     let button = html(&mut b, &d, "button", &[("commandfor", "x")]);
     let target = html(&mut b, &d, "dialog", &[("id", "x")]);
     children(&mut b, &button, &[]);
@@ -547,7 +549,7 @@ fn unrelated_shadow_target_and_template_host_are_not_ordinary_scope_edges() {
     let (mut b, d) = builder();
     let button = html(&mut b, &d, "button", &[("commandfor", "x")]);
     let host = html(&mut b, &d, "div", &[]);
-    let sr = shadow(&mut b, &host);
+    let sr = shadow(&mut b, &d, &host);
     let target = html(&mut b, &d, "div", &[("id", "x")]);
     children(&mut b, &sr, std::slice::from_ref(&target));
     children(&mut b, &button, &[]);

@@ -733,6 +733,7 @@ fn shadow_and_template_sources_are_local_and_associated_subtrees_are_not_collect
         let outside = html(&mut b, &d, "datalist", &[("id", "target")]);
         let f = if shadow {
             b.add_shadow_root(
+                &d,
                 &host,
                 HtmlCapturedShadowProperties::new(
                     HtmlShadowRootProperties::new(
