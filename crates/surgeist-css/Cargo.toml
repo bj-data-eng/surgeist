@@ -28,3 +28,7 @@ stats_alloc = { version = "=0.1.10", default-features = false }
 [[test]]
 name = "property_component_admission_allocations"
 harness = false
+
+[[test]]
+name = "checked_admission_borrowing"
+harness = false
