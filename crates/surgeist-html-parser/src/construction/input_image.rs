@@ -5,14 +5,10 @@
 //! images-disabled is explicit operation evidence, independent of scripting.
 use super::*;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ImageState {
-    NeverEntered,
-    Last {
-        source: Option<usize>,
-        coordinate: crate::HtmlInputImageCoordinate,
-    },
-}
+// A parser-phase specialization: source values are actual managed raw slots.
+// HTML owns the observation/history rules; this owner still qualifies, admits,
+// compares, copies and retires their backing strings.
+pub(super) type ImageState = surgeist_html::HtmlInputImageHistory<usize>;
 impl SessionStorage {
     fn image_source(
         &self,
@@ -98,17 +94,28 @@ impl SessionStorage {
         node: usize,
         source: Option<usize>,
     ) -> Result<(), SessionError> {
-        // No specified src means no update trigger; exact empty is the source's
-        // independently sufficient guard before policy, URL resolution or fetch.
-        let Some(source) = source else {
-            return Ok(());
+        use surgeist_html::{HtmlInputImageUpdateGuard as Guard, HtmlInputImagesDisabled};
+        // Preserve the source prefix: no source/empty source returns before
+        // the actual creation-qualified environment lookup and URL/resource work.
+        let guard = match source {
+            None => Guard::for_source(None),
+            Some(source) => {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                Guard::for_source(Some(self.image_source_value(c, source)?))
+            }
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.image_source_value(c, source)?.is_empty() {
-            return Ok(());
+        match guard {
+            Guard::NoSource | Guard::EmptySource => return Ok(()),
+            Guard::NeedsImageEnvironment => {}
+            Guard::ImagesDisabled => unreachable!("source-only guard"),
         }
         match self.input_images_supported(c, node)? {
-            crate::HtmlImageSupport::Disabled => Ok(()),
+            crate::HtmlImageSupport::Disabled => {
+                let stopped =
+                    guard.with_disabled_images(HtmlInputImagesDisabled::ExplicitlyDisabled);
+                debug_assert_eq!(stopped, Guard::ImagesDisabled);
+                Ok(())
+            }
             crate::HtmlImageSupport::Unavailable => Err(SessionError::ContextFactUnavailable(
                 crate::HtmlCaptureFact::ImageSupport,
             )),
@@ -124,17 +131,11 @@ impl SessionStorage {
         source: Option<usize>,
     ) -> Result<(), SessionError> {
         let mut state = self.read_input_state(c, slot)?;
-        let (retired, coordinate) = match state.image {
-            ImageState::NeverEntered => (None, crate::HtmlInputImageCoordinate::initial()),
-            ImageState::Last { source, coordinate } => (source, coordinate),
-        };
+        let retired = state.image.observed_source().flatten().copied();
         let retained = source
             .map(|source| self.copy_raw_field(c, source))
             .transpose()?;
-        state.image = ImageState::Last {
-            source: retained,
-            coordinate,
-        };
+        state.image = state.image.with_observed_source(retained);
         self.write_input_state(c, slot, state)?;
         if let Some(retired) = retired {
             self.retire_raw_field(c, retired)?;
@@ -149,18 +150,14 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let state = self.read_input_state(c, slot)?;
         let source = self.image_source(c, node)?;
-        let changed = match (state.image, source) {
-            (ImageState::NeverEntered, _) => true,
-            (ImageState::Last { source: old, .. }, current) => match (old, current) {
-                (None, None) => false,
-                (Some(old), Some(current)) => {
-                    let old = textarea_raw(&self.payloads, c, old)?;
-                    let current = self.image_source_value(c, current)?;
-                    !exact_string_equal(c, old, current)?
-                }
-                _ => true,
-            },
-        };
+        let changed =
+            state
+                .image
+                .entering_requires_observation(source.as_ref(), |old, current| {
+                    let old = textarea_raw(&self.payloads, c, *old)?;
+                    let current = self.image_source_value(c, *current)?;
+                    exact_string_equal(c, old, current)
+                })?;
         if changed {
             self.image_update(c, node, source)?;
             self.store_image_source(c, slot, source)?;
@@ -173,6 +170,8 @@ impl SessionStorage {
         node: usize,
         slot: usize,
     ) -> Result<(), SessionError> {
+        // Direct applicable src updates run even when exact text is unchanged.
+        // Do not use the type-reentry comparison shortcut here.
         let source = self.image_source(c, node)?;
         self.image_update(c, node, source)?;
         self.store_image_source(c, slot, source)

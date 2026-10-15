@@ -24,6 +24,7 @@ mod fragment_initialization;
 mod frame;
 mod iframe;
 mod input;
+mod input_image;
 mod integration_points;
 mod interpretation;
 mod marquee;
@@ -69,6 +70,7 @@ pub use iframe::{
     iframe_post_connection,
 };
 pub use input::*;
+pub use input_image::{HtmlInputImageHistory, HtmlInputImageUpdateGuard, HtmlInputImagesDisabled};
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
 pub use marquee::HtmlMarqueeState;

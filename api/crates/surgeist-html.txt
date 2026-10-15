@@ -2174,6 +2174,26 @@ pub surgeist_html::HtmlInputImageAttributeError::EmptySource
 impl core::error::Error for surgeist_html::HtmlInputImageAttributeError
 impl core::fmt::Display for surgeist_html::HtmlInputImageAttributeError
 pub fn surgeist_html::HtmlInputImageAttributeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlInputImageHistory<S>
+pub surgeist_html::HtmlInputImageHistory::Last
+pub surgeist_html::HtmlInputImageHistory::Last::coordinate: surgeist_html::HtmlInputImageCoordinate
+pub surgeist_html::HtmlInputImageHistory::Last::source: core::option::Option<S>
+pub surgeist_html::HtmlInputImageHistory::NeverEntered
+impl<S> surgeist_html::HtmlInputImageHistory<S>
+pub fn surgeist_html::HtmlInputImageHistory<S>::coordinate(&self) -> surgeist_html::HtmlInputImageCoordinate
+pub fn surgeist_html::HtmlInputImageHistory<S>::entering_requires_observation<E>(&self, current: core::option::Option<&S>, equal: impl core::ops::function::FnOnce(&S, &S) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
+pub fn surgeist_html::HtmlInputImageHistory<S>::observed_source(&self) -> core::option::Option<core::option::Option<&S>>
+pub fn surgeist_html::HtmlInputImageHistory<S>::with_observed_source<T>(&self, source: core::option::Option<T>) -> surgeist_html::HtmlInputImageHistory<T>
+pub enum surgeist_html::HtmlInputImageUpdateGuard
+pub surgeist_html::HtmlInputImageUpdateGuard::EmptySource
+pub surgeist_html::HtmlInputImageUpdateGuard::ImagesDisabled
+pub surgeist_html::HtmlInputImageUpdateGuard::NeedsImageEnvironment
+pub surgeist_html::HtmlInputImageUpdateGuard::NoSource
+impl surgeist_html::HtmlInputImageUpdateGuard
+pub fn surgeist_html::HtmlInputImageUpdateGuard::for_source(source: core::option::Option<&surgeist_html::DocumentString>) -> Self
+pub fn surgeist_html::HtmlInputImageUpdateGuard::with_disabled_images(self, _: surgeist_html::HtmlInputImagesDisabled) -> Self
+pub enum surgeist_html::HtmlInputImagesDisabled
+pub surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
 pub enum surgeist_html::HtmlInputMode
 pub surgeist_html::HtmlInputMode::Decimal
 pub surgeist_html::HtmlInputMode::Email
