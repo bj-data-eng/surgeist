@@ -417,6 +417,15 @@ impl DomSnapshot {
             if let Some(owner) = node.node.control_owner {
                 control.include(&mut planned, owner, false)?;
             }
+            if let Some(script) = node.node.script {
+                for document in [script.parser_document, script.preparation_document]
+                    .into_iter()
+                    .flatten()
+                {
+                    control.charge(1)?;
+                    control.include(&mut planned, document, false)?;
+                }
+            }
             if let Some(map) = &node.node.form_past_names {
                 for entry in map.entries.iter() {
                     control.charge(1)?;

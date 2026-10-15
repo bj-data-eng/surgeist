@@ -19,6 +19,7 @@ pub(super) enum NativeFamily {
     Fieldset(crate::DomFieldsetState),
     Button(crate::DomButtonState),
     Slot,
+    Script,
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
     Frame(HtmlFrameNullContent),
@@ -41,6 +42,7 @@ impl NativeFamily {
             | Self::Common
             | Self::Template(_)
             | Self::Slot
+            | Self::Script
             | Self::Marquee(_)
             | Self::Frame(_)
             | Self::Iframe(_) => Some(0),

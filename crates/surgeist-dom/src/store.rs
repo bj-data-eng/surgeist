@@ -20,6 +20,7 @@ mod document;
 mod form;
 mod import;
 mod navigable;
+mod script;
 mod shadow;
 mod slot;
 mod template;
@@ -404,6 +405,7 @@ pub(crate) struct Node {
     pub(crate) button_targets: Option<crate::button::ButtonTargets<NodeId>>,
     pub(crate) control_owner: Option<NodeId>,
     pub(crate) form_past_names: Option<crate::form::FormPastNames<NodeId>>,
+    pub(crate) script: Option<crate::script::ScriptState<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -760,6 +762,7 @@ struct DraftNode {
     button_targets: Option<crate::button::ButtonTargets<Key>>,
     control_owner: Option<Key>,
     form_past_names: Option<crate::form::FormPastNames<Key>>,
+    script: Option<crate::script::ScriptState<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -803,6 +806,9 @@ impl Draft {
                 Some(DraftNode {
                     document: Key::Existing(node.document.0.slot),
                     kind: node.kind.clone(),
+                    script: node
+                        .script
+                        .map(|value| value.map(|id| Key::Existing(id.slot))),
                     parent: node.parent.map(|id| Key::Existing(id.slot)),
                     shadow_root: node.shadow_root.map(|id| Key::Existing(id.slot)),
                     host: node.host.map(|id| Key::Existing(id.slot)),
@@ -906,6 +912,7 @@ impl Draft {
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
             self.native_removing_steps(node, cancelled)?;
+            self.children_changed(parent, cancelled)?;
         }
         Ok(())
     }
@@ -935,6 +942,8 @@ impl Draft {
                 .then(crate::form::FormPastNames::fresh);
         let template_document = matches!(kind, DomNodeKind::Document(_))
             .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
+        let script = matches!(&kind, DomNodeKind::Element(element) if element.is_html_script())
+            .then(crate::script::ScriptState::fresh);
         self.created.push(Some(DraftNode {
             document,
             kind,
@@ -944,6 +953,7 @@ impl Draft {
             host: None,
             template_contents: None,
             template_document,
+            script,
             manual_nodes: Vec::new(),
             assigned_nodes: Vec::new(),
             manual_slot: None,
@@ -1219,6 +1229,9 @@ impl Draft {
                 let target = self.node_mut(node);
                 target.kind = kind;
                 self.units = units;
+                if let Some(parent) = self.node(node)?.parent {
+                    self.children_changed(parent, cancelled)?;
+                }
             }
             Command::Insert {
                 node,
@@ -1315,6 +1328,7 @@ impl Draft {
             slots[slot].node = Some(Node {
                 document: DocumentId(id(source.document)),
                 kind: source.kind.clone(),
+                script: source.script.map(|value| value.map(id)),
                 parent: source.parent.map(id),
                 shadow_root: source.shadow_root.map(id),
                 host: source.host.map(id),
@@ -1451,7 +1465,8 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                     && (!before.same_nonattribute_state(after)
                         || node.button_targets != current.button_targets
                         || node.control_owner != current.control_owner
-                        || node.form_past_names != current.form_past_names)
+                        || node.form_past_names != current.form_past_names
+                        || node.script != current.script)
                 {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::ElementState(id));

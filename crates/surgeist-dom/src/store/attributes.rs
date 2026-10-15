@@ -156,6 +156,7 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.script_attribute_change(node, &changed, old_value.is_some(), false, cancelled)?;
         self.button_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
@@ -203,6 +204,7 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.script_attribute_change(node, &changed, true, true, cancelled)?;
         self.button_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)

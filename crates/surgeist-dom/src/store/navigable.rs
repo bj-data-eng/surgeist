@@ -3,63 +3,40 @@ use super::*;
 use surgeist_html::{HtmlFramePostConnectionDecision, HtmlIframePostConnectionDecision};
 
 impl Draft {
-    /// DOM post-connection applies only to nodes still connected after all
-    /// insertion steps. A shadow root crosses its actual host for this test;
-    /// its node document is deliberately not inferred from that host.
-    pub(super) fn navigable_post_connection_steps(
+    /// Per-node family decision, after the shared native post-connection list
+    /// has established actual current shadow-including connectedness.
+    pub(super) fn navigable_post_connection_node(
         &self,
-        root: Key,
+        key: Key,
         admit: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
-        let mut ancestor = root;
-        loop {
-            admit()?;
-            match self.shadow_including_parent(ancestor)? {
-                Some(parent) => ancestor = parent,
-                None => break,
-            }
-        }
-        if !matches!(self.node(ancestor)?.kind, DomNodeKind::Document(_)) {
+        admit()?;
+        let node = self.node(key)?;
+        let DomNodeKind::Element(element) = &node.kind else {
+            return Ok(());
+        };
+        let frame = element.frame_null_content();
+        let iframe = element.iframe_native_state();
+        if frame.is_none() && iframe.is_none() {
             return Ok(());
         }
-        let mut pending = Vec::new();
-        reserve(&mut pending, 1)?;
-        pending.push(root);
-        while let Some(key) = pending.pop() {
-            admit()?;
-            let node = self.node(key)?;
-            reserve(&mut pending, node.children.len())?;
-            pending.extend(node.children.iter().rev().copied());
-            if let Some(root) = node.shadow_root {
-                reserve(&mut pending, 1)?;
-                pending.push(root);
-            }
-            let DomNodeKind::Element(element) = &node.kind else {
-                continue;
-            };
-            let frame = element.frame_null_content();
-            let iframe = element.iframe_native_state();
-            if frame.is_none() && iframe.is_none() {
-                continue;
-            }
-            let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
-                unreachable!("canonical navigable-container node document")
-            };
-            let context = document.native_environment().browsing_context();
-            let returned = if frame.is_some() {
-                matches!(
-                    surgeist_html::frame_post_connection(context),
-                    HtmlFramePostConnectionDecision::Return
-                )
-            } else {
-                matches!(
-                    surgeist_html::iframe_post_connection(context),
-                    HtmlIframePostConnectionDecision::Return
-                )
-            };
-            if !returned {
-                unreachable!("all admitted Documents retain native known-null browsing context")
-            }
+        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
+            unreachable!("canonical navigable-container node document")
+        };
+        let context = document.native_environment().browsing_context();
+        let returned = if frame.is_some() {
+            matches!(
+                surgeist_html::frame_post_connection(context),
+                HtmlFramePostConnectionDecision::Return
+            )
+        } else {
+            matches!(
+                surgeist_html::iframe_post_connection(context),
+                HtmlIframePostConnectionDecision::Return
+            )
+        };
+        if !returned {
+            unreachable!("all admitted Documents retain native known-null browsing context")
         }
         Ok(())
     }

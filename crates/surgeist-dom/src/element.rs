@@ -111,6 +111,7 @@ impl DomElement {
                 // from current null content or missing imported metadata.
                 NativeFamily::Iframe(HtmlIframeNativeState::fresh())
             }
+            Requirement::KnownHtml(KnownHtmlElement::Script) => NativeFamily::Script,
             Requirement::KnownHtml(KnownHtmlElement::Slot) => {
                 let Some(surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments) =
                     initialization.slot()
@@ -202,6 +203,9 @@ impl DomElement {
     }
     pub(crate) fn is_slot(&self) -> bool {
         matches!(self.family, NativeFamily::Slot)
+    }
+    pub(crate) fn is_html_script(&self) -> bool {
+        matches!(self.family, NativeFamily::Script)
     }
     /// Actual closed common tuple. Exposed operations preserve its values.
     pub fn common_state(&self) -> HtmlNativeCommonState {

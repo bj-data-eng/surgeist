@@ -179,6 +179,14 @@ impl Draft {
                 self.set_nonce(copy, nonce.clone(), limits, cancelled)?;
             }
         }
+        if let Some(original) = original.node.script {
+            self.node_mut(copy)
+                .script
+                .as_mut()
+                .expect("actual fresh HTML Script")
+                .flags
+                .clone_already_started_from(original.flags);
+        }
         Ok(copy)
     }
 }

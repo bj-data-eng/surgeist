@@ -25,6 +25,9 @@
 //! targets, source-ordered setters, scoped semantic getters and retirement cleanup.
 //! Native Template owns real separate contents and cached inert Documents;
 //! clone/adopt/retirement preserve source ownership and document distinctions.
+//! Native HTML Script retains complete supported state and real document history.
+//! Source-ordered preparation reaches the actual Disabled return without fetching
+//! or executing; attributes, children and CharacterData invoke their real hooks.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -98,6 +101,7 @@ mod host;
 mod identity;
 mod names;
 mod node_values;
+mod script;
 mod semantic;
 mod shadow;
 mod slot;
@@ -119,6 +123,7 @@ pub use host::{
 };
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
+pub use script::DomHtmlScript;
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
     DomSlotSemanticLimits,

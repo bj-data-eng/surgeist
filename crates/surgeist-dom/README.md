@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template families,
+and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template/Script families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -156,6 +156,34 @@ attributes; adoption and immutable copying preserve existing family state.
 Current null content alone never justifies resetting processed retained history.
 Semantic captures retain this state in their source snapshot; the semantic
 schema has no child-navigable field to synthesize.
+
+Native HTML Script has a checked `DomNode::as_html_script()` view over its real
+canonical flags, optional type, parser/preparation Document identities and shared
+Uninitialized result/null-ready state. Fresh native creation has null documents,
+force-async true and other flags false. Actual native node-document browsing
+context proves scripting Disabled, independently of XML/HTML class. Preparation
+still stores recognized type, already-started and actual preparation document
+before that source return. No fetch, compilation, error result, ready callback
+or JavaScript execution is manufactured.
+
+Script source hooks run at each actual operation: async Added, connected nonnull
+src writes (including redundant values), parent children-changed after insertion/
+removal and CharacterData replacement, then source static descendant
+post-connection order. Only immediate nonempty Text contributes source content;
+whitespace and isolated UTF-16 units are preserved. Type/language interpretation
+uses HTML's admitted borrowed cursor. Type edits alone do not prepare; equal data
+edits or empty-fragment insertion can subsequently trigger a state-only change.
+Template contents remain disconnected through their host. Shadow connectivity
+does not replace actual node-document identity when a root differs from its host.
+
+Clone/import-as-clone applies actual copied attributes, then copies only source
+already-started; type/documents/result and other flags start fresh. Adoption,
+detach and immutable snapshot copying preserve established preparation history.
+Historic preparation documents stay in capture association closure, without
+declaring their unrelated trees complete or adding a fake semantic Script fact.
+Native APIs admit no arbitrary parser/processed-history installation; that cause
+must preserve/remap real metadata separately. SVG Script and resource-capable
+preparation remain outside this native HTML contribution.
 
 Native HTML Fieldset retains its actual form-owner relation, native unset parser
 flag and initially empty custom-validity message. `fieldset_state()` reads the
@@ -271,7 +299,7 @@ a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include other native form/control relations and values,
-HTML/SVG script state and preparation, resource-capable
+SVG script state and resource-capable HTML preparation, resource-capable
 iframe navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.

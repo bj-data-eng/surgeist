@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template/HTML-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -70,6 +70,21 @@ Clone/import-as-clone creates new native state; adoption preserves it. No Window
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
 Common closed focus/internals/click/reaction/popover values remain current state.
+Native HTML Script stores canonical HTML flags/type/result/ready values and real
+staged document refs, mapped only through final canonical identities. Its actual
+node-document null BC proves Disabled; type/started/preparation-document writes
+precede that stop. Keep parser-inserted absent for native creation. async Added
+differs from Changed/removal; equal connected src writes still invoke source
+postconnection. Parent children-changed runs after complete insertion/removal/
+CharacterData operations, including equal data and empty fragments, before the
+static descendant postconnection list. Share one actual family dispatch/walker.
+Use HTML's borrowed admitted type cursor and immediate Text emptiness, never
+duplicate MIME rules or concatenate text. Template host edges do not connect;
+ShadowRoot node document need not equal its host's. Clone applies attrs then only
+the actual already-started overlay before parent append; adopt/detach/snapshots
+preserve history. Capture closes historic document refs conservatively. No
+parser controller, SVG admission, fabricated error/result/callback, execution or
+metadata-installation default is permitted by this closed native prefix.
 Generic import reads only its supplied immutable capture, never a same-number
 live slot. It allocates fresh target identities; caller tickets map separately
 from private imported descendant allocations. Clone trusted canonical name and

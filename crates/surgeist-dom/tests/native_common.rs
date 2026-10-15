@@ -167,8 +167,8 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
     for (ns, name, requirement) in [
         (
             HTML,
-            "script",
-            Requirement::KnownHtml(KnownHtmlElement::Script),
+            "audio",
+            Requirement::KnownHtml(KnownHtmlElement::Audio),
         ),
         (SVG, "script", Requirement::SvgScript),
     ] {

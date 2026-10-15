@@ -1,6 +1,54 @@
 use super::*;
 
 impl Draft {
+    pub(super) fn shadow_connected(
+        &self,
+        mut key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        loop {
+            check_cancel(cancel)?;
+            match self.shadow_including_parent(key)? {
+                Some(parent) => key = parent,
+                None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
+            }
+        }
+    }
+
+    fn native_post_connection_steps(
+        &mut self,
+        roots: &[Key],
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        // DOM insert steps10–12 collect the whole static shadow-including list
+        // before invoking any post-connection work. Template contents are owned
+        // auxiliaries, not shadow-including descendants of their host.
+        let mut list = Vec::new();
+        let mut pending = Vec::new();
+        reserve(&mut pending, roots.len())?;
+        pending.extend(roots.iter().rev().copied());
+        while let Some(key) = pending.pop() {
+            check_cancel(cancel)?;
+            reserve(&mut list, 1)?;
+            list.push(key);
+            let node = self.node(key)?;
+            reserve(&mut pending, node.children.len())?;
+            pending.extend(node.children.iter().rev().copied());
+            if let Some(root) = node.shadow_root {
+                reserve(&mut pending, 1)?;
+                pending.push(root);
+            }
+        }
+        for key in list {
+            check_cancel(cancel)?;
+            if self.shadow_connected(key, cancel)? {
+                self.navigable_post_connection_node(key, &mut || check_cancel(cancel))?;
+                self.script_post_connection(key, cancel)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn adopt(
         &mut self,
         node: Key,
@@ -207,6 +255,7 @@ impl Draft {
             moving
         };
         if moving.is_empty() {
+            self.children_changed(parent, cancelled)?;
             return Ok(());
         }
         reserve(&mut self.node_mut(parent).children, moving.len())?;
@@ -236,12 +285,10 @@ impl Draft {
             self.slot_insertion(child, parent, limits, cancelled)?;
             self.common_insertion_steps(child, cancelled, &mut || check_cancel(cancelled))?;
         }
-        // Post-connection follows all actual Slot/common insertion steps, including
-        // all transferred fragment children. Each navigable container checks current
-        // shadow-including connectedness and its actual node document.
-        for child in moving {
-            self.navigable_post_connection_steps(child, &mut || check_cancel(cancelled))?;
-        }
+        // Parent children-changed observes the completed atomic insertion before
+        // any descendant post-connection work, including nested Scripts.
+        self.children_changed(parent, cancelled)?;
+        self.native_post_connection_steps(&moving, cancelled)?;
         Ok(())
     }
 
@@ -263,6 +310,7 @@ impl Draft {
                 pending.push(root);
             }
             self.navigable_removing_node(key, &mut || check_cancel(cancel))?;
+            self.script_removing_node(key, cancel)?;
             self.control_removing_node(key, cancel)?;
         }
         Ok(())
