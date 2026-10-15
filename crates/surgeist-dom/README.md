@@ -663,8 +663,42 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-Remaining native special families, XML DOMImplementation creation and HTML
-installation remain unadmitted capabilities. This crate does not claim complete DOM or
+`Dom::install_native_html_fragment` consumes an immutable `HtmlFragment` as an
+explicit fresh-native authoring input. It checks an exact `DomDocumentStamp`,
+the destination parent and optional insertion reference before source work,
+then stages the whole installation through the same Draft/publication owner.
+Raw namespace/prefix/local components, attribute order and UTF-16 are preserved;
+DOM's component grammar applies without reconstructing a QName or applying the
+namespace-aware invocation's reserved-prefix rules. Actual native attribute and
+tree hooks run in source order. Native Template owned contents use real cached
+inert Documents; Script uses fresh native state and actual Disabled preparation.
+
+The returned `DomNativeHtmlInstallation` owns the installed immutable snapshot,
+change report and full source-qualified `HtmlNodeId` to `NodeId` bindings. The
+source fragment maps to a real detached empty canonical fragment after transfer;
+owned Template contents are mapped, private auxiliary Documents are not. Bindings
+follow source preorder with owned contents before ordinary children. Source drop,
+later edits and retirement do not rewrite this historical result. Every fallible
+map/output allocation happens before publication; refusal preserves the entire
+live tree, identities, revision and history.
+
+`DomNativeHtmlInstallLimits` separately admits mapped nodes, adapter work and the
+simultaneous retained capacities of traversal/map/output buffers. Work charges
+visited nodes, five association observations per node, edges, attributes, prior
+map comparisons, map writes, final remapping/bindings and raw field UTF-16 extents.
+An empty ordinary source costs nine work units and creates its mapped wrapper.
+Canonical staged tree/name/family work and publication storage retain their
+existing `DomLimits` admission and cancellation checks. The adapter quota does
+not claim to meter those independent operations.
+
+Declarative shadow relationships and hosted source fragment roots receive typed
+association refusals: native attachment cannot supply retained declarative/root
+document facts. Unsupported native families retain their actual requirement
+errors. A bare fragment does not carry complete parse-report context, provenance,
+effects or remaps; passing one explicitly requests native creation. Full parsed
+document/contextual-fragment transfer and report adoption remain under #1135.
+Remaining native special families and XML DOMImplementation creation also remain
+unadmitted capabilities. This crate does not claim complete DOM or
 HTML conformance. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and

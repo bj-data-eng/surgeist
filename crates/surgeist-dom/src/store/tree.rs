@@ -1,5 +1,15 @@
 use super::*;
 
+pub(super) fn parent_can_have_children(kind: &DomNodeKind) -> bool {
+    matches!(
+        kind,
+        DomNodeKind::Document(_)
+            | DomNodeKind::DocumentFragment
+            | DomNodeKind::ShadowRoot(_)
+            | DomNodeKind::Element(_)
+    )
+}
+
 impl Draft {
     pub(super) fn shadow_connected(
         &self,
@@ -113,13 +123,7 @@ impl Draft {
         exclude: Option<Key>,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(
-            self.node(parent)?.kind,
-            DomNodeKind::Document(_)
-                | DomNodeKind::DocumentFragment
-                | DomNodeKind::ShadowRoot(_)
-                | DomNodeKind::Element(_)
-        ) {
+        if !parent_can_have_children(&self.node(parent)?.kind) {
             return Err(DomError::HierarchyRequest);
         }
         let mut ancestor = Some(parent);

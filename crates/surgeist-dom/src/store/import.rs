@@ -173,7 +173,7 @@ impl Draft {
         if let Some(element) = original.as_element() {
             for attribute in element.attributes().iter() {
                 check_cancel(cancelled)?;
-                self.append_cloned_attribute(copy, attribute.clone(), limits, cancelled)?;
+                self.append_attribute(copy, attribute.clone(), limits, cancelled)?;
             }
             if let Some(nonce) = element.nonce() {
                 self.set_nonce(copy, nonce.clone(), limits, cancelled)?;

@@ -46,16 +46,68 @@ pub(crate) fn valid_attribute_local_name(
     name: &DocumentString,
     cancelled: &AtomicBool,
 ) -> Result<bool, DomError> {
+    valid_attribute_units(name.code_units(), cancelled)
+}
+
+fn valid_attribute_units(name: &[u16], cancelled: &AtomicBool) -> Result<bool, DomError> {
     if name.is_empty() {
         return Ok(false);
     }
-    for &unit in name.code_units() {
+    for &unit in name {
         crate::store::check_cancel(cancelled)?;
         if forbidden_common(unit) || unit == 0x3d {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn valid_prefix_units(prefix: &[u16], cancelled: &AtomicBool) -> Result<bool, DomError> {
+    if prefix.is_empty() {
+        return Ok(false);
+    }
+    for &unit in prefix {
+        crate::store::check_cancel(cancelled)?;
+        if forbidden_common(unit) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Direct native installation admits actual components, not a reconstructed
+/// createElementNS operand. Invocation-only xml/xmlns/namespace extraction
+/// conditions do not rewrite or constrain this distinct component entry.
+pub(crate) fn validate_element_components(
+    name: &QualifiedName,
+    cancelled: &AtomicBool,
+) -> Result<(), DomError> {
+    validate_components(name, NameContext::Element, cancelled)
+}
+pub(crate) fn validate_attribute_components(
+    name: &QualifiedName,
+    cancelled: &AtomicBool,
+) -> Result<(), DomError> {
+    validate_components(name, NameContext::Attribute, cancelled)
+}
+fn validate_components(
+    name: &QualifiedName,
+    context: NameContext,
+    cancelled: &AtomicBool,
+) -> Result<(), DomError> {
+    if let Some(prefix) = name.prefix()
+        && !valid_prefix_units(prefix.code_units(), cancelled)?
+    {
+        return Err(DomError::InvalidCharacter);
+    }
+    let valid = match context {
+        NameContext::Element => valid_element_local_name(name.local_name(), cancelled)?,
+        NameContext::Attribute => valid_attribute_local_name(name.local_name(), cancelled)?,
+    };
+    if !valid {
+        return Err(DomError::InvalidCharacter);
+    }
+    Ok(())
 }
 
 fn exact(value: &DocumentString, text: &str) -> bool {
@@ -101,14 +153,8 @@ fn extracted_name(
     }
     if let Some(at) = split {
         let prefix = &qualified.code_units()[..at];
-        if prefix.is_empty() {
+        if !valid_prefix_units(prefix, cancelled)? {
             return Err(DomError::InvalidCharacter);
-        }
-        for &unit in prefix {
-            crate::store::check_cancel(cancelled)?;
-            if forbidden_common(unit) {
-                return Err(DomError::InvalidCharacter);
-            }
         }
     }
     let local = &qualified.code_units()[split.map_or(0, |at| at + 1)..];
@@ -117,14 +163,8 @@ fn extracted_name(
             return Err(DomError::InvalidCharacter);
         }
     } else {
-        if local.is_empty() {
+        if !valid_attribute_units(local, cancelled)? {
             return Err(DomError::InvalidCharacter);
-        }
-        for &unit in local {
-            crate::store::check_cancel(cancelled)?;
-            if forbidden_common(unit) || unit == 0x3d {
-                return Err(DomError::InvalidCharacter);
-            }
         }
     }
     let prefix_is = |text: &str| {

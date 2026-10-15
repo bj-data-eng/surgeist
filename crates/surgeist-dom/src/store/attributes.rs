@@ -95,10 +95,10 @@ impl Draft {
         self.write_attribute(node, position, replacement, limits, cancelled)
     }
 
-    /// Exact canonical records are already name/uniqueness-validated by their
-    /// captured source. Cloning appends them without replaying a namespace-aware
-    /// constructor, which would misinterpret literal unnamespaced `xml:lang`.
-    pub(super) fn append_cloned_attribute(
+    /// Append exact records checked by the native component entry or canonical
+    /// clone source. Do not reconstruct an NS operand: literal unnamespaced
+    /// xml:lang and actual supplied prefix/local fields stay distinct.
+    pub(super) fn append_attribute(
         &mut self,
         node: Key,
         attribute: Attribute,

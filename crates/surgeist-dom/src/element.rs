@@ -35,6 +35,13 @@ pub struct DomElement {
 }
 
 impl DomElement {
+    pub(crate) fn native_components(
+        name: QualifiedName,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        crate::names::validate_element_components(&name, cancelled)?;
+        Self::initialize(name, None, cancelled)
+    }
     pub(crate) fn native(
         local_name: DocumentString,
         document: &crate::DomDocumentMetadata,

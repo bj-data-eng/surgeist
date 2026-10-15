@@ -19,6 +19,7 @@ mod control;
 mod document;
 mod form;
 mod import;
+mod installation;
 mod navigable;
 mod script;
 mod shadow;
@@ -1257,6 +1258,16 @@ impl Draft {
         Ok(())
     }
     fn finish(self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.finish_with_mapping(dom, cancelled, std::iter::empty())
+            .map(|(prepared, _)| prepared)
+    }
+
+    fn finish_with_mapping(
+        self,
+        dom: &Dom,
+        cancelled: &AtomicBool,
+        requested: impl ExactSizeIterator<Item = Key>,
+    ) -> Result<(Prepared, Vec<NodeId>), DomError> {
         let mut slots = Vec::new();
         let mut occupants = Vec::new();
         reserve(&mut slots, dom.state.slots.len())?;
@@ -1316,6 +1327,17 @@ impl Draft {
             },
             Key::Created(index) => allocated_ids[index].expect("surviving creation reference"),
         };
+        // Resolve requested private adapter identities only while the canonical
+        // final allocation map exists. All fallible output precedes publication.
+        let mut mapped = Vec::new();
+        mapped
+            .try_reserve_exact(requested.len())
+            .map_err(|_| DomError::AllocationFailed)?;
+        for key in requested {
+            check_cancel(cancelled)?;
+            self.node(key)?;
+            mapped.push(id(key));
+        }
         for (slot, key) in occupants.into_iter().enumerate() {
             check_cancel(cancelled)?;
             let Some(key) = key else {
@@ -1380,15 +1402,18 @@ impl Draft {
                     .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
             );
         }
-        Ok(Prepared {
-            state,
-            owner: self.owner,
-            created,
-            documents,
-            transition_ids: finished.transition_ids,
-            record_ids: finished.record_ids,
-            changes,
-        })
+        Ok((
+            Prepared {
+                state,
+                owner: self.owner,
+                created,
+                documents,
+                transition_ids: finished.transition_ids,
+                record_ids: finished.record_ids,
+                changes,
+            },
+            mapped,
+        ))
     }
 }
 fn map_keys(ids: &[NodeId], cancelled: &AtomicBool) -> Result<Vec<Key>, DomError> {

@@ -93,6 +93,16 @@ the source nonce slot through its cloning step. PI clone
 preserves current data without new-construction `?>` validation. Keep traversal
 iterative and all copied nodes/strings admitted with the rest of the batch.
 
+Native HTML fragment installation selects fresh native creation explicitly, not
+parser-report transfer. Validate exact destination stamp and insertion references
+before source work. Preserve raw name components/ordered attributes/UTF-16 through
+the component validator and actual family hooks, including Template owned contents
+and Script. Refuse unsupported declarative/retained associations precisely; do not
+fabricate attachment metadata. Include the real detached emptied source wrapper
+and owned contents in the source-qualified map. Admit iterative traversal, rows,
+final identities and bindings before the single existing publication; no fallible
+output work follows success. Canonical tree and adapter quotas remain distinct.
+
 ShadowRoot uses the same NodeId/State/Draft/ticket owner as ordinary nodes.
 Keep reciprocal host/root links separate from ordinary parents; roots remain
 parentless DocumentFragment subtypes. Native attach consumes actual HTML shadow

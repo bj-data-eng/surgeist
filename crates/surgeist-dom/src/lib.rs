@@ -28,6 +28,10 @@
 //! Native HTML Script retains complete supported state and real document history.
 //! Source-ordered preparation reaches the actual Disabled return without fetching
 //! or executing; attributes, children and CharacterData invoke their real hooks.
+//! Explicit native HTML fragment installation preserves immutable component
+//! fields and UTF-16 through that same canonical owner, including real native
+//! Template contents and Script hooks. It returns a source-qualified historical
+//! map and installed snapshot; complete parser-report transfer remains separate.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -99,6 +103,7 @@ mod fieldset;
 mod form;
 mod host;
 mod identity;
+mod installation;
 mod names;
 mod node_values;
 mod script;
@@ -122,6 +127,10 @@ pub use host::{
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
+pub use installation::{
+    DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,
+    DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallation,
+};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use script::DomHtmlScript;
 pub use semantic::{
