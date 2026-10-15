@@ -2351,6 +2351,10 @@ dependencies = [
 [[package]]
 name = "surgeist-template"
 version = "0.1.0"
+dependencies = [
+ "surgeist-dom",
+ "surgeist-html",
+]
 
 [[package]]
 name = "surgeist-text"

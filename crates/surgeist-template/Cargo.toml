@@ -10,3 +10,7 @@ description = "Template and DSL-facing contracts for Surgeist."
 [lib]
 name = "surgeist_template"
 path = "src/lib.rs"
+
+[dependencies]
+surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
+surgeist-dom = { path = "../surgeist-dom", version = "=0.1.0" }

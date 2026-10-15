@@ -15,7 +15,13 @@ from a `ValidatedTemplate`; the authored result requires registry validation.
 Consume sibling public front doors directly. Template owns its HTML/DOM adapters
 as those contributions are implemented. Root owns workspace wiring, the facade,
 integration verification and generated API artifacts; it is not a mandatory
-lowering path. This Rust-generation unit adds no runtime evaluator or DOM adapter.
+lowering path. `NativeElementRegistry::from_html_metadata` consumes the shared
+known-name inventory with explicit template value-form policy. This discovery
+profile is not complete HTML conformance, defaults or open-family recognition.
+`append_static_html` preflights concrete values before queuing ordinary DOM edits;
+the caller applies the batch, and DOM owns actual native-family/identity/limit
+admission. Keep HTML template contents an explicit unsupported target until its
+canonical association is available. No expression evaluation is supplied.
 
 ## Sources
 
@@ -33,6 +39,7 @@ authoritative; root-owned API audits are generated through
 | Expression syntax and name constraints | `src/expr.rs` and `src/name.rs` |
 | Registry contracts and validated structure | `src/validate.rs` |
 | Rust source generation | `src/render.rs` |
+| HTML inventory registry and static DOM composition | `src/validate.rs`, `src/dom.rs`, `tests/html_dom.rs` |
 | Diagnostic kinds and source positions | `src/error.rs` and `src/span.rs` |
 | Human documentation and navigation | `README.md` and its linked guides in `docs/` |
 | Focused verification | Tracked `#[cfg(test)]` modules in `src/` and `tests/template_v1.rs` |
@@ -47,7 +54,8 @@ shared product resolution; command inventory is not a requirement to run every
 suite for each change.
 
 Verification includes source-module tests, `tests/template_v1.rs` and
-`tests/native_ast.rs`. The root `tests/template_generated_rust.rs` compiles and
+`tests/native_ast.rs`, `tests/html_dom.rs` and the static adapter's doc example.
+The root `tests/template_generated_rust.rs` compiles and
 executes actual generated Rust against the real facade. Keep generated Rust safe
 and validated-template expressions symbolic.
 

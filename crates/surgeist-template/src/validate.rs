@@ -194,6 +194,38 @@ pub struct NativeElementRegistry {
 }
 
 impl NativeElementRegistry {
+    /// Derives a closed authoring vocabulary from HTML's known-name inventory.
+    ///
+    /// Contextual rows are unioned with global applicability. These discovery
+    /// records do not establish complete HTML conformance, value semantics,
+    /// defaults or DOM construction capability. Open attribute families and
+    /// custom/foreign names are outside this profile. `forms` selects template
+    /// syntax policy independently of HTML's attribute value descriptions.
+    pub fn from_html_metadata(forms: AttributeRule) -> Result<Self, RegistryError> {
+        use surgeist_html::{KnownHtmlElement, attribute_inventory};
+
+        let mut specs = Vec::new();
+        for element in KnownHtmlElement::ALL {
+            let mut included = HashSet::new();
+            let mut attributes = Vec::new();
+            for row in attribute_inventory() {
+                if (row.all_html_elements() || row.html_elements().contains(element))
+                    && included.insert(row.attribute())
+                {
+                    attributes.push(AttributeSpec::try_new(
+                        row.attribute().local_name(),
+                        forms.clone(),
+                    )?);
+                }
+            }
+            specs.push(NativeElementSpec::try_new(
+                element.local_name(),
+                attributes,
+            )?);
+        }
+        Self::try_from_specs(specs)
+    }
+
     pub fn try_from_specs(specs: Vec<NativeElementSpec>) -> Result<Self, RegistryError> {
         let mut checked = HashMap::new();
         for spec in specs {

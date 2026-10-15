@@ -7,8 +7,20 @@ Rust source that constructs the same authored AST through public constructors.
 
 The current V1 surface supports elements, interpolation, conditionals, and
 iteration. Expressions remain symbolic; runtime evaluation and host policy belong
-to their consuming owners. Template owns its direct HTML/DOM integration as those
-separate adapters are contributed.
+to their consuming owners. Template directly consumes HTML's known-name metadata
+and queues concrete HTML construction through the canonical DOM batch API.
+
+`NativeElementRegistry::from_html_metadata` unions global and contextual shared
+attribute records, with an explicit `AttributeRule` for template value forms.
+This finite discovery profile does not certify full HTML conformance or cover
+custom/foreign names and open attribute families; manual registries remain
+available. `append_static_html` accepts a `ValidatedTemplate`, a caller-owned
+`DomBatch`, and document/parent `NodeOperand`s, including same-batch tickets.
+It preserves ordered attributes/text and returns root creation tickets for the
+caller's successful commit. Symbolic values return span-bearing unresolved
+errors before queuing; HTML template contents return an explicit unsupported
+target error. DOM admits native families and limits when applying the composed
+batch. HTML installation and dynamic evaluation are separate contributions.
 
 ## Start
 

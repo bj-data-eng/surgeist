@@ -87,3 +87,19 @@ further lowering. The generated code performs no runtime expression evaluation.
 
 Continue with the [how-to guides](how-to.md) to adapt registries and inspect
 failures, or consult the [syntax and API reference](reference.md).
+
+## Build concrete HTML through DOM
+
+For the shared closed HTML vocabulary, replace the manual native registry with
+`NativeElementRegistry::from_html_metadata` and an explicit `AttributeRule` for
+the template forms your caller accepts. This uses discovery metadata, rather
+than proving full HTML conformance or recognizing open/custom/foreign families.
+
+After validation, `append_static_html` queues concrete native nodes and Text into
+the caller's DOM batch. Its [compiled doc example](../src/dom.rs) uses actual
+same-batch document/parent tickets and one atomic `Dom::apply`; the
+[HTML/DOM integration tests](../tests/html_dom.rs) also cover existing operands,
+ordered attributes, old snapshots and failure rollback. Symbolic components,
+expressions and control flow remain unresolved, and HTML template contents need a
+target this adapter does not yet support. Follow the [DOM composition procedure](how-to.md#append-concrete-html-to-a-dom-batch)
+for this separate path; generated typed Rust remains available for symbolic ASTs.

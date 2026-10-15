@@ -3,8 +3,9 @@
 ## Package and public entry point
 
 [Cargo.toml](../Cargo.toml) defines package `surgeist-template` version `0.1.0`,
-edition 2024, and library import name `surgeist_template`. It declares no
-dependencies, features, or `rust-version` requirement.
+edition 2024, and library import name `surgeist_template`. It declares
+direct dependencies on `surgeist-html` and `surgeist-dom`, with no features or
+`rust-version` requirement.
 [src/lib.rs](../src/lib.rs) is the public front door; implementation modules
 are private and selected types and functions are reexported there.
 
@@ -13,6 +14,8 @@ are private and selected types and functions are reexported there.
 | `parse_template` | `&str` → `Result<TemplateDocument, ParseError>` | [parser.rs](../src/parser.rs) |
 | `validate_template` | Document, native registry, and component registry references → `Result<ValidatedTemplate, ValidationError>` | [validate.rs](../src/validate.rs) |
 | `render_to_rust` | `&ValidatedTemplate` → `String` | [render.rs](../src/render.rs) |
+| `NativeElementRegistry::from_html_metadata` | Explicit `AttributeRule` → `Result<NativeElementRegistry, RegistryError>` | [validate.rs](../src/validate.rs) |
+| `append_static_html` | Validated template, mutable caller batch, document and parent operands → root tickets or `TemplateDomError` | [dom.rs](../src/dom.rs) |
 
 `TemplateDocument::nodes()` exposes parsed `Node` values: `Element`, `Text`,
 `Interpolation`, `If`, and `ForEach`. `ValidatedTemplate::nodes()` preserves
@@ -117,6 +120,31 @@ identical coordinates for a zero-byte range. `SpanError` reports the violated
 condition. These are caller-supplied diagnostic coordinates, not a source-buffer
 identity or proof of membership or containment.
 
+## HTML metadata and canonical DOM edits
+
+The HTML registry constructor derives known element names and the union of global
+and contextual attribute rows from HTML's public inventory. Its `AttributeRule`
+argument selects template syntactic forms. Discovery metadata does not establish
+complete applicability/value conformance, defaults or construction capability.
+Custom/foreign names, event handlers and open data-/ARIA families are outside this
+closed profile; callers may still build explicit registries.
+
+`append_static_html` accepts existing nodes or same-batch creations for both
+document and parent operands. It preflights the complete graph before appending
+commands, then queues actual HTML-namespace elements, exact ordered raw attributes
+and Text. Bare attributes become present-empty content. The caller applies its
+composed batch once and resolves returned root `CreatedNode`s through `DomCommit`.
+DOM validates document/parent/identity, native-family capability and resource
+limits at apply time, with whole-batch atomicity.
+
+Components, interpolation, conditionals, iteration and symbolic attribute values
+return `TemplateDomError::Unresolved` with their actual span and a closed
+`TemplateDomUnresolvedKind`. `UnsupportedTemplateContentsTarget` prevents
+treating an HTML template's content as ordinary element children. Recoverable
+temporary allocation/representation errors also return before queuing. DOM queue
+allocations retain their ordinary infallible allocation behavior. No evaluator,
+serialization/reparse or separate live tree is involved.
+
 ## Diagnostics and verification sources
 
 `ParseError` and `ValidationError` expose `kind()` and `span()`. `RegistryError`
@@ -124,5 +152,8 @@ reports specification-construction failures. The variants live in
 [error.rs](../src/error.rs) and [validate.rs](../src/validate.rs).
 
 Crate-local verification consists of unit tests in [src/](../src/) and the
-integration suite [tests/template_v1.rs](../tests/template_v1.rs).
-[AGENTS.md](../AGENTS.md#command-inventory) owns the repository command inventory.
+integration suites [tests/template_v1.rs](../tests/template_v1.rs),
+[tests/native_ast.rs](../tests/native_ast.rs) and
+[tests/html_dom.rs](../tests/html_dom.rs), plus the static adapter's real DOM doc
+example. The root compiled-consumer test executes actual generated Rust.
+[root AGENTS.md](../../../AGENTS.md#command-inventory) owns the repository command inventory.

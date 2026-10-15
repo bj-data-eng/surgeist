@@ -117,6 +117,21 @@ pub surgeist_template::SpanError::InconsistentZeroLengthSpan::start: surgeist_te
 pub surgeist_template::SpanError::InvalidPosition
 pub surgeist_template::SpanError::InvalidPosition::column: usize
 pub surgeist_template::SpanError::InvalidPosition::line: usize
+pub enum surgeist_template::TemplateDomError
+pub surgeist_template::TemplateDomError::Allocation
+pub surgeist_template::TemplateDomError::RepresentationExhausted
+pub surgeist_template::TemplateDomError::Unresolved
+pub surgeist_template::TemplateDomError::Unresolved::kind: surgeist_template::TemplateDomUnresolvedKind
+pub surgeist_template::TemplateDomError::Unresolved::span: surgeist_template::SourceSpan
+pub surgeist_template::TemplateDomError::UnsupportedTemplateContentsTarget
+pub surgeist_template::TemplateDomError::UnsupportedTemplateContentsTarget::span: surgeist_template::SourceSpan
+pub enum surgeist_template::TemplateDomUnresolvedKind
+pub surgeist_template::TemplateDomUnresolvedKind::AttributeExpression
+pub surgeist_template::TemplateDomUnresolvedKind::AttributeInterpolation
+pub surgeist_template::TemplateDomUnresolvedKind::Component
+pub surgeist_template::TemplateDomUnresolvedKind::Conditional
+pub surgeist_template::TemplateDomUnresolvedKind::Interpolation
+pub surgeist_template::TemplateDomUnresolvedKind::Iteration
 pub enum surgeist_template::UnaryOp
 pub surgeist_template::UnaryOp::Neg
 pub surgeist_template::UnaryOp::Not
@@ -212,6 +227,7 @@ pub fn surgeist_template::NativeElementName::as_str(&self) -> &str
 pub fn surgeist_template::NativeElementName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_template::NameError>
 pub struct surgeist_template::NativeElementRegistry
 impl surgeist_template::NativeElementRegistry
+pub fn surgeist_template::NativeElementRegistry::from_html_metadata(forms: surgeist_template::AttributeRule) -> core::result::Result<Self, surgeist_template::RegistryError>
 pub fn surgeist_template::NativeElementRegistry::try_from_specs(specs: alloc::vec::Vec<surgeist_template::NativeElementSpec>) -> core::result::Result<Self, surgeist_template::RegistryError>
 pub struct surgeist_template::NativeElementSpec
 impl surgeist_template::NativeElementSpec
@@ -301,6 +317,7 @@ pub fn surgeist_template::VariablePath::root(&self) -> &str
 pub fn surgeist_template::VariablePath::segments(&self) -> &[surgeist_template::PathSegment]
 pub fn surgeist_template::VariablePath::try_new(root: impl core::convert::Into<alloc::string::String>, segments: alloc::vec::Vec<surgeist_template::PathSegment>) -> core::result::Result<Self, surgeist_template::NameError>
 pub const surgeist_template::CRATE_NAME: &str
+pub fn surgeist_template::append_static_html(template: &surgeist_template::ValidatedTemplate, batch: &mut surgeist_dom::batch::DomBatch, document: surgeist_dom::batch::NodeOperand, parent: surgeist_dom::batch::NodeOperand) -> core::result::Result<alloc::vec::Vec<surgeist_dom::batch::CreatedNode>, surgeist_template::TemplateDomError>
 pub fn surgeist_template::parse_template(source: &str) -> core::result::Result<surgeist_template::TemplateDocument, surgeist_template::ParseError>
 pub fn surgeist_template::render_to_rust(template: &surgeist_template::ValidatedTemplate) -> alloc::string::String
 pub fn surgeist_template::validate_template(document: &surgeist_template::TemplateDocument, native_registry: &surgeist_template::NativeElementRegistry, component_registry: &surgeist_template::ComponentRegistry) -> core::result::Result<surgeist_template::ValidatedTemplate, surgeist_template::ValidationError>

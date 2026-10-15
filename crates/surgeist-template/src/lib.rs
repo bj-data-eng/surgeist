@@ -1,12 +1,14 @@
 //! Template and DSL-facing contracts for Surgeist.
 //!
 //! Strict parsing, native authored AST construction, registry validation and
-//! symbolic Rust generation. Template owns its direct lower-level adapters;
-//! runtime evaluation and host policy belong to their consuming owners.
+//! symbolic Rust generation. HTML metadata supplies an explicit known-name
+//! registry profile; concrete templates queue ordinary canonical DOM edits.
+//! Runtime evaluation and host policy belong to their consuming owners.
 
 #![forbid(unsafe_code)]
 
 mod ast;
+mod dom;
 mod error;
 mod expr;
 mod lexer;
@@ -20,6 +22,7 @@ pub use ast::{
     AstConstructionError, AttrPart, AttrValue, Attribute, ElementName, ElementNode, ForEachNode,
     IfBranch, IfNode, InterpolationNode, Node, TemplateDocument, TextNode,
 };
+pub use dom::{TemplateDomError, TemplateDomUnresolvedKind, append_static_html};
 pub use error::{ParseError, ParseErrorKind, ValidationError, ValidationErrorKind};
 pub use expr::{BinaryOp, Expr, Literal, PathField, PathIndex, PathSegment, UnaryOp, VariablePath};
 pub use name::{AttributeName, ComponentName, NameError, NativeElementName, VariableName};

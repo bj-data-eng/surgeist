@@ -24,6 +24,14 @@ accept.
 The `validates_known_native_and_component_names` and registry rejection cases in
 [tests/template_v1.rs](../tests/template_v1.rs) show the expected outcomes.
 
+To consume HTML's shared known-name inventory instead, call
+`NativeElementRegistry::from_html_metadata` with the intended `AttributeRule`.
+It unions global and contextual attribute applicability and deduplicates shared
+names. This closed discovery profile supplies no semantic defaults or full HTML
+value/conformance checks. Manual registries still describe other vocabularies;
+open data-/ARIA families, event handlers and custom/foreign names are not silently
+included. Components continue to use the separate component registry.
+
 ## Accept the intended attribute forms
 
 Start with an element specification and decide which authored value forms that
@@ -63,3 +71,27 @@ Keep the original source text available when parsing and validating it.
 
 The error variants are defined in [src/error.rs](../src/error.rs), and multiline
 and UTF-8 span examples appear in [tests/template_v1.rs](../tests/template_v1.rs).
+
+## Append concrete HTML to a DOM batch
+
+1. Parse or natively construct an authored document, then validate it with the
+   intended native/component registries. Choose the HTML metadata constructor
+   for the closed shared vocabulary, with explicit template value-form policy.
+2. Use a caller-owned `DomBatch` and obtain the target document and parent as
+   `NodeOperand`s: either published DOM identities or tickets created in this
+   same batch. `append_static_html` accepts both forms without inventing NodeIds.
+3. Call `append_static_html`. Native static nodes, static attributes, bare
+   present-empty attributes and Text queue actual HTML-namespace DOM requests.
+   Components, interpolation, conditionals, iteration and symbolic attributes
+   return span-bearing `Unresolved` errors. HTML template contents return
+   `UnsupportedTemplateContentsTarget`. All recoverable preflight errors leave
+   the caller batch unchanged, including commands queued before the call.
+4. Compose any further ordinary edits and apply the batch once through `Dom`.
+   DOM validates native-family capability, operands, hierarchy and finite limits.
+   Failure publishes no partial DOM state. On success, resolve the returned root
+   tickets with `DomCommit::created` and observe exact canonical snapshots.
+
+The [adapter's compiled doc example](../src/dom.rs) provides a complete invocation.
+[tests/html_dom.rs](../tests/html_dom.rs) exercises real successful commits and
+preflight, late-invalid-edit, capacity and native-family rejection. This path
+does not evaluate expressions or install immutable HTML construction values.
