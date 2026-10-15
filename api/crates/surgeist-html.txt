@@ -2160,6 +2160,9 @@ pub surgeist_html::HtmlInputColorSpace::LimitedSrgb
 impl surgeist_html::HtmlInputColorSpace
 pub fn surgeist_html::HtmlInputColorSpace::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlInputColorSpace::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlInputColorValueSource
+pub surgeist_html::HtmlInputColorValueSource::CurrentValue
+pub surgeist_html::HtmlInputColorValueSource::ValueAttribute
 pub enum surgeist_html::HtmlInputEmailMode
 pub surgeist_html::HtmlInputEmailMode::Multiple
 pub surgeist_html::HtmlInputEmailMode::Single
@@ -5325,6 +5328,8 @@ pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedNa
 pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
 pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool
 pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlIframePostConnectionDecision
+pub const fn surgeist_html::input_color_standard_failure_fallback() -> surgeist_html::HtmlLegacyColor
+pub const fn surgeist_html::input_color_value_source(dirty_value: bool) -> surgeist_html::HtmlInputColorValueSource
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
 pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool

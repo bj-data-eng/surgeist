@@ -276,13 +276,15 @@ fn execute(
             CssColorOperation::register_bytes(),
             mem::size_of::<CssColorParseOutcome<'_, '_>>(),
         )?;
-        let checkpoint =
-            match CssColorOperation::take(&mut operation).map_err(|error| css_error(c, error))? {
-                CssColorParseOutcome::Used(value) => value,
-                CssColorParseOutcome::StandardFailure(failure) => {
-                    failure.fallback(Color::opaque_black())
-                }
-            };
+        let checkpoint = match CssColorOperation::take(&mut operation)
+            .map_err(|error| css_error(c, error))?
+        {
+            CssColorParseOutcome::Used(value) => value,
+            CssColorParseOutcome::StandardFailure(failure) => {
+                let [red, green, blue] = crate::input_color_standard_failure_fallback().channels();
+                failure.fallback(Color::from_srgba8([red, green, blue, 255]))
+            }
+        };
         release_banks(&mut banks, c)?;
         let empty = bank_lengths(&banks);
         let mut checkpoint = Some(checkpoint);
@@ -483,19 +485,21 @@ impl SessionStorage {
         let colorspace_slot = colorspace_position
             .map(|position| self.attribute_value_slot(c, node, position))
             .transpose()?;
-        let value_slot = if state.flags.dirty_value() {
-            Some(previous)
-        } else {
-            self.color_attribute(c, node, "value")?
+        let value_slot = match crate::input_color_value_source(state.flags.dirty_value()) {
+            crate::HtmlInputColorValueSource::CurrentValue => Some(previous),
+            crate::HtmlInputColorValueSource::ValueAttribute => self
+                .color_attribute(c, node, "value")?
                 .map(|position| self.attribute_value_slot(c, node, position))
-                .transpose()?
+                .transpose()?,
         };
-        let source = if state.flags.dirty_value() {
-            ColorValueSource::CurrentValue
-        } else if value_slot.is_some() {
-            ColorValueSource::InstalledValue
-        } else {
-            ColorValueSource::MissingInstalledValue
+        let source = match crate::input_color_value_source(state.flags.dirty_value()) {
+            crate::HtmlInputColorValueSource::CurrentValue => ColorValueSource::CurrentValue,
+            crate::HtmlInputColorValueSource::ValueAttribute if value_slot.is_some() => {
+                ColorValueSource::InstalledValue
+            }
+            crate::HtmlInputColorValueSource::ValueAttribute => {
+                ColorValueSource::MissingInstalledValue
+            }
         };
         let original = value_slot
             .map(|slot| self.range_payload_edge(c, slot))
