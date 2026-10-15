@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Template/HTML-Script families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Template/HTML-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -69,6 +69,19 @@ or reset processed/imported history without an actual supported cause/state.
 Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
+Output retains one nullable default override plus the existing native control
+and canonical Form relation. Preserve null versus established empty; derive
+current/default text through existing bounded semantic queries. Mutation-time
+default reads use exact ordinary descendant Text, not Textarea normalization or
+association-owned children. Consume HTML's ordered Output cursor; value stores
+the default before replace-all, reset clears only after replace-all. Share the
+actual string-replace-all operation with Textarea, including every unconditional
+remove/insert children hook and new-Text-before-detach admission. Detached old
+nodes remain managed. Count override/message/new/old text independently. Bound
+the cancellable two-pass temporary by canonical unit capacity, with no numeric
+work charge. Clone/import fresh-initializes the override; adopt preserves it.
+Capture actual null/empty/text defaults initially and with Slot, retaining the
+initial capture's override-unit admission. Do not add a second public query engine.
 Textarea retains raw only, with shared flags/selection and actual native control
 storage. Bounded value/textLength reads use API-normalized newlines; defaultValue
 is immediate child Text, with CRLF continuity across chunks and nested text
@@ -232,7 +245,7 @@ cargo clippy --offline --locked -j 1 -p surgeist-dom --all-targets -- -F unsafe-
 cargo fmt -p surgeist-dom -- --check
 ```
 
-Fieldset, Button, Input and Textarea use one canonical NodeId/Key owner relation, native unset
+Fieldset, Button, Input, Textarea and Output use one canonical NodeId/Key owner relation, native unset
 parser flag and exact custom-validity message. Checked per-family node views
 read owners; intrinsic scalar payloads do not duplicate identity. Consume the shared reset cursor using actual observations
 and precise attribute/tree/ID triggers; do not synthesize a Form, a permanently

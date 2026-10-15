@@ -156,6 +156,9 @@ impl DomElement {
                     environment.input_platform(),
                 )))
             }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
+                NativeFamily::Output(std::sync::Arc::new(crate::DomOutputState::fresh()))
+            }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
@@ -236,6 +239,18 @@ impl DomElement {
             _ => None,
         }
     }
+    pub fn output_state(&self) -> Option<&crate::DomOutputState> {
+        match &self.family {
+            NativeFamily::Output(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn output_state_mut(&mut self) -> Option<&mut crate::DomOutputState> {
+        match &mut self.family {
+            NativeFamily::Output(state) => Some(std::sync::Arc::make_mut(state)),
+            _ => None,
+        }
+    }
     pub(crate) fn native_control(
         &self,
     ) -> Option<(
@@ -248,6 +263,10 @@ impl DomElement {
             NativeFamily::Input(state) => Some((
                 &state.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Input,
+            )),
+            NativeFamily::Output(state) => Some((
+                &state.control,
+                surgeist_html::HtmlNativeFormAssociationKind::Output,
             )),
             NativeFamily::Textarea(state) => Some((
                 &state.control,
@@ -262,6 +281,7 @@ impl DomElement {
             NativeFamily::Button(state) => Some(&mut state.control),
             NativeFamily::Input(state) => Some(&mut std::sync::Arc::make_mut(state).control),
             NativeFamily::Textarea(state) => Some(&mut std::sync::Arc::make_mut(state).control),
+            NativeFamily::Output(state) => Some(&mut std::sync::Arc::make_mut(state).control),
             _ => None,
         }
     }

@@ -47,10 +47,12 @@ pub(super) fn with_native_state(
     capture: &HtmlCapture,
     entries: &[Entry],
     control: &mut Control<'_>,
+    output_units: usize,
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
     let mut associations = Vec::new();
     let mut inputs = Vec::new();
     let mut textareas = Vec::new();
+    let mut outputs = Vec::new();
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
@@ -87,6 +89,18 @@ pub(super) fn with_native_state(
                 Some(flags.dirty_checkedness()),
                 Some(flags.dirty_value()),
                 Some(flags.indeterminate()),
+            ));
+        }
+        if let Some(output) = node.as_output() {
+            control.reserve(&mut outputs, 1)?;
+            outputs.push(surgeist_html_semantics::HtmlOutputDefaultFact::new(
+                entry.subject.clone(),
+                match output.state().default_value_override() {
+                    None => surgeist_html_semantics::HtmlOutputDefaultValueOverride::Null,
+                    Some(value) => surgeist_html_semantics::HtmlOutputDefaultValueOverride::Value(
+                        value.clone(),
+                    ),
+                },
             ));
         }
         if let Some(textarea) = node.as_textarea() {
@@ -176,7 +190,20 @@ pub(super) fn with_native_state(
     )
     .map_err(DomHtmlCaptureError::ElementReferences)?;
     control.charge(1)?;
+    let outputs = surgeist_html_semantics::HtmlOutputDefaultFacts::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        outputs,
+        surgeist_html_semantics::HtmlOutputDefaultLimits::new(
+            control.limits.subjects,
+            output_units,
+            control.limits.work,
+        ),
+    )
+    .map_err(DomHtmlCaptureError::OutputDefaults)?;
+    control.charge(1)?;
     Ok(input
+        .with_output_defaults(outputs)
         .with_controls(facts)
         .with_element_references(references))
 }

@@ -29,6 +29,10 @@
 //! Native Textarea retains exact raw value and shared flags/selection; bounded
 //! API/default reads, setters/reset, immediate Text hooks and capture preserve
 //! current/default distinctions without a second value owner or parser history.
+//! Native Output stores one nullable default override and consumes the shared
+//! ordered setter/reset cursor with real string-replace-all hooks. Existing
+//! bounded semantic queries read exact ordinary descendant/default text, and
+//! both initial and Slot captures preserve null versus established empty.
 //! Native Template owns real separate contents and cached inert Documents;
 //! clone/adopt/retirement preserve source ownership and document distinctions.
 //! Native HTML Script retains complete supported state and real document history.
@@ -113,6 +117,7 @@ mod input;
 mod installation;
 mod names;
 mod node_values;
+mod output;
 mod reflected;
 mod script;
 mod semantic;
@@ -143,6 +148,7 @@ pub use installation::{
     DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallation,
 };
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
+pub use output::{DomOutput, DomOutputState};
 pub use script::DomHtmlScript;
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,

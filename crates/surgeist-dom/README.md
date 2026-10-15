@@ -157,6 +157,36 @@ Current null content alone never justifies resetting processed retained history.
 Semantic captures retain this state in their source snapshot; the semantic
 schema has no child-navigable field to synthesize.
 
+Native HTML Output has a checked `DomNode::as_output()` view over its actual
+nullable default-value override and canonical Form owner/custom-error state.
+`None`, `Some(empty)` and `Some(text)` remain distinct. Read current and default
+values through the existing bounded HTML semantic `OutputValue` and
+`OutputDefaultValue` queries on `html_capture`; no second text getter or cached
+current value is retained. Output text is exact ordinary descendant UTF-16,
+including nested control default Text, without Textarea newline normalization
+or traversal into owned Template contents or ShadowRoot associations.
+
+`set_output_value` stores the current default as an override before replacing
+children. `set_output_default_value` replaces children only while the override
+is null; otherwise it changes only that override. `reset_output` reads the
+default, replaces children, then clears the override. The shared HTML cursor
+owns this order. Output and Textarea use one real DOM string-replace-all helper:
+new Text admission precedes old-child removal, detached nodes stay managed, and
+every actual remove/insert children hook still runs. Equal text does not skip
+identity-changing replacement. No extra final children hook is invented.
+
+Mutation-time descendant reading walks ordinary parent/sibling links without a
+traversal buffer. Two cancellable passes count and materialize one exact UTF-16
+buffer; its actual capacity is bounded by the canonical string-unit ceiling.
+This finite tree/string work does not consume the numeric/CSS ledger. Override,
+custom message, new Text and detached old Text are independently retained and
+accounted. Clone/import creates a fresh null override and custom error before
+copying descendants; adoption preserves established state. Both initial and
+Slot-supplemented captures carry actual Output defaults, with aggregate override
+units bounded by the initial capture's UTF-16 ceiling. Native installation uses
+the same family and tree owner. Per-control reset does not dispatch a whole-Form
+cancelable reset event.
+
 Native HTML Textarea has a checked `DomNode::as_textarea()` view over one exact
 raw UTF-16 value, shared dirty/user-validity flags, actual selection and native
 association/custom-error state. `state().raw_value()` is borrowed raw storage;

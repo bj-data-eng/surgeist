@@ -150,6 +150,10 @@ impl<'a> DomNode<'a> {
         self.as_element()?.input_state()?;
         Some(crate::DomInput { node: self })
     }
+    pub fn as_output(self) -> Option<crate::DomOutput<'a>> {
+        self.as_element()?.output_state()?;
+        Some(crate::DomOutput { node: self })
+    }
     pub fn as_textarea(self) -> Option<crate::DomTextarea<'a>> {
         self.as_element()?.textarea_state()?;
         Some(crate::DomTextarea { node: self })

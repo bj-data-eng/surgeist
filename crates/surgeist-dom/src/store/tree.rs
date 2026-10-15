@@ -11,6 +11,30 @@ pub(super) fn parent_can_have_children(kind: &DomNodeKind) -> bool {
 }
 
 impl Draft {
+    pub(super) fn string_replace_all(
+        &mut self,
+        key: Key,
+        raw: DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        // DOM string-replace-all creates its Text before removing children.
+        // Removed children remain real detached managed nodes, not retired IDs.
+        let replacement = if raw.is_empty() {
+            None
+        } else {
+            Some(self.allocate(DomNodeKind::Text(raw), self.node(key)?.document, limits)?)
+        };
+        while let Some(&child) = self.node(key)?.children.first() {
+            check_cancel(cancel)?;
+            self.remove(child, limits, cancel)?;
+        }
+        if let Some(text) = replacement {
+            self.pre_insert(text, key, None, limits, cancel)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn shadow_connected(
         &self,
         mut key: Key,

@@ -174,21 +174,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.textarea_state(key)?;
-        // DOM string-replace-all creates its Text before removing children.
-        // Removed children remain real detached managed nodes, not retired IDs.
-        let replacement = if raw.is_empty() {
-            None
-        } else {
-            Some(self.allocate(DomNodeKind::Text(raw), self.node(key)?.document, limits)?)
-        };
-        while let Some(&child) = self.node(key)?.children.first() {
-            check_cancel(cancel)?;
-            self.remove(child, limits, cancel)?;
-        }
-        if let Some(text) = replacement {
-            self.pre_insert(text, key, None, limits, cancel)?;
-        }
-        Ok(())
+        self.string_replace_all(key, raw, limits, cancel)
     }
     pub(super) fn reset_textarea(
         &mut self,

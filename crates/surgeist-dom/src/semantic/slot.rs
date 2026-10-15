@@ -159,6 +159,7 @@ impl DomHtmlCapture {
                 &self.capture,
                 &self.entries,
                 &mut control,
+                self.output_default_units,
             )?,
             control.limits.subjects,
         )

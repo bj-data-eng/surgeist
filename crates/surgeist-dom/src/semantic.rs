@@ -73,6 +73,7 @@ pub enum DomHtmlCaptureError {
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
     Inert(surgeist_html_semantics::HtmlInertFactError),
     Controls(surgeist_html_semantics::HtmlControlFactsError),
+    OutputDefaults(surgeist_html_semantics::HtmlOutputDefaultError),
     ElementReferences(surgeist_html_semantics::HtmlElementReferenceFactsError),
     ResourceLimit {
         resource: DomHtmlCaptureResource,
@@ -99,6 +100,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Language(e) => Some(e),
             Self::Inert(e) => Some(e),
             Self::Controls(e) => Some(e),
+            Self::OutputDefaults(e) => Some(e),
             Self::ElementReferences(e) => Some(e),
             Self::ResourceLimit { .. }
             | Self::Cancelled
@@ -148,6 +150,7 @@ pub struct DomHtmlCapture {
     capture: HtmlCapture,
     context: HtmlSemanticContext,
     entries: Vec<Entry>,
+    output_default_units: usize,
 }
 impl DomHtmlCapture {
     pub fn basis(&self) -> DomDocumentStamp {
@@ -695,6 +698,7 @@ impl DomSnapshot {
                 &capture,
                 &entries,
                 &mut control,
+                capture_limits.utf16_units(),
             )?,
             control.limits.subjects,
         )
@@ -707,6 +711,7 @@ impl DomSnapshot {
             capture,
             context,
             entries,
+            output_default_units: capture_limits.utf16_units(),
         })
     }
 }

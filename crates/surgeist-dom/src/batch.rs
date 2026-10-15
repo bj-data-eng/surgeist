@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    Output {
+        node: NodeOperand,
+        edit: crate::output::Edit,
+    },
     SetTextareaValue {
         node: NodeOperand,
         value: DocumentString,
@@ -503,6 +507,35 @@ impl DomBatch {
     pub fn reset_input(&mut self, node: impl Into<NodeOperand>) {
         self.commands
             .push(Command::ResetInput { node: node.into() });
+    }
+    /// Freezes the current default, then replaces all children with exact text.
+    pub fn set_output_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::Output {
+            node: node.into(),
+            edit: crate::output::Edit::Value(value.into()),
+        });
+    }
+    /// Replaces children when the override is null; otherwise stores the override.
+    pub fn set_output_default_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::Output {
+            node: node.into(),
+            edit: crate::output::Edit::DefaultValue(value.into()),
+        });
+    }
+    /// Replaces all children with the current default before clearing its override.
+    pub fn reset_output(&mut self, node: impl Into<NodeOperand>) {
+        self.commands.push(Command::Output {
+            node: node.into(),
+            edit: crate::output::Edit::Reset,
+        });
     }
     /// Stores exact raw Textarea value, marks dirty and applies API selection steps.
     pub fn set_textarea_value(

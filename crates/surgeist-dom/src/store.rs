@@ -23,6 +23,7 @@ mod input;
 mod input_processing;
 mod installation;
 mod navigable;
+mod output;
 mod reflected;
 mod script;
 mod shadow;
@@ -73,6 +74,8 @@ pub enum DomError {
     ButtonInapplicable,
     InputInapplicable,
     TextareaInapplicable,
+    OutputInapplicable,
+    OutputProtocol(surgeist_html::HtmlOutputCursorError),
     TextareaReadWorkLimit {
         limit: u64,
     },
@@ -1066,6 +1069,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::Output { node, edit } => {
+                let node = self.resolve(node)?;
+                self.output_edit(node, edit, limits, cancelled)?;
+            }
             Command::SetTextareaValue { node, value } => {
                 let node = self.resolve(node)?;
                 self.set_textarea_value(node, value, limits, cancelled)?;
