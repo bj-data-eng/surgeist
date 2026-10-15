@@ -59,6 +59,16 @@ records. Keep active/show/new-flag clearing separate from suppression, retained
 records and CSSOM effects. Broader CSS pseudo capture and actual composed
 publication remain with #1124/#382/#388/#1058, as described in the README.
 
+The direct HTML semantic adapter consumes actual immutable canonical values and
+public producer builders/session calls. Retain exact two-way subject mapping,
+document/host qualification and unavailable external facts. Native absent
+browsing context proves scripting disabled independently of XML/HTML class.
+Do not reconstruct saved state from content attributes or rerun fresh native
+initialization while capturing. Keep kind/host mapping exhaustive: future shadow
+or template associations can cross node-document membership and require actual
+closure expansion, not plain-fragment unhosted defaults. Preserve producer
+conservative dependency coverage rather than inventing precise invalidation.
+
 From repository root through bounded `pisct run`:
 
 ```sh

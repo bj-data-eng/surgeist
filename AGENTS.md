@@ -153,15 +153,18 @@ guide records this bounded surface. HTML document creation, remaining special
 family state/hooks, complete HTML installation and shadow trees remain
 contribution work;
 the existing retained facade is not replaced by this foundation.
-DOM depends directly on HTML and consumes its exact `DocumentString`.
+DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
+HTML-semantics adapter builds qualified ordinary-tree captures, retains checked
+bidirectional identity maps, and invokes the producer queries with explicit
+availability and finite capture limits.
 DOM's immutable external focus/hover captures use exact canonical document
 stamps and a separate host source/revision. Runtime directly consumes DOM and
 owns the adapter from its actual surface selections and checked associations.
 DOM also consumes CSS's checked transition names and CSSOM's ordinary sheet/rule
 identities for structural view-transition state. Runtime owns rendering resources
 and composed readiness; DOM's structural records do not establish either.
-Its planned integration owns importing HTML construction values and adapting
-canonical snapshots to HTML semantic operations. `surgeist-html` owns
+Its remaining installation work owns importing completed HTML construction
+values with their actual state and associations. `surgeist-html` owns
 typed HTML construction; `surgeist-template` retains template syntax, symbolic
 expressions, component validation and Rust generation, consuming the HTML and
 DOM contracts directly rather than duplicating their semantics. HTML parse results

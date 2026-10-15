@@ -237,6 +237,34 @@ hit testing, accessibility behavior or CSSOM effect. The selected
 and amended [#1201](https://github.com/bj-data-eng/surgeist/issues/1201) define
 this bounded contribution; full composition remains in #382/#391.
 
+`DomSnapshot::html_capture` adapts one immutable document directly into
+`surgeist-html-semantics`, including every managed same-document detached node.
+It retains that snapshot, a checked bidirectional canonical/semantic identity
+map, and an optional host capture validated against the exact document stamp.
+Qualified names, ordered attributes, current nonce, saved creation `is`, registry
+and custom-element state come from actual canonical records. It creates no
+intermediate HTML construction tree. Common slots not represented by HTML's
+capture schema remain available through the retained `source()` snapshot.
+
+`DomHtmlCapture::query` invokes the real bounded HTML semantic session and
+preserves its typed unavailable/inapplicable outcomes, result origins and
+conservative recomputation contract. Native documents' actual absent browsing
+context establishes disabled scripting under HTML's source rule; it does not
+establish image policy, header CSP or language fallback history. Current host
+captures retain their actual focus/hover observations and full external stamp;
+they do not supply those other domains. Construction limits bound mapped
+subjects and adapter work separately from HTML capture retention and query
+limits. Failed or cancelled composition returns no partial successful capture
+and changes neither DOM nor host revisions. Old captures retain their original
+membership after adoption, destruction and import elsewhere.
+
+This ordinary/common semantic profile does not complete #1124. Shadow/slot and
+flat-tree relations, live controls, template owner/cache state, registry objects,
+parser installation and the remaining qualified external domains still require
+their actual owning adapters. A future hosted root needs its real host and
+node-document associations, including cross-document host/root relationships;
+it must not inherit ordinary fragment absence from this profile.
+
 Each commit reports complete changed domains for this supported surface,
 including `Attributes`, `NodeDocument` and distinct View Transition document,
 transition/record and captured-subject domains. Captured-only edits do not report
@@ -251,10 +279,10 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-HTML document creation and HTML/SVG/MathML native Element initialization,
-shadow trees, HTML installation and semantic capture adapters
-are not exposed yet. This crate does not claim complete DOM or
-HTML conformance or replace the retained/facade integrations. Those remaining
+HTML document creation, specialized HTML/SVG/MathML native family initialization,
+shadow trees and HTML installation are not exposed yet. This crate does not
+claim complete DOM or HTML conformance or replace the retained/facade
+integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).

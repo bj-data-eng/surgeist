@@ -50,6 +50,7 @@ mod host;
 mod identity;
 mod names;
 mod node_values;
+mod semantic;
 mod snapshot;
 mod store;
 mod view_transition;
@@ -67,6 +68,9 @@ pub use host::{
 };
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
+pub use semantic::{
+    DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
+};
 pub use snapshot::{DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomSnapshot};
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,

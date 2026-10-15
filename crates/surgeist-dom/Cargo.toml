@@ -12,3 +12,4 @@ readme = "README.md"
 surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
 surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
+surgeist-html-semantics = { path = "../surgeist-html-semantics", version = "=0.1.0" }

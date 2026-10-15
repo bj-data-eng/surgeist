@@ -82,8 +82,12 @@ identities. Captured flags, retained participant references and state changes us
 the same canonical snapshots and atomic edits. Runtime owns actual image,
 geometry and style captures and validates their join before composed publication;
 the structural DOM state alone certifies no rendered transition or CSSOM effect.
-DOM will own importing HTML construction values and adapting captured DOM facts
-to HTML-owned interpretation. Native authoring
+DOM directly adapts its immutable ordinary-tree snapshots into HTML semantic
+captures, with checked bidirectional identities and an optional qualified host
+capture. Queries use the HTML producer session and its availability envelope;
+canonical and host revisions retain their separate meanings. Installing completed
+HTML construction values and the remaining specialized capture domains is
+continuing integration work. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.
 The existing template crate keeps its syntax, symbolic expressions and source
 generation; it will consume HTML and DOM contracts for registry and construction

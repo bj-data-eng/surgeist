@@ -2277,6 +2277,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-html",
+ "surgeist-html-semantics",
 ]
 
 [[package]]
