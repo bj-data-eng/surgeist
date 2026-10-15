@@ -149,3 +149,30 @@ fn marquee_starts_on_and_start_stop_are_idempotent_independent_local_writes() {
     assert!(first.turned_on());
     assert!(HtmlMarqueeState::fresh().turned_on());
 }
+
+#[test]
+fn native_marquee_loop_index_stays_zero_through_start_stop_and_stopped_state_copies() {
+    // HTML877d obsolete §16.3.1: native creation is on/index0; start/stop
+    // assign only the on/off state. Rendering-layer increments are a separate
+    // operation, absent from this closed native producer.
+    let mut state = HtmlMarqueeState::fresh();
+    assert_eq!((state.turned_on(), state.current_loop_index()), (true, 0));
+    state.stop();
+    state.stop();
+    assert_eq!((state.turned_on(), state.current_loop_index()), (false, 0));
+    let stopped_copy = state;
+    state.start();
+    state.start();
+    assert_eq!((state.turned_on(), state.current_loop_index()), (true, 0));
+    assert_eq!(
+        (stopped_copy.turned_on(), stopped_copy.current_loop_index()),
+        (false, 0)
+    );
+    assert_eq!(
+        (
+            HtmlMarqueeState::fresh().turned_on(),
+            HtmlMarqueeState::fresh().current_loop_index()
+        ),
+        (true, 0)
+    );
+}

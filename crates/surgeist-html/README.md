@@ -22,7 +22,10 @@ an origin-clean transparent-black bitmap and exact attribute-derived dimensions.
 It moves already-parsed dimensions without allocating pixels; consumers own
 attribute lookup, admission and any later context installation. Bitmap dimensions
 follow the content-attribute rule rather than the unsigned-long IDL projection.
-`HtmlMarqueeState` owns the initially turned-on slot and its start/stop writes.
+`HtmlMarqueeState` owns the initially turned-on slot, actual native current loop
+index zero, and start/stop writes which preserve that index. The closed native
+domain exposes no rendering-layer increment or general animation counter;
+copying a stopped value preserves its state, while fresh creation is on/index0.
 These values establish neither rendering nor execution capability.
 
 Shared strings and attributes expose immutable allocation views. Controlled

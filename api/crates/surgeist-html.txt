@@ -4232,6 +4232,7 @@ pub type surgeist_html::HtmlLocalDateTime::Error = surgeist_html::HtmlTemporalPr
 pub fn surgeist_html::HtmlLocalDateTime::try_from(value: surgeist_html::HtmlParsedLocalDateTime) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::HtmlMarqueeState
 impl surgeist_html::HtmlMarqueeState
+pub const fn surgeist_html::HtmlMarqueeState::current_loop_index(self) -> u128
 pub const fn surgeist_html::HtmlMarqueeState::fresh() -> Self
 pub fn surgeist_html::HtmlMarqueeState::start(&mut self)
 pub fn surgeist_html::HtmlMarqueeState::stop(&mut self)
