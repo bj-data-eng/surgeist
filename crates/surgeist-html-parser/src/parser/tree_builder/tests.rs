@@ -11160,7 +11160,11 @@ fn foreign_svg_script_fresh_start_and_self_closing_preserve_native_attributes_an
         }
         let id = found.expect("actual native SVG script");
         assert_eq!(
-            frozen.svg_script_state(&mut c, &id).unwrap().processed,
+            frozen
+                .svg_script_state(&mut c, &id)
+                .unwrap()
+                .flags
+                .already_processed(),
             processed
         );
         frozen.release(&mut c).unwrap();
@@ -12733,14 +12737,26 @@ fn svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation()
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     let node = svg_open_node(&mut driver);
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(!session.svg_script_state(c, &node).unwrap().processed);
+    assert!(
+        !session
+            .svg_script_state(c, &node)
+            .unwrap()
+            .flags
+            .already_processed()
+    );
     assert_eq!(
         session.script_metadata(c, &node).err(),
         Some(SessionError::ScriptMetadataUnavailable)
     );
     driver.step().unwrap();
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(session.svg_script_state(c, &node).unwrap().processed);
+    assert!(
+        session
+            .svg_script_state(c, &node)
+            .unwrap()
+            .flags
+            .already_processed()
+    );
     assert_eq!(
         driver
             .head
@@ -12904,7 +12920,8 @@ fn svg_script_inert_template_and_actual_patch_connection_have_distinct_processed
             frozen
                 .svg_script_state(&mut c, &scripts[0])
                 .unwrap()
-                .processed,
+                .flags
+                .already_processed(),
             processed
         );
         drop((pending, scripts));
@@ -12924,7 +12941,13 @@ fn svg_script_foreign_end_does_not_drain_pending_select_tasks_as_an_html_checkpo
     let script = svg_open_node(&mut driver);
     assert_eq!(driver.step().unwrap(), super::head::HeadStep::Consumed);
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(session.svg_script_state(c, &script).unwrap().processed);
+    assert!(
+        session
+            .svg_script_state(c, &script)
+            .unwrap()
+            .flags
+            .already_processed()
+    );
     let (c, session, _) = driver.standalone_parts().unwrap();
     assert_eq!(
         session.freeze(c).err(),
@@ -12959,7 +12982,7 @@ fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_fa
             && e.name().local_name()==&DocumentString::from("script"))
         {
             let state = frozen.svg_script_state(&mut c, &id).unwrap();
-            assert_eq!(state.processed, !inert);
+            assert_eq!(state.flags.already_processed(), !inert);
             states.push((state.origin, inert));
             ids.push(id.clone());
         }

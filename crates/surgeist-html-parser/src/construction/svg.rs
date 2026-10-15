@@ -13,13 +13,13 @@ pub enum SvgScriptOrigin {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SvgScriptState {
-    pub(crate) processed: bool,
+    pub(crate) flags: SvgScriptFlags,
     pub(crate) origin: SvgScriptOrigin,
 }
 impl SvgScriptState {
     pub(super) fn fresh() -> Self {
         Self {
-            processed: false,
+            flags: SvgScriptFlags::fresh(),
             origin: SvgScriptOrigin::Parser,
         }
     }
@@ -135,7 +135,7 @@ impl SessionStorage {
                 .into());
         }
         let (slot, state) = self.svg_state_at(c, node)?;
-        if state.processed {
+        if state.flags.already_processed() {
             return Ok(SvgScriptProcessing::AlreadyProcessed);
         }
         if !self.connected(c, node, None)? {
@@ -148,12 +148,12 @@ impl SessionStorage {
         // Closed fresh construction has no loader, executor, host event target,
         // listener/observer or retained SVG notification producer. No Tiny load
         // event or failed-load claim is fabricated, and no intrinsic FIFO is drained.
-        payload_write::<bool>(c, 1)?;
+        payload_write::<SvgScriptFlags>(c, 1)?;
         let RetainedPayload::SvgScript { state: stored, .. } = &mut self.payloads.values[slot]
         else {
             unreachable!("qualified SVG slot")
         };
-        stored.processed = true;
+        stored.flags.mark_processed();
         Ok(SvgScriptProcessing::RestrictedProcessed)
     }
     pub(super) fn validate_svg_facts(&self, c: &mut ParseControl) -> Result<(), SessionError> {
@@ -354,14 +354,20 @@ mod tests {
             assert_eq!(
                 session.svg_script_state(&mut c, &node).unwrap(),
                 SvgScriptState {
-                    processed: false,
+                    flags: SvgScriptFlags::from_retained(false),
                     origin: SvgScriptOrigin::Parser
                 }
             );
             session
                 .insert_parser(&mut c, &root, &node, None, &proof)
                 .unwrap();
-            assert!(!session.svg_script_state(&mut c, &node).unwrap().processed);
+            assert!(
+                !session
+                    .svg_script_state(&mut c, &node)
+                    .unwrap()
+                    .flags
+                    .already_processed()
+            );
             let attributes = session
                 .element_attributes(&mut c, &node)
                 .unwrap()
@@ -378,7 +384,13 @@ mod tests {
                 session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
                 SvgScriptProcessing::AlreadyProcessed
             );
-            assert!(session.svg_script_state(&mut c, &node).unwrap().processed);
+            assert!(
+                session
+                    .svg_script_state(&mut c, &node)
+                    .unwrap()
+                    .flags
+                    .already_processed()
+            );
             assert_eq!(
                 session
                     .element_attributes(&mut c, &node)
@@ -408,16 +420,34 @@ mod tests {
             session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
             SvgScriptProcessing::Disconnected
         );
-        assert!(!session.svg_script_state(&mut c, &node).unwrap().processed);
+        assert!(
+            !session
+                .svg_script_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         session
             .insert_parser(&mut c, &root, &node, None, &proof)
             .unwrap();
         session.remove(&mut c, &node, Some(&proof)).unwrap();
-        assert!(!session.svg_script_state(&mut c, &node).unwrap().processed);
+        assert!(
+            !session
+                .svg_script_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         session
             .insert(&mut c, &root, &node, None, Some(&proof))
             .unwrap();
-        assert!(session.svg_script_state(&mut c, &node).unwrap().processed);
+        assert!(
+            session
+                .svg_script_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         session.remove(&mut c, &node, Some(&proof)).unwrap();
         assert_eq!(
             session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
@@ -434,7 +464,7 @@ mod tests {
                 .svg_script_state(&mut c, &frozen_script(&frozen))
                 .unwrap(),
             SvgScriptState {
-                processed: true,
+                flags: SvgScriptFlags::from_retained(true),
                 origin: SvgScriptOrigin::Parser
             }
         );
@@ -467,7 +497,7 @@ mod tests {
             assert_eq!(
                 session.svg_script_state(&mut c, &copy).unwrap(),
                 SvgScriptState {
-                    processed,
+                    flags: SvgScriptFlags::from_retained(processed),
                     origin: SvgScriptOrigin::Clone
                 }
             );
@@ -482,9 +512,19 @@ mod tests {
             session
                 .insert(&mut c, &root, &copy, None, Some(&proof))
                 .unwrap();
-            assert!(session.svg_script_state(&mut c, &copy).unwrap().processed);
+            assert!(
+                session
+                    .svg_script_state(&mut c, &copy)
+                    .unwrap()
+                    .flags
+                    .already_processed()
+            );
             assert_eq!(
-                session.svg_script_state(&mut c, &source).unwrap().processed,
+                session
+                    .svg_script_state(&mut c, &source)
+                    .unwrap()
+                    .flags
+                    .already_processed(),
                 processed
             );
             no_executable_or_notification_work(&session, &mut c);
@@ -539,7 +579,13 @@ mod tests {
                 .index,
             root.index
         );
-        assert!(session.svg_script_state(&mut c, &node).unwrap().processed);
+        assert!(
+            session
+                .svg_script_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         assert!(
             session
                 .active()
@@ -583,7 +629,8 @@ mod tests {
             frozen
                 .svg_script_state(&mut c, &frozen_script(&frozen))
                 .unwrap()
-                .processed
+                .flags
+                .already_processed()
         );
         frozen.release(&mut c).unwrap();
         storage_zero(&c);
@@ -603,7 +650,13 @@ mod tests {
             session.process_disabled_svg(&mut other, &node, &proof),
             Err(SessionError::Stop(_))
         ));
-        assert!(!session.svg_script_state(&mut c, &node).unwrap().processed);
+        assert!(
+            !session
+                .svg_script_state(&mut c, &node)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         // Actual missing retained metadata, not an invented imported false bit.
         let (slot, _) = session
             .active()
@@ -682,7 +735,7 @@ mod tests {
             };
             assert_eq!(c.stop(), Some(stop));
             assert!(session.active().unwrap().payloads.values.iter().any(|p|matches!(p,
-                RetainedPayload::SvgScript { node:Some(bound),state } if *bound==node.index && !state.processed)));
+                RetainedPayload::SvgScript { node:Some(bound),state } if *bound==node.index && !state.flags.already_processed())));
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -717,11 +770,8 @@ mod tests {
                     session.active().unwrap().payloads.values[slot],
                     RetainedPayload::SvgScript {
                         node: None,
-                        state: SvgScriptState {
-                            processed: false,
-                            ..
-                        }
-                    }
+                        state: SvgScriptState { flags, .. }
+                    } if !flags.already_processed()
                 ));
                 assert_eq!(
                     c.usage()
@@ -776,7 +826,7 @@ mod tests {
                     .values
                     .iter()
                     .any(|p| matches!(p,
-            RetainedPayload::SvgScript{node:Some(n),state} if *n==node.index && !state.processed))
+            RetainedPayload::SvgScript{node:Some(n),state} if *n==node.index && !state.flags.already_processed()))
             );
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -893,8 +943,20 @@ mod tests {
         session
             .insert_parser(&mut c, &parent, &second, None, &proof)
             .unwrap();
-        assert!(!session.svg_script_state(&mut c, &first).unwrap().processed);
-        assert!(!session.svg_script_state(&mut c, &second).unwrap().processed);
+        assert!(
+            !session
+                .svg_script_state(&mut c, &first)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
+        assert!(
+            !session
+                .svg_script_state(&mut c, &second)
+                .unwrap()
+                .flags
+                .already_processed()
+        );
         lexer.release(&mut c).unwrap();
         (c, session, proof, root, parent, first, second)
     }
@@ -935,7 +997,7 @@ mod tests {
                         RetainedPayload::SvgScript {
                             node: Some(bound),
                             state,
-                        } if *bound == node => Some(state.processed),
+                        } if *bound == node => Some(state.flags.already_processed()),
                         _ => None,
                     })
                     .unwrap()

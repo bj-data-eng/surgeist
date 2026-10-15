@@ -995,7 +995,7 @@ impl<'a> report::MetadataRef<'a> {
         self.script().map(|state| HtmlParseScript { state })
     }
     pub fn svg_script_processed(&self) -> Option<bool> {
-        self.svg_script().map(|s| s.processed)
+        self.svg_script().map(|s| s.flags.already_processed())
     }
     pub fn svg_script_origin(&self) -> Option<svg::SvgScriptOrigin> {
         self.svg_script().map(|s| s.origin)

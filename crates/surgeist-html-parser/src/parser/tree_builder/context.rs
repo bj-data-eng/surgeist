@@ -3147,7 +3147,7 @@ mod tests {
         let facts = session
             .svg_script_state(&mut driver.control, &script)
             .unwrap();
-        assert!(!facts.processed);
+        assert!(!facts.flags.already_processed());
         assert_eq!(facts.origin, crate::construction::SvgScriptOrigin::Parser);
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);

@@ -860,7 +860,7 @@ impl SessionStorage {
             result.svg = Some(self.retain_svg_slot(
                 c,
                 SvgScriptState {
-                    processed: original.processed,
+                    flags: original.flags.clone_for_element(),
                     origin: SvgScriptOrigin::Clone,
                 },
             )?);

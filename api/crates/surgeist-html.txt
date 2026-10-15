@@ -5111,6 +5111,13 @@ pub fn surgeist_html::QualifiedName::local_name(&self) -> &surgeist_html::Docume
 pub fn surgeist_html::QualifiedName::namespace(&self) -> &surgeist_html::Namespace
 pub fn surgeist_html::QualifiedName::new(namespace: surgeist_html::Namespace, prefix: core::option::Option<surgeist_html::DocumentString>, local_name: impl core::convert::Into<surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::QualifiedName::prefix(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub struct surgeist_html::SvgScriptFlags
+impl surgeist_html::SvgScriptFlags
+pub const fn surgeist_html::SvgScriptFlags::already_processed(self) -> bool
+pub const fn surgeist_html::SvgScriptFlags::clone_for_element(self) -> Self
+pub const fn surgeist_html::SvgScriptFlags::fresh() -> Self
+pub const fn surgeist_html::SvgScriptFlags::from_retained(already_processed: bool) -> Self
+pub fn surgeist_html::SvgScriptFlags::mark_processed(&mut self)
 pub struct surgeist_html::Utf8ConversionError
 impl surgeist_html::Utf8ConversionError
 pub fn surgeist_html::Utf8ConversionError::code_unit_offset(&self) -> usize

@@ -630,7 +630,7 @@ mod tests {
                         counts[2] += 1;
                     }
                     if let Some(script) = record.svg_script() {
-                        assert!(script.processed);
+                        assert!(script.flags.already_processed());
                         counts[3] += 1;
                     }
                     if let Some(select) = record.select() {

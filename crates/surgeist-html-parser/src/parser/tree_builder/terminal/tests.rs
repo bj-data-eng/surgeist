@@ -3052,7 +3052,13 @@ fn unclosed_svg_script_stays_unprocessed_during_eof_pops() {
     let script = super::super::tests::svg_open_node(&mut driver);
     finish(&mut driver);
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(!session.svg_script_state(c, &script).unwrap().processed);
+    assert!(
+        !session
+            .svg_script_state(c, &script)
+            .unwrap()
+            .flags
+            .already_processed()
+    );
     cleanup(&mut driver);
 }
 
