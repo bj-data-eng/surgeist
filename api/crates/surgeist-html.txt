@@ -3937,6 +3937,12 @@ impl surgeist_html::HtmlFormName
 pub fn surgeist_html::HtmlFormName::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlFormName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
 pub fn surgeist_html::HtmlFormName::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlFormNativeState
+impl surgeist_html::HtmlFormNativeState
+pub const fn surgeist_html::HtmlFormNativeState::constructing_entry_list(self) -> bool
+pub const fn surgeist_html::HtmlFormNativeState::firing_submission_events(self) -> bool
+pub const fn surgeist_html::HtmlFormNativeState::fresh() -> Self
+pub const fn surgeist_html::HtmlFormNativeState::locked_for_reset(self) -> bool
 pub struct surgeist_html::HtmlFragment
 impl surgeist_html::HtmlFragment
 pub fn surgeist_html::HtmlFragment::builder(limits: surgeist_html::HtmlConstructionLimits) -> core::result::Result<surgeist_html::HtmlFragmentBuilder, surgeist_html::HtmlConstructionError>

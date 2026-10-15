@@ -18,6 +18,7 @@ mod custom_element_state;
 mod custom_names;
 mod details_rules;
 mod form_association;
+mod form_native;
 mod form_owner;
 mod fragment_initialization;
 mod frame;
@@ -56,6 +57,7 @@ pub use custom_element_state::{HtmlCustomElementState, custom_element_state_with
 pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
 pub use form_association::HtmlNativeFormAssociationKind;
+pub use form_native::HtmlFormNativeState;
 pub use fragment_initialization::{
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
     fragment_insertion_mode, fragment_tokenizer_state,
