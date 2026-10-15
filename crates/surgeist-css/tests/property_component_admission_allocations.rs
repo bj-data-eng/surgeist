@@ -294,6 +294,146 @@ fn check_source_stripe_selection(failures: &mut Vec<String>) {
     }
 }
 
+fn assert_retained_url_modifier(
+    declaration: &surgeist_css::CssDeclaration,
+    source: &str,
+    inside: bool,
+    comment_bytes: usize,
+) {
+    let known = declaration.known().unwrap();
+    assert_eq!(known.property(), CssKnownProperty::BackgroundImage);
+    let surgeist_css::CssKnownPropertyValueRef::BackgroundImage(value) =
+        known.property_value().unwrap()
+    else {
+        panic!("typed background image");
+    };
+    let [surgeist_css::CssImageValue::Url(url)] = value.images().images() else {
+        panic!("one retained URL image");
+    };
+    assert_eq!(url.as_str(), "asset");
+    let [surgeist_css::CssUrlModifier::Function(modifier)] = url.modifiers() else {
+        panic!("one functional extension modifier");
+    };
+    assert_eq!(modifier.name(), "future");
+    assert!(modifier.request_modifier().is_none());
+    let original = declaration.value_components().items()[0].origin();
+    let CssValueOrigin::Parsed(root) = original else {
+        panic!("actual source occurrence");
+    };
+    assert_eq!(root.source().as_str(), source);
+    let [token] = modifier.argument_components().items() else {
+        panic!("one quoted argument");
+    };
+    if inside {
+        let decoded = format!("/*{}*/", "x".repeat(comment_bytes));
+        let expected = format!("\"{decoded}\"");
+        assert_eq!(modifier.arguments().as_css(), expected);
+        assert_eq!(
+            modifier.argument_components().serialize().unwrap().as_css(),
+            expected
+        );
+        assert!(
+            matches!(token.view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::String(content)) if content == decoded)
+        );
+        assert_same_snapshot(token.origin(), original);
+        let CssValueOrigin::Parsed(child) = token.origin() else {
+            panic!("original string origin");
+        };
+        let start = source.find("\"/*").unwrap();
+        assert_eq!(child.span().start().byte_offset().value(), start);
+        assert_eq!(
+            child.span().end().byte_offset().value(),
+            start + comment_bytes + 6
+        );
+    } else {
+        assert_eq!(modifier.arguments().as_css(), "\"\"");
+        assert!(matches!(
+            token.view(),
+            surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::String(""))
+        ));
+    }
+    let value_source = source.strip_prefix("background-image:").unwrap_or(source);
+    assert_eq!(
+        declaration.value_components().serialize().unwrap().as_css(),
+        value_source
+    );
+}
+
+fn measure_checked_url_modifier(
+    values: &CssComponentValues,
+    source: &str,
+    inside: bool,
+    comment_bytes: usize,
+) -> Stats {
+    let input = values.clone();
+    let region = Region::new(GLOBAL);
+    let result = black_box(parse_property_value(
+        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+        black_box(input),
+        CssImportance::Normal,
+    ));
+    let stats = region.change();
+    let declaration = result.expect("an unknown modifier keeps generic component syntax");
+    assert_retained_url_modifier(&declaration, source, inside, comment_bytes);
+    assert_eq!(declaration.value_components(), values);
+    drop(declaration);
+    stats
+}
+
+fn measure_source_url_modifier(source: &str, inside: bool, comment_bytes: usize) -> Stats {
+    let region = Region::new(GLOBAL);
+    let report = black_box(surgeist_css::parse_style_attribute(black_box(source)));
+    let stats = region.change();
+    assert!(report.is_clean(), "complete functional URL modifier source");
+    assert_eq!(report.syntax().len(), 1);
+    // The source cursor and promoted temporary component have already dropped.
+    assert_retained_url_modifier(&report.syntax()[0], source, inside, comment_bytes);
+    drop(report);
+    stats
+}
+
+fn check_url_modifier_ownership(failures: &mut Vec<String>) {
+    for checked in [true, false] {
+        let growth = [true, false].map(|inside| {
+            let samples = [SMALL_COMMENT_BYTES, LARGE_COMMENT_BYTES].map(|length| {
+                let comment = format!("/*{}*/", "x".repeat(length));
+                let value = if inside {
+                    format!("url(\"asset\" future(\"{comment}\"))")
+                } else {
+                    format!("url(\"asset\" {comment}future(\"\"))")
+                };
+                let source = if checked { value } else { format!("background-image:{value}") };
+                let values = if checked { Some(parse_component_values(&source).unwrap()) } else { None };
+                (source, values, length)
+            });
+            let measure = |(source, values, length): &(String, Option<CssComponentValues>, usize)| {
+                if let Some(values) = values {
+                    measure_checked_url_modifier(values, source, inside, *length)
+                } else {
+                    measure_source_url_modifier(source, inside, *length)
+                }
+            };
+            for sample in &samples { let _ = measure(sample); }
+            let stats = samples.each_ref().map(measure);
+            let growth = requested_bytes(stats[1]).saturating_sub(requested_bytes(stats[0]));
+            println!("url-modifier: checked={checked}, inside={inside}; small={:?}; large={:?}; growth={growth}", stats[0], stats[1]);
+            growth
+        });
+        // The equal-size inputs retain the same complete declaration spelling.
+        // Only the inside case additionally retains its argument String and the
+        // string token's decoded text plus exact spelling in one owned argument graph.
+        // Permit those three required payload spellings and fixed metadata.
+        let allowance = 3 * (LARGE_COMMENT_BYTES - SMALL_COMMENT_BYTES) + MAX_ADMISSION_BYTE_GROWTH;
+        let difference = growth[0].saturating_sub(growth[1]);
+        println!(
+            "url-modifier-ownership: checked={checked}; growth difference={difference}; allowance={allowance}; typed arguments, exact spelling and original snapshots passed"
+        );
+        if difference > allowance {
+            failures.push(format!("URL modifier copied a temporary function: checked={checked}, growth difference {difference} exceeds {allowance}"));
+        }
+    }
+}
+
 fn main() {
     let mut failures = Vec::new();
     for outcome in [Outcome::GlobalInitial, Outcome::RootSemicolon] {
@@ -322,5 +462,6 @@ fn main() {
     }
     check_missing_var(&mut failures);
     check_source_stripe_selection(&mut failures);
+    check_url_modifier_ownership(&mut failures);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
