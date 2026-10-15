@@ -307,6 +307,17 @@ impl HtmlOptionFlags {
     /// Local steps of the native selected setter. The adapter must subsequently
     /// ask for a reset, even when the supplied value equals the prior value.
     pub fn selected_setter(&mut self, selected: bool) {
+        self.set_selectedness_and_dirty(selected);
+    }
+
+    /// Select the remembered first match of a Select value/index setter.
+    /// The Select setter finishes its whole deselection scan before this write
+    /// and updates selectedcontent afterward; it does not ask for a reset.
+    pub fn select_for_select_setter(&mut self) {
+        self.set_selectedness_and_dirty(true);
+    }
+
+    fn set_selectedness_and_dirty(&mut self, selected: bool) {
         self.selectedness = selected;
         self.dirtiness = true;
     }

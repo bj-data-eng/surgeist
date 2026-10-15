@@ -91,6 +91,138 @@ impl std::fmt::Display for HtmlSelectCursorError {
 }
 impl std::error::Error for HtmlSelectCursorError {}
 
+/// Pending work for either the Select selectedIndex or value setter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlSelectSetterAction {
+    /// Write false through HtmlOptionFlags::set_selectedness_for_select,
+    /// preserving the actual option's dirtiness.
+    Deselect {
+        ordinal: usize,
+    },
+    /// Compare this option's actual index or value against the supplied value.
+    ReadMatch {
+        ordinal: usize,
+    },
+    /// Apply HtmlOptionFlags::select_for_select_setter to the remembered match.
+    SelectAndDirty {
+        ordinal: usize,
+    },
+    UpdateSelectedcontent,
+    Complete,
+}
+
+/// Acknowledged effects or a completed actual index/value comparison.
+/// An unavailable comparison is not Matches(false); stop without replying.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlSelectSetterReply {
+    Applied,
+    Matches(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SetterPhase {
+    Deselect(usize),
+    Match(usize),
+    Select,
+    Refresh,
+    Complete,
+}
+
+/// One finite, allocation-free Select value/index setter over a complete list.
+///
+/// HTML's [selected index](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#set-the-selected-index)
+/// and [value setter](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-value)
+/// deselect each option before comparing it, stop comparisons after the first
+/// match, finish all deselections, select/dirty that match, then refresh even if
+/// there was no match or no option. No normalization or AskForReset follows.
+///
+/// The adapter keeps the complete option list and its qualified identities
+/// coherent, supplies the actual predicate, and admits/applies each effect before
+/// replying. This cursor owns no strings, tree, host policy or publication;
+/// unavailable list evidence is not an empty list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlSelectSetterCursor {
+    option_count: usize,
+    first_match: Option<usize>,
+    phase: SetterPhase,
+}
+
+impl HtmlSelectSetterCursor {
+    pub const fn new(option_count: usize) -> Self {
+        Self {
+            option_count,
+            first_match: None,
+            phase: if option_count == 0 {
+                SetterPhase::Refresh
+            } else {
+                SetterPhase::Deselect(0)
+            },
+        }
+    }
+
+    pub fn action(&self) -> HtmlSelectSetterAction {
+        match self.phase {
+            SetterPhase::Deselect(ordinal) => HtmlSelectSetterAction::Deselect { ordinal },
+            SetterPhase::Match(ordinal) => HtmlSelectSetterAction::ReadMatch { ordinal },
+            SetterPhase::Select => HtmlSelectSetterAction::SelectAndDirty {
+                ordinal: self
+                    .first_match
+                    .expect("a complete scan retained its match"),
+            },
+            SetterPhase::Refresh => HtmlSelectSetterAction::UpdateSelectedcontent,
+            SetterPhase::Complete => HtmlSelectSetterAction::Complete,
+        }
+    }
+
+    /// A wrong reply, including any reply after Complete, preserves the cursor.
+    pub fn reply(&mut self, reply: HtmlSelectSetterReply) -> Result<(), HtmlSelectCursorError> {
+        let mut next = *self;
+        next.advance(reply)?;
+        *self = next;
+        Ok(())
+    }
+
+    fn after_option(&mut self, ordinal: usize) -> Result<(), HtmlSelectCursorError> {
+        // Every reachable ordinal is below the complete extent. The last valid
+        // ordinal for usize::MAX is MAX-1; its successor MAX is representable.
+        let next = ordinal.checked_add(1).ok_or(HtmlSelectCursorError::Reply)?;
+        self.phase = if next < self.option_count {
+            SetterPhase::Deselect(next)
+        } else if self.first_match.is_some() {
+            SetterPhase::Select
+        } else {
+            SetterPhase::Refresh
+        };
+        Ok(())
+    }
+
+    fn advance(&mut self, reply: HtmlSelectSetterReply) -> Result<(), HtmlSelectCursorError> {
+        match (self.phase, reply) {
+            (SetterPhase::Deselect(ordinal), HtmlSelectSetterReply::Applied) => {
+                if self.first_match.is_none() {
+                    self.phase = SetterPhase::Match(ordinal);
+                } else {
+                    self.after_option(ordinal)?;
+                }
+            }
+            (SetterPhase::Match(ordinal), HtmlSelectSetterReply::Matches(matches)) => {
+                if matches {
+                    self.first_match = Some(ordinal);
+                }
+                self.after_option(ordinal)?;
+            }
+            (SetterPhase::Select, HtmlSelectSetterReply::Applied) => {
+                self.phase = SetterPhase::Refresh;
+            }
+            (SetterPhase::Refresh, HtmlSelectSetterReply::Applied) => {
+                self.phase = SetterPhase::Complete;
+            }
+            _ => return Err(HtmlSelectCursorError::Reply),
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Phase {
     ResetSelect,
@@ -521,5 +653,64 @@ impl HtmlSelectFirstSelectedCursor {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod setter_tests {
+    use super::{
+        HtmlSelectSetterAction as Action, HtmlSelectSetterCursor as Cursor,
+        HtmlSelectSetterReply as Reply, SetterPhase,
+    };
+
+    #[test]
+    fn maximum_extent_last_comparison_finishes_without_overflow() {
+        // These are valid owner states after an arbitrarily long negative
+        // prefix. Seed the private last transition, not a public skip API or
+        // an impossible MAX-iteration test.
+        for matches in [false, true] {
+            let mut cursor = Cursor {
+                option_count: usize::MAX,
+                first_match: None,
+                phase: SetterPhase::Match(usize::MAX - 1),
+            };
+            assert_eq!(
+                cursor.action(),
+                Action::ReadMatch {
+                    ordinal: usize::MAX - 1
+                }
+            );
+            cursor.reply(Reply::Matches(matches)).unwrap();
+            if matches {
+                assert_eq!(
+                    cursor.action(),
+                    Action::SelectAndDirty {
+                        ordinal: usize::MAX - 1
+                    }
+                );
+                cursor.reply(Reply::Applied).unwrap();
+            }
+            assert_eq!(cursor.action(), Action::UpdateSelectedcontent);
+            cursor.reply(Reply::Applied).unwrap();
+            assert_eq!(cursor.action(), Action::Complete);
+        }
+    }
+
+    #[test]
+    fn maximum_extent_last_deselection_retains_an_earlier_match() {
+        let mut cursor = Cursor {
+            option_count: usize::MAX,
+            first_match: Some(0),
+            phase: SetterPhase::Deselect(usize::MAX - 1),
+        };
+        let before = cursor;
+        assert!(cursor.reply(Reply::Matches(true)).is_err());
+        assert_eq!(cursor, before);
+        cursor.reply(Reply::Applied).unwrap();
+        assert_eq!(cursor.action(), Action::SelectAndDirty { ordinal: 0 });
+        cursor.reply(Reply::Applied).unwrap();
+        assert_eq!(cursor.action(), Action::UpdateSelectedcontent);
+        cursor.reply(Reply::Applied).unwrap();
+        assert_eq!(cursor.action(), Action::Complete);
     }
 }

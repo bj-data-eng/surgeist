@@ -566,6 +566,18 @@ pub surgeist_html::bounded::HtmlSelectReply::Applied
 pub surgeist_html::bounded::HtmlSelectReply::Disabled(bool)
 pub surgeist_html::bounded::HtmlSelectReply::DisplaySizeIsOne(bool)
 pub surgeist_html::bounded::HtmlSelectReply::Selectedness(bool)
+pub enum surgeist_html::bounded::HtmlSelectSetterAction
+pub surgeist_html::bounded::HtmlSelectSetterAction::Complete
+pub surgeist_html::bounded::HtmlSelectSetterAction::Deselect
+pub surgeist_html::bounded::HtmlSelectSetterAction::Deselect::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectSetterAction::ReadMatch
+pub surgeist_html::bounded::HtmlSelectSetterAction::ReadMatch::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectSetterAction::SelectAndDirty
+pub surgeist_html::bounded::HtmlSelectSetterAction::SelectAndDirty::ordinal: usize
+pub surgeist_html::bounded::HtmlSelectSetterAction::UpdateSelectedcontent
+pub enum surgeist_html::bounded::HtmlSelectSetterReply
+pub surgeist_html::bounded::HtmlSelectSetterReply::Applied
+pub surgeist_html::bounded::HtmlSelectSetterReply::Matches(bool)
 pub enum surgeist_html::bounded::HtmlSelectedcontentAncestorAction
 pub surgeist_html::bounded::HtmlSelectedcontentAncestorAction::Continue
 pub surgeist_html::bounded::HtmlSelectedcontentAncestorAction::RememberNearestSelect
@@ -1217,6 +1229,11 @@ impl surgeist_html::bounded::HtmlSelectFirstSelectedCursor
 pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::action(&self) -> surgeist_html::bounded::HtmlSelectFirstSelectedAction
 pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::new(option_count: usize) -> Self
 pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::reply(&mut self, selected: core::option::Option<bool>) -> core::result::Result<(), surgeist_html::bounded::HtmlSelectCursorError>
+pub struct surgeist_html::bounded::HtmlSelectSetterCursor
+impl surgeist_html::bounded::HtmlSelectSetterCursor
+pub fn surgeist_html::bounded::HtmlSelectSetterCursor::action(&self) -> surgeist_html::bounded::HtmlSelectSetterAction
+pub const fn surgeist_html::bounded::HtmlSelectSetterCursor::new(option_count: usize) -> Self
+pub fn surgeist_html::bounded::HtmlSelectSetterCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlSelectSetterReply) -> core::result::Result<(), surgeist_html::bounded::HtmlSelectCursorError>
 pub struct surgeist_html::bounded::HtmlSelectedcontentAncestors
 impl surgeist_html::bounded::HtmlSelectedcontentAncestors
 pub fn surgeist_html::bounded::HtmlSelectedcontentAncestors::disabled(&self) -> bool
@@ -4675,6 +4692,7 @@ impl surgeist_html::HtmlOptionFlags
 pub const fn surgeist_html::HtmlOptionFlags::dirtiness(&self) -> bool
 pub const fn surgeist_html::HtmlOptionFlags::new(selectedness: bool, dirtiness: bool) -> Self
 pub fn surgeist_html::HtmlOptionFlags::reset(&mut self, selected_attribute_present: bool)
+pub fn surgeist_html::HtmlOptionFlags::select_for_select_setter(&mut self)
 pub fn surgeist_html::HtmlOptionFlags::selected_attribute_changed(&mut self, present: bool) -> bool
 pub fn surgeist_html::HtmlOptionFlags::selected_setter(&mut self, selected: bool)
 pub const fn surgeist_html::HtmlOptionFlags::selectedness(&self) -> bool
