@@ -2,8 +2,8 @@ use super::prologue::Payload;
 use super::*;
 use crate::{
     DocumentString, HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlNodeKind,
-    HtmlParseCancellation, HtmlParseLimits, HtmlSource, Namespace, OrderedAttributes,
-    QualifiedName,
+    HtmlParseCancellation, HtmlParseLimits, HtmlScriptKind, HtmlSource, Namespace,
+    OrderedAttributes, QualifiedName,
     construction::{FrozenArena, RootKind},
     parser::{
         control::Invariant,
@@ -2859,12 +2859,12 @@ fn standalone_script_start_retains_actual_document_and_initial_metadata_before_p
     let (c, session, capability) = driver.standalone_parts().unwrap();
     capability.validate_session(c, session).unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
-    assert!(!metadata.force_async);
-    assert!(!metadata.already_started);
+    assert!(!metadata.flags.force_async());
+    assert!(!metadata.flags.already_started());
     assert_eq!(metadata.script_type, None);
-    assert!(!metadata.external_file);
-    assert!(!metadata.ready_to_be_parser_executed);
-    assert!(!metadata.delaying_load);
+    assert!(!metadata.flags.external_file());
+    assert!(!metadata.flags.ready_to_be_parser_executed());
+    assert!(!metadata.flags.delaying_load());
     assert_eq!(metadata.result, ScriptResult::Uninitialized);
     assert_eq!(metadata.steps_when_result_ready, None);
     let root = session.root(c).unwrap();
@@ -2891,7 +2891,6 @@ fn standalone_script_start_retains_actual_document_and_initial_metadata_before_p
 
 #[test]
 fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_insertion_state() {
-    use crate::construction::ScriptType;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script>x</script><meta name=m></head><body>"),
         limits(100),
@@ -2904,9 +2903,9 @@ fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_inserti
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
-    assert!(metadata.already_started);
-    assert_eq!(metadata.script_type, Some(ScriptType::Classic));
-    assert!(!metadata.force_async);
+    assert!(metadata.flags.already_started());
+    assert_eq!(metadata.script_type, Some(HtmlScriptKind::Classic));
+    assert!(!metadata.flags.force_async());
     let root = session.root(c).unwrap();
     let parser = session.script_parser_document(c, &node).unwrap().unwrap();
     let prepared = session
@@ -2945,7 +2944,6 @@ fn standalone_script_end_prepares_disabled_classic_and_restores_head_and_inserti
 
 #[test]
 fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_return_mode() {
-    use crate::construction::ScriptType;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script>x</script><script type=module>y</script></head>"),
         limits(100),
@@ -2987,9 +2985,9 @@ fn standalone_repeated_script_endings_restore_actual_nesting_pause_and_current_r
     assert!(!session.same_node(c, &first, &second).unwrap());
     let first = session.script_metadata(c, &first).unwrap();
     let second = session.script_metadata(c, &second).unwrap();
-    assert!(first.already_started && second.already_started);
-    assert_eq!(first.script_type, Some(ScriptType::Classic));
-    assert_eq!(second.script_type, Some(ScriptType::Module));
+    assert!(first.flags.already_started() && second.flags.already_started());
+    assert_eq!(first.script_type, Some(HtmlScriptKind::Classic));
+    assert_eq!(second.script_type, Some(HtmlScriptKind::Module));
     driver.release().unwrap();
     assert_released(&driver.control);
 }
@@ -3022,8 +3020,8 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
     assert_eq!(state.end, Some(super::end::EndPhase::Done));
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
-    assert!(metadata.already_started);
-    assert!(!metadata.force_async);
+    assert!(metadata.flags.already_started());
+    assert!(!metadata.flags.force_async());
     assert_eq!(metadata.script_type, None);
     assert!(session.script_parser_document(c, &node).unwrap().is_some());
     assert!(
@@ -3038,7 +3036,6 @@ fn standalone_script_eof_marks_started_without_preparing_or_changing_initial_fac
 
 #[test]
 fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_distinctions() {
-    use crate::construction::ScriptType;
     for (attrs, body, started, force_async, kind, has_document) in [
         ("", "", false, true, None, false),
         ("async", "", false, false, None, false),
@@ -3049,7 +3046,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
             "",
             true,
             false,
-            Some(ScriptType::Module),
+            Some(HtmlScriptKind::Module),
             true,
         ),
         (
@@ -3057,7 +3054,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
             "x",
             true,
             false,
-            Some(ScriptType::ImportMap),
+            Some(HtmlScriptKind::ImportMap),
             true,
         ),
         (
@@ -3065,7 +3062,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
             "x",
             true,
             false,
-            Some(ScriptType::SpeculationRules),
+            Some(HtmlScriptKind::SpeculationRules),
             true,
         ),
         (
@@ -3073,7 +3070,7 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
             "x",
             true,
             false,
-            Some(ScriptType::Classic),
+            Some(HtmlScriptKind::Classic),
             true,
         ),
         (
@@ -3099,8 +3096,8 @@ fn standalone_script_preparation_preserves_empty_unknown_and_disabled_type_disti
         let metadata = session.script_metadata(c, &node).unwrap();
         assert_eq!(
             (
-                metadata.already_started,
-                metadata.force_async,
+                metadata.flags.already_started(),
+                metadata.flags.force_async(),
                 metadata.script_type
             ),
             (started, force_async, kind),
@@ -3147,7 +3144,8 @@ fn standalone_scriptdata_preserves_literal_utf16_and_escaped_script_content() {
         frozen
             .script_metadata(&mut c, &node)
             .unwrap()
-            .already_started
+            .flags
+            .already_started()
     );
     let mut expected: Vec<_> = "<!--<script>".encode_utf16().collect();
     expected.extend([0xd800, 0xd83d, 0xde80]);
@@ -3219,7 +3217,13 @@ fn standalone_script_import_revocation_stops_required_end_checkpoint_before_pop_
     let node = script_text_node(&mut driver);
     driver.step().unwrap(); // actual script character token
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(!session.script_metadata(c, &node).unwrap().already_started);
+    assert!(
+        !session
+            .script_metadata(c, &node)
+            .unwrap()
+            .flags
+            .already_started()
+    );
     preexisting(session, Namespace::html(), "imported", c);
     let error = driver.step().unwrap_err();
     assert!(matches!(
@@ -3318,7 +3322,13 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
     assert!(state.pending.is_none());
     assert_eq!(state.end, Some(super::end::EndPhase::Done));
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(session.script_metadata(c, &script).unwrap().already_started);
+    assert!(
+        session
+            .script_metadata(c, &script)
+            .unwrap()
+            .flags
+            .already_started()
+    );
     drop(script);
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
@@ -3631,7 +3641,13 @@ fn standalone_selfclosing_script_is_not_void_and_emits_exact_source_qualified_er
         super::head::HeadStep::Complete
     );
     let (c, session, _) = driver.standalone_parts().unwrap();
-    assert!(session.script_metadata(c, &node).unwrap().already_started);
+    assert!(
+        session
+            .script_metadata(c, &node)
+            .unwrap()
+            .flags
+            .already_started()
+    );
     driver.release().unwrap();
     assert_released(&driver.control);
 }
@@ -3743,7 +3759,13 @@ fn standalone_required_checkpoint_has_source_derived_category_cost_and_one_short
         let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
         let node = script_text_node(&mut driver);
         let (c, session, proof) = driver.standalone_parts().unwrap();
-        assert!(!session.script_metadata(c, &node).unwrap().already_started);
+        assert!(
+            !session
+                .script_metadata(c, &node)
+                .unwrap()
+                .flags
+                .already_started()
+        );
         // Exhaust the actual controller to isolate the fixed checkpoint seam;
         // expectations above are derived from its source operations, not runs.
         let remaining = request.limits().work_credits()
@@ -4851,7 +4873,6 @@ fn body_heading_list_and_ruby_implied_end_rules_preserve_literal_sibling_order()
 #[test]
 fn late_head_style_and_disabled_script_remove_the_specific_head_stack_entry_and_restore_current_mode()
  {
-    use crate::construction::ScriptType;
     for (source, head_child, expected_mode) in [
         (
             "<head></head><style>x</style><body>y",
@@ -4940,8 +4961,8 @@ fn late_head_style_and_disabled_script_remove_the_specific_head_stack_entry_and_
         if head_child == "script" {
             let (c, session, _) = driver.standalone_parts().unwrap();
             let metadata = session.script_metadata(c, &node).unwrap();
-            assert!(metadata.already_started);
-            assert_eq!(metadata.script_type, Some(ScriptType::Classic));
+            assert!(metadata.flags.already_started());
+            assert_eq!(metadata.script_type, Some(HtmlScriptKind::Classic));
         }
         assert_eq!(
             standalone_boundary(&mut driver),
@@ -5620,7 +5641,7 @@ fn late_script_eof_returns_afterhead_then_creates_body_without_preparation() {
     assert!(state.frameset_ok);
     let (c, session, _) = driver.standalone_parts().unwrap();
     let metadata = session.script_metadata(c, &node).unwrap();
-    assert!(metadata.already_started);
+    assert!(metadata.flags.already_started());
     assert_eq!(metadata.script_type, None);
     assert!(
         session

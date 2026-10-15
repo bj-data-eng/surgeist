@@ -222,7 +222,8 @@ fn select_script_copies_only_started_then_runs_actual_disabled_connection_prepar
             session
                 .script_metadata(&mut c, &original)
                 .unwrap()
-                .already_started,
+                .flags
+                .already_started(),
             started
         );
         update(&mut session, &mut c, &option);
@@ -233,9 +234,9 @@ fn select_script_copies_only_started_then_runs_actual_disabled_connection_prepar
             .unwrap();
         assert!(!session.same_node(&mut c, &copy, &original).unwrap());
         let state = session.script_metadata(&mut c, &copy).unwrap();
-        assert_eq!(state.already_started, started);
+        assert_eq!(state.flags.already_started(), started);
         assert_eq!(state.script_type, kind);
-        assert_eq!(state.force_async, force_async);
+        assert_eq!(state.flags.force_async(), force_async);
         assert_eq!(state.result, ScriptResult::Uninitialized);
         assert!(
             session
@@ -274,7 +275,8 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
         !session
             .script_metadata(&mut c, &copy)
             .unwrap()
-            .already_started
+            .flags
+            .already_started()
     );
     // A separately admitted real lexical replay supplies two useful text
     // payloads on the same controller; no detached synthetic Text is fabricated.
@@ -298,8 +300,8 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
         )
         .unwrap();
     let before = session.script_metadata(&mut c, &copy).unwrap();
-    assert!(before.already_started);
-    assert_eq!(before.script_type, Some(ScriptType::Classic));
+    assert!(before.flags.already_started());
+    assert_eq!(before.script_type, Some(HtmlScriptKind::Classic));
     assert!(
         session
             .script_preparation_document(&mut c, &copy)
@@ -1226,7 +1228,8 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
             !session
                 .script_metadata(&mut c, &copy)
                 .unwrap()
-                .already_started
+                .flags
+                .already_started()
         );
         let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
         let mut text = loop {
@@ -1247,7 +1250,7 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
             .iter()
             .any(|p| matches!(p, RetainedPayload::WorkList(_)));
         let prepared = storage.payloads.values.iter().any(|p| matches!(p,
-            RetainedPayload::Script { node: Some(node), metadata } if *node == copy.index && metadata.already_started));
+            RetainedPayload::Script { node: Some(node), metadata } if *node == copy.index && metadata.flags.already_started()));
         saw_list |= collected;
         if result.is_err() {
             let first = c.stop().expect("canonical stopped prefix");

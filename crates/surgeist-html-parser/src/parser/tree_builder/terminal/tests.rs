@@ -756,7 +756,8 @@ fn frozen_parts_retains_template_control_and_script_metadata_in_same_arena() {
         arena
             .script_metadata(&mut parts.control, &script)
             .unwrap()
-            .already_started
+            .flags
+            .already_started()
     );
     assert_eq!(
         arena

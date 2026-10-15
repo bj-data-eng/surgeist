@@ -13,6 +13,7 @@ mod source;
 pub use request::*;
 pub use settings::*;
 pub use source::*;
+pub use surgeist_html::HtmlScriptKind;
 
 pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
 pub use construction::{
@@ -86,7 +87,6 @@ pub use construction::{
     FormAssociationEvidence as HtmlParseFormEvidence, FormAssociationKind as HtmlParseFormKind,
     OutputDefaultValueOverride as HtmlParseOutputOverride,
     ScriptReadySteps as HtmlParseScriptReadySteps, ScriptResult as HtmlParseScriptResult,
-    ScriptType as HtmlParseScriptType,
 };
 pub use parser::tokenizer::states::{
     Escape as HtmlTokenizerEscape, Identifier as HtmlTokenizerIdentifier,

@@ -1006,22 +1006,22 @@ pub struct HtmlParseScript<'a> {
 }
 impl HtmlParseScript<'_> {
     pub fn force_async(&self) -> bool {
-        self.state.force_async
+        self.state.flags.force_async()
     }
     pub fn already_started(&self) -> bool {
-        self.state.already_started
+        self.state.flags.already_started()
     }
-    pub fn script_type(&self) -> Option<ScriptType> {
+    pub fn script_type(&self) -> Option<HtmlScriptKind> {
         self.state.script_type
     }
     pub fn external_file(&self) -> bool {
-        self.state.external_file
+        self.state.flags.external_file()
     }
     pub fn ready_to_be_parser_executed(&self) -> bool {
-        self.state.ready_to_be_parser_executed
+        self.state.flags.ready_to_be_parser_executed()
     }
     pub fn delaying_load(&self) -> bool {
-        self.state.delaying_load
+        self.state.flags.delaying_load()
     }
     pub fn result(&self) -> ScriptResult {
         self.state.result

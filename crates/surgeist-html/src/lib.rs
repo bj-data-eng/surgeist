@@ -23,6 +23,7 @@ mod nonce;
 mod numeric;
 mod pi_pseudo_attributes;
 mod rel;
+mod script_flags;
 mod script_type;
 mod template_markers;
 mod temporal;
@@ -56,6 +57,7 @@ pub use numeric::{
     HtmlRationalError, HtmlSignedDecimal,
 };
 pub use rel::*;
+pub use script_flags::HtmlScriptFlags;
 pub use script_type::HtmlScriptKind;
 pub use temporal::*;
 pub use tokens::{

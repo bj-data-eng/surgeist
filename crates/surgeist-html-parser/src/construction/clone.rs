@@ -846,12 +846,8 @@ impl SessionStorage {
                     metadata: ScriptMetadata {
                         parser_document: None,
                         preparation_document: None,
-                        force_async: true,
-                        already_started: false,
+                        flags: HtmlScriptFlags::fresh(),
                         script_type: None,
-                        external_file: false,
-                        ready_to_be_parser_executed: false,
-                        delaying_load: false,
                         result: ScriptResult::Uninitialized,
                         steps_when_result_ready: None,
                     },
@@ -970,7 +966,7 @@ impl SessionStorage {
                 "async",
             )? {
                 let (_, mut metadata) = script_metadata(&self.payloads, c, node)?;
-                metadata.force_async = false;
+                metadata.flags.async_attribute_added();
                 set_script_metadata(self, c, slot, &metadata)?;
             }
         }
@@ -987,7 +983,7 @@ impl SessionStorage {
         if let Some(slot) = bindings.script {
             let (_, original) = script_metadata(&self.payloads, c, source)?;
             let (_, mut state) = script_metadata(&self.payloads, c, copy)?;
-            state.already_started = original.already_started;
+            state.flags.clone_already_started_from(original.flags);
             set_script_metadata(self, c, slot, &state)?;
         }
         if let Some(slot) = bindings.textarea {

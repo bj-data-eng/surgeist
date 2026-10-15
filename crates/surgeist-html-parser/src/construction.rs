@@ -569,12 +569,8 @@ enum InsertionCause {
 pub(crate) struct ScriptMetadata {
     parser_document: Option<DocumentRef>,
     preparation_document: Option<DocumentRef>,
-    pub(crate) force_async: bool,
-    pub(crate) already_started: bool,
-    pub(crate) script_type: Option<ScriptType>,
-    pub(crate) external_file: bool,
-    pub(crate) ready_to_be_parser_executed: bool,
-    pub(crate) delaying_load: bool,
+    pub(crate) flags: HtmlScriptFlags,
+    pub(crate) script_type: Option<HtmlScriptKind>,
     pub(crate) result: ScriptResult,
     pub(crate) steps_when_result_ready: Option<ScriptReadySteps>,
 }
@@ -593,13 +589,6 @@ impl ScriptMetadata {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScriptType {
-    Classic,
-    Module,
-    ImportMap,
-    SpeculationRules,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptResult {
     Uninitialized,
 }
@@ -612,7 +601,7 @@ pub(crate) enum DisabledScriptPreparation {
     Empty,
     Disconnected,
     UnrecognizedType,
-    Disabled(ScriptType),
+    Disabled(HtmlScriptKind),
     ParserDocumentMismatch,
 }
 enum AttributeStorage {
@@ -4683,7 +4672,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<DisabledScriptPreparation, SessionError> {
         let (slot, mut metadata) = script_metadata(&self.payloads, control, index)?;
-        if metadata.already_started {
+        if metadata.flags.already_started() {
             return Ok(DisabledScriptPreparation::AlreadyStarted);
         }
         let saved_document = metadata.parser_document.take();
@@ -4700,7 +4689,7 @@ impl SessionStorage {
                 return Err(SessionError::ScriptMetadataUnavailable);
             };
             if script_attribute(control, element, "async")?.is_none() {
-                metadata.force_async = true;
+                metadata.flags.parser_document_cleared_without_async();
                 set_script_metadata(self, control, slot, &metadata)?;
             }
         }
@@ -4789,10 +4778,10 @@ impl SessionStorage {
         set_script_metadata(self, control, slot, &metadata)?;
         if saved_document.is_some() {
             metadata.parser_document = saved_document;
-            metadata.force_async = false;
+            metadata.flags.parser_document_restored();
             set_script_metadata(self, control, slot, &metadata)?;
         }
-        metadata.already_started = true;
+        metadata.flags.mark_already_started();
         set_script_metadata(self, control, slot, &metadata)?;
         metadata.preparation_document = Some(self.node_document_ref(control, index)?);
         set_script_metadata(self, control, slot, &metadata)?;
@@ -5280,12 +5269,15 @@ impl ParserArenaSession {
             metadata: ScriptMetadata {
                 parser_document: Some(DocumentRef::Owned(0)),
                 preparation_document: None,
-                force_async: false,
-                already_started: inert,
+                flags: {
+                    let mut flags = HtmlScriptFlags::fresh();
+                    flags.mark_parser_inserted();
+                    if inert {
+                        flags.mark_already_started();
+                    }
+                    flags
+                },
                 script_type: None,
-                external_file: false,
-                ready_to_be_parser_executed: false,
-                delaying_load: false,
                 result: ScriptResult::Uninitialized,
                 steps_when_result_ready: None,
             },
@@ -5349,7 +5341,7 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         let index = storage.index(control, node)?;
         let (slot, mut metadata) = script_metadata(&storage.payloads, control, index)?;
-        metadata.already_started = true;
+        metadata.flags.mark_already_started();
         set_script_metadata(storage, control, slot, &metadata)
     }
     /// Exact preparation prefix through HTML's scripting-disabled step18.
@@ -9161,7 +9153,7 @@ fn script_type_charge(
 fn classify_script(
     control: &mut ParseControl,
     element: &HtmlElement,
-) -> Result<Option<ScriptType>, SessionError> {
+) -> Result<Option<HtmlScriptKind>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;
     let mut cursor = crate::bounded::HtmlScriptTypeCursor::preparation(explicit, language);
@@ -9169,17 +9161,11 @@ fn classify_script(
         script_type_charge(control, work)?;
         cursor.advance();
     }
-    // Current-content classification is distinct from this existing saved
-    // preparation-metadata type. No metadata field or effect is installed here.
+    // Classification returns the shared kind; the saved metadata slot remains
+    // independent and is installed only by the actual preparation algorithm.
     Ok(cursor
         .result()
-        .expect("all admitted classification actions completed")
-        .map(|kind| match kind {
-            crate::HtmlScriptKind::Classic => ScriptType::Classic,
-            crate::HtmlScriptKind::Module => ScriptType::Module,
-            crate::HtmlScriptKind::ImportMap => ScriptType::ImportMap,
-            crate::HtmlScriptKind::SpeculationRules => ScriptType::SpeculationRules,
-        }))
+        .expect("all admitted classification actions completed"))
 }
 #[cfg(test)]
 fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize, SessionError> {
@@ -16765,10 +16751,13 @@ mod tests {
     #[test]
     fn disabled_preparation_retains_actual_documents_and_uninitialized_result_through_freeze() {
         for (attributes, kind) in [
-            ("src=''", ScriptType::Classic),
-            ("src='' type=module async", ScriptType::Module),
-            ("src='' type=importmap", ScriptType::ImportMap),
-            ("src='' type=speculationrules", ScriptType::SpeculationRules),
+            ("src=''", HtmlScriptKind::Classic),
+            ("src='' type=module async", HtmlScriptKind::Module),
+            ("src='' type=importmap", HtmlScriptKind::ImportMap),
+            (
+                "src='' type=speculationrules",
+                HtmlScriptKind::SpeculationRules,
+            ),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!("<html><head><script {attributes}>")),
@@ -16776,7 +16765,7 @@ mod tests {
             );
             let (mut c, mut session, capability, node) = fresh_script(&request, true, false);
             let initial = session.script_metadata(&mut c, &node).unwrap();
-            assert!(!initial.force_async && !initial.already_started);
+            assert!(!initial.flags.force_async() && !initial.flags.already_started());
             assert_eq!(initial.script_type, None);
             let root = session.root(&mut c).unwrap();
             let parser_document = session
@@ -16797,12 +16786,12 @@ mod tests {
                 DisabledScriptPreparation::Disabled(kind)
             );
             let prepared = session.script_metadata(&mut c, &node).unwrap();
-            assert!(prepared.already_started && !prepared.force_async);
+            assert!(prepared.flags.already_started() && !prepared.flags.force_async());
             assert_eq!(prepared.script_type, Some(kind));
             assert!(
-                !prepared.external_file
-                    && !prepared.ready_to_be_parser_executed
-                    && !prepared.delaying_load
+                !prepared.flags.external_file()
+                    && !prepared.flags.ready_to_be_parser_executed()
+                    && !prepared.flags.delaying_load()
             );
             assert_eq!(prepared.result, ScriptResult::Uninitialized);
             assert!(prepared.steps_when_result_ready.is_none());
@@ -16868,8 +16857,8 @@ mod tests {
                 outcome
             );
             let metadata = session.script_metadata(&mut c, &node).unwrap();
-            assert_eq!(metadata.force_async, force_async);
-            assert!(!metadata.already_started);
+            assert_eq!(metadata.flags.force_async(), force_async);
+            assert!(!metadata.flags.already_started());
             assert_eq!(metadata.script_type, None);
             assert!(
                 session
@@ -16895,7 +16884,7 @@ mod tests {
             session
                 .prepare_disabled_script(&mut c, &node, &capability)
                 .unwrap(),
-            DisabledScriptPreparation::Disabled(ScriptType::Classic)
+            DisabledScriptPreparation::Disabled(HtmlScriptKind::Classic)
         );
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -16938,7 +16927,7 @@ mod tests {
             } else {
                 result.unwrap();
                 let marked = session.script_metadata(&mut c, &node).unwrap();
-                assert!(marked.already_started && !marked.force_async);
+                assert!(marked.flags.already_started() && !marked.flags.force_async());
                 assert_eq!(marked.script_type, None);
                 assert_eq!(marked.preparation_document, None);
                 assert_eq!(marked.parser_document, initial.parser_document);
@@ -16969,7 +16958,7 @@ mod tests {
         assert_eq!(result, Err(SessionError::Stop(stop)));
         assert_eq!(c.stop(), Some(stop));
         assert_eq!(unrelated.active().unwrap().construction.storage().len(), 1);
-        assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.already_started)));
+        assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.flags.already_started())));
         assert!(
             matches!(unrelated.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
         );
@@ -17068,7 +17057,7 @@ mod tests {
             retained.parser_document, None,
             "HTML step 3 must be retained before ordinary connectivity work at step 7"
         );
-        assert!(!retained.already_started && !retained.force_async);
+        assert!(!retained.flags.already_started() && !retained.flags.force_async());
         assert_eq!(retained.script_type, None);
         assert_eq!(retained.preparation_document, None);
     }
@@ -17112,7 +17101,7 @@ mod tests {
             observed_work.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
             let retained = session.script_metadata(&mut c, &node).unwrap();
             assert_eq!(retained.parser_document, None);
-            assert!(retained.force_async && !retained.already_started);
+            assert!(retained.flags.force_async() && !retained.flags.already_started());
             assert_eq!(retained.script_type, None);
             assert_eq!(retained.preparation_document, None);
             assert_eq!(
@@ -17570,13 +17559,13 @@ mod tests {
                     }
                 })
                 .unwrap();
-            assert!(retained.already_started && !retained.force_async);
-            assert_eq!(retained.script_type, Some(ScriptType::Classic));
+            assert!(retained.flags.already_started() && !retained.flags.force_async());
+            assert_eq!(retained.script_type, Some(HtmlScriptKind::Classic));
             assert_eq!(retained.parser_document, Some(DocumentRef::Owned(0)));
             if cap == exact {
                 assert_eq!(
                     result,
-                    Ok(DisabledScriptPreparation::Disabled(ScriptType::Classic))
+                    Ok(DisabledScriptPreparation::Disabled(HtmlScriptKind::Classic))
                 );
                 assert_eq!(retained.preparation_document, Some(DocumentRef::Owned(0)));
                 assert_eq!(c.stop(), None);
@@ -17746,10 +17735,10 @@ mod tests {
         storage_zero(&c);
     }
 
-    fn lexical_script_type(attributes: &str) -> Option<ScriptType> {
+    fn lexical_script_type(attributes: &str) -> Option<HtmlScriptKind> {
         lexical_script_type_source(crate::HtmlSource::utf8(format!("<script {attributes}>")))
     }
-    fn lexical_script_type_source(source: crate::HtmlSource) -> Option<ScriptType> {
+    fn lexical_script_type_source(source: crate::HtmlSource) -> Option<HtmlScriptKind> {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         let mut c = control();
         c.admit_source(&source).unwrap();
@@ -17819,25 +17808,37 @@ mod tests {
     #[test]
     fn script_type_classification_preserves_preexisting_charge_totals() {
         for (explicit, language, expected, visits_expected, inspections_expected) in [
-            (None, None, Some(ScriptType::Classic), 4, 0),
-            (Some(""), Some("unknown"), Some(ScriptType::Classic), 16, 36),
+            (None, None, Some(HtmlScriptKind::Classic), 4, 0),
+            (
+                Some(""),
+                Some("unknown"),
+                Some(HtmlScriptKind::Classic),
+                16,
+                36,
+            ),
             (
                 Some("text/javascript"),
                 None,
-                Some(ScriptType::Classic),
+                Some(HtmlScriptKind::Classic),
                 24,
                 75,
             ),
             (
                 Some(" \tTEXT/JAVASCRIPT\n"),
                 None,
-                Some(ScriptType::Classic),
+                Some(HtmlScriptKind::Classic),
                 56,
                 103,
             ),
-            (Some("MoDuLe"), None, Some(ScriptType::Module), 78, 34),
+            (Some("MoDuLe"), None, Some(HtmlScriptKind::Module), 78, 34),
             (Some(" module "), None, None, 82, 20),
-            (None, Some("javascript"), Some(ScriptType::Classic), 24, 77),
+            (
+                None,
+                Some("javascript"),
+                Some(HtmlScriptKind::Classic),
+                24,
+                77,
+            ),
             (None, Some(" javascript "), None, 50, 50),
             (Some("unknown"), Some("javascript"), None, 86, 40),
             (Some("application/json"), None, None, 82, 19),
@@ -17923,7 +17924,7 @@ mod tests {
             for value in [essence.to_owned(), essence.to_ascii_uppercase()] {
                 assert_eq!(
                     lexical_script_type(&format!("type='{value}'")),
-                    Some(ScriptType::Classic)
+                    Some(HtmlScriptKind::Classic)
                 );
             }
         }
@@ -17954,14 +17955,14 @@ mod tests {
         ] {
             assert_eq!(
                 lexical_script_type(attributes),
-                Some(ScriptType::Classic),
+                Some(HtmlScriptKind::Classic),
                 "{attributes}"
             );
         }
         for (value, kind) in [
-            ("MoDuLe", ScriptType::Module),
-            ("IMPORTMAP", ScriptType::ImportMap),
-            ("speculationrules", ScriptType::SpeculationRules),
+            ("MoDuLe", HtmlScriptKind::Module),
+            ("IMPORTMAP", HtmlScriptKind::ImportMap),
+            ("speculationrules", HtmlScriptKind::SpeculationRules),
         ] {
             assert_eq!(lexical_script_type(&format!("type={value}")), Some(kind));
             assert_eq!(lexical_script_type(&format!("type=' {value} '")), None);
@@ -18101,7 +18102,7 @@ mod tests {
             .unwrap();
         let mut expected = initial;
         expected.parser_document = None;
-        expected.force_async = true;
+        expected.flags.parser_document_cleared_without_async();
         assert_eq!(retained, expected);
         assert!(retained.preparation_document.is_none());
         drop((node, contents, template));

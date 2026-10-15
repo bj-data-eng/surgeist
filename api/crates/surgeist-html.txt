@@ -4374,6 +4374,21 @@ pub fn surgeist_html::HtmlSandboxValue::flags(&self) -> surgeist_html::HtmlSandb
 pub fn surgeist_html::HtmlSandboxValue::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlSandboxValue::new(keywords: impl core::iter::traits::collect::IntoIterator<Item = surgeist_html::HtmlSandboxKeyword>) -> core::result::Result<Self, surgeist_html::HtmlSandboxValueError>
 pub fn surgeist_html::HtmlSandboxValue::tokens(&self) -> &surgeist_html::HtmlUnorderedTokenSet
+pub struct surgeist_html::HtmlScriptFlags
+impl surgeist_html::HtmlScriptFlags
+pub const fn surgeist_html::HtmlScriptFlags::already_started(self) -> bool
+pub fn surgeist_html::HtmlScriptFlags::async_attribute_added(&mut self)
+pub fn surgeist_html::HtmlScriptFlags::clone_already_started_from(&mut self, source: Self)
+pub const fn surgeist_html::HtmlScriptFlags::delaying_load(self) -> bool
+pub const fn surgeist_html::HtmlScriptFlags::external_file(self) -> bool
+pub const fn surgeist_html::HtmlScriptFlags::force_async(self) -> bool
+pub const fn surgeist_html::HtmlScriptFlags::fresh() -> Self
+pub const fn surgeist_html::HtmlScriptFlags::from_retained(force_async: bool, already_started: bool, external_file: bool, ready_to_be_parser_executed: bool, delaying_load: bool) -> Self
+pub fn surgeist_html::HtmlScriptFlags::mark_already_started(&mut self)
+pub fn surgeist_html::HtmlScriptFlags::mark_parser_inserted(&mut self)
+pub fn surgeist_html::HtmlScriptFlags::parser_document_cleared_without_async(&mut self)
+pub fn surgeist_html::HtmlScriptFlags::parser_document_restored(&mut self)
+pub const fn surgeist_html::HtmlScriptFlags::ready_to_be_parser_executed(self) -> bool
 pub struct surgeist_html::HtmlScriptTypePreparationReport
 impl surgeist_html::HtmlScriptTypePreparationReport
 pub fn surgeist_html::HtmlScriptTypePreparationReport::classification(&self) -> surgeist_html::HtmlScriptTypeClassification

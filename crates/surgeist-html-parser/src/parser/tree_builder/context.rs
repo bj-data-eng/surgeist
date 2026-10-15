@@ -1828,8 +1828,8 @@ mod tests {
             .session
             .script_metadata(&mut driver.control, &script)
             .unwrap();
-        assert!(metadata.already_started);
-        assert!(!metadata.force_async);
+        assert!(metadata.flags.already_started());
+        assert!(!metadata.flags.force_async());
         assert_eq!(metadata.script_type, None);
         assert!(
             state

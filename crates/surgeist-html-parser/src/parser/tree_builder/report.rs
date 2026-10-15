@@ -619,7 +619,7 @@ mod tests {
                         counts[1] += 1;
                     }
                     if let Some(script) = record.script() {
-                        assert!(script.already_started && !script.force_async);
+                        assert!(script.flags.already_started() && !script.flags.force_async());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
                             matches!(parser.unwrap(), MetadataDocument::Owned(n) if matches!(n.kind(), crate::HtmlNodeKind::Document(_)))
@@ -690,7 +690,7 @@ mod tests {
                     if let Some(state) = record.script() {
                         // Effective Disabled prepares the disconnected fragment
                         // script: parser document is cleared before that return.
-                        assert!(!state.already_started && state.force_async);
+                        assert!(!state.flags.already_started() && state.flags.force_async());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(parser.is_none() && preparation.is_none());
                         for document in [parser, preparation].into_iter().flatten() {
@@ -814,7 +814,7 @@ mod tests {
             match cursor.advance() {
                 MetadataStep::Record(record) => {
                     if let Some(script) = record.script() {
-                        assert!(script.already_started && !script.force_async);
+                        assert!(script.flags.already_started() && !script.flags.force_async());
                         assert!(script.script_type.is_none());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
