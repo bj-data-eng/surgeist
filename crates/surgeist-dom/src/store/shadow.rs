@@ -114,7 +114,7 @@ mod tests {
     }
     #[test]
     fn cancellation_after_preparing_shadow_links_and_ids_preserves_published_state() {
-        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 0, 0, 8, 8192).unwrap()).unwrap();
         let host = host(&mut dom);
         let before = dom.snapshot();
         let usage = dom.usage();
@@ -142,7 +142,7 @@ mod tests {
     }
     #[test]
     fn exhausted_revision_rejects_shadow_publication_without_consuming_an_identity() {
-        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 0, 0, 8, 8192).unwrap()).unwrap();
         let host = host(&mut dom);
         dom.revision = DomRevision(u64::MAX);
         let before = dom.snapshot();

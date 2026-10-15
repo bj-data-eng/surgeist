@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn cancellation_after_frame_hook_preparation_preserves_slots_tree_state_and_history() {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 8192).unwrap()).unwrap();
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         let document = batch.create_document();

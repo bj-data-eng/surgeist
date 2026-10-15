@@ -65,7 +65,7 @@ struct PlannedNode {
 ///     AttributeRule::one(AttributeKind::Static)).unwrap();
 /// let authored = parse_template("<div title=example>hello</div>").unwrap();
 /// let template = validate_template(&authored, &native, &ComponentRegistry::default()).unwrap();
-/// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 4, 8192).unwrap()).unwrap();
+/// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 4, 8192).unwrap()).unwrap();
 /// let mut batch = DomBatch::new();
 /// let document = batch.create_document();
 /// let parent = batch.create_fragment(&document);

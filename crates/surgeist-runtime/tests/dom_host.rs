@@ -11,7 +11,7 @@ use surgeist_runtime::{
 };
 
 fn document() -> (Dom, DocumentId, [NodeId; 2]) {
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 128, 16, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let a = batch.create_element(&document, "A");

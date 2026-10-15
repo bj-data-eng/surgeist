@@ -6,7 +6,7 @@ use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
 
 #[test]
 fn native_html_slot_creation_publishes_an_actual_element() {
-    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 0, 0, 4, 4096).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let slot = batch.create_element_ns(&document, Namespace::html(), "slot");

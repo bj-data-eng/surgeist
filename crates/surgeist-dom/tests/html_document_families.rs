@@ -7,7 +7,7 @@ use surgeist_dom::{
 use surgeist_html::HtmlCanvasBitmapDimension;
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 256, 16, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(128, 32768, 256, 0, 0, 16, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -283,7 +283,7 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
     // Source XML 31 + HTML skeleton 125 + (HTML URI 28 + canvas 6) +
     // lowercase width name 5 + raw 301 3 + derived canonical digits 3 = 201.
     for capacity in [200, 201] {
-        let mut dom = Dom::new(DomLimits::new(7, capacity, 8, 0, 0).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(7, capacity, 8, 0, 0, 0, 0).unwrap()).unwrap();
         let mut batch = DomBatch::new();
         let source = batch.create_document();
         let html = batch.create_html_document(&source, None);

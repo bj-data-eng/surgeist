@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Slot families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -85,8 +85,26 @@ insertion steps and destruction include owned shadow trees. Shallow host import
 still deeply copies clonable roots after ordinary descendants; omit nonclonable
 roots. Open-only exposure and privileged canonical ownership are distinct.
 ShadowRelations conservatively invalidates all derived shadow/tree-scope facts;
-Parent/Children stay ordinary facts. Slot/manual assignment, flat captures and
-future template-owned fragments need their actual producer state and owner hooks.
+Parent/Children stay ordinary facts. Slot uses the shared actual-name fresh-state
+token and HTML assign cursor, with identity-bearing manual/stored lists in this
+same owner. Preserve source stored inverses after ordinary reassignment; standard
+assignedSlot and fresh flattened/CSS queries are different relations. Reassign
+only the source-target root, never repair former roots globally. All ordinary
+attribute/removal/insertion/adoption/clone paths invoke source steps. Explicit
+retirement alone clears matching surviving stored inverses and permitted-weak
+manual references, cancels exact pending signal recipients with evidence and
+never follows reused generations. Detach/adopt/disconnect do not cancel signals.
+Future template-owned fragments need their own actual producer state and hooks.
+
+DomLimits requires explicit aggregate installed Slot-reference and raw duplicate
+input capacities. Check raw input before resolution, installed replacements at
+their exact cost and every temporary reservation. Query limits separately admit
+output and retained scratch; flattened/CSS traversal is iterative and cancellable.
+Native slotchange intentions drain at an explicit atomic intrinsic checkpoint,
+never synchronously during edits or through fake observers/host callbacks. Drained
+historical targets revalidate against the live canonical owner with explicit
+skipped-destroyed evidence. Keep manual/stored/inverse/query/task change coverage
+complete and retain finite history's complete/fallback contract.
 
 View Transition state belongs to this same staged owner, with exact published
 Document-basis checks on feature edits only. Feature-uninitialized is distinct
@@ -114,7 +132,10 @@ initialization while capturing. Keep kind/host mapping exhaustive. Shadow roots
 use their actual document independently of their host. Close actual associations,
 ancestors and shadow subtrees without declaring supplemental documents' unrelated
 trees complete. Template associations need their own actual closure expansion,
-not plain-fragment unhosted defaults. Preserve producer
+not plain-fragment unhosted defaults. Slot supplements feed stored assignment to
+directionality and fresh flat facts to inertness, preserving actual related
+documents. Missing modal/live-control/fallback facts remain unavailable; detached
+flat exclusion does not establish empty inert ancestry. Preserve producer
 conservative dependency coverage rather than inventing precise invalidation.
 
 From repository root through bounded `pisct run`:

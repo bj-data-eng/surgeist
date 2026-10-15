@@ -10,7 +10,7 @@ use surgeist_dom::{
 const DEFAULT_METADATA_UNITS: usize = 31;
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(32, 1024, 64, 8, 8192).unwrap()).unwrap()
+    Dom::new(DomLimits::new(32, 1024, 64, 0, 0, 8, 8192).unwrap()).unwrap()
 }
 
 fn document(dom: &mut Dom) -> DocumentId {
@@ -24,7 +24,8 @@ fn document(dom: &mut Dom) -> DocumentId {
 
 #[test]
 fn native_document_charges_its_source_default_string_slots() {
-    let mut dom = Dom::new(DomLimits::new(1, DEFAULT_METADATA_UNITS, 1, 0, 0).unwrap()).unwrap();
+    let mut dom =
+        Dom::new(DomLimits::new(1, DEFAULT_METADATA_UNITS, 1, 0, 0, 0, 0).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     batch.create_document();
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
@@ -33,7 +34,7 @@ fn native_document_charges_its_source_default_string_slots() {
 
 #[test]
 fn insufficient_default_metadata_budget_rejects_atomic_creation() {
-    let mut dom = Dom::new(DomLimits::new(1, 30, 1, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(1, 30, 1, 0, 0, 0, 0).unwrap()).unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut batch = DomBatch::new();
@@ -225,7 +226,7 @@ fn lowered_capacity_cannot_hide_or_discard_admitted_metadata_strings() {
     let before = dom.snapshot();
     let usage = dom.usage();
     assert_eq!(
-        dom.set_limits(DomLimits::new(1, 30, 1, 0, 0).unwrap()),
+        dom.set_limits(DomLimits::new(1, 30, 1, 0, 0, 0, 0).unwrap()),
         Err(DomError::ResourceLimit {
             resource: DomResource::StringCodeUnits,
             limit: 30
@@ -237,7 +238,7 @@ fn lowered_capacity_cannot_hide_or_discard_admitted_metadata_strings() {
         dom.snapshot().document(document).unwrap().metadata(),
         before.document(document).unwrap().metadata()
     );
-    dom.set_limits(DomLimits::new(1, DEFAULT_METADATA_UNITS, 1, 0, 0).unwrap())
+    dom.set_limits(DomLimits::new(1, DEFAULT_METADATA_UNITS, 1, 0, 0, 0, 0).unwrap())
         .unwrap();
     assert_eq!(dom.usage().string_code_units(), DEFAULT_METADATA_UNITS);
 }

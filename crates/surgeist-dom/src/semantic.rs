@@ -1,5 +1,8 @@
 //! Direct canonical-snapshot adaptation into the HTML semantic owner.
 
+mod slot;
+pub use slot::DomSlotSemanticLimits;
+
 use std::{
     fmt,
     sync::atomic::{AtomicBool, Ordering},
@@ -58,6 +61,8 @@ pub enum DomHtmlCaptureError {
     Capture(HtmlCaptureError),
     Context(HtmlSemanticContextError),
     Semantic(HtmlSemanticFailure),
+    Language(surgeist_html_semantics::HtmlLanguageDirectionError),
+    Inert(surgeist_html_semantics::HtmlInertFactError),
     ResourceLimit {
         resource: DomHtmlCaptureResource,
         limit: usize,
@@ -80,6 +85,8 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Capture(e) => Some(e),
             Self::Context(e) => Some(e),
             Self::Semantic(e) => Some(e),
+            Self::Language(e) => Some(e),
+            Self::Inert(e) => Some(e),
             Self::ResourceLimit { .. }
             | Self::Cancelled
             | Self::AllocationFailed
@@ -379,6 +386,14 @@ impl DomSnapshot {
             }
             if let Some(root) = node.hosted_shadow_root() {
                 control.include(&mut planned, root, true)?;
+            }
+            // Directionality consumes stored history, including references
+            // outside this node-document. Preserve actual closure/ancestors.
+            if let Some(slot) = node.as_slot() {
+                for assigned in slot.assigned_nodes() {
+                    control.charge(1)?;
+                    control.include(&mut planned, *assigned, true)?;
+                }
             }
             if entry.complete_children {
                 for child in node.children() {

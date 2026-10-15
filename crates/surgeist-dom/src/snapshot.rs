@@ -126,7 +126,7 @@ impl DomDocumentStamp {
 /// A checked node read from an immutable snapshot.
 #[derive(Clone, Copy, Debug)]
 pub struct DomNode<'a> {
-    snapshot: &'a DomSnapshot,
+    pub(crate) snapshot: &'a DomSnapshot,
     id: NodeId,
     pub(crate) node: &'a Node,
 }

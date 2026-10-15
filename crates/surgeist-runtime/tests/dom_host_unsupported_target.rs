@@ -10,7 +10,7 @@ use surgeist_runtime::{
 #[test]
 fn target_configuration_is_rejected_before_association_admission_without_changing_existing_capture()
 {
-    let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 4, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 4, 8192).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let element = batch.create_element(&document, "target");

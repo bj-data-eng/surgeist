@@ -6,7 +6,7 @@ use surgeist_dom::{DocumentString, Dom, DomBatch, DomError, DomLimits};
 // Adoption changes node-document, not canonical store identity. A fragment
 // supplies its children and retains its own node-document; empty insert is a no-op.
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(32, 1024, 64, 8, 8192).unwrap()).unwrap()
+    Dom::new(DomLimits::new(32, 1024, 64, 0, 0, 8, 8192).unwrap()).unwrap()
 }
 
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
@@ -16,7 +16,7 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
 #[test]
 fn detached_text_adopts_without_new_capacity_and_cancelled_attempt_is_invisible() {
     // Two default Documents retain 62 units; this exact text retains 3 more.
-    let mut dom = Dom::new(DomLimits::new(4, 65, 8, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(4, 65, 8, 0, 0, 0, 0).unwrap()).unwrap();
     let text_value = DocumentString::from_utf16(vec![0xd800, 0x41, 0xdc00]);
     let mut batch = DomBatch::new();
     let source = batch.create_document();

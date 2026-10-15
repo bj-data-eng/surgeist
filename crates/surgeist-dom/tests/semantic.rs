@@ -19,7 +19,7 @@ use surgeist_html_semantics::{
 };
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(64, 8192, 128, 8, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(64, 8192, 128, 0, 0, 8, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()

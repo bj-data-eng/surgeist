@@ -9,7 +9,7 @@ use surgeist_dom::{
 const DOCUMENT_UNITS: usize = 31;
 
 fn limits() -> DomLimits {
-    DomLimits::new(64, 1024, 128, 16, 64 * 1024).unwrap()
+    DomLimits::new(64, 1024, 128, 0, 0, 16, 64 * 1024).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -395,7 +395,8 @@ fn final_noops_and_unpublished_creation_destruction_do_not_advance_revision() {
 
 #[test]
 fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
-    let mut dom = Dom::new(DomLimits::new(2, DOCUMENT_UNITS + 3, 3, 4, 4096).unwrap()).unwrap();
+    let mut dom =
+        Dom::new(DomLimits::new(2, DOCUMENT_UNITS + 3, 3, 0, 0, 4, 4096).unwrap()).unwrap();
     let document = document(&mut dom);
     let child = comment(&mut dom, document, "abc");
     let stamp = dom.snapshot().stamp();
@@ -430,14 +431,14 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
         }
     );
     assert_eq!(
-        dom.set_limits(DomLimits::new(1, DOCUMENT_UNITS + 3, 3, 4, 4096).unwrap()),
+        dom.set_limits(DomLimits::new(1, DOCUMENT_UNITS + 3, 3, 0, 0, 4, 4096).unwrap()),
         Err(DomError::ResourceLimit {
             resource: DomResource::ManagedNodes,
             limit: 1
         })
     );
     assert_eq!(
-        dom.set_limits(DomLimits::new(2, DOCUMENT_UNITS + 2, 3, 4, 4096).unwrap()),
+        dom.set_limits(DomLimits::new(2, DOCUMENT_UNITS + 2, 3, 0, 0, 4, 4096).unwrap()),
         Err(DomError::ResourceLimit {
             resource: DomResource::StringCodeUnits,
             limit: DOCUMENT_UNITS + 2
@@ -446,7 +447,7 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
     assert_eq!(dom.snapshot().stamp(), stamp);
     assert_eq!(dom.usage(), usage);
     assert_eq!(
-        DomLimits::new(usize::MAX, 0, 0, 0, 0),
+        DomLimits::new(usize::MAX, 0, 0, 0, 0, 0, 0),
         Err(DomError::InvalidLimit(DomResource::ManagedNodes))
     );
 }
@@ -483,7 +484,7 @@ fn history_is_complete_in_order_or_reports_explicit_recomputation() {
     assert_eq!(changes.from(), baseline);
     assert_eq!(changes.to(), dom.snapshot().stamp());
     let current = dom.snapshot().stamp();
-    dom.set_limits(DomLimits::new(64, 1024, 128, 1, 65536).unwrap())
+    dom.set_limits(DomLimits::new(64, 1024, 128, 0, 0, 1, 65536).unwrap())
         .unwrap();
     assert_eq!(
         dom.changes_since(after_creation).unwrap().changes(),
@@ -494,7 +495,7 @@ fn history_is_complete_in_order_or_reports_explicit_recomputation() {
         Err(DomHistoryError::FullRecomputeRequired { .. })
     ));
     assert!(dom.changes_since(current).unwrap().changes().is_empty());
-    dom.set_limits(DomLimits::new(64, 1024, 128, 16, 0).unwrap())
+    dom.set_limits(DomLimits::new(64, 1024, 128, 0, 0, 16, 0).unwrap())
         .unwrap();
     let child2 = comment(&mut dom, document, "still legal");
     assert!(matches!(
@@ -516,7 +517,7 @@ fn history_is_complete_in_order_or_reports_explicit_recomputation() {
 
 #[test]
 fn positive_history_budget_too_small_for_one_record_falls_back_without_rejecting_edits() {
-    let mut dom = Dom::new(DomLimits::new(4, DOCUMENT_UNITS + 32, 8, 8, 1).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(4, DOCUMENT_UNITS + 32, 8, 0, 0, 8, 1).unwrap()).unwrap();
     let baseline = dom.snapshot().stamp();
     let document = document(&mut dom);
     let node = comment(&mut dom, document, "admitted");

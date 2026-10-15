@@ -89,7 +89,7 @@ fn cancelled_common_nonce_publication_preserves_all_state_and_history() {
 }
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(32, 256, 64, 8, 8192).unwrap()).unwrap()
+    Dom::new(DomLimits::new(32, 256, 64, 0, 0, 8, 8192).unwrap()).unwrap()
 }
 
 #[test]

@@ -5,13 +5,14 @@ impl Draft {
         &mut self,
         node: Key,
         document: Key,
+        limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         // Removal precedes the document test, including same-document adoption.
-        // Supported common profiles retain nonce/common state during adoption;
-        // Frame's actual null child-content is likewise preserved; adoption
-        // does not create a new element or reset its family payload.
-        self.remove(node, cancelled)?;
+        // Admitted nonce/common/family state and manual intent survive adoption;
+        // removal runs actual stored-assignment effects. Frame null child-content
+        // is preserved: adoption does not create a new element or reset its family.
+        self.remove(node, limits, cancelled)?;
         if self.node(node)?.document == document {
             return Ok(());
         }
@@ -143,13 +144,14 @@ impl Draft {
         node: Key,
         parent: Key,
         mut before: Option<Key>,
+        limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         self.ensure_pre_insert(node, parent, before, None, cancelled)?;
         if before == Some(node) {
             before = self.next_sibling(node);
         }
-        self.insert_validated(node, parent, before, cancelled)
+        self.insert_validated(node, parent, before, limits, cancelled)
     }
 
     pub(super) fn replace_child(
@@ -157,6 +159,7 @@ impl Draft {
         node: Key,
         parent: Key,
         child: Key,
+        limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         self.ensure_pre_insert(node, parent, Some(child), Some(child), cancelled)?;
@@ -166,9 +169,9 @@ impl Draft {
         }
         // Unlike insert's per-child adoption, replace explicitly adopts its
         // supplied node first, including a DocumentFragment and its subtree.
-        self.adopt(node, self.node(parent)?.document, cancelled)?;
-        self.remove(child, cancelled)?;
-        self.insert_validated(node, parent, before, cancelled)
+        self.adopt(node, self.node(parent)?.document, limits, cancelled)?;
+        self.remove(child, limits, cancelled)?;
+        self.insert_validated(node, parent, before, limits, cancelled)
     }
 
     fn insert_validated(
@@ -176,6 +179,7 @@ impl Draft {
         node: Key,
         parent: Key,
         before: Option<Key>,
+        limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         let fragment = matches!(
@@ -194,19 +198,19 @@ impl Draft {
             return Ok(());
         }
         reserve(&mut self.node_mut(parent).children, moving.len())?;
-        // Fragment removal completes before any insertion. Supported common
-        // profiles have no children-changed family effect; each inserted
-        // subtree runs its applicable common insertion steps below.
+        // Fragment removal, including source Slot effects, completes before
+        // any insertion. Each actual inserted child then runs Slot and
+        // applicable shadow-inclusive native insertion steps below.
         if fragment {
             for child in &moving {
                 check_cancel(cancelled)?;
-                self.remove(*child, cancelled)?;
+                self.remove(*child, limits, cancelled)?;
             }
         }
         let document = self.node(parent)?.document;
         for &child in &moving {
             check_cancel(cancelled)?;
-            self.adopt(child, document, cancelled)?;
+            self.adopt(child, document, limits, cancelled)?;
             let target = self.node_mut(parent);
             let index = before.map_or(target.children.len(), |reference| {
                 target
@@ -217,9 +221,10 @@ impl Draft {
             });
             target.children.insert(index, child);
             self.node_mut(child).parent = Some(parent);
+            self.slot_insertion(child, parent, limits, cancelled)?;
             self.common_insertion_steps(child, &mut || check_cancel(cancelled))?;
         }
-        // Post-connection follows all actual insertion/common steps, including
+        // Post-connection follows all actual Slot/common insertion steps, including
         // all transferred fragment children. Each Frame checks current
         // shadow-including connectedness and its actual node document.
         for child in moving {
@@ -303,7 +308,7 @@ mod tests {
 
     #[test]
     fn cancellation_during_common_descendant_insertion_keeps_publication_unchanged() {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 8192).unwrap()).unwrap();
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         let document = batch.create_document();
@@ -323,7 +328,7 @@ mod tests {
         let parent = commit.created(&parent).unwrap().unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
-        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity)).unwrap();
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap();
         let key = draft.resolve(parent.into()).unwrap();
         draft
             .set_nonce(key, "unpublished".into(), dom.limits(), &cancel)

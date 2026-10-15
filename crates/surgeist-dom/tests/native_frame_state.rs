@@ -10,7 +10,7 @@ use surgeist_html::{HtmlBrowsingContextPresence, HtmlFrameNullContent};
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 16, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(128, 16384, 256, 0, 0, 16, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -348,7 +348,7 @@ fn shadow_including_frame_hooks_follow_real_hosts_and_adoption_documents() {
 fn exact_frame_storage_limits_and_failed_edits_publish_no_partial_family_or_identity() {
     // XML metadata31 + HTML namespace28 + local frame5; null family owns no strings.
     for units in [63, 64] {
-        let mut dom = Dom::new(DomLimits::new(2, units, 8, 4, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(2, units, 8, 0, 0, 4, 8192).unwrap()).unwrap();
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
@@ -395,7 +395,8 @@ fn exact_frame_storage_limits_and_failed_edits_publish_no_partial_family_or_iden
 #[test]
 fn late_hierarchy_errors_cancellation_and_history_preserve_published_frame_state() {
     for history in [0, 8] {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, history, 65536).unwrap()).unwrap();
+        let mut dom =
+            Dom::new(DomLimits::new(16, 2048, 32, 0, 0, history, 65536).unwrap()).unwrap();
         let (document, frame) = setup(&mut dom);
         let before = dom.snapshot();
         let usage = dom.usage();

@@ -97,6 +97,14 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
                 NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
             }
+            Requirement::KnownHtml(KnownHtmlElement::Slot) => {
+                let Some(surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments) =
+                    initialization.slot()
+                else {
+                    unreachable!("actual Slot initialization evidence")
+                };
+                NativeFamily::Slot
+            }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
@@ -122,6 +130,9 @@ impl DomElement {
             family,
             captured_in_view_transition: false,
         })
+    }
+    pub(crate) fn is_slot(&self) -> bool {
+        matches!(self.family, NativeFamily::Slot)
     }
     /// Actual closed common tuple. Exposed operations preserve its values.
     pub fn common_state(&self) -> HtmlNativeCommonState {

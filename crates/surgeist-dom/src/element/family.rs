@@ -13,6 +13,7 @@ use surgeist_html::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum NativeFamily {
     Common,
+    Slot,
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
     Frame(HtmlFrameNullContent),
@@ -28,7 +29,7 @@ impl NativeFamily {
         }
         match self {
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
-            Self::Common | Self::Marquee(_) | Self::Frame(_) => Some(0),
+            Self::Common | Self::Slot | Self::Marquee(_) | Self::Frame(_) => Some(0),
         }
     }
 

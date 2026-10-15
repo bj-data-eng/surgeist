@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    AssignSlot {
+        slot: NodeOperand,
+        incoming: Vec<NodeOperand>,
+    },
     CreateHtmlDocument {
         associated_document: NodeOperand,
         title: Option<DocumentString>,
@@ -416,6 +420,14 @@ impl DomBatch {
         self.commands.push(Command::SetNonce {
             node: node.into(),
             value: value.into(),
+        });
+    }
+    /// HTML slot.assign over raw Element/Text operands, including duplicates.
+    /// Manual intent does not require current host-child membership.
+    pub fn assign_slot(&mut self, slot: impl Into<NodeOperand>, incoming: Vec<NodeOperand>) {
+        self.commands.push(Command::AssignSlot {
+            slot: slot.into(),
+            incoming,
         });
     }
     /// Turns a native HTML Marquee on without changing its loop index.

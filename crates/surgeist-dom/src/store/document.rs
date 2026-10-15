@@ -23,19 +23,19 @@ impl Draft {
             document,
             limits,
         )?;
-        self.pre_insert(doctype, document, None, cancelled)?;
+        self.pre_insert(doctype, document, None, limits, cancelled)?;
         let html = self.html_skeleton_element(document, "html", limits, cancelled)?;
-        self.pre_insert(html, document, None, cancelled)?;
+        self.pre_insert(html, document, None, limits, cancelled)?;
         let head = self.html_skeleton_element(document, "head", limits, cancelled)?;
-        self.pre_insert(head, html, None, cancelled)?;
+        self.pre_insert(head, html, None, limits, cancelled)?;
         if let Some(title) = title {
             let element = self.html_skeleton_element(document, "title", limits, cancelled)?;
-            self.pre_insert(element, head, None, cancelled)?;
+            self.pre_insert(element, head, None, limits, cancelled)?;
             let text = self.allocate(DomNodeKind::Text(title), document, limits)?;
-            self.pre_insert(text, element, None, cancelled)?;
+            self.pre_insert(text, element, None, limits, cancelled)?;
         }
         let body = self.html_skeleton_element(document, "body", limits, cancelled)?;
-        self.pre_insert(body, html, None, cancelled)?;
+        self.pre_insert(body, html, None, limits, cancelled)?;
         Ok(document)
     }
     fn html_skeleton_element(
@@ -69,7 +69,7 @@ impl Draft {
 mod tests {
     use super::*;
     fn owner() -> (Dom, DocumentId) {
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192).unwrap()).unwrap();
         let mut batch = DomBatch::new();
         let source = batch.create_document();
         let source = dom

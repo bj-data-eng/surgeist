@@ -39,7 +39,7 @@ impl Draft {
                 let parent = frame.copy;
                 let copy = self.clone_single(snapshot, source, document, limits, cancelled)?;
                 // Append the initialized child before traversing its descendants.
-                self.pre_insert(copy, parent, None, cancelled)?;
+                self.pre_insert(copy, parent, None, limits, cancelled)?;
                 reserve(&mut frames, 1)?;
                 frames.push(Frame {
                     source,

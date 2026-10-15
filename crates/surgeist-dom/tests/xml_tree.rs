@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{Dom, DomBatch, DomChange, DomError, DomLimits, Namespace};
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(64, 4096, 128, 16, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()

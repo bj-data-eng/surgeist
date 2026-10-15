@@ -9,7 +9,7 @@ use surgeist_dom::{
 };
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(256, 65536, 512, 32, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(256, 65536, 512, 0, 0, 32, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -269,18 +269,20 @@ fn source_host_validation_rejects_namespace_spelling_and_duplicate_roots_atomica
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::WrongNodeKind
     );
-    // Slot remains a genuine unadmitted family; an authored name cannot stand in
-    // for its required native state/manual set.
+    // A real native Slot is constructible, but its name is not a valid native
+    // shadow host. Family admission and host eligibility are separate rules.
     let mut batch = DomBatch::new();
-    batch.create_element_ns(document, Namespace::from_uri(HTML), "slot");
+    let slot = batch.create_element_ns(document, Namespace::from_uri(HTML), "slot");
+    let commit = apply(&mut dom, batch);
+    let slot = commit.created(&slot).unwrap().unwrap();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.attach_shadow(slot, DomShadowRootInit::new(Mode::Open));
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(
-            surgeist_html::HtmlNativeInitializationRequirement::KnownHtml(
-                surgeist_html::KnownHtmlElement::Slot
-            )
-        )
+        DomError::NotSupported
     );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
 }
 #[test]
 fn host_including_cycles_and_direct_root_lifecycle_operations_reject_without_publication() {
@@ -626,7 +628,7 @@ fn detached_host_destruction_retires_all_owned_shadow_generations_and_old_snapsh
 fn exact_node_and_string_admission_and_late_failure_leave_no_root_or_identity_history() {
     for capacity in [2, 3] {
         // 31 source Document units + 28 HTML namespace + 3 div. Root adds no strings.
-        let mut dom = Dom::new(DomLimits::new(capacity, 62, 16, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(capacity, 62, 16, 0, 0, 8, 8192).unwrap()).unwrap();
         let mut batch = DomBatch::new();
         let doc = batch.create_document();
         let host = batch.create_element_ns(&doc, Namespace::from_uri(HTML), "div");
@@ -719,7 +721,7 @@ fn no_op_root_detach_and_transient_owned_tree_do_not_advance_revision_or_history
         DomError::Cancelled
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
-    dom.set_limits(DomLimits::new(256, 65536, 512, 0, 0).unwrap())
+    dom.set_limits(DomLimits::new(256, 65536, 512, 0, 0, 0, 0).unwrap())
         .unwrap();
     let mut batch = DomBatch::new();
     let text = batch.create_text(document, "new");
@@ -780,7 +782,8 @@ fn late_shadow_import_node_or_string_limit_failure_rolls_back_the_whole_private_
         ),
         (4, 63, None),
     ] {
-        let mut target = Dom::new(DomLimits::new(nodes, units, 16, 8, 8192).unwrap()).unwrap();
+        let mut target =
+            Dom::new(DomLimits::new(nodes, units, 16, 0, 0, 8, 8192).unwrap()).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let commit = apply(&mut target, batch);

@@ -14,7 +14,7 @@ const HTML: &str = "http://www.w3.org/1999/xhtml";
 const SVG: &str = "http://www.w3.org/2000/svg";
 const MATH: &str = "http://www.w3.org/1998/Math/MathML";
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 16, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(128, 16384, 256, 0, 0, 16, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -358,7 +358,7 @@ fn captured_import_copies_nonce_after_attributes_and_native_insertion_keeps_cont
 fn exact_nonce_string_capacity_counts_both_content_and_slot_and_rolls_back_late_failure() {
     // 31 document + 28 HTML URI + 3 div + 5 nonce + 2 content + 2 slot = 71.
     for capacity in [70, 71] {
-        let mut dom = Dom::new(DomLimits::new(2, capacity, 16, 0, 0).unwrap()).unwrap();
+        let mut dom = Dom::new(DomLimits::new(2, capacity, 16, 0, 0, 0, 0).unwrap()).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let element = batch.create_element_ns(&document, Namespace::from_uri(HTML), "div");

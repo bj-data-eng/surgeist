@@ -140,6 +140,8 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(minimum, limits.units, DomResource::StringCodeUnits)?;
         let changed = replacement.name().clone();
+        let old_value =
+            position.map(|position| element.attributes().as_slice()[position].value().clone());
         let mut staged = element.clone();
         let mut attributes = copy(element.attributes().as_slice())?;
         if let Some(position) = position {
@@ -153,7 +155,8 @@ impl Draft {
         if let Some(nonce) = nonce {
             staged.set_nonce(nonce);
         }
-        self.publish_element(node, old_units, staged, limits)
+        self.publish_element(node, old_units, staged, limits)?;
+        self.slot_attribute(node, &changed, old_value, limits, cancelled)
     }
 
     pub(super) fn remove_attribute(
@@ -186,6 +189,7 @@ impl Draft {
         };
         let removed = &element.attributes().as_slice()[position];
         let changed = removed.name().clone();
+        let old_value = Some(removed.value().clone());
         let nonce = nonce_after_attribute(element, removed.name(), None);
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
         let mut staged = element.clone();
@@ -196,7 +200,8 @@ impl Draft {
         if let Some(nonce) = nonce {
             staged.set_nonce(nonce);
         }
-        self.publish_element(node, old_units, staged, limits)
+        self.publish_element(node, old_units, staged, limits)?;
+        self.slot_attribute(node, &changed, old_value, limits, cancelled)
     }
 
     fn publish_element(

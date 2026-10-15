@@ -14,13 +14,16 @@
 //! their actual attribute/value transitions without allocating pixels or animation.
 //! Native Frame retains actual null child-content and consumes source-qualified
 //! post-connection, src and removing decisions without navigation capability.
-//! Slot assignment and remaining special families require their real adapters.
+//! Native Slot retains manual intent and stored assignment separately from fresh
+//! assignedSlot/flattened/CSS flat queries. An explicit intrinsic checkpoint takes
+//! slotchange intentions; no callbacks run inside a transaction. Remaining special
+//! families require their real adapters.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
 //! use surgeist_dom::{Dom, DomBatch, DomLimits};
 //!
-//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 8, 8192)?)?;
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
 //! let comment = batch.create_comment(&document, "retained");
@@ -35,7 +38,7 @@
 //! ```
 //! use std::sync::atomic::AtomicBool;
 //! use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
-//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 8, 8192)?)?;
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
 //! let root = batch.create_element(&document, "Root");
@@ -47,6 +50,32 @@
 //! assert_eq!(root.node_name().to_utf8()?, "Root");
 //! assert_eq!(root.as_element().unwrap().attributes().len(), 1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ```
+//! use std::sync::atomic::AtomicBool;
+//! use surgeist_dom::{Dom, DomBatch, DomLimits, DomSlotQueryLimits, Namespace,
+//!     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 64, 32, 8, 8192)?)?;
+//! let mut batch = DomBatch::new();
+//! let document = batch.create_document();
+//! let host = batch.create_element_ns(&document, Namespace::html(), "div");
+//! batch.insert_before(&host, &document, None);
+//! let root = batch.attach_shadow(&host, HtmlShadowRootProperties::new(
+//!     HtmlShadowRootMode::Open, HtmlSlotAssignment::Manual, false, false, false));
+//! let slot = batch.create_element_ns(&document, Namespace::html(), "slot");
+//! let text = batch.create_text(&document, "assigned");
+//! batch.insert_before(&slot, &root, None);
+//! batch.insert_before(&text, &host, None);
+//! batch.assign_slot(&slot, vec![(&text).into()]);
+//! let committed = dom.apply(batch, &AtomicBool::new(false))?;
+//! let slot = committed.created(&slot)?.unwrap();
+//! let text = committed.created(&text)?.unwrap();
+//! assert_eq!(dom.snapshot().slot(slot)?.assigned_nodes(), &[text]);
+//! let notifications = dom.take_slot_notifications(
+//!     DomSlotQueryLimits::new(32, 64)?, &AtomicBool::new(false))?;
+//! assert_eq!(notifications.targets(), &[slot]);
+//! # Ok::<(), surgeist_dom::DomError>(())
 //! ```
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
@@ -60,6 +89,7 @@ mod names;
 mod node_values;
 mod semantic;
 mod shadow;
+mod slot;
 mod snapshot;
 mod store;
 mod view_transition;
@@ -79,8 +109,13 @@ pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
+    DomSlotSemanticLimits,
 };
 pub use shadow::{DomShadowRootInit, DomShadowRootState};
+pub use slot::{
+    DomFlatRelation, DomFlatTree, DomSlot, DomSlotNodes, DomSlotNotificationTarget,
+    DomSlotNotifications, DomSlotQueryLimits, DomSlotSignalCancellationReason,
+};
 pub use snapshot::{
     DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTreeOrder,
     DomTreeScope,

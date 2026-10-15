@@ -18,6 +18,7 @@ mod document;
 mod frame;
 mod import;
 mod shadow;
+mod slot;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
@@ -27,6 +28,10 @@ use view_transition::DraftTransitions;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
     ManagedNodes,
+    SlotReferences,
+    SlotAssignmentInputs,
+    SlotQueryOutput,
+    SlotQueryScratch,
     StringCodeUnits,
     Commands,
     HistoryEntries,
@@ -53,6 +58,7 @@ pub enum DomError {
     NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement),
     NonceInapplicable,
     MarqueeInapplicable,
+    SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
     InvalidDestruction,
@@ -87,6 +93,8 @@ pub struct DomLimits {
     nodes: usize,
     units: usize,
     commands: usize,
+    slot_references: usize,
+    slot_assignment_inputs: usize,
     history_entries: usize,
     history_bytes: usize,
     transitions: usize,
@@ -98,11 +106,23 @@ impl DomLimits {
         nodes: usize,
         units: usize,
         commands: usize,
+        slot_references: usize,
+        slot_assignment_inputs: usize,
         history_entries: usize,
         history_bytes: usize,
     ) -> Result<Self, DomError> {
         for (value, resource, width) in [
             (nodes, DomResource::ManagedNodes, size_of::<Slot>()),
+            (
+                slot_references,
+                DomResource::SlotReferences,
+                size_of::<NodeId>(),
+            ),
+            (
+                slot_assignment_inputs,
+                DomResource::SlotAssignmentInputs,
+                size_of::<NodeOperand>(),
+            ),
             (units, DomResource::StringCodeUnits, size_of::<u16>()),
             (commands, DomResource::Commands, size_of::<Command>()),
             (
@@ -120,6 +140,8 @@ impl DomLimits {
             nodes,
             units,
             commands,
+            slot_references,
+            slot_assignment_inputs,
             history_entries,
             history_bytes,
             transitions: 0,
@@ -175,6 +197,12 @@ impl DomLimits {
     pub fn string_code_units(self) -> usize {
         self.units
     }
+    pub fn slot_references(self) -> usize {
+        self.slot_references
+    }
+    pub fn slot_assignment_inputs(self) -> usize {
+        self.slot_assignment_inputs
+    }
     pub fn commands_per_batch(self) -> usize {
         self.commands
     }
@@ -190,6 +218,7 @@ impl DomLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomUsage {
+    slot_references: usize,
     nodes: usize,
     units: usize,
     history_entries: usize,
@@ -199,6 +228,9 @@ pub struct DomUsage {
     pseudos: usize,
 }
 impl DomUsage {
+    pub fn slot_references(self) -> usize {
+        self.slot_references
+    }
     pub fn view_transitions(self) -> usize {
         self.transitions
     }
@@ -226,6 +258,18 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    SlotManual(NodeId),
+    SlotAssignedNodes(NodeId),
+    ManualAssignment(NodeId),
+    StoredAssignedSlot(NodeId),
+    /// Conservatively recompute current slot/flattened/flat projections.
+    SlotQueries,
+    IntrinsicTasks,
+    /// Native destruction canceled this exact-generation pending recipient.
+    SlotSignalCancelled {
+        slot: NodeId,
+        reason: crate::DomSlotSignalCancellationReason,
+    },
     Created(NodeId),
     Destroyed(NodeId),
     Data(NodeId),
@@ -343,6 +387,10 @@ pub(crate) struct Node {
     pub(crate) children: Vec<NodeId>,
     pub(crate) shadow_root: Option<NodeId>,
     pub(crate) host: Option<NodeId>,
+    pub(crate) manual_nodes: Vec<NodeId>,
+    pub(crate) assigned_nodes: Vec<NodeId>,
+    pub(crate) manual_slot: Option<NodeId>,
+    pub(crate) assigned_slot: Option<NodeId>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -354,6 +402,8 @@ pub(crate) struct Slot {
 pub(crate) struct State {
     pub(crate) slots: Vec<Slot>,
     pub(crate) view_transitions: ViewTransitions,
+    pub(crate) signal_slots: Vec<NodeId>,
+    pub(crate) notification_queued: bool,
     nodes: usize,
     units: usize,
 }
@@ -406,6 +456,8 @@ impl Dom {
             state: Arc::new(State {
                 slots: Vec::new(),
                 view_transitions: ViewTransitions::new(),
+                signal_slots: Vec::new(),
+                notification_queued: false,
                 nodes: 0,
                 units: 0,
             }),
@@ -426,6 +478,7 @@ impl Dom {
     pub fn usage(&self) -> DomUsage {
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            slot_references: self.state.slot_reference_count(),
             transitions,
             records,
             pseudos,
@@ -445,6 +498,11 @@ impl Dom {
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
+        admit(
+            self.state.slot_reference_count(),
+            limits.slot_references,
+            DomResource::SlotReferences,
+        )?;
         admit(self.state.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(self.state.units, limits.units, DomResource::StringCodeUnits)?;
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
@@ -474,13 +532,30 @@ impl Dom {
             self.limits.commands,
             DomResource::Commands,
         )?;
-        let mut draft = Draft::new(self, batch.owner)?;
+        let mut incoming = 0usize;
+        for command in &batch.commands {
+            check_cancel(cancelled)?;
+            if let Command::AssignSlot {
+                incoming: nodes, ..
+            } = command
+            {
+                incoming = incoming
+                    .checked_add(nodes.len())
+                    .ok_or(DomError::RepresentationExhausted)?;
+                admit(
+                    incoming,
+                    self.limits.slot_assignment_inputs,
+                    DomResource::SlotAssignmentInputs,
+                )?;
+            }
+        }
+        let mut draft = Draft::new(self, batch.owner, cancelled)?;
         for command in batch.commands {
             check_cancel(cancelled)?;
             draft.apply(command, self.limits, cancelled)?;
         }
         check_cancel(cancelled)?;
-        draft.finish(self)
+        draft.finish(self, cancelled)
     }
     fn publish(
         &mut self,
@@ -652,7 +727,7 @@ fn copy<T: Clone>(values: &[T]) -> Result<Vec<T>, DomError> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Key {
+pub(crate) enum Key {
     Existing(usize),
     Created(usize),
 }
@@ -663,12 +738,19 @@ struct DraftNode {
     children: Vec<Key>,
     shadow_root: Option<Key>,
     host: Option<Key>,
+    manual_nodes: Vec<Key>,
+    assigned_nodes: Vec<Key>,
+    manual_slot: Option<Key>,
+    assigned_slot: Option<Key>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
     basis: DomStamp,
     view_transitions: DraftTransitions,
+    signal_slots: Vec<Key>,
+    notification_queued: bool,
+    cancelled_signals: Vec<NodeId>,
     existing: Vec<Option<DraftNode>>,
     generations: Vec<u64>,
     created: Vec<Option<DraftNode>>,
@@ -689,12 +771,13 @@ struct Prepared {
 }
 
 impl Draft {
-    fn new(dom: &Dom, owner: Arc<BatchIdentity>) -> Result<Self, DomError> {
+    fn new(dom: &Dom, owner: Arc<BatchIdentity>, cancelled: &AtomicBool) -> Result<Self, DomError> {
         let mut existing = Vec::new();
         let mut generations = Vec::new();
         reserve(&mut existing, dom.state.slots.len())?;
         reserve(&mut generations, dom.state.slots.len())?;
         for slot in &dom.state.slots {
+            check_cancel(cancelled)?;
             let node = if let Some(node) = &slot.node {
                 let mut children = Vec::new();
                 reserve(&mut children, node.children.len())?;
@@ -706,6 +789,10 @@ impl Draft {
                     shadow_root: node.shadow_root.map(|id| Key::Existing(id.slot)),
                     host: node.host.map(|id| Key::Existing(id.slot)),
                     children,
+                    manual_nodes: map_keys(&node.manual_nodes, cancelled)?,
+                    assigned_nodes: map_keys(&node.assigned_nodes, cancelled)?,
+                    manual_slot: node.manual_slot.map(|id| Key::Existing(id.slot)),
+                    assigned_slot: node.assigned_slot.map(|id| Key::Existing(id.slot)),
                 })
             } else {
                 None
@@ -721,6 +808,9 @@ impl Draft {
                 revision: dom.revision,
             },
             view_transitions: DraftTransitions::new(&dom.state.view_transitions)?,
+            signal_slots: map_keys(&dom.state.signal_slots, cancelled)?,
+            notification_queued: dom.state.notification_queued,
+            cancelled_signals: Vec::new(),
             existing,
             generations,
             created: Vec::new(),
@@ -770,12 +860,18 @@ impl Draft {
         self.node(key)?;
         Ok(key)
     }
-    fn remove(&mut self, node: Key, cancelled: &AtomicBool) -> Result<(), DomError> {
-        if let Some(parent) = self.node(node).expect("staged node").parent {
+    fn remove(
+        &mut self,
+        node: Key,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(parent) = self.node(node)?.parent {
             self.node_mut(parent)
                 .children
                 .retain(|child| *child != node);
             self.node_mut(node).parent = None;
+            self.slot_removal(node, parent, limits, cancelled)?;
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
             self.frame_removing_steps(node, &mut || check_cancel(cancelled))?;
@@ -807,6 +903,10 @@ impl Draft {
             children: Vec::new(),
             shadow_root: None,
             host: None,
+            manual_nodes: Vec::new(),
+            assigned_nodes: Vec::new(),
+            manual_slot: None,
+            assigned_slot: None,
         }));
         self.nodes = nodes;
         self.units = units;
@@ -824,6 +924,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::AssignSlot { slot, incoming } => {
+                let slot = self.resolve(slot)?;
+                self.assign_manual(slot, incoming, limits, cancelled)?;
+            }
             Command::CreateHtmlDocument {
                 associated_document,
                 title,
@@ -935,7 +1039,7 @@ impl Draft {
             }
             Command::Detach(node) => {
                 let node = self.resolve(node)?;
-                self.remove(node, cancelled)?;
+                self.remove(node, limits, cancelled)?;
             }
             Command::Adopt { node, document } => {
                 let node = self.resolve(node)?;
@@ -949,7 +1053,7 @@ impl Draft {
                 if matches!(self.node(node)?.kind, DomNodeKind::ShadowRoot(_)) {
                     return Err(DomError::HierarchyRequest);
                 }
-                self.adopt(node, document, cancelled)?;
+                self.adopt(node, document, limits, cancelled)?;
             }
             Command::SetAttribute {
                 node,
@@ -1003,6 +1107,7 @@ impl Draft {
                     pending.extend(node.shadow_root);
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
+                    self.slot_retirement(key, limits, cancelled)?;
                 }
             }
             Command::ReplaceData {
@@ -1064,7 +1169,7 @@ impl Draft {
                 let node = self.resolve(node)?;
                 let parent = self.resolve(parent)?;
                 let before = before.map(|id| self.resolve(id)).transpose()?;
-                self.pre_insert(node, parent, before, cancelled)?;
+                self.pre_insert(node, parent, before, limits, cancelled)?;
             }
             Command::ReplaceChild {
                 node,
@@ -1074,17 +1179,18 @@ impl Draft {
                 let node = self.resolve(node)?;
                 let parent = self.resolve(parent)?;
                 let child = self.resolve(child)?;
-                self.replace_child(node, parent, child, cancelled)?;
+                self.replace_child(node, parent, child, limits, cancelled)?;
             }
         }
         Ok(())
     }
-    fn finish(self, dom: &Dom) -> Result<Prepared, DomError> {
+    fn finish(self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
         let mut slots = Vec::new();
         let mut occupants = Vec::new();
         reserve(&mut slots, dom.state.slots.len())?;
         reserve(&mut occupants, dom.state.slots.len())?;
         for (index, old) in dom.state.slots.iter().enumerate() {
+            check_cancel(cancelled)?;
             let destroyed = old.node.is_some() && self.existing[index].is_none();
             let generation = if destroyed {
                 old.generation.checked_add(1).unwrap_or(old.generation)
@@ -1101,6 +1207,7 @@ impl Draft {
         let mut allocated_ids = Vec::new();
         reserve(&mut allocated_ids, self.created.len())?;
         for (index, node) in self.created.iter().enumerate() {
+            check_cancel(cancelled)?;
             let Some(_) = node else {
                 allocated_ids.push(None);
                 continue;
@@ -1138,6 +1245,7 @@ impl Draft {
             Key::Created(index) => allocated_ids[index].expect("surviving creation reference"),
         };
         for (slot, key) in occupants.into_iter().enumerate() {
+            check_cancel(cancelled)?;
             let Some(key) = key else {
                 continue;
             };
@@ -1152,16 +1260,29 @@ impl Draft {
                 shadow_root: source.shadow_root.map(id),
                 host: source.host.map(id),
                 children,
+                manual_nodes: map_ids(&source.manual_nodes, &id, cancelled)?,
+                assigned_nodes: map_ids(&source.assigned_nodes, &id, cancelled)?,
+                manual_slot: source.manual_slot.map(id),
+                assigned_slot: source.assigned_slot.map(id),
             });
         }
         let finished = self.view_transitions.finish(dom.owner)?;
         let state = State {
             slots,
             view_transitions: finished.value,
+            signal_slots: map_ids(&self.signal_slots, &id, cancelled)?,
+            notification_queued: self.notification_queued,
             nodes: self.nodes,
             units: self.units,
         };
-        let changes = difference(dom.owner, &dom.state, &state)?;
+        let mut changes = difference(dom.owner, &dom.state, &state)?;
+        for slot in &self.cancelled_signals {
+            reserve(&mut changes, 1)?;
+            changes.push(DomChange::SlotSignalCancelled {
+                slot: *slot,
+                reason: crate::DomSlotSignalCancellationReason::Destroyed,
+            });
+        }
         let mut created = Vec::new();
         let mut documents = Vec::new();
         reserve(&mut created, self.tickets.len())?;
@@ -1187,6 +1308,28 @@ impl Draft {
             changes,
         })
     }
+}
+fn map_keys(ids: &[NodeId], cancelled: &AtomicBool) -> Result<Vec<Key>, DomError> {
+    let mut result = Vec::new();
+    reserve(&mut result, ids.len())?;
+    for id in ids {
+        check_cancel(cancelled)?;
+        result.push(Key::Existing(id.slot));
+    }
+    Ok(result)
+}
+fn map_ids(
+    keys: &[Key],
+    id: &impl Fn(Key) -> NodeId,
+    cancelled: &AtomicBool,
+) -> Result<Vec<NodeId>, DomError> {
+    let mut result = Vec::new();
+    reserve(&mut result, keys.len())?;
+    for key in keys {
+        check_cancel(cancelled)?;
+        result.push(id(*key));
+    }
+    Ok(result)
 }
 fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
     match kind {
@@ -1258,6 +1401,14 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 };
                 for change in [
                     kind_change,
+                    (node.manual_nodes != current.manual_nodes)
+                        .then_some(DomChange::SlotManual(id)),
+                    (node.assigned_nodes != current.assigned_nodes)
+                        .then_some(DomChange::SlotAssignedNodes(id)),
+                    (node.manual_slot != current.manual_slot)
+                        .then_some(DomChange::ManualAssignment(id)),
+                    (node.assigned_slot != current.assigned_slot)
+                        .then_some(DomChange::StoredAssignedSlot(id)),
                     (node.shadow_root != current.shadow_root).then_some(DomChange::ShadowRoot(id)),
                     (node.document != current.document).then_some(DomChange::NodeDocument(id)),
                     (node.parent != current.parent).then_some(DomChange::Parent(id)),
@@ -1309,6 +1460,22 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
     {
         reserve(&mut changes, 1)?;
         changes.push(DomChange::ShadowRelations);
+    }
+    if old.signal_slots != new.signal_slots || old.notification_queued != new.notification_queued {
+        reserve(&mut changes, 1)?;
+        changes.push(DomChange::IntrinsicTasks);
+    }
+    if !changes.is_empty()
+        && [old, new].iter().any(|state| {
+            state.slots.iter().any(|s| {
+                s.node
+                    .as_ref()
+                    .is_some_and(|n| crate::slot::is_slot(&n.kind))
+            })
+        })
+    {
+        reserve(&mut changes, 1)?;
+        changes.push(DomChange::SlotQueries);
     }
     new.view_transitions
         .changes(&old.view_transitions, &mut changes)?;

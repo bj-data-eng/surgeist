@@ -10,7 +10,10 @@ sheet/rule identities and immutable snapshots. Parser, runtime and facade
 composition remain outside its dependencies.
 
 `Dom::new` requires explicit finite `DomLimits` for managed nodes, stored string
-code units, commands per batch, and retained change-history entries and bytes.
+code units, commands per batch, Slot references, raw Slot assignment inputs per
+batch, and retained change-history entries and bytes. The seven constructor
+arguments select those capacities in that order. Existing caller profiles with
+no assignments explicitly select zero Slot capacities.
 Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
@@ -82,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame families,
+and actual native HTML Canvas/Marquee/Frame/Slot families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -222,15 +225,60 @@ relations after a structural change in a store with a shadow tree. Ordinary
 Parent/Children remain precise ordinary-tree changes; ordinary-only stores keep
 their existing change contract. History gaps still require full recomputation.
 
-This foundation retains the selected named/manual payload without exposing slot
-assignment. HTMLSlotElement remains an explicit `KnownHtml(Slot)` native
-initialization requirement until its real manual state, HTML-owned assign
-producer and DOM assignment/flat-tree integration are implemented. Template
-contents/inert-document caches, declarative installation, registry objects and
+Native HTML Slot is an Element family initialized through HTML's actual-name
+producer. `DomBatch::assign_slot` consumes the real HTML assign cursor over raw
+Element/Text operands, including duplicates, with one canonical staged owner.
+Manual ordered sets/inverses and stored assigned-node lists/inverses are distinct
+state. Manual intent may name detached, other-document or self Slots; current
+find algorithms filter by the actual host-child relationship. A manual transfer
+reassigns only the target's ordinary root. It preserves another root's historical
+stored list and inverse until a later actual source operation visits it.
+`DomSlot::assigned_nodes` reads stored source assignedNodes(false);
+`DomNode::assigned_slot` freshly finds a Slot with open-root presentation.
+`stored_assigned_slot` is privileged algorithm state and can differ. Names are
+exact UTF-16 no-namespace attribute values, with missing/empty source guards.
+
+Every existing insert/remove/fragment/replace/adopt/attribute/clone path runs
+the selected Slot hooks in source order. Clone/import fresh-initializes manual
+state instead of copying foreign references. Explicit native destruction cleans
+permitted-weak manual references and exact-generation surviving stored inverses;
+ordinary detach/adopt/assignment retain historical inverse fields. This native
+cleanup creates no synthetic global assignment or slotchange.
+
+The Slot reference capacity counts each installed manual-list entry, stored-list
+entry and pending signal recipient independently; fixed inverse fields are covered
+by managed-node capacity. Raw command capacity counts duplicates across the whole
+batch before resolution. Replacement candidates use checked temporary storage
+bounded by admitted node/input extents and count installed replacements exactly.
+These logical limits do not promise physical RSS or budget caller-held captures.
+`DomSlotQueryLimits` separately bounds output nodes and scratch references.
+Flattening is iterative; retained candidate extents and each traversal frame are
+charged until the frame is released. CSS output records include their queue/
+parent storage in output admission, with separate scratch for Slot candidates.
+
+`flattened_slottables` uses fresh find results, slottable fallback and recursive
+Slot substitution. `DomSnapshot::flat_tree` follows the selected CSS document
+algorithm: it retains Slot parents, uses all child-node fallback, replaces a host's
+children with its shadow-root children, and preserves explicit outside-document
+membership. Its node iterator is source breadth-first construction order.
+Both results retain the exact immutable source; neither changes canonical links.
+
+Source signals accumulate an ordered deduplicated set in the same transaction.
+`Dom::take_slot_notifications` is the explicit atomic native intrinsic checkpoint,
+returning historical slotchange intentions (bubbles=true, composed=false,
+cancelable=false), without dispatching callbacks or fabricating observer objects.
+A failed/cancelled drain preserves the set. Native destroy removes exact retired
+pending recipients with `SlotSignalCancelled { reason: Destroyed }` evidence;
+detach/adopt/disconnect do not cancel. Drained batches retain their historical
+capture; `revalidate` checks the live owner and reports `SkippedDestroyedTarget`
+without following generation reuse. Later signals belong to the next checkpoint.
+New pending work advances the revision even when final node values are restored.
+
+Template contents/inert-document caches, declarative installation, registry objects and
 HTML callbacks remain separate unadmitted capabilities. Shadow-including and
 host-including ancestry coincide for admitted shadow boundaries today; future
 template-hosted fragments must extend the host-including relation with their
-actual HTML owner hooks. This unit does not complete #1124's slot, flat-tree,
+actual HTML owner hooks. This unit does not complete #1124's remaining
 language/control/pseudo or broader host-fact requirements.
 
 `DomHostPublisher` captures complete fixed focus/hover or document-target Element
@@ -411,8 +459,18 @@ limits. Failed or cancelled composition returns no partial successful capture
 and changes neither DOM nor host revisions. Old captures retain their original
 membership after adoption, destruction and import elsewhere.
 
-This native shadow/common semantic profile does not complete #1124. Slot and
-flat-tree relations, live controls, template owner/cache state, registry objects,
+`DomHtmlCapture::with_slot_semantics` reuses actual stored lists for HTML
+directionality and current document flat relations for the inert producer. It
+closes required stored-reference subjects across actual documents, then invokes
+the real HTML kernels using explicit producer/mapping/query limits. Flat membership
+follows actual shadow-including documents independently of node-document ownership.
+It leaves language fallback, live-control values and modal state unavailable.
+Connected inherited inertness therefore still needs current modal facts; own
+inert can succeed independently. Detached subjects are known flat-excluded, with
+inherited inert ancestry unavailable under the selected contract.
+
+This native shadow/Slot semantic profile does not complete #1124. Live controls,
+template owner/cache state, registry objects,
 parser installation and the remaining qualified external domains still require
 their actual owning adapters. Future hosted kinds need their own real association
 closure and must not inherit ordinary fragment absence from this profile.
@@ -431,9 +489,9 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-Remaining native special families, XML DOMImplementation creation, slot
-assignment/flat-tree captures and HTML installation remain unadmitted capabilities. This crate does not claim complete DOM or
-HTML conformance or replace the retained/facade integrations. Those remaining
+Remaining native special families, XML DOMImplementation creation and HTML
+installation remain unadmitted capabilities. This crate does not claim complete DOM or
+HTML conformance. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).

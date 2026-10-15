@@ -35,7 +35,7 @@ fn validated(source: &str) -> ValidatedTemplate {
 }
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 512, 16, 262144).unwrap()).unwrap()
+    Dom::new(DomLimits::new(128, 32768, 512, 0, 0, 16, 262144).unwrap()).unwrap()
 }
 
 fn setup(dom: &mut Dom) -> (DocumentId, NodeId, NodeId) {
@@ -334,7 +334,7 @@ fn late_dom_failure_rolls_back_the_whole_composed_batch() {
 
 #[test]
 fn actual_dom_capacity_failure_preserves_the_existing_tree_and_revision() {
-    let mut dom = Dom::new(DomLimits::new(3, 32768, 512, 16, 262144).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(3, 32768, 512, 0, 0, 16, 262144).unwrap()).unwrap();
     let (document, parent, marker) = setup(&mut dom);
     let old = dom.snapshot();
     let mut batch = DomBatch::new();

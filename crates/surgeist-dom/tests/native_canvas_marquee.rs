@@ -8,7 +8,7 @@ const HTML: &str = "http://www.w3.org/1999/xhtml";
 
 #[test]
 fn native_html_canvas_creation_publishes_an_actual_element() {
-    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 0, 0, 4, 4096).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let canvas = batch.create_element_ns(&document, Namespace::from_uri(HTML), "canvas");
@@ -32,7 +32,7 @@ fn native_html_canvas_creation_publishes_an_actual_element() {
 
 #[test]
 fn native_html_marquee_creation_publishes_an_actual_element() {
-    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 0, 0, 4, 4096).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let marquee = batch.create_element_ns(&document, Namespace::from_uri(HTML), "marquee");

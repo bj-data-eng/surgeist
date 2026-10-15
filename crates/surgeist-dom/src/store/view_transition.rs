@@ -757,7 +757,7 @@ mod tests {
 
     fn fixture() -> (Dom, DocumentId) {
         let mut dom = Dom::new(
-            DomLimits::new(8, 256, 32, 8, 8192)
+            DomLimits::new(8, 256, 32, 0, 0, 8, 8192)
                 .unwrap()
                 .with_view_transitions(4, 4, 16)
                 .unwrap(),

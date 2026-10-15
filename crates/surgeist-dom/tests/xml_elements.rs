@@ -6,7 +6,7 @@ use surgeist_dom::{
 };
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(64, 4096, 128, 16, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -349,7 +349,7 @@ fn element_traversal_filters_character_data_and_preserves_captured_indices() {
 #[test]
 fn exact_attribute_budget_counts_all_stored_name_parts_and_rolls_back_overflow() {
     // 31 Document + 1 Element + 5 URI + 1 prefix + 1 local + 2 value = 41.
-    let mut dom = Dom::new(DomLimits::new(2, 41, 8, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(2, 41, 8, 0, 0, 8, 8192).unwrap()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element(&document, "R");

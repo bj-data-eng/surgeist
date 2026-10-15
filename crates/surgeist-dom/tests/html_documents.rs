@@ -10,7 +10,7 @@ use surgeist_dom::{
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 const SVG: &str = "http://www.w3.org/2000/svg";
 fn new_dom() -> Dom {
-    Dom::new(DomLimits::new(256, 65536, 256, 32, 65536).unwrap()).unwrap()
+    Dom::new(DomLimits::new(256, 65536, 256, 0, 0, 32, 65536).unwrap()).unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -591,7 +591,8 @@ fn exact_skeleton_capacity_and_one_short_limits_apply_to_all_private_allocations
             ),
             (total_nodes, total_units, None),
         ] {
-            let mut dom = Dom::new(DomLimits::new(nodes, units, 1, 8, 8192).unwrap()).unwrap();
+            let mut dom =
+                Dom::new(DomLimits::new(nodes, units, 1, 0, 0, 8, 8192).unwrap()).unwrap();
             let mut batch = DomBatch::new();
             let source = batch.create_document();
             let source = apply(&mut dom, batch).document(&source).unwrap();

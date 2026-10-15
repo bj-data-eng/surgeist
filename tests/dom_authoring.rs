@@ -27,7 +27,7 @@ fn attributes(snapshot: &DomSnapshot, node: NodeId) -> Vec<(String, String)> {
 
 #[test]
 fn native_and_template_edits_share_canonical_identity_and_preserve_old_snapshots() {
-    let mut dom = Dom::new(DomLimits::new(64, 16384, 128, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(64, 16384, 128, 0, 0, 8, 65536).unwrap()).unwrap();
     let mut initial = DomBatch::new();
     let document = initial.create_document();
     let root = initial.create_element_ns(&document, Namespace::html(), "div");

@@ -84,7 +84,7 @@ struct MountedItems {
 }
 
 fn limits(nodes: usize) -> DomLimits {
-    DomLimits::new(nodes, 4096, 64, 16, 65536).unwrap()
+    DomLimits::new(nodes, 4096, 64, 0, 0, 16, 65536).unwrap()
 }
 impl MountedItems {
     fn new() -> Self {
