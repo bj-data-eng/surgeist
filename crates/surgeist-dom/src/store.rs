@@ -16,6 +16,7 @@ use crate::{
 mod attributes;
 mod children;
 mod control;
+mod details;
 mod document;
 mod form;
 mod import;
@@ -55,6 +56,8 @@ pub enum DomResource {
     InputProcessingScratch,
     SelectScratch,
     SelectTasks,
+    DetailsToggleIntentions,
+    DetailsToggleOutput,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -154,6 +157,7 @@ pub struct DomLimits {
     pseudos: usize,
     input_scratch: usize,
     input_work: u64,
+    details_intentions: usize,
     select_tasks: usize,
     select_scratch: usize,
     select_work: u64,
@@ -210,6 +214,7 @@ impl DomLimits {
             pseudos: 0,
             input_scratch: 0,
             input_work: 0,
+            details_intentions: 0,
             select_tasks: 0,
             select_scratch: 0,
             select_work: 0,
@@ -303,6 +308,21 @@ impl DomLimits {
         self.select_value_queries = Some((capture, semantics));
         self
     }
+    /// Retained raw Details transitions, including staged cancellation evidence.
+    /// Scans use canonical node/string/command bounds and per-step cancellation.
+    pub fn with_details_toggle_intentions(mut self, max_pending: usize) -> Result<Self, DomError> {
+        let width = size_of::<crate::DomDetailsToggleIntention>()
+            .max(size_of::<details::Pending<Key>>())
+            .max(size_of::<details::Pending<NodeId>>());
+        if max_pending > isize::MAX as usize / width {
+            return Err(DomError::InvalidLimit(DomResource::DetailsToggleIntentions));
+        }
+        self.details_intentions = max_pending;
+        Ok(self)
+    }
+    pub fn details_toggle_intentions(self) -> usize {
+        self.details_intentions
+    }
     pub fn pending_select_updates(self) -> usize {
         self.select_tasks
     }
@@ -394,6 +414,14 @@ pub enum DomChange {
     /// Conservatively recompute current slot/flattened/flat projections.
     SlotQueries,
     IntrinsicTasks,
+    DetailsToggleIntentions,
+    DetailsToggleIntentionCancelled {
+        operation: crate::DomDetailsToggleIntentionId,
+        target: NodeId,
+        old: surgeist_html::HtmlDetailsState,
+        new: surgeist_html::HtmlDetailsState,
+        reason: crate::DomDetailsToggleCancellationReason,
+    },
     SelectTaskCancelled {
         operation: crate::DomNativeTaskId,
         select: NodeId,
@@ -547,6 +575,8 @@ pub(crate) struct State {
     pub(crate) notification_queued: bool,
     native_tasks: Vec<select::Task<NodeId>>,
     next_task: u64,
+    pub(crate) details_intentions: Vec<crate::DomDetailsToggleIntention>,
+    next_details_intention: u64,
     nodes: usize,
     units: usize,
 }
@@ -613,6 +643,8 @@ impl Dom {
                 notification_queued: false,
                 native_tasks: Vec::new(),
                 next_task: 0,
+                details_intentions: Vec::new(),
+                next_details_intention: 0,
                 nodes: 0,
                 units: 0,
             }),
@@ -678,6 +710,11 @@ impl Dom {
                 .count(),
             limits.select_tasks,
             DomResource::SelectTasks,
+        )?;
+        admit(
+            self.state.details_intentions.len(),
+            limits.details_intentions,
+            DomResource::DetailsToggleIntentions,
         )?;
         self.limits = limits;
         self.trim_history();
@@ -936,6 +973,8 @@ struct Draft {
     cancelled_signals: Vec<NodeId>,
     native_tasks: Vec<select::Pending>,
     cancelled_selects: Vec<(Option<u64>, NodeId)>,
+    details_intentions: Vec<details::Pending<Key>>,
+    cancelled_details: Vec<details::Pending<NodeId>>,
     effects: Vec<select::EffectFrame>,
     effects_running: bool,
     effect_bytes: usize,
@@ -1049,6 +1088,8 @@ impl Draft {
             cancelled_signals: Vec::new(),
             native_tasks: select::draft_tasks(&dom.state.native_tasks, cancelled)?,
             cancelled_selects: Vec::new(),
+            details_intentions: details::draft(&dom.state.details_intentions, cancelled)?,
+            cancelled_details: Vec::new(),
             effects: Vec::new(),
             effects_running: false,
             effect_bytes: 0,
@@ -1441,6 +1482,7 @@ impl Draft {
                 }
                 for &key in &closure {
                     self.cancel_select_tasks(key, cancelled)?;
+                    self.cancel_details_intentions(key, cancelled)?;
                 }
                 for key in closure {
                     check_cancel(cancelled)?;
@@ -1653,6 +1695,11 @@ impl Draft {
             next: next_task,
             cancellations,
         } = self.finish_select_tasks(dom, &id, cancelled)?;
+        let details::Finished {
+            intentions: details_intentions,
+            cancellations: details_cancellations,
+            next: next_details_intention,
+        } = self.finish_details(dom, &id, cancelled)?;
         let finished = self.view_transitions.finish(dom.owner)?;
         let state = State {
             slots,
@@ -1661,6 +1708,8 @@ impl Draft {
             notification_queued: self.notification_queued,
             native_tasks,
             next_task,
+            details_intentions,
+            next_details_intention,
             nodes: self.nodes,
             units: self.units,
         };
@@ -1674,6 +1723,16 @@ impl Draft {
                 },
                 select,
                 reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
+            });
+        }
+        for item in details_cancellations {
+            reserve(&mut changes, 1)?;
+            changes.push(DomChange::DetailsToggleIntentionCancelled {
+                operation: item.operation,
+                target: item.target,
+                old: item.old,
+                new: item.new,
+                reason: crate::DomDetailsToggleCancellationReason::TargetDestroyed,
             });
         }
         for slot in &self.cancelled_signals {
@@ -1901,6 +1960,12 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
     {
         reserve(&mut changes, 1)?;
         changes.push(DomChange::ShadowRelations);
+    }
+    if old.details_intentions != new.details_intentions
+        || old.next_details_intention != new.next_details_intention
+    {
+        reserve(&mut changes, 1)?;
+        changes.push(DomChange::DetailsToggleIntentions);
     }
     if old.signal_slots != new.signal_slots
         || old.notification_queued != new.notification_queued

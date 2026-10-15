@@ -162,6 +162,7 @@ impl Draft {
             .and_then(|units| units.checked_add(nonce.as_ref().map_or(0, DocumentString::len)))
             .ok_or(DomError::RepresentationExhausted)?;
         admit(minimum, limits.units, DomResource::StringCodeUnits)?;
+        let details_new_value = replacement.value().clone();
         let changed = replacement.name().clone();
         let old_value =
             position.map(|position| element.attributes().as_slice()[position].value().clone());
@@ -203,6 +204,14 @@ impl Draft {
             } else {
                 AttributeChange::Added
             },
+            limits,
+            cancelled,
+        )?;
+        self.details_attribute_change(
+            node,
+            &changed,
+            old_value.as_ref(),
+            Some(&details_new_value),
             limits,
             cancelled,
         )
@@ -262,7 +271,8 @@ impl Draft {
         self.reflected_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)?;
-        self.select_attribute(node, &changed, AttributeChange::Removed, limits, cancelled)
+        self.select_attribute(node, &changed, AttributeChange::Removed, limits, cancelled)?;
+        self.details_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)
     }
 
     fn publish_element(

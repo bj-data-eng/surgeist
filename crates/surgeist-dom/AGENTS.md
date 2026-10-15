@@ -309,3 +309,20 @@ weak targets/documents/ancestors conservatively and supplies checked reference a
 control facts in initial and Slot contexts with finite explicit budgets. Getter
 scope/first-ID fallback, submit role, disabledness and candidacy stay semantic
 queries; do not add a second target resolver or controller.
+
+Native Details uses HTML's shared attribute effect and exclusivity requests over
+actual native markers and the staged ordinary tree. Open state is only exact
+null-namespace attribute presence. Preserve initiating-before-secondary transition
+order, repeated raw transitions, exact nonempty names and first-peer stopping.
+Run secondary removal through the generic attribute owner; insertion closes the
+given entrant at its actual per-node step. Detach/adopt preserve pending ownership;
+clone/import and native installation derive fresh transitions from actual hooks.
+`with_details_toggle_intentions` defaults to zero and bounds raw pending records
+plus current-batch retirement evidence. Stackless scans poll canonical bounded
+nodes, attributes and code units; do not infer a work/byte quota from node count.
+Immediate transfer preadmits its entire explicit output and publishes atomically.
+Keep transfer/records opaque and consuming, operation identities owner-qualified
+and checked, and private create/destroy closures free of fabricated IDs. Exact
+retirement cancels untransferred recipients with target/operation/state evidence.
+Transferred historical targets require fresh exact-generation validation by their
+actual task owner. DOM owns no Runtime task tracker or ToggleEvent dispatch.

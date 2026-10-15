@@ -14,6 +14,7 @@ use surgeist_html::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum NativeFamily {
     Common,
+    Details,
     Template(surgeist_html::HtmlTemplateFreshInsertionState),
     Form(surgeist_html::HtmlFormNativeState),
     Fieldset(crate::DomFieldsetState),
@@ -52,6 +53,7 @@ impl NativeFamily {
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
             Self::Form(_)
             | Self::Common
+            | Self::Details
             | Self::Template(_)
             | Self::Option(_)
             | Self::Optgroup

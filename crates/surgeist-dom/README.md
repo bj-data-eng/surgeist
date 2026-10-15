@@ -513,10 +513,47 @@ Insertion runs common steps over inserted shadow-including descendants; this nat
 proves nonce content remains visible without inventing CSP facts. No API attaches
 a browsing context or advances the closed common tuple into interactive state.
 
+Native HTML Details derives open state solely from exact null-namespace `open`
+presence. Generic name/open changes and per-node insertion consume HTML's shared
+Details rules. Groups use equal nonempty exact UTF16 names in the same ordinary
+tree, including detached trees and Template contents; distinct shadow trees stay
+separate. Opening first records the initiating transition, then removes the first
+open peer's attribute through the real mutation engine. Name changes and insertion
+instead close the given Details. Detach/adopt preserve identities and pending
+intentions; clone/import and native immutable installation run fresh copied
+attribute/insertion hooks in their actual order.
+
+`DomLimits::with_details_toggle_intentions` admits a concrete number of raw,
+ordered, duplicate-preserving transition records. The default is zero; constructor
+and closed-state edits need no intention capacity. Current-batch retirement
+evidence shares that count so destroying a recipient cannot reset admission.
+Group scans use the finite canonical node/attribute/string domains, poll each
+visit/comparison, and allocate no traversal bank. Canonical strings retain their
+existing unit accounting; fixed intention records and transfer output use their
+separate count limits and fallible exact reservations.
+
+`take_details_toggle_intentions(max_output, cancel)` admits and builds the whole
+output before atomically relinquishing DOM ownership. Its opaque owned transfer
+and intention records cannot be cloned or publicly reconstructed; borrowed
+inspection permits a future consumer to plan admission before consuming the
+transfer. Every published transition has an opaque owner-qualified checked
+operation identity, preserved through handoff and cancellation. Private creations
+destroyed before publication consume no identity. Queue-only transitions and
+draining have explicit `DetailsToggleIntentions` change coverage and revisions;
+failed or cancelled staging preserves attributes, order and identities together.
+Explicit destruction cancels only still-owned intentions for exact retired
+targets, with finite `TargetDestroyed` evidence carrying the target, operation
+identity and states. The transfer batch retains its historical source snapshot;
+consuming iteration yields records retaining their operation, target and states.
+A consumer must validate each exact target against a fresh current snapshot before
+execution. DOM does not coalesce tasks or fire ToggleEvents. Runtime's actual
+Details task tracker, coalescing and event dispatch remain unimplemented #1124
+work, independently of this immediate ownership handoff.
+
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include other native form/control relations and values,
 resource-capable HTML preparation, resource-capable
-iframe navigables, link/style associations, details/dialog state, and resource/media
+iframe navigables, link/style associations, dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
 

@@ -416,6 +416,12 @@ impl Draft {
             }
             self.control_insertion_node(key, cancel)?;
             self.select_insertion(key, limits, cancel)?;
+            self.details_exclusivity(
+                key,
+                surgeist_html::HtmlDetailsExclusivity::CloseGiven,
+                limits,
+                cancel,
+            )?;
             // Closed HTML popovers are hidden, so their removal/attribute hide
             // steps return without changing state. Never-navigable documents
             // are not fully active, discharging the autofocus insertion guard.

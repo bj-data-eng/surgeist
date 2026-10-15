@@ -111,6 +111,7 @@
 mod batch;
 mod button;
 mod control;
+mod details;
 mod document;
 mod element;
 mod fieldset;
@@ -136,6 +137,10 @@ mod textarea;
 mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
+pub use details::{
+    DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
+    DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
+};
 pub use document::DomNativeInputPlatform;
 pub use document::{
     DomDocumentClass, DomDocumentMetadata, DomNativeDocumentEnvironment, DomOpaqueOrigin,

@@ -168,6 +168,7 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Option) => {
                 NativeFamily::Option(crate::DomOptionState::default())
             }
+            Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
             Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
                 NativeFamily::Selectedcontent(false)
@@ -263,6 +264,25 @@ impl DomElement {
             NativeFamily::Output(state) => Some(std::sync::Arc::make_mut(state)),
             _ => None,
         }
+    }
+    pub(crate) fn is_details(&self) -> bool {
+        matches!(self.family, NativeFamily::Details)
+    }
+    /// Native Details state is actual exact no-namespace open presence.
+    pub fn details_state(&self) -> Option<surgeist_html::HtmlDetailsState> {
+        if !self.is_details() {
+            return None;
+        }
+        Some(
+            if self.attributes().iter().any(|a| {
+                a.name().namespace().uri().is_none()
+                    && a.name().local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e]
+            }) {
+                surgeist_html::HtmlDetailsState::Open
+            } else {
+                surgeist_html::HtmlDetailsState::Closed
+            },
+        )
     }
     pub fn select_state(&self) -> Option<&crate::DomSelectState> {
         match &self.family {

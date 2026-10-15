@@ -38,6 +38,9 @@ impl DomSnapshot {
             revision: self.revision,
         }
     }
+    pub fn pending_details_toggle_intentions(&self) -> usize {
+        self.state.details_intentions.len()
+    }
     pub fn node(&self, id: NodeId) -> Result<DomNode<'_>, DomError> {
         let node = self.state.node(self.owner, id)?;
         Ok(DomNode {
@@ -149,6 +152,11 @@ impl<'a> DomNode<'a> {
     pub fn as_input(self) -> Option<crate::DomInput<'a>> {
         self.as_element()?.input_state()?;
         Some(crate::DomInput { node: self })
+    }
+    pub fn as_details(self) -> Option<crate::DomDetails<'a>> {
+        self.as_element()?
+            .is_details()
+            .then_some(crate::DomDetails { node: self })
     }
     pub fn as_select(self) -> Option<crate::DomSelect<'a>> {
         self.as_element()?.select_state()?;
