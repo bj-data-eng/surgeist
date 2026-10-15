@@ -2873,6 +2873,9 @@ pub surgeist_html::HtmlScriptKind::Classic
 pub surgeist_html::HtmlScriptKind::ImportMap
 pub surgeist_html::HtmlScriptKind::Module
 pub surgeist_html::HtmlScriptKind::SpeculationRules
+pub enum surgeist_html::HtmlScriptReadySteps
+pub enum surgeist_html::HtmlScriptResult
+pub surgeist_html::HtmlScriptResult::Uninitialized
 pub enum surgeist_html::HtmlScriptTypeAuthorAdvice
 pub surgeist_html::HtmlScriptTypeAuthorAdvice::None
 pub surgeist_html::HtmlScriptTypeAuthorAdvice::OmitRedundantType

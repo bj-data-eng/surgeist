@@ -1023,10 +1023,10 @@ impl HtmlParseScript<'_> {
     pub fn delaying_load(&self) -> bool {
         self.state.flags.delaying_load()
     }
-    pub fn result(&self) -> ScriptResult {
+    pub fn result(&self) -> HtmlScriptResult {
         self.state.result
     }
-    pub fn steps_when_result_ready(&self) -> Option<ScriptReadySteps> {
+    pub fn steps_when_result_ready(&self) -> Option<HtmlScriptReadySteps> {
         self.state.steps_when_result_ready
     }
 }

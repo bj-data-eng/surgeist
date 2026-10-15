@@ -2,7 +2,9 @@
 //! This adapter applies actual public script flags and records each real slot
 //! write. Qualified tree/document acquisition remains the consuming owner's job.
 use surgeist_html::bounded::*;
-use surgeist_html::{DocumentString, HtmlScriptFlags, HtmlScriptKind};
+use surgeist_html::{
+    DocumentString, HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Document {
@@ -15,8 +17,8 @@ struct State {
     parser: Option<Document>,
     preparation: Option<Document>,
     kind: Option<HtmlScriptKind>,
-    result_uninitialized: bool,
-    ready_steps: bool,
+    result: HtmlScriptResult,
+    ready_steps: Option<HtmlScriptReadySteps>,
 }
 struct Fixture {
     cursor: HtmlScriptPreparationCursor,
@@ -43,8 +45,8 @@ impl Fixture {
                 parser: Some(Document::Parser),
                 preparation: None,
                 kind: None,
-                result_uninitialized: true,
-                ready_steps: false,
+                result: HtmlScriptResult::Uninitialized,
+                ready_steps: None,
             },
             saved: None,
             node_document: Document::Parser,
@@ -193,7 +195,8 @@ fn empty_disconnected_and_unrecognized_returns_keep_only_the_reached_prefix_writ
             assert_eq!(fixture.state.kind, None);
             assert_eq!(fixture.state.flags.force_async(), !async_present);
             assert!(!fixture.state.flags.already_started());
-            assert!(fixture.state.result_uninitialized && !fixture.state.ready_steps);
+            assert_eq!(fixture.state.result, HtmlScriptResult::Uninitialized);
+            assert_eq!(fixture.state.ready_steps, None);
         }
     }
 }
@@ -231,7 +234,8 @@ fn recognized_types_store_restore_mark_and_preparation_document_in_distinct_sour
             fixture.state.flags,
             HtmlScriptFlags::from_retained(false, true, false, false, false)
         );
-        assert!(fixture.state.result_uninitialized && !fixture.state.ready_steps);
+        assert_eq!(fixture.state.result, HtmlScriptResult::Uninitialized);
+        assert_eq!(fixture.state.ready_steps, None);
     }
 }
 
@@ -295,7 +299,8 @@ fn present_empty_src_passes_empty_text_gate_without_loading_or_result_effects() 
         fixture.state.flags,
         HtmlScriptFlags::from_retained(false, true, false, false, false)
     );
-    assert!(fixture.state.result_uninitialized && !fixture.state.ready_steps);
+    assert_eq!(fixture.state.result, HtmlScriptResult::Uninitialized);
+    assert_eq!(fixture.state.ready_steps, None);
 }
 
 #[test]

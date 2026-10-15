@@ -86,7 +86,6 @@ pub use construction::report::{
 pub use construction::{
     FormAssociationEvidence as HtmlParseFormEvidence,
     OutputDefaultValueOverride as HtmlParseOutputOverride,
-    ScriptReadySteps as HtmlParseScriptReadySteps, ScriptResult as HtmlParseScriptResult,
 };
 pub use parser::tokenizer::states::{
     Escape as HtmlTokenizerEscape, Identifier as HtmlTokenizerIdentifier,
@@ -101,4 +100,7 @@ pub use parser::tree_builder::head::{
 };
 pub use parser::tree_builder::prologue::{
     PrologueCondition as HtmlPrologueDiagnostic, PrologueMode as HtmlPrologueMode,
+};
+pub use surgeist_html::{
+    HtmlScriptReadySteps as HtmlParseScriptReadySteps, HtmlScriptResult as HtmlParseScriptResult,
 };

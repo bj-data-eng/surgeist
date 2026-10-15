@@ -558,8 +558,8 @@ pub(crate) struct ScriptMetadata {
     preparation_document: Option<DocumentRef>,
     pub(crate) flags: HtmlScriptFlags,
     pub(crate) script_type: Option<HtmlScriptKind>,
-    pub(crate) result: ScriptResult,
-    pub(crate) steps_when_result_ready: Option<ScriptReadySteps>,
+    pub(crate) result: HtmlScriptResult,
+    pub(crate) steps_when_result_ready: Option<HtmlScriptReadySteps>,
 }
 impl ScriptMetadata {
     fn admit_clone(&self, c: &mut ParseControl) -> Result<(), SessionError> {
@@ -575,13 +575,6 @@ impl ScriptMetadata {
         Ok(())
     }
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScriptResult {
-    Uninitialized,
-}
-/// No preparation beyond the Disabled return installs result-ready steps.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ScriptReadySteps {}
 enum AttributeStorage {
     Removing {
         values: OrderedAttributes,
@@ -5355,7 +5348,7 @@ impl ParserArenaSession {
                     flags
                 },
                 script_type: None,
-                result: ScriptResult::Uninitialized,
+                result: HtmlScriptResult::Uninitialized,
                 steps_when_result_ready: None,
             },
         });
@@ -16867,7 +16860,7 @@ mod tests {
                     && !prepared.flags.ready_to_be_parser_executed()
                     && !prepared.flags.delaying_load()
             );
-            assert_eq!(prepared.result, ScriptResult::Uninitialized);
+            assert_eq!(prepared.result, HtmlScriptResult::Uninitialized);
             assert!(prepared.steps_when_result_ready.is_none());
             let preparation_document = session
                 .script_preparation_document(&mut c, &node)

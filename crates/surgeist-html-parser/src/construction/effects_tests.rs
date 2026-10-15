@@ -319,7 +319,7 @@ fn select_script_copies_only_started_then_runs_actual_disabled_connection_prepar
         assert_eq!(state.flags.already_started(), started);
         assert_eq!(state.script_type, kind);
         assert_eq!(state.flags.force_async(), force_async);
-        assert_eq!(state.result, ScriptResult::Uninitialized);
+        assert_eq!(state.result, HtmlScriptResult::Uninitialized);
         assert!(
             session
                 .script_parser_document(&mut c, &copy)

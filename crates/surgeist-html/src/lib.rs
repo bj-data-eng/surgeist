@@ -37,6 +37,7 @@ mod reflected_element;
 mod rel;
 mod script_flags;
 mod script_preparation;
+mod script_result;
 mod script_type;
 mod select;
 mod slot_assign;
@@ -95,6 +96,7 @@ pub use reflected_element::{
 };
 pub use rel::*;
 pub use script_flags::HtmlScriptFlags;
+pub use script_result::{HtmlScriptReadySteps, HtmlScriptResult};
 pub use script_type::HtmlScriptKind;
 pub use svg_script_flags::SvgScriptFlags;
 pub use template_state::{

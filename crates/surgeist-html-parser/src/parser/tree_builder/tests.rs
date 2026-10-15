@@ -2849,7 +2849,7 @@ fn before_ordinary_end(driver: &mut StandaloneDocumentDriver<'_>) {
 
 #[test]
 fn standalone_script_start_retains_actual_document_and_initial_metadata_before_preparation() {
-    use crate::construction::ScriptResult;
+    use surgeist_html::HtmlScriptResult;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script src='x'>body</script>"),
         limits(100),
@@ -2865,7 +2865,7 @@ fn standalone_script_start_retains_actual_document_and_initial_metadata_before_p
     assert!(!metadata.flags.external_file());
     assert!(!metadata.flags.ready_to_be_parser_executed());
     assert!(!metadata.flags.delaying_load());
-    assert_eq!(metadata.result, ScriptResult::Uninitialized);
+    assert_eq!(metadata.result, HtmlScriptResult::Uninitialized);
     assert_eq!(metadata.steps_when_result_ready, None);
     let root = session.root(c).unwrap();
     let parser_document = session.script_parser_document(c, &node).unwrap().unwrap();

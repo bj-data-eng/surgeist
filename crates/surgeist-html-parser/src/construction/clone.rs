@@ -848,7 +848,7 @@ impl SessionStorage {
                         preparation_document: None,
                         flags: HtmlScriptFlags::fresh(),
                         script_type: None,
-                        result: ScriptResult::Uninitialized,
+                        result: HtmlScriptResult::Uninitialized,
                         steps_when_result_ready: None,
                     },
                 },
