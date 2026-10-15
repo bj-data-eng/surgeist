@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Slot families,
+and actual native HTML Canvas/Marquee/Frame/Slot/Fieldset families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -139,6 +139,46 @@ adoption preserves state and IDs while changing the real node document. Frame
 owns no additional strings and fabricates no Window, child identity or host
 capability. Iframe and other resource families still require their own adapters.
 
+Native HTML Fieldset retains its actual form-owner relation, native unset parser
+flag and initially empty custom-validity message. `fieldset_state()` reads those
+stored values, including an `Option<NodeId>` owner that can represent later real
+Form admission. Exact form/ID attributes, associated subtree insertion/removal,
+fragment transfer, replacement and adoption drive HTML's shared form-owner reset
+cursor against the canonical staged tree. Ordinary form lookup does not cross a
+shadow host; connectedness uses the actual shadow-including root. First-ID lookup
+observes the first exact nonempty DOM ID, including a non-Form blocker. A present
+empty form attribute is distinct from absence. ID-bearing removal uses the actual
+post-removal non-Document-tree predicate, without an old-connected prerequisite.
+Current constructors cannot admit an actual HTML Form, so completed lookups have
+actual null results. Positive ownership requires Form's real state and past-name
+map effects before it can become reachable; there is no permanently-null owner
+API or fabricated successful association.
+
+`set_custom_validity` currently applies to native Fieldset. It uses HTML's unit-fed
+CRLF/CR-to-LF rule before replacing the stored message, preserving every other
+exact UTF-16 unit. Raw batch operands are caller-owned; normalized output scratch
+is bounded by the admitted retained length, and the final normalized message
+counts independently of attributes. Every raw-unit read and output write polls
+cancellation. State-only edits report ElementState, equal final messages are
+semantic no-ops, and snapshots/history retain their original values. Native
+clone/import initializes a fresh empty message/null association and executes
+copied-attribute hooks; adoption preserves the message and runs actual removal
+and insertion/reset effects. The Fieldset payload allocates no control value,
+selection, cached disabledness or fake form object.
+
+Semantic capture publishes actual established-current Fieldset associations.
+Fieldset collections, Legend delegation, first-Legend disabledness and constraint
+candidacy remain HTML semantic queries over the current captured tree. Slot
+supplementation rebuilds actual control facts into that same context, preserving
+Slot directionality/inert facts. `DomHtmlCaptureLimits` bounds each adapter vector
+by subjects and adapter work by work; the same explicit finite work value
+independently caps shared control validation including its context join. Checked
+move-only facts are rebuilt from the retained snapshot/map, never cloned or
+replaced with inferred ownership. This contribution does not execute constraint
+validation, report/check validity, expose a complete ValidityState schema or
+provide validation UI/events. A nonempty Fieldset custom error does not make it
+a constraint-validation candidate.
+
 HTML/SVG/MathML Elements retain a real initially empty cryptographic nonce slot.
 Exact null-namespace `nonce` attribute changes update it, removal clears it, and
 `set_nonce` changes only the slot. Case/namespace mismatches do not affect it.
@@ -151,7 +191,7 @@ proves nonce content remains visible without inventing CSP facts. No API attache
 a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
-requirements include native form/control relations and values, template hosted
+requirements include other native form/control relations and values, template hosted
 contents/inert documents, HTML/SVG script state and preparation, iframe
 navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
@@ -464,12 +504,13 @@ directionality and current document flat relations for the inert producer. It
 closes required stored-reference subjects across actual documents, then invokes
 the real HTML kernels using explicit producer/mapping/query limits. Flat membership
 follows actual shadow-including documents independently of node-document ownership.
-It leaves language fallback, live-control values and modal state unavailable.
+It preserves actual Fieldset associations; language fallback, other live-control
+values and modal state remain unavailable.
 Connected inherited inertness therefore still needs current modal facts; own
 inert can succeed independently. Detached subjects are known flat-excluded, with
 inherited inert ancestry unavailable under the selected contract.
 
-This native shadow/Slot semantic profile does not complete #1124. Live controls,
+This native shadow/Slot/Fieldset semantic profile does not complete #1124. Other live controls,
 template owner/cache state, registry objects,
 parser installation and the remaining qualified external domains still require
 their actual owning adapters. Future hosted kinds need their own real association

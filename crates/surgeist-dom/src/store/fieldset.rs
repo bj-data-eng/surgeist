@@ -1,0 +1,421 @@
+//! Actual Fieldset state, bounded reset observations and native mutation hooks.
+use super::*;
+use surgeist_html::bounded::{
+    HtmlFormOwnerResetDecision as Decision, HtmlFormOwnerResetTrigger as Trigger,
+    form_owner_reset_trigger,
+};
+use surgeist_html::{KnownHtmlAttribute, KnownHtmlElement};
+
+fn state(kind: &DomNodeKind) -> Option<&crate::DomFieldsetState> {
+    match kind {
+        DomNodeKind::Element(element) => element.fieldset_state(),
+        _ => None,
+    }
+}
+fn form_requirement() -> DomError {
+    // Positive association also needs the Form-owned past-names-map effects.
+    // This boundary must be implemented before native Form admission, rather
+    // than silently accepting a found Form with an empty effects handler.
+    DomError::NativeInitializationRequired(
+        surgeist_html::HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Form),
+    )
+}
+impl Draft {
+    fn fieldset_mut(&mut self, key: Key) -> &mut crate::DomFieldsetState {
+        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
+            unreachable!("checked Fieldset")
+        };
+        element.fieldset_state_mut().expect("checked Fieldset")
+    }
+    pub(super) fn set_custom_validity(
+        &mut self,
+        key: Key,
+        raw: DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let old = state(&self.node(key)?.kind)
+            .ok_or(DomError::CustomValidityInapplicable)?
+            .message
+            .len();
+        let mut length = 0usize;
+        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+        for &unit in raw.code_units() {
+            check_cancel(cancel)?;
+            if normalizer.push(unit).is_some() {
+                length = length
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
+        }
+        let units = (self.units - old)
+            .checked_add(length)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        let mut normalized = Vec::new();
+        reserve(&mut normalized, length)?;
+        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+        for &unit in raw.code_units() {
+            check_cancel(cancel)?;
+            if let Some(unit) = normalizer.push(unit) {
+                check_cancel(cancel)?;
+                normalized.push(unit);
+            }
+        }
+        check_cancel(cancel)?;
+        self.fieldset_mut(key).message = DocumentString::from_utf16(normalized);
+        self.units = units;
+        Ok(())
+    }
+    fn control_attribute(
+        &self,
+        key: Key,
+        name: KnownHtmlAttribute,
+        cancel: &AtomicBool,
+    ) -> Result<Option<&DocumentString>, DomError> {
+        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+            return Ok(None);
+        };
+        for attribute in element.attributes().iter() {
+            check_cancel(cancel)?;
+            if attribute.name().namespace().uri().is_none()
+                && attribute
+                    .name()
+                    .local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(name.local_name().encode_utf16())
+            {
+                return Ok(Some(attribute.value()));
+            }
+        }
+        Ok(None)
+    }
+    fn has_control_id(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        Ok(self
+            .control_attribute(key, KnownHtmlAttribute::Id, cancel)?
+            .is_some_and(|id| !id.is_empty()))
+    }
+    fn is_form(&self, key: Key) -> Result<bool, DomError> {
+        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+            return Ok(false);
+        };
+        Ok(element.common_state().html().is_some()
+            && element
+                .name()
+                .local_name()
+                .code_units()
+                .iter()
+                .copied()
+                .eq(KnownHtmlElement::Form.local_name().encode_utf16()))
+    }
+    fn nearest_form(&self, key: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
+        let mut next = self.node(key)?.parent;
+        while let Some(key) = next {
+            check_cancel(cancel)?;
+            if self.is_form(key)? {
+                return Ok(Some(key));
+            }
+            next = self.node(key)?.parent;
+        }
+        Ok(None)
+    }
+    fn control_connected(&self, mut key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        loop {
+            check_cancel(cancel)?;
+            match self.host_including_parent(key)? {
+                Some(parent) => key = parent,
+                None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
+            }
+        }
+    }
+    fn first_id_form(&self, key: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
+        let value = self
+            .control_attribute(key, KnownHtmlAttribute::Form, cancel)?
+            .expect("cursor established presence");
+        let root = crate::slot::root(self, key, cancel)?;
+        let mut next = Some(root);
+        while let Some(candidate) = next {
+            check_cancel(cancel)?;
+            if let Some(id) = self.control_attribute(candidate, KnownHtmlAttribute::Id, cancel)?
+                && !id.is_empty()
+                && same_units(id, value, cancel)?
+            {
+                return Ok(self.is_form(candidate)?.then_some(candidate));
+            }
+            next = crate::slot::next(self, root, candidate, cancel)?;
+        }
+        Ok(None)
+    }
+    fn reset_fieldset(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        use surgeist_html::bounded::{
+            HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
+        };
+        let current = state(&self.node(key)?.kind).expect("actual Fieldset");
+        let owner = current.owner;
+        let mut found = None;
+        let mut cursor = HtmlFormOwnerResetCursor::new(current.kind().listed(), owner.is_some());
+        loop {
+            check_cancel(cancel)?;
+            let reply = match cursor.action() {
+                A::ClearParserInserted => {
+                    self.fieldset_mut(key).parser_inserted = false;
+                    R::Applied
+                }
+                A::ReadFormAttributePresence => R::FormAttributePresent(
+                    self.control_attribute(key, KnownHtmlAttribute::Form, cancel)?
+                        .is_some(),
+                ),
+                A::ReadCurrentOwnerIsNearestAncestor => {
+                    let owner =
+                        self.resolve(NodeOperand::Existing(owner.expect("cursor requires owner")))?;
+                    R::CurrentOwnerIsNearestAncestor(self.nearest_form(key, cancel)? == Some(owner))
+                }
+                A::ClearOwner => {
+                    if owner.is_some() {
+                        return Err(form_requirement());
+                    }
+                    self.fieldset_mut(key).owner = None;
+                    R::Applied
+                }
+                A::ReadConnectedness => R::Connected(self.control_connected(key, cancel)?),
+                A::FindFirstIdMatch => {
+                    found = self.first_id_form(key, cancel)?;
+                    R::FormFound(found.is_some())
+                }
+                A::FindNearestAncestor => {
+                    found = self.nearest_form(key, cancel)?;
+                    R::FormFound(found.is_some())
+                }
+                // Exact HTML Form is not admitted by any native/clone/import
+                // constructor. Never turn a newly reachable positive branch
+                // into fabricated successful ownership or empty Form effects.
+                A::AssociateFoundOwner => {
+                    let _actual_candidate = found.expect("preceding lookup found an actual Form");
+                    return Err(form_requirement());
+                }
+                A::ApplyOwnerChangeEffects => return Err(form_requirement()),
+                A::Complete => return Ok(()),
+            };
+            cursor
+                .reply(reply)
+                .expect("reply after actual admitted source action");
+        }
+    }
+    fn reset_fieldset_for(
+        &mut self,
+        key: Key,
+        trigger: Trigger,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let reset = match form_owner_reset_trigger(trigger) {
+            Decision::Skip => false,
+            Decision::Reset => true,
+            Decision::ResetIfFormAttributePresent => self
+                .control_attribute(key, KnownHtmlAttribute::Form, cancel)?
+                .is_some(),
+            Decision::ResetIfOwnerInDifferentTree => {
+                let owner = state(&self.node(key)?.kind)
+                    .expect("Fieldset")
+                    .owner
+                    .expect("trigger requires owner");
+                let owner = self.resolve(NodeOperand::Existing(owner))?;
+                crate::slot::root(self, key, cancel)? != crate::slot::root(self, owner, cancel)?
+            }
+        };
+        if reset {
+            self.reset_fieldset(key, cancel)?;
+        }
+        Ok(())
+    }
+    fn id_recipients(
+        &mut self,
+        source: Key,
+        same_tree: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let document = self.node(source)?.document;
+        let root = if same_tree {
+            Some(crate::slot::root(self, source, cancel)?)
+        } else {
+            None
+        };
+        // The actual ID event selects listed, form-attribute-bearing subjects;
+        // this is not an end-batch repair or an unconditional control reset.
+        for index in 0..self.existing.len() + self.created.len() {
+            check_cancel(cancel)?;
+            let key = if index < self.existing.len() {
+                Key::Existing(index)
+            } else {
+                Key::Created(index - self.existing.len())
+            };
+            let Ok(node) = self.node(key) else { continue };
+            let Some(current) = state(&node.kind) else {
+                continue;
+            };
+            if node.document == document
+                && (root.is_none() || Some(crate::slot::root(self, key, cancel)?) == root)
+            {
+                self.reset_fieldset_for(
+                    key,
+                    Trigger::IdEvent {
+                        listed: current.kind().listed(),
+                    },
+                    cancel,
+                )?;
+            }
+        }
+        Ok(())
+    }
+    /// One actual insertion extension, called in shadow-including order by
+    /// the owning native insertion traversal after the Slot steps.
+    pub(super) fn fieldset_insertion_node(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(current) = state(&self.node(key)?.kind) {
+            self.reset_fieldset_for(
+                key,
+                Trigger::Insertion {
+                    parser_inserted: current.parser_inserted,
+                },
+                cancel,
+            )?;
+        }
+        if self.has_control_id(key, cancel)?
+            && matches!(
+                self.node(crate::slot::root(self, key, cancel)?)?.kind,
+                DomNodeKind::Document(_)
+            )
+        {
+            self.id_recipients(key, false, cancel)?;
+        }
+        Ok(())
+    }
+    /// HTML removing runs after this same node's family-specific extension.
+    pub(super) fn fieldset_removing_node(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(current) = state(&self.node(key)?.kind) {
+            self.reset_fieldset_for(
+                key,
+                Trigger::RemovingOrMoving {
+                    has_owner: current.owner.is_some(),
+                },
+                cancel,
+            )?;
+        }
+        // HTML877d1478–1485: post-removal nonmembership in a Document tree,
+        // without an old-connected prerequisite.
+        if self.has_control_id(key, cancel)?
+            && !matches!(
+                self.node(crate::slot::root(self, key, cancel)?)?.kind,
+                DomNodeKind::Document(_)
+            )
+        {
+            self.id_recipients(key, false, cancel)?;
+        }
+        Ok(())
+    }
+    pub(super) fn fieldset_attribute(
+        &mut self,
+        key: Key,
+        changed: &crate::QualifiedName,
+        old: Option<&DocumentString>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if changed.namespace().uri().is_some() {
+            return Ok(());
+        }
+        let is = |name: KnownHtmlAttribute| {
+            changed
+                .local_name()
+                .code_units()
+                .iter()
+                .copied()
+                .eq(name.local_name().encode_utf16())
+        };
+        if is(KnownHtmlAttribute::Form)
+            && let Some(current) = state(&self.node(key)?.kind)
+        {
+            self.reset_fieldset_for(
+                key,
+                Trigger::FormAttributeChanged {
+                    listed: current.kind().listed(),
+                },
+                cancel,
+            )?;
+        }
+        if is(KnownHtmlAttribute::Id) {
+            let new = self.control_attribute(key, KnownHtmlAttribute::Id, cancel)?;
+            let old = old.filter(|value| !value.is_empty());
+            let new = new.filter(|value| !value.is_empty());
+            let changed = match (old, new) {
+                (None, None) => false,
+                (Some(a), Some(b)) => !same_units(a, b, cancel)?,
+                _ => true,
+            };
+            if changed {
+                self.id_recipients(key, true, cancel)?;
+            }
+        }
+        Ok(())
+    }
+}
+fn same_units(
+    a: &DocumentString,
+    b: &DocumentString,
+    cancel: &AtomicBool,
+) -> Result<bool, DomError> {
+    if a.len() != b.len() {
+        return Ok(false);
+    }
+    for (&a, &b) in a.code_units().iter().zip(b.code_units()) {
+        check_cancel(cancel)?;
+        if a != b {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cancellation_after_prepared_message_and_reset_hooks_preserves_all_published_state() {
+        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 32, 16, 8, 65536).unwrap()).unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut b = DomBatch::new();
+        let d = b.create_document();
+        let f = b.create_element_ns(&d, crate::Namespace::html(), "fieldset");
+        b.insert_before(&f, &d, None);
+        let c = dom.apply(b, &cancel).unwrap();
+        let f = c.created(&f).unwrap().unwrap();
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let mut b = DomBatch::new();
+        b.set_custom_validity(f, "prepared\rmessage");
+        b.set_attribute(f, "form", "");
+        b.detach(f);
+        let prepared = dom.prepare(b, &cancel).unwrap();
+        cancel.store(true, Ordering::Release);
+        assert_eq!(
+            dom.publish(prepared, &cancel).unwrap_err(),
+            DomError::Cancelled
+        );
+        assert_eq!(*dom.state, *before.state);
+        assert_eq!(dom.usage(), usage);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert!(
+            dom.changes_since(before.stamp())
+                .unwrap()
+                .changes()
+                .is_empty()
+        );
+    }
+}

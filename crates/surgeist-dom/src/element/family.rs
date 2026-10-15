@@ -13,6 +13,7 @@ use surgeist_html::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum NativeFamily {
     Common,
+    Fieldset(crate::DomFieldsetState),
     Slot,
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
@@ -28,6 +29,7 @@ impl NativeFamily {
             }
         }
         match self {
+            Self::Fieldset(state) => Some(state.message.len()),
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
             Self::Common | Self::Slot | Self::Marquee(_) | Self::Frame(_) => Some(0),
         }

@@ -18,6 +18,9 @@
 //! assignedSlot/flattened/CSS flat queries. An explicit intrinsic checkpoint takes
 //! slotchange intentions; no callbacks run inside a transaction. Remaining special
 //! families require their real adapters.
+//! Native Fieldset retains actual association/custom-error state and bounded
+//! source reset hooks. Custom messages normalize through HTML's shared rule;
+//! semantic capture and Slot supplementation retain actual control facts.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -83,6 +86,7 @@
 mod batch;
 mod document;
 mod element;
+mod fieldset;
 mod host;
 mod identity;
 mod names;
@@ -138,3 +142,5 @@ pub use view_transition::{
     DomViewTransitionSheet, DomViewTransitionSubject, ViewTransitionOperand,
     ViewTransitionRecordOperand,
 };
+
+pub use fieldset::DomFieldsetState;

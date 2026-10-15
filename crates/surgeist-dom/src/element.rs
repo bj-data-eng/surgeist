@@ -105,6 +105,9 @@ impl DomElement {
                 };
                 NativeFamily::Slot
             }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
+                NativeFamily::Fieldset(crate::DomFieldsetState::fresh())
+            }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
@@ -130,6 +133,19 @@ impl DomElement {
             family,
             captured_in_view_transition: false,
         })
+    }
+    /// Actual stored Fieldset state, or inapplicability for another family.
+    pub fn fieldset_state(&self) -> Option<&crate::DomFieldsetState> {
+        match &self.family {
+            NativeFamily::Fieldset(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn fieldset_state_mut(&mut self) -> Option<&mut crate::DomFieldsetState> {
+        match &mut self.family {
+            NativeFamily::Fieldset(state) => Some(state),
+            _ => None,
+        }
     }
     pub(crate) fn is_slot(&self) -> bool {
         matches!(self.family, NativeFamily::Slot)

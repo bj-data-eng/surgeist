@@ -222,7 +222,7 @@ impl Draft {
             target.children.insert(index, child);
             self.node_mut(child).parent = Some(parent);
             self.slot_insertion(child, parent, limits, cancelled)?;
-            self.common_insertion_steps(child, &mut || check_cancel(cancelled))?;
+            self.common_insertion_steps(child, cancelled, &mut || check_cancel(cancelled))?;
         }
         // Post-connection follows all actual Slot/common insertion steps, including
         // all transferred fragment children. Each Frame checks current
@@ -233,9 +233,33 @@ impl Draft {
         Ok(())
     }
 
-    fn common_insertion_steps(
-        &self,
+    pub(super) fn native_removing_steps(
+        &mut self,
         root: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let mut pending = Vec::new();
+        reserve(&mut pending, 1)?;
+        pending.push(root);
+        while let Some(key) = pending.pop() {
+            check_cancel(cancel)?;
+            let node = self.node(key)?;
+            reserve(&mut pending, node.children.len())?;
+            pending.extend(node.children.iter().rev().copied());
+            if let Some(root) = node.shadow_root {
+                reserve(&mut pending, 1)?;
+                pending.push(root);
+            }
+            self.frame_removing_node(key, &mut || check_cancel(cancel))?;
+            self.fieldset_removing_node(key, cancel)?;
+        }
+        Ok(())
+    }
+
+    fn common_insertion_steps(
+        &mut self,
+        root: Key,
+        cancel: &AtomicBool,
         admit_step: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
         use surgeist_html::{
@@ -294,6 +318,7 @@ impl Draft {
                     unreachable!("native null browsing context cannot hide nonce content")
                 }
             }
+            self.fieldset_insertion_node(key, cancel)?;
             // Closed HTML popovers are hidden, so their removal/attribute hide
             // steps return without changing state. Never-navigable documents
             // are not fully active, discharging the autofocus insertion guard.
@@ -335,7 +360,7 @@ mod tests {
             .unwrap();
         let mut visited = 0;
         assert_eq!(
-            draft.common_insertion_steps(key, &mut || {
+            draft.common_insertion_steps(key, &cancel, &mut || {
                 visited += 1;
                 if visited == 2 {
                     cancel.store(true, Ordering::Release);

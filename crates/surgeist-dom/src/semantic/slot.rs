@@ -45,7 +45,8 @@ impl DomHtmlCapture {
     }
     /// Installs real canonical stored assignments and current flat relations
     /// once for reuse by this capture's ordinary HTML semantic queries.
-    /// Missing live-control/language fallback/modal facts stay unavailable.
+    /// Actual canonical control facts are rebuilt into the same context;
+    /// missing language fallback/modal facts stay unavailable.
     pub fn with_slot_semantics(
         mut self,
         limits: DomSlotSemanticLimits,
@@ -145,9 +146,15 @@ impl DomHtmlCapture {
         self.context = HtmlSemanticContext::new(
             &self.capture,
             revision,
-            HtmlSemanticContextInput::new(Vec::new())
-                .with_language_direction(language)
-                .with_inert(flat_revision, Some(inert)),
+            super::control::with_controls(
+                HtmlSemanticContextInput::new(Vec::new())
+                    .with_language_direction(language)
+                    .with_inert(flat_revision, Some(inert)),
+                &self.source,
+                &self.capture,
+                &self.entries,
+                &mut control,
+            )?,
             0,
         )
         .map_err(DomHtmlCaptureError::Context)?;

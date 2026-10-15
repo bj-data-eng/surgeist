@@ -41,17 +41,19 @@ impl Draft {
     /// Source Frame removing invokes destroy-child; its actual null relationship
     /// returns before any child/document/history work. This runs after detach,
     /// including when a containing ordinary or shadow subtree is removed.
-    pub(super) fn frame_removing_steps(
+    pub(super) fn frame_removing_node(
         &self,
-        root: Key,
+        key: Key,
         admit: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
-        self.for_each_frame(root, admit, |_, state| {
-            if state.removal_requires_child_destruction() {
-                unreachable!("stored Frame null content cannot destroy a child navigable")
-            }
-            Ok(())
-        })
+        admit()?;
+        if let DomNodeKind::Element(element) = &self.node(key)?.kind
+            && let Some(state) = element.frame_null_content()
+            && state.removal_requires_child_destruction()
+        {
+            unreachable!("stored Frame null content cannot destroy a child navigable")
+        }
+        Ok(())
     }
 
     fn for_each_frame(

@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Slot families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Slot/Fieldset families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -145,3 +145,18 @@ cargo test --offline --locked -j 1 -p surgeist-dom
 cargo clippy --offline --locked -j 1 -p surgeist-dom --all-targets -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-dom -- --check
 ```
+
+Fieldset stores a real Option<NodeId> owner, native unset parser flag and exact
+custom-validity message. Consume the shared reset cursor using actual observations
+and precise attribute/tree/ID triggers; do not synthesize a Form, a permanently
+false lookup or empty positive-owner effects. Form admission must install its real
+past-name-map boundary before positive ownership becomes reachable. Ordinary form
+lookup and shadow-including connectedness are separate. ID-bearing removing uses
+HTML877d1478–1485's post-removal non-Document-tree predicate, not old connectedness.
+Normalize custom messages with the shared unit-fed newline kernel, count retained
+normalized units independently, poll raw/output steps, and preserve atomicity and
+history. Clone/import starts fresh association/message; adoption preserves message
+and runs actual hooks. Native semantic capture and Slot supplementation rebuild
+actual established-current control facts with finite adapter and producer/join
+budgets, preserving other supplements. Keep disabledness/collections/Legend and
+candidacy in the semantic owner; message storage grants no validation UI/events.

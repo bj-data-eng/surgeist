@@ -1,5 +1,6 @@
 //! Direct canonical-snapshot adaptation into the HTML semantic owner.
 
+mod control;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
 
@@ -28,7 +29,8 @@ use crate::{
 };
 
 /// Adapter-owned construction storage/work, separate from producer capture retention limits.
-/// Each closure/mapping/staging vector and the reusable child scratch have at most
+/// `work` independently bounds adapter work and shared control-fact validation
+/// including its context join. Each closure/mapping/staging vector and the reusable child scratch have at most
 /// `subjects` entries. Producer allocations obey the supplied HtmlCaptureLimits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
@@ -63,6 +65,7 @@ pub enum DomHtmlCaptureError {
     Semantic(HtmlSemanticFailure),
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
     Inert(surgeist_html_semantics::HtmlInertFactError),
+    Controls(surgeist_html_semantics::HtmlControlFactsError),
     ResourceLimit {
         resource: DomHtmlCaptureResource,
         limit: usize,
@@ -87,6 +90,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Semantic(e) => Some(e),
             Self::Language(e) => Some(e),
             Self::Inert(e) => Some(e),
+            Self::Controls(e) => Some(e),
             Self::ResourceLimit { .. }
             | Self::Cancelled
             | Self::AllocationFailed
@@ -580,7 +584,13 @@ impl DomSnapshot {
         let context = HtmlSemanticContext::new(
             &capture,
             revision,
-            HtmlSemanticContextInput::new(Vec::new()),
+            control::with_controls(
+                HtmlSemanticContextInput::new(Vec::new()),
+                self,
+                &capture,
+                &entries,
+                &mut control,
+            )?,
             0,
         )
         .map_err(DomHtmlCaptureError::Context)?;

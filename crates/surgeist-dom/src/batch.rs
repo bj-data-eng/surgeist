@@ -112,6 +112,10 @@ pub(crate) enum Command {
         name: DocumentString,
         value: DocumentString,
     },
+    SetCustomValidity {
+        node: NodeOperand,
+        value: DocumentString,
+    },
     SetNonce {
         node: NodeOperand,
         value: DocumentString,
@@ -413,6 +417,19 @@ impl DomBatch {
             },
             Some(document.into()),
         )
+    }
+    /// Normalizes newlines and replaces a native Fieldset's stored custom error.
+    /// Raw operands are caller-owned; normalized retained units consume the
+    /// store's string limit. This does not execute validation or dispatch events.
+    pub fn set_custom_validity(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetCustomValidity {
+            node: node.into(),
+            value: value.into(),
+        });
     }
     /// Changes the applicable cryptographic nonce slot without changing content.
     /// An Element outside HTML/SVG/MathML rejects this operation.

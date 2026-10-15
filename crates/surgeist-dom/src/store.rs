@@ -15,6 +15,7 @@ use crate::{
 
 mod attributes;
 mod document;
+mod fieldset;
 mod frame;
 mod import;
 mod shadow;
@@ -58,6 +59,7 @@ pub enum DomError {
     NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement),
     NonceInapplicable,
     MarqueeInapplicable,
+    CustomValidityInapplicable,
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
@@ -874,7 +876,7 @@ impl Draft {
             self.slot_removal(node, parent, limits, cancelled)?;
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
-            self.frame_removing_steps(node, &mut || check_cancel(cancelled))?;
+            self.native_removing_steps(node, cancelled)?;
         }
         Ok(())
     }
@@ -1063,6 +1065,10 @@ impl Draft {
             } => {
                 let node = self.resolve(node)?;
                 self.set_attribute(node, namespace, name, value, limits, cancelled)?;
+            }
+            Command::SetCustomValidity { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_custom_validity(node, value, limits, cancelled)?;
             }
             Command::SetNonce { node, value } => {
                 let node = self.resolve(node)?;
