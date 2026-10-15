@@ -259,7 +259,7 @@ impl Draft {
             moving
         };
         if moving.is_empty() {
-            self.children_changed(parent, cancelled)?;
+            self.children_changed(parent, limits, cancelled)?;
             return Ok(());
         }
         reserve(&mut self.node_mut(parent).children, moving.len())?;
@@ -291,7 +291,7 @@ impl Draft {
         }
         // Parent children-changed observes the completed atomic insertion before
         // any descendant post-connection work, including nested Scripts.
-        self.children_changed(parent, cancelled)?;
+        self.children_changed(parent, limits, cancelled)?;
         self.native_post_connection_steps(&moving, cancelled)?;
         Ok(())
     }

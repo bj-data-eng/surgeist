@@ -157,6 +157,41 @@ Current null content alone never justifies resetting processed retained history.
 Semantic captures retain this state in their source snapshot; the semantic
 schema has no child-navigable field to synthesize.
 
+Native HTML Textarea has a checked `DomNode::as_textarea()` view over one exact
+raw UTF-16 value, shared dirty/user-validity flags, actual selection and native
+association/custom-error state. `state().raw_value()` is borrowed raw storage;
+`value(DomTextareaReadLimits, cancel)` materializes the API value through HTML's
+newline normalizer, and `text_length` counts that normalized value. `default_value`
+reads actual immediate child Text, excluding nested text. These finite reads
+have explicit output-unit and cumulative-work ceilings. Read work charges each
+raw normalization read, output write, child visit and output reservation; counting
+and materialization are separate passes. Actual output capacity is admitted and
+failure returns a typed error. No hidden getter cache or mutable API-value mirror
+is retained, and this API does not claim submitted hard wrapping.
+
+`set_textarea_value` retains exact raw input, marks dirty, clamps selection to
+normalized API length and consumes HTML's additional setter-finish decision.
+Changed API values unselect and move to end even when a range survives clamping;
+equivalent CRLF/LF raw spellings preserve selection. The actual platform's two
+independent support facts apply to source-required writes, while adoption retains
+established state. Temporary normalized comparison buffers are each bounded by
+their admitted raw operand, at most twice the existing canonical unit ceiling;
+all scans/copies poll cancellation. No string work spends numeric/CSS allowance.
+
+`set_textarea_default_value` string-replaces actual children through normal
+creation/removal/insertion hooks; detached old children remain addressable.
+Clean children-changed steps copy immediate Text in order, including reached
+intermediates during same-parent moves, Fragment transfer and CharacterData edits.
+Dirty raw stays independent. `reset_textarea` clears dirty/user-validity and reads
+the actual default children while preserving custom error and Form owner. The
+shared children dispatcher also preserves Script's connected preparation order.
+Clone/import copies only raw and dirty into fresh native state before descendants;
+ordinary descendant hooks still run. Adoption preserves current state, and
+retirement uses the existing canonical owner cleanup. Native fragment installation
+uses these same actual family/tree hooks. Parser-pop reset, user-edit events,
+selection events, whole-Form reset dispatch and submitted wrapping are separate
+boundaries; none is fabricated by native creation.
+
 Native HTML Input has a checked `DomNode::as_input()` view over actual flags,
 current value, selection/direction, empty selected-file state, Image history and
 custom error. The view's `value()` applies HTML's current/default/default-on/file
@@ -680,10 +715,12 @@ this bounded contribution; full composition remains in #382/#391.
 `surgeist-html-semantics`, including every managed same-document detached node.
 It retains that snapshot, a checked bidirectional canonical/semantic identity
 map, and an optional host capture validated against the exact document stamp.
-Actual Input flags and established-current Form associations use separate
+Actual Input/Textarea flags and established-current Form associations use separate
 records, bounded together by twice the subject ceiling. Applicable mode-correct
 current values consume the HTML capture UTF-16 ceiling and language validation
-work; their applicability comes from the shared HTML predicate. Slot supplements
+work; Input applicability comes from the shared HTML predicate, while Textarea
+supplies actual API-normalized current text. Directionality and value-missing
+observations do not invent submitted wrapping. Slot supplements
 rebuild these same values/flags with assignments under their explicit language
 limits, without replacing known current state with an empty fact vector.
 Qualified names, ordered attributes, current nonce, saved creation `is`, registry

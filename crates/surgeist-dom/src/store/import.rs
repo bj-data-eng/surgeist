@@ -200,6 +200,9 @@ impl Draft {
         if let Some(original) = original.as_input() {
             self.clone_input_overlay(copy, original.state(), limits, cancelled)?;
         }
+        if let Some(original) = original.as_textarea() {
+            self.clone_textarea_overlay(copy, original.state(), limits)?;
+        }
         Ok(copy)
     }
 }

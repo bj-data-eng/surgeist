@@ -150,6 +150,10 @@ impl<'a> DomNode<'a> {
         self.as_element()?.input_state()?;
         Some(crate::DomInput { node: self })
     }
+    pub fn as_textarea(self) -> Option<crate::DomTextarea<'a>> {
+        self.as_element()?.textarea_state()?;
+        Some(crate::DomTextarea { node: self })
+    }
 
     /// Privileged canonical ownership, including closed roots. This does not
     /// implement the source's open-only Element.shadowRoot presentation.

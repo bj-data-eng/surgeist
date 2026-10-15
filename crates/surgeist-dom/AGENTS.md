@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Template/HTML-Script families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Template/HTML-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -69,6 +69,21 @@ or reset processed/imported history without an actual supported cause/state.
 Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
+Textarea retains raw only, with shared flags/selection and actual native control
+storage. Bounded value/textLength reads use API-normalized newlines; defaultValue
+is immediate child Text, with CRLF continuity across chunks and nested text
+excluded. Admit/poll real reads, capacities and materialization separately.
+Setters compare actual normalized API operands, then consume the shared finish
+decision after generic clamping; changed value always unselects, even for a
+surviving range. Keep admitted raw bounds on both transient comparison buffers.
+Do not spend numeric work or retain a second value authority. Dispatch clean
+children changes at every actual removal/insertion/CharacterData source step,
+including intermediate same-parent moves. Default setter uses real string replace
+all; do not globally repair empty no-op topology. Reset clears flags and reads
+children, preserving message/owner. Clone copies raw/dirty only before descendant
+hooks; adopt preserves established state. Capture actual Textarea dirty/current
+facts initially and with Slot supplementation. No parser-pop reset, submitted
+wrapping policy or event-bearing operation is inferred from native creation.
 Input consumes the complete shared type/value/flags/selection/sanitizer rules,
 not a Text-only profile. Keep current/default and dirty/check slots distinct,
 apply each type/reset effect against updated storage and normalize actual radios
@@ -217,7 +232,7 @@ cargo clippy --offline --locked -j 1 -p surgeist-dom --all-targets -- -F unsafe-
 cargo fmt -p surgeist-dom -- --check
 ```
 
-Fieldset, Button and Input use one canonical NodeId/Key owner relation, native unset
+Fieldset, Button, Input and Textarea use one canonical NodeId/Key owner relation, native unset
 parser flag and exact custom-validity message. Checked per-family node views
 read owners; intrinsic scalar payloads do not duplicate identity. Consume the shared reset cursor using actual observations
 and precise attribute/tree/ID triggers; do not synthesize a Form, a permanently

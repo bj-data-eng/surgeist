@@ -26,6 +26,9 @@
 //! Native Input retains actual current/dirty/check/selection/file/Image state,
 //! all shared type sanitizers, radio groups and one weak popover slot. Explicit
 //! native platform facts and finite numeric/CSS processing remain independent.
+//! Native Textarea retains exact raw value and shared flags/selection; bounded
+//! API/default reads, setters/reset, immediate Text hooks and capture preserve
+//! current/default distinctions without a second value owner or parser history.
 //! Native Template owns real separate contents and cached inert Documents;
 //! clone/adopt/retirement preserve source ownership and document distinctions.
 //! Native HTML Script retains complete supported state and real document history.
@@ -118,6 +121,7 @@ mod slot;
 mod snapshot;
 mod store;
 mod template;
+mod textarea;
 mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
@@ -163,6 +167,7 @@ pub use surgeist_html::{
     HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
 pub use template::{DomTemplate, DomTemplateDocumentRole};
+pub use textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};
 pub use view_transition::{
     CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
     DomViewTransition, DomViewTransitionBranches, DomViewTransitionCssomError, DomViewTransitionId,

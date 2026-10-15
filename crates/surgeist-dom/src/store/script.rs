@@ -166,16 +166,6 @@ impl Draft {
         }
         Ok(())
     }
-    pub(super) fn children_changed(
-        &mut self,
-        parent: Key,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        if self.node(parent)?.script.is_some() && self.shadow_connected(parent, cancel)? {
-            self.script_post_connection(parent, cancel)?;
-        }
-        Ok(())
-    }
     pub(super) fn script_attribute_change(
         &mut self,
         node: Key,

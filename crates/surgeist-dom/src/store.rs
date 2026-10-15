@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod attributes;
+mod children;
 mod control;
 mod document;
 mod form;
@@ -27,6 +28,7 @@ mod script;
 mod shadow;
 mod slot;
 mod template;
+mod textarea;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
@@ -70,6 +72,10 @@ pub enum DomError {
     CustomValidityInapplicable,
     ButtonInapplicable,
     InputInapplicable,
+    TextareaInapplicable,
+    TextareaReadWorkLimit {
+        limit: u64,
+    },
     InputFilenameInvalidState,
     InputProcessingProtocol,
     InputProcessingWorkLimit {
@@ -771,7 +777,7 @@ impl Dom {
     }
 }
 
-fn admit(value: usize, limit: usize, resource: DomResource) -> Result<(), DomError> {
+pub(crate) fn admit(value: usize, limit: usize, resource: DomResource) -> Result<(), DomError> {
     if value > limit {
         Err(DomError::ResourceLimit { resource, limit })
     } else {
@@ -988,7 +994,7 @@ impl Draft {
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
             self.native_removing_steps(node, cancelled)?;
-            self.children_changed(parent, cancelled)?;
+            self.children_changed(parent, limits, cancelled)?;
         }
         Ok(())
     }
@@ -1060,6 +1066,18 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::SetTextareaValue { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_textarea_value(node, value, limits, cancelled)?;
+            }
+            Command::SetTextareaDefaultValue { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_textarea_default_value(node, value, limits, cancelled)?;
+            }
+            Command::ResetTextarea { node } => {
+                let node = self.resolve(node)?;
+                self.reset_textarea(node, limits, cancelled)?;
+            }
             Command::SetInputValue { node, value } => {
                 let node = self.resolve(node)?;
                 self.set_input_value(node, value, limits, cancelled)?;
@@ -1335,7 +1353,7 @@ impl Draft {
                 target.kind = kind;
                 self.units = units;
                 if let Some(parent) = self.node(node)?.parent {
-                    self.children_changed(parent, cancelled)?;
+                    self.children_changed(parent, limits, cancelled)?;
                 }
             }
             Command::Insert {

@@ -19,6 +19,7 @@ pub(super) enum NativeFamily {
     Fieldset(crate::DomFieldsetState),
     Button(crate::DomButtonState),
     Input(Arc<crate::DomInputState>),
+    Textarea(Arc<crate::DomTextareaState>),
     Slot,
     Script,
     Canvas(Arc<HtmlCanvasNoneState>),
@@ -39,6 +40,7 @@ impl NativeFamily {
             Self::Fieldset(state) => Some(state.control.message.len()),
             Self::Button(state) => Some(state.control.message.len()),
             Self::Input(state) => state.units(),
+            Self::Textarea(state) => state.units(),
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
             Self::Form(_)
             | Self::Common

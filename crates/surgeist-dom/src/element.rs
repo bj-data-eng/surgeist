@@ -151,6 +151,11 @@ impl DomElement {
                     environment.input_platform(),
                 )))
             }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Textarea) => {
+                NativeFamily::Textarea(std::sync::Arc::new(crate::DomTextareaState::fresh(
+                    environment.input_platform(),
+                )))
+            }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
@@ -219,6 +224,18 @@ impl DomElement {
             _ => None,
         }
     }
+    pub fn textarea_state(&self) -> Option<&crate::DomTextareaState> {
+        match &self.family {
+            NativeFamily::Textarea(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn textarea_state_mut(&mut self) -> Option<&mut crate::DomTextareaState> {
+        match &mut self.family {
+            NativeFamily::Textarea(state) => Some(std::sync::Arc::make_mut(state)),
+            _ => None,
+        }
+    }
     pub(crate) fn native_control(
         &self,
     ) -> Option<(
@@ -232,6 +249,10 @@ impl DomElement {
                 &state.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Input,
             )),
+            NativeFamily::Textarea(state) => Some((
+                &state.control,
+                surgeist_html::HtmlNativeFormAssociationKind::Textarea,
+            )),
             _ => None,
         }
     }
@@ -240,6 +261,7 @@ impl DomElement {
             NativeFamily::Fieldset(state) => Some(&mut state.control),
             NativeFamily::Button(state) => Some(&mut state.control),
             NativeFamily::Input(state) => Some(&mut std::sync::Arc::make_mut(state).control),
+            NativeFamily::Textarea(state) => Some(&mut std::sync::Arc::make_mut(state).control),
             _ => None,
         }
     }

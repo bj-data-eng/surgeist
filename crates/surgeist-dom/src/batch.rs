@@ -65,6 +65,17 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    SetTextareaValue {
+        node: NodeOperand,
+        value: DocumentString,
+    },
+    SetTextareaDefaultValue {
+        node: NodeOperand,
+        value: DocumentString,
+    },
+    ResetTextarea {
+        node: NodeOperand,
+    },
     SetInputValue {
         node: NodeOperand,
         value: DocumentString,
@@ -492,6 +503,33 @@ impl DomBatch {
     pub fn reset_input(&mut self, node: impl Into<NodeOperand>) {
         self.commands
             .push(Command::ResetInput { node: node.into() });
+    }
+    /// Stores exact raw Textarea value, marks dirty and applies API selection steps.
+    pub fn set_textarea_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetTextareaValue {
+            node: node.into(),
+            value: value.into(),
+        });
+    }
+    /// String-replace-all of actual children; dirty current raw remains independent.
+    pub fn set_textarea_default_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetTextareaDefaultValue {
+            node: node.into(),
+            value: value.into(),
+        });
+    }
+    /// Intrinsic reset only, without the external whole-Form reset event.
+    pub fn reset_textarea(&mut self, node: impl Into<NodeOperand>) {
+        self.commands
+            .push(Command::ResetTextarea { node: node.into() });
     }
     /// Normalizes newlines and replaces a native control's custom error.
     /// Raw operands are caller-owned; normalized retained units consume the

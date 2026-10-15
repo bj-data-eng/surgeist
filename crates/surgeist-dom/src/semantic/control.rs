@@ -50,6 +50,7 @@ pub(super) fn with_native_state(
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
     let mut associations = Vec::new();
     let mut inputs = Vec::new();
+    let mut textareas = Vec::new();
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
@@ -88,6 +89,13 @@ pub(super) fn with_native_state(
                 Some(flags.indeterminate()),
             ));
         }
+        if let Some(textarea) = node.as_textarea() {
+            control.reserve(&mut textareas, 1)?;
+            textareas.push(surgeist_html_semantics::HtmlTextareaControlState::new(
+                entry.subject.clone(),
+                Some(textarea.state().flags().dirty_value()),
+            ));
+        }
     }
     // Adapter loops use their own work budget. The caller's same finite work
     // bound independently caps the producer's validation AND remaining context
@@ -99,7 +107,7 @@ pub(super) fn with_native_state(
         associations,
         inputs,
         Vec::new(),
-        Vec::new(),
+        textareas,
         HtmlControlFactsLimits::new(
             control
                 .limits
@@ -173,7 +181,7 @@ pub(super) fn with_native_state(
         .with_element_references(references))
 }
 
-/// Real mode-correct Input values; no duplicated HTML applicability table.
+/// Actual applicable Input values and Textarea API-normalized current values.
 pub(super) fn current_values(
     source: &DomSnapshot,
     entries: &[Entry],
@@ -184,19 +192,36 @@ pub(super) fn current_values(
     let mut units = 0usize;
     for entry in entries {
         control.charge(1)?;
-        let Some(input) = source.node(entry.node)?.as_input() else {
+        let node = source.node(entry.node)?;
+        let (raw, normalize) = if let Some(input) = node.as_input() {
+            if !input
+                .state()
+                .input_type()
+                .uses_current_value_for_directionality()
+            {
+                continue;
+            }
+            (input.value(), false)
+        } else if let Some(textarea) = node.as_textarea() {
+            (textarea.state().raw_value().code_units(), true)
+        } else {
             continue;
         };
-        if !input
-            .state()
-            .input_type()
-            .uses_current_value_for_directionality()
-        {
-            continue;
+        let mut length = raw.len();
+        if normalize {
+            length = 0;
+            let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+            for &unit in raw {
+                control.charge(1)?;
+                if normalizer.push(unit).is_some() {
+                    length = length
+                        .checked_add(1)
+                        .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+                }
+            }
         }
-        let raw = input.value();
         units = units
-            .checked_add(raw.len())
+            .checked_add(length)
             .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
         if units > unit_limit {
             return Err(DomHtmlCaptureError::Language(
@@ -206,17 +231,24 @@ pub(super) fn current_values(
                 },
             ));
         }
-        raw.len()
+        length
             .checked_mul(std::mem::size_of::<u16>())
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
         control.reserve(&mut values, 1)?;
         let mut copy = Vec::new();
-        copy.try_reserve_exact(raw.len())
+        copy.try_reserve_exact(length)
             .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
+        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
         for &unit in raw {
             control.charge(1)?;
-            copy.push(unit);
+            if normalize {
+                if let Some(unit) = normalizer.push(unit) {
+                    copy.push(unit);
+                }
+            } else {
+                copy.push(unit);
+            }
         }
         values.push(surgeist_html_semantics::HtmlControlCurrentValue::new(
             entry.subject.clone(),
