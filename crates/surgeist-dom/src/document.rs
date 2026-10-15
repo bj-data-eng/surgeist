@@ -16,10 +16,10 @@ pub enum DomDocumentClass {
     Html,
 }
 
-/// The registry binding supported by native document creation in this surface.
+/// The registry binding supported by native document/element creation.
 /// No registry object admission or registration operation is exposed yet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomDocumentRegistry {
+pub enum DomRegistryBinding {
     Null,
 }
 
@@ -60,7 +60,7 @@ pub struct DomDocumentMetadata {
     origin: DomOpaqueOrigin,
     mode: HtmlDocumentMode,
     allow_declarative_shadow_roots: bool,
-    registry: DomDocumentRegistry,
+    registry: DomRegistryBinding,
 }
 
 impl DomDocumentMetadata {
@@ -73,7 +73,7 @@ impl DomDocumentMetadata {
             origin: DomOpaqueOrigin(Arc::new(OpaqueOriginIdentity)),
             mode: HtmlDocumentMode::NoQuirks,
             allow_declarative_shadow_roots: false,
-            registry: DomDocumentRegistry::Null,
+            registry: DomRegistryBinding::Null,
         }
     }
     pub fn class(&self) -> DomDocumentClass {
@@ -98,7 +98,7 @@ impl DomDocumentMetadata {
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots
     }
-    pub fn custom_element_registry(&self) -> DomDocumentRegistry {
+    pub fn custom_element_registry(&self) -> DomRegistryBinding {
         self.registry
     }
     pub(crate) fn units(&self) -> Option<usize> {

@@ -32,6 +32,45 @@ fn cancelled_prepared_changes_leave_slots_generations_and_history_untouched() {
 }
 
 #[test]
+fn cancellation_at_publication_rolls_back_element_attributes_and_subtree_adoption() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut initial = DomBatch::new();
+    let source = initial.create_document();
+    let target = initial.create_document();
+    let root = initial.create_element(&source, "root");
+    let text = initial.create_text(&source, "old");
+    initial.set_attribute(&root, "kept", "old");
+    initial.insert_before(&text, &root, None);
+    initial.insert_before(&root, &source, None);
+    let initial = dom.apply(initial, &cancel).unwrap();
+    let target = initial.document(&target).unwrap();
+    let root = initial.created(&root).unwrap().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let mut edit = DomBatch::new();
+    edit.set_attribute(root, "kept", "unpublished");
+    edit.adopt(root, target);
+    let transient = edit.create_element(target, "unpublished");
+    edit.set_attribute(&transient, "new", "new");
+    let prepared = dom.prepare(edit, &cancel).unwrap();
+    cancel.store(true, Ordering::Release);
+    assert_eq!(
+        dom.publish(prepared, &cancel).unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(*dom.state, *before.state);
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+}
+
+#[test]
 fn unpublished_create_destroy_does_not_consume_a_slot_or_generation() {
     let mut dom = dom();
     let cancel = AtomicBool::new(false);

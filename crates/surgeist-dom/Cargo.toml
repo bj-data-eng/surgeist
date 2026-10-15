@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Canonical document ownership, atomic non-element edits and immutable snapshots."
+description = "Canonical document ownership, atomic edits and immutable snapshots."
 readme = "README.md"
 
 [dependencies]

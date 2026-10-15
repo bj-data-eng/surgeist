@@ -56,13 +56,14 @@ are implemented as three packages with direct acyclic dependencies. Manifests
 and source establish those boundaries; no old-package reexports are retained.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
-document identity, mutation and snapshots with a bounded non-element tree:
-Document, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
-DocumentType nodes. It consumes HTML's
+document identity, mutation and snapshots with a bounded native XML tree:
+Document, generic XML Element, ordinary DocumentFragment, Text, Comment,
+ProcessingInstruction and DocumentType nodes. Ordered namespaced attributes
+and same-store adoption use that same mutation owner. It consumes HTML's
 exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
 canonical native Document metadata and owned snapshots establish the foundation;
-element creation and its HTML state,
-adoption/import, shadow trees and facade replacement remain later contributions.
+HTML and namespace-aware element creation, import, shadow trees and facade
+replacement remain later contributions.
 DOM will own importing HTML construction values and adapting captured DOM facts
 to HTML-owned interpretation. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.

@@ -84,7 +84,7 @@ implemented dependency graph and behavior.
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, clean-report validation, and source/fact-qualified color resolution |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
-| `surgeist-dom` | Canonical store identity, bounded non-element tree edits, revisions and immutable snapshots |
+| `surgeist-dom` | Canonical store identity, bounded native XML tree edits, revisions and immutable snapshots |
 | `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-html` | Pinned HTML values, local rules, native authoring and immutable construction |
@@ -141,11 +141,13 @@ The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.
 
-`surgeist-dom` begins the canonical live tree owner with Document, ordinary
-DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType nodes,
-atomic edits, finite caller limits, canonical native Document metadata and
-owned snapshots. Its crate guide records this bounded surface. Element creation,
-HTML state integration, adoption/import and shadow trees remain contribution work;
+`surgeist-dom` begins the canonical live tree owner with Document, generic XML
+Element, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
+DocumentType nodes. It provides ordered namespaced attributes, atomic edits,
+same-store adoption, finite caller limits, canonical native Document metadata
+and owned snapshots. Its crate guide records this bounded surface. HTML and
+namespace-aware element creation, import, HTML state integration and shadow
+trees remain contribution work;
 the existing retained facade is not replaced by this foundation.
 DOM depends directly on HTML and consumes its exact `DocumentString`.
 Its planned integration owns importing HTML construction values and adapting

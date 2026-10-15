@@ -1,9 +1,10 @@
 # surgeist-dom
 
 Canonical native document ownership with atomic edits and owned immutable
-snapshots. The native contribution supports Document, ordinary DocumentFragment,
-Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
-HTML's exact UTF-16 `DocumentString`; it has no parser, runtime, CSSOM or facade
+snapshots. The native contribution supports Document, generic XML Element,
+ordinary DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
+HTML's exact UTF-16 `DocumentString`, `QualifiedName`, `Attribute` and
+`OrderedAttributes`; it has no parser, runtime, CSSOM or facade
 dependency.
 
 `Dom::new` requires explicit finite `DomLimits` for managed nodes, stored string
@@ -12,7 +13,8 @@ Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
 each document's content type, encoding name and URL serialization (31 units for
-the native defaults).
+the native defaults). Element names and every attribute's namespace URI,
+prefix, local name and value count as separate logical stored slots.
 Limits do not promise a total heap bound: caller-owned batches, snapshot/report
 retention, allocator bookkeeping and temporary transaction preparation are
 separate. A limit update
@@ -29,15 +31,25 @@ existing node with an equal fresh node does. Revision and owner exhaustion rejec
 without wrapping; a destroyed slot whose generation is exhausted is retired.
 
 The supported mutations insert/move nodes, transfer a fragment's children in
-order, detach, destroy detached non-Document subtrees, and replace Text/Comment/PI
-data using UTF-16 code-unit offsets. Documents reject Text children and accept
-at most one doctype. Doctypes cannot be inserted into fragments or have children.
+order, replace a child, adopt within the same store, detach, destroy detached
+non-Document subtrees, and replace Text/Comment/PI data using UTF-16 code-unit
+offsets. Documents reject Text children and accept at most one Element and one
+doctype, with the doctype preceding the Element. Elements and fragments accept
+Elements and CharacterData. Doctypes cannot be inserted into them or have children.
 A fragment is emptied by insertion and never becomes an ordinary child.
 Reference-child membership and cycles are validated before publication.
-An attached doctype must be explicitly detached before reinsertion; direct
-pre-insertion validation still sees the document's existing doctype.
-Cross-document insertion
-is explicitly unsupported until adoption is implemented. No mutation invokes
+Direct pre-insertion uses an empty exclusion list, so an attached Document
+Element or doctype must be detached before reinsertion. Replacement excludes
+its replaced child instead. Validation checks the original tree and reference
+membership before mutation.
+
+Cross-document insertion adopts each inserted node without changing its ID.
+A transferred fragment retains its own node document; an empty fragment insert
+is a semantic no-op. Explicit `adopt` removes its supplied node and updates its
+whole subtree, including a fragment root. The source's child replacement also
+explicitly adopts its supplied fragment before transferring its children.
+Adopting a Document is `NotSupported`; foreign-store adoption is `ForeignOwner`.
+No mutation invokes
 callbacks, runs scripts or performs host effects.
 
 PI construction validates the target using the DOM-delegated XML Name
@@ -49,7 +61,27 @@ Invalid pseudo-attributes leave an empty map and preserve raw data. This does
 not implement PI attribute setters, style loading or live ranges. Doctype
 construction uses DOM's relaxed name validation, including valid empty names;
 public and system identifiers remain exact strings. `node_name()` returns the
-source-defined fixed name, PI target or doctype name for each exposed kind.
+source-defined fixed name, qualified Element spelling, PI target or doctype name
+for each exposed kind.
+
+`create_element` currently creates no-namespace generic Elements in the native
+XML document, preserving case and exact UTF-16 units. It uses the selected relaxed
+DOM name validation, not an XML QName regex or HTML authoring validation. A name
+such as `input` or `template` has no HTML family semantics in this namespace.
+Registry and definition bindings are known-null, saved creation `is` is absent,
+and shared HTML rules establish the uncustomized state. A later `is` attribute
+does not rewrite saved creation state. Namespace-aware Element creation and HTML,
+SVG or MathML native initialization have no public constructor yet.
+
+Attribute edits use ordered expanded identity `(namespace, local_name)`. Ordinary
+name operations select the first exact qualified spelling; a newly set literal
+`xml:lang` is an unnamespaced local name. Namespace-aware setting validates and
+splits only the first colon, normalizes empty namespace to none and applies the
+source's reserved namespace checks. Updating an existing expanded name preserves
+its prefix and position. All raw values, including isolated surrogates and CR/LF,
+remain exact. Absent removal is a no-op and performs no construction validation.
+Snapshots expose Element-only children, siblings and zero-based sibling indices
+over the same canonical identities, without counting Text or Comment nodes.
 
 `DomSnapshot` owns immutable storage for every managed node, including detached
 nodes and multiple documents. It survives later edits, destruction and the
@@ -70,7 +102,9 @@ privately with the rest of the batch, and old snapshots retain them. Ordinary
 doctype edits do not change document mode. Host/imported metadata and registry
 objects have no admission API yet.
 
-Each commit reports complete changed domains for this supported surface.
+Each commit reports complete changed domains for this supported surface,
+including `Attributes` and `NodeDocument`. Ordered `Children` changes also cover
+derived Element-sibling/index changes.
 `changes_since` returns chronological records for an exact covered interval or
 typed `FullRecomputeRequired`, never a successful incomplete delta. History is
 bounded by entry count and entry-record plus exact change-array payload bytes.
@@ -80,8 +114,8 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-Element/attribute construction, HTML document creation and native initialization,
-shadow trees, adoption/import, HTML installation and semantic capture adapters
+HTML document creation and HTML/SVG/MathML native Element initialization,
+shadow trees, cross-store import, HTML installation and semantic capture adapters
 are not exposed yet. This crate does not claim complete DOM or
 HTML conformance or replace the retained/facade integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),

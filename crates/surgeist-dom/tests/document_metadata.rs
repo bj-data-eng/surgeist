@@ -1,8 +1,8 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomDocumentClass, DomDocumentRegistry,
-    DomError, DomLimits, DomResource, HtmlDocumentMode,
+    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomDocumentClass, DomError, DomLimits,
+    DomRegistryBinding, DomResource, HtmlDocumentMode,
 };
 
 // DOM's native Document defaults retain three strings: application/xml (15),
@@ -69,10 +69,7 @@ fn native_defaults_are_canonical_and_discoverable_in_a_snapshot() {
     assert_eq!(metadata.url(), &DocumentString::from("about:blank"));
     assert_eq!(metadata.mode(), HtmlDocumentMode::NoQuirks);
     assert!(!metadata.allow_declarative_shadow_roots());
-    assert_eq!(
-        metadata.custom_element_registry(),
-        DomDocumentRegistry::Null
-    );
+    assert_eq!(metadata.custom_element_registry(), DomRegistryBinding::Null);
     assert_eq!(metadata, snapshot.document(document).unwrap().metadata());
 }
 

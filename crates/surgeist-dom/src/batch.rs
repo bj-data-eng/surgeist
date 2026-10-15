@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{DocumentId, DocumentString, NodeId};
+use crate::{DocumentId, DocumentString, Namespace, NodeId};
 
 #[derive(Debug)]
 pub(crate) struct BatchIdentity;
@@ -41,6 +41,7 @@ impl From<&CreatedNode> for NodeOperand {
 pub(crate) enum Creation {
     Document,
     Fragment,
+    Element(DocumentString),
     Text(DocumentString),
     Comment(DocumentString),
     ProcessingInstruction {
@@ -65,7 +66,27 @@ pub(crate) enum Command {
         parent: NodeOperand,
         before: Option<NodeOperand>,
     },
+    ReplaceChild {
+        node: NodeOperand,
+        parent: NodeOperand,
+        child: NodeOperand,
+    },
     Detach(NodeOperand),
+    Adopt {
+        node: NodeOperand,
+        document: NodeOperand,
+    },
+    SetAttribute {
+        node: NodeOperand,
+        namespace: Option<Namespace>,
+        name: DocumentString,
+        value: DocumentString,
+    },
+    RemoveAttribute {
+        node: NodeOperand,
+        namespace: Option<Namespace>,
+        name: DocumentString,
+    },
     Destroy(NodeOperand),
     ReplaceData {
         node: NodeOperand,
@@ -114,6 +135,16 @@ impl DomBatch {
     }
     pub fn create_fragment(&mut self, document: impl Into<NodeOperand>) -> CreatedNode {
         self.create(Creation::Fragment, Some(document.into()))
+    }
+    /// Creates a no-namespace Element in the native XML Document. DOM's relaxed
+    /// whole-local-name rule applies; names preserve case and exact UTF-16 units.
+    /// HTML/SVG/MathML element construction is not exposed by this operation.
+    pub fn create_element(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        local_name: impl Into<DocumentString>,
+    ) -> CreatedNode {
+        self.create(Creation::Element(local_name.into()), Some(document.into()))
     }
     pub fn create_text(
         &mut self,
@@ -164,7 +195,8 @@ impl DomBatch {
         )
     }
     /// Inserts before the reference child, or appends for None. A fragment moves
-    /// its children and becomes empty. Cross-document insertion is unsupported.
+    /// its children and becomes empty, retaining its own node document. Each
+    /// inserted node is adopted into the parent's document without changing ID.
     pub fn insert_before(
         &mut self,
         node: impl Into<NodeOperand>,
@@ -180,6 +212,83 @@ impl DomBatch {
     /// Detaches while preserving live identity and node-document membership.
     pub fn detach(&mut self, node: impl Into<NodeOperand>) {
         self.commands.push(Command::Detach(node.into()));
+    }
+    /// Replaces a child using the selected source's child exclusion list.
+    /// The removed child remains addressable. Fragment replacement first
+    /// adopts the supplied fragment itself, unlike ordinary fragment insertion.
+    pub fn replace_child(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        parent: impl Into<NodeOperand>,
+        child: impl Into<NodeOperand>,
+    ) {
+        self.commands.push(Command::ReplaceChild {
+            node: node.into(),
+            parent: parent.into(),
+            child: child.into(),
+        });
+    }
+    /// Removes a same-store non-Document node and changes its entire subtree's
+    /// node document, preserving canonical identity. Same-document adoption
+    /// still removes an attached node; a detached same-document node is a no-op.
+    pub fn adopt(&mut self, node: impl Into<NodeOperand>, document: impl Into<NodeOperand>) {
+        self.commands.push(Command::Adopt {
+            node: node.into(),
+            document: document.into(),
+        });
+    }
+    pub fn set_attribute(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetAttribute {
+            node: node.into(),
+            namespace: None,
+            name: name.into(),
+            value: value.into(),
+        });
+    }
+    /// Sets by expanded name. Existing attributes preserve their prefix/order.
+    pub fn set_attribute_ns(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetAttribute {
+            node: node.into(),
+            namespace: Some(namespace),
+            name: qualified_name.into(),
+            value: value.into(),
+        });
+    }
+    pub fn remove_attribute(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        qualified_name: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::RemoveAttribute {
+            node: node.into(),
+            namespace: None,
+            name: qualified_name.into(),
+        });
+    }
+    /// Removes by exact namespace/local identity. Removal performs no name
+    /// validation; a spelling absent from the attribute list is a no-op.
+    pub fn remove_attribute_ns(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        namespace: Namespace,
+        local_name: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::RemoveAttribute {
+            node: node.into(),
+            namespace: Some(namespace),
+            name: local_name.into(),
+        });
     }
     /// Destroys a detached non-Document subtree, retiring published identities.
     pub fn destroy(&mut self, node: impl Into<NodeOperand>) {

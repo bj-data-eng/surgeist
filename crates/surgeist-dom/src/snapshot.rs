@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use crate::store::{Node, State};
 use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
-use crate::{DomDocumentMetadata, DomDocumentType, DomProcessingInstruction};
+use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
 
 /// The complete node kinds supported by this contribution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DomNodeKind {
     Document(DomDocumentMetadata),
+    Element(DomElement),
     DocumentFragment,
     Text(DocumentString),
     Comment(DocumentString),
@@ -139,6 +140,7 @@ impl<'a> DomNode<'a> {
     pub fn node_name(self) -> DocumentString {
         match &self.node.kind {
             DomNodeKind::Document(_) => "#document".into(),
+            DomNodeKind::Element(element) => crate::names::qualified_spelling(element.name()),
             DomNodeKind::DocumentFragment => "#document-fragment".into(),
             DomNodeKind::Text(_) => "#text".into(),
             DomNodeKind::Comment(_) => "#comment".into(),
@@ -152,6 +154,89 @@ impl<'a> DomNode<'a> {
             snapshot: self.snapshot,
             id: DocumentId(self.id),
         })
+    }
+    pub fn as_element(self) -> Option<&'a DomElement> {
+        match &self.node.kind {
+            DomNodeKind::Element(value) => Some(value),
+            _ => None,
+        }
+    }
+    /// Source tagName. Native XML Elements preserve their qualified spelling.
+    pub fn tag_name(self) -> Option<DocumentString> {
+        self.as_element()
+            .map(|element| crate::names::qualified_spelling(element.name()))
+    }
+    pub fn parent_element(self) -> Option<NodeId> {
+        self.parent().filter(|id| {
+            self.snapshot
+                .node(*id)
+                .expect("captured parent")
+                .as_element()
+                .is_some()
+        })
+    }
+    pub fn element_children(self) -> impl DoubleEndedIterator<Item = NodeId> + 'a {
+        self.node.children.iter().copied().filter(move |id| {
+            self.snapshot
+                .node(*id)
+                .expect("captured child")
+                .as_element()
+                .is_some()
+        })
+    }
+    pub fn previous_sibling(self) -> Option<NodeId> {
+        let parent = self.snapshot.node(self.parent()?).expect("captured parent");
+        let position = parent
+            .children()
+            .iter()
+            .position(|id| *id == self.id)
+            .expect("captured sibling");
+        position
+            .checked_sub(1)
+            .map(|position| parent.children()[position])
+    }
+    pub fn next_sibling(self) -> Option<NodeId> {
+        let parent = self.snapshot.node(self.parent()?).expect("captured parent");
+        let position = parent
+            .children()
+            .iter()
+            .position(|id| *id == self.id)
+            .expect("captured sibling");
+        parent.children().get(position + 1).copied()
+    }
+    pub fn previous_element_sibling(self) -> Option<NodeId> {
+        let mut next = self.previous_sibling();
+        while let Some(id) = next {
+            let node = self.snapshot.node(id).expect("captured sibling");
+            if node.as_element().is_some() {
+                return Some(id);
+            }
+            next = node.previous_sibling();
+        }
+        None
+    }
+    pub fn next_element_sibling(self) -> Option<NodeId> {
+        let mut next = self.next_sibling();
+        while let Some(id) = next {
+            let node = self.snapshot.node(id).expect("captured sibling");
+            if node.as_element().is_some() {
+                return Some(id);
+            }
+            next = node.next_sibling();
+        }
+        None
+    }
+    /// Zero-based Element-only sibling index; detached Elements have index 0.
+    pub fn element_index(self) -> Option<usize> {
+        self.as_element()?;
+        let Some(parent) = self.parent() else {
+            return Some(0);
+        };
+        self.snapshot
+            .node(parent)
+            .expect("captured parent")
+            .element_children()
+            .position(|id| id == self.id)
     }
     /// DOM's ownerDocument getter: None for Document, otherwise node document.
     pub fn owner_document(self) -> Option<DocumentId> {

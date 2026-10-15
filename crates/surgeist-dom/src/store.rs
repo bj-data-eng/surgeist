@@ -9,9 +9,12 @@ use std::{
 use crate::batch::{BatchIdentity, Command, Creation};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
-    CreatedNode, DocumentId, DocumentString, DomBatch, DomDocumentType, DomNodeKind, DomOwnerId,
-    DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
+    CreatedNode, DocumentId, DocumentString, DomBatch, DomDocumentType, DomElement, DomNodeKind,
+    DomOwnerId, DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
 };
+
+mod attributes;
+mod tree;
 
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,9 +38,10 @@ pub enum DomError {
     WrongDocument,
     HierarchyRequest,
     InvalidCharacter,
+    Namespace,
+    NotSupported,
     NotFound,
     InvalidDestruction,
-    CrossDocumentInsertionUnsupported,
     IndexSize,
     Cancelled,
     ResourceLimit { resource: DomResource, limit: usize },
@@ -135,13 +139,15 @@ impl DomUsage {
     }
 }
 
-/// Complete changed domains for this non-element surface. Created/destroyed
-/// nodes cover their entire state; surviving nodes report data and relations.
+/// Complete changed domains for this surface. Created/destroyed nodes cover
+/// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
     Created(NodeId),
     Destroyed(NodeId),
     Data(NodeId),
+    Attributes(NodeId),
+    NodeDocument(NodeId),
     Parent(NodeId),
     Children(NodeId),
 }
@@ -611,7 +617,7 @@ impl Draft {
         self.node(key)?;
         Ok(key)
     }
-    fn detach(&mut self, node: Key) {
+    fn remove(&mut self, node: Key) {
         if let Some(parent) = self.node(node).expect("staged node").parent {
             self.node_mut(parent)
                 .children
@@ -645,6 +651,7 @@ impl Draft {
                 let raw_units = match &kind {
                     Creation::Document => Some(NATIVE_DOCUMENT_STRING_UNITS),
                     Creation::Fragment => Some(0),
+                    Creation::Element(name) => Some(name.len()),
                     Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
                     Creation::ProcessingInstruction { target, data } => {
                         target.len().checked_add(data.len())
@@ -669,6 +676,9 @@ impl Draft {
                 let kind = match kind {
                     Creation::Document => DomNodeKind::Document(DomDocumentMetadata::native()),
                     Creation::Fragment => DomNodeKind::DocumentFragment,
+                    Creation::Element(name) => {
+                        DomNodeKind::Element(DomElement::native(name, cancelled)?)
+                    }
                     Creation::Text(data) => DomNodeKind::Text(data),
                     Creation::Comment(data) => DomNodeKind::Comment(data),
                     Creation::ProcessingInstruction { target, data } => {
@@ -701,7 +711,35 @@ impl Draft {
             }
             Command::Detach(node) => {
                 let node = self.resolve(node)?;
-                self.detach(node);
+                self.remove(node);
+            }
+            Command::Adopt { node, document } => {
+                let node = self.resolve(node)?;
+                let document = self.resolve(document)?;
+                if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+                    return Err(DomError::WrongNodeKind);
+                }
+                if matches!(self.node(node)?.kind, DomNodeKind::Document(_)) {
+                    return Err(DomError::NotSupported);
+                }
+                self.adopt(node, document, cancelled)?;
+            }
+            Command::SetAttribute {
+                node,
+                namespace,
+                name,
+                value,
+            } => {
+                let node = self.resolve(node)?;
+                self.set_attribute(node, namespace, name, value, limits, cancelled)?;
+            }
+            Command::RemoveAttribute {
+                node,
+                namespace,
+                name,
+            } => {
+                let node = self.resolve(node)?;
+                self.remove_attribute(node, namespace, name, cancelled)?;
             }
             Command::Destroy(node) => {
                 let node = self.resolve(node)?;
@@ -782,79 +820,18 @@ impl Draft {
             } => {
                 let node = self.resolve(node)?;
                 let parent = self.resolve(parent)?;
-                if !matches!(
-                    self.node(parent)?.kind,
-                    DomNodeKind::Document(_) | DomNodeKind::DocumentFragment
-                ) {
-                    return Err(DomError::HierarchyRequest);
-                }
-                let mut ancestor = Some(parent);
-                while let Some(key) = ancestor {
-                    if key == node {
-                        return Err(DomError::HierarchyRequest);
-                    }
-                    ancestor = self.node(key)?.parent;
-                }
-                let mut before = before.map(|id| self.resolve(id)).transpose()?;
-                if before.is_some_and(|child| {
-                    self.node(child).expect("resolved child").parent != Some(parent)
-                }) {
-                    return Err(DomError::NotFound);
-                }
-                if matches!(self.node(node)?.kind, DomNodeKind::Document(_)) {
-                    return Err(DomError::HierarchyRequest);
-                }
-                if matches!(self.node(node)?.kind, DomNodeKind::DocumentType(_))
-                    && (!matches!(self.node(parent)?.kind, DomNodeKind::Document(_))
-                        || self.node(parent)?.children.iter().any(|child| {
-                            matches!(
-                                self.node(*child).expect("staged child").kind,
-                                DomNodeKind::DocumentType(_)
-                            )
-                        }))
-                {
-                    return Err(DomError::HierarchyRequest);
-                }
-                if self.node(node)?.document != self.node(parent)?.document {
-                    return Err(DomError::CrossDocumentInsertionUnsupported);
-                }
-                if before == Some(node) {
-                    let children = &self.node(parent)?.children;
-                    let position = children
-                        .iter()
-                        .position(|child| *child == node)
-                        .expect("reference membership");
-                    before = children.get(position + 1).copied();
-                }
-                let moving = if self.node(node)?.kind == DomNodeKind::DocumentFragment {
-                    copy(&self.node(node)?.children)?
-                } else {
-                    vec![node]
-                };
-                if matches!(self.node(parent)?.kind, DomNodeKind::Document(_))
-                    && moving.iter().any(|key| {
-                        matches!(
-                            self.node(*key).expect("staged child").kind,
-                            DomNodeKind::Text(_)
-                        )
-                    })
-                {
-                    return Err(DomError::HierarchyRequest);
-                }
-                reserve(&mut self.node_mut(parent).children, moving.len())?;
-                for child in moving {
-                    self.detach(child);
-                    let target = self.node_mut(parent);
-                    let index = before.map_or(target.children.len(), |reference| {
-                        target
-                            .children
-                            .iter()
-                            .position(|child| *child == reference)
-                            .expect("retained reference")
-                    });
-                    target.children.insert(index, child);
-                    self.node_mut(child).parent = Some(parent);
-                }
+                let before = before.map(|id| self.resolve(id)).transpose()?;
+                self.pre_insert(node, parent, before, cancelled)?;
+            }
+            Command::ReplaceChild {
+                node,
+                parent,
+                child,
+            } => {
+                let node = self.resolve(node)?;
+                let parent = self.resolve(parent)?;
+                let child = self.resolve(child)?;
+                self.replace_child(node, parent, child, cancelled)?;
             }
         }
         Ok(())
@@ -956,6 +933,7 @@ impl Draft {
 fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
     match kind {
         DomNodeKind::Document(value) => value.units().ok_or(DomError::RepresentationExhausted),
+        DomNodeKind::Element(value) => value.units().ok_or(DomError::RepresentationExhausted),
         DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Ok(data.len()),
         DomNodeKind::ProcessingInstruction(value) => {
             value.units().ok_or(DomError::RepresentationExhausted)
@@ -984,8 +962,23 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
             };
             if same {
                 let current = after.expect("same live identity").1;
+                let kind_change = if node.kind != current.kind {
+                    Some(
+                        if matches!(
+                            (&node.kind, &current.kind),
+                            (DomNodeKind::Element(_), DomNodeKind::Element(_))
+                        ) {
+                            DomChange::Attributes(id)
+                        } else {
+                            DomChange::Data(id)
+                        },
+                    )
+                } else {
+                    None
+                };
                 for change in [
-                    (node.kind != current.kind).then_some(DomChange::Data(id)),
+                    kind_change,
+                    (node.document != current.document).then_some(DomChange::NodeDocument(id)),
                     (node.parent != current.parent).then_some(DomChange::Parent(id)),
                     (node.children != current.children).then_some(DomChange::Children(id)),
                 ]

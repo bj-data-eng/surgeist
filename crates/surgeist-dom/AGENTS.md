@@ -3,7 +3,7 @@
 Apply the root guide and focused PISCT skills. This crate owns canonical live
 identity, exclusive mutation, immutable snapshots and change coverage. Consume
 HTML-owned string/value contracts directly; HTML language interpretation stays
-with its producer. The crate README states the currently bounded six-kind
+with its producer. The crate README states the currently bounded seven-kind
 surface. Do not fabricate missing HTML/control/template/registry/script state
 when extending construction or add compatibility wrappers around retained.
 
@@ -20,6 +20,14 @@ lines 2110–2112), including a fresh opaque origin and known-null registry.
 Stored content type, encoding name and URL count toward string admission;
 doctype edits do not infer compatibility mode. Keep metadata and origin
 identity within the same staged publication and immutable snapshot as the tree.
+Generic XML Element creation preserves exact no-namespace local names. Consume
+shared QualifiedName/Attribute/OrderedAttributes rather than adding parallel
+records. DOM's relaxed name/namespace checks differ from XML PI target grammar.
+Attribute NS updates retain existing prefix/order. Insertion adopts transferred
+fragment children only; explicit adoption and replacement include the supplied
+fragment root. Direct insertion uses an empty hierarchy exclusion list;
+replacement excludes exactly its child. No HTML/SVG/MathML constructor exists
+until the consuming adapter performs the applicable native state/hooks.
 
 From repository root through bounded `pisct run`:
 
