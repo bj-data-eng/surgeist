@@ -302,8 +302,8 @@ fn parse_typed_media_query<'i, 't>(
         .origin()
         .clone();
     let syntax = MediaTypedSyntax {
-        modifier: modifier_component,
-        media_type: component,
+        modifier: modifier_component.map(std::borrow::Cow::into_owned),
+        media_type: component.into_owned(),
         conjunction,
     };
     Ok(match media_type {
@@ -466,6 +466,7 @@ fn parse_media_in_parens<'i, 't>(
             return Err(invalid_syntax(start.source_location()));
         }
     };
+    let mut component = Some(component);
     if let Some(closing) = closing {
         input.reset(&start);
         input.expect_parenthesis_block().map_err(basic)?;
@@ -486,7 +487,7 @@ fn parse_media_in_parens<'i, 't>(
                 Err(_) => {}
             }
             p.reset(&initial);
-            let syntax = match parse_generic_media_feature(source, p, numeric, component.clone()) {
+            let syntax = match parse_generic_media_feature(source, p, numeric) {
                 Ok(value) => value,
                 Err(e) if media_committed_error(&e) => return Err(e),
                 Err(_) => {
@@ -503,15 +504,27 @@ fn parse_media_in_parens<'i, 't>(
                         &syntax.name_text,
                     ));
                 }
-                let name = crate::CssCustomMediaName::try_from_component(syntax.name.clone())
+                let name = crate::CssCustomMediaName::try_from_component(syntax.name)
                     .expect("selected extension identifier");
                 return Ok(Some((
                     CssMediaConditionKind::CustomMediaReference(
-                        crate::CssCustomMediaReference::new(name, component.clone()),
+                        crate::CssCustomMediaReference::new(
+                            name,
+                            component
+                                .take()
+                                .expect("selected custom media enclosure")
+                                .into_owned(),
+                        ),
                     ),
                     MediaConditionSyntax::Enclosed,
                 )));
             }
+            let syntax = syntax.into_syntax(
+                component
+                    .take()
+                    .expect("selected media feature enclosure")
+                    .into_owned(),
+            );
             let admitted = classify_generic_media_feature(source, p, numeric, &initial, syntax)?;
             Ok(Some(match admitted {
                 AdmittedMediaFeature::Feature(feature, syntax) => (
@@ -530,8 +543,10 @@ fn parse_media_in_parens<'i, 't>(
         }
     }
     input.reset(&end);
-    let enclosed = CssGeneralEnclosed::try_from_component(component)
-        .map_err(|_| invalid_syntax(start.source_location()))?;
+    let enclosed = CssGeneralEnclosed::try_from_component(
+        component.expect("opaque media enclosure").into_owned(),
+    )
+    .map_err(|_| invalid_syntax(start.source_location()))?;
     Ok(CssMediaCondition::new(
         CssMediaConditionKind::GeneralEnclosed(enclosed),
         origin,
@@ -566,14 +581,12 @@ struct MediaInput<'a> {
     numeric: &'a NumericInputContext<'a>,
     limits: CssComponentValueLimits,
 }
-impl MediaInput<'_> {
+impl<'a> MediaInput<'a> {
     fn collect(
         &self,
         input: &mut Parser<'_, '_>,
-    ) -> Result<CssComponentValue, crate::CssNumericConstructionError> {
-        self.numeric
-            .collect(input)
-            .map(std::borrow::Cow::into_owned)
+    ) -> Result<std::borrow::Cow<'a, CssComponentValue>, crate::CssNumericConstructionError> {
+        self.numeric.collect(input)
     }
     fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
         self.numeric.origin_at(offset)
@@ -583,9 +596,9 @@ impl MediaInput<'_> {
         self.origin_at(input.position().byte_index())
             .expect("checked media cursor origin")
     }
-    fn admit(
+    fn admit<'input>(
         &self,
-        values: CssComponentValues,
+        values: impl Into<crate::numeric::CalculationComponents<'input>>,
         root: CalculationRoot,
     ) -> Result<CssCalculationExpression, crate::CssNumericConstructionError> {
         self.numeric.admit_with_limits(values, root, self.limits)

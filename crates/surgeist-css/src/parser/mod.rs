@@ -3602,17 +3602,23 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                 let root_token = input.next().ok().cloned();
                 input.reset(&literal_start);
                 let component = input
-                    .collect_numeric_component(numeric)
+                    .collect_component()
+                    .map_err(crate::CssNumericConstructionError::component)
                     .map_err(|error| values::angle_error(numeric, &error, location, offset))?;
                 let root_origin = component.origin().clone();
                 let value = if matches!(
                     component.view(),
                     crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(_))
                 ) {
-                    crate::CssSvgGlyphOrientationVerticalValue::try_from_unitless(component.clone())
+                    crate::CssSvgGlyphOrientationVerticalValue::try_from_unitless(
+                        component.clone().into_owned(),
+                    )
                 } else {
-                    crate::CssAngleValue::from_parser_component(component.clone(), numeric)
-                        .and_then(crate::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
+                    crate::CssAngleValue::from_parser_component(
+                        component.clone().into_owned(),
+                        numeric,
+                    )
+                    .and_then(crate::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
                 }
                 .map_err(|error| {
                     let mapped = values::angle_error(numeric, &error, location, offset);

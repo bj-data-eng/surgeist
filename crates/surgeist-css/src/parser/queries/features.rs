@@ -20,6 +20,25 @@ pub(super) enum AdmittedMediaFeature {
     Feature(CssMediaFeatureQuery, Box<MediaFeatureSyntax>),
     Unknown(CssUnknownMediaFeature),
 }
+/// A selected feature shape before its enclosing component is retained.
+pub(super) struct ParsedMediaFeature {
+    pub(super) name: CssComponentValue,
+    pub(super) name_text: String,
+    pub(super) shape: MediaFeatureShape,
+    separators: Vec<Vec<CssValueOrigin>>,
+}
+impl ParsedMediaFeature {
+    pub(super) fn into_syntax(self, component: CssComponentValue) -> MediaFeatureSyntax {
+        MediaFeatureSyntax {
+            component,
+            name: self.name,
+            name_text: self.name_text,
+            canonical_name: None,
+            shape: self.shape,
+            separators: self.separators,
+        }
+    }
+}
 pub(super) fn classify_generic_media_feature<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
@@ -27,7 +46,7 @@ pub(super) fn classify_generic_media_feature<'i>(
     initial: &cssparser::ParserState,
     mut syntax: MediaFeatureSyntax,
 ) -> Result<AdmittedMediaFeature, ParseError<'i, Error>> {
-    let reason = if let Some(name) = known_generic_name(&syntax) {
+    let reason = if let Some(name) = known_generic_name(&syntax.name_text, &syntax.shape) {
         syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
         let discrete_range = name.id.family() == MediaValueFamily::Discrete
             && matches!(&syntax.shape, MediaFeatureShape::Range(range)
@@ -82,7 +101,8 @@ pub(super) fn construct_when_media_feature(
         input.expect_function_matching("media")?;
         input.parse_nested_block(|input| {
             let initial = input.state();
-            let syntax = parse_generic_media_feature(source, input, &numeric, component.clone())?;
+            let syntax = parse_generic_media_feature(source, input, &numeric)?
+                .into_syntax(component.clone());
             classify_generic_media_feature(source, input, &numeric, &initial, syntax)
         })
     })();
@@ -100,13 +120,13 @@ pub(super) fn construct_when_media_feature(
     };
     Ok(crate::CssWhenMediaFeature::new(kind, component))
 }
-fn known_generic_name(syntax: &MediaFeatureSyntax) -> Option<MediaFeatureName> {
-    if let Some(id) = CssMediaFeatureKind::from_name(&syntax.name_text) {
+fn known_generic_name(name_text: &str, shape: &MediaFeatureShape) -> Option<MediaFeatureName> {
+    if let Some(id) = CssMediaFeatureKind::from_name(name_text) {
         return Some(MediaFeatureName { id, prefix: None });
     }
-    if matches!(&syntax.shape,MediaFeatureShape::Range(range) if matches!(range.view(),CssMediaRangeRef::Plain{..}))
+    if matches!(shape,MediaFeatureShape::Range(range) if matches!(range.view(),CssMediaRangeRef::Plain{..}))
     {
-        MediaFeatureName::parse(&syntax.name_text)
+        MediaFeatureName::parse(name_text)
     } else {
         None
     }
@@ -115,24 +135,25 @@ pub(super) fn parse_generic_media_feature<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-    component: CssComponentValue,
-) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
     let initial = input.state();
-    let first = input.try_parse(|p| generic_feature_first(source, p, numeric, component.clone()));
+    let first = input.try_parse(|p| generic_feature_first(source, p, numeric));
     match &first {
-        Ok(v) if known_generic_name(v).is_some() => return first,
+        Ok(v) if known_generic_name(&v.name_text, &v.shape).is_some() => return first,
         Err(e) if media_terminal_error(e) => return first,
         _ => {}
     }
     input.reset(&initial);
-    let second = input.try_parse(|p| generic_value_first(source, p, numeric, component));
+    let second = input.try_parse(|p| generic_value_first(source, p, numeric));
     if let Err(e) = &second
         && media_terminal_error(e)
     {
         return second;
     }
     match (first, second) {
-        (_, Ok(second)) if known_generic_name(&second).is_some() => Ok(second),
+        (_, Ok(second)) if known_generic_name(&second.name_text, &second.shape).is_some() => {
+            Ok(second)
+        }
         (Ok(first), _) => {
             while input.next_including_whitespace_and_comments().is_ok() {}
             Ok(first)
@@ -144,8 +165,7 @@ fn generic_feature_first<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-    component: CssComponentValue,
-) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
     input.skip_whitespace();
     let name_start = input.state();
     let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
@@ -173,11 +193,9 @@ fn generic_feature_first<'i, 't>(
         }))
     };
     input.expect_exhausted()?;
-    Ok(MediaFeatureSyntax {
-        component,
-        name,
+    Ok(ParsedMediaFeature {
+        name: name.into_owned(),
         name_text,
-        canonical_name: None,
         shape,
         separators,
     })
@@ -186,8 +204,7 @@ fn generic_value_first<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-    component: CssComponentValue,
-) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
     let left = generic_media_value(source, input, numeric)?;
     let (comparison, origins) = generic_comparison(input, numeric)?;
     let mut separators = vec![origins];
@@ -231,11 +248,9 @@ fn generic_value_first<'i, 't>(
         }
     };
     input.expect_exhausted()?;
-    Ok(MediaFeatureSyntax {
-        component,
-        name,
+    Ok(ParsedMediaFeature {
+        name: name.into_owned(),
         name_text,
-        canonical_name: None,
         shape: MediaFeatureShape::Range(CssMediaRange::new(state)),
         separators,
     })
@@ -256,13 +271,15 @@ fn generic_media_value<'i, 't>(
             CssValueTokenRef::Dimension { .. } | CssValueTokenRef::Ident(_),
         ) => false,
         CssComponentValueRef::Function(_) => {
-            let values = CssComponentValues::try_new(vec![component.clone()]).map_err(|e| {
-                crate::error::invalid_component_value(input.current_source_location(), e)
-            })?;
-            let expression = numeric
-                .admit(values, CalculationRoot::NamedDimensionOrNumber)
+            let result_type = numeric
+                .numeric
+                .component_result_type(
+                    component.as_ref(),
+                    CalculationRoot::NamedDimensionOrNumber,
+                    numeric.limits,
+                )
                 .map_err(|e| media_numeric_error(source, input, numeric, e))?;
-            expression.result_type() == CssCalculationType::Number
+            result_type == CssCalculationType::Number
         }
         _ => {
             return Err(invalid_syntax(start.source_location()));
@@ -361,7 +378,7 @@ fn parse_media_feature_query<'i, 't>(
                 p.reset(&initial);
                 numeric
                     .collect(p)
-                    .map(CssMediaResolution::infinite)
+                    .map(|component| CssMediaResolution::infinite(component.into_owned()))
                     .map_err(|error| media_numeric_error(source, p, numeric, error))
             } else {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Resolution)
@@ -478,7 +495,7 @@ fn parse_media_numeric<'i, 't>(
     let component = numeric
         .collect(input)
         .map_err(|error| media_numeric_error(source, input, numeric, error))?;
-    let values = crate::CssComponentValues::try_new(vec![component])
+    let values = crate::numeric::CalculationComponents::single(component)
         .map_err(|_| invalid_syntax(input.current_source_location()))?;
     numeric
         .admit(values, root)

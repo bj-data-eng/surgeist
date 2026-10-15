@@ -294,7 +294,8 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
                 return Err(crate::error::property::unexpected_at(location));
             }
             let component = input
-                .collect_numeric_component(numeric)
+                .collect_component()
+                .map_err(crate::CssNumericConstructionError::component)
                 .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
             offset = Some((component, location, root_site));
         }
@@ -306,15 +307,51 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
         let Some((component, location, root_site)) = offset else {
             return Err(crate::error::property::unexpected_at(location));
         };
-        let frequency = crate::CssFrequencyValue::from_parser_component(component, numeric)
-            .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
+        let frequency = match component {
+            std::borrow::Cow::Borrowed(component)
+                if !matches!(component.view(), crate::CssComponentValueRef::Token(_)) =>
+            {
+                numeric
+                    .admit(component, crate::numeric::CalculationRoot::Frequency)
+                    .and_then(|expression| {
+                        crate::CssFrequencyValue::try_from_calculation(
+                            crate::CssFrequencyCalculation::from_expression(expression),
+                        )
+                    })
+            }
+            component => {
+                crate::CssFrequencyValue::from_parser_component(component.into_owned(), numeric)
+            }
+        }
+        .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
         crate::CssVoicePitchRange::from_parser_absolute(frequency)
             .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
     } else {
         let offset = offset
             .map(|(component, location, root_site)| {
-                crate::CssVoiceOffset::from_parser_component(component, numeric)
-                    .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
+                match component {
+                    std::borrow::Cow::Borrowed(component)
+                        if !matches!(component.view(), crate::CssComponentValueRef::Token(_)) =>
+                    {
+                        numeric
+                            .admit(
+                                component,
+                                crate::numeric::CalculationRoot::FrequencyPercentage,
+                            )
+                            .map(|expression| {
+                                crate::CssVoiceOffset::Calculation(
+                                    crate::CssFrequencyPercentageCalculation::from_expression(
+                                        expression,
+                                    ),
+                                )
+                            })
+                    }
+                    component => crate::CssVoiceOffset::from_parser_component(
+                        component.into_owned(),
+                        numeric,
+                    ),
+                }
+                .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
             })
             .transpose()?;
         crate::CssVoicePitchRange::from_parser_relative(level, offset)
@@ -347,13 +384,14 @@ pub(super) fn parse_voice_rate<'i, 't>(
                 return Err(crate::error::property::unexpected_at(location));
             }
             let component = input
-                .collect_numeric_component(numeric)
+                .collect_component()
+                .map_err(crate::CssNumericConstructionError::component)
                 .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
             let value = if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
-                crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
+                crate::CssSpecifiedNonNegativePercentage::try_from_component(component.into_owned())
             } else {
                 let values =
-                    crate::CssComponentValues::try_new(vec![component]).map_err(|error| {
+                    crate::numeric::CalculationComponents::single(component).map_err(|error| {
                         crate::error::property::invalid_component_value(location, error)
                     })?;
                 numeric

@@ -381,12 +381,14 @@ fn parse_grid_track_breadth<'i, 't>(
             let component = grid_numeric_component(input, numeric)?;
             if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("fr"))
             {
-                let flex = CssSpecifiedNonNegativeFlex::try_from_component(component)
+                let flex = CssSpecifiedNonNegativeFlex::try_from_component(component.into_owned())
                     .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                 Ok(CssGridTrackBreadth::from_flex(flex))
             } else {
-                let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                    .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
+                let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                    component.into_owned(),
+                )
+                .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                 Ok(CssGridTrackBreadth::from_length_percentage(length))
             }
         }
@@ -399,7 +401,7 @@ fn parse_grid_track_breadth<'i, 't>(
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             input.reset(&numeric_start);
             let component = grid_numeric_component(input, numeric)?;
-            let values = crate::CssComponentValues::try_new(vec![component])
+            let values = crate::numeric::CalculationComponents::single(component)
                 .map_err(|_| super::values::calculation_error(location))?;
             match numeric
                 .admit_grid_track_math(values)
@@ -429,12 +431,13 @@ fn parse_grid_track_breadth<'i, 't>(
 fn grid_numeric_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<crate::CssComponentValue, ParseError<'i, Error>> {
+) -> std::result::Result<std::borrow::Cow<'i, crate::CssComponentValue>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     input
-        .collect_numeric_component(numeric)
+        .collect_component()
+        .map_err(crate::CssNumericConstructionError::component)
         .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
 }
 
@@ -456,7 +459,7 @@ fn parse_grid_length_percentage<'i, 't>(
     let offset = input.position();
     let component = grid_numeric_component(input, numeric)?;
     if matches!(component.view(), CssComponentValueRef::Function(_)) {
-        let values = crate::CssComponentValues::try_new(vec![component])
+        let values = crate::numeric::CalculationComponents::single(component)
             .map_err(|_| super::values::calculation_error(location))?;
         let expression = numeric
             .admit(values, crate::numeric::CalculationRoot::LengthPercentage)
@@ -466,7 +469,7 @@ fn parse_grid_length_percentage<'i, 't>(
         )
         .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
     } else {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.into_owned())
             .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
     }
 }

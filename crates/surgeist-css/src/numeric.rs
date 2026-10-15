@@ -223,6 +223,22 @@ impl<'a> NumericInputContext<'a> {
     ) -> Result<()> {
         check_component_with_policy(component, root, self.admission_policy())
     }
+    /// Classifies checked syntax without retaining its component graph.
+    pub(crate) fn component_result_type(
+        &self,
+        component: &CssComponentValue,
+        root: CalculationRoot,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssCalculationType> {
+        prepare_calculation(
+            std::slice::from_ref(component),
+            root,
+            limits,
+            self.admission_policy(),
+            NumericAdmissionContext::Pure,
+        )
+        .map(|expression| expression.result_type())
+    }
     pub(crate) fn admit_with_limits<'input>(
         &self,
         values: impl Into<CalculationComponents<'input>>,
