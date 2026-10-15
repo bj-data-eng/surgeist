@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod attributes;
+mod document;
 mod import;
 mod shadow;
 mod tree;
@@ -818,6 +819,15 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::CreateHtmlDocument {
+                associated_document,
+                title,
+            } => {
+                let associated_document = self.resolve(associated_document)?;
+                let key =
+                    self.create_html_document(associated_document, title, limits, cancelled)?;
+                self.register_ticket(key)?;
+            }
             Command::AttachShadow { host, init } => {
                 let host = self.resolve(host)?;
                 let root = self.attach_shadow(host, init, limits, cancelled)?;
@@ -878,7 +888,10 @@ impl Draft {
                     Creation::Document => DomNodeKind::Document(DomDocumentMetadata::native()),
                     Creation::Fragment => DomNodeKind::DocumentFragment,
                     Creation::Element(name) => {
-                        DomNodeKind::Element(DomElement::native(name, cancelled)?)
+                        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+                            unreachable!("checked Document")
+                        };
+                        DomNodeKind::Element(DomElement::native(name, metadata, cancelled)?)
                     }
                     Creation::ElementNs { namespace, name } => {
                         DomNodeKind::Element(DomElement::native_ns(namespace, name, cancelled)?)

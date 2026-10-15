@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    CreateHtmlDocument {
+        associated_document: NodeOperand,
+        title: Option<DocumentString>,
+    },
     AttachShadow {
         host: NodeOperand,
         init: crate::DomShadowRootInit,
@@ -344,6 +348,23 @@ impl DomBatch {
     pub fn create_document(&mut self) -> CreatedNode {
         self.create(Creation::Document, None)
     }
+    /// Creates a native HTML Document through DOM's complete createHTMLDocument
+    /// algorithm. The actual same-store associated Document supplies origin;
+    /// other metadata uses the new Document defaults. Omitted title differs
+    /// from a supplied empty title, which creates both title and Text nodes.
+    /// Skeleton identities are private allocations, not caller creation tickets.
+    pub fn create_html_document(
+        &mut self,
+        associated_document: impl Into<NodeOperand>,
+        title: Option<DocumentString>,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::CreateHtmlDocument {
+            associated_document: associated_document.into(),
+            title,
+        });
+        ticket
+    }
     /// Attaches one native root to an admitted HTML host. The canonical owner
     /// retains closed roots; open-only exposure is a snapshot accessor policy.
     /// Returns a batch-local ticket, never a guessed or prematurely published ID.
@@ -362,9 +383,10 @@ impl DomBatch {
     pub fn create_fragment(&mut self, document: impl Into<NodeOperand>) -> CreatedNode {
         self.create(Creation::Fragment, Some(document.into()))
     }
-    /// Creates a no-namespace Element in the native XML Document. DOM's relaxed
-    /// whole-local-name rule applies; names preserve case and exact UTF-16 units.
-    /// HTML/SVG/MathML element construction is not exposed by this operation.
+    /// Uses DOM's whole-local-name createElement rule. HTML Documents select
+    /// HTML namespace and ASCII lowercase; native XML preserves exact spelling
+    /// and no namespace. QName splitting belongs only to create_element_ns.
+    /// Actual family initialization is required before any Element publishes.
     pub fn create_element(
         &mut self,
         document: impl Into<NodeOperand>,

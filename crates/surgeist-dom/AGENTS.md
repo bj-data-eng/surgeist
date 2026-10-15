@@ -15,12 +15,26 @@ facade composition, architecture documentation and generated API artifacts.
 PI construction uses the shared bounded XML Name predicates and PI
 pseudo-attribute cursor; do not replace its target grammar with relaxed element
 validation or HTML authoring restrictions. Doctype names use DOM's relaxed rule.
-Native Document metadata follows the selected document defaults (capture
+Native XML Document metadata follows the selected document defaults (capture
 lines 2110–2112), including a fresh opaque origin and known-null registry.
 Stored content type, encoding name and URL count toward string admission;
 doctype edits do not infer compatibility mode. Keep metadata and origin
 identity within the same staged publication and immutable snapshot as the tree.
-Generic XML Element creation preserves exact no-namespace local names. Consume
+The native XML entry preserves its fresh opaque origin. The HTML creator must
+publish the complete createHTMLDocument skeleton, distinguish omitted/empty title
+and copy only an actual associated Document origin. No empty-HTML shortcut,
+metadata/class setter or fake browsing context is admitted. Private skeleton
+allocations must not become caller tickets. Count 25 HTML metadata string units
+and every skeleton field/Text; preserve rollback/exhaustion/history.
+Generic XML Element creation preserves exact no-namespace local names. HTML
+createElement validates the whole local name before ASCII lowercase and HTML
+namespace selection; never QName-extract a whole-local-name operand. NS creation
+and clone/import preserve raw QName/attribute fields. Contextual node/tag names
+and ordinary attribute operations use the actual current node-document plus
+HTML namespace; namespace/local operations stay exact. Keep intrinsic Element
+attribute reads exact and provide the DOM case-aware getter on the snapshot node.
+Adoption changes context without rewriting names/attributes or inventing attribute
+deltas. Old snapshots retain their captured case behavior. Consume
 shared QualifiedName/Attribute/OrderedAttributes rather than adding parallel
 records. DOM's relaxed name/namespace checks differ from XML PI target grammar.
 Attribute NS updates retain existing prefix/order. Insertion adopts transferred

@@ -190,3 +190,53 @@ pub(crate) fn qualified_equals(name: &QualifiedName, value: &DocumentString) -> 
         .chain(name.local_name().code_units().iter().copied())
         .eq(value.code_units().iter().copied())
 }
+
+/// HTML API casing is ASCII-only; exact UTF-16 non-ASCII units are untouched.
+pub(crate) const fn ascii_lower(unit: u16) -> u16 {
+    if unit >= 0x41 && unit <= 0x5a {
+        unit + 0x20
+    } else {
+        unit
+    }
+}
+pub(crate) fn ascii_lowercase(
+    value: DocumentString,
+    cancelled: &AtomicBool,
+) -> Result<DocumentString, DomError> {
+    let mut changed = false;
+    for &unit in value.code_units() {
+        crate::store::check_cancel(cancelled)?;
+        changed |= unit != ascii_lower(unit);
+    }
+    if !changed {
+        return Ok(value);
+    }
+    let mut units = Vec::new();
+    crate::store::reserve(&mut units, value.len())?;
+    for &unit in value.code_units() {
+        crate::store::check_cancel(cancelled)?;
+        units.push(ascii_lower(unit));
+    }
+    Ok(DocumentString::from_utf16(units))
+}
+pub(crate) fn in_html_namespace(name: &QualifiedName) -> bool {
+    name.namespace().uri().is_some_and(|uri| {
+        uri.code_units()
+            .iter()
+            .copied()
+            .eq("http://www.w3.org/1999/xhtml".encode_utf16())
+    })
+}
+/// Lowercase only the requested qualified spelling, never stored attributes.
+pub(crate) fn qualified_equals_lowercase_input(
+    name: &QualifiedName,
+    value: &DocumentString,
+) -> bool {
+    let prefix = name
+        .prefix()
+        .into_iter()
+        .flat_map(|prefix| prefix.code_units().iter().copied().chain([0x3a]));
+    prefix
+        .chain(name.local_name().code_units().iter().copied())
+        .eq(value.code_units().iter().copied().map(ascii_lower))
+}

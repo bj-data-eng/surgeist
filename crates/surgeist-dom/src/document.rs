@@ -49,8 +49,8 @@ impl fmt::Debug for DomOpaqueOrigin {
 /// Canonical document metadata, captured together with its tree and revision.
 ///
 /// Native defaults follow the selected DOM document clause. Host/imported facts
-/// have no unchecked constructor here. The current native creator makes XML
-/// documents only; an HTML value in the class enum does not create an HTML host.
+/// have no unchecked constructor here. Native HTML creation publishes its full
+/// source skeleton and copies an actual associated Document origin.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomDocumentMetadata {
     class: DomDocumentClass,
@@ -84,12 +84,28 @@ impl DomNativeDocumentEnvironment {
 
 impl DomDocumentMetadata {
     pub(crate) fn native() -> Self {
+        Self::native_defaults(
+            DomDocumentClass::Xml,
+            CONTENT_TYPE,
+            DomOpaqueOrigin(Arc::new(OpaqueOriginIdentity)),
+        )
+    }
+    /// Used only by the complete createHTMLDocument transaction, whose source
+    /// Document supplies this identity. No caller can set arbitrary metadata.
+    pub(crate) fn native_html(origin: DomOpaqueOrigin) -> Self {
+        Self::native_defaults(DomDocumentClass::Html, "text/html", origin)
+    }
+    fn native_defaults(
+        class: DomDocumentClass,
+        content_type: &str,
+        origin: DomOpaqueOrigin,
+    ) -> Self {
         Self {
-            class: DomDocumentClass::Xml,
-            content_type: CONTENT_TYPE.into(),
+            class,
+            content_type: content_type.into(),
             encoding: ENCODING.into(),
             url: URL.into(),
-            origin: DomOpaqueOrigin(Arc::new(OpaqueOriginIdentity)),
+            origin,
             mode: HtmlDocumentMode::NoQuirks,
             allow_declarative_shadow_roots: false,
             registry: DomRegistryBinding::Null,

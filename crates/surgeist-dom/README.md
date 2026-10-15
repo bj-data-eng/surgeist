@@ -15,7 +15,7 @@ Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
 each document's content type, encoding name and URL serialization (31 units for
-the native defaults). Element names and every attribute's namespace URI,
+native XML, 25 for native HTML). Element names and every attribute's namespace URI,
 prefix, local name and value count as separate logical stored slots. An applicable
 cryptographic nonce slot counts independently of its content attribute.
 Limits do not promise a total heap bound: caller-owned batches, snapshot/report
@@ -68,13 +68,16 @@ public and system identifiers remain exact strings. `node_name()` returns the
 source-defined fixed name, qualified Element spelling, PI target or doctype name
 for each exposed kind.
 
-`create_element` currently creates no-namespace generic Elements in the native
-XML document, preserving case and exact UTF-16 units. It uses the selected relaxed
-DOM name validation, not an XML QName regex or HTML authoring validation. A name
-such as `input` or `template` has no HTML family semantics in this namespace.
+`create_element` validates DOM's whole local name before any transformation.
+In native XML it preserves exact case and no namespace; a name such as `input`
+or `template` has no HTML family semantics there. In HTML Documents it folds
+ASCII uppercase and selects HTML namespace, then requires the actual native
+family initialization. `INPUT` therefore requires the real Input family; it
+cannot evade admission as a generic Element. The whole name `a:B` becomes local
+name `a:b` with no prefix. QName splitting belongs to namespace-aware creation.
 Registry and definition bindings are known-null, saved creation `is` is absent,
-and shared HTML rules establish the uncustomized state. A later `is` attribute
-does not rewrite saved creation state.
+and shared HTML rules establish the appropriate uncustomized/undefined state.
+A later `is` attribute does not rewrite saved creation state.
 
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
@@ -101,6 +104,10 @@ current shared value. Each retained non-default canonical dimension's ASCII
 digits count as stored UTF-16 independently of the raw attribute; inline numeric
 defaults own no digit string. Immutable Arc storage prevents transaction and
 snapshot copies from cloning unbounded integer Strings.
+
+In an HTML Document, non-NS `WIDTH`/`HEIGHT` inputs reach Canvas hooks after
+ASCII lowercase. NS-created uppercase names remain distinct raw attributes and
+do not resize the bitmap. The same case rule precedes applicable nonce hooks.
 
 Native HTML Marquee retains HTML's actual initially-on state and closed current
 loop index0. `start_marquee` and `stop_marquee` batch commands change only the
@@ -134,14 +141,25 @@ families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
 
 Attribute edits use ordered expanded identity `(namespace, local_name)`. Ordinary
-name operations select the first exact qualified spelling; a newly set literal
-`xml:lang` is an unnamespaced local name. Namespace-aware setting validates and
+name operations lowercase the input in ASCII only for HTML-namespace Elements
+whose actual current node-document is HTML, then select the first exact qualified
+spelling. An existing matching attribute retains its actual namespace/prefix;
+a newly set literal `xml:lang` is an unnamespaced local name. Namespace-aware setting validates and
 splits only the first colon, normalizes empty namespace to none and applies the
 source's reserved namespace checks. Updating an existing expanded name preserves
 its prefix and position. All raw values, including isolated surrogates and CR/LF,
 remain exact. Absent removal is a no-op and performs no construction validation.
 Snapshots expose Element-only children, siblings and zero-based sibling indices
 over the same canonical identities, without counting Text or Comment nodes.
+`DomNode::node_name`/`tag_name` uppercase the qualified spelling in ASCII only
+under the same HTML namespace/document-class conjunction. Raw local name/prefix
+remain exact. `DomNode::attribute` provides the contextual DOM getter;
+`DomElement::attribute` is the intrinsic exact-storage lookup. Namespace/local
+attribute getters and all NS mutations stay exact. NS-created `ID` and `id` may
+coexist, while the contextual HTML getter's `ID` input searches `id`. Adoption
+changes these contextual getters and subsequent ordinary writes through actual
+node-document state; it does not rewrite stored names/attributes. Captured import
+also preserves raw QName/attribute fields while target context controls display.
 
 `DomSnapshot` owns immutable storage for every managed node, including detached
 nodes and multiple documents. It survives later edits, destruction and the
@@ -223,6 +241,29 @@ and source labels do not establish origins. Metadata and origins are staged
 privately with the rest of the batch, and old snapshots retain them. Ordinary
 doctype edits do not change document mode. Host/imported metadata and registry
 objects have no admission API yet. Native environment proof also survives captures.
+
+`create_html_document(associated_document, title)` implements the selected DOM
+createHTMLDocument tree in the same staged owner: Document, html doctype, HTML
+`html` element, `head`, optional `title` with a Text child, then `body`. `None`
+omits title; `Some("")` creates both title and empty Text. The actual same-store
+associated Document supplies only the origin identity. New metadata is HTML,
+`text/html`, UTF-8, `about:blank`, no-quirks, declarative shadow permission false
+and null registry. Two creations from one associated Document share its origin;
+other source metadata is not inherited. This document retains actual absent
+browsing context/never-navigable/inactive native proof, independently of class.
+It does not attach a Window, execute a parser or authorize external lifecycle.
+
+Only the Document has a caller creation ticket; all skeleton nodes are private
+allocations available in the committed snapshot. Omitted-title creation adds
+5 nodes and 125 stored UTF-16 units; supplied title adds 7 nodes and
+`158 + title.len()` units, including empty Text. These increments join existing
+store usage and all failures/cancellation roll back the complete graph. There is
+no class/metadata setter or empty-HTML shortcut. The existing zero-argument
+native XML creator keeps its fresh opaque origin; it does not claim WebIDL
+new Document()'s associated-global origin semantics. DOMImplementation's separate
+XML createDocument(namespace, qualifiedName, doctype) algorithm, including its
+XHTML/SVG content types, remains unexposed. The source createElement XHTML MIME
+branch does not imply that creator or a metadata override capability.
 
 `import_node` reads a checked node from an owned immutable `DomSnapshot` and
 copies it into a target Document with fresh identities and a detached root.
@@ -370,8 +411,8 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-HTML document creation, remaining native special families, slot assignment and
-flat-tree captures and HTML installation remain unadmitted capabilities. This crate does not claim complete DOM or
+Remaining native special families, XML DOMImplementation creation, slot
+assignment/flat-tree captures and HTML installation remain unadmitted capabilities. This crate does not claim complete DOM or
 HTML conformance or replace the retained/facade integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
@@ -381,7 +422,7 @@ The selected [DOM foundation capture](../../references/dom-foundation--editor-ca
 at revision `3071e5f269448350fdea79bb284eedaf17bc431e` supplies ordinary
 tree/pre-insertion, shadow ownership/attachment, host-including cycles,
 shadow-inclusive adoption/cloning, fragment transfer, ownerDocument, native document metadata,
-nodeName, PI/doctype
+nodeName/tagName, HTML document skeleton and API case rules, PI/doctype
 construction and CharacterData rules. PI targets and pseudo-attribute maps use
 the retained [XML grammar](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)
 and [XML-stylesheet pseudo-attribute rules](../../references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md).

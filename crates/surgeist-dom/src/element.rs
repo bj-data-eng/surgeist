@@ -37,13 +37,32 @@ pub struct DomElement {
 impl DomElement {
     pub(crate) fn native(
         local_name: DocumentString,
+        document: &crate::DomDocumentMetadata,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
         if !valid_element_local_name(&local_name, cancelled)? {
             return Err(DomError::InvalidCharacter);
         }
+        let html = document.class() == crate::DomDocumentClass::Html;
+        let local_name = if html {
+            crate::names::ascii_lowercase(local_name, cancelled)?
+        } else {
+            local_name
+        };
+        let namespace = if html
+            || document
+                .content_type()
+                .code_units()
+                .iter()
+                .copied()
+                .eq("application/xhtml+xml".encode_utf16())
+        {
+            Namespace::from_uri("http://www.w3.org/1999/xhtml")
+        } else {
+            Namespace::none()
+        };
         Self::initialize(
-            QualifiedName::new(Namespace::none(), None, local_name),
+            QualifiedName::new(namespace, None, local_name),
             None,
             cancelled,
         )

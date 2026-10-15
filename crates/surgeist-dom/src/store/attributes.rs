@@ -73,6 +73,11 @@ impl Draft {
             if !valid_attribute_local_name(&name, cancelled)? {
                 return Err(DomError::InvalidCharacter);
             }
+            let name = if self.html_element_in_html_document(node)? {
+                crate::names::ascii_lowercase(name, cancelled)?
+            } else {
+                name
+            };
             let position = element
                 .attributes()
                 .iter()
@@ -161,6 +166,11 @@ impl Draft {
     ) -> Result<(), DomError> {
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
+        };
+        let name = if namespace.is_none() && self.html_element_in_html_document(node)? {
+            crate::names::ascii_lowercase(name, cancelled)?
+        } else {
+            name
         };
         let position = element.attributes().iter().position(|attribute| {
             namespace.as_ref().map_or_else(

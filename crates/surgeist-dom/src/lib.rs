@@ -2,8 +2,10 @@
 //!
 //! One [`Dom`] exclusively mutates its documents. Batches publish atomically,
 //! and owned snapshots retain their exact identities and data after later edits.
-//! Generic XML Element creation, captured generic import and same-store adoption
-//! are supported. Explicitly initialized View Transitions retain canonical
+//! Native XML and complete HTML document creation, exact namespaced import and
+//! same-store adoption are supported. HTML API casing follows the current node
+//! document while stored names and namespace-aware operations remain exact.
+//! Explicitly initialized View Transitions retain canonical
 //! structural state and real CSSOM associations, without rendering resources.
 //! Namespace-aware common HTML/SVG/MathML elements retain actual shared common
 //! state and nonce lifecycle. Native ShadowRoots retain distinct host/ordinary

@@ -239,7 +239,7 @@ impl<'a> DomNode<'a> {
     pub fn node_name(self) -> DocumentString {
         match &self.node.kind {
             DomNodeKind::Document(_) => "#document".into(),
-            DomNodeKind::Element(element) => crate::names::qualified_spelling(element.name()),
+            DomNodeKind::Element(_) => self.tag_name().expect("Element tag name"),
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
                 "#document-fragment".into()
             }
@@ -262,10 +262,64 @@ impl<'a> DomNode<'a> {
             _ => None,
         }
     }
-    /// Source tagName. Native XML Elements preserve their qualified spelling.
+    /// Source tagName follows the actual current node-document. Raw namespace,
+    /// prefix and local name remain unchanged by this presentation or adoption.
     pub fn tag_name(self) -> Option<DocumentString> {
+        let element = self.as_element()?;
+        let spelling = crate::names::qualified_spelling(element.name());
+        Some(if self.html_element_in_html_document() {
+            DocumentString::from_utf16(
+                spelling
+                    .code_units()
+                    .iter()
+                    .map(|&unit| {
+                        if (0x61..=0x7a).contains(&unit) {
+                            unit - 0x20
+                        } else {
+                            unit
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            spelling
+        })
+    }
+    fn html_element_in_html_document(self) -> bool {
         self.as_element()
-            .map(|element| crate::names::qualified_spelling(element.name()))
+            .is_some_and(|element| crate::names::in_html_namespace(element.name()))
+            && self
+                .snapshot
+                .document(self.node.document)
+                .expect("canonical node document")
+                .metadata()
+                .class()
+                == crate::DomDocumentClass::Html
+    }
+    /// DOM getAttribute lookup, including HTML input casing from this exact
+    /// captured node-document. The intrinsic DomElement lookup stays exact.
+    pub fn attribute(self, qualified_name: &DocumentString) -> Option<&'a DocumentString> {
+        let element = self.as_element()?;
+        let html = self.html_element_in_html_document();
+        element
+            .attributes()
+            .iter()
+            .find(|attribute| {
+                if html {
+                    crate::names::qualified_equals_lowercase_input(attribute.name(), qualified_name)
+                } else {
+                    crate::names::qualified_equals(attribute.name(), qualified_name)
+                }
+            })
+            .map(|attribute| attribute.value())
+    }
+    /// Exact namespace/local-name lookup; HTML input casing does not apply.
+    pub fn attribute_ns(
+        self,
+        namespace: &crate::Namespace,
+        local_name: &DocumentString,
+    ) -> Option<&'a DocumentString> {
+        self.as_element()?.attribute_ns(namespace, local_name)
     }
     pub fn parent_element(self) -> Option<NodeId> {
         self.parent().filter(|id| {
