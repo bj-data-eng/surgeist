@@ -25,6 +25,7 @@ pub struct DomElement {
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
     saved_is: Option<DocumentString>,
+    captured_in_view_transition: bool,
 }
 
 impl DomElement {
@@ -60,7 +61,22 @@ impl DomElement {
                 saved_is.is_some(),
             ),
             saved_is,
+            captured_in_view_transition: false,
         }
+    }
+    pub fn captured_in_view_transition(&self) -> bool {
+        self.captured_in_view_transition
+    }
+    pub(crate) fn set_captured_in_view_transition(&mut self, captured: bool) {
+        self.captured_in_view_transition = captured;
+    }
+    pub(crate) fn same_intrinsic_state(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.attributes == other.attributes
+            && self.registry == other.registry
+            && self.definition == other.definition
+            && self.custom_state == other.custom_state
+            && self.saved_is == other.saved_is
     }
     pub fn name(&self) -> &QualifiedName {
         &self.name

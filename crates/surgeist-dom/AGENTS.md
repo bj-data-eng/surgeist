@@ -35,6 +35,23 @@ attribute fields through actual generic initialization/append steps. PI clone
 preserves current data without new-construction `?>` validation. Keep traversal
 iterative and all copied nodes/strings admitted with the rest of the batch.
 
+View Transition state belongs to this same staged owner, with exact published
+Document-basis checks on feature edits only. Feature-uninitialized is distinct
+from source defaults after actual CSSOM binding. Consume CSS's checked names
+and CSSOM's opaque identities/snapshots directly; never fabricate UA placement,
+resources or readiness. Keep generated pseudo IDs outside ordinary NodeIds and
+preserve independent capture flags for actual Elements and owned VT pseudos.
+Derive complete pseudo origins from the captured current document element;
+absence is explicit and must not restrict ordinary root edits. Capture flags
+must not be reported as attribute edits. Generic import initializes fresh flags.
+Validate same-document/live new-element references at assignment only; later
+adoption/destruction retains historical full identities. Clear follows live
+adopted references across Documents and skips destroyed generations without
+following slot reuse. Do not pin or veto ordinary edits because of retained
+records. Keep active/show/new-flag clearing separate from suppression, retained
+records and CSSOM effects. Broader CSS pseudo capture and actual composed
+publication remain with #1124/#382/#388/#1058, as described in the README.
+
 From repository root through bounded `pisct run`:
 
 ```sh

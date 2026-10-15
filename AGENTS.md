@@ -84,7 +84,7 @@ implemented dependency graph and behavior.
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, clean-report validation, and source/fact-qualified color resolution |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
-| `surgeist-dom` | Canonical store identity, bounded native XML tree edits, revisions and immutable snapshots |
+| `surgeist-dom` | Canonical tree identity, atomic edits, structural transition state, revisions and immutable snapshots |
 | `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-html` | Pinned HTML values, local rules, native authoring and immutable construction |
@@ -154,6 +154,9 @@ DOM depends directly on HTML and consumes its exact `DocumentString`.
 DOM's immutable external focus/hover captures use exact canonical document
 stamps and a separate host source/revision. Runtime directly consumes DOM and
 owns the adapter from its actual surface selections and checked associations.
+DOM also consumes CSS's checked transition names and CSSOM's ordinary sheet/rule
+identities for structural view-transition state. Runtime owns rendering resources
+and composed readiness; DOM's structural records do not establish either.
 Its planned integration owns importing HTML construction values and adapting
 canonical snapshots to HTML semantic operations. `surgeist-html` owns
 typed HTML construction; `surgeist-template` retains template syntax, symbolic

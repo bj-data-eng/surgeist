@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
+use crate::DomDocumentStamp;
+use crate::view_transition::*;
 use crate::{DocumentId, DocumentString, DomSnapshot, Namespace, NodeId};
+use surgeist_css::CssViewTransitionIdent;
+use surgeist_cssom::{CssomSheetId, CssomSnapshot};
 
 #[derive(Debug)]
 pub(crate) struct BatchIdentity;
@@ -57,6 +61,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    ViewTransition {
+        basis: DomDocumentStamp,
+        edit: Edit,
+    },
     Create {
         kind: Creation,
         document: Option<NodeOperand>,
@@ -110,6 +118,8 @@ pub struct DomBatch {
     pub(crate) owner: Arc<BatchIdentity>,
     pub(crate) commands: Vec<Command>,
     creations: usize,
+    transitions: usize,
+    transition_records: usize,
 }
 
 impl Default for DomBatch {
@@ -124,7 +134,155 @@ impl DomBatch {
             owner: Arc::new(BatchIdentity),
             commands: Vec::new(),
             creations: 0,
+            transitions: 0,
+            transition_records: 0,
         }
+    }
+    /// Initializes structural VT slots from a real CSSOM sheet capture. The
+    /// caller owns actual UA-origin placement/document installation evidence.
+    pub fn initialize_view_transitions(
+        &mut self,
+        basis: DomDocumentStamp,
+        snapshot: &CssomSnapshot,
+        sheet: &CssomSheetId,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Initialize {
+                snapshot: snapshot.clone(),
+                sheet: sheet.clone(),
+            },
+        });
+    }
+    /// Every VT operation requires this exact pre-batch published document basis.
+    pub fn begin_view_transition(&mut self, basis: DomDocumentStamp) -> CreatedViewTransition {
+        let ticket = CreatedViewTransition {
+            owner: self.owner.clone(),
+            index: self.transitions,
+        };
+        self.transitions += 1;
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Begin {
+                ticket: ticket.index,
+            },
+        });
+        ticket
+    }
+    pub fn append_view_transition_record(
+        &mut self,
+        basis: DomDocumentStamp,
+        transition: impl Into<ViewTransitionOperand>,
+        name: CssViewTransitionIdent,
+    ) -> CreatedViewTransitionRecord {
+        let ticket = CreatedViewTransitionRecord {
+            owner: self.owner.clone(),
+            index: self.transition_records,
+        };
+        self.transition_records += 1;
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Append {
+                transition: transition.into(),
+                name,
+                ticket: ticket.index,
+            },
+        });
+        ticket
+    }
+    pub fn set_view_transition_branches(
+        &mut self,
+        basis: DomDocumentStamp,
+        record: impl Into<ViewTransitionRecordOperand>,
+        branches: DomViewTransitionBranches,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Branches {
+                record: record.into(),
+                branches,
+            },
+        });
+    }
+    pub fn set_view_transition_rules(
+        &mut self,
+        basis: DomDocumentStamp,
+        record: impl Into<ViewTransitionRecordOperand>,
+        snapshot: &CssomSnapshot,
+        rules: DomViewTransitionRuleAssociations,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Rules {
+                record: record.into(),
+                snapshot: snapshot.clone(),
+                rules,
+            },
+        });
+    }
+    /// Clears only canonical association records; makes no CSSOM removal claim.
+    pub fn clear_view_transition_rules(
+        &mut self,
+        basis: DomDocumentStamp,
+        record: impl Into<ViewTransitionRecordOperand>,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::ClearRules(record.into()),
+        });
+    }
+    pub fn set_view_transition_captured(
+        &mut self,
+        basis: DomDocumentStamp,
+        subject: DomViewTransitionSubject,
+        captured: bool,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Captured { subject, captured },
+        });
+    }
+    pub fn set_view_transition_rendering_suppression(
+        &mut self,
+        basis: DomDocumentStamp,
+        suppressed: bool,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Suppression(suppressed),
+        });
+    }
+    pub fn setup_view_transition_pseudos(
+        &mut self,
+        basis: DomDocumentStamp,
+        transition: impl Into<ViewTransitionOperand>,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Setup(transition.into()),
+        });
+    }
+    /// Clears active/show/new-element flags, retaining suppression and records.
+    pub fn clear_view_transition_state(
+        &mut self,
+        basis: DomDocumentStamp,
+        transition: impl Into<ViewTransitionOperand>,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Clear(transition.into()),
+        });
+    }
+    /// Releases an inactive transition and its records/subjects, never CSSOM rules.
+    pub fn release_view_transition(
+        &mut self,
+        basis: DomDocumentStamp,
+        transition: impl Into<ViewTransitionOperand>,
+    ) {
+        self.commands.push(Command::ViewTransition {
+            basis,
+            edit: Edit::Release(transition.into()),
+        });
     }
     fn ticket(&mut self) -> CreatedNode {
         let ticket = CreatedNode {

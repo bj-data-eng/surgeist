@@ -16,6 +16,9 @@ use crate::{
 mod attributes;
 mod import;
 mod tree;
+mod view_transition;
+use crate::view_transition::*;
+use view_transition::DraftTransitions;
 
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,6 +28,9 @@ pub enum DomResource {
     Commands,
     HistoryEntries,
     HistoryBytes,
+    ViewTransitions,
+    ViewTransitionRecords,
+    ViewTransitionPseudos,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -51,6 +57,15 @@ pub enum DomError {
     RepresentationExhausted,
     OwnerIdentityExhausted,
     RevisionExhausted,
+    ViewTransitionsUninitialized,
+    ViewTransitionRevisionMismatch,
+    StaleViewTransition,
+    StaleViewTransitionRecord,
+    StaleViewTransitionPseudo,
+    InvalidViewTransitionState,
+    DuplicateViewTransitionName,
+    ViewTransitionOriginUnavailable,
+    ViewTransitionCssom(DomViewTransitionCssomError),
 }
 impl std::fmt::Display for DomError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -67,6 +82,9 @@ pub struct DomLimits {
     commands: usize,
     history_entries: usize,
     history_bytes: usize,
+    transitions: usize,
+    records: usize,
+    pseudos: usize,
 }
 impl DomLimits {
     pub fn new(
@@ -97,7 +115,52 @@ impl DomLimits {
             commands,
             history_entries,
             history_bytes,
+            transitions: 0,
+            records: 0,
+            pseudos: 0,
         })
+    }
+    /// Explicit finite VT admission; the unconfigured feature has zero capacity.
+    pub fn with_view_transitions(
+        mut self,
+        transitions: usize,
+        records: usize,
+        pseudos: usize,
+    ) -> Result<Self, DomError> {
+        for (value, resource, width) in [
+            (
+                transitions,
+                DomResource::ViewTransitions,
+                size_of::<Transition>(),
+            ),
+            (
+                records,
+                DomResource::ViewTransitionRecords,
+                size_of::<Record>(),
+            ),
+            (
+                pseudos,
+                DomResource::ViewTransitionPseudos,
+                size_of::<bool>(),
+            ),
+        ] {
+            if value > isize::MAX as usize / width {
+                return Err(DomError::InvalidLimit(resource));
+            }
+        }
+        self.transitions = transitions;
+        self.records = records;
+        self.pseudos = pseudos;
+        Ok(self)
+    }
+    pub fn view_transitions(self) -> usize {
+        self.transitions
+    }
+    pub fn view_transition_records(self) -> usize {
+        self.records
+    }
+    pub fn view_transition_pseudos(self) -> usize {
+        self.pseudos
     }
     pub fn managed_nodes(self) -> usize {
         self.nodes
@@ -124,8 +187,20 @@ pub struct DomUsage {
     units: usize,
     history_entries: usize,
     history_bytes: usize,
+    transitions: usize,
+    records: usize,
+    pseudos: usize,
 }
 impl DomUsage {
+    pub fn view_transitions(self) -> usize {
+        self.transitions
+    }
+    pub fn view_transition_records(self) -> usize {
+        self.records
+    }
+    pub fn view_transition_pseudos(self) -> usize {
+        self.pseudos
+    }
     pub fn managed_nodes(self) -> usize {
         self.nodes
     }
@@ -151,6 +226,11 @@ pub enum DomChange {
     NodeDocument(NodeId),
     Parent(NodeId),
     Children(NodeId),
+    ViewTransitionDocument(DocumentId),
+    /// Complete transition state/topology invalidation, including pseudo flags.
+    ViewTransition(DomViewTransitionId),
+    ViewTransitionRecord(DomViewTransitionRecordId),
+    ViewTransitionCaptured(DomViewTransitionSubject),
 }
 
 #[derive(Clone, Debug)]
@@ -191,9 +271,35 @@ pub struct DomCommit {
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
     documents: Vec<bool>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: DomChanges,
 }
 impl DomCommit {
+    pub fn view_transition(
+        &self,
+        ticket: &CreatedViewTransition,
+    ) -> Result<Option<DomViewTransitionId>, DomError> {
+        if !Arc::ptr_eq(&ticket.owner, &self.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.transition_ids
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
+    pub fn view_transition_record(
+        &self,
+        ticket: &CreatedViewTransitionRecord,
+    ) -> Result<Option<DomViewTransitionRecordId>, DomError> {
+        if !Arc::ptr_eq(&ticket.owner, &self.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.record_ids
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
     pub fn changes(&self) -> &DomChanges {
         &self.changes
     }
@@ -232,6 +338,7 @@ pub(crate) struct Slot {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct State {
     pub(crate) slots: Vec<Slot>,
+    pub(crate) view_transitions: ViewTransitions,
     nodes: usize,
     units: usize,
 }
@@ -283,6 +390,7 @@ impl Dom {
             limits,
             state: Arc::new(State {
                 slots: Vec::new(),
+                view_transitions: ViewTransitions::new(),
                 nodes: 0,
                 units: 0,
             }),
@@ -301,7 +409,11 @@ impl Dom {
         self.limits
     }
     pub fn usage(&self) -> DomUsage {
+        let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            transitions,
+            records,
+            pseudos,
             nodes: self.state.nodes,
             units: self.state.units,
             history_entries: self.history_entries,
@@ -320,6 +432,14 @@ impl Dom {
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
         admit(self.state.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(self.state.units, limits.units, DomResource::StringCodeUnits)?;
+        let (transitions, records, pseudos) = self.state.view_transitions.usage();
+        admit(
+            transitions,
+            limits.transitions,
+            DomResource::ViewTransitions,
+        )?;
+        admit(records, limits.records, DomResource::ViewTransitionRecords)?;
+        admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)?;
         self.limits = limits;
         self.trim_history();
         Ok(())
@@ -358,6 +478,8 @@ impl Dom {
             owner,
             created,
             documents,
+            transition_ids,
+            record_ids,
             changes,
         } = prepared;
         let changed = state != *self.state;
@@ -420,6 +542,8 @@ impl Dom {
             owner,
             created,
             documents,
+            transition_ids,
+            record_ids,
             changes: DomChanges { from, to, changes },
         })
     }
@@ -526,6 +650,8 @@ struct DraftNode {
 struct Draft {
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
+    basis: DomStamp,
+    view_transitions: DraftTransitions,
     existing: Vec<Option<DraftNode>>,
     generations: Vec<u64>,
     created: Vec<Option<DraftNode>>,
@@ -540,6 +666,8 @@ struct Prepared {
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
     documents: Vec<bool>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
 }
 
@@ -569,6 +697,11 @@ impl Draft {
         Ok(Self {
             owner,
             store: dom.owner,
+            basis: DomStamp {
+                owner: dom.owner,
+                revision: dom.revision,
+            },
+            view_transitions: DraftTransitions::new(&dom.state.view_transitions)?,
             existing,
             generations,
             created: Vec::new(),
@@ -666,6 +799,9 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::ViewTransition { basis, edit } => {
+                self.apply_view_transition(basis, edit, limits, cancelled)?
+            }
             Command::Create { kind, document } => {
                 let key = Key::Created(self.created.len());
                 let document = if let Some(document) = document {
@@ -945,8 +1081,10 @@ impl Draft {
                 children,
             });
         }
+        let finished = self.view_transitions.finish(dom.owner)?;
         let state = State {
             slots,
+            view_transitions: finished.value,
             nodes: self.nodes,
             units: self.units,
         };
@@ -971,6 +1109,8 @@ impl Draft {
             owner: self.owner,
             created,
             documents,
+            transition_ids: finished.transition_ids,
+            record_ids: finished.record_ids,
             changes,
         })
     }
@@ -1007,7 +1147,22 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
             };
             if same {
                 let current = after.expect("same live identity").1;
-                let kind_change = if node.kind != current.kind {
+                if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
+                    (&node.kind, &current.kind)
+                    && before.captured_in_view_transition() != after.captured_in_view_transition()
+                {
+                    reserve(&mut changes, 1)?;
+                    changes.push(DomChange::ViewTransitionCaptured(
+                        DomViewTransitionSubject::Element(id),
+                    ));
+                }
+                let intrinsic_changed = match (&node.kind, &current.kind) {
+                    (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
+                        !before.same_intrinsic_state(after)
+                    }
+                    _ => node.kind != current.kind,
+                };
+                let kind_change = if intrinsic_changed {
                     Some(
                         if matches!(
                             (&node.kind, &current.kind),
@@ -1047,6 +1202,37 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 slot: index,
                 generation,
             }));
+        }
+    }
+    new.view_transitions
+        .changes(&old.view_transitions, &mut changes)?;
+    // Complete pseudo origins derive from ordinary Document children. Report
+    // that domain when a valid generic edit changes or removes their origin.
+    for transition in &new.view_transitions.transitions {
+        if old
+            .view_transitions
+            .transitions
+            .iter()
+            .any(|t| t.id == transition.id)
+        {
+            let origin = |state: &State| {
+                state
+                    .node(owner, transition.document.node())
+                    .ok()
+                    .and_then(|document| {
+                        document.children.iter().copied().find(|id| {
+                            matches!(
+                                state.node(owner, *id).map(|node| &node.kind),
+                                Ok(DomNodeKind::Element(_))
+                            )
+                        })
+                    })
+            };
+            let change = DomChange::ViewTransition(transition.id);
+            if origin(old) != origin(new) && !changes.contains(&change) {
+                reserve(&mut changes, 1)?;
+                changes.push(change);
+            }
         }
     }
     Ok(changes)

@@ -2,8 +2,10 @@
 //!
 //! One [`Dom`] exclusively mutates its documents. Batches publish atomically,
 //! and owned snapshots retain their exact identities and data after later edits.
-//! Generic XML Element creation and same-store adoption are supported. HTML
-//! element initialization, namespace-aware element creation and import are not exposed.
+//! Generic XML Element creation, captured generic import and same-store adoption
+//! are supported. Explicitly initialized View Transitions retain canonical
+//! structural state and real CSSOM associations, without rendering resources.
+//! HTML/native namespace-family initialization is not exposed.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -49,6 +51,7 @@ mod names;
 mod node_values;
 mod snapshot;
 mod store;
+mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use document::{DomDocumentClass, DomDocumentMetadata, DomOpaqueOrigin, DomRegistryBinding};
@@ -65,7 +68,17 @@ pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
     DomUsage,
 };
+pub use surgeist_css::CssViewTransitionIdent;
 pub use surgeist_html::{
     Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, Namespace,
     OrderedAttributes, QualifiedName,
+};
+pub use view_transition::{
+    CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
+    DomViewTransition, DomViewTransitionBranches, DomViewTransitionCssomError, DomViewTransitionId,
+    DomViewTransitionImageRules, DomViewTransitionPseudo, DomViewTransitionPseudoChildren,
+    DomViewTransitionPseudoId, DomViewTransitionPseudoKind, DomViewTransitionRecord,
+    DomViewTransitionRecordId, DomViewTransitionRuleAssociations, DomViewTransitionRules,
+    DomViewTransitionSheet, DomViewTransitionSubject, ViewTransitionOperand,
+    ViewTransitionRecordOperand,
 };

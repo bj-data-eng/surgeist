@@ -4,8 +4,9 @@ Canonical native document ownership with atomic edits and owned immutable
 snapshots. The native contribution supports Document, generic XML Element,
 ordinary DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
 HTML's exact UTF-16 `DocumentString`, `QualifiedName`, `Attribute` and
-`OrderedAttributes`; it has no parser, runtime, CSSOM or facade
-dependency.
+`OrderedAttributes`, CSS's checked `CssViewTransitionIdent`, and CSSOM's real
+sheet/rule identities and immutable snapshots. Parser, runtime and facade
+composition remain outside its dependencies.
 
 `Dom::new` requires explicit finite `DomLimits` for managed nodes, stored string
 code units, commands per batch, and retained change-history entries and bytes.
@@ -131,8 +132,85 @@ and destroying the unpublished imported subtree is a semantic no-op. Copied
 nodes and all logical string slots consume target limits even when immutable
 string backing is shared with the source capture.
 
+Canonical View Transitions state is an explicitly initialized structural
+capability in the same atomic owner. Configure finite transition, participant
+record and generated-pseudo capacities with `DomLimits::with_view_transitions`;
+these capacities start at zero. Participant names count toward stored UTF-16
+units. Hidden, inactive records and pseudos remain admitted until explicit
+release; retaining caller snapshots does not pin live nodes or consume live
+capacity. Node, transition and record creation tickets are separate and resolve
+only after publication. Transition/record generations are checked and never
+reissued.
+
+Every feature edit requires an exact already-published `DomDocumentStamp` for
+its pre-batch basis. Native document creation leaves this feature uninitialized.
+`initialize_view_transitions` admits an actual captured CSSOM sheet and establishes
+source defaults: absent active transition, rendering suppression false and
+show-tree false. An initialized binding always contains a real sheet identity;
+uninitialized is not the source's default null stylesheet. This structural
+association does not establish the source-required fresh UA stylesheet's actual
+cascade-origin placement or document installation. Those effects belong to
+[#1058](https://github.com/bj-data-eng/surgeist/issues/1058).
+
+A transition owns an ordered map of case-sensitive checked participant names,
+with pending, old-only, new-only or paired structural branches. An old branch
+certifies no image. A newly assigned new-element reference must resolve to an
+actual same-document Element, and one element cannot occupy two names in the
+same transition. Pending records cannot be set up. Setup is one-shot and creates
+the separate generated relation: root, groups in record order, one image pair
+per group, then old before new when present. This never changes ordinary node
+children. Actual Elements and all owned VT pseudos have independent captured
+flags, initially false, through a typed subject domain. Other CSS pseudo families
+need their future concrete identities under
+[#1124](https://github.com/bj-data-eng/surgeist/issues/1124); the selected source's
+broader CSS-element capture requirement remains outside the admitted family.
+
+Complete pseudo relation reads use this snapshot's actual document element as
+the mandatory ultimate origin. Replacing it changes current origin readback;
+removing it produces `ViewTransitionOriginUnavailable` without rejecting the
+ordinary tree edit. Identity/captured-flag reads remain available for cleanup.
+Old snapshots keep their old actual origins. Each pseudo's originating pseudo
+is its parent in the generated tree.
+
+Rule associations retain real CSSOM identities qualified by the snapshot
+revision used to admit them. Ordinary slots require actual directly installed
+Style rules in the bound sheet; the keyframes slot requires Keyframes. The
+image-animation group contains zero, one old/new rule, or two distinct ordinary
+rules ordered old then new. DOM validates kinds, membership, owner and known
+revision order, while #383/#1058 own their content, installation and removal.
+An old retained association is historical evidence, not proof of current CSSOM
+state. Clearing association records performs no CSSOM mutation.
+
+`clear_view_transition_state` follows retained new-element identities and clears
+still-live captured flags, active state and show-tree atomically. It preserves
+suppression, records, generated identities and rule associations. Reset
+suppression separately; release an inactive transition separately. Repeated
+cleanup is a no-op; cleanup of an old transition rejects if a newer transition
+is active, before touching its potentially reused participants.
+
+Detaching or adopting a participant preserves its full `NodeId`, including when
+it moves to another Document. Clear follows that identity across documents.
+Explicit native destruction retains the existing detached-root/subtree rules
+and is not blocked by active or inactive records. The record retains its exact
+historical identity; `resolve_new_element` distinguishes never assigned
+`Ok(None)` from destroyed `Err(StaleNode)`. Clear skips destroyed generations
+and never follows a reused slot. This is the selected native-destruction policy,
+not a browser object-lifetime claim. Runtime must requalify current participation
+after canonical revisions.
+
+Runtime [#388](https://github.com/bj-data-eng/surgeist/issues/388) owns actual
+images, geometry/style snapshots, phase timing and the exact resource join to
+these DOM transition/record identities and revisions. DOM stores no image or
+resource handle and certifies no usable composed transition, rendering, pointer
+hit testing, accessibility behavior or CSSOM effect. The selected
+[View Transitions capture](../../references/css-view-transitions-1--CRD-css-view-transitions-1-20240328--7f8e537956b6.md)
+and amended [#1201](https://github.com/bj-data-eng/surgeist/issues/1201) define
+this bounded contribution; full composition remains in #382/#391.
+
 Each commit reports complete changed domains for this supported surface,
-including `Attributes` and `NodeDocument`. Ordered `Children` changes also cover
+including `Attributes`, `NodeDocument` and distinct View Transition document,
+transition/record and captured-subject domains. Captured-only edits do not report
+`Attributes`. Ordered `Children` changes also cover
 derived Element-sibling/index changes.
 `changes_since` returns chronological records for an exact covered interval or
 typed `FullRecomputeRequired`, never a successful incomplete delta. History is

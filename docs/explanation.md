@@ -72,6 +72,12 @@ surface selections, with checked associations between surface elements and DOM
 nodes. Host source identity and revisions stay separate from canonical edits and
 render acknowledgements. These selections do not establish full HTML focus or
 pointer processing.
+DOM also owns structural view-transition records and generated pseudo identities.
+It consumes CSS's checked names and records qualified ordinary CSSOM sheet/rule
+identities. Captured flags, retained participant references and state changes use
+the same canonical snapshots and atomic edits. Runtime owns actual image,
+geometry and style captures and validates their join before composed publication;
+the structural DOM state alone certifies no rendered transition or CSSOM effect.
 DOM will own importing HTML construction values and adapting captured DOM facts
 to HTML-owned interpretation. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.

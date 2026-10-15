@@ -279,3 +279,77 @@ impl<'a> DomNode<'a> {
         )
     }
 }
+
+impl DomSnapshot {
+    pub fn view_transition(
+        &self,
+        id: crate::DomViewTransitionId,
+    ) -> Result<crate::DomViewTransition<'_>, DomError> {
+        let value = self.state.view_transitions.transition(self.owner, id)?;
+        Ok(crate::DomViewTransition {
+            snapshot: self,
+            value,
+        })
+    }
+    pub fn view_transition_record(
+        &self,
+        id: crate::DomViewTransitionRecordId,
+    ) -> Result<crate::DomViewTransitionRecord<'_>, DomError> {
+        let transition = self.view_transition(id.transition())?;
+        let value = transition
+            .value
+            .records
+            .iter()
+            .find(|r| r.id == id)
+            .ok_or(DomError::StaleViewTransitionRecord)?;
+        Ok(crate::DomViewTransitionRecord { transition, value })
+    }
+    /// Complete relation reads require this snapshot's actual document element.
+    pub fn view_transition_pseudo(
+        &self,
+        id: crate::DomViewTransitionPseudoId,
+    ) -> Result<crate::DomViewTransitionPseudo<'_>, DomError> {
+        let (value, record) = self.state.view_transitions.pseudo(self.owner, id)?;
+        let origin = self
+            .document(value.document)?
+            .document_element()
+            .ok_or(DomError::ViewTransitionOriginUnavailable)?;
+        Ok(crate::DomViewTransitionPseudo {
+            transition: crate::DomViewTransition {
+                snapshot: self,
+                value,
+            },
+            record,
+            id,
+            origin,
+        })
+    }
+    /// Identity/flag reads remain available without an originating element.
+    pub fn view_transition_pseudo_captured(
+        &self,
+        id: crate::DomViewTransitionPseudoId,
+    ) -> Result<bool, DomError> {
+        let (transition, record) = self.state.view_transitions.pseudo(self.owner, id)?;
+        Ok(record.map_or(transition.root_captured, |r| {
+            r.captured[crate::view_transition::flag_index(id.kind())]
+        }))
+    }
+}
+impl<'a> DomDocument<'a> {
+    pub fn document_element(self) -> Option<NodeId> {
+        self.snapshot
+            .node(self.id.node())
+            .expect("captured Document")
+            .element_children()
+            .next()
+    }
+    /// None means feature-uninitialized, not a source null stylesheet default.
+    pub fn view_transitions(self) -> Option<&'a crate::DomDocumentViewTransitions> {
+        self.snapshot
+            .state
+            .view_transitions
+            .documents
+            .iter()
+            .find(|d| d.document == self.id)
+    }
+}

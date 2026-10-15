@@ -9,4 +9,6 @@ description = "Canonical document ownership, atomic edits and immutable snapshot
 readme = "README.md"
 
 [dependencies]
+surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
+surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
