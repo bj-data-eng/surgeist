@@ -14,13 +14,15 @@ use crate::{
 };
 
 mod attributes;
-mod button;
 mod control;
 mod document;
 mod form;
 mod import;
+mod input;
+mod input_processing;
 mod installation;
 mod navigable;
+mod reflected;
 mod script;
 mod shadow;
 mod slot;
@@ -45,6 +47,7 @@ pub enum DomResource {
     ViewTransitions,
     ViewTransitionRecords,
     ViewTransitionPseudos,
+    InputProcessingScratch,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -66,13 +69,31 @@ pub enum DomError {
     MarqueeInapplicable,
     CustomValidityInapplicable,
     ButtonInapplicable,
+    InputInapplicable,
+    InputFilenameInvalidState,
+    InputProcessingProtocol,
+    InputProcessingWorkLimit {
+        limit: u64,
+    },
+    InputNumeric(surgeist_html::bounded::RangeNumericError),
+    InputColorProtocol(surgeist_css::CssColorProtocolError),
+    InputColorUnavailable(surgeist_css::CssColorUnavailable),
+    InputColorUnsupported(surgeist_css::CssColorUnsupported),
+    InputColorFacts(surgeist_css::CssColorFactError),
+    InputColorNumerical {
+        error: surgeist_color::ColorError,
+        input: surgeist_css::CssColorInputRange,
+    },
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
     InvalidDestruction,
     IndexSize,
     Cancelled,
-    ResourceLimit { resource: DomResource, limit: usize },
+    ResourceLimit {
+        resource: DomResource,
+        limit: usize,
+    },
     InvalidLimit(DomResource),
     AllocationFailed,
     RepresentationExhausted,
@@ -108,6 +129,8 @@ pub struct DomLimits {
     transitions: usize,
     records: usize,
     pseudos: usize,
+    input_scratch: usize,
+    input_work: u64,
 }
 impl DomLimits {
     pub fn new(
@@ -155,6 +178,8 @@ impl DomLimits {
             transitions: 0,
             records: 0,
             pseudos: 0,
+            input_scratch: 0,
+            input_work: 0,
         })
     }
     /// Explicit finite VT admission; the unconfigured feature has zero capacity.
@@ -192,6 +217,26 @@ impl DomLimits {
     }
     pub fn view_transitions(self) -> usize {
         self.transitions
+    }
+    /// Reached variable numeric/CSS processing only: peak logical transient
+    /// bytes and cumulative work for one whole private batch. Unconfigured is0.
+    pub fn with_input_processing(
+        mut self,
+        scratch_bytes: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if scratch_bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::InputProcessingScratch));
+        }
+        self.input_scratch = scratch_bytes;
+        self.input_work = work;
+        Ok(self)
+    }
+    pub fn input_processing_scratch_bytes(self) -> usize {
+        self.input_scratch
+    }
+    pub fn input_processing_work(self) -> u64 {
+        self.input_work
     }
     pub fn view_transition_records(self) -> usize {
         self.records
@@ -403,7 +448,7 @@ pub(crate) struct Node {
     pub(crate) assigned_nodes: Vec<NodeId>,
     pub(crate) manual_slot: Option<NodeId>,
     pub(crate) assigned_slot: Option<NodeId>,
-    pub(crate) button_targets: Option<crate::button::ButtonTargets<NodeId>>,
+    pub(crate) reflected_targets: Option<crate::reflected::ReflectedTargets<NodeId>>,
     pub(crate) control_owner: Option<NodeId>,
     pub(crate) form_past_names: Option<crate::form::FormPastNames<NodeId>>,
     pub(crate) script: Option<crate::script::ScriptState<NodeId>>,
@@ -457,6 +502,7 @@ pub struct Dom {
     history: Option<Box<HistoryEntry>>,
     history_entries: usize,
     history_bytes: usize,
+    native_environment: crate::DomNativeDocumentEnvironment,
 }
 impl Drop for Dom {
     fn drop(&mut self) {
@@ -465,6 +511,14 @@ impl Drop for Dom {
 }
 impl Dom {
     pub fn new(limits: DomLimits) -> Result<Self, DomError> {
+        Self::with_native_input_platform(limits, crate::DomNativeInputPlatform::headless())
+    }
+    /// Constructs one immutable native platform; `new` selects the named
+    /// headless Supported/Supported profile. Image acquisition is disabled.
+    pub fn with_native_input_platform(
+        limits: DomLimits,
+        input: crate::DomNativeInputPlatform,
+    ) -> Result<Self, DomError> {
         Ok(Self {
             owner: DomOwnerId::allocate()?,
             revision: DomRevision(0),
@@ -480,6 +534,7 @@ impl Dom {
             history: None,
             history_entries: 0,
             history_bytes: 0,
+            native_environment: crate::DomNativeDocumentEnvironment::new(input),
         })
     }
     pub fn owner(&self) -> DomOwnerId {
@@ -760,7 +815,7 @@ struct DraftNode {
     assigned_nodes: Vec<Key>,
     manual_slot: Option<Key>,
     assigned_slot: Option<Key>,
-    button_targets: Option<crate::button::ButtonTargets<Key>>,
+    reflected_targets: Option<crate::reflected::ReflectedTargets<Key>>,
     control_owner: Option<Key>,
     form_past_names: Option<crate::form::FormPastNames<Key>>,
     script: Option<crate::script::ScriptState<Key>>,
@@ -781,6 +836,8 @@ struct Draft {
     tickets: Vec<Key>,
     nodes: usize,
     units: usize,
+    native_environment: crate::DomNativeDocumentEnvironment,
+    input_processing: input_processing::InputProcessing,
 }
 struct Prepared {
     state: State,
@@ -793,6 +850,19 @@ struct Prepared {
 }
 
 impl Draft {
+    fn initialize_native_element(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.initialize_template_contents(key, limits, cancel)?;
+        if matches!(&self.node(key)?.kind,DomNodeKind::Element(element) if element.input_state().is_some())
+        {
+            self.initialize_input(key, limits, cancel)?;
+        }
+        Ok(())
+    }
     fn new(dom: &Dom, owner: Arc<BatchIdentity>, cancelled: &AtomicBool) -> Result<Self, DomError> {
         let mut existing = Vec::new();
         let mut generations = Vec::new();
@@ -828,8 +898,8 @@ impl Draft {
                         .as_ref()
                         .map(|map| form::map_names(map, |id| Key::Existing(id.slot), cancelled))
                         .transpose()?,
-                    button_targets: node
-                        .button_targets
+                    reflected_targets: node
+                        .reflected_targets
                         .map(|targets| targets.map(|id| Key::Existing(id.slot))),
                 })
             } else {
@@ -840,6 +910,11 @@ impl Draft {
         }
         Ok(Self {
             owner,
+            native_environment: dom.native_environment,
+            input_processing: input_processing::InputProcessing::new(
+                dom.limits.input_scratch,
+                dom.limits.input_work,
+            ),
             store: dom.owner,
             basis: DomStamp {
                 owner: dom.owner,
@@ -935,9 +1010,15 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         reserve(&mut self.created, 1)?;
         let key = Key::Created(self.created.len());
-        let button_targets =
-            matches!(&kind, DomNodeKind::Element(element) if element.button_state().is_some())
-                .then(crate::button::ButtonTargets::fresh);
+        let reflected_targets = match &kind {
+            DomNodeKind::Element(element) if element.button_state().is_some() => {
+                Some(crate::reflected::ReflectedTargets::button())
+            }
+            DomNodeKind::Element(element) if element.input_state().is_some() => {
+                Some(crate::reflected::ReflectedTargets::input())
+            }
+            _ => None,
+        };
         let form_past_names =
             matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some())
                 .then(crate::form::FormPastNames::fresh);
@@ -959,7 +1040,7 @@ impl Draft {
             assigned_nodes: Vec::new(),
             manual_slot: None,
             assigned_slot: None,
-            button_targets,
+            reflected_targets,
             control_owner: None,
             form_past_names,
         }));
@@ -979,10 +1060,26 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
-            Command::SetButtonTarget { node, key, target } => {
+            Command::SetInputValue { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_input_value(node, value, limits, cancelled)?;
+            }
+            Command::SetInputChecked { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_input_checked(node, value, cancelled)?;
+            }
+            Command::SetInputIndeterminate { node, value } => {
+                let node = self.resolve(node)?;
+                self.set_input_indeterminate(node, value, cancelled)?;
+            }
+            Command::ResetInput { node } => {
+                let node = self.resolve(node)?;
+                self.reset_input(node, limits, cancelled)?;
+            }
+            Command::SetReflectedTarget { node, key, target } => {
                 let node = self.resolve(node)?;
                 let target = target.map(|target| self.resolve(target)).transpose()?;
-                self.set_button_target(node, key, target, limits, cancelled)?;
+                self.set_reflected_target(node, key, target, limits, cancelled)?;
             }
             Command::AssignSlot { slot, incoming } => {
                 let slot = self.resolve(slot)?;
@@ -1054,7 +1151,9 @@ impl Draft {
                     DomResource::StringCodeUnits,
                 )?;
                 let kind = match kind {
-                    Creation::Document => DomNodeKind::Document(DomDocumentMetadata::native()),
+                    Creation::Document => {
+                        DomNodeKind::Document(DomDocumentMetadata::native(self.native_environment))
+                    }
                     Creation::Fragment => DomNodeKind::DocumentFragment,
                     Creation::Element(name) => {
                         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
@@ -1063,7 +1162,12 @@ impl Draft {
                         DomNodeKind::Element(DomElement::native(name, metadata, cancelled)?)
                     }
                     Creation::ElementNs { namespace, name } => {
-                        DomNodeKind::Element(DomElement::native_ns(namespace, name, cancelled)?)
+                        DomNodeKind::Element(DomElement::native_ns(
+                            namespace,
+                            name,
+                            self.native_environment(document)?,
+                            cancelled,
+                        )?)
                     }
                     Creation::Text(data) => DomNodeKind::Text(data),
                     Creation::Comment(data) => DomNodeKind::Comment(data),
@@ -1081,7 +1185,7 @@ impl Draft {
                     }
                 };
                 let key = self.allocate(kind, document, limits)?;
-                self.initialize_template(key, limits, cancelled)?;
+                self.initialize_native_element(key, limits, cancelled)?;
                 self.register_ticket(key)?;
             }
             Command::Import {
@@ -1177,7 +1281,7 @@ impl Draft {
                     self.units -= form::name_units(node.form_past_names.as_ref(), cancelled)?;
                     self.retire_form_relations(key, cancelled)?;
                     self.slot_retirement(key, limits, cancelled)?;
-                    self.retire_button_target(key, cancelled)?;
+                    self.retire_reflected_target(key, cancelled)?;
                 }
             }
             Command::ReplaceData {
@@ -1361,7 +1465,7 @@ impl Draft {
                 assigned_nodes: map_ids(&source.assigned_nodes, &id, cancelled)?,
                 manual_slot: source.manual_slot.map(id),
                 assigned_slot: source.assigned_slot.map(id),
-                button_targets: source.button_targets.map(|targets| targets.map(id)),
+                reflected_targets: source.reflected_targets.map(|targets| targets.map(id)),
                 control_owner: source.control_owner.map(id),
                 form_past_names: source
                     .form_past_names
@@ -1488,7 +1592,7 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (&node.kind, &current.kind)
                     && (!before.same_nonattribute_state(after)
-                        || node.button_targets != current.button_targets
+                        || node.reflected_targets != current.reflected_targets
                         || node.control_owner != current.control_owner
                         || node.form_past_names != current.form_past_names
                         || node.script != current.script)

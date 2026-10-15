@@ -1,23 +1,23 @@
-//! Actual nullable reflected-target writes and permitted-weak retirement.
+//! Shared actual nullable reflected-target writes and permitted-weak retirement.
 use super::*;
-use crate::button::ButtonTarget;
+use crate::reflected::ReflectedTarget;
 impl Draft {
-    pub(super) fn set_button_target(
+    pub(super) fn set_reflected_target(
         &mut self,
         node: Key,
-        key: ButtonTarget,
+        key: ReflectedTarget,
         target: Option<Key>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.set_button_target_admitted(node, key, target, limits, cancel, &mut || {
+        self.set_reflected_target_admitted(node, key, target, limits, cancel, &mut || {
             check_cancel(cancel)
         })
     }
-    fn set_button_target_admitted(
+    fn set_reflected_target_admitted(
         &mut self,
         node: Key,
-        key: ButtonTarget,
+        key: ReflectedTarget,
         target: Option<Key>,
         limits: DomLimits,
         cancel: &AtomicBool,
@@ -26,7 +26,12 @@ impl Draft {
         use surgeist_html::{
             HtmlReflectedElementSetter as Cursor, HtmlReflectedElementSetterEffect as Effect,
         };
-        if self.node(node)?.button_targets.is_none() {
+        if self
+            .node(node)?
+            .reflected_targets
+            .and_then(|targets| targets.get(key))
+            .is_none()
+        {
             return Err(DomError::ButtonInapplicable);
         }
         if let Some(target) = target
@@ -45,10 +50,11 @@ impl Draft {
                 Effect::ClearExplicitTarget => {
                     *self
                         .node_mut(node)
-                        .button_targets
+                        .reflected_targets
                         .as_mut()
                         .expect("checked Button")
-                        .slot_mut(key) = None
+                        .slot_mut(key)
+                        .expect("checked reflected slot") = None
                 }
                 Effect::RemoveContentAttribute => self.remove_attribute(
                     node,
@@ -68,25 +74,28 @@ impl Draft {
                 Effect::SetExplicitTargetFromSuppliedElement => {
                     *self
                         .node_mut(node)
-                        .button_targets
+                        .reflected_targets
                         .as_mut()
                         .expect("checked Button")
-                        .slot_mut(key) = target
+                        .slot_mut(key)
+                        .expect("checked reflected slot") = target
                 }
             }
         }
         Ok(())
     }
-    pub(super) fn button_attribute_change(&mut self, node: Key, changed: &crate::QualifiedName) {
-        if let Some(targets) = self.node_mut(node).button_targets.as_mut() {
-            for key in [ButtonTarget::CommandFor, ButtonTarget::PopoverTarget] {
-                if surgeist_html::reflected_element_attribute_change(key.attribute(), changed) {
-                    *targets.slot_mut(key) = None;
+    pub(super) fn reflected_attribute_change(&mut self, node: Key, changed: &crate::QualifiedName) {
+        if let Some(targets) = self.node_mut(node).reflected_targets.as_mut() {
+            for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
+                if surgeist_html::reflected_element_attribute_change(key.attribute(), changed)
+                    && let Some(slot) = targets.slot_mut(key)
+                {
+                    *slot = None;
                 }
             }
         }
     }
-    pub(super) fn retire_button_target(
+    pub(super) fn retire_reflected_target(
         &mut self,
         target: Key,
         cancel: &AtomicBool,
@@ -98,12 +107,13 @@ impl Draft {
             .filter_map(Option::as_mut)
         {
             check_cancel(cancel)?;
-            if let Some(targets) = &mut node.button_targets {
-                if targets.command_for == Some(target) {
-                    targets.command_for = None;
-                }
-                if targets.popover_target == Some(target) {
-                    targets.popover_target = None;
+            if let Some(targets) = &mut node.reflected_targets {
+                for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
+                    if let Some(slot) = targets.slot_mut(key)
+                        && *slot == Some(target)
+                    {
+                        *slot = None;
+                    }
                 }
             }
         }
@@ -134,9 +144,9 @@ mod tests {
             let target = supplied.map(|id| draft.resolve(id.into()).unwrap());
             let mut effects = 0;
             assert_eq!(
-                draft.set_button_target_admitted(
+                draft.set_reflected_target_admitted(
                     key,
-                    ButtonTarget::CommandFor,
+                    ReflectedTarget::CommandFor,
                     target,
                     dom.limits(),
                     &cancel,
@@ -153,7 +163,13 @@ mod tests {
             );
             assert_eq!(effects, 2);
             assert_eq!(
-                draft.node(key).unwrap().button_targets.unwrap().command_for,
+                draft
+                    .node(key)
+                    .unwrap()
+                    .reflected_targets
+                    .unwrap()
+                    .get(ReflectedTarget::CommandFor)
+                    .unwrap(),
                 None
             );
             let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {

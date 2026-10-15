@@ -3,6 +3,20 @@ use crate::names::{attribute_name, name_units, qualified_equals, valid_attribute
 use crate::{Attribute, Namespace, OrderedAttributes};
 use surgeist_html::bounded::{HtmlAttributeStorage, HtmlAttributeValidation};
 
+/// Actual native edit versus the Input Color cloning step whose current value
+/// will be copied by source overlay, without resolving its default again.
+#[derive(Clone, Copy)]
+pub(super) enum AttributeCause {
+    Change,
+    CloneInputColor,
+}
+#[derive(Clone, Copy)]
+pub(super) enum AttributeChange {
+    Added,
+    Set,
+    Removed,
+}
+
 fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
     name_units(attribute.name())
         .and_then(|units| units.checked_add(attribute.value().len()))
@@ -92,7 +106,14 @@ impl Draft {
             element.attributes().as_slice()[position].name().clone()
         });
         let replacement = Attribute::new(name, value);
-        self.write_attribute(node, position, replacement, limits, cancelled)
+        self.write_attribute(
+            node,
+            position,
+            replacement,
+            AttributeCause::Change,
+            limits,
+            cancelled,
+        )
     }
 
     /// Append exact records checked by the native component entry or canonical
@@ -102,10 +123,11 @@ impl Draft {
         &mut self,
         node: Key,
         attribute: Attribute,
+        cause: AttributeCause,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.write_attribute(node, None, attribute, limits, cancelled)
+        self.write_attribute(node, None, attribute, cause, limits, cancelled)
     }
 
     fn write_attribute(
@@ -113,6 +135,7 @@ impl Draft {
         node: Key,
         position: Option<usize>,
         replacement: Attribute,
+        cause: AttributeCause,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -156,8 +179,20 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.input_attribute_change(
+            node,
+            &changed,
+            if old_value.is_some() {
+                AttributeChange::Set
+            } else {
+                AttributeChange::Added
+            },
+            cause,
+            limits,
+            cancelled,
+        )?;
         self.script_attribute_change(node, &changed, old_value.is_some(), false, cancelled)?;
-        self.button_attribute_change(node, &changed);
+        self.reflected_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
     }
@@ -204,8 +239,16 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.input_attribute_change(
+            node,
+            &changed,
+            AttributeChange::Removed,
+            AttributeCause::Change,
+            limits,
+            cancelled,
+        )?;
         self.script_attribute_change(node, &changed, true, true, cancelled)?;
-        self.button_attribute_change(node, &changed);
+        self.reflected_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
         self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
     }

@@ -272,8 +272,12 @@ impl Dom {
                     HtmlNodeKind::Element(element) => {
                         control.name(element.name())?;
                         DomNodeKind::Element(
-                            DomElement::native_components(element.name().clone(), cancelled)
-                                .map_err(|error| source_error(&visit.source, error))?,
+                            DomElement::native_components(
+                                element.name().clone(),
+                                draft.native_environment(document).map_err(Error::Target)?,
+                                cancelled,
+                            )
+                            .map_err(|error| source_error(&visit.source, error))?,
                         )
                     }
                     HtmlNodeKind::Text(value) => {
@@ -329,7 +333,7 @@ impl Dom {
                     .allocate(kind, document, self.limits)
                     .map_err(|error| source_error(&visit.source, error))?;
                 draft
-                    .initialize_template(key, self.limits, cancelled)
+                    .initialize_native_element(key, self.limits, cancelled)
                     .map_err(|error| source_error(&visit.source, error))?;
                 key
             };
@@ -342,7 +346,13 @@ impl Dom {
                     crate::names::validate_attribute_components(attribute.name(), cancelled)
                         .map_err(|error| source_error(&visit.source, error))?;
                     draft
-                        .append_attribute(key, attribute.clone(), self.limits, cancelled)
+                        .append_attribute(
+                            key,
+                            attribute.clone(),
+                            attributes::AttributeCause::Change,
+                            self.limits,
+                            cancelled,
+                        )
                         .map_err(|error| source_error(&visit.source, error))?;
                 }
             }

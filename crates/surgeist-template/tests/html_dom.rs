@@ -363,7 +363,7 @@ fn real_dom_native_family_admission_is_deferred_to_apply() {
     let old = dom.snapshot();
     let mut batch = DomBatch::new();
     let roots = append_static_html(
-        &validated("<div/><input/>"),
+        &validated("<div/><select/>"),
         &mut batch,
         document.into(),
         parent.into(),
@@ -373,7 +373,7 @@ fn real_dom_native_family_admission_is_deferred_to_apply() {
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::NativeInitializationRequired(HtmlNativeInitializationRequirement::NativeForm(
-            HtmlNativeFormAssociationKind::Input
+            HtmlNativeFormAssociationKind::Select
         ))
     );
     assert_unchanged(&old, &dom, parent, marker);

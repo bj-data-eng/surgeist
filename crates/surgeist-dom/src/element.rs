@@ -37,10 +37,11 @@ pub struct DomElement {
 impl DomElement {
     pub(crate) fn native_components(
         name: QualifiedName,
+        environment: crate::DomNativeDocumentEnvironment,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
         crate::names::validate_element_components(&name, cancelled)?;
-        Self::initialize(name, None, cancelled)
+        Self::initialize(name, None, environment, cancelled)
     }
     pub(crate) fn native(
         local_name: DocumentString,
@@ -71,25 +72,37 @@ impl DomElement {
         Self::initialize(
             QualifiedName::new(namespace, None, local_name),
             None,
+            document.native_environment(),
             cancelled,
         )
     }
     pub(crate) fn native_ns(
         namespace: Namespace,
         qualified: DocumentString,
+        environment: crate::DomNativeDocumentEnvironment,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
         let name = crate::names::element_name(namespace, qualified, cancelled)?;
-        Self::initialize(name, None, cancelled)
+        Self::initialize(name, None, environment, cancelled)
     }
     /// Initialize trusted captured name fields; copied attributes and the
     /// source nonce slot are applied separately in source cloning order.
-    pub(crate) fn clone_initialized(&self, cancelled: &AtomicBool) -> Result<Self, DomError> {
-        Self::initialize(self.name.clone(), self.saved_is.clone(), cancelled)
+    pub(crate) fn clone_initialized(
+        &self,
+        environment: crate::DomNativeDocumentEnvironment,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Self::initialize(
+            self.name.clone(),
+            self.saved_is.clone(),
+            environment,
+            cancelled,
+        )
     }
     fn initialize(
         name: QualifiedName,
         saved_is: Option<DocumentString>,
+        environment: crate::DomNativeDocumentEnvironment,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
         let initialization =
@@ -132,6 +145,11 @@ impl DomElement {
             }
             Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
                 NativeFamily::Fieldset(crate::DomFieldsetState::fresh())
+            }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Input) => {
+                NativeFamily::Input(std::sync::Arc::new(crate::DomInputState::fresh(
+                    environment.input_platform(),
+                )))
             }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
@@ -189,6 +207,18 @@ impl DomElement {
             _ => None,
         }
     }
+    pub fn input_state(&self) -> Option<&crate::DomInputState> {
+        match &self.family {
+            NativeFamily::Input(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn input_state_mut(&mut self) -> Option<&mut crate::DomInputState> {
+        match &mut self.family {
+            NativeFamily::Input(state) => Some(std::sync::Arc::make_mut(state)),
+            _ => None,
+        }
+    }
     pub(crate) fn native_control(
         &self,
     ) -> Option<(
@@ -198,6 +228,10 @@ impl DomElement {
         match &self.family {
             NativeFamily::Fieldset(state) => Some((&state.control, state.kind())),
             NativeFamily::Button(state) => Some((&state.control, state.kind())),
+            NativeFamily::Input(state) => Some((
+                &state.control,
+                surgeist_html::HtmlNativeFormAssociationKind::Input,
+            )),
             _ => None,
         }
     }
@@ -205,6 +239,7 @@ impl DomElement {
         match &mut self.family {
             NativeFamily::Fieldset(state) => Some(&mut state.control),
             NativeFamily::Button(state) => Some(&mut state.control),
+            NativeFamily::Input(state) => Some(&mut std::sync::Arc::make_mut(state).control),
             _ => None,
         }
     }

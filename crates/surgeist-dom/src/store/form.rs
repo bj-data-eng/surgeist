@@ -100,6 +100,11 @@ impl Draft {
             let form = node.form_past_names.is_some();
             if clear_owner {
                 self.node_mut(key).control_owner = None;
+                self.input_radio_normalize(
+                    key,
+                    surgeist_html::HtmlRadioTrigger::FormOwner,
+                    cancel,
+                )?;
             }
             if form {
                 self.remove_form_aliases(key, retired, cancel)?;

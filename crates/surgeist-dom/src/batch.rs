@@ -65,9 +65,24 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
-    SetButtonTarget {
+    SetInputValue {
         node: NodeOperand,
-        key: crate::button::ButtonTarget,
+        value: DocumentString,
+    },
+    SetInputChecked {
+        node: NodeOperand,
+        value: bool,
+    },
+    SetInputIndeterminate {
+        node: NodeOperand,
+        value: bool,
+    },
+    ResetInput {
+        node: NodeOperand,
+    },
+    SetReflectedTarget {
+        node: NodeOperand,
+        key: crate::reflected::ReflectedTarget,
         target: Option<NodeOperand>,
     },
     AssignSlot {
@@ -430,26 +445,55 @@ impl DomBatch {
         node: impl Into<NodeOperand>,
         target: Option<NodeOperand>,
     ) {
-        self.commands.push(Command::SetButtonTarget {
+        self.commands.push(Command::SetReflectedTarget {
             node: node.into(),
-            key: crate::button::ButtonTarget::CommandFor,
+            key: crate::reflected::ReflectedTarget::CommandFor,
             target,
         });
     }
-    /// Sets Button's independent weak popoverTargetElement reference.
+    /// Sets Button's or Input's independent weak popoverTargetElement reference.
     /// Getter scope and command support are separate semantic decisions.
     pub fn set_popover_target_element(
         &mut self,
         node: impl Into<NodeOperand>,
         target: Option<NodeOperand>,
     ) {
-        self.commands.push(Command::SetButtonTarget {
+        self.commands.push(Command::SetReflectedTarget {
             node: node.into(),
-            key: crate::button::ButtonTarget::PopoverTarget,
+            key: crate::reflected::ReflectedTarget::PopoverTarget,
             target,
         });
     }
-    /// Normalizes newlines and replaces a native Fieldset or Button custom error.
+    /// Replaces the native Input value through its actual current/content/file mode.
+    pub fn set_input_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetInputValue {
+            node: node.into(),
+            value: value.into(),
+        });
+    }
+    /// Sets current checkedness and its dirty flag, then normalizes actual radios.
+    pub fn set_input_checked(&mut self, node: impl Into<NodeOperand>, value: bool) {
+        self.commands.push(Command::SetInputChecked {
+            node: node.into(),
+            value,
+        });
+    }
+    pub fn set_input_indeterminate(&mut self, node: impl Into<NodeOperand>, value: bool) {
+        self.commands.push(Command::SetInputIndeterminate {
+            node: node.into(),
+            value,
+        });
+    }
+    /// Per-control source reset. This is not an event-bearing whole Form reset.
+    pub fn reset_input(&mut self, node: impl Into<NodeOperand>) {
+        self.commands
+            .push(Command::ResetInput { node: node.into() });
+    }
+    /// Normalizes newlines and replaces a native control's custom error.
     /// Raw operands are caller-owned; normalized retained units consume the
     /// store's string limit. This does not execute validation or dispatch events.
     pub fn set_custom_validity(

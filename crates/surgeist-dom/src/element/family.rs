@@ -18,6 +18,7 @@ pub(super) enum NativeFamily {
     Form(surgeist_html::HtmlFormNativeState),
     Fieldset(crate::DomFieldsetState),
     Button(crate::DomButtonState),
+    Input(Arc<crate::DomInputState>),
     Slot,
     Script,
     Canvas(Arc<HtmlCanvasNoneState>),
@@ -37,6 +38,7 @@ impl NativeFamily {
         match self {
             Self::Fieldset(state) => Some(state.control.message.len()),
             Self::Button(state) => Some(state.control.message.len()),
+            Self::Input(state) => state.units(),
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
             Self::Form(_)
             | Self::Common

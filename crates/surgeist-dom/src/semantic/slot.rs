@@ -120,7 +120,12 @@ impl DomHtmlCapture {
             &self.capture,
             revision.clone(),
             Vec::new(),
-            Vec::new(),
+            super::control::current_values(
+                &self.source,
+                &self.entries,
+                &mut control,
+                limits.language.code_units(),
+            )?,
             assignments,
             limits.language,
         )

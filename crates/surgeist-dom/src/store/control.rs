@@ -67,7 +67,7 @@ impl Draft {
         self.units = units;
         Ok(())
     }
-    fn control_attribute(
+    pub(super) fn control_attribute(
         &self,
         key: Key,
         name: KnownHtmlAttribute,
@@ -114,7 +114,11 @@ impl Draft {
         }
         Ok(None)
     }
-    fn control_connected(&self, mut key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+    pub(super) fn control_connected(
+        &self,
+        mut key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         loop {
             check_cancel(cancel)?;
             match self.shadow_including_parent(key)? {
@@ -187,11 +191,15 @@ impl Draft {
                     if let Some(former) = former_owner.take() {
                         self.remove_form_aliases(former, key, cancel)?;
                     }
-                    // These two admitted native kinds have no radio-group
-                    // effect. New families must implement their actual effects.
                     match kind {
                         surgeist_html::HtmlNativeFormAssociationKind::Button
                         | surgeist_html::HtmlNativeFormAssociationKind::Fieldset => {}
+                        surgeist_html::HtmlNativeFormAssociationKind::Input => self
+                            .input_radio_normalize(
+                                key,
+                                surgeist_html::HtmlRadioTrigger::FormOwner,
+                                cancel,
+                            )?,
                         _ => unreachable!("actual admitted native control kinds"),
                     }
                     R::Applied
@@ -282,6 +290,13 @@ impl Draft {
                 },
                 cancel,
             )?;
+            if self.control_connected(key, cancel)? {
+                self.input_radio_normalize(
+                    key,
+                    surgeist_html::HtmlRadioTrigger::Connected,
+                    cancel,
+                )?;
+            }
         }
         if self.has_control_id(key, cancel)?
             && matches!(

@@ -154,7 +154,9 @@ impl Draft {
                 // clone cause is not retained-state installation from current null.
                 // Snapshot Rust Clone is deliberately a different operation.
                 // Attribute change steps precede source nonce cloning below.
-                DomNodeKind::Element(element.clone_initialized(cancelled)?)
+                DomNodeKind::Element(
+                    element.clone_initialized(self.native_environment(document)?, cancelled)?,
+                )
             }
             // These immutable value payloads contain exact intrinsic fields
             // and no foreign node/document references. In particular PI clone
@@ -169,11 +171,19 @@ impl Draft {
             DomNodeKind::DocumentType(value) => DomNodeKind::DocumentType(value.clone()),
         };
         let copy = self.allocate(kind, document, limits)?;
-        self.initialize_template(copy, limits, cancelled)?;
+        self.initialize_native_element(copy, limits, cancelled)?;
         if let Some(element) = original.as_element() {
+            let cause = if element
+                .input_state()
+                .is_some_and(|state| state.input_type() == surgeist_html::HtmlInputType::Color)
+            {
+                attributes::AttributeCause::CloneInputColor
+            } else {
+                attributes::AttributeCause::Change
+            };
             for attribute in element.attributes().iter() {
                 check_cancel(cancelled)?;
-                self.append_attribute(copy, attribute.clone(), limits, cancelled)?;
+                self.append_attribute(copy, attribute.clone(), cause, limits, cancelled)?;
             }
             if let Some(nonce) = element.nonce() {
                 self.set_nonce(copy, nonce.clone(), limits, cancelled)?;
@@ -186,6 +196,9 @@ impl Draft {
                 .expect("actual fresh HTML Script")
                 .flags
                 .clone_already_started_from(original.flags);
+        }
+        if let Some(original) = original.as_input() {
+            self.clone_input_overlay(copy, original.state(), limits, cancelled)?;
         }
         Ok(copy)
     }

@@ -146,6 +146,10 @@ impl<'a> DomNode<'a> {
             .and_then(DomElement::button_state)
             .map(|_| crate::DomButton { node: self })
     }
+    pub fn as_input(self) -> Option<crate::DomInput<'a>> {
+        self.as_element()?.input_state()?;
+        Some(crate::DomInput { node: self })
+    }
 
     /// Privileged canonical ownership, including closed roots. This does not
     /// implement the source's open-only Element.shadowRoot presentation.

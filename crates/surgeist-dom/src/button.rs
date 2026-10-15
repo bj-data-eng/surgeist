@@ -1,6 +1,7 @@
 //! Actual native Button payload and its canonical weak-target view.
+use crate::reflected::ReflectedTarget;
 use crate::{DocumentString, DomNode, NodeId};
-use surgeist_html::{HtmlNativeFormAssociationKind, KnownHtmlAttribute};
+use surgeist_html::HtmlNativeFormAssociationKind;
 
 /// Stored native Button parser flag and custom error, independently of markup.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,54 +48,18 @@ impl<'a> DomButton<'a> {
     pub fn explicit_command_for(self) -> Option<NodeId> {
         self.node
             .node
-            .button_targets
+            .reflected_targets
             .expect("checked Button")
-            .command_for
+            .get(ReflectedTarget::CommandFor)
+            .expect("Button command slot")
     }
     /// Independent raw weak slot, not the common popover trigger state.
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node
             .node
-            .button_targets
+            .reflected_targets
             .expect("checked Button")
-            .popover_target
-    }
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ButtonTargets<K> {
-    pub(crate) command_for: Option<K>,
-    pub(crate) popover_target: Option<K>,
-}
-impl<K> ButtonTargets<K> {
-    pub(crate) fn fresh() -> Self {
-        Self {
-            command_for: None,
-            popover_target: None,
-        }
-    }
-    pub(crate) fn map<T>(self, mut f: impl FnMut(K) -> T) -> ButtonTargets<T> {
-        ButtonTargets {
-            command_for: self.command_for.map(&mut f),
-            popover_target: self.popover_target.map(f),
-        }
-    }
-    pub(crate) fn slot_mut(&mut self, key: ButtonTarget) -> &mut Option<K> {
-        match key {
-            ButtonTarget::CommandFor => &mut self.command_for,
-            ButtonTarget::PopoverTarget => &mut self.popover_target,
-        }
-    }
-}
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum ButtonTarget {
-    CommandFor,
-    PopoverTarget,
-}
-impl ButtonTarget {
-    pub(crate) fn attribute(self) -> KnownHtmlAttribute {
-        match self {
-            Self::CommandFor => KnownHtmlAttribute::Commandfor,
-            Self::PopoverTarget => KnownHtmlAttribute::Popovertarget,
-        }
+            .get(ReflectedTarget::PopoverTarget)
+            .expect("Button popover slot")
     }
 }

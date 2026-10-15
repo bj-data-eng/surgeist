@@ -26,7 +26,10 @@ impl Draft {
                 let DomNodeKind::Document(source) = &self.node(document)?.kind else {
                     unreachable!("Document role requires Document")
                 };
-                let metadata = DomDocumentMetadata::template_owner(source.class());
+                let metadata = DomDocumentMetadata::template_owner(
+                    source.class(),
+                    source.native_environment(),
+                );
                 let key = Key::Created(self.created.len());
                 let key = self.allocate(DomNodeKind::Document(metadata), key, limits)?;
                 self.node_mut(key).template_document = Some(TemplateDocument::InertTemplate);
@@ -37,7 +40,7 @@ impl Draft {
             }
         }
     }
-    pub(super) fn initialize_template(
+    pub(super) fn initialize_template_contents(
         &mut self,
         node: Key,
         limits: DomLimits,

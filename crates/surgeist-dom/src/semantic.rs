@@ -32,10 +32,13 @@ use crate::{
 /// `work` independently bounds adapter work and shared control-fact validation
 /// including its context join. Each closure/mapping/staging vector and the reusable child scratch have at most
 /// `subjects` entries. Nullable reference facts have at most twice `subjects`
-/// entries (two per Button), with their validation independently bounded by
+/// entries (two per Button, one per Input), with their validation independently bounded by
 /// `work`. Actual HTML/null-definition classifications also use subjects, with
 /// their context qualification/duplicate comparisons charged to adapter work.
 /// Producer allocations obey the supplied HtmlCaptureLimits.
+/// Control facts admit up to twice subjects (association plus actual Input flags).
+/// Applicable current values use the shared HTML type predicate and the supplied
+/// capture UTF-16 ceiling; Slot supplementation uses its explicit language limits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
@@ -402,14 +405,14 @@ impl DomSnapshot {
             if let Some(root) = node.hosted_shadow_root() {
                 control.include(&mut planned, root, true)?;
             }
-            if let Some(button) = node.as_button() {
-                for target in [
-                    button.explicit_command_for(),
-                    button.explicit_popover_target(),
-                ]
-                .into_iter()
-                .flatten()
-                {
+            if let Some(targets) = node.node.reflected_targets {
+                for key in [
+                    crate::reflected::ReflectedTarget::CommandFor,
+                    crate::reflected::ReflectedTarget::PopoverTarget,
+                ] {
+                    let Some(Some(target)) = targets.get(key) else {
+                        continue;
+                    };
                     control.charge(1)?;
                     control.include(&mut planned, target, false)?;
                 }
@@ -668,11 +671,26 @@ impl DomSnapshot {
                 subject: capture.subject_id(&entry.subject)?,
             });
         }
+        let language = surgeist_html_semantics::HtmlLanguageDirectionFacts::new(
+            &capture,
+            revision.clone(),
+            Vec::new(),
+            control::current_values(self, &entries, &mut control, capture_limits.utf16_units())?,
+            Vec::new(),
+            surgeist_html_semantics::HtmlLanguageDirectionLimits::new(
+                control.limits.subjects,
+                0,
+                capture_limits.utf16_units(),
+                control.limits.work,
+            ),
+        )
+        .map_err(DomHtmlCaptureError::Language)?;
         let context = HtmlSemanticContext::new(
             &capture,
             revision,
             control::with_native_state(
-                control::native_input(self, &entries, &mut control)?,
+                control::native_input(self, &entries, &mut control)?
+                    .with_language_direction(language),
                 self,
                 &capture,
                 &entries,

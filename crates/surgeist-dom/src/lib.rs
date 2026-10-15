@@ -23,6 +23,9 @@
 //! semantic capture and Slot supplementation retain actual control facts.
 //! Native Button shares those controls and retains independent weak reflected
 //! targets, source-ordered setters, scoped semantic getters and retirement cleanup.
+//! Native Input retains actual current/dirty/check/selection/file/Image state,
+//! all shared type sanitizers, radio groups and one weak popover slot. Explicit
+//! native platform facts and finite numeric/CSS processing remain independent.
 //! Native Template owns real separate contents and cached inert Documents;
 //! clone/adopt/retirement preserve source ownership and document distinctions.
 //! Native HTML Script retains complete supported state and real document history.
@@ -103,9 +106,11 @@ mod fieldset;
 mod form;
 mod host;
 mod identity;
+mod input;
 mod installation;
 mod names;
 mod node_values;
+mod reflected;
 mod script;
 mod semantic;
 mod shadow;
@@ -116,6 +121,7 @@ mod template;
 mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
+pub use document::DomNativeInputPlatform;
 pub use document::{
     DomDocumentClass, DomDocumentMetadata, DomNativeDocumentEnvironment, DomOpaqueOrigin,
     DomRegistryBinding,
@@ -127,6 +133,7 @@ pub use host::{
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
+pub use input::{DomInput, DomInputState};
 pub use installation::{
     DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,
     DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallation,

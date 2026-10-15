@@ -1,5 +1,6 @@
 //! Rebuild actual control facts from the retained canonical snapshot/map.
 use super::*;
+use crate::DocumentString;
 use surgeist_html_semantics::{
     HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
     HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
@@ -48,6 +49,7 @@ pub(super) fn with_native_state(
     control: &mut Control<'_>,
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
     let mut associations = Vec::new();
+    let mut inputs = Vec::new();
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
@@ -75,6 +77,17 @@ pub(super) fn with_native_state(
             entry.subject.clone(),
             HtmlFormAssociationState::EstablishedCurrent(owner),
         ));
+        if let Some(input) = node.as_input() {
+            let flags = input.state().flags();
+            control.reserve(&mut inputs, 1)?;
+            inputs.push(surgeist_html_semantics::HtmlInputControlState::new(
+                entry.subject.clone(),
+                Some(flags.checkedness()),
+                Some(flags.dirty_checkedness()),
+                Some(flags.dirty_value()),
+                Some(flags.indeterminate()),
+            ));
+        }
     }
     // Adapter loops use their own work budget. The caller's same finite work
     // bound independently caps the producer's validation AND remaining context
@@ -84,10 +97,17 @@ pub(super) fn with_native_state(
         capture,
         capture.host_facts_revision().clone(),
         associations,
+        inputs,
         Vec::new(),
         Vec::new(),
-        Vec::new(),
-        HtmlControlFactsLimits::new(control.limits.subjects, control.limits.work),
+        HtmlControlFactsLimits::new(
+            control
+                .limits
+                .subjects
+                .checked_mul(2)
+                .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
+            control.limits.work,
+        ),
     )
     .map_err(DomHtmlCaptureError::Controls)?;
     control.charge(1)?;
@@ -100,17 +120,20 @@ pub(super) fn with_native_state(
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
-        if let Some(button) = node.as_button() {
-            for (key, target) in [
+        if let Some(targets) = node.node.reflected_targets {
+            for (slot, key) in [
                 (
+                    crate::reflected::ReflectedTarget::CommandFor,
                     HtmlElementReferenceKey::CommandFor,
-                    button.explicit_command_for(),
                 ),
                 (
+                    crate::reflected::ReflectedTarget::PopoverTarget,
                     HtmlElementReferenceKey::PopoverTarget,
-                    button.explicit_popover_target(),
                 ),
             ] {
+                let Some(target) = targets.get(slot) else {
+                    continue;
+                };
                 control.charge(1)?;
                 let state = match target {
                     None => HtmlExplicitElementReference::Null,
@@ -148,4 +171,57 @@ pub(super) fn with_native_state(
     Ok(input
         .with_controls(facts)
         .with_element_references(references))
+}
+
+/// Real mode-correct Input values; no duplicated HTML applicability table.
+pub(super) fn current_values(
+    source: &DomSnapshot,
+    entries: &[Entry],
+    control: &mut Control<'_>,
+    unit_limit: usize,
+) -> Result<Vec<surgeist_html_semantics::HtmlControlCurrentValue>, DomHtmlCaptureError> {
+    let mut values = Vec::new();
+    let mut units = 0usize;
+    for entry in entries {
+        control.charge(1)?;
+        let Some(input) = source.node(entry.node)?.as_input() else {
+            continue;
+        };
+        if !input
+            .state()
+            .input_type()
+            .uses_current_value_for_directionality()
+        {
+            continue;
+        }
+        let raw = input.value();
+        units = units
+            .checked_add(raw.len())
+            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        if units > unit_limit {
+            return Err(DomHtmlCaptureError::Language(
+                surgeist_html_semantics::HtmlLanguageDirectionError::CodeUnits {
+                    limit: unit_limit,
+                    required: units,
+                },
+            ));
+        }
+        raw.len()
+            .checked_mul(std::mem::size_of::<u16>())
+            .filter(|n| *n <= isize::MAX as usize)
+            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        control.reserve(&mut values, 1)?;
+        let mut copy = Vec::new();
+        copy.try_reserve_exact(raw.len())
+            .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
+        for &unit in raw {
+            control.charge(1)?;
+            copy.push(unit);
+        }
+        values.push(surgeist_html_semantics::HtmlControlCurrentValue::new(
+            entry.subject.clone(),
+            Some(DocumentString::from_utf16(copy)),
+        ));
+    }
+    Ok(values)
 }

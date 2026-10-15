@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template/HTML-Script families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Template/HTML-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -69,6 +69,30 @@ or reset processed/imported history without an actual supported cause/state.
 Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
+Input consumes the complete shared type/value/flags/selection/sanitizer rules,
+not a Text-only profile. Keep current/default and dirty/check slots distinct,
+apply each type/reset effect against updated storage and normalize actual radios
+at every specified trigger, including intermediate null owner writes. Compare
+exact nonempty names within the actual ordinary root and same/null owner; do not
+repair groups at batch end. Share reflected storage with Button using exactly
+one Input popover slot. Clone attributes through source hooks and apply only the
+real current/flag overlay; defer Color default sanitation for the actual Color
+clone cause. Adoption preserves established intrinsic state and weak slots.
+Native platform construction explicitly selects independent empty-selection and
+none-direction support; the named headless profile supports both. Template inert
+Documents inherit the establishing environment. Image acquisition is explicitly
+disabled, not inferred from no BC. Preserve exact Image history/coordinates and
+real File-empty proof without fake resources or fetch/error/event outcomes.
+Reached numeric/CSS services use one private-batch ledger: usize peak logical
+scratch bytes and u64 cumulative work, both caller-selected and zero by default.
+Count real heterogeneous banks/digits/output, actual capacities and old/new
+overlap; preserve checked fallible growth, first stop and real owner cleanup.
+Retained current/message/Image strings independently use canonical unit limits.
+Capture actual association and Input flags (up to twice subject count), mode-
+correct applicable current values, and the same facts with Slot supplementation.
+Use HTML's shared directionality predicate rather than copying its type set.
+Whole Form reset events, pickers/resource installation and general validation UI
+remain separate boundaries; intrinsic native reset does not invent those effects.
 Common closed focus/internals/click/reaction/popover values remain current state.
 Native HTML Script stores canonical HTML flags/type/result/ready values and real
 staged document refs, mapped only through final canonical identities. Its actual
@@ -129,7 +153,8 @@ never follows reused generations. Detach/adopt/disconnect do not cancel signals.
 Template owns a real contents Fragment and documents retain actual role/cache
 relations. Consume shared fresh-null insertion evidence only for native creation;
 keep parser/retained installation a different cause. Cache a fresh default inert
-Document (31 metadata units), with only HTML class marking inherited, not origin,
+Document (31 metadata units), inheriting HTML class marking and the establishing
+native environment, not origin,
 content type or a skeleton. Sibling/nested owners reuse the selected actual cache.
 Host-including cycles cross Template hosts; shadow connectedness/source insertion
 and removal walks do not. Template cloning steps precede parent append/ordinary
@@ -192,7 +217,7 @@ cargo clippy --offline --locked -j 1 -p surgeist-dom --all-targets -- -F unsafe-
 cargo fmt -p surgeist-dom -- --check
 ```
 
-Fieldset and Button use one canonical NodeId/Key owner relation, native unset
+Fieldset, Button and Input use one canonical NodeId/Key owner relation, native unset
 parser flag and exact custom-validity message. Checked per-family node views
 read owners; intrinsic scalar payloads do not duplicate identity. Consume the shared reset cursor using actual observations
 and precise attribute/tree/ID triggers; do not synthesize a Form, a permanently

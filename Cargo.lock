@@ -3830,6 +3830,7 @@ dependencies = [
 name = "surgeist-dom"
 version = "0.1.0"
 dependencies = [
+ "surgeist-color",
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-html",

@@ -68,9 +68,51 @@ pub struct DomDocumentMetadata {
 /// browsing context. This proof is independent of the document's XML/HTML class.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomNativeDocumentEnvironment {
-    closed: (),
+    input: DomNativeInputPlatform,
+}
+
+/// Established native selection capabilities, independent of browsing context.
+/// Construction fixes both facts for this native environment's lifetime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomNativeInputPlatform {
+    empty_selection: surgeist_html::HtmlInputEmptySelectionSupport,
+    none_direction: surgeist_html::HtmlInputNoneDirectionSupport,
+}
+impl DomNativeInputPlatform {
+    pub const fn new(
+        empty_selection: surgeist_html::HtmlInputEmptySelectionSupport,
+        none_direction: surgeist_html::HtmlInputNoneDirectionSupport,
+    ) -> Self {
+        Self {
+            empty_selection,
+            none_direction,
+        }
+    }
+    /// Selected headless profile; neither capability is inferred from no BC.
+    pub const fn headless() -> Self {
+        Self::new(
+            surgeist_html::HtmlInputEmptySelectionSupport::Supported,
+            surgeist_html::HtmlInputNoneDirectionSupport::Supported,
+        )
+    }
+    pub const fn empty_selection(self) -> surgeist_html::HtmlInputEmptySelectionSupport {
+        self.empty_selection
+    }
+    pub const fn none_direction(self) -> surgeist_html::HtmlInputNoneDirectionSupport {
+        self.none_direction
+    }
 }
 impl DomNativeDocumentEnvironment {
+    pub(crate) const fn new(input: DomNativeInputPlatform) -> Self {
+        Self { input }
+    }
+    pub const fn input_platform(self) -> DomNativeInputPlatform {
+        self.input
+    }
+    /// Selected native creation policy, not an inference from missing resources.
+    pub const fn input_images(self) -> surgeist_html::HtmlInputImagesDisabled {
+        surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
+    }
     pub const fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
         surgeist_html::HtmlBrowsingContextPresence::Absent
     }
@@ -83,27 +125,35 @@ impl DomNativeDocumentEnvironment {
 }
 
 impl DomDocumentMetadata {
-    pub(crate) fn native() -> Self {
+    pub(crate) fn native(environment: DomNativeDocumentEnvironment) -> Self {
         Self::native_defaults(
             DomDocumentClass::Xml,
             CONTENT_TYPE,
             DomOpaqueOrigin(Arc::new(OpaqueOriginIdentity)),
+            environment,
         )
     }
-    pub(crate) fn template_owner(class: DomDocumentClass) -> Self {
-        let mut metadata = Self::native();
+    pub(crate) fn template_owner(
+        class: DomDocumentClass,
+        environment: DomNativeDocumentEnvironment,
+    ) -> Self {
+        let mut metadata = Self::native(environment);
         metadata.class = class;
         metadata
     }
     /// Used only by the complete createHTMLDocument transaction, whose source
     /// Document supplies this identity. No caller can set arbitrary metadata.
-    pub(crate) fn native_html(origin: DomOpaqueOrigin) -> Self {
-        Self::native_defaults(DomDocumentClass::Html, "text/html", origin)
+    pub(crate) fn native_html(
+        origin: DomOpaqueOrigin,
+        environment: DomNativeDocumentEnvironment,
+    ) -> Self {
+        Self::native_defaults(DomDocumentClass::Html, "text/html", origin, environment)
     }
     fn native_defaults(
         class: DomDocumentClass,
         content_type: &str,
         origin: DomOpaqueOrigin,
+        environment: DomNativeDocumentEnvironment,
     ) -> Self {
         Self {
             class,
@@ -114,7 +164,7 @@ impl DomDocumentMetadata {
             mode: HtmlDocumentMode::NoQuirks,
             allow_declarative_shadow_roots: false,
             registry: DomRegistryBinding::Null,
-            environment: DomNativeDocumentEnvironment { closed: () },
+            environment,
         }
     }
     pub fn class(&self) -> DomDocumentClass {

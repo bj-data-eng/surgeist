@@ -2,6 +2,15 @@
 use super::*;
 
 impl Draft {
+    pub(super) fn native_environment(
+        &self,
+        document: Key,
+    ) -> Result<crate::DomNativeDocumentEnvironment, DomError> {
+        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(metadata.native_environment())
+    }
     pub(super) fn create_html_document(
         &mut self,
         associated_document: Key,
@@ -13,9 +22,11 @@ impl Draft {
         let DomNodeKind::Document(source) = &self.node(associated_document)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        // Only origin is inherited. Native defaults establish all other facts;
-        // neither a browsing context nor source metadata is implicitly copied.
-        let metadata = DomDocumentMetadata::native_html(source.origin().clone());
+        // Origin follows the source operation; the selected immutable native
+        // environment also remains established. Other metadata uses defaults;
+        // no browsing context or host/resource capability is implicitly copied.
+        let metadata =
+            DomDocumentMetadata::native_html(source.origin().clone(), source.native_environment());
         let document = Key::Created(self.created.len());
         let document = self.allocate(DomNodeKind::Document(metadata), document, limits)?;
         let doctype = self.allocate(
