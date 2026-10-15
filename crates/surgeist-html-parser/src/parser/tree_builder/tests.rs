@@ -8060,11 +8060,13 @@ fn listed_control_owner_observations(source: &str) -> Vec<(Vec<u16>, Option<Vec<
                     .any(|candidate| name.iter().copied().eq(candidate.encode_utf16()))
                 {
                     let state = frozen.form_association_state(&mut c, &id).unwrap();
-                    use crate::construction::FormAssociationKind;
+                    use crate::HtmlNativeFormAssociationKind;
                     let expected = match name {
-                        [98, 117, 116, 116, 111, 110] => FormAssociationKind::Button,
-                        [102, 105, 101, 108, 100, 115, 101, 116] => FormAssociationKind::Fieldset,
-                        [111, 98, 106, 101, 99, 116] => FormAssociationKind::Object,
+                        [98, 117, 116, 116, 111, 110] => HtmlNativeFormAssociationKind::Button,
+                        [102, 105, 101, 108, 100, 115, 101, 116] => {
+                            HtmlNativeFormAssociationKind::Fieldset
+                        }
+                        [111, 98, 106, 101, 99, 116] => HtmlNativeFormAssociationKind::Object,
                         _ => unreachable!(),
                     };
                     assert_eq!(state.kind, expected);
@@ -9383,10 +9385,7 @@ fn textarea_form_association_is_actual_known_state_with_or_without_explicit_form
         let form = doc.node(&body).unwrap().children().next().unwrap();
         let textarea = doc.node(&form).unwrap().children().next().unwrap();
         let state = frozen.form_association_state(&mut c, &textarea).unwrap();
-        assert_eq!(
-            state.kind,
-            crate::construction::FormAssociationKind::Textarea
-        );
+        assert_eq!(state.kind, crate::HtmlNativeFormAssociationKind::Textarea);
         let owner = frozen.form_association_owner(&mut c, &textarea).unwrap();
         assert_eq!(owner.as_ref(), associated.then_some(&form));
         assert_eq!(
@@ -9872,7 +9871,8 @@ struct OutputNativeObservation {
     owners: Vec<bool>,
 }
 fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
-    use crate::construction::{FormAssociationKind, OutputDefaultValueOverride};
+    use crate::HtmlNativeFormAssociationKind;
+    use crate::construction::OutputDefaultValueOverride;
     let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
@@ -9905,7 +9905,7 @@ fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
         );
         assert_eq!(
             frozen.form_association_state(&mut c, id).unwrap().kind,
-            FormAssociationKind::Output
+            HtmlNativeFormAssociationKind::Output
         );
         owners.push(frozen.form_association_owner(&mut c, id).unwrap().is_some());
         let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
@@ -10249,7 +10249,7 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
         assert_eq!(owner, associated.then(|| form.clone()));
         assert_eq!(
             frozen.form_association_state(&mut c, &input).unwrap().kind,
-            crate::construction::FormAssociationKind::Input
+            crate::HtmlNativeFormAssociationKind::Input
         );
         let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
         frozen
@@ -17220,7 +17220,7 @@ fn ordinary_file_image_input_observes_completed_state(
     assert!(owner_is_form && original_source);
     assert_eq!(
         association_kind,
-        crate::construction::FormAssociationKind::Input
+        crate::HtmlNativeFormAssociationKind::Input
     );
     assert_eq!(actual_type, expected_type);
     assert_eq!(flags, (false, false, expected_checked, false, false));

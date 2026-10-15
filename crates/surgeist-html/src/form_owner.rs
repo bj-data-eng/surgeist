@@ -1,5 +1,57 @@
 //! HTML877d #reset-the-form-owner decisions, without identities or a live tree.
 
+/// A source-qualified association-reset cause for one actual associated element.
+///
+/// Adapters establish native or custom association, event applicability and the
+/// affected subjects. Attribute causes mean the applicable no-namespace `form`
+/// attribute was set/changed/removed. ID causes mean the source-required ID
+/// change or ID-bearing insertion/removal/moving event has actually occurred.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlFormOwnerResetTrigger {
+    Insertion { parser_inserted: bool },
+    RemovingOrMoving { has_owner: bool },
+    FormAttributeChanged { listed: bool },
+    IdEvent { listed: bool },
+}
+
+/// The remaining local condition, without performing its qualified observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlFormOwnerResetDecision {
+    Skip,
+    Reset,
+    /// Compare the actual nonnull owner's ordinary tree with the subject's.
+    ResetIfOwnerInDifferentTree,
+    /// Read actual applicable form-attribute presence, including an empty value.
+    ResetIfFormAttributePresent,
+}
+
+/// Classifies a reset cause without probing identity, topology or attributes.
+///
+/// Skip requires no later observation: absent owners do not need an owner-tree
+/// comparison, and nonlisted ID recipients do not need an attribute read. The
+/// adapter retains source hook ordering, affected-subject traversal, ID matching,
+/// actual ordinary-root comparison and effects through the reset cursor below.
+pub const fn form_owner_reset_trigger(
+    trigger: HtmlFormOwnerResetTrigger,
+) -> HtmlFormOwnerResetDecision {
+    use HtmlFormOwnerResetDecision as D;
+    use HtmlFormOwnerResetTrigger as T;
+    match trigger {
+        T::Insertion {
+            parser_inserted: true,
+        }
+        | T::RemovingOrMoving { has_owner: false }
+        | T::FormAttributeChanged { listed: false }
+        | T::IdEvent { listed: false } => D::Skip,
+        T::Insertion {
+            parser_inserted: false,
+        }
+        | T::FormAttributeChanged { listed: true } => D::Reset,
+        T::RemovingOrMoving { has_owner: true } => D::ResetIfOwnerInDifferentTree,
+        T::IdEvent { listed: true } => D::ResetIfFormAttributePresent,
+    }
+}
+
 /// The source lookup after the previous owner has been cleared.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerLookup {

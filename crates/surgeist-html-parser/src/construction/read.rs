@@ -979,7 +979,7 @@ impl<'a> report::MetadataRef<'a> {
     pub fn selectedcontent_disabled(&self) -> Option<bool> {
         self.selectedcontent().map(|s| s.disabled)
     }
-    pub fn form_kind(&self) -> Option<FormAssociationKind> {
+    pub fn form_kind(&self) -> Option<HtmlNativeFormAssociationKind> {
         self.form().map(|(s, _)| s.kind)
     }
     pub fn form_owner(&self) -> Option<Option<HtmlNode<'a>>> {

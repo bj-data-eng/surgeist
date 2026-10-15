@@ -13,7 +13,7 @@ mod source;
 pub use request::*;
 pub use settings::*;
 pub use source::*;
-pub use surgeist_html::HtmlScriptKind;
+pub use surgeist_html::{HtmlNativeFormAssociationKind, HtmlScriptKind};
 
 pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
 pub use construction::{
@@ -84,7 +84,7 @@ pub use construction::report::{
     MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
 };
 pub use construction::{
-    FormAssociationEvidence as HtmlParseFormEvidence, FormAssociationKind as HtmlParseFormKind,
+    FormAssociationEvidence as HtmlParseFormEvidence,
     OutputDefaultValueOverride as HtmlParseOutputOverride,
     ScriptReadySteps as HtmlParseScriptReadySteps, ScriptResult as HtmlParseScriptResult,
 };

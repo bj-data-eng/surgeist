@@ -35,6 +35,9 @@ use std::sync::Arc;
 use std::{mem, sync::Weak};
 use surgeist_html::bounded;
 use surgeist_html::bounded::HtmlScriptPreparationResult as DisabledScriptPreparation;
+use surgeist_html::bounded::{
+    HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
+};
 use surgeist_html::*;
 
 mod attribute_writer;
@@ -498,26 +501,9 @@ pub(crate) struct InputState {
     pub(crate) email_value_count: Option<usize>,
     image: input_image::ImageState,
 }
-/// Actual parser-created association, distinct from structural owners.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FormAssociationKind {
-    Image,
-    Button,
-    Fieldset,
-    Object,
-    Textarea,
-    Output,
-    Input,
-    Select,
-}
-impl FormAssociationKind {
-    fn listed(self) -> bool {
-        self != Self::Image
-    }
-}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FormAssociationState {
-    pub(crate) kind: FormAssociationKind,
+    pub(crate) kind: HtmlNativeFormAssociationKind,
     owner: Option<usize>,
     pub(crate) parser_inserted: bool,
     pub(crate) evidence: FormAssociationEvidence,
@@ -1952,7 +1938,12 @@ impl SessionStorage {
             let state = find_form_association_state(&self.payloads, control, node)?
                 .ok_or(SessionError::FormAssociationMetadataUnavailable)?
                 .1;
-            self.reset_form_association(control, association, node, state, None)?;
+            if form_owner_reset_trigger(HtmlFormOwnerResetTrigger::FormAttributeChanged {
+                listed: state.kind.listed(),
+            }) == HtmlFormOwnerResetDecision::Reset
+            {
+                self.reset_form_association(control, association, node, state, None)?;
+            }
         }
         Ok(())
     }
@@ -4143,7 +4134,7 @@ impl SessionStorage {
                     Reply::Applied
                 }
                 Action::ApplyOwnerChangeEffects => {
-                    if state.kind == FormAssociationKind::Input {
+                    if state.kind == HtmlNativeFormAssociationKind::Input {
                         self.normalize_radio(control, node, detached)?;
                     }
                     Reply::Applied
@@ -4320,16 +4311,30 @@ impl SessionStorage {
                     {
                         match effects.stage {
                             FormEffectStage::Removal => {
-                                if let Some(owner) = state.owner
+                                if form_owner_reset_trigger(
+                                    HtmlFormOwnerResetTrigger::RemovingOrMoving {
+                                        has_owner: state.owner.is_some(),
+                                    },
+                                ) == HtmlFormOwnerResetDecision::ResetIfOwnerInDifferentTree
                                     && self.ordinary_root(control, node, detached)?
-                                        != self.ordinary_root(control, owner, detached)?
+                                        != self.ordinary_root(
+                                            control,
+                                            state.owner.expect("trigger requires actual owner"),
+                                            detached,
+                                        )?
                                 {
                                     self.reset_form_association(
                                         control, slot, node, state, detached,
                                     )?;
                                 }
                             }
-                            FormEffectStage::Insertion if !state.parser_inserted => {
+                            FormEffectStage::Insertion
+                                if form_owner_reset_trigger(
+                                    HtmlFormOwnerResetTrigger::Insertion {
+                                        parser_inserted: state.parser_inserted,
+                                    },
+                                ) == HtmlFormOwnerResetDecision::Reset =>
+                            {
                                 self.reset_form_association(control, slot, node, state, None)?;
                             }
                             FormEffectStage::Insertion | FormEffectStage::IdChange => {}
@@ -4410,7 +4415,9 @@ impl SessionStorage {
                             // controls; connectivity is tested by reset.
                             if self.node_document_ref(control, candidate)?
                                 == self.node_document_ref(control, node)?
-                                && state.kind.listed()
+                                && form_owner_reset_trigger(HtmlFormOwnerResetTrigger::IdEvent {
+                                    listed: state.kind.listed(),
+                                }) == HtmlFormOwnerResetDecision::ResetIfFormAttributePresent
                                 && self.form_attribute(control, candidate, "form")?.is_some()
                                 && match tree {
                                     Some(tree) => {
@@ -5580,21 +5587,18 @@ impl ParserArenaSession {
                 }
             }
         }
-        let mut kind = None;
-        for (local, candidate) in [
-            ("img", FormAssociationKind::Image),
-            ("button", FormAssociationKind::Button),
-            ("fieldset", FormAssociationKind::Fieldset),
-            ("object", FormAssociationKind::Object),
-            ("textarea", FormAssociationKind::Textarea),
-            ("output", FormAssociationKind::Output),
-        ] {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if exact_ascii(control, Some(tag.name.value.text()), local)? {
-                kind = Some(candidate);
-                break;
+        let mut kind = bounded::native_form_association_with(|candidate| {
+            // These two metadata families are admitted only below, after the
+            // actual profile/capability/origin checks. Avoid inapplicable reads.
+            if matches!(
+                candidate,
+                KnownHtmlElement::Input | KnownHtmlElement::Select
+            ) {
+                return Ok(false);
             }
-        }
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            exact_ascii(control, Some(tag.name.value.text()), candidate.local_name())
+        })?;
         let token_source = match profile {
             CreationProfile::Ordinary => None,
             CreationProfile::Details(capability, source)
@@ -5634,7 +5638,7 @@ impl ParserArenaSession {
         if matches!(profile, CreationProfile::Select(..))
             && exact_ascii(control, Some(tag.name.value.text()), "select")?
         {
-            kind = Some(FormAssociationKind::Select);
+            kind = Some(HtmlNativeFormAssociationKind::Select);
         }
         if !matches!(profile, CreationProfile::Ordinary) {
             storage.payloads.check_aliases(
@@ -5653,11 +5657,11 @@ impl ParserArenaSession {
             check_formatting_tag(control, tag, source)?;
             if matches!(profile, CreationProfile::Input(..)) {
                 validate_initial_input_origins(control, tag)?;
-                kind = Some(FormAssociationKind::Input);
+                kind = Some(HtmlNativeFormAssociationKind::Input);
             }
         }
         let mut explicit_form = false;
-        if kind.is_some_and(FormAssociationKind::listed) {
+        if kind.is_some_and(HtmlNativeFormAssociationKind::listed) {
             for attribute in tag.attributes.as_slice() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 if exact_ascii(control, Some(attribute.name.value.text()), "form")? {
@@ -5685,7 +5689,7 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let value_source = if kind == Some(FormAssociationKind::Input) {
+        let value_source = if kind == Some(HtmlNativeFormAssociationKind::Input) {
             let mut selected = None;
             for attribute in tag.attributes.as_slice() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
@@ -5699,7 +5703,7 @@ impl ParserArenaSession {
             None
         };
         let input_sources = if let Some(token) =
-            token_source.filter(|_| kind == Some(FormAssociationKind::Input))
+            token_source.filter(|_| kind == Some(HtmlNativeFormAssociationKind::Input))
         {
             control.charge(
                 WorkCategory::ProviderCall,
@@ -5767,7 +5771,7 @@ impl ParserArenaSession {
         };
         // Reserve actual independent empty raw backing and initialized metadata
         // BEFORE lexical ownership transfer. A stopped unbound slot is cleanup-only.
-        let textarea_slot = if kind == Some(FormAssociationKind::Textarea) {
+        let textarea_slot = if kind == Some(HtmlNativeFormAssociationKind::Textarea) {
             let empty = literal_string(control, b"")?;
             let raw = storage.register_raw(control, empty)?;
             storage.prepare_payload_slot(control)?;
@@ -5783,7 +5787,7 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let output_slot = if kind == Some(FormAssociationKind::Output) {
+        let output_slot = if kind == Some(HtmlNativeFormAssociationKind::Output) {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
             storage.payloads.values.push(RetainedPayload::Output {
@@ -5796,7 +5800,7 @@ impl ParserArenaSession {
         } else {
             None
         };
-        let input_slot = if kind == Some(FormAssociationKind::Input) {
+        let input_slot = if kind == Some(HtmlNativeFormAssociationKind::Input) {
             let empty = literal_string(control, b"")?;
             let raw = storage.register_raw(control, empty)?;
             storage.prepare_payload_slot(control)?;
@@ -5843,7 +5847,7 @@ impl ParserArenaSession {
         let reset_before_association = textarea_slot.is_some()
             || output_slot.is_some()
             || input_slot.is_some()
-            || kind == Some(FormAssociationKind::Select);
+            || kind == Some(HtmlNativeFormAssociationKind::Select);
         let slot = if let Some(kind) = kind {
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
@@ -6125,7 +6129,7 @@ impl ParserArenaSession {
                 }
                 other => other,
             })?;
-        if state.kind != FormAssociationKind::Image {
+        if state.kind != HtmlNativeFormAssociationKind::Image {
             return Err(SessionError::ImageFormMetadataUnavailable);
         }
         Ok(state)
@@ -7390,7 +7394,7 @@ impl FrozenArena {
                 }
                 other => other,
             })?;
-        if state.kind != FormAssociationKind::Image {
+        if state.kind != HtmlNativeFormAssociationKind::Image {
             return Err(SessionError::ImageFormMetadataUnavailable);
         }
         Ok(state)
@@ -9841,7 +9845,7 @@ mod tests {
         );
         assert!(storage.payloads.values.iter().any(|p| matches!(p,
             RetainedPayload::FormAssociation{node:None,state}
-            if state.kind==FormAssociationKind::Output && state.owner.is_none()
+            if state.kind==HtmlNativeFormAssociationKind::Output && state.owner.is_none()
                && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
         )));
         assert!(matches!(
@@ -9996,7 +10000,7 @@ mod tests {
         assert!(!state.flags.dirty_value() && !state.flags.user_validity());
         assert_eq!(
             session.form_association_state(&mut c, &node).unwrap().kind,
-            FormAssociationKind::Textarea
+            HtmlNativeFormAssociationKind::Textarea
         );
         let mut a = next_text(&mut tokenizer, &mut c);
         let text = session
@@ -10453,7 +10457,7 @@ mod tests {
         };
         assert_eq!(value.code_units(), []);
         assert!(storage.payloads.values.iter().any(|entry|matches!(entry,
-            RetainedPayload::FormAssociation{node:None,state} if state.kind==FormAssociationKind::Textarea && state.owner.is_none() && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
+            RetainedPayload::FormAssociation{node:None,state} if state.kind==HtmlNativeFormAssociationKind::Textarea && state.owner.is_none() && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
         )));
         let first = c.stop().unwrap();
         assert!(matches!(session.freeze(&mut c),Err(SessionError::Stop(stop)) if stop==first));
@@ -13817,7 +13821,7 @@ mod tests {
             assert_eq!(state.flags.checkedness(), attrs.contains("checked"));
             assert_eq!(state.value_rewritten_during_creation, rewritten);
             let association = session.form_association_state(&mut c, &node).unwrap();
-            assert_eq!(association.kind, FormAssociationKind::Input);
+            assert_eq!(association.kind, HtmlNativeFormAssociationKind::Input);
             assert!(
                 session
                     .form_association_owner(&mut c, &node)
@@ -18308,7 +18312,7 @@ mod tests {
         session: &ParserArenaSession,
         c: &mut ParseControl,
         node: &ParserNode,
-        kind: FormAssociationKind,
+        kind: HtmlNativeFormAssociationKind,
         owner: Option<&ParserNode>,
         parser_inserted: bool,
     ) {
@@ -18322,6 +18326,41 @@ mod tests {
             (None, None) => {}
             _ => panic!("wrong actual listed form owner"),
         }
+    }
+
+    #[test]
+    fn ordinary_creation_does_not_issue_input_select_or_details_profile_metadata() {
+        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        let source = crate::HtmlSource::utf8("<form><input><select><details>");
+        let mut c = control();
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let (mut session, body) = form_session(&mut c);
+        let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
+        session.insert(&mut c, &body, &form, None, None).unwrap();
+        for _ in 0..3 {
+            let node = form_creation(&mut session, &mut lexer, &mut c, &form, Some(&form));
+            assert_eq!(
+                session.form_association_state(&mut c, &node),
+                Err(SessionError::FormAssociationMetadataUnavailable)
+            );
+            assert_eq!(
+                session.input_state(&mut c, &node),
+                Err(SessionError::InputMetadataUnavailable)
+            );
+            assert!(matches!(
+                session.select_state(&mut c, &node),
+                Err(SessionError::SelectMetadataUnavailable)
+            ));
+            assert!(matches!(
+                session.active().unwrap().details_domain(&mut c, node.index),
+                Ok(details::NotificationDomain::Unavailable)
+            ));
+        }
+        assert!(c.stop().is_none());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
     }
 
     #[test]
@@ -18340,7 +18379,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             true,
         );
@@ -18350,7 +18389,7 @@ mod tests {
             &session,
             &mut c,
             &fieldset,
-            FormAssociationKind::Fieldset,
+            HtmlNativeFormAssociationKind::Fieldset,
             None,
             false,
         );
@@ -18361,7 +18400,7 @@ mod tests {
             &session,
             &mut c,
             &fieldset,
-            FormAssociationKind::Fieldset,
+            HtmlNativeFormAssociationKind::Fieldset,
             None,
             false,
         );
@@ -18370,7 +18409,7 @@ mod tests {
             &session,
             &mut c,
             &object,
-            FormAssociationKind::Object,
+            HtmlNativeFormAssociationKind::Object,
             None,
             false,
         );
@@ -18379,7 +18418,7 @@ mod tests {
             &session,
             &mut c,
             &object,
-            FormAssociationKind::Object,
+            HtmlNativeFormAssociationKind::Object,
             Some(&form),
             false,
         );
@@ -18395,7 +18434,7 @@ mod tests {
         let id = document.node(&body).unwrap().children().nth(3).unwrap();
         assert_eq!(
             frozen.form_association_state(&mut c, &id).unwrap().kind,
-            FormAssociationKind::Object
+            HtmlNativeFormAssociationKind::Object
         );
         assert!(
             frozen
@@ -18427,7 +18466,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -18436,7 +18475,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&first),
             false,
         );
@@ -18445,7 +18484,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&second),
             false,
         );
@@ -18472,7 +18511,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -18481,7 +18520,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -18521,7 +18560,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -18550,7 +18589,7 @@ mod tests {
             &session,
             &mut c,
             &fieldset,
-            FormAssociationKind::Fieldset,
+            HtmlNativeFormAssociationKind::Fieldset,
             None,
             false,
         );
@@ -18558,7 +18597,7 @@ mod tests {
             &session,
             &mut c,
             &object,
-            FormAssociationKind::Object,
+            HtmlNativeFormAssociationKind::Object,
             None,
             false,
         );
@@ -18569,7 +18608,7 @@ mod tests {
             &session,
             &mut c,
             &fieldset,
-            FormAssociationKind::Fieldset,
+            HtmlNativeFormAssociationKind::Fieldset,
             Some(&form),
             false,
         );
@@ -18577,7 +18616,7 @@ mod tests {
             &session,
             &mut c,
             &object,
-            FormAssociationKind::Object,
+            HtmlNativeFormAssociationKind::Object,
             Some(&form),
             false,
         );
@@ -18602,7 +18641,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -18618,7 +18657,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -18773,7 +18812,7 @@ mod tests {
         );
         assert_eq!(
             frozen.form_association_state(&mut c, &id).unwrap().kind,
-            FormAssociationKind::Button
+            HtmlNativeFormAssociationKind::Button
         );
         assert_eq!(
             frozen.image_form_state(&mut c, &id),
@@ -18807,7 +18846,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -18817,7 +18856,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&exact),
             false,
         );
@@ -18831,7 +18870,7 @@ mod tests {
             &session,
             &mut c,
             &empty,
-            FormAssociationKind::Fieldset,
+            HtmlNativeFormAssociationKind::Fieldset,
             None,
             false,
         );
@@ -18855,7 +18894,7 @@ mod tests {
             &session,
             &mut c,
             &in_form,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -18877,7 +18916,7 @@ mod tests {
             &session,
             &mut c,
             &in_form,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -18885,7 +18924,7 @@ mod tests {
             &session,
             &mut c,
             &outside,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             None,
             false,
         );
@@ -19066,7 +19105,7 @@ mod tests {
             &session,
             c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -19307,7 +19346,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -19394,7 +19433,7 @@ mod tests {
             &session,
             &mut c,
             &button,
-            FormAssociationKind::Button,
+            HtmlNativeFormAssociationKind::Button,
             Some(&form),
             false,
         );
@@ -19436,7 +19475,7 @@ mod tests {
                 &session,
                 &mut c,
                 &button,
-                FormAssociationKind::Button,
+                HtmlNativeFormAssociationKind::Button,
                 Some(&form),
                 false,
             );

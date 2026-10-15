@@ -302,12 +302,26 @@ pub surgeist_html::bounded::HtmlFormOwnerResetCursorError::Reply
 impl core::error::Error for surgeist_html::bounded::HtmlFormOwnerResetCursorError
 impl core::fmt::Display for surgeist_html::bounded::HtmlFormOwnerResetCursorError
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlFormOwnerResetDecision
+pub surgeist_html::bounded::HtmlFormOwnerResetDecision::Reset
+pub surgeist_html::bounded::HtmlFormOwnerResetDecision::ResetIfFormAttributePresent
+pub surgeist_html::bounded::HtmlFormOwnerResetDecision::ResetIfOwnerInDifferentTree
+pub surgeist_html::bounded::HtmlFormOwnerResetDecision::Skip
 pub enum surgeist_html::bounded::HtmlFormOwnerResetReply
 pub surgeist_html::bounded::HtmlFormOwnerResetReply::Applied
 pub surgeist_html::bounded::HtmlFormOwnerResetReply::Connected(bool)
 pub surgeist_html::bounded::HtmlFormOwnerResetReply::CurrentOwnerIsNearestAncestor(bool)
 pub surgeist_html::bounded::HtmlFormOwnerResetReply::FormAttributePresent(bool)
 pub surgeist_html::bounded::HtmlFormOwnerResetReply::FormFound(bool)
+pub enum surgeist_html::bounded::HtmlFormOwnerResetTrigger
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::FormAttributeChanged
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::FormAttributeChanged::listed: bool
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::IdEvent
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::IdEvent::listed: bool
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::Insertion
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::Insertion::parser_inserted: bool
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::RemovingOrMoving
+pub surgeist_html::bounded::HtmlFormOwnerResetTrigger::RemovingOrMoving::has_owner: bool
 pub enum surgeist_html::bounded::HtmlFragmentNameTest<'a>
 pub surgeist_html::bounded::HtmlFragmentNameTest::HtmlNamespace
 pub surgeist_html::bounded::HtmlFragmentNameTest::Local(&'a [&'static str])
@@ -1326,6 +1340,7 @@ pub fn surgeist_html::bounded::classify_rel<M: surgeist_html::bounded::HtmlRelMe
 pub fn surgeist_html::bounded::embedded_dimension_applicability(element: core::option::Option<surgeist_html::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::EmbeddedDimensionContext>) -> surgeist_html::bounded::EmbeddedDimensionApplicability
 pub fn surgeist_html::bounded::fold_rel_ascii(unit: u16) -> u16
 pub const fn surgeist_html::bounded::form_owner_lookup(explicit_listed_form_attribute: bool, connected: bool) -> surgeist_html::bounded::HtmlFormOwnerLookup
+pub const fn surgeist_html::bounded::form_owner_reset_trigger(trigger: surgeist_html::bounded::HtmlFormOwnerResetTrigger) -> surgeist_html::bounded::HtmlFormOwnerResetDecision
 pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
 pub fn surgeist_html::bounded::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, value: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
 pub fn surgeist_html::bounded::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::HtmlIntegrationPointRule, E>
@@ -1338,6 +1353,7 @@ pub fn surgeist_html::bounded::is_xml_name_start_code_point(cp: u32) -> bool
 pub fn surgeist_html::bounded::match_media_field<'raw, E>(attribute: &'raw surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlMediaFieldMatch<'raw>>, E>
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::media_field_matches(attribute: &surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField) -> bool
+pub fn surgeist_html::bounded::native_form_association_with<E>(compare: impl core::ops::function::FnMut(surgeist_html::KnownHtmlElement) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlNativeFormAssociationKind>, E>
 pub fn surgeist_html::bounded::option_disabled_ancestor(kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlOptionDisabledAncestor
 pub fn surgeist_html::bounded::parse_integer_long(input: &surgeist_html::DocumentString) -> core::result::Result<core::option::Option<i32>, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::parse_nonnegative_integer_capped(input: &surgeist_html::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::NumericParseError>
@@ -2442,6 +2458,19 @@ pub surgeist_html::HtmlModificationTimestamp::Unapplied(surgeist_html::HtmlAttri
 pub enum surgeist_html::HtmlModificationTimestampAbsence
 pub surgeist_html::HtmlModificationTimestampAbsence::ParseFailed
 pub surgeist_html::HtmlModificationTimestampAbsence::RecoveredTimeOnly
+pub enum surgeist_html::HtmlNativeFormAssociationKind
+pub surgeist_html::HtmlNativeFormAssociationKind::Button
+pub surgeist_html::HtmlNativeFormAssociationKind::Fieldset
+pub surgeist_html::HtmlNativeFormAssociationKind::Image
+pub surgeist_html::HtmlNativeFormAssociationKind::Input
+pub surgeist_html::HtmlNativeFormAssociationKind::Object
+pub surgeist_html::HtmlNativeFormAssociationKind::Output
+pub surgeist_html::HtmlNativeFormAssociationKind::Select
+pub surgeist_html::HtmlNativeFormAssociationKind::Textarea
+impl surgeist_html::HtmlNativeFormAssociationKind
+pub const fn surgeist_html::HtmlNativeFormAssociationKind::element(self) -> surgeist_html::KnownHtmlElement
+pub const fn surgeist_html::HtmlNativeFormAssociationKind::from_element(element: surgeist_html::KnownHtmlElement) -> core::option::Option<Self>
+pub const fn surgeist_html::HtmlNativeFormAssociationKind::listed(self) -> bool
 pub enum surgeist_html::HtmlNavigableTarget
 pub surgeist_html::HtmlNavigableTarget::Keyword(surgeist_html::HtmlNavigableTargetKeyword)
 pub surgeist_html::HtmlNavigableTarget::Name(surgeist_html::HtmlNavigableTargetName)

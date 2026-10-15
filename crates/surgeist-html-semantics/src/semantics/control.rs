@@ -5,6 +5,7 @@
 use super::*;
 use crate::bounded::{HtmlFormOwnerLookup, form_owner_lookup};
 use crate::{HtmlAttributeReport, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlInputType};
+use surgeist_html::HtmlNativeFormAssociationKind;
 
 /// Evidence of the actual association phase at this capture's host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -322,19 +323,6 @@ impl ControlValidation {
         Ok(true)
     }
 }
-fn native_form_associated(kind: KnownHtmlElement) -> bool {
-    matches!(
-        kind,
-        KnownHtmlElement::Button
-            | KnownHtmlElement::Fieldset
-            | KnownHtmlElement::Input
-            | KnownHtmlElement::Object
-            | KnownHtmlElement::Output
-            | KnownHtmlElement::Select
-            | KnownHtmlElement::Textarea
-            | KnownHtmlElement::Img
-    )
-}
 impl HtmlControlFacts {
     pub fn new(
         capture: &HtmlCapture,
@@ -375,7 +363,7 @@ impl HtmlControlFacts {
             if !validation.html(element)?
                 || validation
                     .kind(element)?
-                    .is_some_and(|kind| !native_form_associated(kind))
+                    .is_some_and(|kind| HtmlNativeFormAssociationKind::from_element(kind).is_none())
             {
                 return Err(HtmlControlFactsError::InapplicableSubject(
                     fact.subject.clone(),
@@ -703,7 +691,8 @@ impl<'a> HtmlSemanticSession<'a> {
         form: Option<&HtmlCaptureSubjectId>,
     ) -> ControlResult<bool> {
         if let Some(kind) = self.known(element)? {
-            return Ok(native_form_associated(kind) && kind != KnownHtmlElement::Img);
+            return Ok(HtmlNativeFormAssociationKind::from_element(kind)
+                .is_some_and(HtmlNativeFormAssociationKind::listed));
         }
         if !self.html_namespace(element)? {
             return Ok(false);
@@ -924,7 +913,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     _ => false,
                 }
             } else {
-                native_form_associated(kind)
+                HtmlNativeFormAssociationKind::from_element(kind).is_some()
             });
         }
         if !self.html_namespace(element)? {
@@ -1159,7 +1148,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 }))
             }
             HtmlFormAssociationState::ResetAgainstCapture => {
-                let listed = self.known(element)? != Some(KnownHtmlElement::Img);
+                // The category query above already established native or actual
+                // custom association. Qualified custom associated controls are
+                // listed; native kinds use the same source category owner.
+                let listed = self
+                    .known(element)?
+                    .and_then(HtmlNativeFormAssociationKind::from_element)
+                    .is_none_or(HtmlNativeFormAssociationKind::listed);
                 let raw = if listed {
                     self.attribute(element, "form")?
                 } else {

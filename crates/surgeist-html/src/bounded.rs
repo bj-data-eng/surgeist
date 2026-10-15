@@ -33,9 +33,11 @@ pub use crate::values::bounded::{
 
 pub use crate::construction::bounded::*;
 
+pub use crate::form_association::native_form_association_with;
 pub use crate::form_owner::{
     HtmlFormOwnerLookup, HtmlFormOwnerResetAction, HtmlFormOwnerResetCursor,
-    HtmlFormOwnerResetCursorError, HtmlFormOwnerResetReply, form_owner_lookup,
+    HtmlFormOwnerResetCursorError, HtmlFormOwnerResetDecision, HtmlFormOwnerResetReply,
+    HtmlFormOwnerResetTrigger, form_owner_lookup, form_owner_reset_trigger,
 };
 
 pub use crate::script_preparation::{
