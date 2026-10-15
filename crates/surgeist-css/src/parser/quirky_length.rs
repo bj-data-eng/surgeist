@@ -53,6 +53,7 @@ pub(super) fn property_context<'a>(
         // Only the actual property grants permission; referenced owners do not.
         match numeric.ordinary() {
             NumericInputContext::Parsed(source) => NumericInputContext::parsed(source),
+            NumericInputContext::Checked => NumericInputContext::Checked,
             NumericInputContext::Components(values, serialized) => {
                 NumericInputContext::components(values, serialized)
             }

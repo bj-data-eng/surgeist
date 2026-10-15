@@ -1,14 +1,17 @@
 //! Shared authored Values 4 `<url>` parsing for properties, imports, and fonts.
 
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::ParseError;
+use cssparser::Token;
+use std::borrow::Cow;
 
 use crate::CssComponentValueRef;
-use crate::error::{Error, basic};
+use crate::error::property::{Error, basic};
 use crate::syntax::*;
 
 pub(super) fn parse_url<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    _numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
@@ -35,31 +38,28 @@ pub(super) fn parse_url<'i, 't>(
                             let arguments = input.parse_nested_block(|input| {
                                 let start = input.position();
                                 consume_url_modifier_components(input)?;
-                                Ok(CssAuthoredFunctionArguments::new(
-                                    input.slice_from(start).to_owned(),
-                                ))
+                                Ok(CssAuthoredFunctionArguments::new(input.slice_from(start)))
                             })?;
                             let modifier_end = input.state();
                             input.reset(&modifier_start);
-                            let collected = numeric.collect(input).map_err(|error| {
-                                let location = numeric.error_location(
-                                    &error,
+                            let collected = input.collect_component().map_err(|error| {
+                                crate::error::property::invalid_component_value(
                                     modifier_location,
-                                    modifier_start.position().byte_index(),
-                                );
-                                error.component_error().map_or_else(
-                                    || crate::error::unexpected_at(input.current_source_location()),
-                                    |detail| {
-                                        crate::error::invalid_component_value(
-                                            location,
-                                            detail.clone(),
-                                        )
-                                    },
+                                    error,
                                 )
                             })?;
                             input.reset(&modifier_end);
-                            let CssComponentValueRef::Function(function) = collected.view() else {
-                                return Err(crate::error::unexpected_at(
+                            let argument_components = match collected {
+                                Cow::Borrowed(component) => match component.view() {
+                                    CssComponentValueRef::Function(function) => {
+                                        Some(function.values().clone())
+                                    }
+                                    _ => None,
+                                },
+                                Cow::Owned(component) => component.into_function_values(),
+                            };
+                            let Some(argument_components) = argument_components else {
+                                return Err(crate::error::property::unexpected_at(
                                     input.current_source_location(),
                                 ));
                             };
@@ -67,10 +67,13 @@ pub(super) fn parse_url<'i, 't>(
                                 CssUrlModifierFunction::from_parsed(
                                     CssIdent::new(name.to_string()),
                                     arguments,
-                                    function.values().clone(),
+                                    argument_components,
                                 )
                                 .map_err(|error| {
-                                    crate::error::invalid_component_value(modifier_location, error)
+                                    crate::error::property::invalid_component_value(
+                                        modifier_location,
+                                        error,
+                                    )
                                 })?,
                             ));
                         }

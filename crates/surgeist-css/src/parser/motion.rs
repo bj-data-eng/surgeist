@@ -1,10 +1,11 @@
 //! Motion Path authored grammar composed over the shared numeric, position,
 //! URL and complete BasicShape owners.
+use super::property_input::Parser;
 use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::*;
-use cssparser::{ParseError, Parser, Token};
+use cssparser::Token;
 
 fn next_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Option<String> {
     let state = input.state();
@@ -172,7 +173,7 @@ pub(super) fn parse_offset_rotate<'i, 't>(
     let angle = if modifier.is_some() {
         match input.try_parse(|input| parse_angle_value(input, numeric)) {
             Ok(value) => Some(value),
-            Err(error) if crate::error::is_resource_parse_error(&error) => {
+            Err(error) if crate::error::property::is_resource_parse_error(&error) => {
                 return Err(error);
             }
             Err(_) => None,
@@ -220,7 +221,7 @@ pub(super) fn parse_offset<'i, 't>(
                         rotate = Some(value);
                         continue;
                     }
-                    Err(error) if crate::error::is_resource_parse_error(&error) => {
+                    Err(error) if crate::error::property::is_resource_parse_error(&error) => {
                         return Err(error);
                     }
                     Err(_) => {}

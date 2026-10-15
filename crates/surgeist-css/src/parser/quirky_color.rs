@@ -1,9 +1,9 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
-use crate::error::{Error, ErrorKind, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ErrorKind, ParseError, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::*;
-use cssparser::{ParseError, Parser};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.quirky-color")];
@@ -82,8 +82,8 @@ fn direct_color<'i, 't>(
         Ok(color) => return Ok(color),
         Err(error) => error,
     };
-    if let cssparser::ParseErrorKind::Custom(error) = &ordinary.kind {
-        match error.kind() {
+    if let crate::error::property::ParseErrorKind::Custom(error) = &ordinary.kind {
+        match &error.kind {
             ErrorKind::InvalidComponentValue(component)
                 if crate::error::is_component_resource_error(component) =>
             {
@@ -95,15 +95,18 @@ fn direct_color<'i, 't>(
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric.collect(input).map_err(|error| {
-        let at = numeric.error_location(&error, location, offset);
-        error.component_error().map_or_else(
-            || unexpected_at(input.current_source_location()),
-            |component| crate::error::invalid_component_value(at, component.clone()),
-        )
-    })?;
-    quirky_hex(&component)
+    let offset = input.position();
+    let component = input
+        .collect_component()
+        .map_err(crate::CssNumericConstructionError::component)
+        .map_err(|error| {
+            let at = numeric.property_error_location(&error, location, offset);
+            error.component_error().map_or_else(
+                || unexpected_at(input.current_source_location()),
+                |component| crate::error::property::invalid_component_value(at, component.clone()),
+            )
+        })?;
+    quirky_hex(component.as_ref())
         .map(CssColor::from_hex)
         .ok_or(ordinary)
 }

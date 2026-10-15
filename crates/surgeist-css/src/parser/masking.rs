@@ -6,10 +6,10 @@ use super::background::{
     parse_border_image_width_prefix, parse_image_value,
 };
 use super::position::parse_physical_position_prefix;
+use super::property_input::Parser;
 use super::values::next_is_comma;
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::syntax::*;
-use cssparser::{ParseError, Parser};
 
 macro_rules! keyword_parser {
     ($function:ident, $ty:ident, $($keyword:literal => $variant:ident),+ $(,)?) => {
@@ -168,7 +168,9 @@ pub(super) fn parse_mask_layer<'i, 't>(
                     image = Some(value);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -187,7 +189,9 @@ pub(super) fn parse_mask_layer<'i, 't>(
                     }
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }

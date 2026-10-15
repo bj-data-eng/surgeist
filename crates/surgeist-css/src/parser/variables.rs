@@ -1,14 +1,14 @@
+use super::property_input::{Parser, Site};
+use crate::error::property::ParseError;
 use crate::numeric::NumericInputContext;
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueRef as Component, CssComponentValues, CssNumericTokenKind, CssValueOrigin,
     CssValueTokenRef as ValueToken,
 };
-use cssparser::{BasicParseErrorKind, ParseError, Parser, Token};
+use cssparser::{BasicParseErrorKind, Token};
 
-use crate::error::{
-    CssFeatureId, Error, basic, invalid_component_value, invalid_syntax, unexpected_token_at,
-};
+use crate::error::property::{CssFeatureId, Error, basic, invalid_component_value, invalid_syntax};
 use crate::syntax::{
     CssAuthoredDeclarationValue, CssCustomPropertyDeclaredValue, CssCustomPropertyName,
     CssCustomPropertyValue,
@@ -113,7 +113,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
     loop {
         input.skip_whitespace();
         let state = input.state();
-        let offset = input.position().byte_index();
+        let offset = input.position();
         let location = input.current_source_location();
         let token = match input.next() {
             Ok(token) => token.clone(),
@@ -133,23 +133,33 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                 | Token::CurlyBracketBlock
         ) {
             input.reset(&state);
-            let component = numeric.collect(input).map_err(|error| {
-                let location = numeric.error_location(&error, location, offset);
-                if let Some(detail) = error.component_error() {
-                    if matches!(
-                        detail.kind(),
-                        CssComponentValueErrorKind::BadString
-                            | CssComponentValueErrorKind::BadUrl
-                            | CssComponentValueErrorKind::UnmatchedClosingDelimiter
-                    ) {
-                        return token_error(numeric, detail.origin(), &[], false, offset, location);
+            let component = input
+                .collect_component()
+                .map_err(crate::CssNumericConstructionError::component)
+                .map_err(|error| {
+                    let location = numeric.property_error_location(&error, location, offset);
+                    if let Some(detail) = error.component_error() {
+                        if matches!(
+                            detail.kind(),
+                            CssComponentValueErrorKind::BadString
+                                | CssComponentValueErrorKind::BadUrl
+                                | CssComponentValueErrorKind::UnmatchedClosingDelimiter
+                        ) {
+                            return token_error(
+                                numeric,
+                                detail.origin(),
+                                &[],
+                                false,
+                                offset,
+                                location,
+                            );
+                        }
+                        return invalid_component_value(location, detail.clone());
                     }
-                    return invalid_component_value(location, detail.clone());
-                }
-                invalid_syntax(location)
-            })?;
+                    invalid_syntax(location)
+                })?;
             let local = summarize(
-                std::slice::from_ref(&component),
+                std::slice::from_ref(component.as_ref()),
                 Some(numeric),
                 true,
                 matches!(context, SubstitutionContext::KnownProperty),
@@ -197,62 +207,18 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
     ))
 }
 
-fn issue_offset(
-    numeric: &NumericInputContext<'_>,
+fn issue_location<'i>(
+    _numeric: &NumericInputContext<'_>,
     origin: &CssValueOrigin,
     path: &[usize],
     closing: bool,
-    root_offset: usize,
-) -> Option<usize> {
-    match numeric.ordinary() {
-        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-        NumericInputContext::Parsed(source) => {
-            let parsed = match origin {
-                CssValueOrigin::Parsed(parsed) => parsed,
-                CssValueOrigin::ImplicitClosure { at, .. } => at,
-                _ => return None,
-            };
-            source
-                .same_snapshot(parsed.source())
-                .then(|| parsed.span().start().byte_offset().value())
-        }
-        NumericInputContext::Components(_, serialized) => {
-            let base = serialized.component_path_at(root_offset)?;
-            let mut complete = base.to_vec();
-            complete.extend_from_slice(path.get(1..).unwrap_or_default());
-            if closing {
-                // The retained complete component range includes its one-byte closing token.
-                serialized.component_end_for_path(&complete)?.checked_sub(1)
-            } else {
-                serialized.component_offset_for_path(&complete)
-            }
-        }
+    root: Site<'i>,
+    fallback: Site<'i>,
+) -> Site<'i> {
+    if path.is_empty() {
+        return root.source_origin(origin).unwrap_or(fallback);
     }
-}
-
-fn input_css<'a>(numeric: &'a NumericInputContext<'_>) -> &'a str {
-    match numeric.ordinary() {
-        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-        NumericInputContext::Parsed(source) => source.as_str(),
-        NumericInputContext::Components(_, serialized) => serialized.as_css(),
-    }
-}
-
-fn issue_location(
-    numeric: &NumericInputContext<'_>,
-    origin: &CssValueOrigin,
-    path: &[usize],
-    closing: bool,
-    root_offset: usize,
-    fallback: cssparser::SourceLocation,
-) -> cssparser::SourceLocation {
-    let Some(offset) = issue_offset(numeric, origin, path, closing, root_offset) else {
-        return fallback;
-    };
-    let mut storage = cssparser::ParserInput::new(&input_css(numeric)[..offset]);
-    let mut parser = Parser::new(&mut storage);
-    while parser.next_including_whitespace_and_comments().is_ok() {}
-    parser.current_source_location()
+    root.descendant(path, closing).unwrap_or(fallback)
 }
 
 fn token_error<'i>(
@@ -260,16 +226,15 @@ fn token_error<'i>(
     origin: &CssValueOrigin,
     path: &[usize],
     closing: bool,
-    root_offset: usize,
-    location: cssparser::SourceLocation,
+    root: Site<'i>,
+    location: Site<'i>,
 ) -> ParseError<'i, Error> {
-    if let Some(offset) = issue_offset(numeric, origin, path, closing, root_offset) {
-        let source = input_css(numeric);
-        if let Some((_, _, token)) = crate::tokenization::next_source_token(source, offset) {
-            return location.new_custom_error(unexpected_token_at(source, offset, &token));
-        }
+    let site = issue_location(numeric, origin, path, closing, root, location);
+    if let Some(token) = site.token() {
+        site.new_unexpected_token_error(token)
+    } else {
+        site.new_error(BasicParseErrorKind::EndOfInput)
     }
-    location.new_error(BasicParseErrorKind::EndOfInput)
 }
 
 fn trivia(component: &CssComponentValue) -> bool {
@@ -359,14 +324,12 @@ fn env_valid(
                 }
             }
             Component::Function(function) if crate::numeric::is_math_function(function.name()) => {
-                let values = CssComponentValues::try_new(vec![argument.clone()])?;
                 let result = if let Some(numeric) = numeric {
-                    numeric.admit(values, crate::numeric::CalculationRoot::Integer)
+                    numeric.check_component(argument, crate::numeric::CalculationRoot::Integer)
                 } else {
-                    crate::numeric::construct(
-                        values,
+                    crate::numeric::check_component(
+                        argument,
                         crate::numeric::CalculationRoot::Integer,
-                        crate::CssComponentValueLimits::default(),
                     )
                 };
                 if let Err(error) = result {

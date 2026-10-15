@@ -8,6 +8,7 @@ mod unicode_range;
 
 use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
+use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
     recovery_action_for_error,
@@ -384,7 +385,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
     parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
         Ok(match kind {
             CssFontFaceDescriptorKind::FontFamily => {
-                CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input)?)
+                CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input, numeric)?)
             }
             CssFontFaceDescriptorKind::Src => {
                 CssFontFaceDescriptorValue::Src(parse_font_face_source_list(
@@ -411,13 +412,19 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 CssFontFaceDescriptorValue::UnicodeRange(parse_unicode_range_list(input)?)
             }
             CssFontFaceDescriptorKind::FontFeatureSettings => {
-                CssFontFaceDescriptorValue::FontFeatureSettings(parse_font_feature_settings(
-                    input, numeric,
+                CssFontFaceDescriptorValue::FontFeatureSettings(adapt_native(
+                    input,
+                    numeric,
+                    NativeValueRange::Remaining,
+                    parse_font_feature_settings,
                 )?)
             }
             CssFontFaceDescriptorKind::FontVariationSettings => {
-                CssFontFaceDescriptorValue::FontVariationSettings(parse_font_variation_settings(
-                    input, numeric,
+                CssFontFaceDescriptorValue::FontVariationSettings(adapt_native(
+                    input,
+                    numeric,
+                    NativeValueRange::Remaining,
+                    parse_font_variation_settings,
                 )?)
             }
             CssFontFaceDescriptorKind::FontNamedInstance => {
@@ -426,8 +433,11 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 )?)
             }
             CssFontFaceDescriptorKind::FontLanguageOverride => {
-                CssFontFaceDescriptorValue::FontLanguageOverride(parse_font_language_override(
-                    input, numeric,
+                CssFontFaceDescriptorValue::FontLanguageOverride(adapt_native(
+                    input,
+                    numeric,
+                    NativeValueRange::Component,
+                    parse_font_language_override,
                 )?)
             }
             CssFontFaceDescriptorKind::AscentOverride => {
@@ -465,7 +475,7 @@ fn parse_font_named_instance<'i, 't>(
     let component = numeric
         .collect(input)
         .map_err(|_| unexpected_at(location))?;
-    CssFontNamedInstanceString::try_from_component(component)
+    CssFontNamedInstanceString::try_from_component(component.into_owned())
         .map(CssFontNamedInstance::String)
         .map_err(|_| unexpected_at(location))
 }
@@ -480,13 +490,22 @@ fn parse_font_metric_override<'i, 't>(
     {
         return Ok(CssFontMetricOverride::Normal);
     }
-    parse_nonnegative_percentage(input, numeric).map(CssFontMetricOverride::Percentage)
+    adapt_native(
+        input,
+        numeric,
+        NativeValueRange::Component,
+        parse_nonnegative_percentage,
+    )
+    .map(CssFontMetricOverride::Percentage)
 }
 
 fn parse_font_face_family<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFaceFamily, ParseError<'i, Error>> {
-    let family = parse_non_generic_font_family_name(input)?;
+    let family = adapt_native(input, numeric, NativeValueRange::Remaining, |input, _| {
+        parse_non_generic_font_family_name(input)
+    })?;
     CssFontFaceFamily::try_new(family.as_str())
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -565,7 +584,7 @@ fn parse_font_face_source<'i, 't>(
         .try_parse(|input| input.expect_function_matching("local"))
         .is_ok()
     {
-        let name = input.parse_nested_block(parse_local_name)?;
+        let name = input.parse_nested_block(|input| parse_local_name(input, numeric))?;
         return CssFontLocalName::try_new(name.as_str())
             .map(CssFontFaceSource::Local)
             .ok_or_else(|| unexpected_at(input.current_source_location()));
@@ -611,13 +630,16 @@ fn parse_font_source_url<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
-    parse_url(input, numeric)
+    adapt_native(input, numeric, NativeValueRange::Component, parse_url)
 }
 
 fn parse_local_name<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
-    let name = parse_non_generic_font_family_name(input)?;
+    let name = adapt_native(input, numeric, NativeValueRange::Remaining, |input, _| {
+        parse_non_generic_font_family_name(input)
+    })?;
     input.expect_exhausted().map_err(basic)?;
     Ok(name)
 }
@@ -677,11 +699,21 @@ fn parse_font_face_weight<'i, 't>(
     {
         return Ok(CssFontFaceWeight::Auto);
     }
-    let start = parse_absolute_font_weight(input, numeric)?;
+    let start = adapt_native(
+        input,
+        numeric,
+        NativeValueRange::Component,
+        parse_absolute_font_weight,
+    )?;
     let end = if input.is_exhausted() {
         None
     } else {
-        Some(parse_absolute_font_weight(input, numeric)?)
+        Some(adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            parse_absolute_font_weight,
+        )?)
     };
     Ok(CssFontFaceWeight::Range { start, end })
 }
@@ -698,11 +730,21 @@ fn parse_font_face_style<'i, 't>(
         if input.is_exhausted() {
             return Ok(CssFontFaceStyle::Oblique { range: None });
         }
-        let start = parse_font_oblique_angle(input, numeric)?;
+        let start = adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            parse_font_oblique_angle,
+        )?;
         let end = if input.is_exhausted() {
             None
         } else {
-            Some(parse_font_oblique_angle(input, numeric)?)
+            Some(adapt_native(
+                input,
+                numeric,
+                NativeValueRange::Component,
+                parse_font_oblique_angle,
+            )?)
         };
         return Ok(CssFontFaceStyle::Oblique {
             range: Some(CssFontFaceObliqueRange::new(start, end)),
@@ -723,11 +765,21 @@ fn parse_font_face_width<'i, 't>(
     {
         return Ok(CssFontFaceWidth::Auto);
     }
-    let start = parse_font_width(input, numeric)?;
+    let start = adapt_native(
+        input,
+        numeric,
+        NativeValueRange::Component,
+        parse_font_width,
+    )?;
     let end = if input.is_exhausted() {
         None
     } else {
-        Some(parse_font_width(input, numeric)?)
+        Some(adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            parse_font_width,
+        )?)
     };
     Ok(CssFontFaceWidth::Range { start, end })
 }

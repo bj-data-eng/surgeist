@@ -1,9 +1,10 @@
 //! Checked authored grammars from the selected Scroll Snap 1 publication.
 
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssLengthCalculation, CssLengthPercentageCalculation, CssScrollMarginPair,
@@ -84,8 +85,8 @@ pub(super) fn parse_scroll_margin_length<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedLength::try_from_component(component).map_err(|_| unexpected_at(location))
         }
@@ -113,8 +114,8 @@ pub(super) fn parse_scroll_padding_value<'i, 't>(
         }
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
                 .map(CssScrollPaddingValue::LengthPercentage)

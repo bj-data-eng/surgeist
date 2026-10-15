@@ -1,7 +1,8 @@
+use super::property_input::Parser;
 use crate::CssFontFeatureValueName;
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::font_variant::*;
-use cssparser::{ParseError, Parser, Token};
+use cssparser::Token;
 
 #[derive(Default)]
 struct FontVariantComponents {
@@ -322,14 +323,14 @@ fn set_flag_once(slot: &mut bool) -> bool {
 
 fn next_font_variant_ident<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<(cssparser::SourceLocation, String), ParseError<'i, Error>> {
+) -> std::result::Result<(super::property_input::Site<'i>, String), ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     Ok((location, ident.as_ref().to_owned()))
 }
 
 fn invalid_font_variant_keyword<'i>(
-    location: cssparser::SourceLocation,
+    location: super::property_input::Site<'i>,
     ident: String,
 ) -> ParseError<'i, Error> {
     location.new_unexpected_token_error::<Error>(Token::Ident(ident.into()))

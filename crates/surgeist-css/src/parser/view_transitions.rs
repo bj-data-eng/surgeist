@@ -1,8 +1,8 @@
 //! CSS View Transitions 1 authored property grammar.
 
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::{CssCustomIdent, CssViewTransitionIdent, CssViewTransitionName};
-use cssparser::{ParseError, Parser};
 
 pub(super) fn parse_view_transition_name<'i, 't>(
     input: &mut Parser<'i, 't>,

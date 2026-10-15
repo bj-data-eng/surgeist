@@ -1,7 +1,8 @@
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::Token;
 
 use super::values::{next_is_delim, parse_integer_value};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::{
     CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssIntegerValue,

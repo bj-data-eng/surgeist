@@ -1,6 +1,8 @@
 //! Used-color operations over original source or checked authored values and facts.
 
 pub(crate) mod authored;
+#[cfg(test)]
+mod authored_input_tests;
 mod authored_resolution;
 pub use authored_resolution::*;
 use surgeist_color::{Color, ColorError};

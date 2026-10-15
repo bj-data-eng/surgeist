@@ -1,11 +1,12 @@
 //! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::Token;
 
 use super::border_style::parse_border_style;
 use super::parse_color;
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBorderStyle, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand, CssBoxSideKind,
@@ -50,12 +51,12 @@ pub(super) fn parse_exact_line_width<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let length = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLength::from_property_component(component, numeric)
         }
@@ -68,9 +69,9 @@ pub(super) fn parse_exact_line_width<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    length
-        .map(CssBorderWidth::Length)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    length.map(CssBorderWidth::Length).map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 pub(super) fn parse_exact_border_width_pair<'i, 't>(

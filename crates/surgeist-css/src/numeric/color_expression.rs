@@ -1,10 +1,11 @@
 //! Relative and custom-profile color expression admission.
 
 use super::{
-    AdmissionPolicy, CalculationRoot, CssCalculationExpression, CssCalculationExpressionRef,
-    CssCalculationType, CssNumericConstructionError, CssNumericConstructionErrorKind, NodeKind,
-    NumericInputContext, NumericProjectionOutcome, NumericProjectionScale, Result,
-    capture_specified_scaled, construct_with_policy, trivia, validate_components,
+    AdmissionPolicy, CalculationComponents, CalculationRoot, CssCalculationExpression,
+    CssCalculationExpressionRef, CssCalculationType, CssNumericConstructionError,
+    CssNumericConstructionErrorKind, NodeKind, NumericInputContext, NumericProjectionOutcome,
+    NumericProjectionScale, Result, capture_specified_scaled, construct_with_policy, trivia,
+    validate_components,
 };
 use crate::{
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
@@ -40,7 +41,7 @@ impl crate::CssRelativeColorExpression {
         )
     }
     pub(crate) fn from_parser_components(
-        values: CssComponentValues,
+        values: CalculationComponents<'_>,
         context: &NumericInputContext<'_>,
         environment: crate::CssRelativeColorEnvironment,
         result_domain: crate::CssRelativeColorResultDomain,
@@ -48,7 +49,9 @@ impl crate::CssRelativeColorExpression {
         let policy = match context.ordinary() {
             NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
-            NumericInputContext::Components(..) => AdmissionPolicy::Strict,
+            NumericInputContext::Components(..) | NumericInputContext::Checked => {
+                AdmissionPolicy::Strict
+            }
         };
         construct_relative_color_expression(
             values,
@@ -59,15 +62,16 @@ impl crate::CssRelativeColorExpression {
         )
     }
 }
-fn construct_relative_color_expression(
-    values: CssComponentValues,
+fn construct_relative_color_expression<'input>(
+    values: impl Into<CalculationComponents<'input>>,
     environment: crate::CssRelativeColorEnvironment,
     result_domain: crate::CssRelativeColorResultDomain,
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
 ) -> Result<crate::CssRelativeColorExpression> {
     use crate::{CssRelativeColorExpressionValue as V, CssRelativeColorResultDomain as D};
-    validate_components(&values, limits, policy)?;
+    let values = values.into();
+    validate_components(values.items(), limits, policy)?;
     let mut significant = values
         .items()
         .iter()
@@ -133,10 +137,7 @@ fn construct_relative_color_expression(
             )
         }
         CssComponentValueRef::Function(_) => {
-            let serialized = values
-                .serialize()
-                .map_err(CssNumericConstructionError::component)?;
-            let authored = crate::CssAuthoredDeclarationValue::new(serialized.as_css());
+            let authored = values.authored()?;
             let expression = construct_with_policy(
                 values,
                 CalculationRoot::Relative(environment, result_domain),
@@ -161,13 +162,18 @@ fn construct_relative_color_expression(
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssProfileColorExpression {
     value: ProfileExpression,
-    components: CssComponentValues,
     origin: CssValueOrigin,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum ProfileExpression {
-    Literal(crate::CssColorComponent),
-    Reference(crate::CssColorProfileComponentName),
+    Literal {
+        value: crate::CssColorComponent,
+        components: CssComponentValues,
+    },
+    Reference {
+        value: crate::CssColorProfileComponentName,
+        components: CssComponentValues,
+    },
     Calculation(CssProfileColorCalculation),
 }
 #[derive(Clone, Copy, Debug)]
@@ -179,10 +185,10 @@ pub enum CssProfileColorExpressionRef<'a> {
 }
 impl CssProfileColorExpression {
     pub fn try_from_components(values: CssComponentValues) -> Result<Self> {
-        Self::from_components(values, AdmissionPolicy::Strict)
+        Self::from_components(values.into(), AdmissionPolicy::Strict)
     }
     pub(crate) fn from_parser_components(
-        values: CssComponentValues,
+        values: CalculationComponents<'_>,
         context: &NumericInputContext<'_>,
     ) -> Result<Self> {
         Self::from_components(
@@ -192,12 +198,15 @@ impl CssProfileColorExpression {
                     unreachable!("ordinary numeric provenance")
                 }
                 NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
-                NumericInputContext::Components(..) => AdmissionPolicy::Strict,
+                NumericInputContext::Components(..) | NumericInputContext::Checked => {
+                    AdmissionPolicy::Strict
+                }
             },
         )
     }
-    fn from_components(values: CssComponentValues, policy: AdmissionPolicy) -> Result<Self> {
-        validate_components(&values, CssComponentValueLimits::default(), policy)?;
+    fn from_components(values: CalculationComponents<'_>, policy: AdmissionPolicy) -> Result<Self> {
+        let limits = CssComponentValueLimits::default();
+        validate_components(values.items(), limits, policy)?;
         let mut significant = values.items().iter().filter(|c| !trivia(c));
         let component = significant.next().ok_or_else(|| {
             CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
@@ -213,27 +222,37 @@ impl CssProfileColorExpression {
             CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
                 if name.eq_ignore_ascii_case("none") =>
             {
-                ProfileExpression::Literal(crate::CssColorComponent::None)
+                ProfileExpression::Literal {
+                    value: crate::CssColorComponent::None,
+                    components: values.retain(limits)?,
+                }
             }
             CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
-                ProfileExpression::Reference(
+                let value =
                     crate::CssColorProfileComponentName::try_new(name).ok_or_else(|| {
                         CssNumericConstructionError::at(
                             CssNumericConstructionErrorKind::InvalidArgumentType,
                             Some(component),
                         )
-                    })?,
-                )
+                    })?;
+                ProfileExpression::Reference {
+                    value,
+                    components: values.retain(limits)?,
+                }
             }
             CssComponentValueRef::Token(
                 CssValueTokenRef::Number(_) | CssValueTokenRef::Percentage(_),
-            ) => ProfileExpression::Literal(
-                crate::color_scalar::component(component.clone())
-                    .map_err(CssNumericConstructionError::component)?,
-            ),
+            ) => {
+                let value = crate::color_scalar::component(component.clone())
+                    .map_err(CssNumericConstructionError::component)?;
+                ProfileExpression::Literal {
+                    value,
+                    components: values.retain(limits)?,
+                }
+            }
             _ => {
                 let expression = construct_with_policy(
-                    values.clone(),
+                    values,
                     CalculationRoot::ProfileRelative,
                     CssComponentValueLimits::default(),
                     policy,
@@ -258,16 +277,16 @@ impl CssProfileColorExpression {
                 })
             }
         };
-        Ok(Self {
-            value,
-            components: values,
-            origin,
-        })
+        Ok(Self { value, origin })
     }
     pub fn view(&self) -> CssProfileColorExpressionRef<'_> {
         match &self.value {
-            ProfileExpression::Literal(v) => CssProfileColorExpressionRef::Literal(v),
-            ProfileExpression::Reference(v) => CssProfileColorExpressionRef::Reference(v),
+            ProfileExpression::Literal { value, .. } => {
+                CssProfileColorExpressionRef::Literal(value)
+            }
+            ProfileExpression::Reference { value, .. } => {
+                CssProfileColorExpressionRef::Reference(value)
+            }
             ProfileExpression::Calculation(v) => CssProfileColorExpressionRef::Calculation(v),
         }
     }
@@ -275,7 +294,11 @@ impl CssProfileColorExpression {
         &self.origin
     }
     pub fn components(&self) -> &CssComponentValues {
-        &self.components
+        match &self.value {
+            ProfileExpression::Literal { components, .. }
+            | ProfileExpression::Reference { components, .. } => components,
+            ProfileExpression::Calculation(value) => value.components(),
+        }
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]

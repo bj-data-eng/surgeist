@@ -1,10 +1,10 @@
 //! Authored shape command parsing over shared exact scalar and position owners.
 use super::position::parse_full_position_bounded;
+use super::property_input::Parser;
 use super::values::{next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::*;
-use cssparser::{ParseError, Parser};
 
 type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
 const COMMANDS: &[&str] = &[
@@ -67,7 +67,7 @@ fn affinity<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, bool> {
     } else if word.eq_ignore_ascii_case("by") {
         Ok(false)
     } else {
-        Err(crate::error::unexpected_at(location))
+        Err(crate::error::property::unexpected_at(location))
     }
 }
 fn endpoint<'i, 't>(
@@ -87,7 +87,7 @@ fn anchor<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssShapeControlAncho
         "start" => Ok(CssShapeControlAnchor::Start),
         "end" => Ok(CssShapeControlAnchor::End),
         "origin" => Ok(CssShapeControlAnchor::Origin),
-        _ => Err(crate::error::unexpected_at(location)),
+        _ => Err(crate::error::property::unexpected_at(location)),
     }
 }
 fn relative_control<'i, 't>(
@@ -235,7 +235,7 @@ fn parse_command<'i, 't>(
             }))
         }
         "arc" => parse_arc(input, numeric).map(CssShapeCommand::Arc),
-        _ => Err(crate::error::unexpected_at(location)),
+        _ => Err(crate::error::property::unexpected_at(location)),
     }
 }
 fn parse_arc<'i, 't>(
@@ -280,7 +280,7 @@ fn parse_arc<'i, 't>(
             }
             "rotate" if rotation.is_none() => rotation = Some(parse_angle_value(input, numeric)?),
             _ => {
-                return Err(crate::error::unexpected_at(location));
+                return Err(crate::error::property::unexpected_at(location));
             }
         }
     }

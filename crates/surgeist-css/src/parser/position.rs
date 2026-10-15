@@ -1,8 +1,9 @@
+use super::property_input::{Parser, ParserState};
 use super::values::{parse_length, parse_length_percentage};
-use cssparser::{ParseError, Parser, ParserState, Token, match_ignore_ascii_case};
+use crate::error::property::{Error, ParseError, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{next_is_comma, next_is_delim};
-use crate::error::{Error, unexpected_at};
 use crate::syntax::*;
 
 pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -211,7 +212,7 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
             break;
         }
         if let Err(error) = angle
-            && crate::error::is_resource_parse_error(&error)
+            && crate::error::property::is_resource_parse_error(&error)
         {
             return Err(error);
         }
@@ -234,7 +235,7 @@ fn parse_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     grammar: PositionGrammar,
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
     parse_position_atoms_bounded(input, numeric, grammar, &[])
 }
 fn parse_position_atoms_bounded<'i, 't>(
@@ -242,7 +243,7 @@ fn parse_position_atoms_bounded<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     grammar: PositionGrammar,
     boundaries: &[&str],
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
     collect_position_atoms(input, numeric, grammar, boundaries, false)
 }
 
@@ -252,7 +253,7 @@ fn collect_position_atoms<'i, 't>(
     grammar: PositionGrammar,
     boundaries: &[&str],
     prefix_only: bool,
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
     while !input.is_exhausted()
@@ -337,7 +338,7 @@ fn parse_generic_position_atom<'i, 't>(
 
 fn invalid_generic_position_atom<'i, 't>(
     input: &mut Parser<'i, 't>,
-    state: &ParserState,
+    state: &ParserState<'i>,
 ) -> ParseError<'i, Error> {
     input.reset(state);
     let location = input.current_source_location();

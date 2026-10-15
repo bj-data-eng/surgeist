@@ -1,9 +1,9 @@
 //! Box Alignment 3 grammar for the selected six longhands and three shorthands.
 
-use cssparser::{ParseError, Parser};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 
 use crate::alignment::*;
-use crate::error::{Error, basic, unexpected_at};
 
 fn keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Result<String, ParseError<'i, Error>> {
     Ok(input

@@ -1,11 +1,12 @@
 //! Lists 3 longhands and shorthand, sharing the Content 3 style grammar.
 
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
 use super::background::parse_image_value;
 use super::content_values::parse_style;
 use super::generated_content::parse_content_string;
-use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
 };
@@ -84,7 +85,9 @@ pub(super) fn parse_list_style<'i, 't>(
                     image = Some(value);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }

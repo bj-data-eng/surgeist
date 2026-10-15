@@ -1,8 +1,9 @@
 //! Selected Color Adjustment 1 property grammars.
 
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
-use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust, CssIdent,
     CssPrintColorAdjust,

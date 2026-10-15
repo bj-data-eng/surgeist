@@ -1,9 +1,10 @@
 //! Selected Decoration 4 intrinsic grammars.
 use super::color::parse_color;
+use super::property_input::Parser;
 use super::values::parse_length_percentage;
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::*;
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use cssparser::match_ignore_ascii_case;
 
 macro_rules! keyword {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
@@ -94,19 +95,18 @@ pub(super) fn parse_text_decoration_skip_spaces<'i, 't>(
 }
 fn parse_emphasis_mark<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextEmphasisMark, ParseError<'i, Error>> {
     input.skip_whitespace();
-    let first_origin = numeric.origin_at(input.position().byte_index());
+    let first_origin = input.position().value_origin();
     let mut fill = input.try_parse(parse_emphasis_fill).ok();
     let mut fill_origin = fill.and(first_origin);
     input.skip_whitespace();
-    let next_origin = numeric.origin_at(input.position().byte_index());
+    let next_origin = input.position().value_origin();
     let shape = input.try_parse(parse_emphasis_shape).ok();
     let shape_origin = shape.and(next_origin);
     if fill.is_none() {
         input.skip_whitespace();
-        let origin = numeric.origin_at(input.position().byte_index());
+        let origin = input.position().value_origin();
         fill = input.try_parse(parse_emphasis_fill).ok();
         fill_origin = fill.and(origin);
     }
@@ -123,13 +123,13 @@ pub(super) fn parse_text_emphasis_style<'i, 't>(
     {
         return Ok(CssTextEmphasisStyle::None);
     }
-    if let Ok(mark) = input.try_parse(|input| parse_emphasis_mark(input, numeric)) {
+    if let Ok(mark) = input.try_parse(parse_emphasis_mark) {
         return Ok(CssTextEmphasisStyle::Mark(mark));
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let component = numeric
-        .collect(input)
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
     CssTextEmphasisString::from_parsed(component)
         .map(CssTextEmphasisStyle::String)
@@ -163,20 +163,20 @@ pub(super) fn parse_text_emphasis<'i, 't>(
 }
 pub(super) fn parse_text_emphasis_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    _numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextEmphasisPosition, ParseError<'i, Error>> {
     input.skip_whitespace();
-    let first_origin = numeric.origin_at(input.position().byte_index());
+    let first_origin = input.position().value_origin();
     let side_first = input.try_parse(parse_text_side).ok();
     let mut side_origin = side_first.and(first_origin);
     input.skip_whitespace();
-    let vertical_origin = numeric.origin_at(input.position().byte_index());
+    let vertical_origin = input.position().value_origin();
     let vertical = parse_emphasis_vertical(input)?;
     let side = if side_first.is_some() {
         side_first
     } else {
         input.skip_whitespace();
-        let origin = numeric.origin_at(input.position().byte_index());
+        let origin = input.position().value_origin();
         let side = input.try_parse(parse_text_side).ok();
         side_origin = side.and(origin);
         side
@@ -184,7 +184,7 @@ pub(super) fn parse_text_emphasis_position<'i, 't>(
     Ok(CssTextEmphasisPosition::from_parsed(
         vertical,
         side,
-        vertical_origin.unwrap_or(CssValueOrigin::Programmatic),
+        vertical_origin.expect("emphasis vertical token origin"),
         side_origin,
     ))
 }

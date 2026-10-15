@@ -1,9 +1,10 @@
 use super::color::parse_color;
+use super::property_input::Parser;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
-use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::font_variant::CssFontVariant;
 use crate::syntax::*;
 use crate::{
@@ -59,12 +60,12 @@ pub(super) fn parse_font_size<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let checked = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             crate::CssSpecifiedNonNegativeLengthPercentage::from_property_component(
                 component, numeric,
@@ -79,9 +80,9 @@ pub(super) fn parse_font_size<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    checked
-        .map(CssFontSize::LengthPercentage)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    checked.map(CssFontSize::LengthPercentage).map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 pub(super) fn parse_line_height<'i, 't>(
@@ -109,12 +110,12 @@ pub(super) fn parse_line_height<'i, 't>(
 
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let checked = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
         }
@@ -129,7 +130,9 @@ pub(super) fn parse_line_height<'i, 't>(
     };
     checked
         .map(CssLineHeight::LengthPercentage)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+        .map_err(|error| {
+            unexpected_at(numeric.property_error_location(&error, location, root_site))
+        })
 }
 
 fn parse_line_height_number<'i, 't>(
@@ -139,15 +142,15 @@ fn parse_line_height_number<'i, 't>(
     input.skip_whitespace();
     let numeric_start = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
-                unexpected_at(numeric.error_location(&error, location, root_offset))
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
             })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -156,7 +159,9 @@ fn parse_line_height_number<'i, 't>(
                 .and_then(|calculation| {
                     CssSpecifiedNonNegativeNumber::try_from_calculation(calculation).map_err(
                         |error| {
-                            unexpected_at(numeric.error_location(&error, location, root_offset))
+                            unexpected_at(
+                                numeric.property_error_location(&error, location, root_site),
+                            )
                         },
                     )
                 })
@@ -260,10 +265,10 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
         Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("deg") => {
             input.reset(&start);
             input.skip_whitespace();
-            let offset = input.position().byte_index();
-            let component = numeric
-                .collect(input)
-                .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
+            let offset = input.position();
+            let component = input.collect_numeric_component(numeric).map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, offset))
+            })?;
             match component.view() {
                 crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
                     number,
@@ -531,7 +536,7 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "normal" => Ok(CssAbsoluteFontWeight::Normal),
@@ -540,13 +545,13 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
         },
         Token::Number { .. } | Token::Percentage { .. } | Token::Dimension { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssFontWeightNumber::try_from_component(component)
                 .map(CssAbsoluteFontWeight::Number)
                 .map_err(|error| {
-                    unexpected_at(numeric.error_location(&error, location, root_offset))
+                    unexpected_at(numeric.property_error_location(&error, location, root_site))
                 })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -556,7 +561,9 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
                 expression,
             ))
             .map(CssAbsoluteFontWeight::Number)
-            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+            .map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
+            })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -599,12 +606,12 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let result = match input.next().map_err(basic)? {
         Token::Dimension { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssFontObliqueAngle::try_from_component(component)
         }
@@ -617,7 +624,9 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    result.map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    result.map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 pub(super) fn parse_font_stretch<'i, 't>(
@@ -648,12 +657,12 @@ pub(super) fn parse_font_width<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let percentage = match input.next().map_err(basic)? {
         Token::Percentage { .. } | Token::Number { .. } | Token::Dimension { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
         }
@@ -666,7 +675,7 @@ pub(super) fn parse_font_width<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-    .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))?;
+    .map_err(|error| unexpected_at(numeric.property_error_location(&error, location, root_site)))?;
     Ok(CssFontWidth::Percentage(percentage))
 }
 
@@ -796,12 +805,12 @@ fn parse_text_spacing_adjustment<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let value = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedLengthPercentage::from_property_component(component, numeric)
         }
@@ -814,7 +823,7 @@ fn parse_text_spacing_adjustment<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-    .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))?;
+    .map_err(|error| unexpected_at(numeric.property_error_location(&error, location, root_site)))?;
     Ok(CssTextSpacingAdjustment::LengthPercentage(value))
 }
 
@@ -1112,8 +1121,8 @@ pub(super) fn parse_hyphenate_character<'i, 't>(
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let component = numeric
-        .collect(input)
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
     CssHyphenateString::try_from_component(component)
         .map(CssHyphenateCharacter::String)

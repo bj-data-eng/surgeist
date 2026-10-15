@@ -1,8 +1,9 @@
 //! Border style grammar shared by longhands, pairs, four-side shorthand and triples.
 
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
-use crate::error::{Error, basic, unexpected_at};
 use crate::{CssBorderStyle, CssBorderStylePair, CssBorderStyleShorthand, CssBoxSideKind};
 
 pub(super) fn parse_border_style<'i, 't>(

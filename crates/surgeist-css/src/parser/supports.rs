@@ -443,21 +443,24 @@ pub(super) fn declaration(
     } else if parser_context.selects_svg_glyph(name)
         || CssPropertyGrammar::from_name(name).is_some()
     {
-        let values =
-            CssComponentValues::try_new_with_limits(items[colon + 1..value_end].to_vec(), limits)?;
-        let checked = if parser_context.selects_svg_glyph(name) {
-            crate::property_value::checked_svg_glyph_value_body(
-                crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
-                &values,
+        let values = &items[colon + 1..value_end];
+        let depth = values
+            .iter()
+            .filter_map(CssComponentValue::child_values)
+            .map(|children| children.nesting_depth() + 1)
+            .max()
+            .unwrap_or(0);
+        let grammar = if parser_context.selects_svg_glyph(name) {
+            super::PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(
                 parser_context,
-            )
+            ))
         } else {
-            crate::property_value::checked_grammar_value_body(
+            super::PropertyValueGrammar::Known(
                 CssPropertyGrammar::from_name(name).expect("recognized grammar"),
-                &values,
-                parser_context,
             )
         };
+        let checked =
+            super::parse_property_value_slice_selected(grammar, values, depth, parser_context);
         match checked {
             Ok(
                 body @ (CssDeclarationBody::Known(_)
@@ -540,19 +543,25 @@ fn parsed_admitted(
         .expect("parsed lexical root");
     let start = first.span().start().byte_offset().value();
     let end = last.span().end().byte_offset().value();
-    let source = super::isolate_source_span(&first.source().as_str()[..end], start, end);
-    let working_source = crate::tokenization::prepare(&source);
-    let mut parser_input = cssparser::ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut parser_input);
+    let document = crate::syntax_consumption::normalize(
+        crate::syntax_consumption::SyntaxInput::Source(crate::syntax_consumption::SourceWindow {
+            text: std::borrow::Cow::Borrowed(first.source().as_str()),
+            range: start..end,
+            original: first.source().clone(),
+        }),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+    )?;
+    let mut input = super::property_input::Parser::new(&document);
     let numeric = crate::numeric::NumericInputContext::parsed(first.source());
     let parsed = if parser_context.selects_svg_glyph(name) {
-        super::parse_svg_glyph_declaration_body(
+        super::parse_svg_glyph_declaration_body_from_property_input(
             &mut input,
             &numeric,
             crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
         )
     } else {
-        super::parse_known_declaration_body(
+        super::parse_known_declaration_body_from_property_input(
             resolved.expect("recognized known grammar"),
             &mut input,
             &numeric,
@@ -564,19 +573,20 @@ fn parsed_admitted(
             body @ (CssDeclarationBody::Known(_)
             | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
         ) if input.is_exhausted() => Ok(Some(body)),
-        Err(error) if terminal_error(&error) => {
-            if let cssparser::ParseErrorKind::Custom(error) = error.kind
-                && let ErrorKind::InvalidComponentValue(component) = error.kind()
-            {
-                return Err(CssSupportsConstructionError::Component(
-                    component.as_ref().clone(),
-                ));
+        Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+            let (kind, origin) = error.into_parts();
+            if let ErrorKind::InvalidComponentValue(component) = kind {
+                return Err(CssSupportsConstructionError::Component(*component));
             }
+            let origin = match origin {
+                CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => {
+                    origin
+                }
+                CssSerializedOrigin::Separator { after, .. } => after,
+                CssSerializedOrigin::End(None) => values[0].origin().clone(),
+            };
             Err(CssSupportsConstructionError::Component(
-                CssComponentValueError::new(
-                    CssComponentValueErrorKind::NestingLimit,
-                    values[0].origin().clone(),
-                ),
+                CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin),
             ))
         }
         _ => Ok(None),

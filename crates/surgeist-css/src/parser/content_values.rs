@@ -1,13 +1,14 @@
 //! Grammar admission for the selected CSS Generated Content 3 `content` value.
 
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::Token;
 
 use super::background::parse_image;
 use super::generated_content::parse_content_string;
 use super::url::parse_url;
 use crate::CssIdent;
 use crate::content_values::*;
-use crate::error::{Error, basic, unexpected_at};
 
 type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
 
@@ -100,7 +101,7 @@ fn parse_item<'i, 't>(
     }
     match input.try_parse(|input| parse_image(input, numeric)) {
         Ok(image) => return Ok(CssContentValueItem::Image(image)),
-        Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+        Err(error) if crate::error::property::is_resource_parse_error(&error) => return Err(error),
         Err(_) => {}
     }
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {

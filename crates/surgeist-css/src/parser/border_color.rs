@@ -1,10 +1,10 @@
 //! Border color pairs and four-side authored grammar.
 
-use cssparser::{ParseError, Parser};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, unexpected_at};
 
 use super::color::parse_color;
 use crate::border_color::CssBorderColorShorthand;
-use crate::error::{Error, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{CssBorderColorPair, CssBoxSideKind};
 

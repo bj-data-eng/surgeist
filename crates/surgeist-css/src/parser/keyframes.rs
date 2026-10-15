@@ -1,3 +1,4 @@
+use super::property_input::NativeValueRange;
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token, match_ignore_ascii_case,
@@ -5,7 +6,7 @@ use cssparser::{
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::values::{
-    CalculationRoot, checked_percentage_value, parse_custom_ident_from_str_at,
+    CalculationRoot, checked_percentage_value, parse_custom_ident_from_str_at_source,
     parse_numeric_function,
 };
 use super::{
@@ -24,7 +25,7 @@ pub(super) fn parse_keyframes_name<'i, 't>(
 ) -> std::result::Result<CssKeyframesName, ParseError<'i, Error>> {
     let location = input.current_source_location();
     if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
-        return parse_custom_ident_from_str_at(name.as_ref(), location)
+        return parse_custom_ident_from_str_at_source(name.as_ref(), location)
             .and_then(|name| {
                 CssKeyframesIdent::try_new(name).ok_or_else(|| unexpected_at(location))
             })
@@ -283,8 +284,16 @@ fn parse_keyframe_selector<'i, 't>(
         }
         Token::Number { .. } => Err(unexpected_at(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)?;
+            input.reset(&start);
+            let expression = super::property_input::adapt_native(
+                input,
+                numeric,
+                NativeValueRange::Component,
+                |input, numeric| {
+                    let start = input.state();
+                    parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
+                },
+            )?;
             CssKeyframePercent::try_from_calculation(CssPercentageCalculation::from_expression(
                 expression,
             ))

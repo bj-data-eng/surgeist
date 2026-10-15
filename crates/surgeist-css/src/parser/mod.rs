@@ -21,6 +21,7 @@ pub(crate) mod counter_style;
 mod declaration_block;
 mod declaration_list;
 mod domain_declaration_contents;
+pub(crate) mod property_input;
 pub(crate) use declaration_block::parse_with_context as parse_declaration_block_contents_with_context;
 pub use declaration_block::{
     parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
@@ -57,8 +58,8 @@ use import::{CssImportPrelude, parse_import_prelude};
 pub(crate) use import::{construct_import, import_boundaries_match};
 mod reconstruction;
 use reconstruction::{
-    BoundedParseContext, BoundedParseSyntax, isolate_source_span, parse_bounded,
-    parse_sheet_bounded, rule_start, scoped_rule_into_chunk_rule, scoped_rule_start,
+    BoundedParseContext, BoundedParseSyntax, parse_bounded, parse_sheet_bounded, rule_start,
+    scoped_rule_into_chunk_rule, scoped_rule_start,
 };
 #[cfg(test)]
 mod native_batch_boundary_tests;
@@ -258,7 +259,7 @@ use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
     invalid_descriptor_annotation, invalid_known_declaration_annotation, invalid_syntax,
-    property_name_error, unexpected_at, with_at_rule_prelude_context, with_media_query_context,
+    property_name_error, with_at_rule_prelude_context, with_media_query_context,
     with_property_context,
 };
 use crate::properties::*;
@@ -553,9 +554,9 @@ macro_rules! define_property_dispatch {
         fn parse_known_property_value<'i, 't>(
             property: crate::CssKnownProperty,
             authored: CssAuthoredDeclarationValue,
-            $input: &mut Parser<'i, 't>,
+            $input: &mut property_input::Parser<'i, 't>,
             $numeric: &crate::numeric::NumericInputContext<'_>,
-        ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
+        ) -> std::result::Result<CssKnownDeclaration, crate::error::property::ParseError<'i, crate::error::property::Error>> {
             match property {
                 crate::CssKnownProperty::All => {
                     let _authored_value_type = std::marker::PhantomData::<$all_value>;
@@ -570,9 +571,9 @@ macro_rules! define_property_dispatch {
                     #[inline(never)]
                     fn parse_variant<'i, 't>(
                         authored: CssAuthoredDeclarationValue,
-                        $input: &mut Parser<'i, 't>,
+                        $input: &mut property_input::Parser<'i, 't>,
                         $numeric: &crate::numeric::NumericInputContext<'_>,
-                    ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
+                    ) -> std::result::Result<CssKnownDeclaration, crate::error::property::ParseError<'i, crate::error::property::Error>> {
                         let _ = $numeric;
                         let _authored_value_type = std::marker::PhantomData::<$value>;
 
@@ -593,9 +594,14 @@ macro_rules! define_property_dispatch {
 property_schema!(define_property_dispatch, input, numeric);
 
 fn parse_all_property<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssGlobalKeyword, ParseError<'i, Error>> {
-    Err(unexpected_at(input.current_source_location()))
+    input: &mut property_input::Parser<'i, 't>,
+) -> std::result::Result<
+    CssGlobalKeyword,
+    crate::error::property::ParseError<'i, crate::error::property::Error>,
+> {
+    Err(crate::error::property::unexpected_at(
+        input.current_source_location(),
+    ))
 }
 
 /// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.
@@ -3179,19 +3185,16 @@ pub(super) fn parse_declaration_core<'i, 't>(
         let ((value, components, origin), importance) =
             parse_declaration_boundary(input, &context, |input| {
                 collect_declaration_value(input, source_snapshot, |input| {
-                    parse_custom_property_value(
+                    parse_property_declaration_source(
+                        PropertyValueGrammar::Custom(&custom_name),
                         input,
                         &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                        parser_context,
                     )
                     .map_err(|error| with_property_context(error, name.as_ref()))
                 })
             })?;
-        (
-            CssDeclarationBody::Custom(CssCustomDeclaration::new(custom_name, value)),
-            importance,
-            components,
-            origin,
-        )
+        (value, importance, components, origin)
     } else if parser_context.selects_svg_glyph(name.as_ref()) {
         let context = match mode {
             DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinarySvgGlyph,
@@ -3269,10 +3272,9 @@ pub(super) fn collect_declaration_value<'i, 't, T>(
 
 pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
-    source: &str,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<CssDeclarationBody, Error> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
@@ -3280,19 +3282,17 @@ pub(crate) fn parse_property_value_body(
             PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(parser_context))
         }
     };
-    parse_property_value_body_selected(grammar, source, numeric, parser_context)
+    parse_property_value_body_selected(grammar, components, parser_context)
 }
 
 pub(crate) fn parse_property_value_body_for_grammar(
     grammar: CssPropertyGrammar,
-    source: &str,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<CssDeclarationBody, Error> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::Known(grammar),
-        source,
-        numeric,
+        components,
         parser_context,
     )
 }
@@ -3306,31 +3306,55 @@ enum PropertyValueGrammar<'a> {
 
 fn parse_property_value_body_selected(
     grammar: PropertyValueGrammar<'_>,
-    source: &str,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<CssDeclarationBody, Error> {
-    fragments::bounded_execution(source, || {
-        let working_source = crate::tokenization::prepare(source);
-        let mut input = ParserInput::new(&working_source);
-        let mut parser = Parser::new(&mut input);
-        parse_property_value_from_parser(grammar, source, &mut parser, numeric, parser_context)
-            .map_err(|error| from_parse_error(source, error))
+) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+    parse_property_value_slice_selected(
+        grammar,
+        components.items(),
+        components.nesting_depth(),
+        parser_context,
+    )
+}
+
+fn parse_property_value_slice_selected(
+    grammar: PropertyValueGrammar<'_>,
+    components: &[crate::CssComponentValue],
+    depth: u32,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+    fragments::bounded_execution_at_depth(depth, || {
+        let document = crate::syntax_consumption::normalize(
+            crate::syntax_consumption::SyntaxInput::CheckedComponents(components),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
+            0,
+        )
+        .map_err(crate::CssPropertyValueParseError::from_component)?;
+        let mut parser = property_input::Parser::new(&document);
+        parse_property_value_from_parser(
+            grammar,
+            &mut parser,
+            &crate::numeric::NumericInputContext::Checked,
+            parser_context,
+        )
+        .map_err(|error| {
+            let (kind, origin) = error.into_parts();
+            crate::CssPropertyValueParseError::from_direct_grammar(kind, origin)
+        })
     })
 }
 
 fn parse_property_value_from_parser<'i>(
     grammar: PropertyValueGrammar<'_>,
-    source: &'i str,
-    parser: &mut Parser<'i, '_>,
+    parser: &mut property_input::Parser<'i, '_>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
-    // Reject root boundaries before the symbolic-substitution shortcut. Nested
-    // punctuation remains data, including custom-property curly blocks.
+) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
+{
+    // Root delimiters precede lexical and symbolic-value admission. Each next
+    // skips a complete nested component without promoting or validating it.
     let start = parser.state();
     loop {
-        let offset = parser.position().byte_index();
         let location = parser.current_source_location();
         let Ok(token) = parser.next_including_whitespace_and_comments().cloned() else {
             break;
@@ -3343,27 +3367,90 @@ fn parse_property_value_from_parser<'i>(
                 | Token::CloseParenthesis
                 | Token::CloseSquareBracket
         ) {
-            return Err(location
-                .new_custom_error(crate::error::unexpected_token_at(source, offset, &token)));
+            return Err(location.new_unexpected_token_error(token));
         }
-        fragments::finish_nested_component(parser, &token)?;
     }
     parser.reset(&start);
-    let body = match grammar {
-        PropertyValueGrammar::Known(grammar) => {
-            parse_known_declaration_body(grammar.resolved(), parser, numeric, parser_context)
-        }
+    let body = parse_property_declaration_body_from_property_input(
+        grammar,
+        parser,
+        numeric,
+        parser_context,
+    )?;
+    parser.expect_exhausted()?;
+    Ok(body)
+}
+
+fn parse_property_declaration_body_from_property_input<'i>(
+    grammar: PropertyValueGrammar<'_>,
+    parser: &mut property_input::Parser<'i, '_>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
+{
+    match grammar {
+        PropertyValueGrammar::Known(grammar) => parse_known_declaration_body_from_property_input(
+            grammar.resolved(),
+            parser,
+            numeric,
+            parser_context,
+        ),
         PropertyValueGrammar::SvgGlyph(admission) => {
-            parse_svg_glyph_declaration_body(parser, numeric, admission)
+            parse_svg_glyph_declaration_body_from_property_input(parser, numeric, admission)
         }
         PropertyValueGrammar::Custom(name) => {
             parse_custom_property_value(parser, numeric).map(|value| {
                 CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
             })
         }
-    }?;
-    parser.expect_exhausted()?;
-    Ok(body)
+    }
+}
+
+// Native rule/declaration cursors select a source window; only the portable
+// property cursor admits the selected value. The source arena retains lexical
+// failures so the property grammar supplies their diagnostic context.
+fn parse_property_declaration_source<'i>(
+    grammar: PropertyValueGrammar<'_>,
+    input: &mut Parser<'i, '_>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+    let crate::numeric::NumericInputContext::Parsed(snapshot) = numeric.ordinary() else {
+        unreachable!("native property adapters receive source input")
+    };
+    let start = input.position().byte_index();
+    while let Ok(token) = input.next_including_whitespace_and_comments().cloned() {
+        fragments::finish_nested_component(input, &token)?;
+    }
+    let end = input.position().byte_index();
+    let document = crate::syntax_consumption::normalize(
+        crate::syntax_consumption::SyntaxInput::Source(crate::syntax_consumption::SourceWindow {
+            text: std::borrow::Cow::Borrowed(snapshot.as_str()),
+            range: start..end,
+            original: (*snapshot).clone(),
+        }),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+    )
+    .map_err(|error| {
+        crate::error::invalid_component_value(input.current_source_location(), error)
+    })?;
+    let mut property_input = property_input::Parser::new(&document);
+    parse_property_declaration_body_from_property_input(
+        grammar,
+        &mut property_input,
+        numeric,
+        parser_context,
+    )
+    .map_err(|error| {
+        let error = error.into_source_error();
+        let position = error.position();
+        cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value() + 1,
+        }
+        .new_custom_error(error)
+    })
 }
 
 fn parse_known_declaration_body<'i, 't>(
@@ -3371,7 +3458,37 @@ fn parse_known_declaration_body<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<CssDeclarationBody, ParseError<'i, Error>> {
+) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+    parse_property_declaration_source(
+        PropertyValueGrammar::Known(CssPropertyGrammar::from_resolved(resolved_property)),
+        input,
+        numeric,
+        parser_context,
+    )
+}
+
+fn parse_svg_glyph_declaration_body<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    admission: crate::svg_glyph::SvgGlyphAdmission,
+) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+    parse_property_declaration_source(
+        PropertyValueGrammar::SvgGlyph(admission),
+        input,
+        numeric,
+        crate::CssParserContext::default(),
+    )
+}
+
+fn parse_known_declaration_body_from_property_input<'i, 't>(
+    resolved_property: CssResolvedPropertyName,
+    input: &mut property_input::Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
+) -> std::result::Result<
+    CssDeclarationBody,
+    crate::error::property::ParseError<'i, crate::error::property::Error>,
+> {
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
     let state = input.state();
@@ -3380,7 +3497,7 @@ fn parse_known_declaration_body<'i, 't>(
         numeric,
         variables::SubstitutionContext::KnownProperty,
     )
-    .map_err(|error| with_property_context(error, context_name))?;
+    .map_err(|error| crate::error::property::with_property_context(error, context_name))?;
     if has_substitution {
         return Ok(CssDeclarationBody::Known(
             CssKnownDeclaration::from_substitution_dependent(
@@ -3396,8 +3513,8 @@ fn parse_known_declaration_body<'i, 't>(
     if let Ok(ident) = input.expect_ident_cloned() {
         if let Some(keyword) = parse_global_keyword(&ident) {
             if !input.is_exhausted() {
-                return Err(with_property_context(
-                    invalid_syntax(input.current_source_location()),
+                return Err(crate::error::property::with_property_context(
+                    crate::error::property::invalid_syntax(input.current_source_location()),
                     context_name,
                 ));
             }
@@ -3425,22 +3542,23 @@ fn parse_known_declaration_body<'i, 't>(
             parse_legacy_property_alias_value(alias, authored, input, numeric)
         }
     }
-    .map_err(|error| with_property_context(error, context_name))?;
-    input
-        .expect_exhausted()
-        .map_err(|error| with_property_context(error.into(), context_name))?;
+    .map_err(|error| crate::error::property::with_property_context(error, context_name))?;
+    input.expect_exhausted().map_err(|error| {
+        crate::error::property::with_property_context(error.into(), context_name)
+    })?;
     Ok(CssDeclarationBody::Known(declaration.with_grammar(
         CssPropertyGrammar::from_resolved(resolved_property),
     )))
 }
 
-fn parse_svg_glyph_declaration_body<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
+    input: &mut property_input::Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     admission: crate::svg_glyph::SvgGlyphAdmission,
-) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
+{
     let name = "glyph-orientation-vertical";
-    let parse = |input: &mut Parser<'i, 't>| {
+    let parse = |input: &mut property_input::Parser<'i, 't>| {
         let state = input.state();
         let (authored, substitution) = collect_authored_declaration_value(
             input,
@@ -3468,22 +3586,23 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
                     input.expect_exhausted()?;
                     CssDeclaredValue::Value(crate::CssSvgGlyphOrientationVerticalValue::auto())
                 } else {
-                    return Err(
-                        first_location.new_unexpected_token_error::<Error>(Token::Ident(ident))
-                    );
+                    return Err(first_location
+                        .new_unexpected_token_error::<crate::error::property::Error>(
+                            Token::Ident(ident),
+                        ));
                 }
             } else {
                 input.reset(&first_state);
                 input.skip_whitespace();
                 let location = input.current_source_location();
-                let offset = input.position().byte_index();
+                let offset = input.position();
                 // SVG has no canonical-property error target. Retain the real
                 // root cursor/token for a present-token grammar rejection.
                 let literal_start = input.state();
                 let root_token = input.next().ok().cloned();
                 input.reset(&literal_start);
-                let component = numeric
-                    .collect(input)
+                let component = input
+                    .collect_numeric_component(numeric)
                     .map_err(|error| values::angle_error(numeric, &error, location, offset))?;
                 let root_origin = component.origin().clone();
                 let value = if matches!(
@@ -3498,49 +3617,66 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
                 .map_err(|error| {
                     let mapped = values::angle_error(numeric, &error, location, offset);
                     if let Some(token) = &root_token
-                        && !crate::error::is_resource_parse_error(&mapped)
-                        && (matches!(token, Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. })
-                            || (matches!(error.kind(), crate::CssNumericConstructionErrorKind::Component(crate::CssComponentValueErrorKind::InvalidToken))
-                                && error.origin() == Some(&root_origin))
-                            || (matches!(token, Token::Function(_) | Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock)
-                                && matches!(error.kind(), crate::CssNumericConstructionErrorKind::RootDomainMismatch)
-                                && error.path() == Some(&[0][..])
+                        && !crate::error::property::is_resource_parse_error(&mapped)
+                        && (matches!(
+                            token,
+                            Token::Number { .. }
+                                | Token::Dimension { .. }
+                                | Token::Percentage { .. }
+                        ) || (matches!(
+                            error.kind(),
+                            crate::CssNumericConstructionErrorKind::Component(
+                                crate::CssComponentValueErrorKind::InvalidToken
+                            )
+                        ) && error.origin() == Some(&root_origin))
+                            || (matches!(
+                                token,
+                                Token::Function(_)
+                                    | Token::ParenthesisBlock
+                                    | Token::SquareBracketBlock
+                                    | Token::CurlyBracketBlock
+                            ) && matches!(
+                                error.kind(),
+                                crate::CssNumericConstructionErrorKind::RootDomainMismatch
+                            ) && error.path() == Some(&[0][..])
                                 && error.origin() == Some(&root_origin)))
                     {
-                        location.new_unexpected_token_error::<Error>(token.clone())
+                        location.new_unexpected_token_error::<crate::error::property::Error>(
+                            token.clone(),
+                        )
                     } else {
-                        if matches!(error.kind(), crate::CssNumericConstructionErrorKind::UnknownFunction | crate::CssNumericConstructionErrorKind::IncompatibleTypes | crate::CssNumericConstructionErrorKind::InvalidArgumentType | crate::CssNumericConstructionErrorKind::MalformedExpression)
-                            && error.path().is_some_and(|path| !path.is_empty())
+                        if matches!(
+                            error.kind(),
+                            crate::CssNumericConstructionErrorKind::UnknownFunction
+                                | crate::CssNumericConstructionErrorKind::IncompatibleTypes
+                                | crate::CssNumericConstructionErrorKind::InvalidArgumentType
+                                | crate::CssNumericConstructionErrorKind::MalformedExpression
+                        ) && error.path().is_some_and(|path| !path.is_empty())
                             && error.origin().is_some()
                         {
-                            // The numeric owner identifies the responsible child;
-                            // use its mapped cursor rather than the outer function.
-                            let source = match numeric.ordinary() {
-                                crate::numeric::NumericInputContext::Parsed(source) => source.as_str(),
-                                crate::numeric::NumericInputContext::Components(_, serialized) => serialized.as_css(),
-                                crate::numeric::NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-                            };
-                            let responsible = crate::CssSourcePosition::from_source_location_in(source, mapped.location).byte_offset().value();
-                            if let Some((start, _, token)) = crate::tokenization::next_source_token(source, responsible)
+                            // The numeric owner returns the actual responsible input site.
+                            if let Some(token) = mapped.location.token()
                                 && !matches!(token, Token::WhiteSpace(_) | Token::Comment(_))
-                                // Distinguish an actual residual operand from the
-                                // native cursor's EOF/operator-spacing fallback.
-                                && (!matches!(error.kind(), crate::CssNumericConstructionErrorKind::MalformedExpression)
-                                    || svg_glyph_numeric_present_rejection(&component, &error))
+                                && (!matches!(
+                                    error.kind(),
+                                    crate::CssNumericConstructionErrorKind::MalformedExpression
+                                ) || svg_glyph_numeric_present_rejection(&component, &error))
                             {
-                                return cssparser::ParseError {
-                                    kind: cssparser::ParseErrorKind::Custom(crate::error::unexpected_token_at(source, start, &token)),
-                                    location: mapped.location,
-                                };
+                                return mapped
+                                    .location
+                                    .new_unexpected_token_error::<crate::error::property::Error>(
+                                        token,
+                                    );
                             }
                         }
                         mapped
                     }
                 })?;
                 if !value.admitted(admission) {
-                    return Err(location.new_unexpected_token_error::<Error>(
-                        root_token.expect("only a direct Number has mode-dependent admission"),
-                    ));
+                    return Err(location
+                        .new_unexpected_token_error::<crate::error::property::Error>(
+                            root_token.expect("only a direct Number has mode-dependent admission"),
+                        ));
                 }
                 input.expect_exhausted()?;
                 CssDeclaredValue::Value(value)
@@ -3550,7 +3686,7 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
             crate::CssSvgGlyphOrientationVerticalDeclaration::new(declared, admission),
         ))
     };
-    parse(input).map_err(|error| with_property_context(error, name))
+    parse(input).map_err(|error| crate::error::property::with_property_context(error, name))
 }
 
 fn svg_glyph_numeric_present_rejection(
@@ -3627,14 +3763,12 @@ fn svg_glyph_numeric_present_rejection(
 
 pub(crate) fn parse_svg_glyph_value_body(
     admission: crate::svg_glyph::SvgGlyphAdmission,
-    source: &str,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    components: &CssComponentValues,
     context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, Error> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::SvgGlyph(admission),
-        source,
-        numeric,
+        components,
         context,
     )
 }
@@ -3642,9 +3776,12 @@ pub(crate) fn parse_svg_glyph_value_body(
 fn parse_legacy_property_alias_value<'i, 't>(
     alias: CssLegacyPropertyAlias,
     authored: CssAuthoredDeclarationValue,
-    input: &mut Parser<'i, 't>,
+    input: &mut property_input::Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
+) -> std::result::Result<
+    CssKnownDeclaration,
+    crate::error::property::ParseError<'i, crate::error::property::Error>,
+> {
     match alias {
         CssLegacyPropertyAlias::GlyphOrientationVertical => {
             let value = parse_glyph_orientation_vertical(input, numeric)?;

@@ -179,7 +179,8 @@ impl CssTimeValue {
                 unreachable!("ordinary numeric provenance")
             }
             crate::numeric::NumericInputContext::Parsed(_) => Admission::RecoveringSyntax,
-            crate::numeric::NumericInputContext::Components(..) => Admission::Strict,
+            crate::numeric::NumericInputContext::Components(..)
+            | crate::numeric::NumericInputContext::Checked => Admission::Strict,
         };
         if matches!(admission, Admission::Strict)
             && let Some(origin) = values.first_implicit_origin()

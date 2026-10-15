@@ -66,7 +66,7 @@ pub(super) fn collect_one(
             }
         })?;
     let values = CssComponentValues::try_new(items)?;
-    values.items.into_vec().into_iter().next().ok_or_else(|| {
+    values.into_single().ok_or_else(|| {
         CssComponentValueError::new(
             CssComponentValueErrorKind::InvalidToken,
             CssValueOrigin::Parsed(parsed_origin(snapshot, &parser.state(), &parser.state())),

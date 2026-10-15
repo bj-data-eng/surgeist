@@ -1,22 +1,23 @@
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, Token,
+    QualifiedRuleParser, RuleBodyItemParser,
 };
 
 use super::parse_descriptor_boundary;
+use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, invalid_component_value,
     invalid_syntax, unexpected_at, with_at_rule_prelude_context, with_descriptor_context,
 };
 use crate::font_palette_values::CssFontPaletteDescriptorData;
-use crate::numeric::{CalculationRoot, NumericInputContext};
+use crate::numeric::NumericInputContext;
 use crate::{
     CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
     CssFontPaletteConstructionError, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride,
-    CssFontPaletteValuesRule, CssIntegerCalculation, CssIntegerValue, CssRecoveryDiagnostic,
-    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
+    CssFontPaletteValuesRule, CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition,
+    CssSubstitutionDependentValue,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -210,7 +211,7 @@ fn parse_value_data<'i>(
     }
     Ok(match kind {
         CssFontPaletteDescriptorKind::FontFamily => {
-            CssFontPaletteDescriptorData::FontFamily(parse_families(input)?)
+            CssFontPaletteDescriptorData::FontFamily(parse_families(input, numeric)?)
         }
         CssFontPaletteDescriptorKind::BasePalette => {
             CssFontPaletteDescriptorData::BasePalette(parse_base(input, numeric)?)
@@ -223,9 +224,12 @@ fn parse_value_data<'i>(
 
 fn parse_families<'i>(
     input: &mut Parser<'i, '_>,
+    numeric: &NumericInputContext<'_>,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
     input.parse_comma_separated(|input| {
-        let family = super::typography::parse_non_generic_font_family_name(input)?;
+        let family = adapt_native(input, numeric, NativeValueRange::Remaining, |input, _| {
+            super::typography::parse_non_generic_font_family_name(input)
+        })?;
         input.expect_exhausted().map_err(basic)?;
         CssFontFaceFamily::try_new(family.as_str())
             .ok_or_else(|| invalid_syntax(input.current_source_location()))
@@ -256,7 +260,12 @@ fn parse_overrides<'i>(
     input.parse_comma_separated(|input| {
         let index = parse_index(input, numeric)?;
         let location = input.current_source_location();
-        let color = super::color::parse_color(input, numeric)?;
+        let color = adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            super::color::parse_color,
+        )?;
         let pair = CssFontPaletteOverride::try_new(index, color).map_err(|error| match error {
             CssFontPaletteConstructionError::ContextualColor(_) => unexpected_at(location),
             _ => invalid_syntax(location),
@@ -270,23 +279,12 @@ fn parse_index<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssFontPaletteIndex, ParseError<'i, Error>> {
-    let state = input.state();
     let location = input.current_source_location();
-    let value = match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&state);
-            CssIntegerValue::Literal(super::values::parse_integer_literal(input, numeric)?)
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let expression = super::values::parse_numeric_function(
-                input,
-                &state,
-                numeric,
-                CalculationRoot::Integer,
-            )?;
-            CssIntegerValue::Calculation(CssIntegerCalculation::from_expression(expression))
-        }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
+    let value = adapt_native(
+        input,
+        numeric,
+        NativeValueRange::Component,
+        super::values::parse_integer_value,
+    )?;
     CssFontPaletteIndex::try_new(value).map_err(|_| unexpected_at(location))
 }

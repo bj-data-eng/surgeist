@@ -142,3 +142,193 @@ fn mapped_collection_lends_root_without_transport_allocation() {
         "mapped collection must inspect the original node"
     );
 }
+
+#[test]
+fn read_only_component_check_skips_input_graph_retention() {
+    const TEST: &str =
+        "numeric::borrowed_admission_tests::read_only_component_check_skips_input_graph_retention";
+    const CHILD: &str = "SURGEIST_CSS_READ_ONLY_CALCULATION_CHECK_CHILD";
+    if std::env::var(CHILD).as_deref() != Ok(TEST) {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST, "--nocapture"])
+            .env(CHILD, TEST)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    // Input construction and retention assertions remain outside the measured
+    // call. The calculation needs integer-domain validation, not a public result.
+    let values = [128, 65_536].map(|length| {
+        parse_component_values(&format!("calc(1 /*{}*/ + 2)", "x".repeat(length))).unwrap()
+    });
+    for contextual in [false, true] {
+        let stats = values.each_ref().map(|values| {
+            let region = Region::new(GLOBAL);
+            let result = if contextual {
+                NumericInputContext::Checked
+                    .check_component(&values.items()[0], super::CalculationRoot::Integer)
+            } else {
+                super::check_component(&values.items()[0], super::CalculationRoot::Integer)
+            };
+            let stats = region.change();
+            result.expect("a sum of integer literals is an integer-domain calculation");
+            stats
+        });
+        let copied = |stats: stats_alloc::Stats| {
+            stats.bytes_allocated + stats.bytes_reallocated.max(0) as usize
+        };
+        let growth = copied(stats[1]).saturating_sub(copied(stats[0]));
+        assert!(
+            growth <= 1024,
+            "read-only check retained comment payload: contextual={contextual}, growth={growth}, stats={stats:?}"
+        );
+    }
+    let invalid = parse_component_values("calc(1px + 2px)").unwrap();
+    let error = super::check_component(&invalid.items()[0], super::CalculationRoot::Integer)
+        .expect_err("a length sum cannot enter the integer domain");
+    assert_eq!(
+        error.kind(),
+        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+    );
+}
+
+#[test]
+fn read_only_component_check_preserves_context_closure_policy() {
+    let source = CssSourceSnapshot::new("calc(1 + 2");
+    let mut input = cssparser::ParserInput::new(source.as_str());
+    let mut cursor = cssparser::Parser::new(&mut input);
+    let parsed = NumericInputContext::Parsed(&source);
+    let component = parsed.collect(&mut cursor).unwrap();
+    parsed
+        .check_component(&component, super::CalculationRoot::Integer)
+        .expect("source mathematics admits its recovered closing boundary");
+    NumericInputContext::QuirkyLengths(&parsed)
+        .check_component(&component, super::CalculationRoot::Integer)
+        .expect("length quirks preserve the source closure policy");
+    for error in [
+        super::check_component(&component, super::CalculationRoot::Integer).unwrap_err(),
+        NumericInputContext::Checked
+            .check_component(&component, super::CalculationRoot::Integer)
+            .unwrap_err(),
+    ] {
+        assert_eq!(
+            error.kind(),
+            &crate::CssNumericConstructionErrorKind::RecoveredComponent
+        );
+    }
+    let values = CssComponentValues::try_new(vec![component.into_owned()]).unwrap();
+    let serialized = values.serialize().unwrap();
+    let error = NumericInputContext::Components(&values, &serialized)
+        .check_component(&values.items()[0], super::CalculationRoot::Integer)
+        .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        &crate::CssNumericConstructionErrorKind::RecoveredComponent
+    );
+}
+
+#[test]
+fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
+    let context = NumericInputContext::Checked;
+    let values = parse_component_values("calc(1fr + 2fr)").unwrap();
+    let original = values.items().as_ptr();
+    let expression = context
+        .admit_or_return_input(
+            super::CalculationComponents::Owned(values),
+            super::CalculationRoot::Flex,
+        )
+        .unwrap();
+    assert_eq!(
+        expression.components.as_ref().unwrap().items().as_ptr(),
+        original
+    );
+    assert_eq!(
+        crate::CssFlexCalculation::from_expression(expression)
+            .serialize()
+            .unwrap()
+            .as_css(),
+        "calc(1fr + 2fr)"
+    );
+
+    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let original = values.items().as_ptr();
+    let failure = context
+        .admit_or_return_input(
+            super::CalculationComponents::Owned(values),
+            super::CalculationRoot::Flex,
+        )
+        .unwrap_err();
+    assert_eq!(
+        failure.error.kind(),
+        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+    );
+    assert_eq!(failure.error.path(), Some([0].as_slice()));
+    let super::CalculationComponents::Owned(ref returned) = failure.values else {
+        panic!("the original owner is returned on failure");
+    };
+    assert_eq!(returned.items().as_ptr(), original);
+    let expression = context
+        .admit_or_return_input(failure.values, super::CalculationRoot::LengthPercentage)
+        .unwrap();
+    assert_eq!(
+        expression.components.as_ref().unwrap().items().as_ptr(),
+        original
+    );
+    assert_eq!(
+        crate::CssLengthPercentageCalculation::from_expression(expression)
+            .serialize()
+            .unwrap()
+            .as_css(),
+        "calc(1px + 2px)"
+    );
+}
+
+#[test]
+fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output() {
+    let context = NumericInputContext::Checked;
+    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let failure = context
+        .admit_or_return_input(
+            super::CalculationComponents::Borrowed(values.items()),
+            super::CalculationRoot::Flex,
+        )
+        .unwrap_err();
+    assert_eq!(
+        failure.error.kind(),
+        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+    );
+    let super::CalculationComponents::Borrowed(returned) = failure.values else {
+        panic!("borrowed failure keeps the same actual components");
+    };
+    assert!(std::ptr::eq(returned, values.items()));
+    let expression = context
+        .admit_or_return_input(
+            super::CalculationComponents::Borrowed(returned),
+            super::CalculationRoot::LengthPercentage,
+        )
+        .unwrap();
+    let output = expression.components.as_ref().unwrap();
+    assert_ne!(output.items().as_ptr(), values.items().as_ptr());
+    assert!(
+        parsed_origin(&output.items()[0])
+            .source()
+            .same_snapshot(parsed_origin(&values.items()[0]).source())
+    );
+    drop(values);
+    assert_eq!(
+        crate::CssLengthPercentageCalculation::from_expression(expression)
+            .serialize()
+            .unwrap()
+            .as_css(),
+        "calc(1px + 2px)"
+    );
+}

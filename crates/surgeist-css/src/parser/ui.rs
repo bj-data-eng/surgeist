@@ -1,17 +1,18 @@
 //! UI interaction, cursor, and outline grammar.
 use super::color::parse_color;
+use super::property_input::Parser;
 use super::url::parse_url;
 use super::values::{parse_length, parse_nonnegative_length};
 use crate::cursor_values::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
 };
-use crate::error::{Error, basic, unexpected_at};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::*;
 use crate::ui::*;
 use crate::{CssCaretColor, CssComponentValueRef, CssValueTokenRef};
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use cssparser::{Token, match_ignore_ascii_case};
 
 macro_rules! keyword_parser {
     ($fn:ident, $ty:ident, {$($text:literal => $variant:ident),+}) => {
@@ -77,7 +78,9 @@ pub(super) fn parse_caret<'i, 't>(
                     color = Some(CssCaretColor::Color(Box::new(value)));
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -134,8 +137,8 @@ pub(super) fn parse_navigation<'i, 't>(
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let component = numeric
-        .collect(input)
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|error| numeric_error(numeric, &error, location))?;
     let id = CssNavigationId::try_from_component(component).map_err(|_| unexpected_at(location))?;
     let target = if input.is_exhausted() {
@@ -143,8 +146,8 @@ pub(super) fn parse_navigation<'i, 't>(
     } else {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let component = numeric
-            .collect(input)
+        let component = input
+            .collect_numeric_component(numeric)
             .map_err(|error| numeric_error(numeric, &error, location))?;
         Some(match component.view() {
             CssComponentValueRef::Token(CssValueTokenRef::Ident(value))
@@ -160,7 +163,7 @@ pub(super) fn parse_navigation<'i, 't>(
             CssComponentValueRef::Token(CssValueTokenRef::String(value))
                 if value.starts_with('_') =>
             {
-                if matches!(numeric.ordinary(), NumericInputContext::Components(..)) {
+                if !numeric.is_source_input() {
                     return Err(unexpected_at(location));
                 }
                 CssNavigationTarget::LegacyName(CssLegacyNavigationTargetName::from_parser(
@@ -182,18 +185,14 @@ pub(super) fn parse_navigation<'i, 't>(
 fn numeric_error<'i>(
     numeric: &NumericInputContext<'_>,
     error: &crate::CssNumericConstructionError,
-    location: cssparser::SourceLocation,
+    location: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
     if let Some(component) = error.component_error()
         && crate::error::is_component_resource_error(component)
     {
-        return crate::error::invalid_component_value(location, component.clone());
+        return crate::error::property::invalid_component_value(location, component.clone());
     }
-    let offset = match error.origin() {
-        Some(crate::CssValueOrigin::Parsed(value)) => value.span().start().byte_offset().value(),
-        _ => 0,
-    };
-    unexpected_at(numeric.error_location(error, location, offset))
+    unexpected_at(numeric.property_error_location(error, location, location))
 }
 
 pub(super) fn parse_cursor<'i, 't>(
@@ -376,7 +375,7 @@ pub(super) fn parse_outline<'i, 't>(
         {
             autos += 1;
             if autos > 2 {
-                return Err(crate::error::unexpected_at(location));
+                return Err(crate::error::property::unexpected_at(location));
             }
             continue;
         }
@@ -386,7 +385,9 @@ pub(super) fn parse_outline<'i, 't>(
                     width = Some(parsed_width);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -402,7 +403,9 @@ pub(super) fn parse_outline<'i, 't>(
                     color = Some(parsed_color);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -452,7 +455,7 @@ pub(super) fn parse_outline_style<'i, 't>(
         "ridge" => Ok(CssOutlineStyle::Ridge),
         "inset" => Ok(CssOutlineStyle::Inset),
         "outset" => Ok(CssOutlineStyle::Outset),
-        _ => Err(crate::error::unexpected_at(location)),
+        _ => Err(crate::error::property::unexpected_at(location)),
     }
 }
 

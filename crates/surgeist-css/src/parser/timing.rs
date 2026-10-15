@@ -1,8 +1,9 @@
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{next_is_comma, parse_custom_ident_from_str_at, parse_nonnegative_number};
 use crate::CssDuration;
-use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -52,7 +53,7 @@ pub(super) fn parse_duration<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDuration, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
+    let offset = input.position();
     let time = parse_delay(input, numeric)?;
     crate::CssDuration::from_parser_value(time)
         .map_err(|error| time_error(numeric, &error, location, offset))
@@ -64,9 +65,9 @@ pub(super) fn parse_delay<'i, 't>(
 ) -> std::result::Result<crate::CssTimeValue, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric
-        .collect(input)
+    let offset = input.position();
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))?;
     crate::CssTimeValue::from_parser_component(component, numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))
@@ -74,14 +75,14 @@ pub(super) fn parse_delay<'i, 't>(
 fn time_error<'i>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     error: &crate::CssNumericConstructionError,
-    fallback: cssparser::SourceLocation,
-    offset: usize,
+    fallback: super::property_input::Site<'i>,
+    offset: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
-    let location = numeric.error_location(error, fallback, offset);
+    let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
         && crate::error::is_component_resource_error(component)
     {
-        return crate::error::invalid_component_value(location, component.clone());
+        return crate::error::property::invalid_component_value(location, component.clone());
     }
     unexpected_at(location)
 }
@@ -323,8 +324,10 @@ pub(super) fn parse_transition_value_list<'i, 't>(
 pub(super) fn parse_single_transition_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<(CssTransition, Option<cssparser::SourceLocation>), ParseError<'i, Error>>
-{
+) -> std::result::Result<
+    (CssTransition, Option<super::property_input::Site<'i>>),
+    ParseError<'i, Error>,
+> {
     let mut property = None;
     let mut none_location = None;
     let mut duration = None;

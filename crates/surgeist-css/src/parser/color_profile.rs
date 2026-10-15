@@ -1,3 +1,4 @@
+use super::property_input::{NativeValueRange, adapt_native};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser,
@@ -208,9 +209,12 @@ fn parse_value_data<'i>(
         ));
     }
     Ok(match kind {
-        CssColorProfileDescriptorKind::Src => {
-            CssColorProfileDescriptorData::Src(super::url::parse_url(input, numeric)?)
-        }
+        CssColorProfileDescriptorKind::Src => CssColorProfileDescriptorData::Src(adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            super::url::parse_url,
+        )?),
         CssColorProfileDescriptorKind::RenderingIntent => {
             let location = input.current_source_location();
             let ident = input.expect_ident_cloned().map_err(basic)?;

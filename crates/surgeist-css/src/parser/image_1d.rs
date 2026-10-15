@@ -1,11 +1,13 @@
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::{Parser, Site};
+use crate::error::property::ParseError;
+use crate::error::property::{Error, basic, unexpected_at};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::{
     CssColor, CssComponentValueRef, CssComponentValues, CssFlexCalculation, CssImage1D,
     CssImage1DConstructionError, CssLengthPercentageCalculation, CssSpecifiedFlex, CssStripe,
     CssStripeLengthPercentage, CssStripeThickness, CssStripes, CssValueTokenRef,
 };
-use cssparser::{ParseError, Parser, ParserInput, Token};
+use cssparser::Token;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
     crate::CssFeatureId::new("ext.value.image-1d"),
@@ -15,43 +17,37 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 pub(crate) fn checked_color(
     values: &CssComponentValues,
 ) -> Result<CssColor, CssImage1DConstructionError> {
-    let serialized = values
-        .serialize()
-        .map_err(CssImage1DConstructionError::Component)?;
-    super::fragments::bounded_execution(serialized.as_css(), || {
-        let numeric = NumericInputContext::components(values, &serialized);
-        let mut input = ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        parser
-            .parse_entirely(|input| super::color::parse_color(input, &numeric))
-            .map_err(|error| {
-                CssImage1DConstructionError::Grammar(
-                    crate::CssPropertyValueParseError::from_grammar(
-                        crate::error::from_parse_error(serialized.as_css(), error),
-                        &serialized,
-                    ),
-                )
-            })
+    checked(values, |input, numeric| {
+        super::color::parse_color(input, numeric)
     })
 }
 pub(crate) fn checked_image(
     values: &CssComponentValues,
 ) -> Result<CssImage1D, CssImage1DConstructionError> {
-    let serialized = values
-        .serialize()
+    checked(values, parse_image_1d)
+}
+fn checked<T: Send>(
+    values: &CssComponentValues,
+    parse: impl for<'i, 't> FnOnce(
+        &mut Parser<'i, 't>,
+        &NumericInputContext<'_>,
+    ) -> Result<T, ParseError<'i, Error>>
+    + Send,
+) -> Result<T, CssImage1DConstructionError> {
+    super::fragments::bounded_execution_at_depth(values.nesting_depth(), || {
+        let document = crate::syntax_consumption::normalize(
+            crate::syntax_consumption::SyntaxInput::CheckedComponents(values.items()),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
+            0,
+        )
         .map_err(CssImage1DConstructionError::Component)?;
-    super::fragments::bounded_execution(serialized.as_css(), || {
-        let numeric = NumericInputContext::components(values, &serialized);
-        let mut input = ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        parser
-            .parse_entirely(|input| parse_image_1d(input, &numeric))
+        let mut input = Parser::new(&document);
+        input
+            .parse_entirely(|input| parse(input, &NumericInputContext::Checked))
             .map_err(|error| {
+                let (kind, origin) = error.into_parts();
                 CssImage1DConstructionError::Grammar(
-                    crate::CssPropertyValueParseError::from_grammar(
-                        crate::error::from_parse_error(serialized.as_css(), error),
-                        &serialized,
-                    ),
+                    crate::CssPropertyValueParseError::from_direct_grammar(kind, origin),
                 )
             })
     })
@@ -63,9 +59,9 @@ pub(super) fn parse_image_1d<'i, 't>(
     input.skip_whitespace();
     let start = input.state();
     let location = input.current_source_location();
-    let original = numeric
-        .collect(input)
-        .map_err(|error| numeric_error(numeric, &error, location, start.position().byte_index()))?;
+    let original = input
+        .collect_numeric_component(numeric)
+        .map_err(|error| numeric_error(numeric, &error, location, start.position()))?;
     input.reset(&start);
     match input.next().map_err(basic)? {
         Token::Function(name) if name.eq_ignore_ascii_case("stripes") => {}
@@ -83,20 +79,16 @@ pub(super) fn parse_image_1d<'i, 't>(
                         Ok(value) => {
                             let after = input.state();
                             input.reset(&state);
-                            let component = numeric.collect(input).map_err(|error| {
-                                numeric_error(
-                                    numeric,
-                                    &error,
-                                    location,
-                                    state.position().byte_index(),
-                                )
-                            })?;
+                            let component =
+                                input.collect_numeric_component(numeric).map_err(|error| {
+                                    numeric_error(numeric, &error, location, state.position())
+                                })?;
                             input.reset(&after);
                             color = Some(value);
                             color_component = Some(component);
                             continue;
                         }
-                        Err(error) if crate::error::is_resource_parse_error(&error) => {
+                        Err(error) if crate::error::property::is_resource_parse_error(&error) => {
                             return Err(error);
                         }
                         Err(_) => {}
@@ -124,14 +116,14 @@ pub(super) fn parse_image_1d<'i, 't>(
 fn numeric_error<'i>(
     numeric: &NumericInputContext<'_>,
     error: &crate::CssNumericConstructionError,
-    location: cssparser::SourceLocation,
-    offset: usize,
+    location: Site<'i>,
+    offset: Site<'i>,
 ) -> ParseError<'i, Error> {
-    let location = numeric.error_location(error, location, offset);
+    let location = numeric.property_error_location(error, location, offset);
     if let Some(component) = error.component_error()
         && crate::error::is_component_resource_error(component)
     {
-        return crate::error::invalid_component_value(location, component.clone());
+        return crate::error::property::invalid_component_value(location, component.clone());
     }
     unexpected_at(location)
 }
@@ -141,15 +133,15 @@ fn parse_thickness<'i, 't>(
 ) -> Result<CssStripeThickness, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric
-        .collect(input)
+    let offset = input.position();
+    let component = input
+        .collect_component()
+        .map_err(crate::CssNumericConstructionError::component)
         .map_err(|error| numeric_error(numeric, &error, location, offset))?;
     if matches!(component.view(), CssComponentValueRef::Function(_)) {
-        let values = CssComponentValues::try_new(vec![component])
-            .map_err(|error| crate::error::invalid_component_value(location, error))?;
-        let flex = numeric.admit(values.clone(), CalculationRoot::Flex);
-        match flex {
+        let values = crate::numeric::CalculationComponents::single(component)
+            .map_err(|error| crate::error::property::invalid_component_value(location, error))?;
+        let values = match numeric.admit_or_return_input(values, CalculationRoot::Flex) {
             Ok(value) => {
                 return CssSpecifiedFlex::from_parser_calculation(
                     CssFlexCalculation::from_expression(value),
@@ -157,15 +149,16 @@ fn parse_thickness<'i, 't>(
                 .map(CssStripeThickness::Flex)
                 .map_err(|error| numeric_error(numeric, &error, location, offset));
             }
-            Err(error)
-                if error
+            Err(failure)
+                if failure
+                    .error
                     .component_error()
                     .is_some_and(crate::error::is_component_resource_error) =>
             {
-                return Err(numeric_error(numeric, &error, location, offset));
+                return Err(numeric_error(numeric, &failure.error, location, offset));
             }
-            Err(_) => {}
-        }
+            Err(failure) => failure.values,
+        };
         let expression = numeric
             .admit(values, CalculationRoot::LengthPercentage)
             .map_err(|error| numeric_error(numeric, &error, location, offset))?;
@@ -175,6 +168,7 @@ fn parse_thickness<'i, 't>(
         .map(CssStripeThickness::LengthPercentage)
         .map_err(|error| numeric_error(numeric, &error, location, offset));
     }
+    let component = component.into_owned();
     if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("fr"))
     {
         CssSpecifiedFlex::try_from_component(component)

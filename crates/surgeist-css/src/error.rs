@@ -1,3 +1,5 @@
+pub(crate) mod property;
+
 mod source_resolution;
 
 use std::fmt;
@@ -248,6 +250,52 @@ impl CssTokenSummary {
     /// Returns the exact authored source spelling of the encountered token.
     pub fn authored(&self) -> &str {
         &self.authored
+    }
+
+    fn from_component(component: &crate::CssComponentValue) -> Self {
+        use crate::{
+            CssBlockKind as Block, CssComponentValueRef as Component, CssValueTokenRef as Value,
+        };
+        let kind = match component.view() {
+            Component::Token(token) => match token {
+                Value::Ident(_) => CssTokenKind::Ident,
+                Value::AtKeyword(_) => CssTokenKind::AtKeyword,
+                Value::Hash {
+                    flag: crate::CssHashFlag::Id,
+                    ..
+                } => CssTokenKind::IdHash,
+                Value::Hash {
+                    flag: crate::CssHashFlag::Unrestricted,
+                    ..
+                } => CssTokenKind::Hash,
+                Value::String(_) => CssTokenKind::String,
+                Value::Url(_) => CssTokenKind::Url,
+                Value::Delim(_) => CssTokenKind::Delim,
+                Value::Number(_) => CssTokenKind::Number,
+                Value::Percentage(_) => CssTokenKind::Percentage,
+                Value::Dimension { .. } => CssTokenKind::Dimension,
+                Value::Whitespace(_) => CssTokenKind::Whitespace,
+                Value::Colon => CssTokenKind::Colon,
+                Value::Semicolon => CssTokenKind::Semicolon,
+                Value::Comma => CssTokenKind::Comma,
+                Value::Cdo => CssTokenKind::Cdo,
+                Value::Cdc => CssTokenKind::Cdc,
+            },
+            Component::Function(_) => CssTokenKind::Function,
+            Component::Block(block) => match block.kind() {
+                Block::Parenthesis => CssTokenKind::ParenthesisBlock,
+                Block::SquareBracket => CssTokenKind::SquareBracketBlock,
+                Block::CurlyBracket => CssTokenKind::CurlyBracketBlock,
+            },
+            Component::Comment(_) => CssTokenKind::Comment,
+        };
+        let (authored, _) = component
+            .structural_lexeme(false)
+            .expect("a component owns its leaf or opening lexeme");
+        Self {
+            kind,
+            authored: authored.to_owned(),
+        }
     }
 
     fn from_token(token: &Token<'_>) -> Self {
@@ -1224,45 +1272,7 @@ pub(crate) fn unexpected_component_value_at<'i>(
     expectation: &'static str,
     position: CssSourcePosition,
 ) -> ParseError<'i, Error> {
-    use crate::{
-        CssBlockKind as Block, CssComponentValueRef as Component, CssValueTokenRef as Value,
-    };
-    let kind = match component.view() {
-        Component::Token(token) => match token {
-            Value::Ident(_) => CssTokenKind::Ident,
-            Value::AtKeyword(_) => CssTokenKind::AtKeyword,
-            Value::Hash {
-                flag: crate::CssHashFlag::Id,
-                ..
-            } => CssTokenKind::IdHash,
-            Value::Hash {
-                flag: crate::CssHashFlag::Unrestricted,
-                ..
-            } => CssTokenKind::Hash,
-            Value::String(_) => CssTokenKind::String,
-            Value::Url(_) => CssTokenKind::Url,
-            Value::Delim(_) => CssTokenKind::Delim,
-            Value::Number(_) => CssTokenKind::Number,
-            Value::Percentage(_) => CssTokenKind::Percentage,
-            Value::Dimension { .. } => CssTokenKind::Dimension,
-            Value::Whitespace(_) => CssTokenKind::Whitespace,
-            Value::Colon => CssTokenKind::Colon,
-            Value::Semicolon => CssTokenKind::Semicolon,
-            Value::Comma => CssTokenKind::Comma,
-            Value::Cdo => CssTokenKind::Cdo,
-            Value::Cdc => CssTokenKind::Cdc,
-        },
-        Component::Function(_) => CssTokenKind::Function,
-        Component::Block(block) => match block.kind() {
-            Block::Parenthesis => CssTokenKind::ParenthesisBlock,
-            Block::SquareBracket => CssTokenKind::SquareBracketBlock,
-            Block::CurlyBracket => CssTokenKind::CurlyBracketBlock,
-        },
-        Component::Comment(_) => CssTokenKind::Comment,
-    };
-    let (authored, _) = component
-        .structural_lexeme(false)
-        .expect("a component owns its leaf or opening lexeme");
+    let encountered = CssTokenSummary::from_component(component);
     ParseError {
         location: cssparser::SourceLocation {
             line: position.line().value(),
@@ -1272,10 +1282,7 @@ pub(crate) fn unexpected_component_value_at<'i>(
             position,
             kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                 expectation: CssGrammarExpectation::new(expectation),
-                encountered: CssTokenSummary {
-                    kind,
-                    authored: authored.to_owned(),
-                },
+                encountered,
             }),
         }),
     }
@@ -1689,20 +1696,15 @@ pub(crate) fn descriptor_name_error<'i>(
     )
 }
 
-pub(crate) fn invalid_color<'i>(
-    location: cssparser::SourceLocation,
-    component: Option<&str>,
-) -> ParseError<'i, Error> {
-    error_at(
-        location,
-        ErrorKind::InvalidColorSyntax(CssColorSyntaxError {
-            component: component.map(CssColorComponentName::new),
-            expectation: EXPECT_COLOR,
-            encountered: None,
-        }),
-    )
+pub(crate) fn color_syntax_kind(component: Option<&str>) -> ErrorKind {
+    ErrorKind::InvalidColorSyntax(CssColorSyntaxError {
+        component: component.map(CssColorComponentName::new),
+        expectation: EXPECT_COLOR,
+        encountered: None,
+    })
 }
 
+#[cfg(test)]
 pub(crate) fn with_color_context<'i>(
     mut error: ParseError<'i, Error>,
     component: Option<&str>,

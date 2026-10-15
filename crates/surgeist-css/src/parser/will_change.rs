@@ -1,10 +1,10 @@
 //! CSS Will Change 1 §2 authored grammar.
 
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::{
     CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
 };
-use cssparser::{ParseError, Parser};
 
 pub(super) fn parse_will_change<'i, 't>(
     input: &mut Parser<'i, 't>,

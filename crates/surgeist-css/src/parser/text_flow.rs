@@ -1,7 +1,8 @@
 //! Wrapping, whitespace, and line-breaking grammar.
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::syntax::*;
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use cssparser::match_ignore_ascii_case;
 
 fn text_wrap_mode_keyword(ident: &str) -> Option<CssTextWrapMode> {
     match_ignore_ascii_case! { ident,

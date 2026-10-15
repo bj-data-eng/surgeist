@@ -1,8 +1,10 @@
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::ParseError;
+use cssparser::{Token, match_ignore_ascii_case};
 use surgeist_color::{ColorSpace, HueInterpolation};
 
 use super::values::parse_numeric_function;
-use crate::error::{Error, basic, invalid_color, unexpected_at};
+use crate::error::property::{Error, basic, invalid_color, unexpected_at};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::syntax::*;
 
@@ -10,7 +12,19 @@ pub(super) fn parse_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    crate::color::authored::parse_color(input, numeric)
+    input.skip_whitespace();
+    let root = input.position();
+    let component = input.collect_component().map_err(|error| {
+        let location = root.source_origin(error.origin()).unwrap_or(root);
+        crate::error::property::invalid_component_value(location, error)
+    })?;
+    crate::color::authored::construct_component(component.as_ref(), numeric).map_err(|failure| {
+        let mut path = Vec::with_capacity(failure.path.len() + 1);
+        path.push(0);
+        path.extend_from_slice(&failure.path);
+        let site = root.descendant(&path, failure.closing).unwrap_or(root);
+        crate::error::property::error_at(site, failure.kind)
+    })
 }
 
 pub(super) fn parse_color_interpolation_method<'i, 't>(
@@ -55,7 +69,7 @@ pub(super) fn parse_authored_mix_weight<'i>(
         return CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
             expression,
         ))
-        .map_err(|error| crate::error::invalid_component_value(location, error));
+        .map_err(|error| crate::error::property::invalid_component_value(location, error));
     }
     input.reset(&state);
     parse_authored_color_mix_percentage(input, numeric).map(CssColorMixWeight::literal)
@@ -76,12 +90,12 @@ fn collect_color_scalar<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> Result<crate::CssComponentValue, ParseError<'i, Error>> {
     input.skip_whitespace();
-    let offset = input.position().byte_index();
+    let offset = input.position();
     let location = input.current_source_location();
-    numeric.collect(input).map_err(|error| {
-        let location = numeric.error_location(&error, location, offset);
+    input.collect_numeric_component(numeric).map_err(|error| {
+        let location = numeric.property_error_location(&error, location, offset);
         if let Some(component) = error.component_error() {
-            crate::error::invalid_component_value(location, component.clone())
+            crate::error::property::invalid_component_value(location, component.clone())
         } else {
             invalid_color(location, Some("component"))
         }

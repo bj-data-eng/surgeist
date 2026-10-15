@@ -1,12 +1,13 @@
+use super::property_input::Parser;
 use super::values::parse_nonnegative_length;
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{
     CalculationRoot, parse_integer_literal, parse_integer_value, parse_numeric_function,
 };
 use crate::CssOverflowValue;
 use crate::display::*;
-use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
@@ -120,8 +121,8 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssPageLineMinimum::try_from_component(component).map_err(|_| unexpected_at(location))
         }
@@ -430,10 +431,10 @@ pub(super) fn parse_opacity<'i, 't>(
         Token::Number { .. } | Token::Percentage { .. } => {
             input.reset(&numeric_start);
             input.skip_whitespace();
-            let offset = input.position().byte_index();
-            let component = numeric
-                .collect(input)
-                .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
+            let offset = input.position();
+            let component = input.collect_numeric_component(numeric).map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, offset))
+            })?;
             crate::opacity_scalar::admit_opacity_scalar(component)
                 .map_err(|_| unexpected_at(location))
         }
@@ -502,8 +503,8 @@ fn parse_ratio_operand<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&start);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             crate::CssRatioOperand::try_from_component(component)
                 .map_err(|_| unexpected_at(location))

@@ -386,3 +386,26 @@ fn excessive_nesting_stops_the_import_without_erasing_its_resource_error() {
         18 + 256 * 7
     );
 }
+
+#[test]
+fn an_invalid_target_precedes_unentered_nested_prelude_components() {
+    let deep = format!("{}x{}", "future(".repeat(257), ")".repeat(257));
+    for target in [
+        format!("nope {deep}"),
+        format!("future({deep})"),
+        format!("url(\"asset\" 1) {deep}"),
+    ] {
+        let source = format!("@import {target}; .after {{ color: red; }}");
+        let report = parse_sheet(&source);
+        assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one invalid-target failure");
+        };
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidAtRulePrelude
+        );
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+        assert_eq!(diagnostic.error().position().byte_offset().value(), 8);
+    }
+}

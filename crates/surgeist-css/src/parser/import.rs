@@ -1,5 +1,6 @@
 //! Import construction, optional-clause selection, and interpretation protection.
 
+use super::property_input::NativeValueRange;
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::supports::{parse_supports_condition, parse_supports_declaration};
 use super::url::parse_url;
@@ -591,7 +592,9 @@ fn parse_import_target<'i, 't>(
         )));
     }
 
-    if let Ok(value) = input.try_parse(|input| parse_url(input, numeric)) {
+    if let Ok(value) = input.try_parse(|input| {
+        super::property_input::adapt_native(input, numeric, NativeValueRange::Component, parse_url)
+    }) {
         return Ok(CssImportTarget::Url(CssImportUrl::new(value)));
     }
 

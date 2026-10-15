@@ -1,9 +1,10 @@
 //! Sizing 3 and Sizing 4 authored property grammars.
 
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::Token;
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBoxCalcSize, CssBoxSize, CssCalcSize, CssComponentValueLimits,
@@ -36,10 +37,11 @@ pub(super) fn parse_max_size_value<'i, 't>(
         return Ok(CssMaxSizeValue::NONE);
     }
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let value = parse_box_size(input, numeric)?;
-    CssMaxSizeValue::try_box_size(value)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    CssMaxSizeValue::try_box_size(value).map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 fn parse_box_size<'i, 't>(
@@ -49,7 +51,7 @@ fn parse_box_size<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("stretch") => Ok(CssBoxSize::Stretch),
         Token::Ident(ident) if ident.eq_ignore_ascii_case("contain") => Ok(CssBoxSize::Contain),
@@ -72,33 +74,33 @@ fn parse_box_size<'i, 't>(
         }
         Token::Function(name) if name.eq_ignore_ascii_case("calc-size") => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
-            let recovered = matches!(numeric.ordinary(), NumericInputContext::Parsed(_));
+            let recovered = numeric.is_source_input();
             let value = CssCalcSize::from_component_with_policy(
                 component,
                 CssComponentValueLimits::default(),
                 recovered,
             )
             .map_err(|error| {
-                unexpected_at(numeric.error_location(&error, location, root_offset))
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
             })?;
             CssBoxCalcSize::try_from(value)
                 .map(CssBoxSize::CalcSize)
                 .map_err(|error| {
-                    unexpected_at(numeric.error_location(&error, location, root_offset))
+                    unexpected_at(numeric.property_error_location(&error, location, root_site))
                 })
         }
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::from_property_component(component, numeric)
                 .map(CssBoxSize::LengthPercentage)
                 .map_err(|error| {
-                    unexpected_at(numeric.error_location(&error, location, root_offset))
+                    unexpected_at(numeric.property_error_location(&error, location, root_site))
                 })
         }
         Token::Function(name) if is_math_function(name) => {
@@ -108,7 +110,9 @@ fn parse_box_size<'i, 't>(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
             .map(CssBoxSize::LengthPercentage)
-            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+            .map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
+            })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -121,15 +125,15 @@ fn parse_nonnegative_length_percentage<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component).map_err(
-                |error| unexpected_at(numeric.error_location(&error, location, root_offset)),
+                |error| unexpected_at(numeric.property_error_location(&error, location, root_site)),
             )
         }
         Token::Function(name) if is_math_function(name) => {
@@ -138,7 +142,9 @@ fn parse_nonnegative_length_percentage<'i, 't>(
             CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
                 CssLengthPercentageCalculation::from_expression(expression),
             )
-            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+            .map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
+            })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

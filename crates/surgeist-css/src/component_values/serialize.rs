@@ -335,10 +335,10 @@ impl Emitter {
 
     fn values(
         &mut self,
-        values: &CssComponentValues,
+        values: &[CssComponentValue],
         path: &mut Vec<usize>,
     ) -> Result<(), CssComponentValueError> {
-        for (index, item) in values.items.iter().enumerate() {
+        for (index, item) in values.iter().enumerate() {
             path.push(index);
             self.component(item, path)?;
             path.pop();
@@ -365,7 +365,7 @@ impl Emitter {
             }
             ComponentData::Function(function) => {
                 self.token(&function.opening, TokenSerializationType::Function, false)?;
-                self.values(&function.values, path)?;
+                self.values(function.values.items(), path)?;
                 self.token(&function.closing, TokenSerializationType::Other, false)?;
             }
             ComponentData::Block(block) => {
@@ -376,7 +376,7 @@ impl Emitter {
                     }
                 };
                 self.token(&block.opening, kind, false)?;
-                self.values(&block.values, path)?;
+                self.values(block.values.items(), path)?;
                 self.token(&block.closing, TokenSerializationType::Other, false)?;
             }
             ComponentData::Comment {
@@ -441,6 +441,13 @@ pub(super) fn validate(
     values: &CssComponentValues,
     max_bytes: usize,
 ) -> Result<(), CssComponentValueError> {
+    validate_items(values.items(), max_bytes)
+}
+
+pub(super) fn validate_items(
+    values: &[CssComponentValue],
+    max_bytes: usize,
+) -> Result<(), CssComponentValueError> {
     let mut emitter = Emitter::new(max_bytes, false);
     emitter.values(values, &mut Vec::new())?;
     emitter.finish()
@@ -453,7 +460,7 @@ pub(super) fn serialize(
     // Bound the result before allocating the output text or map.
     validate(values, max_bytes)?;
     let mut emitter = Emitter::new(max_bytes, true);
-    emitter.values(values, &mut Vec::new())?;
+    emitter.values(values.items(), &mut Vec::new())?;
     emitter.finish()?;
     Ok(CssSerializedValue {
         css: emitter

@@ -5,7 +5,7 @@ use crate::{
     CssNumericTokenKind, CssNumericTokenRef, CssRelativeColorChannel, CssSerializedValue,
     CssSourcePosition, CssValueOrigin, CssValueTokenRef,
 };
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 mod color_expression;
 pub(crate) mod color_operands;
@@ -26,9 +26,71 @@ pub(crate) use projection::{
     project_calc_size_sum_into, project_specified_into,
 };
 
+/// Component storage is acquired only for a completed calculation result.
+#[derive(Debug)]
+pub(crate) enum CalculationComponents<'a> {
+    Owned(CssComponentValues),
+    Borrowed(&'a [CssComponentValue]),
+}
+/// A failed attempt returns the original storage for a grammar-owned fallback.
+#[derive(Debug)]
+pub(crate) struct CalculationAdmissionFailure<'a> {
+    pub(crate) error: CssNumericConstructionError,
+    pub(crate) values: CalculationComponents<'a>,
+}
+impl<'a> CalculationComponents<'a> {
+    pub(crate) fn single(
+        value: Cow<'a, CssComponentValue>,
+    ) -> std::result::Result<Self, CssComponentValueError> {
+        match value {
+            Cow::Owned(value) => CssComponentValues::try_new(vec![value]).map(Self::Owned),
+            Cow::Borrowed(value) => Ok(Self::Borrowed(std::slice::from_ref(value))),
+        }
+    }
+    fn items(&self) -> &[CssComponentValue] {
+        match self {
+            Self::Owned(values) => values.items(),
+            Self::Borrowed(items) => items,
+        }
+    }
+    fn authored(&self) -> Result<crate::CssAuthoredDeclarationValue> {
+        let mut builder = crate::component_values::CssCanonicalBuilder::new(
+            CssComponentValueLimits::default().max_css_bytes(),
+        );
+        builder
+            .push_components(self.items())
+            .map_err(CssNumericConstructionError::component)?;
+        let serialized = builder
+            .finish()
+            .map_err(CssNumericConstructionError::component)?;
+        Ok(crate::CssAuthoredDeclarationValue::new(
+            serialized.into_css(),
+        ))
+    }
+    fn retain(self, limits: CssComponentValueLimits) -> Result<CssComponentValues> {
+        match self {
+            Self::Owned(values) => Ok(values),
+            Self::Borrowed(items) => CssComponentValues::retain_admitted(items, limits)
+                .map_err(CssNumericConstructionError::component),
+        }
+    }
+}
+impl From<CssComponentValues> for CalculationComponents<'_> {
+    fn from(values: CssComponentValues) -> Self {
+        Self::Owned(values)
+    }
+}
+impl<'a> From<&'a CssComponentValue> for CalculationComponents<'a> {
+    fn from(value: &'a CssComponentValue) -> Self {
+        Self::Borrowed(std::slice::from_ref(value))
+    }
+}
+
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
 pub(crate) enum NumericInputContext<'a> {
     Parsed(&'a crate::CssSourceSnapshot),
+    /// Strict checked admission whose cursor owns actual component attribution.
+    Checked,
     Components(&'a CssComponentValues, &'a CssSerializedValue),
     QuirkyLengths(&'a NumericInputContext<'a>),
 }
@@ -41,6 +103,25 @@ impl<'a> NumericInputContext<'a> {
     }
     pub(crate) fn allows_quirky_lengths(&self) -> bool {
         matches!(self, Self::QuirkyLengths(_))
+    }
+
+    pub(crate) fn is_source_input(&self) -> bool {
+        matches!(self.ordinary(), Self::Parsed(_))
+    }
+
+    /// Numerical grammar paths are relative to the actual component cursor,
+    /// independently of whether those components share an authored snapshot.
+    pub(crate) fn property_error_location<'i>(
+        &self,
+        error: &CssNumericConstructionError,
+        fallback: crate::parser::property_input::Site<'i>,
+        root: crate::parser::property_input::Site<'i>,
+    ) -> crate::parser::property_input::Site<'i> {
+        let Some(path) = error.path() else {
+            return fallback;
+        };
+        let closing = matches!(error.origin(), Some(CssValueOrigin::ImplicitClosure { .. }));
+        root.descendant(path, closing).unwrap_or(fallback)
     }
 
     pub(crate) fn error_location(
@@ -64,6 +145,9 @@ impl<'a> NumericInputContext<'a> {
                     column: position.column().value() + 1,
                 }
             }
+            Self::Checked => {
+                unreachable!("checked property errors use their actual component cursor")
+            }
             Self::Components(_, serialized) => {
                 let Some(relative) = error.path.as_deref() else {
                     return fallback;
@@ -83,41 +167,85 @@ impl<'a> NumericInputContext<'a> {
             }
         }
     }
-    pub(crate) fn admit(
+    pub(crate) fn admit<'input>(
         &self,
-        values: CssComponentValues,
+        values: impl Into<CalculationComponents<'input>>,
         root: CalculationRoot,
     ) -> Result<CssCalculationExpression> {
         self.admit_with_limits(values, root, CssComponentValueLimits::default())
     }
-    pub(crate) fn admit_with_limits(
+    /// Moves unique input on success and returns it unchanged on failure.
+    pub(crate) fn admit_or_return_input<'input>(
         &self,
-        values: CssComponentValues,
+        values: CalculationComponents<'input>,
+        root: CalculationRoot,
+    ) -> std::result::Result<CssCalculationExpression, Box<CalculationAdmissionFailure<'input>>>
+    {
+        let limits = CssComponentValueLimits::default();
+        let mut expression = match prepare_calculation(
+            values.items(),
+            root,
+            limits,
+            self.admission_policy(),
+            NumericAdmissionContext::Pure,
+        ) {
+            Ok(expression) => expression,
+            Err(error) => return Err(Box::new(CalculationAdmissionFailure { error, values })),
+        };
+        expression.components = Some(match values {
+            CalculationComponents::Owned(values) => values,
+            CalculationComponents::Borrowed(items) => {
+                match CssComponentValues::retain_admitted(items, limits) {
+                    Ok(values) => values,
+                    Err(error) => {
+                        return Err(Box::new(CalculationAdmissionFailure {
+                            error: CssNumericConstructionError::component(error),
+                            values: CalculationComponents::Borrowed(items),
+                        }));
+                    }
+                }
+            }
+        });
+        Ok(expression)
+    }
+    fn admission_policy(&self) -> AdmissionPolicy {
+        match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
+            Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
+            Self::Components(..) | Self::Checked => AdmissionPolicy::Strict,
+        }
+    }
+    /// Check an actual read-only consumer without retaining an input graph.
+    pub(crate) fn check_component(
+        &self,
+        component: &CssComponentValue,
+        root: CalculationRoot,
+    ) -> Result<()> {
+        check_component_with_policy(component, root, self.admission_policy())
+    }
+    pub(crate) fn admit_with_limits<'input>(
+        &self,
+        values: impl Into<CalculationComponents<'input>>,
         root: CalculationRoot,
         limits: CssComponentValueLimits,
     ) -> Result<CssCalculationExpression> {
-        let policy = match self.ordinary() {
-            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-            Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
-            Self::Components(..) => AdmissionPolicy::Strict,
-        };
-        construct_with_policy(values, root, limits, policy)
+        construct_with_policy(values, root, limits, self.admission_policy())
     }
-    pub(crate) fn admit_grid_track_math(
+    pub(crate) fn admit_grid_track_math<'input>(
         &self,
-        values: CssComponentValues,
+        values: impl Into<CalculationComponents<'input>>,
     ) -> Result<GridTrackMath> {
-        let policy = match self.ordinary() {
-            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-            Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
-            Self::Components(..) => AdmissionPolicy::Strict,
-        };
-        construct_grid_track_math(values, CssComponentValueLimits::default(), policy)
+        construct_grid_track_math(
+            values,
+            CssComponentValueLimits::default(),
+            self.admission_policy(),
+        )
     }
     pub(crate) fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
         match self.ordinary() {
             Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
+            Self::Checked => None,
             Self::Parsed(source) => {
                 let (_, end, _) = crate::tokenization::next_source_token(source.as_str(), offset)?;
                 crate::CssParsedOrigin::from_range(source, offset..end).map(CssValueOrigin::Parsed)
@@ -136,12 +264,16 @@ impl<'a> NumericInputContext<'a> {
     pub(crate) fn collect(
         &self,
         input: &mut cssparser::Parser<'_, '_>,
-    ) -> Result<CssComponentValue> {
+    ) -> Result<Cow<'a, CssComponentValue>> {
         input.skip_whitespace();
         match self.ordinary() {
             Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(source) => CssComponentValue::collect_from_parser(input, source)
+                .map(Cow::Owned)
                 .map_err(CssNumericConstructionError::component),
+            Self::Checked => {
+                unreachable!("checked property collection uses its actual component cursor")
+            }
             Self::Components(values, serialized) => {
                 input.skip_whitespace();
                 let offset = input.position().byte_index();
@@ -162,9 +294,7 @@ impl<'a> NumericInputContext<'a> {
                         _ => &[],
                     };
                 }
-                let component = found
-                    .expect("serialized component path is nonempty")
-                    .clone();
+                let component = found.expect("serialized component path is nonempty");
                 let nested = matches!(
                     component.view(),
                     CssComponentValueRef::Function(_) | CssComponentValueRef::Block(_)
@@ -172,7 +302,7 @@ impl<'a> NumericInputContext<'a> {
                 input.next().map_err(|_| {
                     CssNumericConstructionError::at(
                         CssNumericConstructionErrorKind::MalformedExpression,
-                        Some(&component),
+                        Some(component),
                     )
                 })?;
                 if nested {
@@ -184,11 +314,11 @@ impl<'a> NumericInputContext<'a> {
                         .map_err(|_| {
                             CssNumericConstructionError::at(
                                 CssNumericConstructionErrorKind::MalformedExpression,
-                                Some(&component),
+                                Some(component),
                             )
                         })?;
                 }
-                Ok(component)
+                Ok(Cow::Borrowed(component))
             }
         }
     }
@@ -1929,7 +2059,7 @@ pub(crate) fn validate_calc_size_graph(
         ));
     }
     validate_components(
-        values,
+        values.items(),
         limits,
         if recovered {
             AdmissionPolicy::RecoveredSyntax
@@ -2055,15 +2185,14 @@ enum AdmissionPolicy {
 }
 
 fn validate_components(
-    values: &CssComponentValues,
+    values: &[CssComponentValue],
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
 ) -> Result<()> {
-    values
-        .validate_with_limits(limits)
+    CssComponentValues::validate_items_with_limits(values, limits)
         .map_err(CssNumericConstructionError::component)?;
     if policy == AdmissionPolicy::Strict {
-        let mut pending: Vec<_> = values.items().iter().collect();
+        let mut pending: Vec<_> = values.iter().collect();
         while let Some(component) = pending.pop() {
             let nested = match component.view() {
                 CssComponentValueRef::Function(function) => {
@@ -2094,8 +2223,21 @@ pub(crate) fn construct(
 ) -> Result<CssCalculationExpression> {
     construct_with_policy(values, root, limits, AdmissionPolicy::Strict)
 }
-fn construct_with_policy(
-    values: CssComponentValues,
+/// Pure checked admission for a consumer that only needs validity.
+pub(crate) fn check_component(component: &CssComponentValue, root: CalculationRoot) -> Result<()> {
+    check_component_with_policy(component, root, AdmissionPolicy::Strict)
+}
+fn check_component_with_policy(
+    component: &CssComponentValue,
+    root: CalculationRoot,
+    policy: AdmissionPolicy,
+) -> Result<()> {
+    let values = std::slice::from_ref(component);
+    let limits = CssComponentValueLimits::default();
+    prepare_calculation(values, root, limits, policy, NumericAdmissionContext::Pure).map(drop)
+}
+fn construct_with_policy<'input>(
+    values: impl Into<CalculationComponents<'input>>,
     root: CalculationRoot,
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
@@ -2119,26 +2261,37 @@ pub(crate) fn construct_container(
     )
 }
 
-fn construct_with_context(
-    values: CssComponentValues,
+fn construct_with_context<'input>(
+    values: impl Into<CalculationComponents<'input>>,
     root: CalculationRoot,
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
     context: NumericAdmissionContext,
 ) -> Result<CssCalculationExpression> {
-    validate_components(&values, limits, policy)?;
-    let mut expression = construct_validated(&values, root, limits, context)?;
-    expression.components = Some(values);
+    let values = values.into();
+    let mut expression = prepare_calculation(values.items(), root, limits, policy, context)?;
+    expression.components = Some(values.retain(limits)?);
     Ok(expression)
 }
 
+fn prepare_calculation(
+    values: &[CssComponentValue],
+    root: CalculationRoot,
+    limits: CssComponentValueLimits,
+    policy: AdmissionPolicy,
+    context: NumericAdmissionContext,
+) -> Result<CssCalculationExpression> {
+    validate_components(values, limits, policy)?;
+    construct_validated(values, root, limits, context)
+}
+
 fn construct_validated(
-    values: &CssComponentValues,
+    values: &[CssComponentValue],
     root: CalculationRoot,
     limits: CssComponentValueLimits,
     context: NumericAdmissionContext,
 ) -> Result<CssCalculationExpression> {
-    let mut significant = values.items().iter().filter(|c| !trivia(c));
+    let mut significant = values.iter().filter(|c| !trivia(c));
     let c = significant.next().ok_or_else(|| {
         CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
     })?;
@@ -2163,14 +2316,12 @@ fn construct_validated(
         )
         .with_path(
             values
-                .items()
                 .iter()
                 .position(|item| std::ptr::eq(item, c))
                 .map(|index| vec![index].into_boxed_slice()),
         ));
     }
     let root_index = values
-        .items()
         .iter()
         .position(|value| std::ptr::eq(value, c))
         .expect("root component belongs to input");
@@ -2350,14 +2501,15 @@ mod grid_track_math_tests {
     }
 }
 
-fn construct_grid_track_math(
-    values: CssComponentValues,
+fn construct_grid_track_math<'input>(
+    values: impl Into<CalculationComponents<'input>>,
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
 ) -> Result<GridTrackMath> {
-    validate_components(&values, limits, policy)?;
+    let values = values.into();
+    validate_components(values.items(), limits, policy)?;
     let flex = construct_validated(
-        &values,
+        values.items(),
         CalculationRoot::Flex,
         limits,
         NumericAdmissionContext::Pure,
@@ -2374,7 +2526,7 @@ fn construct_grid_track_math(
                 return Err(flex_error);
             }
             match construct_validated(
-                &values,
+                values.items(),
                 CalculationRoot::LengthPercentage,
                 limits,
                 NumericAdmissionContext::Pure,
@@ -2398,7 +2550,7 @@ fn construct_grid_track_math(
     }?;
     match &mut selected {
         GridTrackMath::Flex(expression) | GridTrackMath::LengthPercentage(expression) => {
-            expression.components = Some(values);
+            expression.components = Some(values.retain(limits)?);
         }
     }
     Ok(selected)

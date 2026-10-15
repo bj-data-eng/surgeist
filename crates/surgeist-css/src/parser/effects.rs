@@ -1,8 +1,10 @@
+use super::property_input::Parser;
 use super::values::{
     parse_length, parse_length_percentage, parse_nonnegative_length,
     parse_nonnegative_length_percentage,
 };
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::box_model::parse_drop_shadow;
 use super::position::parse_full_position;
@@ -13,7 +15,6 @@ use super::values::{
     parse_specified_number, parse_specified_percentage,
 };
 use crate::CssValueOrigin;
-use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) fn parse_color_interpolation_filters<'i, 't>(
@@ -732,8 +733,8 @@ fn parse_path_shape<'i, 't>(
     }
     input.skip_whitespace();
     let location = input.current_source_location();
-    let component = context
-        .collect(input)
+    let component = input
+        .collect_numeric_component(context)
         .map_err(|_| unexpected_at(location))?;
     let data = CssPathData::from_parser_component(component, context)
         .map_err(|_| unexpected_at(location))?;
@@ -819,8 +820,8 @@ fn parse_rotate_axis<'i, 't>(
     if next_is_ident(input, "x") || next_is_ident(input, "y") || next_is_ident(input, "z") {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let component = numeric
-            .collect(input)
+        let component = input
+            .collect_numeric_component(numeric)
             .map_err(|_| unexpected_at(location))?;
         let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(keyword)) =
             component.view()
@@ -895,7 +896,7 @@ pub(super) fn parse_filter_function<'i, 't>(
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     match input.try_parse(|input| parse_url(input, numeric)) {
         Ok(url) => return Ok(CssFilterFunction::Url(url)),
-        Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+        Err(error) if crate::error::property::is_resource_parse_error(&error) => return Err(error),
         Err(_) => {}
     }
     let location = input.current_source_location();
@@ -1047,15 +1048,20 @@ pub(super) fn parse_clip_path_shape<'i, 't>(
 
 #[cfg(test)]
 mod transform_tests {
-    use cssparser::{Parser, ParserInput};
 
     use super::*;
 
-    fn parse(value: &str) -> Result<CssTransform, ParseError<'_, Error>> {
-        let mut input = ParserInput::new(value);
+    fn parse(value: &str) -> Result<CssTransform, crate::error::Error> {
         let snapshot = crate::CssSourceSnapshot::new(value);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
-        Parser::new(&mut input).parse_entirely(|input| parse_transform(input, &numeric))
+        let document = crate::syntax_consumption::source_document(value, &snapshot, 0)
+            .expect("transform source document");
+        let mut parser = Parser::new(&document);
+        let result = parse_transform(&mut parser, &numeric).and_then(|value| {
+            parser.expect_exhausted().map_err(basic)?;
+            Ok(value)
+        });
+        result.map_err(ParseError::into_source_error)
     }
 
     #[test]

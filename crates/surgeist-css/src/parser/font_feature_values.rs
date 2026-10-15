@@ -1,3 +1,4 @@
+use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
 use super::{Recovered, parse_descriptor_boundary};
 use crate::descriptor_values::{FontFeatureDisplayData, FontFeatureValueData};
@@ -39,7 +40,10 @@ pub(super) fn parse_families_observed<'i>(
         .parse_comma_separated(|input| {
             let start = input.position().byte_index();
             let location = input.current_source_location();
-            let name = super::typography::parse_non_generic_font_family_name(input)?;
+            let numeric = NumericInputContext::parsed(recovery.source_snapshot());
+            let name = adapt_native(input, &numeric, NativeValueRange::Remaining, |input, _| {
+                super::typography::parse_non_generic_font_family_name(input)
+            })?;
             input.expect_exhausted().map_err(basic)?;
             let family = CssFontFaceFamily::try_new(name.as_str())
                 .ok_or_else(|| invalid_syntax(input.current_source_location()))?;

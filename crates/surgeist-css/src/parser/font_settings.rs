@@ -1,7 +1,8 @@
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
     CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
@@ -66,12 +67,12 @@ fn parse_feature_index<'i, 't>(
     input.skip_whitespace();
     let start = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let value = match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&start);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssFontFeatureIndex::try_from_component(component)
         }
@@ -84,7 +85,9 @@ fn parse_feature_index<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    value.map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    value.map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 pub(super) fn parse_font_variation_settings<'i, 't>(

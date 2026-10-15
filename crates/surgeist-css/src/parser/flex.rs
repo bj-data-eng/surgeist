@@ -1,10 +1,11 @@
 //! Flexbox 1 authored factor, basis, and shorthand grammar.
 
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::sizing::parse_size_value;
 use super::values::{CalculationRoot, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssCalcSize, CssComponentValueLimits, CssFlexBasisValue, CssFlexComponents, CssFlexDirection,
@@ -58,7 +59,7 @@ pub(super) fn parse_flex_flow<'i, 't>(
 fn set_flex_flow_direction<'i>(
     slot: &mut Option<CssFlexDirection>,
     value: CssFlexDirection,
-    location: cssparser::SourceLocation,
+    location: super::property_input::Site<'i>,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
     if slot.replace(value).is_some() {
         return Err(unexpected_at(location));
@@ -69,7 +70,7 @@ fn set_flex_flow_direction<'i>(
 fn set_flex_flow_wrap<'i>(
     slot: &mut Option<CssFlexWrap>,
     value: CssFlexWrap,
-    location: cssparser::SourceLocation,
+    location: super::property_input::Site<'i>,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
     if slot.replace(value).is_some() {
         return Err(unexpected_at(location));
@@ -96,15 +97,15 @@ pub(super) fn parse_flex_factor<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
-                unexpected_at(numeric.error_location(&error, location, root_offset))
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
             })
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
@@ -113,7 +114,9 @@ pub(super) fn parse_flex_factor<'i, 't>(
             CssSpecifiedNonNegativeNumber::try_from_calculation(
                 CssNumberCalculation::from_expression(expression),
             )
-            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+            .map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
+            })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -126,23 +129,25 @@ pub(super) fn parse_flex_basis<'i, 't>(
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     match input.next().map_err(basic)? {
         Token::Ident(value) if value.eq_ignore_ascii_case("content") => {
             Ok(CssFlexBasisValue::content())
         }
         Token::Function(value) if value.eq_ignore_ascii_case("calc-size") => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssCalcSize::from_component_with_policy(
                 component,
                 CssComponentValueLimits::default(),
-                matches!(numeric.ordinary(), NumericInputContext::Parsed(_)),
+                numeric.is_source_input(),
             )
             .map(CssFlexBasisValue::from)
-            .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+            .map_err(|error| {
+                unexpected_at(numeric.property_error_location(&error, location, root_site))
+            })
         }
         _ => {
             input.reset(&state);

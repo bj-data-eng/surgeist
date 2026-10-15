@@ -1,3 +1,4 @@
+use super::property_input::NativeValueRange;
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, match_ignore_ascii_case,
@@ -761,7 +762,12 @@ pub(super) fn parse_descriptor_value<'i>(
             {
                 CssPageBleed::Auto
             } else {
-                CssPageBleed::Length(super::values::parse_length(input, &numeric)?)
+                CssPageBleed::Length(super::property_input::adapt_native(
+                    input,
+                    &numeric,
+                    NativeValueRange::Component,
+                    super::values::parse_length,
+                )?)
             },
         ),
     };
@@ -778,13 +784,23 @@ fn parse_size<'i>(
     {
         return Ok(CssPageSizeValue::Auto);
     }
-    if let Ok(first) =
-        input.try_parse(|input| super::values::parse_nonnegative_length(input, numeric))
-    {
+    if let Ok(first) = input.try_parse(|input| {
+        super::property_input::adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            super::values::parse_nonnegative_length,
+        )
+    }) {
         let second = if input.is_exhausted() {
             None
         } else {
-            Some(super::values::parse_nonnegative_length(input, numeric)?)
+            Some(super::property_input::adapt_native(
+                input,
+                numeric,
+                NativeValueRange::Component,
+                super::values::parse_nonnegative_length,
+            )?)
         };
         return Ok(CssPageSizeValue::Dimensions(first, second));
     }

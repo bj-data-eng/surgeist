@@ -1,8 +1,9 @@
 //! Text 4 authored alignment grammar and source-preserving string admission.
 
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssCharacterAlignment, CssComponentValueRef, CssTextAlign, CssTextAlignAllValue,
@@ -40,10 +41,10 @@ fn character<'i, 't>(
 ) -> Result<CssCharacterAlignment, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric
-        .collect(input)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, offset)))?;
+    let offset = input.position();
+    let component = input.collect_numeric_component(numeric).map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, offset))
+    })?;
     if !matches!(
         component.view(),
         CssComponentValueRef::Token(CssValueTokenRef::String(_))

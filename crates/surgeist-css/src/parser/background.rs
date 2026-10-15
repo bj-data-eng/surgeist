@@ -1,8 +1,12 @@
+use std::borrow::Cow;
+
 use super::color::{parse_color, parse_color_interpolation_method};
+use super::property_input::Parser;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::position::{
     next_starts_background_position, parse_background_position_prefix, parse_full_position_bounded,
@@ -12,7 +16,6 @@ use super::values::{
     CalculationRoot, next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
     parse_nonnegative_percentage,
 };
-use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -90,7 +93,7 @@ fn parse_background_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<
-    (CssBackgroundLayer, Option<cssparser::SourceLocation>),
+    (CssBackgroundLayer, Option<super::property_input::Site<'i>>),
     ParseError<'i, Error>,
 > {
     let mut image = None;
@@ -109,7 +112,9 @@ fn parse_background_layer<'i, 't>(
                     image = Some(value);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) if next_is_light_dark(input) => {}
                 Err(error) => return Err(error),
             }
@@ -145,7 +150,9 @@ fn parse_background_layer<'i, 't>(
                     color_location = Some(location);
                     continue;
                 }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    return Err(error);
+                }
                 Err(_) => {}
             }
         }
@@ -270,19 +277,17 @@ pub(super) fn parse_image<'i, 't>(
 ) -> std::result::Result<CssImage, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let start = input.position().byte_index();
+    let start = input.position();
     let value = parse_image_value(input, numeric)?;
-    CssImage::try_new(value)
-        .map_err(|error| image_construction_error(error, location, start, numeric))
+    CssImage::try_new(value).map_err(|error| image_construction_error(error, location, start))
 }
 
 // All image construction entry points preserve resource failures and the
 // original image token origin; semantic None rejection remains grammar-owned.
 fn image_construction_error<'i>(
     error: CssImageConstructionError,
-    location: cssparser::SourceLocation,
-    start: usize,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    location: super::property_input::Site<'i>,
+    start: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
     let kind = match error {
         CssImageConstructionError::NotImage => {
@@ -293,12 +298,9 @@ fn image_construction_error<'i>(
             crate::CssComponentValueErrorKind::CapacityOverflow
         }
     };
-    crate::error::invalid_component_value(
+    crate::error::property::invalid_component_value(
         location,
-        crate::CssComponentValueError::new(
-            kind,
-            numeric.origin_at(start).expect("image token origin"),
-        ),
+        crate::CssComponentValueError::new(kind, start.value_origin().expect("image token origin")),
     )
 }
 
@@ -313,7 +315,7 @@ pub(super) fn parse_image_value<'i, 't>(
     if filter {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let start = input.position().byte_index();
+        let start = input.position();
         input.next().map_err(basic)?;
         return input.parse_nested_block(|input| {
             let state = input.state();
@@ -323,17 +325,23 @@ pub(super) fn parse_image_value<'i, 't>(
                 // Collect the exact original String rather than decoded text re-tokenization.
                 input.skip_whitespace();
                 let string_location = input.current_source_location();
-                let string_start = input.position().byte_index();
-                let component = numeric.collect(input).map_err(|error| {
-                    let location = numeric.error_location(&error, string_location, string_start);
+                let string_start = input.position();
+                let component = input.collect_numeric_component(numeric).map_err(|error| {
+                    let location =
+                        numeric.property_error_location(&error, string_location, string_start);
                     error.component_error().map_or_else(
                         || unexpected_at(location),
-                        |detail| crate::error::invalid_component_value(location, detail.clone()),
+                        |detail| {
+                            crate::error::property::invalid_component_value(
+                                location,
+                                detail.clone(),
+                            )
+                        },
                     )
                 })?;
                 let string =
                     CssFilterImageString::try_from_component(component).map_err(|error| {
-                        crate::error::invalid_component_value(string_location, error)
+                        crate::error::property::invalid_component_value(string_location, error)
                     })?;
                 CssFilterImageInput::from_string(string)
             } else {
@@ -343,13 +351,13 @@ pub(super) fn parse_image_value<'i, 't>(
             let filters = super::effects::parse_filter_function_list(input, numeric)?;
             CssFilterImage::try_new(input_value, filters)
                 .map(|value| CssImageValue::Filter(Box::new(value)))
-                .map_err(|error| image_construction_error(error, location, start, numeric))
+                .map_err(|error| image_construction_error(error, location, start))
         });
     }
     if next_is_light_dark(input) {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let start = input.position().byte_index();
+        let start = input.position();
         input.next().map_err(basic)?;
         return input.parse_nested_block(|input| {
             let light = parse_image_value(input, numeric)?;
@@ -358,7 +366,7 @@ pub(super) fn parse_image_value<'i, 't>(
             input.expect_exhausted().map_err(basic)?;
             CssLightDarkImage::try_new(light, dark)
                 .map(|value| CssImageValue::LightDark(Box::new(value)))
-                .map_err(|error| image_construction_error(error, location, start, numeric))
+                .map_err(|error| image_construction_error(error, location, start))
         });
     }
     if input
@@ -874,12 +882,15 @@ fn parse_gradient_line_position<'i, 't>(
     parse_length_percentage(input, numeric)
 }
 
-#[derive(Clone, Debug)]
-enum ParsedRadialSize {
+#[derive(Debug)]
+enum ParsedRadialSize<'i> {
     Extent(CssRadialExtent),
     Explicit {
-        values: Vec<(crate::CssComponentValue, cssparser::SourceLocation)>,
-        location: cssparser::SourceLocation,
+        values: Vec<(
+            Cow<'i, crate::CssComponentValue>,
+            super::property_input::Site<'i>,
+        )>,
+        location: super::property_input::Site<'i>,
     },
 }
 
@@ -966,8 +977,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
             continue;
         }
         if size.is_none()
-            && let Ok(parsed_size) =
-                input.try_parse(|input| parse_radial_size_input(input, numeric))
+            && let Ok(parsed_size) = input.try_parse(parse_radial_size_input)
         {
             size = Some(parsed_size);
             consumed = true;
@@ -1058,9 +1068,9 @@ fn parse_angular_position<'i, 't>(
 ) -> Result<CssAngularColorStopPosition, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric
-        .collect(input)
+    let offset = input.position();
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|error| super::values::angle_error(numeric, &error, location, offset))?;
     CssAngularColorStopPosition::from_parser_component(component, numeric)
         .map_err(|error| super::values::angle_error(numeric, &error, location, offset))
@@ -1080,15 +1090,14 @@ fn parse_radial_shape<'i, 't>(
 
 fn parse_radial_size_input<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<ParsedRadialSize, ParseError<'i, Error>> {
+) -> Result<ParsedRadialSize<'i>, ParseError<'i, Error>> {
     if let Ok(extent) = input.try_parse(parse_radial_extent) {
         return Ok(ParsedRadialSize::Extent(extent));
     }
     let location = input.current_source_location();
-    let first = parse_radial_size_component(input, numeric)?;
+    let first = parse_radial_size_component(input)?;
     let mut values = vec![first];
-    if let Ok(second) = input.try_parse(|input| parse_radial_size_component(input, numeric)) {
+    if let Ok(second) = input.try_parse(parse_radial_size_component) {
         values.push(second);
     }
     Ok(ParsedRadialSize::Explicit { values, location })
@@ -1096,8 +1105,13 @@ fn parse_radial_size_input<'i, 't>(
 
 fn parse_radial_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<(crate::CssComponentValue, cssparser::SourceLocation), ParseError<'i, Error>> {
+) -> Result<
+    (
+        Cow<'i, crate::CssComponentValue>,
+        super::property_input::Site<'i>,
+    ),
+    ParseError<'i, Error>,
+> {
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
@@ -1107,8 +1121,8 @@ fn parse_radial_size_component<'i, 't>(
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
     input.reset(&state);
-    numeric
-        .collect(input)
+    input
+        .collect_component()
         .map(|component| (component, location))
         .map_err(|_| unexpected_at(location))
 }
@@ -1129,44 +1143,44 @@ fn parse_radial_extent<'i, 't>(
 
 fn validate_radial_size<'i>(
     shape: Option<CssRadialShape>,
-    size: ParsedRadialSize,
+    size: ParsedRadialSize<'i>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssRadialSize, ParseError<'i, Error>> {
     match size {
         ParsedRadialSize::Extent(extent) => Ok(CssRadialSize::Extent(extent)),
         ParsedRadialSize::Explicit { values, location } => {
-            let value = match values.as_slice() {
-                [(radius, radius_location)] => {
+            let mut values = values.into_iter();
+            let value = match (values.next(), values.next(), values.next()) {
+                (Some((radius, radius_location)), None, None) => {
                     let radius =
                         if matches!(radius.view(), crate::CssComponentValueRef::Function(_)) {
-                            let components =
-                                crate::CssComponentValues::try_new(vec![radius.clone()])
-                                    .expect("one radial operand");
+                            let components = crate::numeric::CalculationComponents::single(radius)
+                                .expect("one radial operand");
                             let expression = numeric
                                 .admit(components, CalculationRoot::Length)
-                                .map_err(|_| unexpected_at(*radius_location))?;
+                                .map_err(|_| unexpected_at(radius_location))?;
                             CssSpecifiedNonNegativeLength::try_from_calculation(
                                 crate::CssLengthCalculation::from_expression(expression),
                             )
                         } else {
-                            CssSpecifiedNonNegativeLength::try_from_component(radius.clone())
+                            CssSpecifiedNonNegativeLength::try_from_component(radius.into_owned())
                         };
-                    CssRadialSize::Circle(radius.map_err(|_| unexpected_at(*radius_location))?)
+                    CssRadialSize::Circle(radius.map_err(|_| unexpected_at(radius_location))?)
                 }
-                [horizontal, vertical] => {
-                    let admit = |(component, component_location): &(
-                        crate::CssComponentValue,
-                        cssparser::SourceLocation,
+                (Some(horizontal), Some(vertical), None) => {
+                    let admit = |(component, component_location): (
+                        Cow<'i, crate::CssComponentValue>,
+                        super::property_input::Site<'i>,
                     )| {
                         let value =
                             if matches!(component.view(), crate::CssComponentValueRef::Function(_))
                             {
                                 let components =
-                                    crate::CssComponentValues::try_new(vec![component.clone()])
+                                    crate::numeric::CalculationComponents::single(component)
                                         .expect("one radial operand");
                                 let expression = numeric
                                     .admit(components, CalculationRoot::LengthPercentage)
-                                    .map_err(|_| unexpected_at(*component_location))?;
+                                    .map_err(|_| unexpected_at(component_location))?;
                                 CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
                                     crate::CssLengthPercentageCalculation::from_expression(
                                         expression,
@@ -1174,10 +1188,10 @@ fn validate_radial_size<'i>(
                                 )
                             } else {
                                 CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-                                    component.clone(),
+                                    component.into_owned(),
                                 )
                             };
-                        value.map_err(|_| unexpected_at(*component_location))
+                        value.map_err(|_| unexpected_at(component_location))
                     };
                     CssRadialSize::Ellipse(CssRadialEllipseSize::new(
                         admit(horizontal)?,
@@ -1369,7 +1383,6 @@ pub(super) fn parse_background_attachment<'i, 't>(
 
 #[cfg(test)]
 mod tests {
-    use cssparser::{Parser, ParserInput};
 
     use super::super::position::parse_physical_position;
     use super::*;
@@ -1377,11 +1390,14 @@ mod tests {
     fn parse_position(source: &str) -> CssPhysicalPosition {
         let snapshot = crate::CssSourceSnapshot::new(source);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
-        let mut input = ParserInput::new(source);
-        let mut parser = Parser::new(&mut input);
+        let document = crate::syntax_consumption::source_document(source, &snapshot, 0)
+            .expect("position source document");
+        let mut parser = Parser::new(&document);
+        let value = parse_physical_position(&mut parser, &numeric).expect("valid generic position");
         parser
-            .parse_entirely(|input| parse_physical_position(input, &numeric))
-            .expect("valid generic position")
+            .expect_exhausted()
+            .expect("complete generic position");
+        value
     }
 
     #[test]

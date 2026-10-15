@@ -1,8 +1,8 @@
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::{
     CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
 };
-use cssparser::{ParseError, Parser};
 
 pub(super) fn parse_container_type<'i, 't>(
     input: &mut Parser<'i, 't>,

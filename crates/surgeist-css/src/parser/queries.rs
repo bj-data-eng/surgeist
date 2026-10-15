@@ -571,7 +571,9 @@ impl MediaInput<'_> {
         &self,
         input: &mut Parser<'_, '_>,
     ) -> Result<CssComponentValue, crate::CssNumericConstructionError> {
-        self.numeric.collect(input)
+        self.numeric
+            .collect(input)
+            .map(std::borrow::Cow::into_owned)
     }
     fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
         self.numeric.origin_at(offset)
@@ -604,6 +606,9 @@ impl MediaInput<'_> {
         let end = input.state();
         let items = match self.numeric.ordinary() {
             NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
+            NumericInputContext::Checked => {
+                unreachable!("native query cursors own source or mapped component input")
+            }
             NumericInputContext::Parsed(snapshot) => {
                 input.reset(start);
                 let mut items = Vec::new();

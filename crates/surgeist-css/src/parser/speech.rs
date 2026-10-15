@@ -1,11 +1,12 @@
 //! Exact authored Speech 1 keyword grammars; no speech execution.
 
-use crate::error::{Error, basic};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic};
 use crate::{
     CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
     CssSpeechBreakStrength,
 };
-use cssparser::{ParseError, Parser, Token};
+use cssparser::Token;
 
 pub(super) fn parse_speak<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -207,7 +208,7 @@ fn parse_voice_entry<'i, 't>(
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
         return CssVoiceFamilyName::try_quoted(value.to_string())
             .map(CssVoiceFamilyEntry::Name)
-            .map_err(|_| crate::error::unexpected_at(location));
+            .map_err(|_| crate::error::property::unexpected_at(location));
     }
     let start = input.state();
     let first = input.expect_ident_cloned().map_err(basic)?;
@@ -231,7 +232,7 @@ fn parse_voice_entry<'i, 't>(
         };
         return CssGenericVoice::from_parser(age, gender, variant)
             .map(CssVoiceFamilyEntry::Generic)
-            .map_err(|_| crate::error::unexpected_at(location));
+            .map_err(|_| crate::error::property::unexpected_at(location));
     }
     input.reset(&start);
     let mut identifiers = Vec::new();
@@ -244,7 +245,7 @@ fn parse_voice_entry<'i, 't>(
         }
         identifiers.push(
             crate::CssIdent::try_new(ident.to_string())
-                .map_err(|_| crate::error::unexpected_at(location))?,
+                .map_err(|_| crate::error::property::unexpected_at(location))?,
         );
     }
     CssVoiceFamilyName::try_identifiers(identifiers)
@@ -277,7 +278,7 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
     while !input.is_exhausted() {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let byte_offset = input.position().byte_index();
+        let root_site = input.position();
         if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
             if let Some(value) = voice_level(&ident)
                 && level.is_none()
@@ -290,30 +291,30 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
             }
         } else {
             if offset.is_some() {
-                return Err(crate::error::unexpected_at(location));
+                return Err(crate::error::property::unexpected_at(location));
             }
-            let component = numeric
-                .collect(input)
-                .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
-            offset = Some((component, location, byte_offset));
+            let component = input
+                .collect_numeric_component(numeric)
+                .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
+            offset = Some((component, location, root_site));
         }
     }
     if let Some(location) = absolute {
         if level.is_some() {
-            return Err(crate::error::unexpected_at(location));
+            return Err(crate::error::property::unexpected_at(location));
         }
-        let Some((component, location, byte_offset)) = offset else {
-            return Err(crate::error::unexpected_at(location));
+        let Some((component, location, root_site)) = offset else {
+            return Err(crate::error::property::unexpected_at(location));
         };
         let frequency = crate::CssFrequencyValue::from_parser_component(component, numeric)
-            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
         crate::CssVoicePitchRange::from_parser_absolute(frequency)
-            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))
+            .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
     } else {
         let offset = offset
-            .map(|(component, location, byte_offset)| {
+            .map(|(component, location, root_site)| {
                 crate::CssVoiceOffset::from_parser_component(component, numeric)
-                    .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))
+                    .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
             })
             .transpose()?;
         crate::CssVoicePitchRange::from_parser_relative(level, offset)
@@ -332,7 +333,7 @@ pub(super) fn parse_voice_rate<'i, 't>(
     while !input.is_exhausted() {
         input.skip_whitespace();
         let location = input.current_source_location();
-        let byte_offset = input.position().byte_index();
+        let root_site = input.position();
         if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
             if let Some(value) = voice_rate_keyword(&ident)
                 && keyword.is_none()
@@ -343,16 +344,18 @@ pub(super) fn parse_voice_rate<'i, 't>(
             }
         } else {
             if percentage.is_some() {
-                return Err(crate::error::unexpected_at(location));
+                return Err(crate::error::property::unexpected_at(location));
             }
-            let component = numeric
-                .collect(input)
-                .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            let component = input
+                .collect_numeric_component(numeric)
+                .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
             let value = if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
                 crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
             } else {
-                let values = crate::CssComponentValues::try_new(vec![component])
-                    .map_err(|error| crate::error::invalid_component_value(location, error))?;
+                let values =
+                    crate::CssComponentValues::try_new(vec![component]).map_err(|error| {
+                        crate::error::property::invalid_component_value(location, error)
+                    })?;
                 numeric
                     .admit(values, crate::numeric::CalculationRoot::Percentage)
                     .and_then(|expression| {
@@ -361,7 +364,7 @@ pub(super) fn parse_voice_rate<'i, 't>(
                         )
                     })
             }
-            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
             percentage = Some(value);
         }
     }
@@ -371,16 +374,16 @@ pub(super) fn parse_voice_rate<'i, 't>(
 fn speech_numeric_error<'i>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     error: &crate::CssNumericConstructionError,
-    fallback: cssparser::SourceLocation,
-    offset: usize,
+    fallback: super::property_input::Site<'i>,
+    offset: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
-    let location = numeric.error_location(error, fallback, offset);
+    let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
         && crate::error::is_component_resource_error(component)
     {
-        return crate::error::invalid_component_value(location, component.clone());
+        return crate::error::property::invalid_component_value(location, component.clone());
     }
-    crate::error::unexpected_at(location)
+    crate::error::property::unexpected_at(location)
 }
 
 fn parse_decibel<'i, 't>(
@@ -389,12 +392,12 @@ fn parse_decibel<'i, 't>(
 ) -> Result<crate::CssDecibelLiteral, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric
-        .collect(input)
+    let offset = input.position();
+    let component = input
+        .collect_numeric_component(numeric)
         .map_err(|error| speech_numeric_error(numeric, &error, location, offset))?;
     crate::CssDecibelLiteral::try_from_component(component)
-        .map_err(|error| crate::error::invalid_component_value(location, error))
+        .map_err(|error| crate::error::property::invalid_component_value(location, error))
 }
 
 pub(super) fn parse_voice_balance<'i, 't>(

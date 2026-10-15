@@ -5,6 +5,7 @@ use cssparser::{
 };
 
 use super::background::parse_image;
+use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::values::parse_integer_value;
 use super::{
@@ -303,7 +304,7 @@ fn parse_system<'i, 't>(
             let first_symbol_value = if input.is_exhausted() {
                 None
             } else {
-                Some(parse_integer_value(input, numeric)?)
+                Some(adapt_native(input, numeric, NativeValueRange::Component, parse_integer_value)?)
             };
             CssCounterStyleSystem::Fixed(CssCounterStyleFixedSystem::new(first_symbol_value))
         },
@@ -390,7 +391,13 @@ fn parse_range_bound<'i, 't>(
     {
         Ok(CssCounterStyleRangeBound::Infinite)
     } else {
-        parse_integer_value(input, numeric).map(CssCounterStyleRangeBound::Integer)
+        adapt_native(
+            input,
+            numeric,
+            NativeValueRange::Component,
+            parse_integer_value,
+        )
+        .map(CssCounterStyleRangeBound::Integer)
     }
 }
 
@@ -494,7 +501,12 @@ fn parse_nonnegative_integer<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssIntegerValue, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let value = parse_integer_value(input, numeric)?;
+    let value = adapt_native(
+        input,
+        numeric,
+        NativeValueRange::Component,
+        parse_integer_value,
+    )?;
     if matches!(&value, CssIntegerValue::Literal(literal) if literal.is_negative()) {
         Err(unexpected_at(location))
     } else {
@@ -537,7 +549,8 @@ fn parse_symbol_component<'i, 't>(
     // An image is selected only after the string/custom-ident alternatives.
     // In particular, `none` is a symbol identifier, not property-level no image.
     // Do not speculate and discard an image provider's typed resource failure.
-    parse_image(input, numeric).map(CssCounterSymbol::Image)
+    adapt_native(input, numeric, NativeValueRange::Component, parse_image)
+        .map(CssCounterSymbol::Image)
 }
 
 pub(super) fn parse_authored_value<'i>(

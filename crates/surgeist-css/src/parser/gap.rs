@@ -1,9 +1,10 @@
 //! Exact Box Alignment gap grammars.
 
-use cssparser::{ParseError, Parser, Token};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::Token;
 
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssGapShorthand, CssGapValue, CssLengthPercentageCalculation,
@@ -23,12 +24,12 @@ pub(super) fn parse_gap_value<'i, 't>(
     }
     let state = input.state();
     let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
+    let root_site = input.position();
     let checked = match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);
-            let component = numeric
-                .collect(input)
+            let component = input
+                .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
         }
@@ -41,9 +42,9 @@ pub(super) fn parse_gap_value<'i, 't>(
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    checked
-        .map(CssGapValue::LengthPercentage)
-        .map_err(|error| unexpected_at(numeric.error_location(&error, location, root_offset)))
+    checked.map(CssGapValue::LengthPercentage).map_err(|error| {
+        unexpected_at(numeric.property_error_location(&error, location, root_site))
+    })
 }
 
 pub(super) fn parse_gap_shorthand<'i, 't>(

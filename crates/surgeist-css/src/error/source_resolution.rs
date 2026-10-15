@@ -93,7 +93,7 @@ fn next_authored_token_at(
     }
 }
 
-const fn is_bounded_end_token(kind: CssTokenKind) -> bool {
+pub(super) const fn is_bounded_end_token(kind: CssTokenKind) -> bool {
     matches!(
         kind,
         CssTokenKind::Semicolon
@@ -103,7 +103,7 @@ const fn is_bounded_end_token(kind: CssTokenKind) -> bool {
     )
 }
 
-const fn is_boundary_token(kind: CssTokenKind) -> bool {
+pub(super) const fn is_boundary_token(kind: CssTokenKind) -> bool {
     is_bounded_end_token(kind)
         || matches!(
             kind,

@@ -1,9 +1,11 @@
-use cssparser::{ParseError, ParseErrorKind, Parser, Token, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{ParseError, ParseErrorKind};
+use cssparser::{Token, match_ignore_ascii_case};
 
 use super::color::{
     next_is_mix_weight, parse_authored_mix_weight, parse_color_interpolation_method,
 };
-use crate::error::{Error, basic};
+use crate::error::property::{Error, basic};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent,
@@ -36,7 +38,7 @@ fn parse_mix<'i, 't>(
 ) -> Result<CssFontPaletteMix, ParseError<'i, Error>> {
     let location = input.current_source_location();
     input.skip_whitespace();
-    let start = input.position().byte_index();
+    let start = input.position();
     let interpolation = if input
         .try_parse(|input| input.expect_ident_matching("in"))
         .is_ok()
@@ -64,13 +66,11 @@ fn parse_mix<'i, 't>(
                 unreachable!("parser admits one component before construction")
             }
         };
-        crate::error::invalid_component_value(
+        crate::error::property::invalid_component_value(
             location,
             crate::CssComponentValueError::new(
                 kind,
-                numeric
-                    .origin_at(start)
-                    .expect("palette argument token origin"),
+                start.value_origin().expect("palette argument token origin"),
             ),
         )
     })
@@ -98,9 +98,9 @@ fn parse_component<'i, 't>(
 // Keep their source location while allowing the owning property context to apply.
 fn palette_mix_error<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
     if matches!(&error.kind, ParseErrorKind::Custom(detail)
-        if matches!(detail.kind(), crate::ErrorKind::InvalidColorSyntax(_)))
+        if matches!(&detail.kind, crate::ErrorKind::InvalidColorSyntax(_)))
     {
-        crate::error::unexpected_at(error.location)
+        crate::error::property::unexpected_at(error.location)
     } else {
         error
     }

@@ -191,6 +191,75 @@ fn rejected_checked_values_keep_the_responsible_token_summary() {
 }
 
 #[test]
+fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
+    for (component, expected) in [
+        (
+            CssComponentValue::try_ident("not-a-width").unwrap(),
+            "not-a-width",
+        ),
+        (
+            parse_component_values(r"\6e ot-a-width").unwrap().items()[0].clone(),
+            r"\6e ot-a-width",
+        ),
+    ] {
+        let origin = component.origin().clone();
+        let unrelated = parse_component_values("/*different snapshot*/").unwrap();
+        let values =
+            CssComponentValues::try_new(vec![unrelated.items()[0].clone(), component]).unwrap();
+        drop(unrelated);
+        let error = parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Width),
+            values,
+            CssImportance::Normal,
+        )
+        .expect_err("a rejected identifier retains its own diagnostic identity");
+        let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) =
+            error.kind()
+        else {
+            panic!("the width grammar owns this rejection: {error:?}");
+        };
+        let encountered = detail.encountered().expect("responsible identifier");
+        assert_eq!(encountered.kind(), CssTokenKind::Ident);
+        assert_eq!(encountered.authored(), expected);
+        assert_eq!(error.origin(), &CssSerializedOrigin::Token(origin.clone()));
+        if let CssValueOrigin::Parsed(expected) = origin {
+            let CssSerializedOrigin::Token(CssValueOrigin::Parsed(actual)) = error.origin() else {
+                panic!("the real identifier snapshot survives input destruction");
+            };
+            assert!(actual.source().same_snapshot(expected.source()));
+            assert_eq!(actual.span(), expected.span());
+        }
+    }
+}
+
+#[test]
+fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
+    let spelling = "123456789012345678901234567890";
+    let comment = parse_component_values("/*different snapshot*/").unwrap();
+    let number = parse_component_values(spelling).unwrap();
+    let expected = number.items()[0].origin().clone();
+    let values =
+        CssComponentValues::try_new(vec![comment.items()[0].clone(), number.items()[0].clone()])
+            .unwrap();
+    drop(comment);
+    drop(number);
+    let error = parse_property_value(
+        CssPropertyNameRef::Known(CssKnownProperty::Display),
+        values,
+        CssImportance::Normal,
+    )
+    .expect_err("display requires its keyword grammar");
+    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
+    else {
+        panic!("display grammar rejection: {error:?}");
+    };
+    let encountered = detail.encountered().expect("the actual numeric token");
+    assert_eq!(encountered.kind(), CssTokenKind::Number);
+    assert_eq!(encountered.authored(), spelling);
+    assert_eq!(error.origin(), &CssSerializedOrigin::Token(expected));
+}
+
+#[test]
 fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
     for (source, responsible, offset, kind) in [
         ("1px!url(a b)", "!", 3, CssTokenKind::Delim),

@@ -9,9 +9,16 @@ pub(super) fn bounded<T: Send>(
 }
 
 pub(super) fn bounded_execution<T: Send>(source: &str, parse: impl FnOnce() -> T + Send) -> T {
+    bounded_execution_at_depth(recovery::maximum_nested_depth(source), parse)
+}
+
+pub(super) fn bounded_execution_at_depth<T: Send>(
+    depth: u32,
+    parse: impl FnOnce() -> T + Send,
+) -> T {
     // Recursive value and selector grammar can have larger frames than
     // structural rule parsing. This threshold is not an admission limit.
-    if recovery::maximum_nested_depth(source) < 64 {
+    if depth < 64 {
         return parse();
     }
     std::thread::scope(|scope| {
@@ -1383,16 +1390,47 @@ fn property_value_text(
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.declaration")?;
-            let (body, components, origin) =
-                collect_declaration_value(&mut input, state.source_snapshot(), |input| {
-                    parse_property_value_from_parser(
-                        grammar,
-                        source,
-                        input,
-                        &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
-                        parser_context,
-                    )
-                })?;
+            let document = crate::syntax_consumption::normalize(
+                crate::syntax_consumption::SyntaxInput::Source(
+                    crate::syntax_consumption::SourceWindow {
+                        text: std::borrow::Cow::Borrowed(source),
+                        range: 0..source.len(),
+                        original: state.source_snapshot().clone(),
+                    },
+                ),
+                crate::syntax_consumption::SyntaxInputLimits::default(),
+                0,
+            )
+            .map_err(|error| {
+                crate::error::invalid_component_value(input.current_source_location(), error)
+            })?;
+            let mut property_input = property_input::Parser::new(&document);
+            let body = parse_property_value_from_parser(
+                grammar,
+                &mut property_input,
+                &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                parser_context,
+            )
+            .map_err(|error| {
+                let error = error.into_source_error();
+                let position = error.position();
+                cssparser::SourceLocation {
+                    line: position.line().value(),
+                    column: position.column().value() + 1,
+                }
+                .new_custom_error(error)
+            })?;
+            // Retain owned source syntax only after grammar admission succeeds.
+            let components =
+                CssComponentValues::collect_from_parser(&mut input, state.source_snapshot())
+                    .map_err(|error| {
+                        crate::error::invalid_component_value(
+                            input.current_source_location(),
+                            error,
+                        )
+                    })?;
+            let origin = CssParsedOrigin::from_range(state.source_snapshot(), 0..source.len())
+                .expect("complete raw property value belongs to its source");
             input.expect_exhausted()?;
             state.retain_component_closures(openings);
             state.retain_navigation_diagnostic(&body);

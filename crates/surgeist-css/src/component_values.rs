@@ -557,6 +557,14 @@ pub enum CssComponentValueRef<'a> {
 }
 
 impl CssComponentValue {
+    /// Moves the arguments of an owned function into their retaining consumer.
+    pub(crate) fn into_function_values(self) -> Option<CssComponentValues> {
+        match self.data {
+            ComponentData::Function(function) => Some(function.values),
+            _ => None,
+        }
+    }
+
     /// Borrows the exact primitive-token relation without component graph work.
     /// Checked numeric syntax and literal leaves are token-only consumers.
     pub(crate) fn token_structural_eq_ignoring_origin(&self, other: &Self) -> Option<bool> {
@@ -1135,6 +1143,14 @@ impl CssComponentValues {
         &self.items
     }
 
+    /// Moves the sole original component without cloning its subtree.
+    pub(crate) fn into_single(self) -> Option<CssComponentValue> {
+        if self.items.len() != 1 {
+            return None;
+        }
+        self.items.into_vec().pop()
+    }
+
     pub(crate) fn component_at_path(&self, path: &[usize]) -> Option<&CssComponentValue> {
         let (first, rest) = path.split_first()?;
         let mut component = self.items.get(*first)?;
@@ -1148,9 +1164,24 @@ impl CssComponentValues {
         &self,
         limits: CssComponentValueLimits,
     ) -> Result<(), CssComponentValueError> {
+        Self::validate_items_with_limits(self.items(), limits)
+    }
+
+    pub(crate) fn validate_items_with_limits(
+        items: &[CssComponentValue],
+        limits: CssComponentValueLimits,
+    ) -> Result<(), CssComponentValueError> {
         let mut context = ComponentAdmission::new(limits);
-        context.visit(self.items(), 0)?;
-        serialize::validate(self, limits.max_css_bytes)
+        context.visit(items, 0)?;
+        serialize::validate_items(items, limits.max_css_bytes)
+    }
+
+    /// Retains an immutable slice after its caller completed component and grammar admission.
+    pub(crate) fn retain_admitted(
+        items: &[CssComponentValue],
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssComponentValueError> {
+        Self::from_items(items.to_vec(), limits)
     }
 
     pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
@@ -1269,6 +1300,11 @@ pub struct CssSerializedValue {
 }
 
 impl CssSerializedValue {
+    /// Transfers the retained serialized spelling to its actual owning consumer.
+    pub(crate) fn into_css(self) -> String {
+        self.css
+    }
+
     pub(crate) fn from_numeric_tokens(
         tokens: Vec<(String, CssValueOrigin)>,
     ) -> Result<Self, CssComponentValueError> {

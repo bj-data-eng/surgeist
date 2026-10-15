@@ -1,9 +1,10 @@
 //! Sizing 4 physical size pairs and finite intrinsic controls.
 
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
 use super::sizing::{parse_max_size_value, parse_size_value};
-use crate::error::{Error, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
 

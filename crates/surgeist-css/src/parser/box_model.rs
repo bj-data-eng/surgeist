@@ -1,8 +1,9 @@
 use super::color::parse_color;
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
-use crate::error::{CssFeatureId, Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =

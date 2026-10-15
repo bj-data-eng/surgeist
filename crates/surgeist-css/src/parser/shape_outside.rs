@@ -1,8 +1,9 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
-use crate::error::{Error, basic, unexpected_at};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
-use cssparser::{ParseError, Parser, Token};
+use cssparser::Token;
 
 pub(super) fn parse_shape_outside<'i, 't>(
     input: &mut Parser<'i, 't>,

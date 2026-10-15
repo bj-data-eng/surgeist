@@ -6,13 +6,15 @@
 //! Complete candidates rank by occupied count, D/W/P/T occupancy, then earlier
 //! source starts in that order. Grouped wrap/pack productions never interleave.
 
-use cssparser::{ParseError, Parser, ParserState, match_ignore_ascii_case};
+use super::property_input::{Parser, ParserState};
+use crate::error::property::ParseError;
+use cssparser::match_ignore_ascii_case;
 
 use super::grid::parse_flow_tolerance;
 use crate::{
     CssFlowTolerance, CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode,
     CssItemWrapOrder,
-    error::{Error, basic, unexpected_at},
+    error::property::{Error, basic, unexpected_at},
     numeric::NumericInputContext,
 };
 
@@ -144,20 +146,20 @@ impl Candidate {
     }
 }
 
-struct Complete {
+struct Complete<'i> {
     candidate: Candidate,
-    end: ParserState,
+    end: ParserState<'i>,
 }
 
 struct Selection<'i> {
-    best: Option<Complete>,
+    best: Option<Complete<'i>>,
     failure: ParseError<'i, Error>,
     failure_offset: usize,
 }
 
 impl<'i> Selection<'i> {
     fn failed(&mut self, input: &Parser<'i, '_>, error: ParseError<'i, Error>) {
-        let offset = input.position().byte_index();
+        let offset = input.position().ordinal();
         if offset >= self.failure_offset {
             self.failure = error;
             self.failure_offset = offset;
@@ -172,7 +174,7 @@ pub(super) fn parse_item_flow<'i, 't>(
     let mut selection = Selection {
         best: None,
         failure: unexpected_at(input.current_source_location()),
-        failure_offset: input.position().byte_index(),
+        failure_offset: input.position().ordinal(),
     };
     search(input, numeric, &Candidate::empty(), &mut selection);
     if let Some(complete) = selection.best {
@@ -229,7 +231,7 @@ fn search<'i, 't>(
             match result {
                 Ok(()) => {
                     next.occupied |= bit;
-                    next.starts[slot] = start.position().byte_index();
+                    next.starts[slot] = start.position().ordinal();
                     search(input, numeric, &next, selection);
                 }
                 Err(error) => selection.failed(input, error),

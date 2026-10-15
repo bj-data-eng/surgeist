@@ -108,7 +108,8 @@ impl CssPathData {
                 unreachable!("ordinary numeric provenance")
             }
             crate::numeric::NumericInputContext::Parsed(_) => Admission::RecoveredSyntax,
-            crate::numeric::NumericInputContext::Components(..) => Admission::Strict,
+            crate::numeric::NumericInputContext::Components(..)
+            | crate::numeric::NumericInputContext::Checked => Admission::Strict,
         };
         Self::from_component(component, admission)
     }

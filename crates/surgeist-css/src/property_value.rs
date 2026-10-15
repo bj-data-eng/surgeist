@@ -4,14 +4,14 @@ use std::fmt;
 
 use crate::{
     CssComponentValueError, CssComponentValueErrorKind, CssComponentValues, CssDeclaration,
-    CssImportance, CssPropertyNameRef, CssSerializedOrigin, CssSerializedValue, Error, ErrorKind,
+    CssImportance, CssPropertyNameRef, CssSerializedOrigin, ErrorKind,
 };
 
 /// A component invariant or property grammar rejected by checked value construction.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssPropertyValueErrorKind {
-    /// Component serialization could not preserve the supplied syntax or resource bounds.
+    /// Supplied components exceeded an intrinsic syntax or resource bound.
     Component(CssComponentValueErrorKind),
     /// The declaration-value boundary or selected property grammar rejected the input.
     Grammar(ErrorKind),
@@ -19,7 +19,7 @@ pub enum CssPropertyValueErrorKind {
 
 /// A property-value construction failure located in the original component input.
 ///
-/// Unlike a stylesheet [`Error`], this failure can originate in programmatic or mixed-source
+/// Unlike a stylesheet [`crate::Error`], this failure can originate in programmatic or mixed-source
 /// tokens. It never presents generated serialization coordinates as authored source positions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssPropertyValueParseError {
@@ -45,7 +45,7 @@ impl CssPropertyValueParseError {
         &self.detail.origin
     }
 
-    fn from_component(error: CssComponentValueError) -> Self {
+    pub(crate) fn from_component(error: CssComponentValueError) -> Self {
         Self {
             detail: Box::new(PropertyValueParseErrorDetail {
                 kind: CssPropertyValueErrorKind::Component(error.kind()),
@@ -54,16 +54,15 @@ impl CssPropertyValueParseError {
         }
     }
 
-    pub(crate) fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        if let ErrorKind::InvalidComponentValue(detail) = error.kind()
+    pub(crate) fn from_direct_grammar(kind: ErrorKind, origin: CssSerializedOrigin) -> Self {
+        if let ErrorKind::InvalidComponentValue(detail) = &kind
             && crate::error::is_component_resource_error(detail)
         {
             return Self::from_component((**detail).clone());
         }
-        let origin = error.component_input_origin(serialized);
         Self {
             detail: Box::new(PropertyValueParseErrorDetail {
-                kind: CssPropertyValueErrorKind::Grammar(error.kind().clone()),
+                kind: CssPropertyValueErrorKind::Grammar(kind),
                 origin,
             }),
         }
@@ -78,23 +77,11 @@ impl fmt::Display for CssPropertyValueParseError {
 
 impl std::error::Error for CssPropertyValueParseError {}
 
-fn is_time_property(property: crate::CssKnownProperty) -> bool {
-    matches!(
-        property,
-        crate::CssKnownProperty::TransitionDuration
-            | crate::CssKnownProperty::TransitionDelay
-            | crate::CssKnownProperty::AnimationDuration
-            | crate::CssKnownProperty::AnimationDelay
-            | crate::CssKnownProperty::Transition
-            | crate::CssKnownProperty::Animation
-    )
-}
-
 fn recovered_component_error(value: &CssComponentValues) -> Option<CssPropertyValueParseError> {
     let origin = value.first_implicit_origin()?;
     Some(CssPropertyValueParseError {
         detail: Box::new(PropertyValueParseErrorDetail {
-            kind: CssPropertyValueErrorKind::Grammar(crate::error::implicit_eof("").kind().clone()),
+            kind: CssPropertyValueErrorKind::Grammar(crate::error::property::implicit_eof_kind()),
             origin: CssSerializedOrigin::End(Some(origin.clone())),
         }),
     })
@@ -110,8 +97,8 @@ fn recovered_component_error(value: &CssComponentValues) -> Option<CssPropertyVa
 ///
 /// Supplied token origins remain intact. The returned declaration has no parsed property-name
 /// position or single parsed declaration-value span; inspect its components for their origins.
-/// Serialization preserves token boundaries, checks byte arithmetic, and obeys the immutable
-/// component tree's previously validated structural and serialization constraints. This function
+/// Admission reads the supplied tokens directly and obeys the immutable component tree's
+/// previously validated structural and serialization constraints. This function
 /// does not substitute variables, expand shorthands, resolve values, or apply cascade.
 pub fn parse_property_value(
     property: CssPropertyNameRef<'_>,
@@ -221,35 +208,14 @@ pub(crate) fn checked_page_property_value_body(
             CssPropertyNameRef::Custom(name) => name.as_str(),
             CssPropertyNameRef::SvgGlyphOrientationVertical => "glyph-orientation-vertical",
         };
-        let error = component.map_or_else(
-            || {
-                crate::error::unexpected_end_at(
-                    cssparser::SourceLocation { line: 0, column: 1 },
-                    "an admitted Page declaration",
-                )
-            },
-            |component| {
-                // Only the typed kind is retained below. The public diagnostic
-                // origin comes directly from this component, including when it
-                // has no parsed source position.
-                let position = match component.origin() {
-                    crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
-                    _ => crate::CssSourcePosition::from_byte_offset_in("", 0),
-                };
-                crate::error::unexpected_component_value_at(
-                    component,
-                    "an admitted Page declaration",
-                    position,
-                )
-            },
+        let kind = crate::error::property::property_rejection_kind(
+            name,
+            component,
+            "an admitted Page declaration",
         );
-        let error = crate::error::with_property_context(error, name);
-        let cssparser::ParseErrorKind::Custom(error) = error.kind else {
-            unreachable!("Page context errors use the typed property grammar error")
-        };
         return Err(CssPropertyValueParseError {
             detail: Box::new(PropertyValueParseErrorDetail {
-                kind: CssPropertyValueErrorKind::Grammar(error.kind().clone()),
+                kind: CssPropertyValueErrorKind::Grammar(kind),
                 origin: component.map_or(CssSerializedOrigin::End(None), |component| {
                     CssSerializedOrigin::Token(component.origin().clone())
                 }),
@@ -268,33 +234,12 @@ pub(crate) fn checked_property_value_body(
     value: &CssComponentValues,
     parser_context: crate::CssParserContext,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
-    if let CssPropertyNameRef::Known(known) = property
-        && is_time_property(known)
+    if !matches!(property, CssPropertyNameRef::Custom(_))
         && let Some(error) = recovered_component_error(value)
     {
         return Err(error);
     }
-    let serialized = value
-        .serialize()
-        .map_err(CssPropertyValueParseError::from_component)?;
-    if let CssPropertyNameRef::Known(known) = property
-        && !is_time_property(known)
-        && let Some(error) = recovered_component_error(value)
-    {
-        return Err(error);
-    }
-    if matches!(property, CssPropertyNameRef::SvgGlyphOrientationVertical)
-        && let Some(error) = recovered_component_error(value)
-    {
-        return Err(error);
-    }
-    crate::parser::parse_property_value_body(
-        property,
-        serialized.as_css(),
-        &crate::numeric::NumericInputContext::components(value, &serialized),
-        parser_context,
-    )
-    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+    crate::parser::parse_property_value_body(property, value, parser_context)
 }
 
 pub(crate) fn checked_svg_glyph_value_body(
@@ -302,24 +247,15 @@ pub(crate) fn checked_svg_glyph_value_body(
     value: &CssComponentValues,
     context: crate::CssParserContext,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
-    let serialized = value
-        .serialize()
-        .map_err(CssPropertyValueParseError::from_component)?;
     if let Some(error) = recovered_component_error(value) {
         return Err(error);
     }
-    crate::parser::parse_svg_glyph_value_body(
-        admission,
-        serialized.as_css(),
-        &crate::numeric::NumericInputContext::components(value, &serialized),
-        context,
-    )
-    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+    crate::parser::parse_svg_glyph_value_body(admission, value, context)
 }
 
 /// Checks components using an explicit canonical or legacy authored grammar.
 ///
-/// This shares token-boundary preservation, limits, and original-origin mapping
+/// This shares direct token admission, limits, and original-origin mapping
 /// with [`parse_property_value`]. The constructed occurrence has programmatic
 /// declaration provenance; supplied component origins remain intact.
 pub fn parse_property_value_for_grammar(
@@ -355,26 +291,10 @@ pub(crate) fn checked_grammar_value_body(
     value: &CssComponentValues,
     parser_context: crate::CssParserContext,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
-    if is_time_property(grammar.target_property())
-        && let Some(error) = recovered_component_error(value)
-    {
+    if let Some(error) = recovered_component_error(value) {
         return Err(error);
     }
-    let serialized = value
-        .serialize()
-        .map_err(CssPropertyValueParseError::from_component)?;
-    if !is_time_property(grammar.target_property())
-        && let Some(error) = recovered_component_error(value)
-    {
-        return Err(error);
-    }
-    crate::parser::parse_property_value_body_for_grammar(
-        grammar,
-        serialized.as_css(),
-        &crate::numeric::NumericInputContext::components(value, &serialized),
-        parser_context,
-    )
-    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+    crate::parser::parse_property_value_body_for_grammar(grammar, value, parser_context)
 }
 
 /// Constructs one checked margin-context property value with genuine supplied component origins.

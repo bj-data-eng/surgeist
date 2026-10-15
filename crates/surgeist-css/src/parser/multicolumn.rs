@@ -1,9 +1,10 @@
 use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
-use cssparser::{ParseError, Parser, match_ignore_ascii_case};
+use super::property_input::Parser;
+use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use cssparser::match_ignore_ascii_case;
 
 use super::values::parse_positive_integer_value;
-use crate::error::{Error, basic, unexpected_at};
 use crate::syntax::*;
 
 pub(super) fn parse_column_count<'i, 't>(

@@ -15,27 +15,96 @@ use super::protocol::{
     CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data, LexicalTable,
 };
 use super::syntax_pass::{SyntaxAction, SyntaxPass};
-use crate::error::{Error, invalid_color};
+#[cfg(test)]
+use crate::error::Error;
+use crate::error::ErrorKind;
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, Token, TokenKind};
 use crate::*;
+#[cfg(test)]
 use cssparser::{ParseError, Parser, SourceLocation};
 
-type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
+type Result<T> = std::result::Result<T, ColorInputFailure>;
 
+/// A failure in the original component graph; the root itself has path [].
+#[derive(Debug)]
+pub(crate) struct ColorInputFailure {
+    pub(crate) kind: ErrorKind,
+    pub(crate) path: Box<[usize]>,
+    pub(crate) closing: bool,
+}
+fn invalid_color(component: Option<&str>) -> ColorInputFailure {
+    ColorInputFailure {
+        kind: crate::error::color_syntax_kind(component),
+        path: Box::new([]),
+        closing: false,
+    }
+}
+fn component_failure(detail: CssComponentValueError) -> ColorInputFailure {
+    ColorInputFailure {
+        kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
+        path: Box::new([]),
+        closing: false,
+    }
+}
+fn event_failure(
+    events: &Events<'_, '_>,
+    site: usize,
+    inside: &[usize],
+    kind: ErrorKind,
+) -> ColorInputFailure {
+    let relative = events
+        .paths
+        .get(site)
+        .and_then(Option::as_ref)
+        .map_or(&[][..], Vec::as_slice);
+    let capacity = || {
+        component_failure(CssComponentValueError::new(
+            CssComponentValueErrorKind::CapacityOverflow,
+            events.root.origin().clone(),
+        ))
+    };
+    let Some(length) = relative.len().checked_add(inside.len()) else {
+        return capacity();
+    };
+    let mut path = Vec::new();
+    if path.try_reserve_exact(length).is_err() {
+        return capacity();
+    }
+    path.extend_from_slice(relative);
+    path.extend_from_slice(inside);
+    ColorInputFailure {
+        kind,
+        path: path.into_boxed_slice(),
+        closing: events.closing.get(site).copied().unwrap_or(false),
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn parse_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<'i, CssColor> {
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     input.skip_whitespace();
     let offset = input.position().byte_index();
     let location = input.current_source_location();
     let root = numeric
         .collect(input)
         .map_err(|error| numeric_error(numeric, error, location, offset))?;
-    construct(&root, numeric, location, offset)
+    construct_component(&root, numeric).map_err(|failure| {
+        let at = input_location(
+            &root,
+            &failure.path,
+            failure.closing,
+            numeric,
+            location,
+            offset,
+        );
+        crate::error::error_at(at, failure.kind)
+    })
 }
 
+#[cfg(test)]
 fn numeric_error<'i>(
     numeric: &NumericInputContext<'_>,
     error: CssNumericConstructionError,
@@ -51,16 +120,16 @@ fn numeric_error<'i>(
 }
 
 struct Events<'a, 'owner> {
+    root: &'a CssComponentValue,
     slots: Vec<CssColorSlot<'owner>>,
     originals: Vec<Option<&'a CssComponentValue>>,
     paths: Vec<Option<Vec<usize>>>,
     closing: Vec<bool>,
-    eof: Option<EndSite<'a>>,
+    eof: Option<EndSite>,
     owner: &'owner CssColorOperationOwner,
     phase: usize,
 }
-struct EndSite<'a> {
-    component: &'a CssComponentValue,
+struct EndSite {
     path: Vec<usize>,
 }
 impl<'a, 'owner> Events<'a, 'owner> {
@@ -237,13 +306,10 @@ impl<'a, 'owner> Events<'a, 'owner> {
                     } else if self.eof.is_none() {
                         let mut retained = Vec::new();
                         retained
-                            .try_reserve(path.len())
+                            .try_reserve_exact(path.len())
                             .map_err(|_| CssColorProtocolError::Overflow)?;
                         retained.extend_from_slice(&path);
-                        self.eof = Some(EndSite {
-                            component: item,
-                            path: retained,
-                        });
+                        self.eof = Some(EndSite { path: retained });
                     }
                     path.pop();
                 }
@@ -341,31 +407,27 @@ impl<'a, 'owner> Events<'a, 'owner> {
     }
 }
 
-fn construct<'i>(
+pub(crate) fn construct_component(
     root: &CssComponentValue,
     numeric: &NumericInputContext<'_>,
-    location: SourceLocation,
-    offset: usize,
-) -> Result<'i, CssColor> {
+) -> Result<CssColor> {
     let capacity = || {
-        crate::error::invalid_component_value(
-            location,
-            CssComponentValueError::new(
-                CssComponentValueErrorKind::CapacityOverflow,
-                root.origin().clone(),
-            ),
-        )
+        component_failure(CssComponentValueError::new(
+            CssComponentValueErrorKind::CapacityOverflow,
+            root.origin().clone(),
+        ))
     };
     let protocol = |error| {
         if error == CssColorProtocolError::Overflow {
             capacity()
         } else {
-            invalid_color(location, None)
+            invalid_color(None)
         }
     };
     let mut owner = CssColorOperationOwner::new();
     let phase = owner.begin().map_err(protocol)?;
     let mut events = Events {
+        root,
         slots: Vec::new(),
         originals: Vec::new(),
         paths: Vec::new(),
@@ -401,17 +463,22 @@ fn construct<'i>(
                     super::grammar::GrammarFailureReason::ColorSpace => Some("color space"),
                 };
                 if source.start == source.end
-                    && let Some(end) = &events.eof
+                    && let Some(end) = events.eof.take()
                 {
-                    return Err(invalid_color(
-                        end_location(end.component, &end.path, numeric, location, offset),
-                        component,
-                    ));
+                    return Err(ColorInputFailure {
+                        kind: crate::error::color_syntax_kind(component),
+                        path: end.path.into_boxed_slice(),
+                        closing: true,
+                    });
                 }
-                let at = event_location(&events, source.start, numeric, location, offset, &[]);
-                return Err(invalid_color(at, component));
+                return Err(event_failure(
+                    &events,
+                    source.start,
+                    &[],
+                    crate::error::color_syntax_kind(component),
+                ));
             }
-            GrammarAction::Stopped => return Err(invalid_color(location, None)),
+            GrammarAction::Stopped => return Err(invalid_color(None)),
         }
         .map_err(protocol)?;
     }
@@ -429,7 +496,7 @@ fn construct<'i>(
                     let slots = match bank {
                         CssColorBank::Algorithm => &events.slots,
                         CssColorBank::Arithmetic => &arithmetic,
-                        CssColorBank::Evaluation => return Err(invalid_color(location, None)),
+                        CssColorBank::Evaluation => return Err(invalid_color(None)),
                     };
                     pass.component_read(bank, index, &slots[index])
                 }
@@ -439,22 +506,20 @@ fn construct<'i>(
                     let slots = match bank {
                         CssColorBank::Algorithm => &mut events.slots,
                         CssColorBank::Arithmetic => &mut arithmetic,
-                        CssColorBank::Evaluation => return Err(invalid_color(location, None)),
+                        CssColorBank::Evaluation => return Err(invalid_color(None)),
                     };
                     if index == slots.len() {
                         slots.try_reserve(1).map_err(|_| capacity())?;
                         slots.push(record);
                     } else {
-                        *slots
-                            .get_mut(index)
-                            .ok_or_else(|| invalid_color(location, None))? = record;
+                        *slots.get_mut(index).ok_or_else(|| invalid_color(None))? = record;
                     }
                     pass.component_written(bank, index, &slots[index])
                 }
                 ComponentAction::Compute | ComponentAction::Done | ComponentAction::Failed(_) => {
                     pass.compute()
                 }
-                ComponentAction::Stopped => return Err(invalid_color(location, None)),
+                ComponentAction::Stopped => return Err(invalid_color(None)),
             },
             SyntaxAction::Replace { index } => {
                 events.slots[index] = pass.replacement(index).map_err(protocol)?;
@@ -466,10 +531,14 @@ fn construct<'i>(
                     SyntaxFailure::Component { site, reason } => (site, Some(reason.label())),
                     SyntaxFailure::Numeric { site, .. } => (site, None),
                 };
-                let at = event_location(&events, site, numeric, location, offset, &[]);
-                return Err(invalid_color(at, component));
+                return Err(event_failure(
+                    &events,
+                    site,
+                    &[],
+                    crate::error::color_syntax_kind(component),
+                ));
             }
-            SyntaxAction::Stopped => return Err(invalid_color(location, None)),
+            SyntaxAction::Stopped => return Err(invalid_color(None)),
         }
         .map_err(protocol)?;
     }
@@ -482,8 +551,7 @@ fn construct<'i>(
     let builder = Builder {
         events: &events,
         numeric,
-        location,
-        offset,
+        root,
     };
     for index in checked.table.start..checked.table.end {
         if let GrammarRecord::Recipe(recipe) = checked
@@ -498,97 +566,44 @@ fn construct<'i>(
     }
     native[checked.table.root]
         .take()
-        .ok_or_else(|| invalid_color(location, None))
+        .ok_or_else(|| invalid_color(None))
 }
 
-fn site_error<'i>(
-    events: &Events<'_, '_>,
-    site: usize,
-    numeric: &NumericInputContext<'_>,
-    fallback: SourceLocation,
-    offset: usize,
-) -> ParseError<'i, Error> {
-    let at = event_location(events, site, numeric, fallback, offset, &[]);
-    invalid_color(at, None)
-}
-
-fn event_location(
-    events: &Events<'_, '_>,
-    site: usize,
-    numeric: &NumericInputContext<'_>,
-    fallback: SourceLocation,
-    offset: usize,
-    inside: &[usize],
-) -> SourceLocation {
-    if events.closing.get(site).copied().unwrap_or(false)
-        && let (Some(Some(component)), Some(Some(path))) =
-            (events.originals.get(site), events.paths.get(site))
-    {
-        return end_location(component, path, numeric, fallback, offset);
-    }
-    match numeric.ordinary() {
-        NumericInputContext::Parsed(_) => {
-            events
-                .originals
-                .get(site)
-                .and_then(|v| *v)
-                .map_or(fallback, |component| {
-                    let error = CssNumericConstructionError::at(
-                        CssNumericConstructionErrorKind::InvalidArgumentType,
-                        Some(component),
-                    );
-                    numeric.error_location(&error, fallback, offset)
-                })
-        }
-        NumericInputContext::Components(_, serialized) => {
-            let Some(base) = serialized.component_path_at(offset) else {
-                return fallback;
-            };
-            let Some(relative) = events.paths.get(site).and_then(Option::as_ref) else {
-                return fallback;
-            };
-            let Some(length) = base
-                .len()
-                .checked_add(relative.len())
-                .and_then(|n| n.checked_add(inside.len()))
-            else {
-                return fallback;
-            };
-            let mut path = Vec::new();
-            if path.try_reserve(length).is_err() {
-                return fallback;
-            }
-            path.extend_from_slice(base);
-            path.extend_from_slice(relative);
-            path.extend_from_slice(inside);
-            let Some(at) = serialized.component_offset_for_path(&path) else {
-                return fallback;
-            };
-            let position =
-                crate::source::CssSourcePosition::from_byte_offset_in(serialized.as_css(), at);
-            SourceLocation {
-                line: position.line().value(),
-                column: position.column().value() + 1,
-            }
-        }
-        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary context"),
-    }
-}
-
-fn end_location(
-    component: &CssComponentValue,
+#[cfg(test)]
+fn input_location(
+    root: &CssComponentValue,
     relative: &[usize],
+    closing: bool,
     numeric: &NumericInputContext<'_>,
     fallback: SourceLocation,
     offset: usize,
 ) -> SourceLocation {
-    let origin = match component.view() {
-        CssComponentValueRef::Function(value) => value.closing_origin(),
-        CssComponentValueRef::Block(value) => value.closing_origin(),
-        _ => return fallback,
-    };
+    let mut component = root;
+    for index in relative {
+        let items = match component.view() {
+            CssComponentValueRef::Function(function) => function.values().items(),
+            CssComponentValueRef::Block(block) => block.values().items(),
+            _ => return fallback,
+        };
+        let Some(child) = items.get(*index) else {
+            return fallback;
+        };
+        component = child;
+    }
     let position = match numeric.ordinary() {
+        NumericInputContext::Checked => {
+            unreachable!("the property cursor maps color failures at its actual component site")
+        }
         NumericInputContext::Parsed(source) => {
+            let origin = if closing {
+                match component.view() {
+                    CssComponentValueRef::Function(function) => function.closing_origin(),
+                    CssComponentValueRef::Block(block) => block.closing_origin(),
+                    _ => return fallback,
+                }
+            } else {
+                component.origin()
+            };
             let parsed = match origin {
                 CssValueOrigin::Parsed(parsed)
                 | CssValueOrigin::ImplicitClosure { at: parsed, .. } => parsed,
@@ -603,21 +618,16 @@ fn end_location(
             let Some(base) = serialized.component_path_at(offset) else {
                 return fallback;
             };
-            let Some(length) = base.len().checked_add(relative.len()) else {
-                return fallback;
-            };
-            let mut path = Vec::new();
-            if path.try_reserve(length).is_err() {
-                return fallback;
-            }
-            path.extend_from_slice(base);
+            let mut path = base.to_vec();
             path.extend_from_slice(relative);
-            // Serialization emits exactly one ASCII closing delimiter for
-            // both explicit and implied Function/Block endings.
-            let Some(at) = serialized
-                .component_end_for_path(&path)
-                .and_then(|end| end.checked_sub(1))
-            else {
+            let at = if closing {
+                serialized
+                    .component_end_for_path(&path)
+                    .and_then(|end| end.checked_sub(1))
+            } else {
+                serialized.component_offset_for_path(&path)
+            };
+            let Some(at) = at else {
                 return fallback;
             };
             crate::source::CssSourcePosition::from_byte_offset_in(serialized.as_css(), at)
@@ -633,45 +643,39 @@ fn end_location(
 struct Builder<'a, 'owner, 'context> {
     events: &'a Events<'a, 'owner>,
     numeric: &'a NumericInputContext<'context>,
-    location: SourceLocation,
-    offset: usize,
+    root: &'a CssComponentValue,
 }
 
 impl Builder<'_, '_, '_> {
-    fn invalid<'i>(&self) -> ParseError<'i, Error> {
-        invalid_color(self.location, None)
+    fn invalid(&self) -> ColorInputFailure {
+        invalid_color(None)
     }
-    fn capacity<'i>(&self) -> ParseError<'i, Error> {
-        crate::error::invalid_component_value(
-            self.location,
-            CssComponentValueError::new(
-                CssComponentValueErrorKind::CapacityOverflow,
-                self.numeric
-                    .origin_at(self.offset)
-                    .unwrap_or(CssValueOrigin::Programmatic),
-            ),
-        )
+    fn capacity(&self) -> ColorInputFailure {
+        component_failure(CssComponentValueError::new(
+            CssComponentValueErrorKind::CapacityOverflow,
+            self.root.origin().clone(),
+        ))
     }
-    fn raw<'i>(&self, site: usize) -> Result<'i, &CssComponentValue> {
+    fn raw(&self, site: usize) -> Result<&CssComponentValue> {
         self.events
             .originals
             .get(site)
             .and_then(|v| *v)
             .ok_or_else(|| self.invalid())
     }
-    fn record<'i>(&self, index: usize) -> Result<'i, GrammarRecord> {
+    fn record(&self, index: usize) -> Result<GrammarRecord> {
         match self.events.slots.get(index).map(|slot| slot.data) {
             Some(Data::Grammar(record)) => Ok(record),
             _ => Err(self.invalid()),
         }
     }
-    fn component_record<'i>(&self, index: usize) -> Result<'i, ComponentRecord> {
+    fn component_record(&self, index: usize) -> Result<ComponentRecord> {
         match self.record(index)? {
             GrammarRecord::Component(record) if record.checked.is_some() => Ok(record),
             _ => Err(self.invalid()),
         }
     }
-    fn component<'i>(&self, index: usize) -> Result<'i, &CssComponentValue> {
+    fn component(&self, index: usize) -> Result<&CssComponentValue> {
         let record = self.component_record(index)?;
         let site = match record.component {
             RawComponent::Atom(token) | RawComponent::Math { opener: token, .. } => token.index,
@@ -681,15 +685,11 @@ impl Builder<'_, '_, '_> {
         };
         self.raw(site)
     }
-    fn values<'i>(&self, index: usize) -> Result<'i, CssComponentValues> {
-        CssComponentValues::try_new(vec![self.component(index)?.clone()])
-            .map_err(|error| crate::error::invalid_component_value(self.location, error))
-    }
-    fn numeric_failure<'i>(
+    fn numeric_failure(
         &self,
         index: usize,
         error: CssNumericConstructionError,
-    ) -> ParseError<'i, Error> {
+    ) -> ColorInputFailure {
         let site = self
             .component_record(index)
             .ok()
@@ -699,49 +699,37 @@ impl Builder<'_, '_, '_> {
                     unreachable!("construction consumes source grammar only")
                 }
             });
-        let location = match (site, self.numeric.ordinary()) {
-            (Some(site), NumericInputContext::Components(..)) => {
-                let inside = error
-                    .path()
-                    .and_then(|path| path.strip_prefix(&[0]))
-                    .unwrap_or(&[]);
-                event_location(
-                    self.events,
-                    site,
-                    self.numeric,
-                    self.location,
-                    self.offset,
-                    inside,
-                )
-            }
-            _ => self
-                .numeric
-                .error_location(&error, self.location, self.offset),
-        };
-        if let Some(component) = error.component_error() {
-            crate::error::invalid_component_value(location, component.clone())
-        } else {
-            crate::error::with_color_context(crate::error::unexpected_at(location), None)
+        let inside = error
+            .path()
+            .and_then(|path| path.strip_prefix(&[0]))
+            .unwrap_or(&[]);
+        let kind = error.component_error().map_or_else(
+            || crate::error::color_syntax_kind(None),
+            |component| ErrorKind::InvalidComponentValue(Box::new(component.clone())),
+        );
+        match site {
+            Some(site) => event_failure(self.events, site, inside, kind),
+            None => ColorInputFailure {
+                kind,
+                path: Box::new([]),
+                closing: false,
+            },
         }
     }
-    fn numeric<'i>(
-        &self,
-        index: usize,
-        root: CalculationRoot,
-    ) -> Result<'i, CssCalculationExpression> {
+
+    fn numeric(&self, index: usize, root: CalculationRoot) -> Result<CssCalculationExpression> {
         self.numeric
-            .admit(self.values(index)?, root)
+            .admit(self.component(index)?, root)
             .map_err(|error| self.numeric_failure(index, error))
     }
-    fn scalar<'i>(&self, index: usize) -> Result<'i, CssColorComponent> {
+    fn scalar(&self, index: usize) -> Result<CssColorComponent> {
         let raw = self.component(index)?;
         if matches!(raw.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name.eq_ignore_ascii_case("none"))
         {
             return Ok(CssColorComponent::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::component(raw.clone())
-                .map_err(|error| crate::error::invalid_component_value(self.location, error));
+            return crate::color_scalar::component(raw.clone()).map_err(component_failure);
         }
         let expression = self.numeric(index, CalculationRoot::NumberPercentage)?;
         Ok(match expression.result_type() {
@@ -761,15 +749,14 @@ impl Builder<'_, '_, '_> {
             _ => return Err(self.invalid()),
         })
     }
-    fn hue<'i>(&self, index: usize) -> Result<'i, CssColorHue> {
+    fn hue(&self, index: usize) -> Result<CssColorHue> {
         let raw = self.component(index)?;
         if matches!(raw.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name.eq_ignore_ascii_case("none"))
         {
             return Ok(CssColorHue::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::hue(raw.clone())
-                .map_err(|error| crate::error::invalid_component_value(self.location, error));
+            return crate::color_scalar::hue(raw.clone()).map_err(component_failure);
         }
         let domain = self
             .component_record(index)?
@@ -788,25 +775,28 @@ impl Builder<'_, '_, '_> {
             ))
         }
     }
-    fn relative<'i>(
+    fn relative(
         &self,
         index: usize,
         environment: CssRelativeColorEnvironment,
         domain: CssRelativeColorResultDomain,
-    ) -> Result<'i, CssRelativeColorExpression> {
+    ) -> Result<CssRelativeColorExpression> {
         CssRelativeColorExpression::from_parser_components(
-            self.values(index)?,
+            self.component(index)?.into(),
             self.numeric,
             environment,
             domain,
         )
         .map_err(|error| self.numeric_failure(index, error))
     }
-    fn profile_expression<'i>(&self, index: usize) -> Result<'i, CssProfileColorExpression> {
-        CssProfileColorExpression::from_parser_components(self.values(index)?, self.numeric)
-            .map_err(|error| self.numeric_failure(index, error))
+    fn profile_expression(&self, index: usize) -> Result<CssProfileColorExpression> {
+        CssProfileColorExpression::from_parser_components(
+            self.component(index)?.into(),
+            self.numeric,
+        )
+        .map_err(|error| self.numeric_failure(index, error))
     }
-    fn weight<'i>(&self, index: usize) -> Result<'i, CssColorMixWeight> {
+    fn weight(&self, index: usize) -> Result<CssColorMixWeight> {
         let raw = self.component(index)?;
         if matches!(
             raw.view(),
@@ -821,44 +811,45 @@ impl Builder<'_, '_, '_> {
             CssColorMixPercentage::try_from_component(raw.clone())
                 .map(CssColorMixWeight::literal)
                 .map_err(|_| {
-                    site_error(self.events, site, self.numeric, self.location, self.offset)
+                    event_failure(
+                        self.events,
+                        site,
+                        &[],
+                        crate::error::color_syntax_kind(None),
+                    )
                 })
         } else {
             CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
                 self.numeric(index, CalculationRoot::Percentage)?,
             ))
-            .map_err(|error| crate::error::invalid_component_value(self.location, error))
+            .map_err(component_failure)
         }
     }
-    fn profile<'i>(&self, token: usize) -> Result<'i, CssColorProfileName> {
+    fn profile(&self, token: usize) -> Result<CssColorProfileName> {
         let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) = self.raw(token)?.view()
         else {
             return Err(self.invalid());
         };
         CssColorProfileName::try_new(name).ok_or_else(|| self.invalid())
     }
-    fn child<'i>(
-        &self,
-        index: Option<usize>,
-        native: &mut [Option<CssColor>],
-    ) -> Result<'i, CssColor> {
+    fn child(&self, index: Option<usize>, native: &mut [Option<CssColor>]) -> Result<CssColor> {
         index
             .and_then(|index| native.get_mut(index))
             .and_then(Option::take)
             .ok_or_else(|| self.invalid())
     }
-    fn checked<'i, T>(
+    fn checked<T>(
         &self,
         value: std::result::Result<T, CssColorConstructionError>,
         recipe: Recipe,
-    ) -> Result<'i, T> {
+    ) -> Result<T> {
         value.map_err(|error| self.construction_error(error, recipe))
     }
-    fn construction_error<'i>(
+    fn construction_error(
         &self,
         error: CssColorConstructionError,
         recipe: Recipe,
-    ) -> ParseError<'i, Error> {
+    ) -> ColorInputFailure {
         if matches!(
             error,
             CssColorConstructionError::CapacityOverflow | CssColorConstructionError::NestingLimit
@@ -877,15 +868,12 @@ impl Builder<'_, '_, '_> {
                         .start,
                 )
                 .map_or(CssValueOrigin::Programmatic, |raw| raw.origin().clone());
-            crate::error::invalid_component_value(
-                self.location,
-                CssComponentValueError::new(kind, origin),
-            )
+            component_failure(CssComponentValueError::new(kind, origin))
         } else {
             self.invalid()
         }
     }
-    fn closed<'i>(&self, recipe: Recipe) -> Result<'i, bool> {
+    fn closed(&self, recipe: Recipe) -> Result<bool> {
         Ok(
             match self
                 .raw(
@@ -913,7 +901,7 @@ impl Builder<'_, '_, '_> {
             },
         )
     }
-    fn recipe<'i>(&self, recipe: Recipe, native: &mut [Option<CssColor>]) -> Result<'i, CssColor> {
+    fn recipe(&self, recipe: Recipe, native: &mut [Option<CssColor>]) -> Result<CssColor> {
         match recipe.kind {
             RecipeKind::Leaf(leaf) => Ok(match leaf {
                 Leaf::Current => CssColor::current_color(),
@@ -955,12 +943,12 @@ impl Builder<'_, '_, '_> {
             RecipeKind::Function(function) => self.function(recipe, function, native),
         }
     }
-    fn function<'i>(
+    fn function(
         &self,
         recipe: Recipe,
         function: FunctionRecipe,
         native: &mut [Option<CssColor>],
-    ) -> Result<'i, CssColor> {
+    ) -> Result<CssColor> {
         let index = |ordinal| {
             function
                 .component_index(ordinal)
@@ -1174,12 +1162,12 @@ impl Builder<'_, '_, '_> {
             }
         }
     }
-    fn mix<'i>(
+    fn mix(
         &self,
         recipe: Recipe,
         function: FunctionRecipe,
         native: &mut [Option<CssColor>],
-    ) -> Result<'i, CssColor> {
+    ) -> Result<CssColor> {
         let interpolation = function
             .interpolation
             .map(|value| match value {
