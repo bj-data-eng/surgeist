@@ -150,6 +150,18 @@ impl<'a> DomNode<'a> {
         self.as_element()?.input_state()?;
         Some(crate::DomInput { node: self })
     }
+    pub fn as_select(self) -> Option<crate::DomSelect<'a>> {
+        self.as_element()?.select_state()?;
+        Some(crate::DomSelect { node: self })
+    }
+    pub fn as_option(self) -> Option<crate::DomOption<'a>> {
+        self.as_element()?.option_state()?;
+        Some(crate::DomOption { node: self })
+    }
+    pub fn as_selectedcontent(self) -> Option<crate::DomSelectedcontent<'a>> {
+        self.as_element()?.selectedcontent_disabled()?;
+        Some(crate::DomSelectedcontent { node: self })
+    }
     pub fn as_output(self) -> Option<crate::DomOutput<'a>> {
         self.as_element()?.output_state()?;
         Some(crate::DomOutput { node: self })

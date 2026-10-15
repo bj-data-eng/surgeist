@@ -194,7 +194,18 @@ impl Draft {
         self.script_attribute_change(node, &changed, old_value.is_some(), false, cancelled)?;
         self.reflected_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
-        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
+        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)?;
+        self.select_attribute(
+            node,
+            &changed,
+            if old_value.is_some() {
+                AttributeChange::Set
+            } else {
+                AttributeChange::Added
+            },
+            limits,
+            cancelled,
+        )
     }
 
     pub(super) fn remove_attribute(
@@ -250,7 +261,8 @@ impl Draft {
         self.script_attribute_change(node, &changed, true, true, cancelled)?;
         self.reflected_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
-        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
+        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)?;
+        self.select_attribute(node, &changed, AttributeChange::Removed, limits, cancelled)
     }
 
     fn publish_element(

@@ -195,7 +195,8 @@ impl Draft {
                         surgeist_html::HtmlNativeFormAssociationKind::Button
                         | surgeist_html::HtmlNativeFormAssociationKind::Fieldset
                         | surgeist_html::HtmlNativeFormAssociationKind::Textarea
-                        | surgeist_html::HtmlNativeFormAssociationKind::Output => {}
+                        | surgeist_html::HtmlNativeFormAssociationKind::Output
+                        | surgeist_html::HtmlNativeFormAssociationKind::Select => {}
                         surgeist_html::HtmlNativeFormAssociationKind::Input => self
                             .input_radio_normalize(
                                 key,

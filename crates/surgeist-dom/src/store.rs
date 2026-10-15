@@ -26,6 +26,7 @@ mod navigable;
 mod output;
 mod reflected;
 mod script;
+mod select;
 mod shadow;
 mod slot;
 mod svg_script;
@@ -52,6 +53,8 @@ pub enum DomResource {
     ViewTransitionRecords,
     ViewTransitionPseudos,
     InputProcessingScratch,
+    SelectScratch,
+    SelectTasks,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -94,6 +97,16 @@ pub enum DomError {
         error: surgeist_color::ColorError,
         input: surgeist_css::CssColorInputRange,
     },
+    SelectInapplicable,
+    OptionInapplicable,
+    SelectProtocol,
+    SelectValueQueriesUnconfigured,
+    SelectCapture(surgeist_html_semantics::HtmlCaptureError),
+    SelectSemantic(surgeist_html_semantics::HtmlSemanticFailure),
+    SelectWorkLimit {
+        limit: u64,
+    },
+    InvalidNativeTask,
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
@@ -141,6 +154,13 @@ pub struct DomLimits {
     pseudos: usize,
     input_scratch: usize,
     input_work: u64,
+    select_tasks: usize,
+    select_scratch: usize,
+    select_work: u64,
+    select_value_queries: Option<(
+        surgeist_html_semantics::HtmlCaptureLimits,
+        surgeist_html_semantics::HtmlSemanticLimits,
+    )>,
 }
 impl DomLimits {
     pub fn new(
@@ -190,6 +210,10 @@ impl DomLimits {
             pseudos: 0,
             input_scratch: 0,
             input_work: 0,
+            select_tasks: 0,
+            select_scratch: 0,
+            select_work: 0,
+            select_value_queries: None,
         })
     }
     /// Explicit finite VT admission; the unconfigured feature has zero capacity.
@@ -247,6 +271,46 @@ impl DomLimits {
     }
     pub fn input_processing_work(self) -> u64 {
         self.input_work
+    }
+    /// Reached Select-family effects use independent finite pending, scratch and work bounds.
+    pub fn with_select_processing(
+        mut self,
+        pending_updates: usize,
+        scratch_bytes: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if pending_updates > isize::MAX as usize / size_of::<select::Task<NodeId>>() {
+            return Err(DomError::InvalidLimit(DomResource::SelectTasks));
+        }
+        if scratch_bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::SelectScratch));
+        }
+        self.select_tasks = pending_updates;
+        self.select_scratch = scratch_bytes;
+        self.select_work = work;
+        Ok(self)
+    }
+    /// Admission for reached Select value setters. Capture retention is bounded
+    /// separately for each sequential Option capture. Semantic work and allocated
+    /// bytes are cumulative across all queries in one private batch; other
+    /// semantic limits apply to each query. DOM adapter/effect storage and work
+    /// remain governed by `with_select_processing`.
+    pub fn with_select_value_queries(
+        mut self,
+        capture: surgeist_html_semantics::HtmlCaptureLimits,
+        semantics: surgeist_html_semantics::HtmlSemanticLimits,
+    ) -> Self {
+        self.select_value_queries = Some((capture, semantics));
+        self
+    }
+    pub fn pending_select_updates(self) -> usize {
+        self.select_tasks
+    }
+    pub fn select_scratch_bytes(self) -> usize {
+        self.select_scratch
+    }
+    pub fn select_work(self) -> u64 {
+        self.select_work
     }
     pub fn view_transition_records(self) -> usize {
         self.records
@@ -330,6 +394,11 @@ pub enum DomChange {
     /// Conservatively recompute current slot/flattened/flat projections.
     SlotQueries,
     IntrinsicTasks,
+    SelectTaskCancelled {
+        operation: crate::DomNativeTaskId,
+        select: NodeId,
+        reason: crate::DomSelectTaskCancellationReason,
+    },
     /// Native destruction canceled this exact-generation pending recipient.
     SlotSignalCancelled {
         slot: NodeId,
@@ -460,6 +529,7 @@ pub(crate) struct Node {
     pub(crate) assigned_slot: Option<NodeId>,
     pub(crate) reflected_targets: Option<crate::reflected::ReflectedTargets<NodeId>>,
     pub(crate) control_owner: Option<NodeId>,
+    pub(crate) option_select: Option<NodeId>,
     pub(crate) form_past_names: Option<crate::form::FormPastNames<NodeId>>,
     pub(crate) script: Option<crate::script::ScriptState<NodeId>>,
 }
@@ -475,6 +545,8 @@ pub(crate) struct State {
     pub(crate) view_transitions: ViewTransitions,
     pub(crate) signal_slots: Vec<NodeId>,
     pub(crate) notification_queued: bool,
+    native_tasks: Vec<select::Task<NodeId>>,
+    next_task: u64,
     nodes: usize,
     units: usize,
 }
@@ -513,6 +585,7 @@ pub struct Dom {
     history_entries: usize,
     history_bytes: usize,
     native_environment: crate::DomNativeDocumentEnvironment,
+    active_task: std::sync::Weak<crate::select::Authorization>,
 }
 impl Drop for Dom {
     fn drop(&mut self) {
@@ -538,9 +611,12 @@ impl Dom {
                 view_transitions: ViewTransitions::new(),
                 signal_slots: Vec::new(),
                 notification_queued: false,
+                native_tasks: Vec::new(),
+                next_task: 0,
                 nodes: 0,
                 units: 0,
             }),
+            active_task: std::sync::Weak::new(),
             history: None,
             history_entries: 0,
             history_bytes: 0,
@@ -594,6 +670,15 @@ impl Dom {
         )?;
         admit(records, limits.records, DomResource::ViewTransitionRecords)?;
         admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)?;
+        admit(
+            self.state
+                .native_tasks
+                .iter()
+                .filter(|t| matches!(t, select::Task::Update { .. }))
+                .count(),
+            limits.select_tasks,
+            DomResource::SelectTasks,
+        )?;
         self.limits = limits;
         self.trim_history();
         Ok(())
@@ -693,6 +778,12 @@ impl Dom {
                 None
             };
         let state = Arc::new(state);
+        let retired_authority = self.active_task.upgrade().filter(|auth| {
+            changes.iter().any(|change| matches!(change,
+                DomChange::SelectTaskCancelled { operation, select, reason: crate::DomSelectTaskCancellationReason::TargetDestroyed }
+                if *operation == auth.id && *select == auth.target
+            ))
+        });
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
@@ -708,6 +799,10 @@ impl Dom {
                 self.history_entries = 0;
                 self.history_bytes = 0;
             }
+        }
+        if let Some(auth) = retired_authority {
+            auth.destroy_if_pending();
+            self.active_task = std::sync::Weak::new();
         }
         Ok(DomCommit {
             owner,
@@ -827,6 +922,7 @@ struct DraftNode {
     assigned_slot: Option<Key>,
     reflected_targets: Option<crate::reflected::ReflectedTargets<Key>>,
     control_owner: Option<Key>,
+    option_select: Option<Key>,
     form_past_names: Option<crate::form::FormPastNames<Key>>,
     script: Option<crate::script::ScriptState<Key>>,
 }
@@ -838,6 +934,18 @@ struct Draft {
     signal_slots: Vec<Key>,
     notification_queued: bool,
     cancelled_signals: Vec<NodeId>,
+    native_tasks: Vec<select::Pending>,
+    cancelled_selects: Vec<(Option<u64>, NodeId)>,
+    effects: Vec<select::EffectFrame>,
+    effects_running: bool,
+    effect_bytes: usize,
+    effect_scoped: bool,
+    select_work: std::cell::Cell<u64>,
+    select_work_limit: u64,
+    select_scratch_limit: usize,
+    select_temporary_bytes: std::rc::Rc<std::cell::Cell<usize>>,
+    select_semantic_work: std::cell::Cell<usize>,
+    select_semantic_bytes: std::cell::Cell<usize>,
     existing: Vec<Option<DraftNode>>,
     generations: Vec<u64>,
     created: Vec<Option<DraftNode>>,
@@ -905,6 +1013,7 @@ impl Draft {
                     manual_slot: node.manual_slot.map(|id| Key::Existing(id.slot)),
                     assigned_slot: node.assigned_slot.map(|id| Key::Existing(id.slot)),
                     control_owner: node.control_owner.map(|id| Key::Existing(id.slot)),
+                    option_select: node.option_select.map(|id| Key::Existing(id.slot)),
                     form_past_names: node
                         .form_past_names
                         .as_ref()
@@ -938,6 +1047,18 @@ impl Draft {
             signal_slots: map_keys(&dom.state.signal_slots, cancelled)?,
             notification_queued: dom.state.notification_queued,
             cancelled_signals: Vec::new(),
+            native_tasks: select::draft_tasks(&dom.state.native_tasks, cancelled)?,
+            cancelled_selects: Vec::new(),
+            effects: Vec::new(),
+            effects_running: false,
+            effect_bytes: 0,
+            effect_scoped: false,
+            select_work: std::cell::Cell::new(0),
+            select_work_limit: dom.limits.select_work,
+            select_scratch_limit: dom.limits.select_scratch,
+            select_temporary_bytes: std::rc::Rc::new(std::cell::Cell::new(0)),
+            select_semantic_work: std::cell::Cell::new(0),
+            select_semantic_bytes: std::cell::Cell::new(0),
             existing,
             generations,
             created: Vec::new(),
@@ -1001,7 +1122,7 @@ impl Draft {
             self.slot_removal(node, parent, limits, cancelled)?;
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
-            self.native_removing_steps(node, cancelled)?;
+            self.native_removing_steps(node, limits, cancelled)?;
             self.children_changed(parent, limits, cancelled)?;
         }
         Ok(())
@@ -1056,6 +1177,7 @@ impl Draft {
             assigned_slot: None,
             reflected_targets,
             control_owner: None,
+            option_select: None,
             form_past_names,
         }));
         self.nodes = nodes;
@@ -1074,6 +1196,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::Select { node, edit } => {
+                let key = self.resolve(node)?;
+                self.select_edit(key, edit, limits, cancelled)?;
+            }
             Command::Output { node, edit } => {
                 let node = self.resolve(node)?;
                 self.output_edit(node, edit, limits, cancelled)?;
@@ -1294,18 +1420,35 @@ impl Draft {
                     return Err(DomError::InvalidDestruction);
                 }
                 let mut pending = Vec::new();
+                let mut closure = Vec::new();
                 reserve(&mut pending, self.nodes)?;
+                reserve(&mut closure, self.nodes)?;
                 pending.push(node);
                 while let Some(key) = pending.pop() {
+                    check_cancel(cancelled)?;
+                    let current = self.node(key)?;
+                    pending.extend(current.children.iter().rev().copied());
+                    pending.extend(current.shadow_root);
+                    pending.extend(current.template_contents);
+                    closure.push(key);
+                }
+                // Run real remove/association effects while every referenced owner
+                // still exists. Only then cancel all owned retired-target tasks.
+                for &key in &closure {
+                    while let Some(&child) = self.node(key)?.children.first() {
+                        self.remove(child, limits, cancelled)?;
+                    }
+                }
+                for &key in &closure {
+                    self.cancel_select_tasks(key, cancelled)?;
+                }
+                for key in closure {
                     check_cancel(cancelled)?;
                     let node = match key {
                         Key::Existing(i) => self.existing[i].take(),
                         Key::Created(i) => self.created[i].take(),
                     }
-                    .expect("owned subtree");
-                    pending.extend(node.children);
-                    pending.extend(node.shadow_root);
-                    pending.extend(node.template_contents);
+                    .expect("owned closure");
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
                     self.units -= form::name_units(node.form_past_names.as_ref(), cancelled)?;
@@ -1497,6 +1640,7 @@ impl Draft {
                 assigned_slot: source.assigned_slot.map(id),
                 reflected_targets: source.reflected_targets.map(|targets| targets.map(id)),
                 control_owner: source.control_owner.map(id),
+                option_select: source.option_select.map(id),
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -1504,16 +1648,34 @@ impl Draft {
                     .transpose()?,
             });
         }
+        let select::FinishedTasks {
+            tasks: native_tasks,
+            next: next_task,
+            cancellations,
+        } = self.finish_select_tasks(dom, &id, cancelled)?;
         let finished = self.view_transitions.finish(dom.owner)?;
         let state = State {
             slots,
             view_transitions: finished.value,
             signal_slots: map_ids(&self.signal_slots, &id, cancelled)?,
             notification_queued: self.notification_queued,
+            native_tasks,
+            next_task,
             nodes: self.nodes,
             units: self.units,
         };
         let mut changes = difference(dom.owner, &dom.state, &state)?;
+        for (operation, select) in cancellations {
+            reserve(&mut changes, 1)?;
+            changes.push(DomChange::SelectTaskCancelled {
+                operation: crate::DomNativeTaskId {
+                    owner: dom.owner,
+                    serial: operation,
+                },
+                select,
+                reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
+            });
+        }
         for slot in &self.cancelled_signals {
             reserve(&mut changes, 1)?;
             changes.push(DomChange::SlotSignalCancelled {
@@ -1625,7 +1787,8 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                         || node.reflected_targets != current.reflected_targets
                         || node.control_owner != current.control_owner
                         || node.form_past_names != current.form_past_names
-                        || node.script != current.script)
+                        || node.script != current.script
+                        || node.option_select != current.option_select)
                 {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::ElementState(id));
@@ -1739,7 +1902,10 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
         reserve(&mut changes, 1)?;
         changes.push(DomChange::ShadowRelations);
     }
-    if old.signal_slots != new.signal_slots || old.notification_queued != new.notification_queued {
+    if old.signal_slots != new.signal_slots
+        || old.notification_queued != new.notification_queued
+        || old.native_tasks != new.native_tasks
+    {
         reserve(&mut changes, 1)?;
         changes.push(DomChange::IntrinsicTasks);
     }

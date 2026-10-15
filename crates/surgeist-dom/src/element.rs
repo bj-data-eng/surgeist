@@ -162,6 +162,16 @@ impl DomElement {
             Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
                 NativeFamily::Output(std::sync::Arc::new(crate::DomOutputState::fresh()))
             }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Select) => {
+                NativeFamily::Select(std::sync::Arc::new(crate::DomSelectState::fresh()))
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Option) => {
+                NativeFamily::Option(crate::DomOptionState::default())
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
+            Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
+                NativeFamily::Selectedcontent(false)
+            }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
             Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
@@ -254,6 +264,42 @@ impl DomElement {
             _ => None,
         }
     }
+    pub fn select_state(&self) -> Option<&crate::DomSelectState> {
+        match &self.family {
+            NativeFamily::Select(s) => Some(s),
+            _ => None,
+        }
+    }
+    pub(crate) fn select_state_mut(&mut self) -> Option<&mut crate::DomSelectState> {
+        match &mut self.family {
+            NativeFamily::Select(s) => Some(std::sync::Arc::make_mut(s)),
+            _ => None,
+        }
+    }
+    pub fn option_state(&self) -> Option<crate::DomOptionState> {
+        match self.family {
+            NativeFamily::Option(s) => Some(s),
+            _ => None,
+        }
+    }
+    pub(crate) fn option_state_mut(&mut self) -> Option<&mut crate::DomOptionState> {
+        match &mut self.family {
+            NativeFamily::Option(s) => Some(s),
+            _ => None,
+        }
+    }
+    pub fn selectedcontent_disabled(&self) -> Option<bool> {
+        match self.family {
+            NativeFamily::Selectedcontent(s) => Some(s),
+            _ => None,
+        }
+    }
+    pub(crate) fn selectedcontent_disabled_mut(&mut self) -> Option<&mut bool> {
+        match &mut self.family {
+            NativeFamily::Selectedcontent(s) => Some(s),
+            _ => None,
+        }
+    }
     pub(crate) fn native_control(
         &self,
     ) -> Option<(
@@ -261,6 +307,10 @@ impl DomElement {
         surgeist_html::HtmlNativeFormAssociationKind,
     )> {
         match &self.family {
+            NativeFamily::Select(state) => Some((
+                &state.control,
+                surgeist_html::HtmlNativeFormAssociationKind::Select,
+            )),
             NativeFamily::Fieldset(state) => Some((&state.control, state.kind())),
             NativeFamily::Button(state) => Some((&state.control, state.kind())),
             NativeFamily::Input(state) => Some((
@@ -280,6 +330,7 @@ impl DomElement {
     }
     pub(crate) fn native_control_mut(&mut self) -> Option<&mut crate::control::NativeControlState> {
         match &mut self.family {
+            NativeFamily::Select(state) => Some(&mut std::sync::Arc::make_mut(state).control),
             NativeFamily::Fieldset(state) => Some(&mut state.control),
             NativeFamily::Button(state) => Some(&mut state.control),
             NativeFamily::Input(state) => Some(&mut std::sync::Arc::make_mut(state).control),

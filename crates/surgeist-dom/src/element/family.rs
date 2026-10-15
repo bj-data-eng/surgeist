@@ -21,6 +21,10 @@ pub(super) enum NativeFamily {
     Input(Arc<crate::DomInputState>),
     Textarea(Arc<crate::DomTextareaState>),
     Output(Arc<crate::DomOutputState>),
+    Select(Arc<crate::DomSelectState>),
+    Option(crate::DomOptionState),
+    Optgroup,
+    Selectedcontent(bool),
     Slot,
     Script,
     SvgScript(crate::svg_script::SvgScriptState),
@@ -44,10 +48,14 @@ impl NativeFamily {
             Self::Input(state) => state.units(),
             Self::Textarea(state) => state.units(),
             Self::Output(state) => state.units(),
+            Self::Select(state) => Some(state.control.message.len()),
             Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
             Self::Form(_)
             | Self::Common
             | Self::Template(_)
+            | Self::Option(_)
+            | Self::Optgroup
+            | Self::Selectedcontent(_)
             | Self::Slot
             | Self::Script
             | Self::SvgScript(_)

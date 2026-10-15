@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Template/HTML-Script/SVG-Script families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -160,6 +160,21 @@ attribute fields through actual common initialization/append steps, then copy
 the source nonce slot through its cloning step. PI clone
 preserves current data without new-construction `?>` validation. Keep traversal
 iterative and all copied nodes/strings admitted with the rest of the batch.
+
+Select-family adaptation consumes shared list, ancestry, flags and cursor decisions.
+Retain real Option cached Select identity and source-order normalization, selected
+setters and real Selectedcontent clone/clear effects. Both captures retain actual
+Option flags and Select association. Deep cloning completes each detached child
+before appending it to its temporary Fragment; reclaim only the proven private
+empty wrapper. Use iterative effect/clone frames and account simultaneous DOM
+banks; public producer capture retention and semantic work/bytes are independent
+caller-selected domains. Semantic work/bytes decrease across every OptionValue
+query in a batch. Unconfigured reached queries reject precisely. Keep pending
+Select occurrences and one Slot marker in the same FIFO; notify snapshots the
+signal set at execution. Issued authority leaves the canonical head owned through
+failure/retry/drop/reacquire. Cleanup precedes exact-target cancellation, including
+cleanup-created tasks; historical issued skips are admitted, generation-checked
+and consumed once. Detach/adopt never cancel, rebind or pin intentions.
 
 Native HTML fragment installation selects fresh native creation explicitly, not
 parser-report transfer. Validate exact destination stamp and insertion references

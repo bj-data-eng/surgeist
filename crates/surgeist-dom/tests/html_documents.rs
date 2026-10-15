@@ -245,12 +245,12 @@ fn folded_builtin_names_require_actual_family_initialization_and_validation_stil
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut batch = DomBatch::new();
-    batch.create_element(html, "SELECT");
+    batch.create_element(html, "OBJECT");
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::NativeInitializationRequired(
             surgeist_html::HtmlNativeInitializationRequirement::NativeForm(
-                surgeist_html::HtmlNativeFormAssociationKind::Select
+                surgeist_html::HtmlNativeFormAssociationKind::Object
             )
         )
     );
@@ -262,19 +262,19 @@ fn folded_builtin_names_require_actual_family_initialization_and_validation_stil
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    // NS preserves SELECT and its actual unknown/common interface selection.
+    // NS preserves OBJECT and its actual unknown/common interface selection.
     let mut batch = DomBatch::new();
-    let select = batch.create_element_ns(html, Namespace::from_uri(HTML), "SELECT");
+    let object = batch.create_element_ns(html, Namespace::from_uri(HTML), "OBJECT");
     let commit = apply(&mut dom, batch);
     assert_eq!(
         dom.snapshot()
-            .node(commit.created(&select).unwrap().unwrap())
+            .node(commit.created(&object).unwrap().unwrap())
             .unwrap()
             .as_element()
             .unwrap()
             .name()
             .local_name(),
-        &"SELECT".into()
+        &"OBJECT".into()
     );
 }
 #[test]

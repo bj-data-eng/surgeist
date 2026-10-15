@@ -101,15 +101,19 @@ fn closed_native_processing_has_no_html_empty_type_href_or_handler_guard() {
         assert_eq!(script(&s, n).origin(), DomSvgScriptOrigin::Native);
         // This is state publication, not a fabricated SVG event/task/resource.
         assert!(!c.changes().changes().contains(&DomChange::IntrinsicTasks));
-        assert!(
-            dom.take_slot_notifications(
-                DomSlotQueryLimits::new(256, 1024).unwrap(),
+        assert!(matches!(
+            dom.native_checkpoint_step(
+                surgeist_dom::DomNativeCheckpointLimits::new(
+                    0,
+                    0,
+                    DomSlotQueryLimits::new(256, 1024).unwrap()
+                )
+                .unwrap(),
                 &AtomicBool::new(false)
             )
-            .unwrap()
-            .targets()
-            .is_empty()
-        );
+            .unwrap(),
+            surgeist_dom::DomNativeCheckpoint::Idle
+        ));
     }
 }
 
@@ -461,12 +465,12 @@ fn svg_and_html_scripts_preserve_real_slot_intentions_and_distinct_processing_st
     assert!(s.node(html).unwrap().as_svg_script().is_none());
     assert_eq!(s.slot(slot).unwrap().assigned_nodes(), &[svg, html]);
     assert!(c.changes().changes().contains(&DomChange::IntrinsicTasks));
-    let notifications = dom
-        .take_slot_notifications(
-            DomSlotQueryLimits::new(256, 1024).unwrap(),
-            &AtomicBool::new(false),
-        )
-        .unwrap();
+    let notifications = slot_checkpoint(
+        &mut dom,
+        DomSlotQueryLimits::new(256, 1024).unwrap(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert_eq!(notifications.targets(), &[slot]);
     assert!(dom.snapshot().pending_slot_signals().is_empty());
     assert!(!script(&before, svg).flags().already_processed());
@@ -621,4 +625,18 @@ fn scalar_state_adds_no_string_cost_and_limits_late_failure_retirement_are_atomi
             .already_processed()
     );
     assert!(script(&old, n).flags().already_processed());
+}
+
+fn slot_checkpoint(
+    dom: &mut Dom,
+    slots: DomSlotQueryLimits,
+    cancel: &AtomicBool,
+) -> Result<surgeist_dom::DomSlotNotifications, DomError> {
+    match dom.native_checkpoint_step(
+        surgeist_dom::DomNativeCheckpointLimits::new(0, 0, slots).unwrap(),
+        cancel,
+    )? {
+        surgeist_dom::DomNativeCheckpoint::Slots(n) => Ok(n),
+        other => panic!("expected reached Slot marker, got {other:?}"),
+    }
 }

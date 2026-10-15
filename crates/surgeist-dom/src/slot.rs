@@ -77,22 +77,30 @@ pub(crate) fn root<T: Tree>(
 pub(crate) fn next<T: Tree>(
     tree: &T,
     boundary: T::Key,
-    mut key: T::Key,
+    key: T::Key,
     cancel: &AtomicBool,
 ) -> Result<Option<T::Key>, DomError> {
-    check_cancel(cancel)?;
+    next_admitted(tree, boundary, key, &mut || check_cancel(cancel))
+}
+pub(crate) fn next_admitted<T: Tree>(
+    tree: &T,
+    boundary: T::Key,
+    mut key: T::Key,
+    admit: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<Option<T::Key>, DomError> {
+    admit()?;
     if let Some(child) = tree.get(key)?.children.first() {
         return Ok(Some(*child));
     }
     loop {
-        check_cancel(cancel)?;
+        admit()?;
         if key == boundary {
             return Ok(None);
         }
         let parent = tree.get(key)?.parent.expect("ordinary descendant parent");
         let children = tree.get(parent)?.children;
         for (index, child) in children.iter().enumerate() {
-            check_cancel(cancel)?;
+            admit()?;
             if *child == key {
                 if let Some(next) = children.get(index + 1) {
                     return Ok(Some(*next));

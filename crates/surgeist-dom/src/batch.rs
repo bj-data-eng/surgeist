@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    Select {
+        node: NodeOperand,
+        edit: crate::select::Edit,
+    },
     Output {
         node: NodeOperand,
         edit: crate::output::Edit,
@@ -772,6 +776,34 @@ impl DomBatch {
             offset,
             count,
             data: data.into(),
+        });
+    }
+    pub fn set_select_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::Select {
+            node: node.into(),
+            edit: crate::select::Edit::Value(value.into()),
+        });
+    }
+    pub fn set_select_selected_index(&mut self, node: impl Into<NodeOperand>, index: i64) {
+        self.commands.push(Command::Select {
+            node: node.into(),
+            edit: crate::select::Edit::Index(index),
+        });
+    }
+    pub fn reset_select(&mut self, node: impl Into<NodeOperand>) {
+        self.commands.push(Command::Select {
+            node: node.into(),
+            edit: crate::select::Edit::Reset,
+        });
+    }
+    pub fn set_option_selected(&mut self, node: impl Into<NodeOperand>, selected: bool) {
+        self.commands.push(Command::Select {
+            node: node.into(),
+            edit: crate::select::Edit::OptionSelected(selected),
         });
     }
     pub fn len(&self) -> usize {

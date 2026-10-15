@@ -53,9 +53,18 @@ pub(super) fn with_native_state(
     let mut inputs = Vec::new();
     let mut textareas = Vec::new();
     let mut outputs = Vec::new();
+    let mut options = Vec::new();
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
+        if let Some(option) = node.as_option() {
+            control.reserve(&mut options, 1)?;
+            options.push(surgeist_html_semantics::HtmlOptionControlState::new(
+                entry.subject.clone(),
+                Some(option.state().flags().selectedness()),
+                Some(option.state().flags().dirtiness()),
+            ));
+        }
         let Some(_) = node
             .as_element()
             .and_then(crate::DomElement::native_control)
@@ -120,7 +129,7 @@ pub(super) fn with_native_state(
         capture.host_facts_revision().clone(),
         associations,
         inputs,
-        Vec::new(),
+        options,
         textareas,
         HtmlControlFactsLimits::new(
             control

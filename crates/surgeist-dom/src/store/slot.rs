@@ -56,7 +56,7 @@ impl Draft {
             reserve(&mut self.signal_slots, 1)?;
             self.signal_slots.push(slot);
         }
-        self.notification_queued = true;
+        self.queue_slot_marker()?;
         Ok(())
     }
     fn assign_slottables(
@@ -87,7 +87,7 @@ impl Draft {
                 reserve(&mut self.signal_slots, 1)?;
                 self.signal_slots.push(key);
             }
-            self.notification_queued = true;
+            self.queue_slot_marker()?;
         }
         self.node_mut(key).assigned_nodes = nodes;
         for index in 0..self.node(key)?.assigned_nodes.len() {
@@ -364,25 +364,7 @@ impl Draft {
     }
 }
 impl Dom {
-    /// Native intrinsic slot notification boundary. Takes the ordered signal
-    /// set atomically; it executes no callbacks and creates no observer objects.
-    pub fn take_slot_notifications(
-        &mut self,
-        limits: crate::DomSlotQueryLimits,
-        cancel: &AtomicBool,
-    ) -> Result<crate::DomSlotNotifications, DomError> {
-        let (prepared, targets) = self.prepare_slot_notifications(limits, cancel)?;
-        let commit = self.publish(prepared, cancel)?;
-        // Output ownership is already complete. Publication is followed only
-        // by an existing snapshot-handle clone and moves into the result.
-        Ok(crate::DomSlotNotifications::new(
-            self.snapshot(),
-            targets,
-            commit.changes,
-        ))
-    }
-
-    fn prepare_slot_notifications(
+    pub(super) fn prepare_slot_checkpoint(
         &self,
         limits: crate::DomSlotQueryLimits,
         cancel: &AtomicBool,
@@ -400,6 +382,11 @@ impl Dom {
             targets.push(target);
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
+        assert!(matches!(
+            draft.native_tasks.first(),
+            Some(select::Pending::Slots)
+        ));
+        draft.native_tasks.remove(0);
         draft.signal_slots.clear();
         draft.notification_queued = false;
         let prepared = draft.finish(self, cancel)?;
@@ -515,7 +502,7 @@ mod tests {
         let usage = dom.usage();
         let history = dom.changes_since(history_from).unwrap();
         let (prepared, targets) = dom
-            .prepare_slot_notifications(crate::DomSlotQueryLimits::new(1, 0).unwrap(), &cancel)
+            .prepare_slot_checkpoint(crate::DomSlotQueryLimits::new(1, 0).unwrap(), &cancel)
             .unwrap();
         // The actual checkpoint has finished owning its immutable output,
         // including the Arc allocation, while the queue remains published.

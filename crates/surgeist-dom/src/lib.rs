@@ -100,8 +100,8 @@
 //! let slot = committed.created(&slot)?.unwrap();
 //! let text = committed.created(&text)?.unwrap();
 //! assert_eq!(dom.snapshot().slot(slot)?.assigned_nodes(), &[text]);
-//! let notifications = dom.take_slot_notifications(
-//!     DomSlotQueryLimits::new(32, 64)?, &AtomicBool::new(false))?;
+//! let surgeist_dom::DomNativeCheckpoint::Slots(notifications) = dom.native_checkpoint_step(
+//!     surgeist_dom::DomNativeCheckpointLimits::new(0, 0, DomSlotQueryLimits::new(32, 64)?)?, &AtomicBool::new(false))? else { panic!("reached Slot marker") };
 //! assert_eq!(notifications.targets(), &[slot]);
 //! # Ok::<(), surgeist_dom::DomError>(())
 //! ```
@@ -124,6 +124,7 @@ mod node_values;
 mod output;
 mod reflected;
 mod script;
+mod select;
 mod semantic;
 mod shadow;
 mod slot;
@@ -155,6 +156,11 @@ pub use installation::{
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
 pub use script::DomHtmlScript;
+pub use select::{
+    DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,
+    DomSelect, DomSelectState, DomSelectTask, DomSelectTaskCancellationReason,
+    DomSelectTaskCompletion, DomSelectTaskOutcome, DomSelectedcontent,
+};
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
     DomSlotSemanticLimits,

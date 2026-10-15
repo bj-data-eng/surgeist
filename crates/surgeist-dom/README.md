@@ -427,7 +427,48 @@ adapter with its own public `button_state()` / `DomNode::as_button()` view.
 parser flag and custom message obey the same fresh clone/import and preserving
 adoption rules. Disabledness, Auto submit role, source form settings and constraint
 candidacy are current HTML semantic queries; no activation, submission or event
-execution is introduced; Select remains an unadmitted native family.
+execution is introduced.
+
+
+Native Select, Option, Optgroup and Selectedcontent compose the same canonical
+owner. Select retains shared native control/message and user-validity flags;
+Option retains selectedness/dirtiness and its real cached nearest Select identity.
+Optgroup disabled changes consume the same bounded nearest-Select ancestry rule,
+including HTML barriers. Selectedcontent retains actual insertion-derived disabledness.
+`set_option_selected`, `set_select_value`, `set_select_selected_index` and
+`reset_select` execute the shared HTML decisions against the current staged tree.
+Value/index setters preserve the first exact match and intentionally leave no
+selection after no match. Both ordinary and Slot-supplemented semantic captures
+retain actual Option flags and canonical Select form association.
+
+Selectedcontent copies actual Option children, with fresh canonical identities,
+through the shared iterative clone executor and real family/Template/Shadow hooks.
+Each child finishes its deep clone before append to an actual temporary Fragment;
+replace-all detaches old children without retiring them. The proven private empty
+wrapper is reclaimed before publication. Source insertion, attribute, removal and
+static postconnection order remains observable; updates run no host callbacks.
+
+`DomLimits::with_select_processing` explicitly bounds pending Select updates,
+DOM adapter/effect scratch bytes and cumulative DOM work. Unconfigured variable
+work has zero capacity; native constructors need no variable work. Reached value
+setters additionally require `with_select_value_queries(HtmlCaptureLimits,
+HtmlSemanticLimits)`. One sequential producer capture has its own finite retention
+limits. Producer semantic work and allocated bytes are cumulative over every
+Option query in a private batch; other semantic limits apply per query. These
+producer domains are separate from actual DOM temporary/effect banks. Native
+cancellation is polled before/after each finite synchronous producer call and
+through DOM steps; it does not cancel inside the producer's independent token.
+
+Real Option removal queues duplicate-preserving UpdateSelect intentions in the
+same FIFO as one coalesced Slot marker. Checkpoint handoff leaves the Select head
+pending and returns an immutable `DomSelectTask` with shared once-only authority.
+`complete_select_task` executes current state under `DomNativeCheckpointLimits`;
+failure preserves the head and permission, and dropping all handles permits
+reacquisition. Foreign owners and replay reject. Exact Select retirement runs
+cleanup first, cancels every captured occurrence with TargetDestroyed evidence,
+and allows one historical SkippedTargetDestroyed completion of an issued handle.
+Detach/adopt preserve intentions. No browser event loop, picker or rendering
+resources are implied by these intrinsic checkpoints.
 
 `set_command_for_element` and `set_popover_target_element` drive HTML's actual
 nullable Element setter cursor. The two weak slots are independent and initially
@@ -586,8 +627,8 @@ membership. Its node iterator is source breadth-first construction order.
 Both results retain the exact immutable source; neither changes canonical links.
 
 Source signals accumulate an ordered deduplicated set in the same transaction.
-`Dom::take_slot_notifications` is the explicit atomic native intrinsic checkpoint,
-returning historical slotchange intentions (bubbles=true, composed=false,
+`Dom::native_checkpoint_step` executes the oldest native FIFO turn. A Slot
+marker transfers the then-current signal set as historical slotchange intentions (bubbles=true, composed=false,
 cancelable=false), without dispatching callbacks or fabricating observer objects.
 A failed/cancelled drain preserves the set. Native destroy removes exact retired
 pending recipients with `SlotSignalCancelled { reason: Destroyed }` evidence;

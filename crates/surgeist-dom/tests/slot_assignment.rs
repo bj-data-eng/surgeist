@@ -82,7 +82,7 @@ fn fixture(mode: HtmlSlotAssignment, closed: bool) -> Fixture {
 #[test]
 fn cross_root_manual_transfer_preserves_stored_history_but_changes_fresh_queries() {
     let mut f = fixture(HtmlSlotAssignment::Manual, false);
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let old = f.dom.snapshot();
     let mut b = DomBatch::new();
     b.assign_slot(f.s2, vec![f.x.into()]);
@@ -203,7 +203,7 @@ fn slot_name_and_slottable_attribute_hooks_are_namespace_sensitive_and_ordered()
     b.insert_before(&y, f.h1, None);
     let c = apply(&mut f.dom, b);
     let y = c.created(&y).unwrap().unwrap();
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     b.set_attribute_ns(f.s1, Namespace::from_uri("urn:x"), "p:name", "named");
     apply(&mut f.dom, b);
@@ -236,7 +236,7 @@ fn slot_name_and_slottable_attribute_hooks_are_namespace_sensitive_and_ordered()
         f.dom.snapshot().slot(f.s1).unwrap().assigned_nodes(),
         &[f.x, y]
     );
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     b.set_attribute(f.s1, "name", "");
     b.set_attribute(y, "slot", "");
@@ -401,7 +401,7 @@ fn checkpoints_are_ordered_atomic_historical_and_revalidate_retired_generations(
     assert_eq!(old.pending_slot_signals(), &[f.s1]);
     let too_small = DomSlotQueryLimits::new(0, 0).unwrap();
     assert!(matches!(
-        f.dom.take_slot_notifications(too_small, &cancel()),
+        slot_checkpoint(&mut f.dom, too_small, &cancel()),
         Err(DomError::ResourceLimit {
             resource: DomResource::SlotQueryOutput,
             ..
@@ -409,17 +409,20 @@ fn checkpoints_are_ordered_atomic_historical_and_revalidate_retired_generations(
     ));
     assert_eq!(f.dom.snapshot().stamp(), old.stamp());
     assert!(matches!(
-        f.dom
-            .take_slot_notifications(queries(), &AtomicBool::new(true)),
+        slot_checkpoint(&mut f.dom, queries(), &AtomicBool::new(true)),
         Err(DomError::Cancelled)
     ));
     assert_eq!(f.dom.snapshot().pending_slot_signals(), &[f.s1]);
-    let drained = f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    let drained = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(drained.targets(), &[f.s1]);
     assert!(!f.dom.snapshot().slot_notification_queued());
     let stamp = f.dom.snapshot().stamp();
-    let empty = f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
-    assert!(empty.targets().is_empty());
+    assert!(matches!(
+        f.dom
+            .native_checkpoint_step(checkpoint_limits(queries()), &cancel())
+            .unwrap(),
+        surgeist_dom::DomNativeCheckpoint::Idle
+    ));
     assert_eq!(f.dom.snapshot().stamp(), stamp);
     let mut b = DomBatch::new();
     b.detach(f.s1);
@@ -439,7 +442,7 @@ fn checkpoints_are_ordered_atomic_historical_and_revalidate_retired_generations(
 #[test]
 fn cloned_notification_batches_keep_historical_targets_when_storage_is_reused() {
     let mut f = fixture(HtmlSlotAssignment::Manual, false);
-    let drained = f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    let drained = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let cloned = drained.clone();
     let historical_stamp = drained.source().stamp();
     let mut b = DomBatch::new();
@@ -472,7 +475,7 @@ fn cloned_notification_batches_keep_historical_targets_when_storage_is_reused() 
     assert_eq!(cloned.changes().from(), drained.changes().from());
     assert_eq!(cloned.changes().to(), drained.changes().to());
     assert_eq!(cloned.changes().changes(), drained.changes().changes());
-    let next = f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    let next = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(next.targets(), &[replacement]);
     assert_eq!(
         next.revalidate(&f.dom, queries(), &cancel()).unwrap(),
@@ -492,7 +495,7 @@ fn exact_reference_input_and_query_limits_refuse_without_partial_state() {
             ..
         })
     ));
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(f.dom.usage().slot_references(), 2);
     f.dom.set_limits(limits(2, 2)).unwrap();
     let before = f.dom.snapshot();
@@ -586,7 +589,7 @@ fn import_and_adoption_run_real_slot_hooks_without_copying_source_intent() {
 #[test]
 fn restoring_assignment_still_commits_a_new_pending_signal_but_data_only_edits_do_not() {
     let mut f = fixture(HtmlSlotAssignment::Manual, false);
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let before = f.dom.snapshot();
     let mut b = DomBatch::new();
     b.assign_slot(f.s1, Vec::new());
@@ -605,7 +608,7 @@ fn restoring_assignment_still_commits_a_new_pending_signal_but_data_only_edits_d
             .changes()
             .contains(&DomChange::SlotAssignedNodes(f.s1))
     );
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     b.replace_data(f.x, 0, usize::MAX, "changed text");
     apply(&mut f.dom, b);
@@ -787,11 +790,11 @@ fn deep_fallback_is_iterative_fallible_and_keeps_order_without_following_raw_sel
 #[test]
 fn fallback_signal_capacity_and_late_destroy_failure_preserve_every_published_relation() {
     let mut f = fixture(HtmlSlotAssignment::Manual, false);
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     b.assign_slot(f.s1, Vec::new());
     apply(&mut f.dom, b);
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(f.dom.usage().slot_references(), 0);
     f.dom.set_limits(limits(0, 128)).unwrap();
     let before = f.dom.snapshot();
@@ -834,7 +837,7 @@ fn fallback_signal_capacity_and_late_destroy_failure_preserve_every_published_re
 #[test]
 fn checkpoint_order_is_first_signal_order_and_a_later_checkpoint_gets_fresh_signals() {
     let mut f = fixture(HtmlSlotAssignment::Manual, false);
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     let a = b.create_comment(f.document, "A");
     b.insert_before(&a, f.s2, None);
@@ -842,15 +845,14 @@ fn checkpoint_order_is_first_signal_order_and_a_later_checkpoint_gets_fresh_sign
     let another = b.create_comment(f.document, "B");
     b.insert_before(&another, f.s2, None);
     apply(&mut f.dom, b);
-    let first = f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    let first = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(first.targets(), &[f.s2, f.s1]);
     let mut b = DomBatch::new();
     b.assign_slot(f.s1, vec![f.x.into()]);
     apply(&mut f.dom, b);
     assert_eq!(first.targets(), &[f.s2, f.s1]);
     assert_eq!(
-        f.dom
-            .take_slot_notifications(queries(), &cancel())
+        slot_checkpoint(&mut f.dom, queries(), &cancel())
             .unwrap()
             .targets(),
         &[f.s1]
@@ -893,7 +895,7 @@ fn insertion_into_a_manual_host_does_not_invent_a_stored_assignment_refresh() {
     b.assign_slot(f.s1, vec![(&fresh).into()]);
     let c = apply(&mut f.dom, b);
     let fresh = c.created(&fresh).unwrap().unwrap();
-    f.dom.take_slot_notifications(queries(), &cancel()).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     let mut b = DomBatch::new();
     b.insert_before(fresh, f.h1, None);
     apply(&mut f.dom, b);
@@ -921,4 +923,18 @@ fn insertion_into_a_manual_host_does_not_invent_a_stored_assignment_refresh() {
             .unwrap(),
         DomFlatRelation::Parent(f.s1)
     );
+}
+
+fn checkpoint_limits(slots: DomSlotQueryLimits) -> surgeist_dom::DomNativeCheckpointLimits {
+    surgeist_dom::DomNativeCheckpointLimits::new(0, 0, slots).unwrap()
+}
+fn slot_checkpoint(
+    dom: &mut Dom,
+    slots: DomSlotQueryLimits,
+    cancel: &AtomicBool,
+) -> Result<surgeist_dom::DomSlotNotifications, DomError> {
+    match dom.native_checkpoint_step(checkpoint_limits(slots), cancel)? {
+        surgeist_dom::DomNativeCheckpoint::Slots(n) => Ok(n),
+        other => panic!("expected reached Slot marker, got {other:?}"),
+    }
 }

@@ -172,8 +172,8 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
         ),
         (
             HTML,
-            "select",
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Select),
+            "object",
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Object),
         ),
     ] {
         let before = dom.snapshot();
