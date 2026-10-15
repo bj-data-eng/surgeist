@@ -5,6 +5,8 @@ struct Frame {
     source: NodeId,
     copy: Key,
     next_child: usize,
+    subtree: bool,
+    shadow_started: bool,
 }
 
 impl Draft {
@@ -18,35 +20,63 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
         let root = self.clone_single(snapshot, source, document, limits, cancelled)?;
-        if !subtree {
-            return Ok(root);
-        }
         let mut frames = Vec::new();
         reserve(&mut frames, 1)?;
         frames.push(Frame {
             source,
             copy: root,
             next_child: 0,
+            subtree,
+            shadow_started: false,
         });
         while let Some(frame) = frames.last_mut() {
             check_cancel(cancelled)?;
             let original = snapshot.node(frame.source)?;
-            let Some(&source) = original.children().get(frame.next_child) else {
-                frames.pop();
+            if frame.subtree
+                && let Some(&source) = original.children().get(frame.next_child)
+            {
+                frame.next_child += 1;
+                let parent = frame.copy;
+                let copy = self.clone_single(snapshot, source, document, limits, cancelled)?;
+                // Append the initialized child before traversing its descendants.
+                self.pre_insert(copy, parent, None, cancelled)?;
+                reserve(&mut frames, 1)?;
+                frames.push(Frame {
+                    source,
+                    copy,
+                    next_child: 0,
+                    subtree: true,
+                    shadow_started: false,
+                });
                 continue;
-            };
-            frame.next_child += 1;
-            let parent = frame.copy;
-            let copy = self.clone_single(snapshot, source, document, limits, cancelled)?;
-            // DOM clones/initializes a child and appends it before traversing
-            // that child's own descendants. No source parent IDs enter Draft.
-            self.pre_insert(copy, parent, None, cancelled)?;
-            reserve(&mut frames, 1)?;
-            frames.push(Frame {
-                source,
-                copy,
-                next_child: 0,
-            });
+            }
+            // DOM clone step 6 follows the ordinary-descendants branch and is
+            // independent of subtree: a shallow host copy still copies a
+            // clonable shadow root and all its children deeply.
+            if !frame.shadow_started {
+                frame.shadow_started = true;
+                if let Some(source) = original.hosted_shadow_root() {
+                    let state = snapshot.shadow_root(source)?.state();
+                    if state.clonable() {
+                        let root = self.attach_shadow(
+                            frame.copy,
+                            state.properties().into(),
+                            limits,
+                            cancelled,
+                        )?;
+                        reserve(&mut frames, 1)?;
+                        frames.push(Frame {
+                            source,
+                            copy: root,
+                            next_child: 0,
+                            subtree: true,
+                            shadow_started: false,
+                        });
+                        continue;
+                    }
+                }
+            }
+            frames.pop();
         }
         Ok(root)
     }
@@ -62,7 +92,9 @@ impl Draft {
         check_cancel(cancelled)?;
         let original = snapshot.node(source)?;
         let kind = match original.kind() {
-            DomNodeKind::Document(_) => return Err(DomError::NotSupported),
+            DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
+                return Err(DomError::NotSupported);
+            }
             DomNodeKind::Element(element) => {
                 // Recreate actual common initialization from the captured name.
                 // Special families cannot enter this canonical surface yet.

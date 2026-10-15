@@ -13,10 +13,10 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureDefinitionInput,
     HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
     HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState, HtmlCapturedIsValue,
-    HtmlDocumentClass, HtmlHostFactsRevision, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFailure,
-    HtmlSemanticLimits, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession,
-    HtmlTemplateDocumentRole,
+    HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
 };
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Adapter-owned construction storage/work, separate from producer capture retention limits.
-/// Each mapping/staging vector and the reusable child scratch have at most
+/// Each closure/mapping/staging vector and the reusable child scratch have at most
 /// `subjects` entries. Producer allocations obey the supplied HtmlCaptureLimits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
@@ -108,9 +108,16 @@ struct StagedEntry {
     node: NodeId,
     subject: HtmlCaptureBuilderSubject,
 }
+#[derive(Clone, Copy)]
+struct PlannedEntry {
+    node: NodeId,
+    complete_children: bool,
+    expanded: bool,
+}
 
 /// One exact canonical document, its optional host capture, and HTML's immutable
-/// interpretation input. Detached nodes belong to the same document closure.
+/// interpretation input. Detached nodes belong to the requested document closure;
+/// actual shadow associations can add members of other captured documents.
 /// Missing external facts remain missing; focus/hover do not establish other
 /// HTML domains. Retaining this value retains the original snapshot and map.
 #[derive(Debug)]
@@ -138,12 +145,19 @@ impl DomHtmlCapture {
         &self.capture
     }
     pub fn subject(&self, node: NodeId) -> Result<HtmlCaptureSubjectId, DomHtmlCaptureError> {
-        self.source.document(self.basis.document())?.node(node)?;
-        self.entries
+        self.source.node(node)?;
+        let mapped = self
+            .entries
             .iter()
             .find(|e| e.node == node)
             .map(|e| e.subject.clone())
-            .ok_or(DomHtmlCaptureError::UnmappedSubject)
+            .ok_or(DomHtmlCaptureError::UnmappedSubject);
+        // Preserve the ordinary wrong-document diagnostic for unmapped nodes,
+        // while allowing actual supplemental association members.
+        if mapped.is_err() {
+            self.source.document(self.basis.document())?.node(node)?;
+        }
+        mapped
     }
     pub fn node(&self, subject: &HtmlCaptureSubjectId) -> Result<NodeId, DomHtmlCaptureError> {
         self.capture.node(subject)?;
@@ -236,13 +250,72 @@ impl Control<'_> {
         }
         Err(DomHtmlCaptureError::UnmappedSubject)
     }
+    fn include(
+        &mut self,
+        entries: &mut Vec<PlannedEntry>,
+        node: NodeId,
+        complete_children: bool,
+    ) -> Result<(), DomHtmlCaptureError> {
+        for entry in entries.iter_mut() {
+            self.charge(1)?;
+            if entry.node == node {
+                if complete_children && !entry.complete_children {
+                    entry.complete_children = true;
+                    entry.expanded = false;
+                }
+                return Ok(());
+            }
+        }
+        self.reserve(entries, 1)?;
+        entries.push(PlannedEntry {
+            node,
+            complete_children,
+            expanded: false,
+        });
+        Ok(())
+    }
+}
+
+fn add_document(
+    builder: &mut HtmlCaptureBuilder,
+    snapshot: &DomSnapshot,
+    document: DocumentId,
+) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
+    let metadata = snapshot.document(document)?.metadata();
+    let environment = metadata.native_environment().browsing_context();
+    // HTML877d #concept-n-noscript: null browsing context independently
+    // disables scripting for Nodes. Present alone would not prove Enabled.
+    let scripting = match environment {
+        HtmlBrowsingContextPresence::Absent => HtmlScriptingStatus::Disabled,
+        HtmlBrowsingContextPresence::Present | HtmlBrowsingContextPresence::Unavailable => {
+            HtmlScriptingStatus::Unavailable
+        }
+    };
+    let registry = match metadata.custom_element_registry() {
+        DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
+    };
+    let subject = builder.add_document(metadata.mode(), scripting, registry)?;
+    builder.establish_document_template_facts(
+        &subject,
+        match metadata.class() {
+            DomDocumentClass::Xml => HtmlDocumentClass::NonHtml,
+            DomDocumentClass::Html => HtmlDocumentClass::Html,
+        },
+        HtmlTemplateDocumentRole::Ordinary,
+        HtmlCaptureTemplateCacheInput::Absent,
+    )?;
+    builder.establish_document_nonce_environment(
+        &subject,
+        HtmlNonceDocumentEnvironment::new(environment, HtmlHeaderDeliveredCsp::Unavailable),
+    )?;
+    Ok(subject)
 }
 
 impl DomSnapshot {
     /// Captures every managed node belonging to this exact document, including
-    /// detached roots. This current ordinary/common profile has no admitted
-    /// template/shadow/control families; future hosted kinds need their actual
-    /// association closure, which can cross node-document membership boundaries.
+    /// detached roots, plus the actual shadow association/ancestor closure.
+    /// Supplemental documents retain actual metadata without claiming their
+    /// unrelated ordinary trees are complete.
     pub fn html_capture(
         &self,
         document: DocumentId,
@@ -261,67 +334,88 @@ impl DomSnapshot {
         if let Some(host) = host {
             host.validate_for(view).map_err(DomHtmlCaptureError::Host)?;
         }
-        let metadata = view.metadata();
-        let environment = metadata.native_environment().browsing_context();
-        // HTML877d #concept-n-noscript: null browsing context independently
-        // disables scripting for Nodes. Present alone would not prove Enabled.
-        let scripting = match environment {
-            HtmlBrowsingContextPresence::Absent => HtmlScriptingStatus::Disabled,
-            HtmlBrowsingContextPresence::Present | HtmlBrowsingContextPresence::Unavailable => {
-                HtmlScriptingStatus::Unavailable
-            }
-        };
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(capture_limits, revision.clone());
-        let mut staged = Vec::new();
-        control.reserve(&mut staged, 1)?;
-        let registry = match metadata.custom_element_registry() {
-            DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
-        };
-        let root = builder.add_document(metadata.mode(), scripting, registry)?;
-        builder.establish_document_template_facts(
-            &root,
-            match metadata.class() {
-                DomDocumentClass::Xml => HtmlDocumentClass::NonHtml,
-                DomDocumentClass::Html => HtmlDocumentClass::Html,
-            },
-            HtmlTemplateDocumentRole::Ordinary,
-            HtmlCaptureTemplateCacheInput::Absent,
-        )?;
-        builder.establish_document_nonce_environment(
-            &root,
-            HtmlNonceDocumentEnvironment::new(environment, HtmlHeaderDeliveredCsp::Unavailable),
-        )?;
-        staged.push(StagedEntry {
-            node: document.node(),
-            subject: root.clone(),
-        });
+        let mut planned = Vec::new();
         // Charge every arena slot, including destroyed/retired entries which
         // the public live-node iterator skips. Sparse snapshots still require
         // bounded scanning and cancellation polling.
         for (index, slot) in self.state.slots.iter().enumerate() {
             control.charge(1)?;
-            if slot.node.is_none() {
+            let Some(value) = &slot.node else {
                 continue;
-            }
+            };
             let node = NodeId {
                 owner: self.owner,
                 slot: index,
                 generation: slot.generation,
             };
-            if node == document.node() {
+            if value.document == document {
+                control.include(&mut planned, node, true)?;
+            }
+        }
+        // Close actual associations without expanding every supplemental
+        // document's ordinary tree. Hosts/ancestors may be partial containers;
+        // associated shadow subtrees have complete ordinary child lists.
+        loop {
+            let mut next = None;
+            for (index, entry) in planned.iter().enumerate() {
+                control.charge(1)?;
+                if !entry.expanded {
+                    next = Some(index);
+                    break;
+                }
+            }
+            let Some(index) = next else { break };
+            let entry = planned[index];
+            planned[index].expanded = true;
+            let node = self.node(entry.node)?;
+            control.include(&mut planned, node.node.document.node(), false)?;
+            if let Some(parent) = node.parent() {
+                control.include(&mut planned, parent, false)?;
+            }
+            if let Some(host) = node.shadow_host() {
+                control.include(&mut planned, host, false)?;
+            }
+            if let Some(root) = node.hosted_shadow_root() {
+                control.include(&mut planned, root, true)?;
+            }
+            if entry.complete_children {
+                for child in node.children() {
+                    control.include(&mut planned, *child, true)?;
+                }
+            }
+        }
+        let mut staged = Vec::new();
+        // Explicit document records precede their actual member nodes.
+        for entry in &planned {
+            control.charge(1)?;
+            if matches!(self.node(entry.node)?.kind(), DomNodeKind::Document(_)) {
+                control.reserve(&mut staged, 1)?;
+                staged.push(StagedEntry {
+                    node: entry.node,
+                    subject: add_document(&mut builder, self, DocumentId(entry.node))?,
+                });
+            }
+        }
+        // Hosts precede their shadow roots even when arena order differs.
+        for entry in &planned {
+            control.charge(1)?;
+            let node = self.node(entry.node)?;
+            if matches!(
+                node.kind(),
+                DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
+            ) {
                 continue;
             }
-            let node = match view.node(node) {
-                Ok(node) => node,
-                Err(DomError::WrongDocument) => continue,
-                Err(error) => return Err(error.into()),
-            };
+            let root = control.subject(&staged, node.node.document.node())?;
             control.reserve(&mut staged, 1)?;
-            // Exhaustive: a new hosted kind must define real host/document
-            // associations here instead of inheriting plain-fragment absence.
             let subject = match node.kind() {
-                DomNodeKind::Document(_) => return Err(DomError::WrongDocument.into()),
+                DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
+                    unreachable!("handled in document and shadow passes")
+                }
+                // Exhaustive: a new hosted kind must define real host/document
+                // associations here instead of inheriting plain-fragment absence.
                 DomNodeKind::Element(element) => {
                     let saved_is = match element.saved_is() {
                         Some(value) => HtmlCapturedIsValue::Value(value.clone()),
@@ -348,7 +442,9 @@ impl DomSnapshot {
                     if let Some(nonce) = element.nonce() {
                         builder.establish_element_nonce(&subject, nonce.clone())?;
                     }
-                    builder.establish_no_shadow_root(&subject)?;
+                    if node.hosted_shadow_root().is_none() {
+                        builder.establish_no_shadow_root(&subject)?;
+                    }
                     subject
                 }
                 DomNodeKind::DocumentFragment => {
@@ -377,20 +473,51 @@ impl DomSnapshot {
                 subject,
             });
         }
-        let mut children = Vec::new();
-        for entry in &staged {
+        for entry in &planned {
             control.charge(1)?;
-            let node = view.node(entry.node)?;
+            let node = self.node(entry.node)?;
+            if let DomNodeKind::ShadowRoot(state) = node.kind() {
+                let document = control.subject(&staged, node.node.document.node())?;
+                let host = control.subject(&staged, self.shadow_root(entry.node)?.host())?;
+                let registry = match state.custom_element_registry() {
+                    DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
+                };
+                control.reserve(&mut staged, 1)?;
+                let subject = builder.add_shadow_root(
+                    &document,
+                    &host,
+                    HtmlCapturedShadowProperties::new(
+                        state.properties(),
+                        state.declarative(),
+                        state.available_to_element_internals(),
+                        state.keep_custom_element_registry_null(),
+                    ),
+                    registry,
+                )?;
+                staged.push(StagedEntry {
+                    node: entry.node,
+                    subject,
+                });
+            }
+        }
+        let mut children = Vec::new();
+        for plan in &planned {
+            control.charge(1)?;
+            let node = self.node(plan.node)?;
+            let subject = control.subject(&staged, plan.node)?;
             match node.kind() {
                 DomNodeKind::Document(_)
                 | DomNodeKind::DocumentFragment
+                | DomNodeKind::ShadowRoot(_)
                 | DomNodeKind::Element(_) => {
-                    children.clear();
-                    control.reserve(&mut children, node.children().len())?;
-                    for child in node.children() {
-                        children.push(control.subject(&staged, *child)?);
+                    if plan.complete_children {
+                        children.clear();
+                        control.reserve(&mut children, node.children().len())?;
+                        for child in node.children() {
+                            children.push(control.subject(&staged, *child)?);
+                        }
+                        builder.establish_children(&subject, &children)?;
                     }
-                    builder.establish_children(&entry.subject, &children)?;
                 }
                 DomNodeKind::Text(_)
                 | DomNodeKind::Comment(_)
@@ -403,8 +530,24 @@ impl DomSnapshot {
                     | DomNodeKind::Text(_)
                     | DomNodeKind::Comment(_)
                     | DomNodeKind::ProcessingInstruction(_)
-                    | DomNodeKind::DocumentType(_) => builder.establish_root(&entry.subject)?,
-                    DomNodeKind::Document(_) | DomNodeKind::DocumentFragment => {}
+                    | DomNodeKind::DocumentType(_) => builder.establish_root(&subject)?,
+                    DomNodeKind::Document(_)
+                    | DomNodeKind::DocumentFragment
+                    | DomNodeKind::ShadowRoot(_) => {}
+                }
+            } else if let Some(parent) = node.parent() {
+                // Complete parents establish their reciprocal child edges;
+                // partial supplemental ancestors establish only the true edge.
+                let mut complete_parent = false;
+                for entry in &planned {
+                    control.charge(1)?;
+                    if entry.node == parent {
+                        complete_parent = entry.complete_children;
+                        break;
+                    }
+                }
+                if !complete_parent {
+                    builder.establish_parent(&subject, &control.subject(&staged, parent)?)?;
                 }
             }
         }

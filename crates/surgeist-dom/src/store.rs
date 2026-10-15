@@ -15,6 +15,7 @@ use crate::{
 
 mod attributes;
 mod import;
+mod shadow;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
@@ -230,6 +231,11 @@ pub enum DomChange {
     NodeDocument(NodeId),
     Parent(NodeId),
     Children(NodeId),
+    /// The Element's canonical hosted-root link changed, including closed roots.
+    ShadowRoot(NodeId),
+    /// Conservatively recompute all shadow/tree-scope/connectedness relations
+    /// from the new snapshot. Parent/Children remain ordinary-tree facts.
+    ShadowRelations,
     ViewTransitionDocument(DocumentId),
     /// Complete transition state/topology invalidation, including pseudo flags.
     ViewTransition(DomViewTransitionId),
@@ -332,6 +338,8 @@ pub(crate) struct Node {
     pub(crate) kind: DomNodeKind,
     pub(crate) parent: Option<NodeId>,
     pub(crate) children: Vec<NodeId>,
+    pub(crate) shadow_root: Option<NodeId>,
+    pub(crate) host: Option<NodeId>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -650,6 +658,8 @@ struct DraftNode {
     kind: DomNodeKind,
     parent: Option<Key>,
     children: Vec<Key>,
+    shadow_root: Option<Key>,
+    host: Option<Key>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -690,6 +700,8 @@ impl Draft {
                     document: Key::Existing(node.document.0.slot),
                     kind: node.kind.clone(),
                     parent: node.parent.map(|id| Key::Existing(id.slot)),
+                    shadow_root: node.shadow_root.map(|id| Key::Existing(id.slot)),
+                    host: node.host.map(|id| Key::Existing(id.slot)),
                     children,
                 })
             } else {
@@ -786,6 +798,8 @@ impl Draft {
             kind,
             parent: None,
             children: Vec::new(),
+            shadow_root: None,
+            host: None,
         }));
         self.nodes = nodes;
         self.units = units;
@@ -803,6 +817,11 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::AttachShadow { host, init } => {
+                let host = self.resolve(host)?;
+                let root = self.attach_shadow(host, init, limits, cancelled)?;
+                self.register_ticket(root)?;
+            }
             Command::ViewTransition { basis, edit } => {
                 self.apply_view_transition(basis, edit, limits, cancelled)?
             }
@@ -908,6 +927,9 @@ impl Draft {
                 if matches!(self.node(node)?.kind, DomNodeKind::Document(_)) {
                     return Err(DomError::NotSupported);
                 }
+                if matches!(self.node(node)?.kind, DomNodeKind::ShadowRoot(_)) {
+                    return Err(DomError::HierarchyRequest);
+                }
                 self.adopt(node, document, cancelled)?;
             }
             Command::SetAttribute {
@@ -934,7 +956,10 @@ impl Draft {
             Command::Destroy(node) => {
                 let node = self.resolve(node)?;
                 if self.node(node)?.parent.is_some()
-                    || matches!(self.node(node)?.kind, DomNodeKind::Document(_))
+                    || matches!(
+                        self.node(node)?.kind,
+                        DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
+                    )
                 {
                     return Err(DomError::InvalidDestruction);
                 }
@@ -942,12 +967,14 @@ impl Draft {
                 reserve(&mut pending, self.nodes)?;
                 pending.push(node);
                 while let Some(key) = pending.pop() {
+                    check_cancel(cancelled)?;
                     let node = match key {
                         Key::Existing(i) => self.existing[i].take(),
                         Key::Created(i) => self.created[i].take(),
                     }
                     .expect("owned subtree");
                     pending.extend(node.children);
+                    pending.extend(node.shadow_root);
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
                 }
@@ -1096,6 +1123,8 @@ impl Draft {
                 document: DocumentId(id(source.document)),
                 kind: source.kind.clone(),
                 parent: source.parent.map(id),
+                shadow_root: source.shadow_root.map(id),
+                host: source.host.map(id),
                 children,
             });
         }
@@ -1203,6 +1232,7 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 };
                 for change in [
                     kind_change,
+                    (node.shadow_root != current.shadow_root).then_some(DomChange::ShadowRoot(id)),
                     (node.document != current.document).then_some(DomChange::NodeDocument(id)),
                     (node.parent != current.parent).then_some(DomChange::Parent(id)),
                     (node.children != current.children).then_some(DomChange::Children(id)),
@@ -1228,6 +1258,31 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 generation,
             }));
         }
+    }
+    // All derived shadow relations are invalidated conservatively whenever a
+    // structural edit can affect a managed shadow tree. Ordinary-only stores
+    // retain their existing precise change contract.
+    let has_shadow = |state: &State| {
+        state
+            .slots
+            .iter()
+            .any(|slot| slot.node.as_ref().is_some_and(|node| node.host.is_some()))
+    };
+    if (has_shadow(old) || has_shadow(new))
+        && changes.iter().any(|change| {
+            matches!(
+                change,
+                DomChange::Created(_)
+                    | DomChange::Destroyed(_)
+                    | DomChange::Parent(_)
+                    | DomChange::Children(_)
+                    | DomChange::NodeDocument(_)
+                    | DomChange::ShadowRoot(_)
+            )
+        })
+    {
+        reserve(&mut changes, 1)?;
+        changes.push(DomChange::ShadowRelations);
     }
     new.view_transitions
         .changes(&old.view_transitions, &mut changes)?;

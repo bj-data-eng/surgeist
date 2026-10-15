@@ -3,7 +3,7 @@
 Apply the root guide and focused PISCT skills. This crate owns canonical live
 identity, exclusive mutation, immutable snapshots and change coverage. Consume
 HTML-owned string/value contracts directly; HTML language interpretation stays
-with its producer. The crate README states the currently bounded seven-kind
+with its producer. The crate README states the currently bounded eight-kind
 surface. Do not fabricate missing HTML/control/template/registry/script state
 when extending construction or add compatibility wrappers around retained.
 
@@ -42,6 +42,23 @@ the source nonce slot through its cloning step. PI clone
 preserves current data without new-construction `?>` validation. Keep traversal
 iterative and all copied nodes/strings admitted with the rest of the batch.
 
+ShadowRoot uses the same NodeId/State/Draft/ticket owner as ordinary nodes.
+Keep reciprocal host/root links separate from ordinary parents; roots remain
+parentless DocumentFragment subtypes. Native attach consumes actual HTML shadow
+properties and custom-name grammar; DOM owns its short valid-host-name clause.
+Require mode, source defaults for other native options, actual null registry and
+false declarative/internals/keep-null state. Never fabricate declarative reuse,
+custom registry/definition objects or Slot state. Direct root adopt/import/destroy
+retain their typed rejections. Fragment-operand insertion transfers children;
+replacement internally adopts the supplied root first, so root and host node
+documents can differ. Do not impose permanent same-document equality. Adoption,
+insertion steps and destruction include owned shadow trees. Shallow host import
+still deeply copies clonable roots after ordinary descendants; omit nonclonable
+roots. Open-only exposure and privileged canonical ownership are distinct.
+ShadowRelations conservatively invalidates all derived shadow/tree-scope facts;
+Parent/Children stay ordinary facts. Slot/manual assignment, flat captures and
+future template-owned fragments need their actual producer state and owner hooks.
+
 View Transition state belongs to this same staged owner, with exact published
 Document-basis checks on feature edits only. Feature-uninitialized is distinct
 from source defaults after actual CSSOM binding. Consume CSS's checked names
@@ -64,9 +81,11 @@ public producer builders/session calls. Retain exact two-way subject mapping,
 document/host qualification and unavailable external facts. Native absent
 browsing context proves scripting disabled independently of XML/HTML class.
 Do not reconstruct saved state from content attributes or rerun fresh native
-initialization while capturing. Keep kind/host mapping exhaustive: future shadow
-or template associations can cross node-document membership and require actual
-closure expansion, not plain-fragment unhosted defaults. Preserve producer
+initialization while capturing. Keep kind/host mapping exhaustive. Shadow roots
+use their actual document independently of their host. Close actual associations,
+ancestors and shadow subtrees without declaring supplemental documents' unrelated
+trees complete. Template associations need their own actual closure expansion,
+not plain-fragment unhosted defaults. Preserve producer
 conservative dependency coverage rather than inventing precise invalidation.
 
 From repository root through bounded `pisct run`:

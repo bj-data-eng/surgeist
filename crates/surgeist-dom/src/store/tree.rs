@@ -9,7 +9,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         // Removal precedes the document test, including same-document adoption.
         // Supported common profiles retain nonce/common state during adoption;
-        // registry objects, hosted trees and special families remain unexposed.
+        // registry objects and special families remain unexposed.
         self.remove(node);
         if self.node(node)?.document == document {
             return Ok(());
@@ -22,6 +22,10 @@ impl Draft {
             let children = &self.node(node)?.children;
             reserve(&mut pending, children.len())?;
             pending.extend(children.iter().rev().copied());
+            if let Some(root) = self.node(node)?.shadow_root {
+                reserve(&mut pending, 1)?;
+                pending.push(root);
+            }
             self.node_mut(node).document = document;
             // Attributes are value records owned by this Element, not Attr
             // nodes. Their node-document is consequently this same relation.
@@ -49,7 +53,10 @@ impl Draft {
     ) -> Result<(), DomError> {
         if !matches!(
             self.node(parent)?.kind,
-            DomNodeKind::Document(_) | DomNodeKind::DocumentFragment | DomNodeKind::Element(_)
+            DomNodeKind::Document(_)
+                | DomNodeKind::DocumentFragment
+                | DomNodeKind::ShadowRoot(_)
+                | DomNodeKind::Element(_)
         ) {
             return Err(DomError::HierarchyRequest);
         }
@@ -59,7 +66,7 @@ impl Draft {
             if key == node {
                 return Err(DomError::HierarchyRequest);
             }
-            ancestor = self.node(key)?.parent;
+            ancestor = self.host_including_parent(key)?;
         }
         if child
             .is_some_and(|child| self.node(child).expect("resolved child").parent != Some(parent))
@@ -80,7 +87,7 @@ impl Draft {
         match kind {
             DomNodeKind::Text(_) => return Err(DomError::HierarchyRequest),
             DomNodeKind::Comment(_) | DomNodeKind::ProcessingInstruction(_) => return Ok(()),
-            DomNodeKind::DocumentFragment => {
+            DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
                 let mut elements = 0;
                 for child in &self.node(node)?.children {
                     check_cancel(cancelled)?;
@@ -170,7 +177,10 @@ impl Draft {
         before: Option<Key>,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        let fragment = matches!(self.node(node)?.kind, DomNodeKind::DocumentFragment);
+        let fragment = matches!(
+            self.node(node)?.kind,
+            DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_)
+        );
         let moving = if fragment {
             copy(&self.node(node)?.children)?
         } else {
@@ -228,6 +238,10 @@ impl Draft {
             let node = self.node(key)?;
             reserve(&mut pending, node.children.len())?;
             pending.extend(node.children.iter().rev().copied());
+            if let Some(root) = node.shadow_root {
+                reserve(&mut pending, 1)?;
+                pending.push(root);
+            }
             let DomNodeKind::Element(element) = &node.kind else {
                 continue;
             };

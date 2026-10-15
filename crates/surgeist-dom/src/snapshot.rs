@@ -10,6 +10,7 @@ pub enum DomNodeKind {
     Document(DomDocumentMetadata),
     Element(DomElement),
     DocumentFragment,
+    ShadowRoot(crate::DomShadowRootState),
     Text(DocumentString),
     Comment(DocumentString),
     ProcessingInstruction(DomProcessingInstruction),
@@ -130,6 +131,104 @@ pub struct DomNode<'a> {
     pub(crate) node: &'a Node,
 }
 impl<'a> DomNode<'a> {
+    /// Privileged canonical ownership, including closed roots. This does not
+    /// implement the source's open-only Element.shadowRoot presentation.
+    pub fn hosted_shadow_root(self) -> Option<NodeId> {
+        self.node.shadow_root
+    }
+    /// Source Element.shadowRoot presentation: a closed root is not exposed.
+    pub fn shadow_root(self) -> Option<NodeId> {
+        let root = self.hosted_shadow_root()?;
+        let state = self
+            .snapshot
+            .shadow_root(root)
+            .expect("canonical root")
+            .state();
+        (state.mode() == crate::HtmlShadowRootMode::Open).then_some(root)
+    }
+    /// The exact root's fragment host. Descendants use tree_scope().host().
+    pub fn shadow_host(self) -> Option<NodeId> {
+        self.node.host
+    }
+    pub fn as_shadow_root(self) -> Option<DomShadowRoot<'a>> {
+        matches!(self.kind(), DomNodeKind::ShadowRoot(_)).then_some(DomShadowRoot { node: self })
+    }
+    /// Ordinary tree identity, with its separate host if the root is shadow.
+    pub fn tree_scope(self) -> DomTreeScope {
+        let root = self.root();
+        DomTreeScope {
+            root,
+            host: self
+                .snapshot
+                .node(root)
+                .expect("captured root")
+                .shadow_host(),
+        }
+    }
+    /// This crosses only a ShadowRoot's host boundary, never a light-child or
+    /// assignment projection. The root itself still has no ordinary parent.
+    pub fn shadow_including_parent(self) -> Option<NodeId> {
+        self.parent().or(self.shadow_host())
+    }
+    /// Host-including ancestry currently crosses admitted ShadowRoot hosts.
+    /// Template-hosted fragments are not an admitted capability yet.
+    pub fn host_including_parent(self) -> Option<NodeId> {
+        self.parent().or(self.node.host)
+    }
+    pub fn shadow_including_root(self) -> NodeId {
+        let mut node = self;
+        while let Some(parent) = node.shadow_including_parent() {
+            node = self
+                .snapshot
+                .node(parent)
+                .expect("captured shadow ancestor");
+        }
+        node.id()
+    }
+    pub fn is_shadow_including_inclusive_ancestor_of(
+        self,
+        other: NodeId,
+    ) -> Result<bool, DomError> {
+        let mut next = Some(other);
+        while let Some(id) = next {
+            let node = self.snapshot.node(id)?;
+            if self.id == id {
+                return Ok(true);
+            }
+            next = node.shadow_including_parent();
+        }
+        Ok(false)
+    }
+    pub fn is_host_including_inclusive_ancestor_of(self, other: NodeId) -> Result<bool, DomError> {
+        let mut next = Some(other);
+        while let Some(id) = next {
+            let node = self.snapshot.node(id)?;
+            if self.id == id {
+                return Ok(true);
+            }
+            next = node.host_including_parent();
+        }
+        Ok(false)
+    }
+    /// Inclusive ordinary preorder. No allocation, recursion or shadow piercing.
+    pub fn tree_order(self) -> DomTreeOrder<'a> {
+        DomTreeOrder {
+            snapshot: self.snapshot,
+            root: self.id,
+            next: Some(self.id),
+            shadow: false,
+        }
+    }
+    /// Inclusive preorder visiting each hosted root immediately after its host,
+    /// before the host's ordinary children, independent of open/closed mode.
+    pub fn shadow_including_tree_order(self) -> DomTreeOrder<'a> {
+        DomTreeOrder {
+            snapshot: self.snapshot,
+            root: self.id,
+            next: Some(self.id),
+            shadow: true,
+        }
+    }
     pub fn id(self) -> NodeId {
         self.id
     }
@@ -141,7 +240,9 @@ impl<'a> DomNode<'a> {
         match &self.node.kind {
             DomNodeKind::Document(_) => "#document".into(),
             DomNodeKind::Element(element) => crate::names::qualified_spelling(element.name()),
-            DomNodeKind::DocumentFragment => "#document-fragment".into(),
+            DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
+                "#document-fragment".into()
+            }
             DomNodeKind::Text(_) => "#text".into(),
             DomNodeKind::Comment(_) => "#comment".into(),
             DomNodeKind::ProcessingInstruction(value) => value.target().clone(),
@@ -272,11 +373,103 @@ impl<'a> DomNode<'a> {
     pub fn is_connected(self) -> bool {
         matches!(
             self.snapshot
-                .node(self.root())
+                .node(self.shadow_including_root())
                 .expect("snapshot root invariant")
                 .kind(),
             DomNodeKind::Document(_)
         )
+    }
+}
+
+/// One exact ordinary root and the separate host of a shadow tree scope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomTreeScope {
+    root: NodeId,
+    host: Option<NodeId>,
+}
+impl DomTreeScope {
+    pub fn root(self) -> NodeId {
+        self.root
+    }
+    pub fn host(self) -> Option<NodeId> {
+        self.host
+    }
+}
+
+/// Checked ShadowRoot capture. Host/node-document are independent source
+/// relations: internal fragment replacement can adopt the root without its host.
+#[derive(Clone, Copy, Debug)]
+pub struct DomShadowRoot<'a> {
+    node: DomNode<'a>,
+}
+impl<'a> DomShadowRoot<'a> {
+    pub fn id(self) -> NodeId {
+        self.node.id()
+    }
+    pub fn host(self) -> NodeId {
+        self.node.shadow_host().expect("canonical non-null host")
+    }
+    pub fn state(self) -> &'a crate::DomShadowRootState {
+        let DomNodeKind::ShadowRoot(state) = self.node.kind() else {
+            unreachable!("checked root kind")
+        };
+        state
+    }
+    pub fn node(self) -> DomNode<'a> {
+        self.node
+    }
+}
+
+/// Bounded by the captured finite tree; this iterator owns no traversal stack.
+#[derive(Clone, Debug)]
+pub struct DomTreeOrder<'a> {
+    snapshot: &'a DomSnapshot,
+    root: NodeId,
+    next: Option<NodeId>,
+    shadow: bool,
+}
+impl Iterator for DomTreeOrder<'_> {
+    type Item = NodeId;
+    fn next(&mut self) -> Option<NodeId> {
+        let current = self.next?;
+        let node = self.snapshot.node(current).expect("captured traversal");
+        self.next = if self.shadow {
+            node.hosted_shadow_root()
+        } else {
+            None
+        }
+        .or_else(|| node.children().first().copied());
+        if self.next.is_none() {
+            let mut node = node;
+            while node.id() != self.root {
+                if let Some(host) = self.shadow.then(|| node.shadow_host()).flatten() {
+                    node = self.snapshot.node(host).expect("captured host");
+                    if let Some(&child) = node.children().first() {
+                        self.next = Some(child);
+                        break;
+                    }
+                } else {
+                    if let Some(sibling) = node.next_sibling() {
+                        self.next = Some(sibling);
+                        break;
+                    }
+                    let Some(parent) = node.parent() else {
+                        break;
+                    };
+                    node = self.snapshot.node(parent).expect("captured parent");
+                }
+            }
+        }
+        Some(current)
+    }
+}
+impl std::iter::FusedIterator for DomTreeOrder<'_> {}
+
+impl DomSnapshot {
+    pub fn shadow_root(&self, id: NodeId) -> Result<DomShadowRoot<'_>, DomError> {
+        self.node(id)?
+            .as_shadow_root()
+            .ok_or(DomError::WrongNodeKind)
     }
 }
 

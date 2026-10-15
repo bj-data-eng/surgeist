@@ -2,7 +2,8 @@
 
 Canonical native document ownership with atomic edits and owned immutable
 snapshots. The native contribution supports Document, native Element,
-ordinary DocumentFragment, Text, Comment, ProcessingInstruction and DocumentType. It directly consumes
+ordinary DocumentFragment, ShadowRoot, Text, Comment, ProcessingInstruction and
+DocumentType. It directly consumes
 HTML's exact UTF-16 `DocumentString`, `QualifiedName`, `Attribute` and
 `OrderedAttributes`, CSS's checked `CssViewTransitionIdent`, and CSSOM's real
 sheet/rule identities and immutable snapshots. Parser, runtime and facade
@@ -34,7 +35,7 @@ without wrapping; a destroyed slot whose generation is exhausted is retired.
 
 The supported mutations insert/move nodes, transfer a fragment's children in
 order, replace a child, adopt within the same store, detach, destroy detached
-non-Document subtrees, and replace Text/Comment/PI data using UTF-16 code-unit
+non-Document/non-ShadowRoot subtrees, including their owned shadow trees, and replace Text/Comment/PI data using UTF-16 code-unit
 offsets. Documents reject Text children and accept at most one Element and one
 doctype, with the doctype preceding the Element. Elements and fragments accept
 Elements and CharacterData. Doctypes cannot be inserted into them or have children.
@@ -48,9 +49,10 @@ membership before mutation.
 Cross-document insertion adopts each inserted node without changing its ID.
 A transferred fragment retains its own node document; an empty fragment insert
 is a semantic no-op. Explicit `adopt` removes its supplied node and updates its
-whole subtree, including a fragment root. The source's child replacement also
+whole shadow-including subtree, including an ordinary fragment root. The source's child replacement also
 explicitly adopts its supplied fragment before transferring its children.
-Adopting a Document is `NotSupported`; foreign-store adoption is `ForeignOwner`.
+Adopting a Document is `NotSupported`; directly adopting a ShadowRoot is
+`HierarchyRequest`; foreign-store adoption is `ForeignOwner`.
 No mutation invokes
 callbacks, runs scripts or performs host effects.
 
@@ -93,7 +95,7 @@ State-only edits report `ElementState`, separately from `Attributes`, and advanc
 the same DOM revision. Clone/import appends actual attributes through their change
 steps, then copies the captured nonce slot. Native Document environment stores
 real null browsing-context and never-navigable proof independently of XML class.
-Insertion runs common steps over inserted descendants; this native environment
+Insertion runs common steps over inserted shadow-including descendants; this native environment
 proves nonce content remains visible without inventing CSP facts. No API attaches
 a browsing context or advances the closed common tuple into interactive state.
 
@@ -121,6 +123,56 @@ validate membership at their captured owner/document/revision basis. A Document
 belongs to itself for membership; its `owner_document()` getter returns `None`.
 A detached node keeps its owner document while its ordinary root and
 connectedness change.
+
+`attach_shadow` creates an actual eighth node kind through the same batch tickets,
+node admission, owner/slot/generation identity and immutable snapshots. It requires
+an admitted HTML-namespace Element with a selected DOM valid-shadow-host name,
+using HTML's actual custom-name grammar. `DomShadowRootInit::new(mode)` requires
+open or closed mode and selects named assignment plus false delegates-focus,
+clonable and serializable defaults. Actual `HtmlShadowRootProperties` can select
+all five values. The native root stores false declarative/available-to-internals/
+keep-registry-null flags and a known-null registry. Duplicate native attachment
+rejects; there is no fabricated registry object, custom definition, declarative
+toggle, focus execution or serialization capability.
+
+A root has a non-null reciprocal host relation and no ordinary parent. Its
+children are the ordinary children of its own separate tree. `hosted_shadow_root`
+reads canonical ownership, including closed roots; `shadow_root` implements
+open-only Element exposure. `DomSnapshot::shadow_root` and `as_shadow_root`
+provide checked root views with actual host and payload. Ordinary root/order,
+shadow-including root/order/connectedness, tree scope and host-including ancestry
+are separate APIs. Iteration is inclusive preorder without allocation or native
+recursion. Shadow-including order visits a root immediately after its host and
+before the host's light children. Open/closed never changes these owner relations.
+Host-including cycle checks prevent inserting a host into its own hosted tree.
+
+As a source DocumentFragment subtype, a ShadowRoot supplied to insertion transfers
+its children and stays parentless/hosted. Its own node document is unchanged by
+insertion. Child replacement first internally adopts the supplied fragment root,
+so cross-document replacement can leave an emptied root's node document different
+from its still-linked host's. Both relationships remain actual and independently
+checked; direct public root adoption remains rejected. Host adoption preserves
+all identities and updates shadow-including node documents. Detaching a host
+preserves its owned roots; destroying a detached host retires all owned shadow
+identities. Old snapshots retain the previous complete state.
+
+`ShadowRoot(host)` changes report a hosted link on an existing Element. Creation
+and destruction cover their full new/retired state. `ShadowRelations` explicitly
+requests conservative recomputation of all derived shadow/tree-scope/connectedness
+relations after a structural change in a store with a shadow tree. Ordinary
+Parent/Children remain precise ordinary-tree changes; ordinary-only stores keep
+their existing change contract. History gaps still require full recomputation.
+
+This foundation retains the selected named/manual payload without exposing slot
+assignment. HTMLSlotElement remains an explicit `KnownHtml(Slot)` native
+initialization requirement until its real manual state, HTML-owned assign
+producer and DOM assignment/flat-tree integration are implemented. Template
+contents/inert-document caches, declarative installation, registry objects and
+HTML callbacks remain separate unadmitted capabilities. Shadow-including and
+host-including ancestry coincide for admitted shadow boundaries today; future
+template-hosted fragments must extend the host-including relation with their
+actual HTML owner hooks. This unit does not complete #1124's slot, flat-tree,
+language/control/pseudo or broader host-fact requirements.
 
 `DomHostPublisher` captures complete fixed focus/hover element-selection
 observations from an external producer against one exact `DomDocumentStamp`.
@@ -153,8 +205,10 @@ walks ordinary children in order without recursive native calls. Exact attribute
 names/prefixes/values are appended through the same admitted attribute writer;
 PI cloning copies its current target/data, including `?>` introduced by a later
 CharacterData edit, without repeating initial PI construction validation.
-Document import is `NotSupported`. Supported common import includes no special
-HTML family, shadow-tree or registry-object installation. The returned batch ticket names
+Direct Document or ShadowRoot import is `NotSupported`. Supported common import
+includes no unadmitted special HTML family or registry-object installation. A
+clonable hosted shadow root copies deeply after the ordinary-descendant branch,
+even for shallow host import; non-clonable roots are omitted. The returned batch ticket names
 only the imported root; descendant IDs become available from the committed
 snapshot. Native tickets before or after that root remain independent of its
 private descendant allocations. Failure/cancellation publishes none of them,
@@ -246,6 +300,17 @@ and custom-element state come from actual canonical records. It creates no
 intermediate HTML construction tree. Common slots not represented by HTML's
 capture schema remain available through the retained `source()` snapshot.
 
+Actual open and closed ShadowRoots extend that closure through their reciprocal
+host/root association, ordinary ancestors, actual node documents and shadow
+subtrees. The root's document remains independent of the host's document,
+including after fragment replacement adopts only the root. `subject()` accepts
+these actual supplemental members. Supplemental document/ancestor records keep
+unavailable children unless their complete ordinary subtree was included; an
+unrelated document tree is never reported as empty or complete. Current root
+properties, declarative/internals/keep-registry-null flags and registry come
+from their canonical state. Ordinary parent/root, tree scope, shadow-including
+connectedness and open-only presentation remain distinct in the retained source.
+
 `DomHtmlCapture::query` invokes the real bounded HTML semantic session and
 preserves its typed unavailable/inapplicable outcomes, result origins and
 conservative recomputation contract. Native documents' actual absent browsing
@@ -258,12 +323,11 @@ limits. Failed or cancelled composition returns no partial successful capture
 and changes neither DOM nor host revisions. Old captures retain their original
 membership after adoption, destruction and import elsewhere.
 
-This ordinary/common semantic profile does not complete #1124. Shadow/slot and
+This native shadow/common semantic profile does not complete #1124. Slot and
 flat-tree relations, live controls, template owner/cache state, registry objects,
 parser installation and the remaining qualified external domains still require
-their actual owning adapters. A future hosted root needs its real host and
-node-document associations, including cross-document host/root relationships;
-it must not inherit ordinary fragment absence from this profile.
+their actual owning adapters. Future hosted kinds need their own real association
+closure and must not inherit ordinary fragment absence from this profile.
 
 Each commit reports complete changed domains for this supported surface,
 including `Attributes`, `NodeDocument` and distinct View Transition document,
@@ -279,17 +343,17 @@ independently. Cancellation is checked before staging, between commands and
 immediately before publication; the final cancellation observation is the
 publication boundary.
 
-HTML document creation, specialized HTML/SVG/MathML native family initialization,
-shadow trees and HTML installation are not exposed yet. This crate does not
-claim complete DOM or HTML conformance or replace the retained/facade
-integrations. Those remaining
+HTML document creation, remaining native special families, slot assignment and
+flat-tree captures and HTML installation remain unadmitted capabilities. This crate does not claim complete DOM or
+HTML conformance or replace the retained/facade integrations. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
 
 The selected [DOM foundation capture](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md)
 at revision `3071e5f269448350fdea79bb284eedaf17bc431e` supplies ordinary
-tree/pre-insertion, fragment transfer, ownerDocument, native document metadata,
+tree/pre-insertion, shadow ownership/attachment, host-including cycles,
+shadow-inclusive adoption/cloning, fragment transfer, ownerDocument, native document metadata,
 nodeName, PI/doctype
 construction and CharacterData rules. PI targets and pseudo-attribute maps use
 the retained [XML grammar](../../references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md)

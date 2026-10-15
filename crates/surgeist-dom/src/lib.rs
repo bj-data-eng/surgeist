@@ -6,7 +6,9 @@
 //! are supported. Explicitly initialized View Transitions retain canonical
 //! structural state and real CSSOM associations, without rendering resources.
 //! Namespace-aware common HTML/SVG/MathML elements retain actual shared common
-//! state and nonce lifecycle. Special families require their complete adapters.
+//! state and nonce lifecycle. Native ShadowRoots retain distinct host/ordinary
+//! relations and follow atomic adoption, clone/import and owned destruction.
+//! Slot assignment and remaining special families require their real adapters.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -51,6 +53,7 @@ mod identity;
 mod names;
 mod node_values;
 mod semantic;
+mod shadow;
 mod snapshot;
 mod store;
 mod view_transition;
@@ -71,15 +74,19 @@ pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
 };
-pub use snapshot::{DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomSnapshot};
+pub use shadow::{DomShadowRootInit, DomShadowRootState};
+pub use snapshot::{
+    DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTreeOrder,
+    DomTreeScope,
+};
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
     DomUsage,
 };
 pub use surgeist_css::CssViewTransitionIdent;
 pub use surgeist_html::{
-    Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, Namespace,
-    OrderedAttributes, QualifiedName,
+    Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, HtmlShadowRootMode,
+    HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
 pub use view_transition::{
     CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,

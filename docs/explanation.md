@@ -57,7 +57,7 @@ and source establish those boundaries; no old-package reexports are retained.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
 document identity, mutation and snapshots with native XML Documents, namespaced
-Elements, ordinary DocumentFragment, Text, Comment, ProcessingInstruction and
+Elements, ordinary DocumentFragment, ShadowRoot, Text, Comment, ProcessingInstruction and
 DocumentType nodes. Ordered namespaced attributes
 and same-store adoption use that same mutation owner. Import copies a checked
 immutable source capture into fresh target identities, including across stores.
@@ -68,8 +68,12 @@ Namespace-aware creation consumes HTML-owned common initialization requirements;
 applicable nonce slots remain separate from content attributes through edits,
 cloning and import. A native document retains its actual null browsing context
 and never-navigable state independently of its XML class. Remaining special
-family hooks, HTML document creation, shadow trees and facade replacement remain
+family hooks, HTML document creation, slot/flat relations and facade replacement remain
 contribution work.
+Native shadow roots share the same identity and mutation owner, with reciprocal
+host links distinct from ordinary children. Adoption, clonable-root import and
+owned destruction preserve those boundaries; closed-root presentation does not
+erase canonical ownership.
 DOM also validates immutable external focus/hover selection captures against an
 exact canonical document stamp. Runtime owns the direct adapter from its actual
 surface selections, with checked associations between surface elements and DOM
@@ -82,10 +86,13 @@ identities. Captured flags, retained participant references and state changes us
 the same canonical snapshots and atomic edits. Runtime owns actual image,
 geometry and style captures and validates their join before composed publication;
 the structural DOM state alone certifies no rendered transition or CSSOM effect.
-DOM directly adapts its immutable ordinary-tree snapshots into HTML semantic
+DOM directly adapts its immutable ordinary and shadow snapshots into HTML semantic
 captures, with checked bidirectional identities and an optional qualified host
 capture. Queries use the HTML producer session and its availability envelope;
-canonical and host revisions retain their separate meanings. Installing completed
+canonical and host revisions retain their separate meanings. Actual root and host
+node-documents are preserved independently, including after internal replacement.
+Association closure can include supplemental documents and ancestors without
+claiming their unrelated child trees are complete. Installing completed
 HTML construction values and the remaining specialized capture domains is
 continuing integration work. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.

@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    AttachShadow {
+        host: NodeOperand,
+        init: crate::DomShadowRootInit,
+    },
     ViewTransition {
         basis: DomDocumentStamp,
         edit: Edit,
@@ -310,8 +314,10 @@ impl DomBatch {
     /// Element attributes are copied in either mode. Source reads use this
     /// exact immutable snapshot, including when its live source was destroyed.
     ///
-    /// Only the currently exposed generic XML surface is supported. HTML,
-    /// shadow-tree and registry-object installation have no import capability.
+    /// Supported native families are initialized through their real hooks. A
+    /// clonable hosted shadow tree is copied deeply even when subtree is false;
+    /// non-clonable roots are omitted. Direct ShadowRoot import is NotSupported.
+    /// Registry objects and HTML construction installation remain unadmitted.
     /// The returned ticket is usable by later commands and resolves only after
     /// a successful publication; descendant identities are then in the snapshot.
     pub fn import_node(
@@ -333,6 +339,21 @@ impl DomBatch {
     /// Creates an empty native XML Document with the selected DOM defaults.
     pub fn create_document(&mut self) -> CreatedNode {
         self.create(Creation::Document, None)
+    }
+    /// Attaches one native root to an admitted HTML host. The canonical owner
+    /// retains closed roots; open-only exposure is a snapshot accessor policy.
+    /// Returns a batch-local ticket, never a guessed or prematurely published ID.
+    pub fn attach_shadow(
+        &mut self,
+        host: impl Into<NodeOperand>,
+        init: impl Into<crate::DomShadowRootInit>,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::AttachShadow {
+            host: host.into(),
+            init: init.into(),
+        });
+        ticket
     }
     pub fn create_fragment(&mut self, document: impl Into<NodeOperand>) -> CreatedNode {
         self.create(Creation::Fragment, Some(document.into()))
@@ -515,7 +536,8 @@ impl DomBatch {
             name: local_name.into(),
         });
     }
-    /// Destroys a detached non-Document subtree, retiring published identities.
+    /// Destroys a detached non-Document, non-ShadowRoot subtree, including owned
+    /// shadow trees, retiring published identities.
     pub fn destroy(&mut self, node: impl Into<NodeOperand>) {
         self.commands.push(Command::Destroy(node.into()));
     }

@@ -142,21 +142,25 @@ implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.
 
 `surgeist-dom` begins the canonical live tree owner with native XML Documents,
-namespaced Elements, ordinary DocumentFragment, Text, Comment,
+namespaced Elements, ordinary DocumentFragment, ShadowRoot, Text, Comment,
 ProcessingInstruction and DocumentType nodes. It provides ordered namespaced
 attributes, atomic edits, same-store adoption, immutable-capture import with fresh
 target identities, finite caller limits and owned snapshots. Native namespace
 creation consumes HTML-owned initialization requirements and common values,
 retaining applicable nonce state independently from attributes. The native
 document environment is established independently of its XML class. Its crate
-guide records this bounded surface. HTML document creation, remaining special
-family state/hooks, complete HTML installation and shadow trees remain
-contribution work;
+guide records this bounded surface. Native shadow roots use the same canonical
+owner, with separate ordinary and hosted relations, shadow-inclusive adoption,
+clonable-root import and owned destruction. HTML document creation, remaining
+special family state/hooks, complete HTML installation, slot assignment and
+flat-tree captures remain contribution work;
 the existing retained facade is not replaced by this foundation.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
-HTML-semantics adapter builds qualified ordinary-tree captures, retains checked
-bidirectional identity maps, and invokes the producer queries with explicit
-availability and finite capture limits.
+HTML-semantics adapter builds qualified ordinary and shadow captures, retains
+checked bidirectional identity maps, and invokes producer queries with explicit
+availability and finite capture limits. Host association and node-document
+membership are independent; supplemental association closure does not certify
+unrelated tree completeness.
 DOM's immutable external focus/hover captures use exact canonical document
 stamps and a separate host source/revision. Runtime directly consumes DOM and
 owns the adapter from its actual surface selections and checked associations.
