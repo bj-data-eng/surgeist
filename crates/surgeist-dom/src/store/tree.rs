@@ -251,7 +251,7 @@ impl Draft {
                 pending.push(root);
             }
             self.frame_removing_node(key, &mut || check_cancel(cancel))?;
-            self.fieldset_removing_node(key, cancel)?;
+            self.control_removing_node(key, cancel)?;
         }
         Ok(())
     }
@@ -318,7 +318,7 @@ impl Draft {
                     unreachable!("native null browsing context cannot hide nonce content")
                 }
             }
-            self.fieldset_insertion_node(key, cancel)?;
+            self.control_insertion_node(key, cancel)?;
             // Closed HTML popovers are hidden, so their removal/attribute hide
             // steps return without changing state. Never-navigable documents
             // are not fully active, discharging the autofocus insertion guard.

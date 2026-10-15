@@ -114,7 +114,7 @@ fn exact_fieldset_names_retain_initial_state_without_admitting_other_native_cont
                 .is_none()
         );
     }
-    for name in ["button", "form", "input", "select"] {
+    for name in ["form", "input", "select"] {
         let before = dom.snapshot();
         let mut b = DomBatch::new();
         b.create_element_ns(d, Namespace::html(), name);

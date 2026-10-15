@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Slot/Fieldset families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Slot/Fieldset/Button families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -160,3 +160,16 @@ and runs actual hooks. Native semantic capture and Slot supplementation rebuild
 actual established-current control facts with finite adapter and producer/join
 budgets, preserving other supplements. Keep disabledness/collections/Legend and
 candidacy in the semantic owner; message storage grants no validation UI/events.
+
+Button shares the private association/message/reset storage with Fieldset; retain
+intentional family readback interfaces. Its independent commandFor/popoverTarget
+weak slots use genuine staged Key references, mapped to final NodeIds only during
+publication. Never restrict setters to Existing IDs or scope-check raw storage.
+Consume HTML's reflected-target setter cursor and exact attribute-change predicate,
+including redundant clears and null/non-null ordering. Native clone/import starts
+fresh weak slots; adoption preserves them; explicit retirement clears exact keys
+without generation reuse. Store fixed slots in node capacity. Capture closes real
+weak targets/documents/ancestors conservatively and supplies checked reference and
+control facts in initial and Slot contexts with finite explicit budgets. Getter
+scope/first-ID fallback, submit role, disabledness and candidacy stay semantic
+queries; do not add a second target resolver or controller.

@@ -105,6 +105,9 @@ impl DomElement {
                 };
                 NativeFamily::Slot
             }
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Button) => {
+                NativeFamily::Button(crate::DomButtonState::fresh())
+            }
             Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
                 NativeFamily::Fieldset(crate::DomFieldsetState::fresh())
             }
@@ -141,9 +144,29 @@ impl DomElement {
             _ => None,
         }
     }
-    pub(crate) fn fieldset_state_mut(&mut self) -> Option<&mut crate::DomFieldsetState> {
+    /// Actual stored Button state; raw weak slots belong to its snapshot view.
+    pub fn button_state(&self) -> Option<&crate::DomButtonState> {
+        match &self.family {
+            NativeFamily::Button(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn native_control(
+        &self,
+    ) -> Option<(
+        &crate::control::NativeControlState,
+        surgeist_html::HtmlNativeFormAssociationKind,
+    )> {
+        match &self.family {
+            NativeFamily::Fieldset(state) => Some((&state.control, state.kind())),
+            NativeFamily::Button(state) => Some((&state.control, state.kind())),
+            _ => None,
+        }
+    }
+    pub(crate) fn native_control_mut(&mut self) -> Option<&mut crate::control::NativeControlState> {
         match &mut self.family {
-            NativeFamily::Fieldset(state) => Some(state),
+            NativeFamily::Fieldset(state) => Some(&mut state.control),
+            NativeFamily::Button(state) => Some(&mut state.control),
             _ => None,
         }
     }

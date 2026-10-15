@@ -31,7 +31,9 @@ use crate::{
 /// Adapter-owned construction storage/work, separate from producer capture retention limits.
 /// `work` independently bounds adapter work and shared control-fact validation
 /// including its context join. Each closure/mapping/staging vector and the reusable child scratch have at most
-/// `subjects` entries. Producer allocations obey the supplied HtmlCaptureLimits.
+/// `subjects` entries. Nullable reference facts have at most twice `subjects`
+/// entries (two per Button), with their validation independently bounded by
+/// `work`. Producer allocations obey the supplied HtmlCaptureLimits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
@@ -66,6 +68,7 @@ pub enum DomHtmlCaptureError {
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
     Inert(surgeist_html_semantics::HtmlInertFactError),
     Controls(surgeist_html_semantics::HtmlControlFactsError),
+    ElementReferences(surgeist_html_semantics::HtmlElementReferenceFactsError),
     ResourceLimit {
         resource: DomHtmlCaptureResource,
         limit: usize,
@@ -91,6 +94,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Language(e) => Some(e),
             Self::Inert(e) => Some(e),
             Self::Controls(e) => Some(e),
+            Self::ElementReferences(e) => Some(e),
             Self::ResourceLimit { .. }
             | Self::Cancelled
             | Self::AllocationFailed
@@ -229,15 +233,23 @@ impl Control<'_> {
         values: &mut Vec<T>,
         additional: usize,
     ) -> Result<(), DomHtmlCaptureError> {
+        self.reserve_extent(values, additional, self.limits.subjects)
+    }
+    fn reserve_extent<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        additional: usize,
+        extent: usize,
+    ) -> Result<(), DomHtmlCaptureError> {
         self.charge(1)?;
         let count = values
             .len()
             .checked_add(additional)
             .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
-        if count > self.limits.subjects {
+        if count > extent {
             return Err(DomHtmlCaptureError::ResourceLimit {
                 resource: DomHtmlCaptureResource::Subjects,
-                limit: self.limits.subjects,
+                limit: extent,
             });
         }
         count
@@ -390,6 +402,18 @@ impl DomSnapshot {
             }
             if let Some(root) = node.hosted_shadow_root() {
                 control.include(&mut planned, root, true)?;
+            }
+            if let Some(button) = node.as_button() {
+                for target in [
+                    button.explicit_command_for(),
+                    button.explicit_popover_target(),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    control.charge(1)?;
+                    control.include(&mut planned, target, false)?;
+                }
             }
             // Directionality consumes stored history, including references
             // outside this node-document. Preserve actual closure/ancestors.
@@ -584,7 +608,7 @@ impl DomSnapshot {
         let context = HtmlSemanticContext::new(
             &capture,
             revision,
-            control::with_controls(
+            control::with_native_state(
                 HtmlSemanticContextInput::new(Vec::new()),
                 self,
                 &capture,

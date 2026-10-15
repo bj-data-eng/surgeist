@@ -1,4 +1,4 @@
-//! Actual Fieldset state, bounded reset observations and native mutation hooks.
+//! Actual native control state, bounded reset observations and native mutation hooks.
 use super::*;
 use surgeist_html::bounded::{
     HtmlFormOwnerResetDecision as Decision, HtmlFormOwnerResetTrigger as Trigger,
@@ -6,9 +6,14 @@ use surgeist_html::bounded::{
 };
 use surgeist_html::{KnownHtmlAttribute, KnownHtmlElement};
 
-fn state(kind: &DomNodeKind) -> Option<&crate::DomFieldsetState> {
+fn state(
+    kind: &DomNodeKind,
+) -> Option<(
+    &crate::control::NativeControlState,
+    surgeist_html::HtmlNativeFormAssociationKind,
+)> {
     match kind {
-        DomNodeKind::Element(element) => element.fieldset_state(),
+        DomNodeKind::Element(element) => element.native_control(),
         _ => None,
     }
 }
@@ -21,11 +26,13 @@ fn form_requirement() -> DomError {
     )
 }
 impl Draft {
-    fn fieldset_mut(&mut self, key: Key) -> &mut crate::DomFieldsetState {
+    fn control_mut(&mut self, key: Key) -> &mut crate::control::NativeControlState {
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked Fieldset")
+            unreachable!("checked native control")
         };
-        element.fieldset_state_mut().expect("checked Fieldset")
+        element
+            .native_control_mut()
+            .expect("checked native control")
     }
     pub(super) fn set_custom_validity(
         &mut self,
@@ -36,6 +43,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let old = state(&self.node(key)?.kind)
             .ok_or(DomError::CustomValidityInapplicable)?
+            .0
             .message
             .len();
         let mut length = 0usize;
@@ -63,7 +71,7 @@ impl Draft {
             }
         }
         check_cancel(cancel)?;
-        self.fieldset_mut(key).message = DocumentString::from_utf16(normalized);
+        self.control_mut(key).message = DocumentString::from_utf16(normalized);
         self.units = units;
         Ok(())
     }
@@ -148,19 +156,19 @@ impl Draft {
         }
         Ok(None)
     }
-    fn reset_fieldset(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+    fn reset_control(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         use surgeist_html::bounded::{
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
-        let current = state(&self.node(key)?.kind).expect("actual Fieldset");
+        let (current, kind) = state(&self.node(key)?.kind).expect("actual native control");
         let owner = current.owner;
         let mut found = None;
-        let mut cursor = HtmlFormOwnerResetCursor::new(current.kind().listed(), owner.is_some());
+        let mut cursor = HtmlFormOwnerResetCursor::new(kind.listed(), owner.is_some());
         loop {
             check_cancel(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
-                    self.fieldset_mut(key).parser_inserted = false;
+                    self.control_mut(key).parser_inserted = false;
                     R::Applied
                 }
                 A::ReadFormAttributePresence => R::FormAttributePresent(
@@ -176,7 +184,7 @@ impl Draft {
                     if owner.is_some() {
                         return Err(form_requirement());
                     }
-                    self.fieldset_mut(key).owner = None;
+                    self.control_mut(key).owner = None;
                     R::Applied
                 }
                 A::ReadConnectedness => R::Connected(self.control_connected(key, cancel)?),
@@ -203,7 +211,7 @@ impl Draft {
                 .expect("reply after actual admitted source action");
         }
     }
-    fn reset_fieldset_for(
+    fn reset_control_for(
         &mut self,
         key: Key,
         trigger: Trigger,
@@ -217,7 +225,8 @@ impl Draft {
                 .is_some(),
             Decision::ResetIfOwnerInDifferentTree => {
                 let owner = state(&self.node(key)?.kind)
-                    .expect("Fieldset")
+                    .expect("native control")
+                    .0
                     .owner
                     .expect("trigger requires owner");
                 let owner = self.resolve(NodeOperand::Existing(owner))?;
@@ -225,7 +234,7 @@ impl Draft {
             }
         };
         if reset {
-            self.reset_fieldset(key, cancel)?;
+            self.reset_control(key, cancel)?;
         }
         Ok(())
     }
@@ -251,16 +260,16 @@ impl Draft {
                 Key::Created(index - self.existing.len())
             };
             let Ok(node) = self.node(key) else { continue };
-            let Some(current) = state(&node.kind) else {
+            let Some((_, kind)) = state(&node.kind) else {
                 continue;
             };
             if node.document == document
                 && (root.is_none() || Some(crate::slot::root(self, key, cancel)?) == root)
             {
-                self.reset_fieldset_for(
+                self.reset_control_for(
                     key,
                     Trigger::IdEvent {
-                        listed: current.kind().listed(),
+                        listed: kind.listed(),
                     },
                     cancel,
                 )?;
@@ -270,13 +279,13 @@ impl Draft {
     }
     /// One actual insertion extension, called in shadow-including order by
     /// the owning native insertion traversal after the Slot steps.
-    pub(super) fn fieldset_insertion_node(
+    pub(super) fn control_insertion_node(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(current) = state(&self.node(key)?.kind) {
-            self.reset_fieldset_for(
+        if let Some((current, _)) = state(&self.node(key)?.kind) {
+            self.reset_control_for(
                 key,
                 Trigger::Insertion {
                     parser_inserted: current.parser_inserted,
@@ -295,13 +304,13 @@ impl Draft {
         Ok(())
     }
     /// HTML removing runs after this same node's family-specific extension.
-    pub(super) fn fieldset_removing_node(
+    pub(super) fn control_removing_node(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(current) = state(&self.node(key)?.kind) {
-            self.reset_fieldset_for(
+        if let Some((current, _)) = state(&self.node(key)?.kind) {
+            self.reset_control_for(
                 key,
                 Trigger::RemovingOrMoving {
                     has_owner: current.owner.is_some(),
@@ -321,7 +330,7 @@ impl Draft {
         }
         Ok(())
     }
-    pub(super) fn fieldset_attribute(
+    pub(super) fn control_attribute_change(
         &mut self,
         key: Key,
         changed: &crate::QualifiedName,
@@ -340,12 +349,12 @@ impl Draft {
                 .eq(name.local_name().encode_utf16())
         };
         if is(KnownHtmlAttribute::Form)
-            && let Some(current) = state(&self.node(key)?.kind)
+            && let Some((_, kind)) = state(&self.node(key)?.kind)
         {
-            self.reset_fieldset_for(
+            self.reset_control_for(
                 key,
                 Trigger::FormAttributeChanged {
-                    listed: current.kind().listed(),
+                    listed: kind.listed(),
                 },
                 cancel,
             )?;

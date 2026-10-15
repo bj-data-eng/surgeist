@@ -9,29 +9,25 @@ use surgeist_html::HtmlNativeFormAssociationKind;
 /// subject to the source removal/reset steps.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomFieldsetState {
-    pub(crate) owner: Option<NodeId>,
-    pub(crate) parser_inserted: bool,
-    pub(crate) message: DocumentString,
+    pub(crate) control: crate::control::NativeControlState,
 }
 impl DomFieldsetState {
     pub(crate) fn fresh() -> Self {
         Self {
-            owner: None,
-            parser_inserted: false,
-            message: "".into(),
+            control: crate::control::NativeControlState::fresh(),
         }
     }
     pub fn kind(&self) -> HtmlNativeFormAssociationKind {
         HtmlNativeFormAssociationKind::Fieldset
     }
     pub fn form_owner(&self) -> Option<NodeId> {
-        self.owner
+        self.control.owner
     }
     pub fn parser_inserted(&self) -> bool {
-        self.parser_inserted
+        self.control.parser_inserted
     }
     /// The stored normalized custom error, independently of candidacy or UI.
     pub fn custom_validity_message(&self) -> &DocumentString {
-        &self.message
+        &self.control.message
     }
 }

@@ -156,8 +156,9 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.button_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
-        self.fieldset_attribute(node, &changed, old_value.as_ref(), cancelled)
+        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
     }
 
     pub(super) fn remove_attribute(
@@ -202,8 +203,9 @@ impl Draft {
             staged.set_nonce(nonce);
         }
         self.publish_element(node, old_units, staged, limits)?;
+        self.button_attribute_change(node, &changed);
         self.slot_attribute(node, &changed, old_value.clone(), limits, cancelled)?;
-        self.fieldset_attribute(node, &changed, old_value.as_ref(), cancelled)
+        self.control_attribute_change(node, &changed, old_value.as_ref(), cancelled)
     }
 
     fn publish_element(

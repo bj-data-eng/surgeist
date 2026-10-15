@@ -65,6 +65,11 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    SetButtonTarget {
+        node: NodeOperand,
+        key: crate::button::ButtonTarget,
+        target: Option<NodeOperand>,
+    },
     AssignSlot {
         slot: NodeOperand,
         incoming: Vec<NodeOperand>,
@@ -418,7 +423,33 @@ impl DomBatch {
             Some(document.into()),
         )
     }
-    /// Normalizes newlines and replaces a native Fieldset's stored custom error.
+    /// Sets the actual weak commandForElement reference of a native Button.
+    /// The target may be a same-batch Element, detached, self or another document.
+    pub fn set_command_for_element(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        target: Option<NodeOperand>,
+    ) {
+        self.commands.push(Command::SetButtonTarget {
+            node: node.into(),
+            key: crate::button::ButtonTarget::CommandFor,
+            target,
+        });
+    }
+    /// Sets Button's independent weak popoverTargetElement reference.
+    /// Getter scope and command support are separate semantic decisions.
+    pub fn set_popover_target_element(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        target: Option<NodeOperand>,
+    ) {
+        self.commands.push(Command::SetButtonTarget {
+            node: node.into(),
+            key: crate::button::ButtonTarget::PopoverTarget,
+            target,
+        });
+    }
+    /// Normalizes newlines and replaces a native Fieldset or Button custom error.
     /// Raw operands are caller-owned; normalized retained units consume the
     /// store's string limit. This does not execute validation or dispatch events.
     pub fn set_custom_validity(

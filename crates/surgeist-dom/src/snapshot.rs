@@ -131,6 +131,12 @@ pub struct DomNode<'a> {
     pub(crate) node: &'a Node,
 }
 impl<'a> DomNode<'a> {
+    pub fn as_button(self) -> Option<crate::DomButton<'a>> {
+        self.as_element()
+            .and_then(DomElement::button_state)
+            .map(|_| crate::DomButton { node: self })
+    }
+
     /// Privileged canonical ownership, including closed roots. This does not
     /// implement the source's open-only Element.shadowRoot presentation.
     pub fn hosted_shadow_root(self) -> Option<NodeId> {

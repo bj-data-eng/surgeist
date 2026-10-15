@@ -21,6 +21,8 @@
 //! Native Fieldset retains actual association/custom-error state and bounded
 //! source reset hooks. Custom messages normalize through HTML's shared rule;
 //! semantic capture and Slot supplementation retain actual control facts.
+//! Native Button shares those controls and retains independent weak reflected
+//! targets, source-ordered setters, scoped semantic getters and retirement cleanup.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -84,6 +86,8 @@
 #![deny(unfulfilled_lint_expectations)]
 
 mod batch;
+mod button;
+mod control;
 mod document;
 mod element;
 mod fieldset;
@@ -143,4 +147,5 @@ pub use view_transition::{
     ViewTransitionRecordOperand,
 };
 
+pub use button::{DomButton, DomButtonState};
 pub use fieldset::DomFieldsetState;

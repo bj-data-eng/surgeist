@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Slot/Fieldset families,
+and actual native HTML Canvas/Marquee/Frame/Slot/Fieldset/Button families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -154,7 +154,7 @@ actual null results. Positive ownership requires Form's real state and past-name
 map effects before it can become reachable; there is no permanently-null owner
 API or fabricated successful association.
 
-`set_custom_validity` currently applies to native Fieldset. It uses HTML's unit-fed
+`set_custom_validity` applies to native Fieldset and Button. It uses HTML's unit-fed
 CRLF/CR-to-LF rule before replacing the stored message, preserving every other
 exact UTF-16 unit. Raw batch operands are caller-owned; normalized output scratch
 is bounded by the admitted retained length, and the final normalized message
@@ -166,18 +166,57 @@ copied-attribute hooks; adoption preserves the message and runs actual removal
 and insertion/reset effects. The Fieldset payload allocates no control value,
 selection, cached disabledness or fake form object.
 
-Semantic capture publishes actual established-current Fieldset associations.
+Semantic capture publishes actual established-current Fieldset and Button associations.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
 candidacy remain HTML semantic queries over the current captured tree. Slot
 supplementation rebuilds actual control facts into that same context, preserving
-Slot directionality/inert facts. `DomHtmlCaptureLimits` bounds each adapter vector
-by subjects and adapter work by work; the same explicit finite work value
+Slot directionality/inert facts. `DomHtmlCaptureLimits` bounds each ordinary adapter vector
+by subjects (nullable reference facts use twice subjects) and adapter work by work; the same explicit finite work value
 independently caps shared control validation including its context join. Checked
 move-only facts are rebuilt from the retained snapshot/map, never cloned or
 replaced with inferred ownership. This contribution does not execute constraint
 validation, report/check validity, expose a complete ValidityState schema or
 provide validation UI/events. A nonempty Fieldset custom error does not make it
 a constraint-validation candidate.
+
+Native HTML Button composes that same private native-control storage and reset
+adapter with its own public `button_state()` / `DomNode::as_button()` view.
+`set_custom_validity` also applies to Button. Actual form association, native
+parser flag and custom message obey the same fresh clone/import and preserving
+adoption rules. Disabledness, Auto submit role, source form settings and constraint
+candidacy are current HTML semantic queries; no activation, submission or event
+execution is introduced, and Form/Select remain unadmitted native families.
+
+`set_command_for_element` and `set_popover_target_element` drive HTML's actual
+nullable Element setter cursor. The two weak slots are independent and initially
+null. A non-null write first sets its exact content attribute empty (including its
+clearing hook), then installs the supplied Element; a null write clears the slot
+before deleting content. Exact null-namespace commandfor/popovertarget changes,
+including redundant sets, clear only their corresponding slot. Missing removal
+runs no new attribute hook. Namespace/case mismatches remain distinct attributes.
+Targets must be actual same-store Elements, and can be same-batch creations,
+detached, self, other-document or outside getter scope. Staged references use
+actual draft keys and map to final generation-safe identities at publication.
+Two fixed slots per Button are covered by managed-node capacity, not dynamic Slot
+assignment-reference capacity. No target IDs, attribute data or history records
+are invented from ticket indices.
+
+`DomButton::explicit_command_for` / `explicit_popover_target` read raw stored weak
+references. Their scoped associated-element getters remain existing HTML semantic
+queries, with first-ID content fallback only when the actual explicit slot is
+null. An out-of-scope explicit target is retained and queries null without content
+retargeting. Capture closes actual weak targets, node documents and ancestors
+conservatively, without claiming unrelated supplemental children are empty or
+complete, and joins existing checked reference/control facts. Each reference-fact
+vector is bounded by twice the explicit subject bound (two per Button), with
+finite producer validation work. Slot supplementation rebuilds these actual facts
+and preserves its own directionality/inert facts. Native clone/import starts both
+slots null and processes copied attributes; adoption preserves actual weak IDs.
+Explicit destruction clears surviving references to the exact retired identity,
+including same-batch targets, and never follows generation reuse. Old snapshots
+retain their actual historical reference and target. State-only changes report
+ElementState alongside separate attribute changes; failed/cancelled batches roll
+back both domains.
 
 HTML/SVG/MathML Elements retain a real initially empty cryptographic nonce slot.
 Exact null-namespace `nonce` attribute changes update it, removal clears it, and

@@ -146,7 +146,7 @@ impl DomHtmlCapture {
         self.context = HtmlSemanticContext::new(
             &self.capture,
             revision,
-            super::control::with_controls(
+            super::control::with_native_state(
                 HtmlSemanticContextInput::new(Vec::new())
                     .with_language_direction(language)
                     .with_inert(flat_revision, Some(inert)),

@@ -14,8 +14,9 @@ use crate::{
 };
 
 mod attributes;
+mod button;
+mod control;
 mod document;
-mod fieldset;
 mod frame;
 mod import;
 mod shadow;
@@ -60,6 +61,7 @@ pub enum DomError {
     NonceInapplicable,
     MarqueeInapplicable,
     CustomValidityInapplicable,
+    ButtonInapplicable,
     SlotInapplicable,
     NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
     NotFound,
@@ -393,6 +395,7 @@ pub(crate) struct Node {
     pub(crate) assigned_nodes: Vec<NodeId>,
     pub(crate) manual_slot: Option<NodeId>,
     pub(crate) assigned_slot: Option<NodeId>,
+    pub(crate) button_targets: Option<crate::button::ButtonTargets<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -744,6 +747,7 @@ struct DraftNode {
     assigned_nodes: Vec<Key>,
     manual_slot: Option<Key>,
     assigned_slot: Option<Key>,
+    button_targets: Option<crate::button::ButtonTargets<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -795,6 +799,9 @@ impl Draft {
                     assigned_nodes: map_keys(&node.assigned_nodes, cancelled)?,
                     manual_slot: node.manual_slot.map(|id| Key::Existing(id.slot)),
                     assigned_slot: node.assigned_slot.map(|id| Key::Existing(id.slot)),
+                    button_targets: node
+                        .button_targets
+                        .map(|targets| targets.map(|id| Key::Existing(id.slot))),
                 })
             } else {
                 None
@@ -898,6 +905,9 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         reserve(&mut self.created, 1)?;
         let key = Key::Created(self.created.len());
+        let button_targets =
+            matches!(&kind, DomNodeKind::Element(element) if element.button_state().is_some())
+                .then(crate::button::ButtonTargets::fresh);
         self.created.push(Some(DraftNode {
             document,
             kind,
@@ -909,6 +919,7 @@ impl Draft {
             assigned_nodes: Vec::new(),
             manual_slot: None,
             assigned_slot: None,
+            button_targets,
         }));
         self.nodes = nodes;
         self.units = units;
@@ -926,6 +937,11 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::SetButtonTarget { node, key, target } => {
+                let node = self.resolve(node)?;
+                let target = target.map(|target| self.resolve(target)).transpose()?;
+                self.set_button_target(node, key, target, limits, cancelled)?;
+            }
             Command::AssignSlot { slot, incoming } => {
                 let slot = self.resolve(slot)?;
                 self.assign_manual(slot, incoming, limits, cancelled)?;
@@ -1114,6 +1130,7 @@ impl Draft {
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
                     self.slot_retirement(key, limits, cancelled)?;
+                    self.retire_button_target(key, cancelled)?;
                 }
             }
             Command::ReplaceData {
@@ -1270,6 +1287,7 @@ impl Draft {
                 assigned_nodes: map_ids(&source.assigned_nodes, &id, cancelled)?,
                 manual_slot: source.manual_slot.map(id),
                 assigned_slot: source.assigned_slot.map(id),
+                button_targets: source.button_targets.map(|targets| targets.map(id)),
             });
         }
         let finished = self.view_transitions.finish(dom.owner)?;
@@ -1386,7 +1404,8 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 };
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (&node.kind, &current.kind)
-                    && !before.same_nonattribute_state(after)
+                    && (!before.same_nonattribute_state(after)
+                        || node.button_targets != current.button_targets)
                 {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::ElementState(id));
