@@ -1102,6 +1102,52 @@ mod tests {
         assert!(c.stop().is_none());
     }
     #[test]
+    fn color_standard_invalid_uses_actual_failure_and_source_selected_serialization() {
+        // HTML877d update steps 3–5: a standard-invalid CSS color becomes
+        // opaque black, then uses the actual alpha/colorspace serialization.
+        for (alpha, space, expected) in [
+            (false, crate::HtmlInputColorSpace::LimitedSrgb, "#000000"),
+            (
+                true,
+                crate::HtmlInputColorSpace::LimitedSrgb,
+                "color(srgb 0 0 0)",
+            ),
+            (
+                false,
+                crate::HtmlInputColorSpace::DisplayP3,
+                "color(display-p3 0 0 0)",
+            ),
+            (
+                true,
+                crate::HtmlInputColorSpace::DisplayP3,
+                "color(display-p3 0 0 0)",
+            ),
+        ] {
+            let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
+            let (output, value, failure) =
+                execute(&mut c, &[103, 97, 114, 98, 97, 103, 101], alpha, space).unwrap();
+            assert_eq!(
+                output.units(),
+                expected.encode_utf16().collect::<Vec<_>>(),
+                "alpha={alpha}, space={space:?}"
+            );
+            assert_eq!(value.channels(), [Some(0.0); 3]);
+            assert_eq!(value.alpha(), Some(1.0));
+            assert_eq!(
+                value.space(),
+                ColorSpace::Predefined(match space {
+                    crate::HtmlInputColorSpace::LimitedSrgb => PredefinedColorSpace::Srgb,
+                    crate::HtmlInputColorSpace::DisplayP3 => PredefinedColorSpace::DisplayP3,
+                })
+            );
+            assert!(failure.is_some(), "the actual standard failure is retained");
+            assert!(c.stop().is_none());
+            output.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+        }
+    }
+    #[test]
     fn color_numerical_failure_preserves_selected_field_range_and_reclaims_storage() {
         // Unlike CSS Lab lightness, a* is not clamped. Its cubic XYZ
         // reconstruction followed by sRGB's 1/2.4 transfer exponent exceeds
