@@ -1168,6 +1168,8 @@ pub fn surgeist_html::bounded::input_readonly_applies(state: surgeist_html::Html
 pub fn surgeist_html::bounded::integer_long_work_bound(input_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::is_ascii_whitespace(unit: u16) -> bool
 pub fn surgeist_html::bounded::is_nonce_element(name: &surgeist_html::QualifiedName) -> bool
+pub fn surgeist_html::bounded::is_xml_name_code_point(cp: u32) -> bool
+pub fn surgeist_html::bounded::is_xml_name_start_code_point(cp: u32) -> bool
 pub fn surgeist_html::bounded::match_media_field<'raw, E>(attribute: &'raw surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlMediaFieldMatch<'raw>>, E>
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::media_field_matches(attribute: &surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField) -> bool

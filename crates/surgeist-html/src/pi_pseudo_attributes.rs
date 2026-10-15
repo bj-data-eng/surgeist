@@ -339,7 +339,7 @@ impl Cursor {
                 _ => self.action = Some(Action::Begin(Field::Name)),
             },
             Phase::FirstName => match cp {
-                Some(cp) if name_start(cp) => self.emit(
+                Some(cp) if is_xml_name_start_code_point(cp) => self.emit(
                     Field::Name,
                     cp,
                     self.offset,
@@ -349,7 +349,7 @@ impl Cursor {
                 _ => self.invalid(),
             },
             Phase::Name => match cp {
-                Some(cp) if name_char(cp) => self.emit(
+                Some(cp) if is_xml_name_code_point(cp) => self.emit(
                     Field::Name,
                     cp,
                     self.offset,
@@ -512,11 +512,18 @@ fn xml_char(cp: u32) -> bool {
 fn whitespace(cp: u32) -> bool {
     matches!(cp, 9 | 10 | 13 | 32)
 }
-fn name_start(cp: u32) -> bool {
+/// XML 1.0 Fifth Edition's `NameStartChar` production.
+///
+/// The argument is a code point, including a possible isolated surrogate from
+/// an exact UTF-16 string. Values outside the production return false.
+pub fn is_xml_name_start_code_point(cp: u32) -> bool {
     matches!(cp,0x3a|0x41..=0x5a|0x5f|0x61..=0x7a|0xc0..=0xd6|0xd8..=0xf6|0xf8..=0x2ff|0x370..=0x37d|0x37f..=0x1fff|0x200c..=0x200d|0x2070..=0x218f|0x2c00..=0x2fef|0x3001..=0xd7ff|0xf900..=0xfdcf|0xfdf0..=0xfffd|0x10000..=0xeffff)
 }
-fn name_char(cp: u32) -> bool {
-    name_start(cp) || matches!(cp,0x2d|0x2e|0x30..=0x39|0xb7|0x300..=0x36f|0x203f..=0x2040)
+/// XML 1.0 Fifth Edition's `NameChar` production, including continuation-only
+/// digits, punctuation and combining characters.
+pub fn is_xml_name_code_point(cp: u32) -> bool {
+    is_xml_name_start_code_point(cp)
+        || matches!(cp,0x2d|0x2e|0x30..=0x39|0xb7|0x300..=0x36f|0x203f..=0x2040)
 }
 
 #[cfg(test)]

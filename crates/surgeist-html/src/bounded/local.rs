@@ -14,7 +14,8 @@ pub use crate::nonce::{
 pub use crate::pi_pseudo_attributes::{
     Action as HtmlPiPseudoAttributeAction, Cursor as HtmlPiPseudoAttributeCursor,
     Error as HtmlPiPseudoAttributeError, Field as HtmlPiPseudoAttributeField,
-    Name as HtmlPiPseudoAttributeName, Reply as HtmlPiPseudoAttributeReply,
+    Name as HtmlPiPseudoAttributeName, Reply as HtmlPiPseudoAttributeReply, is_xml_name_code_point,
+    is_xml_name_start_code_point,
 };
 pub use crate::template_markers::{
     First as HtmlTemplateMarkerFirst, HtmlTemplateMarkerNestingOverflow,
