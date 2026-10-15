@@ -17,9 +17,15 @@ source origins; current package facts come from this checkout's manifests.
 
 The checkout also retains attribution for adapted source and bundled test assets
 carried by the CSS, layout, and render crates. The copies linked below preserve
-their upstream legal text and modification notices. All 14 retained imported
-`LICENSE` files contain identical text and share one copy here; the root
+their upstream legal text and modification notices. The 14 originally imported
+`LICENSE` files contained identical text, preserved in one shared copy here; the root
 project's own license remains separate.
+
+The former surgeist-retained package is retired. Its
+[last preserved source and notice](https://github.com/bj-data-eng/surgeist/tree/6b6c60b8eda9aac70dce8aca8021d77d238c377e/crates/surgeist-retained)
+and [original project homepage](https://github.com/bj-data-eng/surgeist-retained)
+retain its consolidation provenance. Canonical live document authoring is owned
+by surgeist-dom in this repository.
 
 This source checkout does not contain a linked application. The summary below
 does not enumerate every crate's transitive, optional, platform, or compiled
@@ -187,6 +193,14 @@ The root facade depends on surgeist-dialog, distributed by bj-data-eng.
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-dialog](https://github.com/bj-data-eng/surgeist-dialog)
 
+### surgeist-dom 0.1.0
+
+The root facade depends on surgeist-dom, authored in this repository.
+It owns canonical tree identity, atomic mutation and immutable captures.
+
+* License: [MIT](LICENSE)
+* Homepage: [Surgeist](https://github.com/bj-data-eng/surgeist)
+
 ### surgeist-generator 0.2.0
 
 The source checkout includes surgeist-generator, distributed by bj-data-eng.
@@ -232,13 +246,6 @@ copyright 2020 the Vello Authors. The adapted material retains the
 The [original Vello provenance and modification notice](licenses/vello/NOTICE-VELLO.md)
 is included verbatim with its relative license links intact. Upstream:
 [Vello](https://github.com/linebender/vello).
-
-### surgeist-retained 0.1.0
-
-The root facade depends on surgeist-retained, distributed by bj-data-eng.
-
-* License: [MIT](licenses/surgeist/LICENSE)
-* Homepage: [surgeist-retained](https://github.com/bj-data-eng/surgeist-retained)
 
 ### surgeist-runtime 0.1.0
 
@@ -434,6 +441,7 @@ transitive binary-release inventory.
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
+| surgeist-dom | [MIT License](LICENSE); authored in this repository |
 | surgeist-fuzz | [NOTICE.md](crates/surgeist-fuzz/NOTICE.md) |
 | surgeist-generator | [NOTICE.md](crates/surgeist-generator/NOTICE.md) |
 | surgeist-html | [NOTICE.md](crates/surgeist-html/NOTICE.md) |
@@ -441,7 +449,6 @@ transitive binary-release inventory.
 | surgeist-html-semantics | [NOTICE.md](crates/surgeist-html-semantics/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |
 | surgeist-render | [NOTICE.md](crates/surgeist-render/NOTICE.md) |
-| surgeist-retained | [NOTICE.md](crates/surgeist-retained/NOTICE.md) |
 | surgeist-runtime | [NOTICE.md](crates/surgeist-runtime/NOTICE.md) |
 | surgeist-shape | [NOTICE.md](crates/surgeist-shape/NOTICE.md) |
 | surgeist-task | [NOTICE.md](crates/surgeist-task/NOTICE.md) |

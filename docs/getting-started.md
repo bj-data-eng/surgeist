@@ -42,8 +42,9 @@ The test output includes `tests::exposes_crate_identity ... ok` and one passing
 test. The [implementation](../src/lib.rs) checks that
 `surgeist::crate_name()` returns `"surgeist"`.
 
-This verifies the current facade entry point. The workspace has 16 product
-members, but its default member is only root. The command above does not run
+This verifies the current facade entry point. The workspace contains the product
+and verification packages listed in the root manifest, but its default member is
+only root. The command above does not run
 the other members' tests, a root example application, or a development harness.
 Continue with the [how-to guide](how-to.md) to select an affected package or API
 audit without starting a broad workspace test run.

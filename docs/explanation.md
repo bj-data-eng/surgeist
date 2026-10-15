@@ -56,7 +56,7 @@ are implemented as three packages with direct acyclic dependencies. Manifests
 and source establish those boundaries; no old-package reexports are retained.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
-document identity, mutation and snapshots with native XML Documents, namespaced
+document identity, mutation and snapshots with native XML/HTML Documents, namespaced
 Elements, ordinary DocumentFragment, ShadowRoot, Text, Comment, ProcessingInstruction and
 DocumentType nodes. Ordered namespaced attributes
 and same-store adoption use that same mutation owner. Import copies a checked
@@ -68,8 +68,16 @@ Namespace-aware creation consumes HTML-owned common initialization requirements;
 applicable nonce slots remain separate from content attributes through edits,
 cloning and import. A native document retains its actual null browsing context
 and never-navigable state independently of its XML class. Remaining special
-family hooks, HTML document creation, slot/flat relations and facade replacement remain
+family hooks, XML DOMImplementation creation and slot/flat relations remain
 contribution work.
+`create_html_document` builds the complete native HTML skeleton through the same
+atomic owner, using the origin of an actual associated Document. Omitted title
+differs from a supplied empty title. Current node-document class governs Element
+creation and checked attribute lookup. This entry supplies no parser, Window or
+host lifecycle, and complete immutable HTML installation remains separate work.
+Native HTML Canvas retains none-context state and shared dimension/reset hooks;
+native Marquee retains its closed initially-on/index-zero state and start/stop
+edits. These native families supply no renderer context, pixels or animation loop.
 Native shadow roots share the same identity and mutation owner, with reciprocal
 host links distinct from ordinary children. Adoption, clonable-root import and
 owned destruction preserve those boundaries; closed-root presentation does not
@@ -96,9 +104,12 @@ claiming their unrelated child trees are complete. Installing completed
 HTML construction values and the remaining specialized capture domains is
 continuing integration work. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.
-The existing template crate keeps its syntax, symbolic expressions and source
-generation; it will consume HTML and DOM contracts for registry and construction
-integration.
+Template keeps strict syntax, symbolic expressions, component validation and
+executable typed Rust generation. It derives a closed native registry from shared
+HTML metadata with explicit template form policy and queues concrete HTML through
+ordinary DOM edits. Template contents need an explicit supported contents target;
+symbolic nodes remain unresolved. It does not evaluate a new language or own a
+second live tree.
 Selectors will own matching, cascade will own precedence and rollback, and style
 will compute values from DOM and CSSOM captures. HTML-owned work is scheduled
 first; completing DOM integration requires both HTML and DOM. The
@@ -112,6 +123,32 @@ doors. Its `app` and `runtime` modules both expose `surgeist-runtime`. The compl
 layered integration, application examples, and native development harness
 remain planned work. The shared source boundary supports integration work;
 it does not supply an integrated UI application by itself.
+
+`surgeist::dom` directly exposes the canonical owner. The former
+`surgeist::retained` export and `surgeist-retained` package are removed, a breaking
+public API replacement without a compatibility alias. Production inventory found
+only the old root dependency and wildcard reexport; no running caller required
+retained's route, hook or projection protocols. Those unused protocols have no
+replacement API or parallel tree. Ordinary DOM identity, edits and old captures,
+the Runtime host join and caller-owned keyed materialization preserve the required
+concrete behavior through their actual owners. The
+[keyed composition witness](../crates/surgeist-runtime/tests/keyed_dom_materialization.rs)
+keeps logical item keys separate from live NodeIds and publishes staged maps only
+after successful canonical edits; Runtime request state is a separate owner.
+The [public facade test](../tests/dom_authoring.rs) composes native HTML namespace
+construction, template edits and immutable old snapshots without an HTML parser.
+
+Runtime's present adapter publishes exact surface focus/hover selections through
+checked element-to-NodeId associations. Active state, pointer capture, input
+modality, full HTML/subwidget focus and broader event/retargeting behavior remain
+with the actual host/semantic owners under [#1124](https://github.com/bj-data-eng/surgeist/issues/1124)
+and feature contracts [#136](https://github.com/bj-data-eng/surgeist/issues/136) /
+[#382](https://github.com/bj-data-eng/surgeist/issues/382). DOM supplies canonical
+relations; Runtime owns delivery and input policy. Slot/flat capture work also
+remains under #1124; eligibility stays with CSS/style/layout and host policy
+under [#172](https://github.com/bj-data-eng/surgeist/issues/172). Complete immutable
+HTML installation remains [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
+Retirement of unused retained machinery does not complete those broader contracts.
 
 Source, tests, fixtures, and legal material stay with their owning crates.
 [NOTICE.md](../NOTICE.md) records attribution and source provenance. Issues and

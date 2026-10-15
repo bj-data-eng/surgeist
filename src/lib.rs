@@ -24,6 +24,9 @@ pub mod cssom {
 pub mod dialog {
     pub use surgeist_dialog::*;
 }
+pub mod dom {
+    pub use surgeist_dom::*;
+}
 pub mod html {
     pub use surgeist_html::*;
 }
@@ -38,9 +41,6 @@ pub mod layout {
 }
 pub mod render {
     pub use surgeist_render::*;
-}
-pub mod retained {
-    pub use surgeist_retained::*;
 }
 pub mod runtime {
     pub use surgeist_runtime::*;

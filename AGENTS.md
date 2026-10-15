@@ -92,7 +92,6 @@ implemented dependency graph and behavior.
 | `surgeist-html-semantics` | Qualified captures, construction-to-capture import, external facts and bounded intrinsic semantic queries |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
 | `surgeist-render` | Rendering contracts and backend-facing draw data |
-| `surgeist-retained` | Retained identity and state, tree identity, and stable handles |
 | `surgeist-runtime` | App orchestration, events/effects, lifecycle, invalidation, frame scheduling, and provenance |
 | `surgeist-shape` | Shape, geometry, and primitive path data |
 | `surgeist-task` | Task scheduling, cancellation, progress, admission, and executor-facing policy |
@@ -141,7 +140,7 @@ The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.
 
-`surgeist-dom` begins the canonical live tree owner with native XML Documents,
+`surgeist-dom` is the canonical live tree owner with native XML/HTML Documents,
 namespaced Elements, ordinary DocumentFragment, ShadowRoot, Text, Comment,
 ProcessingInstruction and DocumentType nodes. It provides ordered namespaced
 attributes, atomic edits, same-store adoption, immutable-capture import with fresh
@@ -151,10 +150,17 @@ retaining applicable nonce state independently from attributes. The native
 document environment is established independently of its XML class. Its crate
 guide records this bounded surface. Native shadow roots use the same canonical
 owner, with separate ordinary and hosted relations, shadow-inclusive adoption,
-clonable-root import and owned destruction. HTML document creation, remaining
-special family state/hooks, complete HTML installation, slot assignment and
-flat-tree captures remain contribution work;
-the existing retained facade is not replaced by this foundation.
+clonable-root import and owned destruction. `create_html_document` consumes an
+actual associated Document's origin and builds the complete native HTML skeleton,
+including the distinction between omitted and supplied-empty title. Source-aware
+Element creation and attribute lookup use the captured current node-document.
+The separate XML DOMImplementation creator, remaining special family state/hooks,
+complete immutable HTML installation, slot assignment and
+flat-tree captures remain contribution work. The facade exposes this same owner
+as `surgeist::dom`; the former `surgeist-retained` package and export are retired.
+Native HTML Canvas retains the actual none-context state and dimension hooks;
+native Marquee retains its closed initially-on/index-zero state and start/stop
+operations. Neither supplies rendering resources or animation scheduling.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
 HTML-semantics adapter builds qualified ordinary and shadow captures, retains
 checked bidirectional identity maps, and invokes producer queries with explicit
@@ -174,6 +180,17 @@ expressions, component validation and Rust generation, consuming the HTML and
 DOM contracts directly rather than duplicating their semantics. HTML parse results
 are immutable construction values, not a second live DOM. DOM retains generic
 name/string/tree invariants; HTML owns its language-specific interpretation.
+Template derives its closed known-name registry from shared HTML metadata and
+queues concrete authoring through ordinary DOM batches. Runtime supplies scheduling;
+caller-owned keyed materialization composes those same edits, as exercised by
+`crates/surgeist-runtime/tests/keyed_dom_materialization.rs`. Logical item keys
+and live NodeIds remain distinct. Unconsumed retained projection/event protocols
+have no replacement public facade. Runtime's exact surface focus/hover captures
+do not establish active/pointer-capture/modality processing or full HTML/subwidget
+focus. Those host/semantic contributions remain with #1124 and feature owners
+#136/#382; flat/slot and retargeting work remains source-qualified under #1124.
+Completed immutable HTML installation remains with #1135. Facade retirement does
+not establish completion of those broader contracts.
 The remaining downstream owners are planned: `surgeist-selectors` for matching
 and specificity, `surgeist-cascade` for precedence and rollback, and
 `surgeist-style` for rule collection, inheritance, substitution, computed values

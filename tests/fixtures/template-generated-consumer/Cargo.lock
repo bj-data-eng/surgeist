@@ -2227,12 +2227,12 @@ dependencies = [
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-dialog",
+ "surgeist-dom",
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-layout",
  "surgeist-render",
- "surgeist-retained",
  "surgeist-runtime",
  "surgeist-shape",
  "surgeist-task",
@@ -2322,10 +2322,6 @@ dependencies = [
  "vello_shaders",
  "wgpu",
 ]
-
-[[package]]
-name = "surgeist-retained"
-version = "0.1.0"
 
 [[package]]
 name = "surgeist-runtime"

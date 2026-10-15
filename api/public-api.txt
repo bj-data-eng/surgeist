@@ -15,6 +15,8 @@ pub mod surgeist::cssom
 pub use surgeist::cssom::<<surgeist_cssom::*>>
 pub mod surgeist::dialog
 pub use surgeist::dialog::<<surgeist_dialog::*>>
+pub mod surgeist::dom
+pub use surgeist::dom::<<surgeist_dom::*>>
 pub mod surgeist::html
 pub use surgeist::html::<<surgeist_html::*>>
 pub mod surgeist::html_parser
@@ -25,8 +27,6 @@ pub mod surgeist::layout
 pub use surgeist::layout::<<surgeist_layout::*>>
 pub mod surgeist::render
 pub use surgeist::render::<<surgeist_render::*>>
-pub mod surgeist::retained
-pub use surgeist::retained::<<surgeist_retained::*>>
 pub mod surgeist::runtime
 pub use surgeist::runtime::<<surgeist_runtime::*>>
 pub mod surgeist::shape

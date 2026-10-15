@@ -6,7 +6,10 @@ animation, layout, text, rendering, and host integration. One repository and
 Cargo workspace contain the `surgeist` facade, its domain crates, test support,
 and shared corpus-generation tooling.
 
-The facade directly reexports the production crates. CSSOM and HTML own direct
+The facade directly reexports the production crates. `surgeist::dom` exposes the
+canonical live tree, native construction, atomic edits and immutable snapshots.
+Template's HTML-backed registry and concrete authoring use that same owner;
+the former retained package/export is retired. CSSOM and HTML own direct
 adapters to their lower-level contracts. Complete root integration, application
 examples, and a native development harness remain planned.
 

@@ -20,10 +20,10 @@ The [API generator](../api/generator/Cargo.toml) and optional
 are separate Cargo workspaces. Crate manifests own their respective version,
 MSRV, dependencies, and features.
 
-The new [`surgeist-dom`](../crates/surgeist-dom/README.md) workspace member exposes
-its bounded canonical store directly. It depends on HTML for exact shared
-strings and is not yet a facade dependency; `retained` remains the existing
-facade module until replacement composition is implemented.
+[`surgeist-dom`](../crates/surgeist-dom/README.md) is the canonical tree dependency
+exposed directly as `surgeist::dom`. Native authoring and Template's concrete
+HTML adapter use its ordinary batch owner. Removal of `surgeist::retained` and
+the old package is a breaking public API change; no compatibility alias remains.
 
 ## Facade Modules
 
@@ -40,12 +40,12 @@ listed below through their public front doors. It also exposes
 | `css` | [surgeist-css](../crates/surgeist-css/src/lib.rs) |
 | `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
+| `dom` | [surgeist-dom](../crates/surgeist-dom/src/lib.rs) |
 | `html` | [surgeist-html](../crates/surgeist-html/src/lib.rs) |
 | `html_parser` | [surgeist-html-parser](../crates/surgeist-html-parser/src/lib.rs) |
 | `html_semantics` | [surgeist-html-semantics](../crates/surgeist-html-semantics/src/lib.rs) |
 | `layout` | [surgeist-layout](../crates/surgeist-layout/src/lib.rs) |
 | `render` | [surgeist-render](../crates/surgeist-render/src/lib.rs) |
-| `retained` | [surgeist-retained](../crates/surgeist-retained/src/lib.rs) |
 | `shape` | [surgeist-shape](../crates/surgeist-shape/src/lib.rs) |
 | `task` | [surgeist-task](../crates/surgeist-task/src/lib.rs) |
 | `template` | [surgeist-template](../crates/surgeist-template/src/lib.rs) |
@@ -123,10 +123,13 @@ Unqualified root Cargo commands select the facade by default; `--workspace`
 would explicitly expand selection to the workspace members in the root manifest. Broad workspace
 test runs and assumed all-feature combinations are not the verification policy.
 
-Root has one library identity test. The API generator has tests in its separate
+Root has one library identity test and public integration tests for
+[native/template DOM authoring and old snapshots](../tests/dom_authoring.rs) and
+[compiled generated Template Rust](../tests/template_generated_rust.rs).
+The API generator has tests in its separate
 workspace. Crate supplements locate their focused feature, platform, and test
 commands. Native GPU, platform, browser, and corpus checks require the matching
-environment and selection. Root integration tests, application examples and a
-`dev/` harness remain planned; the root-owned tools listed above already exist.
+environment and selection. Complete application integration, application examples
+and a `dev/` harness remain planned; the root-owned tools listed above already exist.
 
 The [HTML operations guide](reference/html-operations.md) records the shared value, parser and capture/query contracts across their direct owners.

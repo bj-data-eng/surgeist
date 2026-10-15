@@ -36,9 +36,14 @@ The upstream README describes html5lib tokenizer and tree-builder coverage, with
 
 Ordinary HTML recovery and admission failure must remain distinct. Recoverable authored errors can produce a tree and diagnostics; cancellation, exceeded limits or failed document conversion should return a typed failure and leave the active document unchanged. Silently truncating a tree or using panics as ordinary cancellation is not a suitable substitute.
 
-## Fit with the current document and template crates
+## Fit at the assessed document and template revision
 
-Retained already provides canonical topology, model-scoped IDs, revisions, transactional mutation rollback and selector change reports. These are useful foundations. Its current representation does not yet establish faithful arbitrary HTML import:
+This comparison describes the assessed `da5e670eb88f297fd1c9bd7293366ca469eea490`
+source, including the subsequently retired retained package. The
+[current architecture](explanation.md#one-repository-distinct-crate-boundaries)
+records canonical DOM ownership and direct Template integration.
+
+At that revision, retained provides canonical topology, model-scoped IDs, revisions, transactional mutation rollback and selector change reports. These are useful foundations. That representation does not yet establish faithful arbitrary HTML import:
 
 - `Kind` has no comment or doctype variant, while names and attributes lack namespace/local-name/prefix identity. Existing name validation rejects colon and non-ASCII characters.
 - Text/value validation rejects some control characters. Import needs to preserve the selected parser's actual post-recovery output domain rather than assume every value fits existing constructors.
@@ -46,9 +51,21 @@ Retained already provides canonical topology, model-scoped IDs, revisions, trans
 - Element/node records have no general source-origin contract. Template spans are frontend-local and generated construction currently does not forward them.
 - Separate class and raw-attribute storage needs a single derivation policy. Generic retained sibling facts must not be mistaken for CSS element-only sibling positions.
 
-These observations come from `crates/surgeist-retained/src/{element,string,model,snapshot,mutation}.rs` and `crates/surgeist-template/src/{ast,span,render}.rs` at the stated revision. They are integration requirements, not a claim that retained already promises a complete HTML DOM. #1074 already owns relevant document assessment; avoid duplicating that work.
+These observations come from the immutable
+[retained source](https://github.com/bj-data-eng/surgeist/tree/da5e670eb88f297fd1c9bd7293366ca469eea490/crates/surgeist-retained/src)
+(`element`, `string`, `model`, `snapshot`, `mutation`) and
+[template source](https://github.com/bj-data-eng/surgeist/tree/da5e670eb88f297fd1c9bd7293366ca469eea490/crates/surgeist-template/src)
+(`ast`, `span`, `render`). They are historical integration requirements, not a
+claim that retained promises a complete HTML DOM. #1074 owns relevant document
+assessment; avoid duplicating that work.
 
-The existing template parser has a strict custom grammar, matching closing tags, interpolation/control flow and registry-based validation. Preserve it as a distinct authoring frontend. Raw HTML passes through `surgeist-html-parser` and produces the immutable construction values owned by `surgeist-html`. The parser consumes qualified captures from `surgeist-html-semantics`; semantics owns the explicit construction-to-capture adapter. Consumers own their integrations directly. Canonical live document identity remains future DOM work.
+The assessed template parser has a strict custom grammar, matching closing tags,
+interpolation/control flow and registry-based validation. Preserve it as a
+distinct authoring frontend. Raw HTML passes through `surgeist-html-parser` and
+produces immutable construction values owned by `surgeist-html`; semantics owns
+the construction-to-capture adapter. Consumers own their integrations directly.
+Canonical live identity and subsequent adoption are described in the current
+architecture rather than supplied by this dated assessment.
 
 ## Alternative and acquisition options
 
