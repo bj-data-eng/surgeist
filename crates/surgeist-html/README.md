@@ -17,6 +17,14 @@ Parsing belongs to [surgeist-html-parser](../surgeist-html-parser/README.md);
 captured-tree queries belong to [surgeist-html-semantics](../surgeist-html-semantics/README.md).
 Consumers depend directly on the owner they use. No HTML result is a live DOM.
 
+`HtmlCanvasNoneState` describes a native canvas with no bound rendering context,
+an origin-clean transparent-black bitmap and exact attribute-derived dimensions.
+It moves already-parsed dimensions without allocating pixels; consumers own
+attribute lookup, admission and any later context installation. Bitmap dimensions
+follow the content-attribute rule rather than the unsigned-long IDL projection.
+`HtmlMarqueeState` owns the initially turned-on slot and its start/stop writes.
+These values establish neither rendering nor execution capability.
+
 Shared strings and attributes expose immutable allocation views. Controlled
 validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree

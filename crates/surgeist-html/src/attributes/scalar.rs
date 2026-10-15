@@ -132,7 +132,7 @@ struct NonnegativeRule {
 }
 
 macro_rules! nonnegative_rule {
-    ($name:ident, $attribute:ident, $element:ident, $row:literal, $anchor:literal, $default:literal, $positive:literal) => {
+    ($name:ident, $attribute:ident, $element:ident, $row:literal, $anchor:literal, $default:expr, $positive:literal) => {
         const $name: NonnegativeRule = NonnegativeRule {
             metadata: RuleMetadata {
                 attribute: KnownHtmlAttribute::$attribute,
@@ -154,7 +154,7 @@ nonnegative_rule!(
     Canvas,
     178,
     "attr-canvas-width",
-    300,
+    crate::canvas::CANVAS_DEFAULT_WIDTH,
     false
 );
 nonnegative_rule!(
@@ -163,7 +163,7 @@ nonnegative_rule!(
     Canvas,
     64,
     "attr-canvas-height",
-    150,
+    crate::canvas::CANVAS_DEFAULT_HEIGHT,
     false
 );
 nonnegative_rule!(

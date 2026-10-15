@@ -9,6 +9,7 @@
 mod attributes;
 /// Controlled operations over HTML-owned immutable values.
 pub mod bounded;
+mod canvas;
 mod color;
 mod construction;
 mod control_values;
@@ -21,6 +22,7 @@ mod fragment_initialization;
 mod input;
 mod integration_points;
 mod interpretation;
+mod marquee;
 mod media;
 mod native_initialization;
 mod nonce;
@@ -40,6 +42,7 @@ mod values;
 mod vocabulary;
 
 pub use attributes::*;
+pub use canvas::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState};
 pub use color::*;
 pub use construction::*;
 pub use control_values::*;
@@ -54,6 +57,7 @@ pub use fragment_initialization::{
 pub use input::*;
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
+pub use marquee::HtmlMarqueeState;
 pub use media::*;
 pub use native_initialization::{
     HtmlNativeClosedElementState, HtmlNativeClosedHtmlState, HtmlNativeCommonState,

@@ -1744,6 +1744,9 @@ pub fn surgeist_html::HtmlButtonType::into_attribute(self) -> surgeist_html::Att
 pub enum surgeist_html::HtmlButtonTypeState
 pub surgeist_html::HtmlButtonTypeState::Auto
 pub surgeist_html::HtmlButtonTypeState::Keyword(surgeist_html::HtmlButtonType)
+pub enum surgeist_html::HtmlCanvasBitmapDimension<'a>
+pub surgeist_html::HtmlCanvasBitmapDimension::Default(u128)
+pub surgeist_html::HtmlCanvasBitmapDimension::Parsed(&'a surgeist_html::HtmlNonNegativeInteger)
 pub enum surgeist_html::HtmlCapturedNonce
 pub surgeist_html::HtmlCapturedNonce::Unavailable
 pub surgeist_html::HtmlCapturedNonce::Value(surgeist_html::DocumentString)
@@ -3685,6 +3688,18 @@ impl core::cmp::PartialEq for surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlBuilderNode::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlBuilderNode::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_html::HtmlCanvasNoneState
+impl surgeist_html::HtmlCanvasNoneState
+pub const fn surgeist_html::HtmlCanvasNoneState::bitmap_is_transparent_black(&self) -> bool
+pub const fn surgeist_html::HtmlCanvasNoneState::context_is_none(&self) -> bool
+pub const fn surgeist_html::HtmlCanvasNoneState::fresh() -> Self
+pub fn surgeist_html::HtmlCanvasNoneState::from_parsed_attributes(width: core::option::Option<surgeist_html::HtmlNonNegativeInteger>, height: core::option::Option<surgeist_html::HtmlNonNegativeInteger>) -> Self
+pub const fn surgeist_html::HtmlCanvasNoneState::has_bound_context(&self) -> bool
+pub fn surgeist_html::HtmlCanvasNoneState::height(&self) -> surgeist_html::HtmlCanvasBitmapDimension<'_>
+pub fn surgeist_html::HtmlCanvasNoneState::height_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::HtmlNonNegativeInteger>)
+pub const fn surgeist_html::HtmlCanvasNoneState::origin_clean(&self) -> bool
+pub fn surgeist_html::HtmlCanvasNoneState::width(&self) -> surgeist_html::HtmlCanvasBitmapDimension<'_>
+pub fn surgeist_html::HtmlCanvasNoneState::width_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::HtmlNonNegativeInteger>)
 pub struct surgeist_html::HtmlCommaSeparatedTokens
 impl surgeist_html::HtmlCommaSeparatedTokens
 pub fn surgeist_html::HtmlCommaSeparatedTokens::as_document_string(&self) -> surgeist_html::DocumentString
@@ -4215,6 +4230,12 @@ pub fn surgeist_html::HtmlParsedLocalDateTime::from(value: surgeist_html::HtmlLo
 impl core::convert::TryFrom<surgeist_html::HtmlParsedLocalDateTime> for surgeist_html::HtmlLocalDateTime
 pub type surgeist_html::HtmlLocalDateTime::Error = surgeist_html::HtmlTemporalPrecisionError
 pub fn surgeist_html::HtmlLocalDateTime::try_from(value: surgeist_html::HtmlParsedLocalDateTime) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlMarqueeState
+impl surgeist_html::HtmlMarqueeState
+pub const fn surgeist_html::HtmlMarqueeState::fresh() -> Self
+pub fn surgeist_html::HtmlMarqueeState::start(&mut self)
+pub fn surgeist_html::HtmlMarqueeState::stop(&mut self)
+pub const fn surgeist_html::HtmlMarqueeState::turned_on(self) -> bool
 pub struct surgeist_html::HtmlMediaAttributeReport
 impl surgeist_html::HtmlMediaAttributeReport
 pub fn surgeist_html::HtmlMediaAttributeReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
