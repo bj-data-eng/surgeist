@@ -17,6 +17,7 @@ mod attributes;
 mod button;
 mod control;
 mod document;
+mod form;
 mod import;
 mod navigable;
 mod shadow;
@@ -396,6 +397,8 @@ pub(crate) struct Node {
     pub(crate) manual_slot: Option<NodeId>,
     pub(crate) assigned_slot: Option<NodeId>,
     pub(crate) button_targets: Option<crate::button::ButtonTargets<NodeId>>,
+    pub(crate) control_owner: Option<NodeId>,
+    pub(crate) form_past_names: Option<crate::form::FormPastNames<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -748,6 +751,8 @@ struct DraftNode {
     manual_slot: Option<Key>,
     assigned_slot: Option<Key>,
     button_targets: Option<crate::button::ButtonTargets<Key>>,
+    control_owner: Option<Key>,
+    form_past_names: Option<crate::form::FormPastNames<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -799,6 +804,12 @@ impl Draft {
                     assigned_nodes: map_keys(&node.assigned_nodes, cancelled)?,
                     manual_slot: node.manual_slot.map(|id| Key::Existing(id.slot)),
                     assigned_slot: node.assigned_slot.map(|id| Key::Existing(id.slot)),
+                    control_owner: node.control_owner.map(|id| Key::Existing(id.slot)),
+                    form_past_names: node
+                        .form_past_names
+                        .as_ref()
+                        .map(|map| form::map_names(map, |id| Key::Existing(id.slot), cancelled))
+                        .transpose()?,
                     button_targets: node
                         .button_targets
                         .map(|targets| targets.map(|id| Key::Existing(id.slot))),
@@ -908,6 +919,9 @@ impl Draft {
         let button_targets =
             matches!(&kind, DomNodeKind::Element(element) if element.button_state().is_some())
                 .then(crate::button::ButtonTargets::fresh);
+        let form_past_names =
+            matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some())
+                .then(crate::form::FormPastNames::fresh);
         self.created.push(Some(DraftNode {
             document,
             kind,
@@ -920,6 +934,8 @@ impl Draft {
             manual_slot: None,
             assigned_slot: None,
             button_targets,
+            control_owner: None,
+            form_past_names,
         }));
         self.nodes = nodes;
         self.units = units;
@@ -1129,6 +1145,8 @@ impl Draft {
                     pending.extend(node.shadow_root);
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
+                    self.units -= form::name_units(node.form_past_names.as_ref(), cancelled)?;
+                    self.retire_form_relations(key, cancelled)?;
                     self.slot_retirement(key, limits, cancelled)?;
                     self.retire_button_target(key, cancelled)?;
                 }
@@ -1288,6 +1306,12 @@ impl Draft {
                 manual_slot: source.manual_slot.map(id),
                 assigned_slot: source.assigned_slot.map(id),
                 button_targets: source.button_targets.map(|targets| targets.map(id)),
+                control_owner: source.control_owner.map(id),
+                form_past_names: source
+                    .form_past_names
+                    .as_ref()
+                    .map(|map| form::map_names(map, id, cancelled))
+                    .transpose()?,
             });
         }
         let finished = self.view_transitions.finish(dom.owner)?;
@@ -1405,7 +1429,9 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (&node.kind, &current.kind)
                     && (!before.same_nonattribute_state(after)
-                        || node.button_targets != current.button_targets)
+                        || node.button_targets != current.button_targets
+                        || node.control_owner != current.control_owner
+                        || node.form_past_names != current.form_past_names)
                 {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::ElementState(id));

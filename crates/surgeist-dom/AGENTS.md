@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Fieldset/Button families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -153,19 +153,25 @@ cargo clippy --offline --locked -j 1 -p surgeist-dom --all-targets -- -F unsafe-
 cargo fmt -p surgeist-dom -- --check
 ```
 
-Fieldset stores a real Option<NodeId> owner, native unset parser flag and exact
-custom-validity message. Consume the shared reset cursor using actual observations
+Fieldset and Button use one canonical NodeId/Key owner relation, native unset
+parser flag and exact custom-validity message. Checked per-family node views
+read owners; intrinsic scalar payloads do not duplicate identity. Consume the shared reset cursor using actual observations
 and precise attribute/tree/ID triggers; do not synthesize a Form, a permanently
-false lookup or empty positive-owner effects. Form admission must install its real
-past-name-map boundary before positive ownership becomes reachable. Ordinary form
+false lookup or empty positive-owner effects. Form retains shared native scalars and an actual identity-bearing past-name map.
+Owner changes clear all former aliases before subsequent lookup/reassociation,
+including A→null→A. Native public fronts admit no history entries; future growing
+admission needs a finite entry/reference quota. Count actual retained name units,
+preserve maps on whole adoption, fresh-initialize clone/import, and clear exact
+retired relations. Do not expose an arbitrary map setter or fake named lookup. Ordinary form
 lookup and shadow-including connectedness are separate. ID-bearing removing uses
 HTML877d1478–1485's post-removal non-Document-tree predicate, not old connectedness.
 Normalize custom messages with the shared unit-fed newline kernel, count retained
 normalized units independently, poll raw/output steps, and preserve atomicity and
 history. Clone/import starts fresh association/message; adoption preserves message
 and runs actual hooks. Native semantic capture and Slot supplementation rebuild
-actual established-current control facts with finite adapter and producer/join
-budgets, preserving other supplements. Keep disabledness/collections/Legend and
+actual established-current control facts and actual HTML/null-definition negative
+classifications with finite adapter and producer/join budgets, preserving other
+supplements. Close actual owners/map targets without guessing omitted relations. Keep disabledness/collections/Legend and
 candidacy in the semantic owner; message storage grants no validation UI/events.
 
 Button shares the private association/message/reset storage with Fieldset; retain

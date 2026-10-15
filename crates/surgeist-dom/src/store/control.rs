@@ -1,10 +1,10 @@
 //! Actual native control state, bounded reset observations and native mutation hooks.
 use super::*;
+use surgeist_html::KnownHtmlAttribute;
 use surgeist_html::bounded::{
     HtmlFormOwnerResetDecision as Decision, HtmlFormOwnerResetTrigger as Trigger,
     form_owner_reset_trigger,
 };
-use surgeist_html::{KnownHtmlAttribute, KnownHtmlElement};
 
 fn state(
     kind: &DomNodeKind,
@@ -16,14 +16,6 @@ fn state(
         DomNodeKind::Element(element) => element.native_control(),
         _ => None,
     }
-}
-fn form_requirement() -> DomError {
-    // Positive association also needs the Form-owned past-names-map effects.
-    // This boundary must be implemented before native Form admission, rather
-    // than silently accepting a found Form with an empty effects handler.
-    DomError::NativeInitializationRequired(
-        surgeist_html::HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Form),
-    )
 }
 impl Draft {
     fn control_mut(&mut self, key: Key) -> &mut crate::control::NativeControlState {
@@ -109,14 +101,7 @@ impl Draft {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Ok(false);
         };
-        Ok(element.common_state().html().is_some()
-            && element
-                .name()
-                .local_name()
-                .code_units()
-                .iter()
-                .copied()
-                .eq(KnownHtmlElement::Form.local_name().encode_utf16()))
+        Ok(element.form_state().is_some())
     }
     fn nearest_form(&self, key: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
         let mut next = self.node(key)?.parent;
@@ -160,8 +145,9 @@ impl Draft {
         use surgeist_html::bounded::{
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
-        let (current, kind) = state(&self.node(key)?.kind).expect("actual native control");
-        let owner = current.owner;
+        let (_, kind) = state(&self.node(key)?.kind).expect("actual native control");
+        let owner = self.node(key)?.control_owner;
+        let mut former_owner = None;
         let mut found = None;
         let mut cursor = HtmlFormOwnerResetCursor::new(kind.listed(), owner.is_some());
         loop {
@@ -176,15 +162,11 @@ impl Draft {
                         .is_some(),
                 ),
                 A::ReadCurrentOwnerIsNearestAncestor => {
-                    let owner =
-                        self.resolve(NodeOperand::Existing(owner.expect("cursor requires owner")))?;
+                    let owner = owner.expect("cursor requires owner");
                     R::CurrentOwnerIsNearestAncestor(self.nearest_form(key, cancel)? == Some(owner))
                 }
                 A::ClearOwner => {
-                    if owner.is_some() {
-                        return Err(form_requirement());
-                    }
-                    self.control_mut(key).owner = None;
+                    former_owner = self.node_mut(key).control_owner.take();
                     R::Applied
                 }
                 A::ReadConnectedness => R::Connected(self.control_connected(key, cancel)?),
@@ -196,14 +178,24 @@ impl Draft {
                     found = self.nearest_form(key, cancel)?;
                     R::FormFound(found.is_some())
                 }
-                // Exact HTML Form is not admitted by any native/clone/import
-                // constructor. Never turn a newly reachable positive branch
-                // into fabricated successful ownership or empty Form effects.
                 A::AssociateFoundOwner => {
-                    let _actual_candidate = found.expect("preceding lookup found an actual Form");
-                    return Err(form_requirement());
+                    let candidate = found.expect("preceding lookup found an actual Form");
+                    former_owner = self.node_mut(key).control_owner.replace(candidate);
+                    R::Applied
                 }
-                A::ApplyOwnerChangeEffects => return Err(form_requirement()),
+                A::ApplyOwnerChangeEffects => {
+                    if let Some(former) = former_owner.take() {
+                        self.remove_form_aliases(former, key, cancel)?;
+                    }
+                    // These two admitted native kinds have no radio-group
+                    // effect. New families must implement their actual effects.
+                    match kind {
+                        surgeist_html::HtmlNativeFormAssociationKind::Button
+                        | surgeist_html::HtmlNativeFormAssociationKind::Fieldset => {}
+                        _ => unreachable!("actual admitted native control kinds"),
+                    }
+                    R::Applied
+                }
                 A::Complete => return Ok(()),
             };
             cursor
@@ -224,12 +216,10 @@ impl Draft {
                 .control_attribute(key, KnownHtmlAttribute::Form, cancel)?
                 .is_some(),
             Decision::ResetIfOwnerInDifferentTree => {
-                let owner = state(&self.node(key)?.kind)
-                    .expect("native control")
-                    .0
-                    .owner
+                let owner = self
+                    .node(key)?
+                    .control_owner
                     .expect("trigger requires owner");
-                let owner = self.resolve(NodeOperand::Existing(owner))?;
                 crate::slot::root(self, key, cancel)? != crate::slot::root(self, owner, cancel)?
             }
         };
@@ -309,11 +299,11 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some((current, _)) = state(&self.node(key)?.kind) {
+        if state(&self.node(key)?.kind).is_some() {
             self.reset_control_for(
                 key,
                 Trigger::RemovingOrMoving {
-                    has_owner: current.owner.is_some(),
+                    has_owner: self.node(key)?.control_owner.is_some(),
                 },
                 cancel,
             )?;

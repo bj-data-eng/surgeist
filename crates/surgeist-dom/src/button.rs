@@ -2,7 +2,7 @@
 use crate::{DocumentString, DomNode, NodeId};
 use surgeist_html::{HtmlNativeFormAssociationKind, KnownHtmlAttribute};
 
-/// Stored native Button association and custom error, independently of markup.
+/// Stored native Button parser flag and custom error, independently of markup.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomButtonState {
     pub(crate) control: crate::control::NativeControlState,
@@ -15,9 +15,6 @@ impl DomButtonState {
     }
     pub fn kind(&self) -> HtmlNativeFormAssociationKind {
         HtmlNativeFormAssociationKind::Button
-    }
-    pub fn form_owner(&self) -> Option<NodeId> {
-        self.control.owner
     }
     pub fn parser_inserted(&self) -> bool {
         self.control.parser_inserted
@@ -34,6 +31,10 @@ pub struct DomButton<'a> {
 impl<'a> DomButton<'a> {
     pub fn id(self) -> NodeId {
         self.node.id()
+    }
+    /// Actual established relation at this captured revision.
+    pub fn form_owner(self) -> Option<NodeId> {
+        self.node.node.control_owner
     }
     pub fn state(self) -> &'a DomButtonState {
         self.node

@@ -94,6 +94,9 @@ impl DomElement {
             | Requirement::CommonHtml
             | Requirement::CommonSvg
             | Requirement::CommonMathml => NativeFamily::Common,
+            Requirement::KnownHtml(KnownHtmlElement::Form) => {
+                NativeFamily::Form(surgeist_html::HtmlFormNativeState::fresh())
+            }
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
                 NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
             }
@@ -142,6 +145,13 @@ impl DomElement {
             family,
             captured_in_view_transition: false,
         })
+    }
+    /// Actual native Form scalars, independent of identity-bearing relations.
+    pub fn form_state(&self) -> Option<surgeist_html::HtmlFormNativeState> {
+        match self.family {
+            NativeFamily::Form(state) => Some(state),
+            _ => None,
+        }
     }
     /// Actual stored Fieldset state, or inapplicability for another family.
     pub fn fieldset_state(&self) -> Option<&crate::DomFieldsetState> {

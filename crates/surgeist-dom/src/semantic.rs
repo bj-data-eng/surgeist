@@ -33,7 +33,9 @@ use crate::{
 /// including its context join. Each closure/mapping/staging vector and the reusable child scratch have at most
 /// `subjects` entries. Nullable reference facts have at most twice `subjects`
 /// entries (two per Button), with their validation independently bounded by
-/// `work`. Producer allocations obey the supplied HtmlCaptureLimits.
+/// `work`. Actual HTML/null-definition classifications also use subjects, with
+/// their context qualification/duplicate comparisons charged to adapter work.
+/// Producer allocations obey the supplied HtmlCaptureLimits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
@@ -415,6 +417,15 @@ impl DomSnapshot {
                     control.include(&mut planned, target, false)?;
                 }
             }
+            if let Some(owner) = node.node.control_owner {
+                control.include(&mut planned, owner, false)?;
+            }
+            if let Some(map) = &node.node.form_past_names {
+                for entry in map.entries.iter() {
+                    control.charge(1)?;
+                    control.include(&mut planned, entry.target, false)?;
+                }
+            }
             // Directionality consumes stored history, including references
             // outside this node-document. Preserve actual closure/ancestors.
             if let Some(slot) = node.as_slot() {
@@ -609,13 +620,13 @@ impl DomSnapshot {
             &capture,
             revision,
             control::with_native_state(
-                HtmlSemanticContextInput::new(Vec::new()),
+                control::native_input(self, &entries, &mut control)?,
                 self,
                 &capture,
                 &entries,
                 &mut control,
             )?,
-            0,
+            control.limits.subjects,
         )
         .map_err(DomHtmlCaptureError::Context)?;
         control.charge(1)?;

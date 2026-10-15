@@ -1,10 +1,44 @@
 //! Rebuild actual control facts from the retained canonical snapshot/map.
 use super::*;
 use surgeist_html_semantics::{
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlElementReferenceFact, HtmlElementReferenceFacts,
-    HtmlElementReferenceFactsLimits, HtmlElementReferenceKey, HtmlExplicitElementReference,
-    HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
+    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
+    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFormAssociation,
+    HtmlFormAssociationState,
 };
+
+/// Establish only actual HTML/Null-definition negatives. Neither a valid name
+/// nor an incomplete registry proves this classification.
+pub(super) fn native_input(
+    source: &DomSnapshot,
+    entries: &[Entry],
+    control: &mut Control<'_>,
+) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
+    let mut classifications = Vec::new();
+    for entry in entries {
+        control.charge(1)?;
+        if let Some(element) = source.node(entry.node)?.as_element()
+            && element.common_state().html().is_some()
+            && element.custom_element_definition() == crate::DomElementDefinition::Null
+        {
+            control.reserve(&mut classifications, 1)?;
+            // Context::new performs one element qualification and i previous
+            // duplicate comparisons for this record; admit that exact envelope
+            // before entering its non-cancelable bounded validation loop.
+            control.charge(
+                classifications
+                    .len()
+                    .checked_add(1)
+                    .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
+            )?;
+            classifications.push(HtmlCustomControlClassification::new(
+                entry.subject.clone(),
+                false,
+            ));
+        }
+    }
+    Ok(HtmlSemanticContextInput::new(classifications))
+}
 
 pub(super) fn with_native_state(
     input: HtmlSemanticContextInput,
@@ -17,13 +51,13 @@ pub(super) fn with_native_state(
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
-        let Some((state, _)) = node
+        let Some(_) = node
             .as_element()
             .and_then(crate::DomElement::native_control)
         else {
             continue;
         };
-        let owner = if let Some(owner) = state.owner {
+        let owner = if let Some(owner) = node.node.control_owner {
             let mut mapped = None;
             for candidate in entries {
                 control.charge(1)?;

@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Fieldset/Button families,
+and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -158,19 +158,35 @@ Semantic captures retain this state in their source snapshot; the semantic
 schema has no child-navigable field to synthesize.
 
 Native HTML Fieldset retains its actual form-owner relation, native unset parser
-flag and initially empty custom-validity message. `fieldset_state()` reads those
-stored values, including an `Option<NodeId>` owner that can represent later real
-Form admission. Exact form/ID attributes, associated subtree insertion/removal,
+flag and initially empty custom-validity message. `fieldset_state()` reads the
+intrinsic parser/message state; `DomNode::as_fieldset()` provides the checked
+`DomFieldset::form_owner()` relation at the captured revision. Exact form/ID attributes, associated subtree insertion/removal,
 fragment transfer, replacement and adoption drive HTML's shared form-owner reset
 cursor against the canonical staged tree. Ordinary form lookup does not cross a
 shadow host; connectedness uses the actual shadow-including root. First-ID lookup
 observes the first exact nonempty DOM ID, including a non-Form blocker. A present
 empty form attribute is distinct from absence. ID-bearing removal uses the actual
 post-removal non-Document-tree predicate, without an old-connected prerequisite.
-Current constructors cannot admit an actual HTML Form, so completed lookups have
-actual null results. Positive ownership requires Form's real state and past-name
-map effects before it can become reachable; there is no permanently-null owner
-API or fabricated successful association.
+Native HTML Form retains HTML's three fresh false scalar values and an actual
+past names map. `DomNode::as_form()` reads its scalars and retained exact-name
+aliases. Native creation/clone starts the map empty. The current public fronts
+cannot insert past-name history or perform named-property lookup; map cleanup
+handles actual retained aliases without treating the map as permanently empty.
+Every owner change removes all aliases for the control from its former Form at
+the intermediate owner state, before later lookup or reassociation. Thus even an
+A→null→A reset can change the Form map. Ordinary nearest-owner retention and
+unrelated name edits preserve aliases. Retained name units count independently
+of attributes; a future growing history front requires its own finite capacity.
+
+Form owners live once in the canonical Node/Draft relation, using real NodeIds
+and staged Keys respectively. Same-batch/private imported Forms resolve through
+the existing final allocation map. `DomButton::form_owner()` and
+`DomFieldset::form_owner()` read that relation; scalar state values carry no
+identity mirror. Native Form clone/import starts fresh scalars/map, while deep
+copied controls acquire their new actual Form. Adoption preserves retained state
+and runs actual split-tree resets. Explicit retirement clears surviving owners
+and aliases for exact retired identities without following generation reuse.
+Snapshots preserve the old relations/maps and ElementState covers their changes.
 
 `set_custom_validity` applies to native Fieldset and Button. It uses HTML's unit-fed
 CRLF/CR-to-LF rule before replacing the stored message, preserving every other
@@ -184,7 +200,13 @@ copied-attribute hooks; adoption preserves the message and runs actual removal
 and insertion/reset effects. The Fieldset payload allocates no control value,
 selection, cached disabledness or fake form object.
 
-Semantic capture publishes actual established-current Fieldset and Button associations.
+Semantic capture publishes actual established-current Fieldset and Button associations,
+closing actual Form owners and retained map targets. Both initial capture and
+Slot supplementation establish negative custom-control classifications only from
+actual HTML elements with an actual null definition. The finite subject budget
+bounds these records; adapter work admits their context validation and duplicate
+comparison envelope. No custom spelling or registry emptiness stands in for a
+definition fact.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
 candidacy remain HTML semantic queries over the current captured tree. Slot
 supplementation rebuilds actual control facts into that same context, preserving
@@ -203,7 +225,7 @@ adapter with its own public `button_state()` / `DomNode::as_button()` view.
 parser flag and custom message obey the same fresh clone/import and preserving
 adoption rules. Disabledness, Auto submit role, source form settings and constraint
 candidacy are current HTML semantic queries; no activation, submission or event
-execution is introduced, and Form/Select remain unadmitted native families.
+execution is introduced; Select remains an unadmitted native family.
 
 `set_command_for_element` and `set_popover_target_element` drive HTML's actual
 nullable Element setter cursor. The two weak slots are independent and initially

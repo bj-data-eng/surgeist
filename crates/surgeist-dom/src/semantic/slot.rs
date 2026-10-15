@@ -147,7 +147,7 @@ impl DomHtmlCapture {
             &self.capture,
             revision,
             super::control::with_native_state(
-                HtmlSemanticContextInput::new(Vec::new())
+                super::control::native_input(&self.source, &self.entries, &mut control)?
                     .with_language_direction(language)
                     .with_inert(flat_revision, Some(inert)),
                 &self.source,
@@ -155,7 +155,7 @@ impl DomHtmlCapture {
                 &self.entries,
                 &mut control,
             )?,
-            0,
+            control.limits.subjects,
         )
         .map_err(DomHtmlCaptureError::Context)?;
         control.charge(1)?;

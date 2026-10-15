@@ -1,10 +1,10 @@
 //! Native Fieldset state in the canonical owner, independent of current markup.
-use crate::{DocumentString, NodeId};
+use crate::{DocumentString, DomNode, NodeId};
 use surgeist_html::HtmlNativeFormAssociationKind;
 
-/// Actual native Fieldset association and custom-error state.
+/// Actual native Fieldset parser flag and custom-error state.
 ///
-/// This is stored state, not a fresh form-owner query or a complete validation
+/// Owner identity belongs to the checked node view. This is not a complete validation
 /// interface. Native clone/import initializes it afresh; adoption preserves it
 /// subject to the source removal/reset steps.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,14 +20,33 @@ impl DomFieldsetState {
     pub fn kind(&self) -> HtmlNativeFormAssociationKind {
         HtmlNativeFormAssociationKind::Fieldset
     }
-    pub fn form_owner(&self) -> Option<NodeId> {
-        self.control.owner
-    }
     pub fn parser_inserted(&self) -> bool {
         self.control.parser_inserted
     }
     /// The stored normalized custom error, independently of candidacy or UI.
     pub fn custom_validity_message(&self) -> &DocumentString {
         &self.control.message
+    }
+}
+
+/// Checked Fieldset view at one immutable canonical revision.
+#[derive(Clone, Copy, Debug)]
+pub struct DomFieldset<'a> {
+    pub(crate) node: DomNode<'a>,
+}
+impl<'a> DomFieldset<'a> {
+    pub fn id(self) -> NodeId {
+        self.node.id()
+    }
+    pub fn state(self) -> &'a DomFieldsetState {
+        self.node
+            .as_element()
+            .expect("checked Fieldset")
+            .fieldset_state()
+            .expect("checked Fieldset")
+    }
+    /// Actual established relation, independently of current content attributes.
+    pub fn form_owner(self) -> Option<NodeId> {
+        self.node.node.control_owner
     }
 }

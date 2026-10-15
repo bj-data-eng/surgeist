@@ -87,7 +87,7 @@ fn initial_button_has_independent_null_slots_and_actual_native_control_state() {
     let b = button(&s, n);
     assert_eq!(b.id(), n);
     assert_eq!(b.state().kind(), HtmlNativeFormAssociationKind::Button);
-    assert_eq!(b.state().form_owner(), None);
+    assert_eq!(b.form_owner(), None);
     assert!(!b.state().parser_inserted());
     assert_eq!(
         b.state().custom_validity_message(),

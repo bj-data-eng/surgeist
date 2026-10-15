@@ -91,6 +91,7 @@ mod control;
 mod document;
 mod element;
 mod fieldset;
+mod form;
 mod host;
 mod identity;
 mod names;
@@ -148,4 +149,5 @@ pub use view_transition::{
 };
 
 pub use button::{DomButton, DomButtonState};
-pub use fieldset::DomFieldsetState;
+pub use fieldset::{DomFieldset, DomFieldsetState};
+pub use form::DomForm;

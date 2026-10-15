@@ -131,6 +131,16 @@ pub struct DomNode<'a> {
     pub(crate) node: &'a Node,
 }
 impl<'a> DomNode<'a> {
+    pub fn as_form(self) -> Option<crate::DomForm<'a>> {
+        self.as_element()
+            .and_then(DomElement::form_state)
+            .map(|_| crate::DomForm { node: self })
+    }
+    pub fn as_fieldset(self) -> Option<crate::DomFieldset<'a>> {
+        self.as_element()
+            .and_then(DomElement::fieldset_state)
+            .map(|_| crate::DomFieldset { node: self })
+    }
     pub fn as_button(self) -> Option<crate::DomButton<'a>> {
         self.as_element()
             .and_then(DomElement::button_state)
