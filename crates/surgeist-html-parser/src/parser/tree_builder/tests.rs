@@ -18004,6 +18004,45 @@ fn ordinary_range_input_any_preserves_valid_spelling_and_grammatical_conversion_
 }
 
 #[test]
+fn ordinary_range_input_allowed_step_preserves_authored_signed_zero_without_replacement() {
+    // HTML877d36939-66 and 38839-43: grammatical -0 is within these bounds
+    // and already lies on the allowed-step lattice. No replacement is requested,
+    // so its authored spelling and content default remain unchanged.
+    ordinary_range_input_literal_matrix(&[
+        (
+            "type=range value=-0",
+            &[("type", "range"), ("value", "-0")],
+            "-0",
+            "-0",
+        ),
+        (
+            "type=range min=0 max=100 step=1 value=-0",
+            &[
+                ("type", "range"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "1"),
+                ("value", "-0"),
+            ],
+            "-0",
+            "-0",
+        ),
+        (
+            "value=-0 min=0 max=100 step=1 type=range",
+            &[
+                ("value", "-0"),
+                ("min", "0"),
+                ("max", "100"),
+                ("step", "1"),
+                ("type", "range"),
+            ],
+            "-0",
+            "-0",
+        ),
+    ]);
+}
+
+#[test]
 fn ordinary_range_input_exact_finite_lattice_and_creation_reset_use_final_constraints_in_both_orders()
  {
     // Selected #1134 exact-binary64 join: explicit min/base0, step0.1 and
