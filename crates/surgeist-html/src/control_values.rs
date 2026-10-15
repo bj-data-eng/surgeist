@@ -1,8 +1,39 @@
 //! Fixed intrinsic form-control state from HTML 877d6146487f.
 //!
-//! These values own Boolean slots and their local, allocation-free transitions.
+//! These values own fixed slots and local, allocation-free control decisions.
 //! They do not establish a captured subject, execute tree effects, normalize
 //! strings, move a selection, or dispatch events. Adapters retain those duties.
+
+use crate::HtmlInputValueComparison;
+
+/// Additional Input/textarea value-setter effects after generic value clamping.
+/// The caller executes the selected effect with actual value length and platform
+/// direction support; this decision does not itself move a cursor or selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTextControlValueSetterFinish {
+    NoAdditionalEffect,
+    SetEndCursorUnselectAndNoneDirection,
+}
+
+/// Textarea's additional value-setter effect from a completed API comparison.
+///
+/// Compare actual old/new API values after their newline normalization, not raw
+/// storage. After the generic relevant-value clamp, a changed API value always
+/// requests end cursor, unselection and none direction, including when a range
+/// survives clamping. Input's separate finish decision has additional conditions.
+///
+/// The [textarea setter](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-textarea-value)
+/// sets raw storage and dirty state independently. The caller owns those effects,
+/// normalization/comparison work, actual new API length and none-direction support.
+pub fn textarea_value_setter_finish(
+    comparison: HtmlInputValueComparison,
+) -> HtmlTextControlValueSetterFinish {
+    if comparison.is_equal() {
+        HtmlTextControlValueSetterFinish::NoAdditionalEffect
+    } else {
+        HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
+    }
+}
 
 /// The local raw-value action required by textarea child changes or reset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -224,7 +224,7 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
             comparison.result().unwrap(),
             HtmlInputSelection::cursor(0, HtmlInputSelectionDirection::Forward)
         ),
-        HtmlInputValueSetterFinish::NoAdditionalEffect
+        HtmlTextControlValueSetterFinish::NoAdditionalEffect
     );
 }
 

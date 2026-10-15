@@ -9,7 +9,7 @@
 //! selection/cursor and established empty-selection capability before continuing
 //! family effects. Reset/type cursors alone do not complete a live operation.
 
-use crate::{DocumentString, HtmlInputType};
+use crate::{DocumentString, HtmlInputType, HtmlTextControlValueSetterFinish};
 
 impl HtmlInputType {
     /// Whether this Input state uses its current value for auto directionality.
@@ -1095,22 +1095,17 @@ impl HtmlInputSelection {
         self
     }
 }
-/// Additional Value setter effect only; evaluate after actual generic clamping.
+/// Input's additional Value setter effect; evaluate after actual generic clamping.
 /// None-direction application still requires the adapter's real platform facts.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlInputValueSetterFinish {
-    NoAdditionalEffect,
-    SetEndCursorUnselectAndNoneDirection,
-}
 pub fn input_value_setter_finish(
     kind: HtmlInputType,
     comparison: HtmlInputValueComparison,
     post_clamp: HtmlInputSelection,
-) -> HtmlInputValueSetterFinish {
+) -> HtmlTextControlValueSetterFinish {
     if kind.is_selectable() && !comparison.is_equal() && post_clamp.cursor_position().is_some() {
-        HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
+        HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
     } else {
-        HtmlInputValueSetterFinish::NoAdditionalEffect
+        HtmlTextControlValueSetterFinish::NoAdditionalEffect
     }
 }
 

@@ -409,7 +409,9 @@ fn value_comparison_is_exact_and_has_no_hidden_full_scan() {
 fn native_setter_requires_different_value_and_actual_post_clamp_cursor() {
     use HtmlInputEmptySelectionSupport::{Supported, Unsupported};
     use HtmlInputSelectionDirection::Forward;
-    use HtmlInputValueSetterFinish::{NoAdditionalEffect, SetEndCursorUnselectAndNoneDirection};
+    use HtmlTextControlValueSetterFinish::{
+        NoAdditionalEffect, SetEndCursorUnselectAndNoneDirection,
+    };
     let different = compare(&[97, 98, 99, 100], &[119, 120, 121, 122]);
     assert_eq!(
         input_value_setter_finish(
@@ -490,7 +492,7 @@ fn native_sanitized_equal_value_still_sets_dirty_without_replacing_default_or_cu
             HtmlInputSelection::cursor(1, HtmlInputSelectionDirection::Forward)
                 .clamp(current.len(), HtmlInputEmptySelectionSupport::Supported)
         ),
-        HtmlInputValueSetterFinish::NoAdditionalEffect
+        HtmlTextControlValueSetterFinish::NoAdditionalEffect
     );
 }
 

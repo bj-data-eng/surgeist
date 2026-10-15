@@ -208,7 +208,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        use surgeist_html::{HtmlInputValueSetterFinish, HtmlInputValueSetterStart};
+        use surgeist_html::{HtmlInputValueSetterStart, HtmlTextControlValueSetterFinish};
         check_cancel(cancel)?;
         match self.input_state(key)?.flags.value_setter_begin() {
             HtmlInputValueSetterStart::SetContentValue => self.set_attribute(
@@ -243,7 +243,7 @@ impl Draft {
                     state.input_type(),
                     comparison.result().expect("completed comparison"),
                     state.selection,
-                ) == HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
+                ) == HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
                 {
                     let platform = self
                         .native_environment(self.node(key)?.document)?

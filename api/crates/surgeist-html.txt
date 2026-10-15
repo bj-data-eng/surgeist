@@ -2422,9 +2422,6 @@ pub enum surgeist_html::HtmlInputValueSanitization
 pub surgeist_html::HtmlInputValueSanitization::Color
 pub surgeist_html::HtmlInputValueSanitization::Range
 pub surgeist_html::HtmlInputValueSanitization::String(surgeist_html::HtmlInputSanitization)
-pub enum surgeist_html::HtmlInputValueSetterFinish
-pub surgeist_html::HtmlInputValueSetterFinish::NoAdditionalEffect
-pub surgeist_html::HtmlInputValueSetterFinish::SetEndCursorUnselectAndNoneDirection
 pub enum surgeist_html::HtmlInputValueSetterStart
 pub surgeist_html::HtmlInputValueSetterStart::SetContentValue
 pub surgeist_html::HtmlInputValueSetterStart::SetCurrentValue(surgeist_html::HtmlInputFlags)
@@ -3142,6 +3139,9 @@ pub surgeist_html::HtmlTemporalError::ZeroYear
 impl core::error::Error for surgeist_html::HtmlTemporalError
 impl core::fmt::Display for surgeist_html::HtmlTemporalError
 pub fn surgeist_html::HtmlTemporalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlTextControlValueSetterFinish
+pub surgeist_html::HtmlTextControlValueSetterFinish::NoAdditionalEffect
+pub surgeist_html::HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
 pub enum surgeist_html::HtmlTextareaRawValueAction
 pub surgeist_html::HtmlTextareaRawValueAction::Keep
 pub surgeist_html::HtmlTextareaRawValueAction::ReplaceWithChildText
@@ -5386,7 +5386,7 @@ pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_ht
 pub const fn surgeist_html::input_color_standard_failure_fallback() -> surgeist_html::HtmlLegacyColor
 pub const fn surgeist_html::input_color_value_source(dirty_value: bool) -> surgeist_html::HtmlInputColorValueSource
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
-pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
+pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlTextControlValueSetterFinish
 pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool
 pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
@@ -5394,3 +5394,4 @@ pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedN
 pub fn surgeist_html::reflected_element_attribute_change(reflected: surgeist_html::KnownHtmlAttribute, changed: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
 pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument
+pub fn surgeist_html::textarea_value_setter_finish(comparison: surgeist_html::HtmlInputValueComparison) -> surgeist_html::HtmlTextControlValueSetterFinish
