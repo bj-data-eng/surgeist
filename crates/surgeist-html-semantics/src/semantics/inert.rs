@@ -180,6 +180,20 @@ struct InertValidation {
     work: usize,
     limit: usize,
 }
+enum InertConnection {
+    Document(HtmlCaptureSubjectId),
+    Disconnected,
+    Unavailable,
+}
+impl InertConnection {
+    fn connected(&self) -> Option<bool> {
+        match self {
+            Self::Document(_) => Some(true),
+            Self::Disconnected => Some(false),
+            Self::Unavailable => None,
+        }
+    }
+}
 impl InertValidation {
     fn charge(&mut self, amount: usize) -> Result<(), HtmlInertFactError> {
         let required = self
@@ -221,12 +235,19 @@ impl InertValidation {
         capture: &HtmlCapture,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<Option<bool>, HtmlInertFactError> {
+        Ok(self.connection(capture, subject)?.connected())
+    }
+    fn connection(
+        &mut self,
+        capture: &HtmlCapture,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<InertConnection, HtmlInertFactError> {
         let mut current = subject.clone();
         loop {
             let node = self.node(capture, &current)?;
             self.charge(1)?;
             if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
-                return Ok(Some(true));
+                return Ok(InertConnection::Document(current));
             }
             if let HtmlCapturedNodeKind::Fragment(fragment) = node.kind() {
                 if matches!(fragment.kind(), HtmlCapturedFragmentKind::ShadowRoot(_)) {
@@ -236,17 +257,17 @@ impl InertValidation {
                             current = host.subject().clone();
                             continue;
                         }
-                        Some(HtmlCapturedHost::Absent) => return Ok(Some(false)),
-                        _ => return Ok(None),
+                        Some(HtmlCapturedHost::Absent) => return Ok(InertConnection::Disconnected),
+                        _ => return Ok(InertConnection::Unavailable),
                     }
                 }
-                return Ok(Some(false));
+                return Ok(InertConnection::Disconnected);
             }
             self.charge(1)?;
             match node.parent() {
                 HtmlCapturedParent::Subject(parent) => current = parent,
-                HtmlCapturedParent::Root => return Ok(Some(false)),
-                HtmlCapturedParent::Unavailable => return Ok(None),
+                HtmlCapturedParent::Root => return Ok(InertConnection::Disconnected),
+                HtmlCapturedParent::Unavailable => return Ok(InertConnection::Unavailable),
             }
         }
     }
@@ -278,6 +299,9 @@ impl HtmlInertFacts {
     /// Moves finite supplied capacities. Partial coverage is permitted and remains
     /// missing during queries. Validates known contradictions without computing
     /// flattening or requiring unavailable records to certify another producer.
+    /// Flat-parent consistency uses actual shadow-including connected documents,
+    /// independently of node-document ownership. Unknown ancestry is not a
+    /// document mismatch.
     pub fn new(
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
@@ -311,7 +335,8 @@ impl HtmlInertFacts {
                     return Err(HtmlInertFactError::DuplicateSubject(fact.subject.clone()));
                 }
             }
-            let established_connected = validation.connected(capture, &fact.subject)?;
+            let connection = validation.connection(capture, &fact.subject)?;
+            let established_connected = connection.connected();
             if let (Some(supplied), Some(established)) = (fact.connected, established_connected) {
                 validation.charge(1)?;
                 if supplied != established {
@@ -371,7 +396,14 @@ impl HtmlInertFacts {
                         return Err(HtmlInertFactError::InvalidFlatParent(parent.clone()));
                     }
                     validation.charge(1)?;
-                    if parent_node.node_document() != node.node_document() {
+                    let parent_connection = validation.connection(capture, parent)?;
+                    // Flat ancestry crosses actual shadow hosts. A retained
+                    // root may have a different node document from its host;
+                    // only known separate connected trees contradict this edge.
+                    if let (InertConnection::Document(child), InertConnection::Document(parent)) =
+                        (&connection, &parent_connection)
+                        && child != parent
+                    {
                         return Err(HtmlInertFactError::DocumentMismatch(fact.subject.clone()));
                     }
                     if fact.connected == Some(false) || established_connected == Some(false) {
@@ -379,7 +411,7 @@ impl HtmlInertFacts {
                             fact.subject.clone(),
                         ));
                     }
-                    if validation.connected(capture, parent)? == Some(false) {
+                    if parent_connection.connected() == Some(false) {
                         return Err(HtmlInertFactError::ContradictoryConnectedness(
                             parent.clone(),
                         ));

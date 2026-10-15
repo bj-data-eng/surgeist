@@ -611,6 +611,10 @@ fn duplicate_cycle_cross_document_and_disconnected_membership_are_rejected() {
         )
         .unwrap();
     let foreign_document = element(&mut b, &d2, "div", &[]);
+    // Different node documents alone cannot contradict supplied flat edges.
+    // These actual ordinary parents establish two separate connected trees.
+    b.establish_parent(&a, &d).unwrap();
+    b.establish_parent(&foreign_document, &d2).unwrap();
     let c = b.finish().unwrap();
     let make = |nodes| {
         HtmlInertFacts::new(
