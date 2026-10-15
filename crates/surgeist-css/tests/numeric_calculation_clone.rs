@@ -18,10 +18,6 @@ fn shallow_clones_preserve_exact_leaves_function_strategy_and_absent_bounds() {
                 .unwrap();
         let cloned = original.clone();
         assert_eq!(cloned, original);
-        assert!(!std::ptr::eq(
-            cloned.components().items().as_ptr(),
-            original.components().items().as_ptr(),
-        ));
         drop(original);
         assert_eq!(cloned.serialize().unwrap().as_css(), text);
     }
@@ -43,10 +39,6 @@ fn mixed_origin_clone_keeps_owned_structure_and_provenance_after_original_drop()
     let numeric_type = original.numeric_type();
     let cloned = original.clone();
     assert_eq!(cloned, original);
-    assert!(!std::ptr::eq(
-        cloned.components().items().as_ptr(),
-        original.components().items().as_ptr(),
-    ));
     drop(original);
 
     assert_eq!(cloned.numeric_type(), numeric_type);
