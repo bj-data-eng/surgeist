@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Slot/Fieldset/Button families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Fieldset/Button families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -59,7 +59,14 @@ steps and only when shadow-including connected. Exact src changes and removal
 consume the shared null-content decisions. Removal runs after detach, visits
 ordinary and owned shadow descendants and stays cancellable/atomic. Clone/import
 fresh-initializes Frame and applies actual copied attributes; adoption preserves
-the existing family value. No Window, child navigable ID or host capability is
+the existing family value. Iframe retains the fresh never-BC unprocessed/null-child
+tuple, including false lazy-navigation and null timing/resumption. Its src/srcdoc/
+sandbox hooks return on actual null content; loading uses HTML's shared semantic
+states and eager-transition decision, then actual null resumption. Share the
+canonical Frame/Iframe traversal while preserving their distinct load rules.
+Never infer numeric live sandbox policy from raw attributes or null content,
+or reset processed/imported history without an actual supported cause/state.
+Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
 Common closed focus/internals/click/reaction/popover values remain current state.

@@ -98,7 +98,9 @@ impl Draft {
             DomNodeKind::Element(element) => {
                 // Recreate actual common/family initialization from the name.
                 // Canvas dimensions follow copied attrs; Marquee starts on/0;
-                // Frame starts with actual null child-content.
+                // Frame starts with actual null child-content; Iframe with the
+                // actual fresh native unprocessed/null-child tuple. This genuine
+                // clone cause is not retained-state installation from current null.
                 // Snapshot Rust Clone is deliberately a different operation.
                 // Attribute change steps precede source nonce cloning below.
                 DomNodeKind::Element(element.clone_initialized(cancelled)?)

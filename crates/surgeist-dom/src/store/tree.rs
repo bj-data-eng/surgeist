@@ -10,7 +10,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         // Removal precedes the document test, including same-document adoption.
         // Admitted nonce/common/family state and manual intent survive adoption;
-        // removal runs actual stored-assignment effects. Frame null child-content
+        // removal runs actual stored-assignment effects. Native null child-content
         // is preserved: adoption does not create a new element or reset its family.
         self.remove(node, limits, cancelled)?;
         if self.node(node)?.document == document {
@@ -225,10 +225,10 @@ impl Draft {
             self.common_insertion_steps(child, cancelled, &mut || check_cancel(cancelled))?;
         }
         // Post-connection follows all actual Slot/common insertion steps, including
-        // all transferred fragment children. Each Frame checks current
+        // all transferred fragment children. Each navigable container checks current
         // shadow-including connectedness and its actual node document.
         for child in moving {
-            self.frame_post_connection_steps(child, &mut || check_cancel(cancelled))?;
+            self.navigable_post_connection_steps(child, &mut || check_cancel(cancelled))?;
         }
         Ok(())
     }
@@ -250,7 +250,7 @@ impl Draft {
                 reserve(&mut pending, 1)?;
                 pending.push(root);
             }
-            self.frame_removing_node(key, &mut || check_cancel(cancel))?;
+            self.navigable_removing_node(key, &mut || check_cancel(cancel))?;
             self.control_removing_node(key, cancel)?;
         }
         Ok(())

@@ -151,7 +151,7 @@ impl Draft {
             attributes.push(replacement);
         }
         let attributes = publish_attributes(attributes, cancelled)?;
-        staged.apply_attributes(attributes, &changed, cancelled)?;
+        staged.apply_attributes(attributes, &changed, false, cancelled)?;
         if let Some(nonce) = nonce {
             staged.set_nonce(nonce);
         }
@@ -198,7 +198,7 @@ impl Draft {
         let mut attributes = copy(element.attributes().as_slice())?;
         attributes.remove(position);
         let attributes = publish_attributes(attributes, cancelled)?;
-        staged.apply_attributes(attributes, &changed, cancelled)?;
+        staged.apply_attributes(attributes, &changed, true, cancelled)?;
         if let Some(nonce) = nonce {
             staged.set_nonce(nonce);
         }

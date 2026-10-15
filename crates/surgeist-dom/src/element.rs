@@ -5,8 +5,8 @@ use crate::{
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
-    HtmlCanvasNoneState, HtmlFrameNullContent, HtmlMarqueeState, HtmlNativeCommonState,
-    HtmlNativeInitializationRequirement as Requirement, KnownHtmlElement,
+    HtmlCanvasNoneState, HtmlFrameNullContent, HtmlIframeNativeState, HtmlMarqueeState,
+    HtmlNativeCommonState, HtmlNativeInitializationRequirement as Requirement, KnownHtmlElement,
 };
 mod family;
 use family::NativeFamily;
@@ -96,6 +96,12 @@ impl DomElement {
             | Requirement::CommonMathml => NativeFamily::Common,
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
                 NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Iframe) => {
+                // Every admitted target Document has the actual native never-BC
+                // environment. This is fresh element creation, not reconstruction
+                // from current null content or missing imported metadata.
+                NativeFamily::Iframe(HtmlIframeNativeState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Slot) => {
                 let Some(surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments) =
@@ -204,6 +210,14 @@ impl DomElement {
             _ => None,
         }
     }
+    /// Actual stored native unprocessed/null-child Iframe state. Other families
+    /// are inapplicable; no numeric sandbox policy or missing state is inferred.
+    pub fn iframe_native_state(&self) -> Option<HtmlIframeNativeState> {
+        match self.family {
+            NativeFamily::Iframe(state) => Some(state),
+            _ => None,
+        }
+    }
     pub(crate) fn set_marquee_running(&mut self, running: bool) -> Result<(), DomError> {
         let NativeFamily::Marquee(state) = &mut self.family else {
             return Err(DomError::MarqueeInapplicable);
@@ -273,13 +287,17 @@ impl DomElement {
         &mut self,
         attributes: OrderedAttributes,
         changed: &QualifiedName,
+        removed: bool,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.family = self
-            .family
-            .after_attribute(changed, attributes.as_slice(), &mut || {
-                crate::store::check_cancel(cancelled)
-            })?;
+        self.family = self.family.after_attribute(
+            &self.name,
+            changed,
+            self.attributes.as_slice(),
+            attributes.as_slice(),
+            removed,
+            &mut || crate::store::check_cancel(cancelled),
+        )?;
         self.attributes = attributes;
         Ok(())
     }

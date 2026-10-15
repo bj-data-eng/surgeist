@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Slot/Fieldset/Button families,
+and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Fieldset/Button families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -137,7 +137,25 @@ Removal visits the actual ordinary and owned shadow subtree after detachment.
 Clone/import creates fresh null family state and copies actual attributes;
 adoption preserves state and IDs while changing the real node document. Frame
 owns no additional strings and fabricates no Window, child identity or host
-capability. Iframe and other resource families still require their own adapters.
+capability.
+
+Native HTML Iframe retains HTML's actual fresh never-browsing-context,
+unprocessed/null-child state, read through `iframe_native_state()`. Its lazy
+navigation flag is false; pending timing fields and lazy-load resumption are
+null. It potentially delays load but has no actual child load delay. Frame and
+Iframe share the canonical connected-subtree and removing hooks, with each
+family consuming its own HTML decision. The actual current node document's
+absent browsing context returns before sandbox parsing and child creation.
+Exact src/srcdoc/sandbox changes preserve the null-child phase; loading changes
+consume the shared language interpreter and eager-transition guard before the
+actual null resumption returns. Raw sandbox absence, empty content and tokens
+remain distinct attributes, not a numeric live sandbox policy. This admits no
+navigation, resource handle, active policy or context-creation transition.
+Clone/import-as-clone genuinely creates a fresh element and applies copied
+attributes; adoption and immutable copying preserve existing family state.
+Current null content alone never justifies resetting processed retained history.
+Semantic captures retain this state in their source snapshot; the semantic
+schema has no child-navigable field to synthesize.
 
 Native HTML Fieldset retains its actual form-owner relation, native unset parser
 flag and initially empty custom-validity message. `fieldset_state()` reads those
@@ -231,8 +249,8 @@ a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include other native form/control relations and values, template hosted
-contents/inert documents, HTML/SVG script state and preparation, iframe
-navigables, link/style associations, details/dialog state, and resource/media
+contents/inert documents, HTML/SVG script state and preparation, resource-capable
+iframe navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
 
