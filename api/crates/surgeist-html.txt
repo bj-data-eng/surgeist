@@ -4406,6 +4406,10 @@ pub struct surgeist_html::HtmlNegativeIntegerError
 impl core::error::Error for surgeist_html::HtmlNegativeIntegerError
 impl core::fmt::Display for surgeist_html::HtmlNegativeIntegerError
 pub fn surgeist_html::HtmlNegativeIntegerError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlNewlineNormalizer
+impl surgeist_html::HtmlNewlineNormalizer
+pub const fn surgeist_html::HtmlNewlineNormalizer::new() -> Self
+pub fn surgeist_html::HtmlNewlineNormalizer::push(&mut self, unit: u16) -> core::option::Option<u16>
 pub struct surgeist_html::HtmlNode<'a>
 impl<'a> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a

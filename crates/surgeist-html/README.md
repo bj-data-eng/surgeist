@@ -34,6 +34,11 @@ that relationship remains null. `frame_post_connection` preserves the exact
 browsing-context guard, including an unavailable fact; the consuming live owner
 retains child identity, navigation capability and all three mutation hooks.
 
+`HtmlNewlineNormalizer` applies Infra's CR LF/CR normalization one raw UTF-16
+unit at a time, preserving all other units. Keep its state across chunks of one
+string; a trailing CR emits LF immediately and needs no finish step. Consumers
+own per-unit admission, cancellation and output storage.
+
 Shared strings and attributes expose immutable allocation views. Controlled
 validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree

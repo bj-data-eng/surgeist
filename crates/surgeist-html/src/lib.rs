@@ -26,6 +26,7 @@ mod interpretation;
 mod marquee;
 mod media;
 mod native_initialization;
+mod newlines;
 mod nonce;
 mod numeric;
 mod pi_pseudo_attributes;
@@ -67,6 +68,7 @@ pub use native_initialization::{
     HtmlNativeFreshNonce, HtmlNativeFreshSlot, HtmlNativeInitialization,
     HtmlNativeInitializationRequirement,
 };
+pub use newlines::HtmlNewlineNormalizer;
 pub use nonce::{
     HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
     HtmlNonceAttributeEffect, HtmlNonceConnection, HtmlNonceDocumentEnvironment,
