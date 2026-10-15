@@ -311,6 +311,107 @@ fn actual_shadow_root_imports_properties_and_rejects_conflicting_absence() {
         HtmlCapturedRegistry::Unavailable
     );
 }
+
+#[test]
+fn hosted_shadow_import_preserves_its_evidenced_document_independently_of_host() {
+    let mut native = HtmlFragment::builder(construction_limits()).unwrap();
+    let root = native.root();
+    let host = native
+        .append_element(&root, name("div"), OrderedAttributes::default())
+        .unwrap();
+    let shadow = native
+        .attach_declarative_shadow(&host, properties())
+        .unwrap();
+    native.append_text(&shadow, "shadow").unwrap();
+    native.append_text(&host, "light").unwrap();
+    let source = native.finish();
+    let host = source.root().children().next().unwrap();
+    let shadow = source
+        .node(&host)
+        .unwrap()
+        .declarative_shadow_root()
+        .unwrap()
+        .contents()
+        .clone();
+    let shadow_text = source.node(&shadow).unwrap().children().next().unwrap();
+    let light = source.node(&host).unwrap().children().next().unwrap();
+    let source = HtmlConstructionResult::Fragment(source);
+    let (mut builder, revision) = new_builder();
+    let host_document = external_document(&mut builder);
+    let root_document = external_document(&mut builder);
+    let observed = facts(
+        &source,
+        revision.clone(),
+        HtmlConstructionCaptureDocument::Existing(host_document.clone()),
+    );
+    // DOM's internal replace/adopt path changes the root's node document while
+    // retaining its host association. Each node's actual document is supplied
+    // independently; ordinary shadow children still share their parent's one.
+    let facts = HtmlConstructionCaptureFacts::new(
+        revision,
+        observed
+            .nodes()
+            .iter()
+            .map(|entry| {
+                let document = if entry.node() == &shadow || entry.node() == &shadow_text {
+                    HtmlConstructionCaptureDocument::Existing(root_document.clone())
+                } else {
+                    entry.document().clone()
+                };
+                HtmlConstructionCaptureNodeFacts::new(
+                    entry.node().clone(),
+                    document,
+                    entry.document_facts().cloned(),
+                    entry.element_facts().cloned(),
+                    entry.shadow_facts().cloned(),
+                )
+            })
+            .collect(),
+    );
+    let result = import(
+        builder,
+        source,
+        facts,
+        adapter_limits(),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap_or_else(|failure| panic!("two-document shadow import: {:?}", failure.reason()))
+    .finish()
+    .unwrap();
+    let capture = result.capture();
+    let host_document = capture.subject_id(&host_document).unwrap();
+    let root_document = capture.subject_id(&root_document).unwrap();
+    assert_eq!(
+        node(&result, &host).node_document().subject(),
+        &host_document
+    );
+    assert_eq!(
+        node(&result, &light).node_document().subject(),
+        &host_document
+    );
+    assert_eq!(
+        node(&result, &shadow).node_document().subject(),
+        &root_document
+    );
+    assert_eq!(
+        node(&result, &shadow_text).node_document().subject(),
+        &root_document
+    );
+    let host_id = capture.element_id(&node(&result, &host).id()).unwrap();
+    assert_eq!(
+        node(&result, &shadow).host(),
+        Some(HtmlCapturedHost::Element(host_id))
+    );
+    assert!(matches!(
+        node(&result, &host).shadow_root(),
+        Some(HtmlCapturedShadowRoot::Present(root)) if root.subject() == &node(&result, &shadow).id()
+    ));
+    assert_eq!(
+        children(node(&result, &shadow)),
+        [node(&result, &shadow_text).id()]
+    );
+    assert_eq!(children(node(&result, &host)), [node(&result, &light).id()]);
+}
 #[test]
 fn selected_template_fragment_imports_only_its_owner_and_leaves_unrelated_relations_unknown() {
     let mut native =
