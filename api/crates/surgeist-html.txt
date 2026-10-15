@@ -2042,6 +2042,10 @@ pub surgeist_html::HtmlFragmentTokenizerState::Plaintext
 pub surgeist_html::HtmlFragmentTokenizerState::Rawtext
 pub surgeist_html::HtmlFragmentTokenizerState::Rcdata
 pub surgeist_html::HtmlFragmentTokenizerState::ScriptData
+pub enum surgeist_html::HtmlFramePostConnectionDecision
+pub surgeist_html::HtmlFramePostConnectionDecision::Continue
+pub surgeist_html::HtmlFramePostConnectionDecision::NeedsBrowsingContext
+pub surgeist_html::HtmlFramePostConnectionDecision::Return
 pub enum surgeist_html::HtmlHashNameAuthorForm
 pub surgeist_html::HtmlHashNameAuthorForm::LeadingHashName
 pub surgeist_html::HtmlHashNameAuthorForm::Missing
@@ -3909,6 +3913,16 @@ pub fn surgeist_html::HtmlFragmentBuilder::finish(self) -> surgeist_html::HtmlFr
 pub fn surgeist_html::HtmlFragmentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlFragmentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::HtmlFrameNullContent
+impl surgeist_html::HtmlFrameNullContent
+pub const fn surgeist_html::HtmlFrameNullContent::content_document_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::content_navigable_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::content_window_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::delays_load(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::fresh() -> Self
+pub const fn surgeist_html::HtmlFrameNullContent::potentially_delays_load(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::removal_requires_child_destruction(&self) -> bool
+pub const fn surgeist_html::HtmlFrameNullContent::src_change_requires_processing(&self) -> bool
 pub struct surgeist_html::HtmlGlobalDateTime
 impl surgeist_html::HtmlGlobalDateTime
 pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime
@@ -5203,6 +5217,7 @@ pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namesp
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
 pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
+pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlInputValueSetterFinish
 pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool

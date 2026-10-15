@@ -28,6 +28,12 @@ domain exposes no rendering-layer increment or general animation counter;
 copying a stopped value preserves its state, while fresh creation is on/index0.
 These values establish neither rendering nor execution capability.
 
+`HtmlFrameNullContent` represents the actual initially null child-content
+relationship. Its src/removal and actual load-delay decisions apply only while
+that relationship remains null. `frame_post_connection` preserves the exact
+browsing-context guard, including an unavailable fact; the consuming live owner
+retains child identity, navigation capability and all three mutation hooks.
+
 Shared strings and attributes expose immutable allocation views. Controlled
 validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree

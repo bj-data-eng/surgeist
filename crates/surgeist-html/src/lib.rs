@@ -19,6 +19,7 @@ mod details_rules;
 mod form_association;
 mod form_owner;
 mod fragment_initialization;
+mod frame;
 mod input;
 mod integration_points;
 mod interpretation;
@@ -54,6 +55,7 @@ pub use fragment_initialization::{
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
     fragment_insertion_mode, fragment_tokenizer_state,
 };
+pub use frame::{HtmlFrameNullContent, HtmlFramePostConnectionDecision, frame_post_connection};
 pub use input::*;
 pub use integration_points::{is_html_integration_point, is_mathml_text_integration_point};
 pub use interpretation::*;
