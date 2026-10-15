@@ -33,6 +33,16 @@ pub use crate::values::bounded::{
 
 pub use crate::construction::bounded::*;
 
+pub use crate::form_owner::{
+    HtmlFormOwnerLookup, HtmlFormOwnerResetAction, HtmlFormOwnerResetCursor,
+    HtmlFormOwnerResetCursorError, HtmlFormOwnerResetReply, form_owner_lookup,
+};
+
+pub use crate::script_preparation::{
+    HtmlScriptPreparationAction, HtmlScriptPreparationCursor, HtmlScriptPreparationError,
+    HtmlScriptPreparationReply, HtmlScriptPreparationResult,
+};
+
 pub use crate::select::{
     HtmlOptionDisabledAncestor, HtmlOptionSelectAncestorAction, HtmlOptionSelectAncestors,
     HtmlSelectAction, HtmlSelectCursor, HtmlSelectCursorError, HtmlSelectFirstSelectedAction,

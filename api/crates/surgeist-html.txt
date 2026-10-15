@@ -283,6 +283,31 @@ pub surgeist_html::bounded::HtmlCustomNameScanAction::Header
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedHeader
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedPair
 pub surgeist_html::bounded::HtmlCustomNameScanAction::Unit
+pub enum surgeist_html::bounded::HtmlFormOwnerLookup
+pub surgeist_html::bounded::HtmlFormOwnerLookup::FirstId
+pub surgeist_html::bounded::HtmlFormOwnerLookup::NearestAncestor
+pub enum surgeist_html::bounded::HtmlFormOwnerResetAction
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ApplyOwnerChangeEffects
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::AssociateFoundOwner
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ClearOwner
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ClearParserInserted
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::Complete
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::FindFirstIdMatch
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::FindNearestAncestor
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadConnectedness
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadCurrentOwnerIsNearestAncestor
+pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadFormAttributePresence
+pub enum surgeist_html::bounded::HtmlFormOwnerResetCursorError
+pub surgeist_html::bounded::HtmlFormOwnerResetCursorError::Reply
+impl core::error::Error for surgeist_html::bounded::HtmlFormOwnerResetCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlFormOwnerResetCursorError
+pub fn surgeist_html::bounded::HtmlFormOwnerResetCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlFormOwnerResetReply
+pub surgeist_html::bounded::HtmlFormOwnerResetReply::Applied
+pub surgeist_html::bounded::HtmlFormOwnerResetReply::Connected(bool)
+pub surgeist_html::bounded::HtmlFormOwnerResetReply::CurrentOwnerIsNearestAncestor(bool)
+pub surgeist_html::bounded::HtmlFormOwnerResetReply::FormAttributePresent(bool)
+pub surgeist_html::bounded::HtmlFormOwnerResetReply::FormFound(bool)
 pub enum surgeist_html::bounded::HtmlFragmentNameTest<'a>
 pub surgeist_html::bounded::HtmlFragmentNameTest::HtmlNamespace
 pub surgeist_html::bounded::HtmlFragmentNameTest::Local(&'a [&'static str])
@@ -397,6 +422,49 @@ pub surgeist_html::bounded::HtmlRelRefinement::Extension(surgeist_html::HtmlRelE
 pub surgeist_html::bounded::HtmlRelRefinement::NoEffect
 pub surgeist_html::bounded::HtmlRelRefinement::Standard(surgeist_html::HtmlRelKeyword)
 pub surgeist_html::bounded::HtmlRelRefinement::Unavailable
+pub enum surgeist_html::bounded::HtmlScriptPreparationAction
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ClassifyType
+pub surgeist_html::bounded::HtmlScriptPreparationAction::CompareDocuments
+pub surgeist_html::bounded::HtmlScriptPreparationAction::Complete(surgeist_html::bounded::HtmlScriptPreparationResult)
+pub surgeist_html::bounded::HtmlScriptPreparationAction::MarkAlreadyStarted
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ReadAlreadyStarted
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ReadAsyncPresence
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ReadChildTextEmpty
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ReadConnected
+pub surgeist_html::bounded::HtmlScriptPreparationAction::ReadSrcPresence
+pub surgeist_html::bounded::HtmlScriptPreparationAction::RequireDisabledScripting
+pub surgeist_html::bounded::HtmlScriptPreparationAction::RestoreParserDocument
+pub surgeist_html::bounded::HtmlScriptPreparationAction::SaveAndClearParserDocument
+pub surgeist_html::bounded::HtmlScriptPreparationAction::SetForceAsync
+pub surgeist_html::bounded::HtmlScriptPreparationAction::StorePreparationDocument
+pub surgeist_html::bounded::HtmlScriptPreparationAction::StoreType(surgeist_html::HtmlScriptKind)
+pub enum surgeist_html::bounded::HtmlScriptPreparationError
+pub surgeist_html::bounded::HtmlScriptPreparationError::EvidenceUnavailable
+pub surgeist_html::bounded::HtmlScriptPreparationError::ReplyMismatch
+pub surgeist_html::bounded::HtmlScriptPreparationError::ScriptingEnabled
+impl core::error::Error for surgeist_html::bounded::HtmlScriptPreparationError
+impl core::fmt::Display for surgeist_html::bounded::HtmlScriptPreparationError
+pub fn surgeist_html::bounded::HtmlScriptPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::HtmlScriptPreparationReply
+pub surgeist_html::bounded::HtmlScriptPreparationReply::AlreadyStarted(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Applied
+pub surgeist_html::bounded::HtmlScriptPreparationReply::AsyncPresent(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::ChildTextEmpty(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Classified(core::option::Option<surgeist_html::HtmlScriptKind>)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Connected(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Disabled
+pub surgeist_html::bounded::HtmlScriptPreparationReply::DocumentsEqual(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Enabled
+pub surgeist_html::bounded::HtmlScriptPreparationReply::ParserDocumentSaved(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::SrcPresent(bool)
+pub surgeist_html::bounded::HtmlScriptPreparationReply::Unavailable
+pub enum surgeist_html::bounded::HtmlScriptPreparationResult
+pub surgeist_html::bounded::HtmlScriptPreparationResult::AlreadyStarted
+pub surgeist_html::bounded::HtmlScriptPreparationResult::Disabled(surgeist_html::HtmlScriptKind)
+pub surgeist_html::bounded::HtmlScriptPreparationResult::Disconnected
+pub surgeist_html::bounded::HtmlScriptPreparationResult::Empty
+pub surgeist_html::bounded::HtmlScriptPreparationResult::ParserDocumentMismatch
+pub surgeist_html::bounded::HtmlScriptPreparationResult::UnrecognizedType
 pub enum surgeist_html::bounded::HtmlScriptTypeWork
 pub surgeist_html::bounded::HtmlScriptTypeWork::InspectByte(u64)
 pub surgeist_html::bounded::HtmlScriptTypeWork::RecordVisit(u64)
@@ -943,6 +1011,11 @@ pub surgeist_html::bounded::HtmlConstructionTextAppendWork::provider_calls: usiz
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_visits: usize
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_writes: usize
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::relocation_bound_bytes: usize
+pub struct surgeist_html::bounded::HtmlFormOwnerResetCursor
+impl surgeist_html::bounded::HtmlFormOwnerResetCursor
+pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::action(&self) -> surgeist_html::bounded::HtmlFormOwnerResetAction
+pub const fn surgeist_html::bounded::HtmlFormOwnerResetCursor::new(listed: bool, has_current_owner: bool) -> Self
+pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlFormOwnerResetReply) -> core::result::Result<(), surgeist_html::bounded::HtmlFormOwnerResetCursorError>
 pub struct surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 impl<'raw> surgeist_html::bounded::HtmlMediaFieldMatch<'raw>
 pub fn surgeist_html::bounded::HtmlMediaFieldMatch<'raw>::attribute(&self) -> &'raw surgeist_html::Attribute
@@ -1022,6 +1095,13 @@ pub fn surgeist_html::bounded::HtmlRelReservation<'_>::is_empty(&self) -> bool
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::len(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::record_size(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::try_reserve(&mut self) -> core::result::Result<(), surgeist_html::bounded::HtmlRelInterpretationError>
+pub struct surgeist_html::bounded::HtmlScriptPreparationCursor
+impl surgeist_html::bounded::HtmlScriptPreparationCursor
+pub fn surgeist_html::bounded::HtmlScriptPreparationCursor::action(&self) -> surgeist_html::bounded::HtmlScriptPreparationAction
+pub fn surgeist_html::bounded::HtmlScriptPreparationCursor::new() -> Self
+pub fn surgeist_html::bounded::HtmlScriptPreparationCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlScriptPreparationReply) -> core::result::Result<(), surgeist_html::bounded::HtmlScriptPreparationError>
+impl core::default::Default for surgeist_html::bounded::HtmlScriptPreparationCursor
+pub fn surgeist_html::bounded::HtmlScriptPreparationCursor::default() -> Self
 pub struct surgeist_html::bounded::HtmlScriptTypeCursor<'a>
 impl<'a> surgeist_html::bounded::HtmlScriptTypeCursor<'a>
 pub fn surgeist_html::bounded::HtmlScriptTypeCursor<'a>::advance(&mut self)
@@ -1245,6 +1325,7 @@ pub fn surgeist_html::bounded::autocomplete_materialization_work_bound(input_cod
 pub fn surgeist_html::bounded::classify_rel<M: surgeist_html::bounded::HtmlRelMeter>(units: &[u16], meter: &mut M) -> core::result::Result<(core::option::Option<surgeist_html::HtmlRelKeyword>, surgeist_html::HtmlRelSpelling), surgeist_html::bounded::HtmlRelActionError<<M as surgeist_html::bounded::HtmlRelMeter>::Error>>
 pub fn surgeist_html::bounded::embedded_dimension_applicability(element: core::option::Option<surgeist_html::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::EmbeddedDimensionContext>) -> surgeist_html::bounded::EmbeddedDimensionApplicability
 pub fn surgeist_html::bounded::fold_rel_ascii(unit: u16) -> u16
+pub const fn surgeist_html::bounded::form_owner_lookup(explicit_listed_form_attribute: bool, connected: bool) -> surgeist_html::bounded::HtmlFormOwnerLookup
 pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
 pub fn surgeist_html::bounded::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, value: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
 pub fn surgeist_html::bounded::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::HtmlIntegrationPointRule, E>

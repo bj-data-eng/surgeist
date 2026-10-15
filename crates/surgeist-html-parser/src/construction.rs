@@ -34,6 +34,7 @@ use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValu
 use std::sync::Arc;
 use std::{mem, sync::Weak};
 use surgeist_html::bounded;
+use surgeist_html::bounded::HtmlScriptPreparationResult as DisabledScriptPreparation;
 use surgeist_html::*;
 
 mod attribute_writer;
@@ -595,15 +596,6 @@ pub enum ScriptResult {
 /// No preparation beyond the Disabled return installs result-ready steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptReadySteps {}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DisabledScriptPreparation {
-    AlreadyStarted,
-    Empty,
-    Disconnected,
-    UnrecognizedType,
-    Disabled(HtmlScriptKind),
-    ParserDocumentMismatch,
-}
 enum AttributeStorage {
     Removing {
         values: OrderedAttributes,
@@ -4115,42 +4107,77 @@ impl SessionStorage {
         mut state: FormAssociationState,
         detached: Option<usize>,
     ) -> Result<(), SessionError> {
-        // Source reset step1 is an actual effect before any lookup work.
-        state.parser_inserted = false;
-        state.evidence = FormAssociationEvidence::Reset;
-        set_form_association_state(self, control, slot, state)?;
-        let explicit = if state.kind.listed() {
-            self.form_attribute(control, node, "form")?.is_some()
-        } else {
-            false
+        use bounded::{
+            HtmlFormOwnerResetAction as Action, HtmlFormOwnerResetCursor,
+            HtmlFormOwnerResetReply as Reply,
         };
-        if !explicit
-            && let Some(owner) = state.owner
-            && self.nearest_form(control, node, detached)? == Some(owner)
-        {
-            return Ok(());
+        // Admit the actual constant-state rule before retaining it. This cursor
+        // has no identity or tree: every effect below mutates the same owner.
+        payload_write::<HtmlFormOwnerResetCursor>(control, 1)?;
+        let mut cursor = HtmlFormOwnerResetCursor::new(state.kind.listed(), state.owner.is_some());
+        payload_write::<Option<usize>>(control, 1)?;
+        let mut found = None;
+        loop {
+            let reply = match cursor.action() {
+                Action::ClearParserInserted => {
+                    // Source step 1 precedes every attribute/ancestor lookup.
+                    state.parser_inserted = false;
+                    state.evidence = FormAssociationEvidence::Reset;
+                    set_form_association_state(self, control, slot, state)?;
+                    Reply::Applied
+                }
+                Action::ReadFormAttributePresence => Reply::FormAttributePresent(
+                    self.form_attribute(control, node, "form")?.is_some(),
+                ),
+                Action::ReadCurrentOwnerIsNearestAncestor => {
+                    let owner = state
+                        .owner
+                        .expect("cursor retention requires actual current owner");
+                    Reply::CurrentOwnerIsNearestAncestor(
+                        self.nearest_form(control, node, detached)? == Some(owner),
+                    )
+                }
+                Action::ClearOwner => {
+                    state.owner = None;
+                    set_form_association_state(self, control, slot, state)?;
+                    Reply::Applied
+                }
+                Action::ApplyOwnerChangeEffects => {
+                    if state.kind == FormAssociationKind::Input {
+                        self.normalize_radio(control, node, detached)?;
+                    }
+                    Reply::Applied
+                }
+                Action::ReadConnectedness => {
+                    Reply::Connected(self.shadow_including_connected(control, node, detached)?)
+                }
+                Action::FindFirstIdMatch => {
+                    let value = self
+                        .form_attribute(control, node, "form")?
+                        .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
+                    let candidate = self.first_id_form(control, node, value, detached)?;
+                    payload_write::<Option<usize>>(control, 1)?;
+                    found = candidate;
+                    Reply::FormFound(found.is_some())
+                }
+                Action::FindNearestAncestor => {
+                    // The earlier retention probe cannot supply this candidate:
+                    // lookup happens afresh after the owner-clear effects.
+                    let candidate = self.nearest_form(control, node, detached)?;
+                    payload_write::<Option<usize>>(control, 1)?;
+                    found = candidate;
+                    Reply::FormFound(found.is_some())
+                }
+                Action::AssociateFoundOwner => {
+                    state.owner = Some(found.expect("cursor association requires a found owner"));
+                    set_form_association_state(self, control, slot, state)?;
+                    Reply::Applied
+                }
+                Action::Complete => return Ok(()),
+            };
+            payload_write::<HtmlFormOwnerResetCursor>(control, 1)?;
+            cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         }
-        let previous_owner = state.owner;
-        state.owner = None;
-        set_form_association_state(self, control, slot, state)?;
-        if state.kind == FormAssociationKind::Input && previous_owner.is_some() {
-            self.normalize_radio(control, node, detached)?;
-        }
-        state.owner = if explicit && self.shadow_including_connected(control, node, detached)? {
-            let value = self
-                .form_attribute(control, node, "form")?
-                .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
-            self.first_id_form(control, node, value, detached)?
-        } else {
-            self.nearest_form(control, node, detached)?
-        };
-        if state.owner.is_some() {
-            set_form_association_state(self, control, slot, state)?;
-            if state.kind == FormAssociationKind::Input {
-                self.normalize_radio(control, node, detached)?;
-            }
-        }
-        Ok(())
     }
 
     /// Called synchronously only by the mutation that installed this phase.
@@ -4671,126 +4698,169 @@ impl SessionStorage {
         index: usize,
         detached: Option<usize>,
     ) -> Result<DisabledScriptPreparation, SessionError> {
+        use bounded::{HtmlScriptPreparationAction as Action, HtmlScriptPreparationReply as Reply};
         let (slot, mut metadata) = script_metadata(&self.payloads, control, index)?;
-        if metadata.flags.already_started() {
-            return Ok(DisabledScriptPreparation::AlreadyStarted);
-        }
-        let saved_document = metadata.parser_document.take();
-        metadata.parser_document = None;
-        set_script_metadata(self, control, slot, &metadata)?;
-        if saved_document.is_some() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            let HtmlNodeKind::Element(element) = &self
-                .construction
-                .node_at(index)
-                .expect("retained construction position")
-                .kind()
-            else {
-                return Err(SessionError::ScriptMetadataUnavailable);
+        payload_write::<bounded::HtmlScriptPreparationCursor>(control, 1)?;
+        let mut cursor = bounded::HtmlScriptPreparationCursor::new();
+        let mut saved_document = None;
+        loop {
+            let reply = match cursor.action() {
+                Action::ReadAlreadyStarted => {
+                    Reply::AlreadyStarted(metadata.flags.already_started())
+                }
+                Action::SaveAndClearParserDocument => {
+                    saved_document = metadata.parser_document.take();
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::ParserDocumentSaved(saved_document.is_some())
+                }
+                Action::ReadAsyncPresence => {
+                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    let HtmlNodeKind::Element(element) = &self
+                        .construction
+                        .node_at(index)
+                        .expect("retained construction position")
+                        .kind()
+                    else {
+                        return Err(SessionError::ScriptMetadataUnavailable);
+                    };
+                    Reply::AsyncPresent(script_attribute(control, element, "async")?.is_some())
+                }
+                Action::SetForceAsync => {
+                    metadata.flags.parser_document_cleared_without_async();
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::Applied
+                }
+                Action::ReadChildTextEmpty => {
+                    let mut empty = true;
+                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    let children = self
+                        .construction
+                        .node_at(index)
+                        .expect("retained construction position")
+                        .child_count();
+                    for position in 0..children {
+                        control.charge(WorkCategory::RecordVisit, 3)?;
+                        let child = self
+                            .construction
+                            .node_at(index)
+                            .expect("retained construction position")
+                            .child_at(position)
+                            .expect("retained child ordinal")
+                            .position();
+                        let record = self
+                            .construction
+                            .node_at(child)
+                            .ok_or(SessionError::ForeignNode)?;
+                        if Some(child) != detached
+                            && let HtmlNodeKind::Text(text) = record.kind()
+                            && !text.is_empty()
+                        {
+                            empty = false;
+                            break;
+                        }
+                    }
+                    // Preserve the original element read after source-text
+                    // inspection, including when nonempty text skips src lookup.
+                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    if !matches!(
+                        self.construction
+                            .node_at(index)
+                            .expect("retained construction position")
+                            .kind(),
+                        HtmlNodeKind::Element(_)
+                    ) {
+                        return Err(SessionError::ScriptMetadataUnavailable);
+                    }
+                    Reply::ChildTextEmpty(empty)
+                }
+                Action::ReadSrcPresence => {
+                    let HtmlNodeKind::Element(element) = &self
+                        .construction
+                        .node_at(index)
+                        .expect("retained construction position")
+                        .kind()
+                    else {
+                        return Err(SessionError::ScriptMetadataUnavailable);
+                    };
+                    Reply::SrcPresent(script_attribute(control, element, "src")?.is_some())
+                }
+                Action::ReadConnected => {
+                    // Connectivity follows the parser-document and empty-source
+                    // writes. The actual detached construction view stays here.
+                    let mut ancestor = Some(index);
+                    let mut connected = false;
+                    for _ in 0..self.construction.storage().len() {
+                        let Some(current) = ancestor else { break };
+                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        let record = self
+                            .construction
+                            .node_at(current)
+                            .ok_or(SessionError::ForeignNode)?;
+                        if matches!(record.kind(), HtmlNodeKind::Document(_)) {
+                            connected = true;
+                            ancestor = None;
+                            break;
+                        }
+                        ancestor = if Some(current) == detached {
+                            None
+                        } else {
+                            record.parent().map(|node| node.position())
+                        };
+                    }
+                    if ancestor.is_some() {
+                        return Err(SessionError::Cycle);
+                    }
+                    Reply::Connected(connected)
+                }
+                Action::ClassifyType => {
+                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    let HtmlNodeKind::Element(element) = &self
+                        .construction
+                        .node_at(index)
+                        .expect("retained construction position")
+                        .kind()
+                    else {
+                        return Err(SessionError::ScriptMetadataUnavailable);
+                    };
+                    Reply::Classified(classify_script(control, element)?)
+                }
+                Action::StoreType(kind) => {
+                    metadata.script_type = Some(kind);
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::Applied
+                }
+                Action::RestoreParserDocument => {
+                    metadata.parser_document = saved_document.take();
+                    metadata.flags.parser_document_restored();
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::Applied
+                }
+                Action::MarkAlreadyStarted => {
+                    metadata.flags.mark_already_started();
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::Applied
+                }
+                Action::StorePreparationDocument => {
+                    metadata.preparation_document = Some(self.node_document_ref(control, index)?);
+                    set_script_metadata(self, control, slot, &metadata)?;
+                    Reply::Applied
+                }
+                Action::CompareDocuments => {
+                    Reply::DocumentsEqual(metadata.parser_document == metadata.preparation_document)
+                }
+                Action::RequireDisabledScripting => {
+                    // The actual ordinary/qualified-fragment construction
+                    // capability admits only this closed Disabled execution
+                    // domain. This is not inferred from flags or XML class.
+                    Reply::Disabled
+                }
+                Action::Complete(result) => return Ok(result),
             };
-            if script_attribute(control, element, "async")?.is_none() {
-                metadata.flags.parser_document_cleared_without_async();
-                set_script_metadata(self, control, slot, &metadata)?;
-            }
+            // Account the actual new owned state before each transition. The
+            // metadata write boundaries and first reached failure remain intact.
+            payload_write::<bounded::HtmlScriptPreparationCursor>(control, 1)?;
+            cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         }
-        let mut empty = true;
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        let children = self
-            .construction
-            .node_at(index)
-            .expect("retained construction position")
-            .child_count();
-        for position in 0..children {
-            control.charge(WorkCategory::RecordVisit, 3)?;
-            let child = self
-                .construction
-                .node_at(index)
-                .expect("retained construction position")
-                .child_at(position)
-                .expect("retained child ordinal")
-                .position();
-            let record = self
-                .construction
-                .node_at(child)
-                .ok_or(SessionError::ForeignNode)?;
-            if Some(child) != detached
-                && let HtmlNodeKind::Text(text) = record.kind()
-                && !text.is_empty()
-            {
-                empty = false;
-                break;
-            }
-        }
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(index)
-            .expect("retained construction position")
-            .kind()
-        else {
-            unreachable!()
-        };
-        if empty && script_attribute(control, element, "src")?.is_none() {
-            return Ok(DisabledScriptPreparation::Empty);
-        }
-        // HTML step 7 follows the parser-document/force-async and empty-source
-        // prefix. Associated-domain eligibility was qualified at the actual
-        // topology producer and rejected by the capability before any effects.
-        let mut ancestor = Some(index);
-        let mut connected = false;
-        for _ in 0..self.construction.storage().len() {
-            let Some(current) = ancestor else { break };
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            let record = self
-                .construction
-                .node_at(current)
-                .ok_or(SessionError::ForeignNode)?;
-            if matches!(record.kind(), HtmlNodeKind::Document(_)) {
-                connected = true;
-                ancestor = None;
-                break;
-            }
-            ancestor = if Some(current) == detached {
-                None
-            } else {
-                record.parent().map(|node| node.position())
-            };
-        }
-        if ancestor.is_some() {
-            return Err(SessionError::Cycle);
-        }
-        if !connected {
-            return Ok(DisabledScriptPreparation::Disconnected);
-        }
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(index)
-            .expect("retained construction position")
-            .kind()
-        else {
-            unreachable!()
-        };
-        let Some(kind) = classify_script(control, element)? else {
-            return Ok(DisabledScriptPreparation::UnrecognizedType);
-        };
-        metadata.script_type = Some(kind);
-        set_script_metadata(self, control, slot, &metadata)?;
-        if saved_document.is_some() {
-            metadata.parser_document = saved_document;
-            metadata.flags.parser_document_restored();
-            set_script_metadata(self, control, slot, &metadata)?;
-        }
-        metadata.flags.mark_already_started();
-        set_script_metadata(self, control, slot, &metadata)?;
-        metadata.preparation_document = Some(self.node_document_ref(control, index)?);
-        set_script_metadata(self, control, slot, &metadata)?;
-        if metadata.parser_document.is_some()
-            && metadata.parser_document != metadata.preparation_document
-        {
-            return Ok(DisabledScriptPreparation::ParserDocumentMismatch);
-        }
-        Ok(DisabledScriptPreparation::Disabled(kind))
     }
 
     fn prepare_freeze(
@@ -16992,11 +17062,14 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current
             - setup_work;
-        // One metadata-slot visit, the actual fixed payload copy, and its write
-        // are sufficient for HTML preparation step 3. The source connectivity
-        // condition is step 7, after this required parser-document clear.
+        // Cursor initialization and the step-1 reply precede HTML step 3.
+        // Each copies the actual cursor and writes one state record. Then one
+        // metadata-slot visit, fixed payload copy and write retain the clear.
+        // Connectivity is step 7, after this required parser-document clear.
+        let cursor_prefix_work =
+            2 * (mem::size_of::<bounded::HtmlScriptPreparationCursor>() as u64 + 1);
         let first_write_work = 1 + mem::size_of::<ScriptMetadata>() as u64 + 1;
-        let cap = setup_work + qualification_work + first_write_work;
+        let cap = setup_work + qualification_work + cursor_prefix_work + first_write_work;
         session.release(&mut baseline).unwrap();
         storage_zero(&baseline);
 
@@ -17525,7 +17598,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_preparation_work_reaches_step18_and_one_short_retains_step15_for_cleanup() {
+    fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
         let source = "<html><head><script src=''>";
         let request =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits());
@@ -17539,7 +17612,61 @@ mod tests {
             .current;
         session.release(&mut baseline).unwrap();
         storage_zero(&baseline);
-        for cap in [exact - 1, exact] {
+
+        // Derive the step-16 write boundary independently of the successful
+        // preparation's observed total. These probes perform qualification and
+        // the actual node-document lookup, without running preparation.
+        let (mut probe, mut session, capability, node) = fresh_script(&request, true, false);
+        let setup_work = probe
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        capability.validate_session(&mut probe, &session).unwrap();
+        let storage = session.active().unwrap();
+        let index = storage.index(&mut probe, &node).unwrap();
+        let (_, initial) = script_metadata(&storage.payloads, &mut probe, index).unwrap();
+        assert_eq!(initial.parser_document, Some(DocumentRef::Owned(0)));
+        let qualified = probe
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        let qualification_work = qualified - setup_work;
+        assert_eq!(
+            storage.node_document_ref(&mut probe, index).unwrap(),
+            DocumentRef::Owned(0)
+        );
+        let node_document_work = probe
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current
+            - qualified;
+        // This literal fixture has one namespace-less src attribute, no text
+        // children, and script -> html -> document ordinary ancestry. Reads:
+        // async: element + attribute search (1 + 1+3+1); child text: two visits;
+        // src: search plus three UTF-16/ASCII comparisons (1+3+1 + 3*3);
+        // connectivity: three records; type: element, two unsuccessful attribute
+        // searches and default-classic classification (1 + 5+5 + 2).
+        let source_read_work = 6 + 2 + 14 + 3 + 13;
+        // Source steps 3, 4, 9, 14, 15 and 16 each write one actual metadata
+        // slot. Owned document references add no captured-provider clone work.
+        // Initialization plus eleven acknowledged replies end at step 15;
+        // the next adapter operation is the independently measured document
+        // lookup and step-16 metadata write. Deny its last RecordWrite credit.
+        let metadata_write_work = 1 + mem::size_of::<ScriptMetadata>() as u64 + 1;
+        let cursor_prefix_work =
+            12 * (mem::size_of::<bounded::HtmlScriptPreparationCursor>() as u64 + 1);
+        let before_preparation_document = setup_work
+            + qualification_work
+            + source_read_work
+            + node_document_work
+            + 6 * metadata_write_work
+            + cursor_prefix_work
+            - 1;
+        assert!(before_preparation_document < exact - 1);
+        session.release(&mut probe).unwrap();
+        storage_zero(&probe);
+
+        for cap in [before_preparation_document, exact - 1, exact] {
             let limits = limits().into_builder().work_credits(cap).finish().unwrap();
             let request =
                 crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits);
@@ -17577,7 +17704,16 @@ mod tests {
                         ..
                     }))
                 ));
-                assert_eq!(retained.preparation_document, None);
+                assert_eq!(
+                    retained.preparation_document,
+                    if cap == before_preparation_document {
+                        None
+                    } else {
+                        Some(DocumentRef::Owned(0))
+                    }
+                );
+                // One short of the complete call now admits step 16 but refuses
+                // the final cursor reply. It remains stopped and unfreezable.
                 let first = c.stop().unwrap();
                 assert!(
                     matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
@@ -17586,10 +17722,14 @@ mod tests {
             // Exact useful work can leave no credit for active disposal. The
             // same retained owner then performs terminal cleanup, without work
             // refund or a usable partially prepared immutable tree.
+            let first_stop = c.stop();
             if session.release(&mut c).is_err() {
                 session.release(&mut c).unwrap();
             }
             storage_zero(&c);
+            if let Some(first_stop) = first_stop {
+                assert_eq!(c.stop(), Some(first_stop));
+            }
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
                 3
@@ -20348,13 +20488,18 @@ mod tests {
         assert!(effects.insert);
         // Removal view img parent=None costs1; old form→body→html→Document
         // then None costs4. Runner2 + phase read1/copyF + registry scanL/copyS
-        // + roots5 + setter read1/copyS/write1 =F+L+2S+10. The next ancestor
-        // read1 fails after reset has cleared the flag, before clearing owner.
+        // + roots5 + setter read1/copyS/write1 =F+L+2S+10. Shared reset state
+        // additionally admits initial cursor copyC/write1, candidate copyO/write1,
+        // and post-clear cursor copyC/write1: 2C+O+3. The next ancestor read1
+        // fails after reset has cleared the flag, before clearing owner.
         let scan = storage.payloads.values.iter().position(|payload| matches!(payload, RetainedPayload::FormAssociation { node: Some(node), .. } if *node == image.index)).unwrap() as u64 + 1;
         let prefix = mem::size_of::<Option<FormEffects>>() as u64
             + scan
             + 2 * mem::size_of::<FormAssociationState>() as u64
-            + 10;
+            + 10
+            + 2 * mem::size_of::<bounded::HtmlFormOwnerResetCursor>() as u64
+            + mem::size_of::<Option<usize>>() as u64
+            + 3;
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, unused - prefix).unwrap();

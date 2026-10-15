@@ -3,6 +3,7 @@
 //! Host adapters establish history and current slots; queries execute no transitions.
 
 use super::*;
+use crate::bounded::{HtmlFormOwnerLookup, form_owner_lookup};
 use crate::{HtmlAttributeReport, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlInputType};
 
 /// Evidence of the actual association phase at this capture's host revision.
@@ -1164,11 +1165,21 @@ impl<'a> HtmlSemanticSession<'a> {
                 } else {
                     None
                 };
-                let owner = if let Some(raw) = raw {
+                if let Some(raw) = raw {
                     self.interpreter
                         .admit_attribute_raw(Some(raw.value()))
                         .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
-                    if self.control_connected(subject)? {
+                }
+                // Absent/nonlisted form attributes do not consult connectedness.
+                // The ignored false argument is not a captured disconnection fact.
+                let connected = if raw.is_some() {
+                    self.control_connected(subject)?
+                } else {
+                    false
+                };
+                let owner = match form_owner_lookup(raw.is_some(), connected) {
+                    HtmlFormOwnerLookup::FirstId => {
+                        let raw = raw.expect("first-ID rule requires actual form attribute");
                         let root = self.control_root(subject)?;
                         let candidate = if raw.value().is_empty() {
                             None
@@ -1187,11 +1198,8 @@ impl<'a> HtmlSemanticSession<'a> {
                         } else {
                             None
                         }
-                    } else {
-                        self.control_nearest_form(subject)?
                     }
-                } else {
-                    self.control_nearest_form(subject)?
+                    HtmlFormOwnerLookup::NearestAncestor => self.control_nearest_form(subject)?,
                 };
                 self.charge(1)?;
                 Ok(Some(HtmlFormOwner {
