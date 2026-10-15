@@ -55,12 +55,17 @@ source-qualified CSS boundary. The separate contracts for
 are implemented as three packages with direct acyclic dependencies. Manifests
 and source establish those boundaries; no old-package reexports are retained.
 
-`surgeist-dom`, the planned sole owner of live document identity, mutation and
-snapshots, will depend directly on HTML. DOM owns importing HTML construction
-values and adapting captured DOM facts to HTML-owned interpretation. Native authoring
+[`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
+document identity, mutation and snapshots with a bounded non-element tree:
+Document, ordinary DocumentFragment, Text and Comment nodes. It consumes HTML's
+exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits and
+owned snapshots establish the foundation; element creation and its HTML state,
+adoption/import, shadow trees and facade replacement remain later contributions.
+DOM will own importing HTML construction values and adapting captured DOM facts
+to HTML-owned interpretation. Native authoring
 uses the same HTML value contracts without serializing and reparsing strings.
 The existing template crate keeps its syntax, symbolic expressions and source
-generation; it consumes HTML and DOM contracts for registry and construction
+generation; it will consume HTML and DOM contracts for registry and construction
 integration.
 Selectors will own matching, cascade will own precedence and rollback, and style
 will compute values from DOM and CSSOM captures. HTML-owned work is scheduled

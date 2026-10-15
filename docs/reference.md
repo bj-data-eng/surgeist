@@ -20,10 +20,16 @@ The [API generator](../api/generator/Cargo.toml) and optional
 are separate Cargo workspaces. Crate manifests own their respective version,
 MSRV, dependencies, and features.
 
+The new [`surgeist-dom`](../crates/surgeist-dom/README.md) workspace member exposes
+its bounded canonical store directly. It depends on HTML for exact shared
+strings and is not yet a facade dependency; `retained` remains the existing
+facade module until replacement composition is implemented.
+
 ## Facade Modules
 
-The [public entry point](../src/lib.rs) reexports each production crate's public
-front door. It also exposes `crate_name() -> &'static str`, returning
+The [public entry point](../src/lib.rs) reexports the production dependencies
+listed below through their public front doors. It also exposes
+`crate_name() -> &'static str`, returning
 `"surgeist"`.
 
 | Root module | Source crate |

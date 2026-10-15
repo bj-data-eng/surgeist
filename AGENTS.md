@@ -84,6 +84,7 @@ implemented dependency graph and behavior.
 | `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, clean-report validation, and source/fact-qualified color resolution |
 | `surgeist-cssom` | Live authored CSS identity and state, immutable snapshots, revisions, atomic edits, and its CSS integration adapter |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
+| `surgeist-dom` | Canonical store identity, bounded non-element tree edits, revisions and immutable snapshots |
 | `surgeist-fuzz` | Bounded fuzz engines, generation support, process execution, evidence, replay, reduction and campaign tooling; consumers own cases and expectations |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-html` | Pinned HTML values, local rules, native authoring and immutable construction |
@@ -140,22 +141,26 @@ The HTML standard revision defines behavior; the html5ever revision identifies
 implementation provenance. Ingestion may change implementation machinery but
 must not introduce a Surgeist HTML dialect.
 
-The planned downstream ownership is `surgeist-dom` for the canonical live tree,
-identity, atomic mutation and captures; `surgeist-selectors` for matching and
-specificity; `surgeist-cascade` for precedence and rollback; and `surgeist-style`
-for rule collection, inheritance, substitution, computed values and invalidation.
-DOM depends directly on HTML and owns importing its construction values and
-adapting canonical snapshots to HTML semantic operations. `surgeist-html` owns
+`surgeist-dom` begins the canonical live tree owner with Document, ordinary
+DocumentFragment, Text and Comment nodes, atomic edits, finite caller limits and
+owned snapshots. Its crate guide records this bounded surface. Element creation,
+HTML state integration, adoption/import and shadow trees remain contribution work;
+the existing retained facade is not replaced by this foundation.
+DOM depends directly on HTML and consumes its exact `DocumentString`.
+Its planned integration owns importing HTML construction values and adapting
+canonical snapshots to HTML semantic operations. `surgeist-html` owns
 typed HTML construction; `surgeist-template` retains template syntax, symbolic
 expressions, component validation and Rust generation, consuming the HTML and
 DOM contracts directly rather than duplicating their semantics. HTML parse results
 are immutable construction values, not a second live DOM. DOM retains generic
 name/string/tree invariants; HTML owns its language-specific interpretation.
-These are planned boundaries, not implemented workspace members. Implement the
-HTML-owned contribution before starting these new crates, as directed by the
-user; DOM integration follows availability of both producers. Do not encode
-that scheduling choice as blanket blocking dependencies. Manifests and source
-establish the implemented workspace and current capabilities.
+The remaining downstream owners are planned: `surgeist-selectors` for matching
+and specificity, `surgeist-cascade` for precedence and rollback, and
+`surgeist-style` for rule collection, inheritance, substitution, computed values
+and invalidation. HTML-owned work precedes DOM, then the downstream CSS crates,
+as directed by the user. DOM integration follows availability of both producers;
+do not encode that scheduling choice as blanket blocking dependencies. Manifests
+and source establish the implemented workspace and current capabilities.
 
 ## Backward Compatibility
 

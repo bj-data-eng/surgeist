@@ -3827,6 +3827,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-dom"
+version = "0.1.0"
+dependencies = [
+ "surgeist-html",
+]
+
+[[package]]
 name = "surgeist-fuzz"
 version = "0.1.0"
 dependencies = [
