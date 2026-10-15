@@ -19,13 +19,15 @@ pub enum Observed<T> {
     NotApplicable,
 }
 
-/// An external element-selection domain, without HTML focus policy.
+/// An external element-selection domain, without focus or navigation policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomHostDomain {
     /// The producer's exact selected focus element.
     ElementFocusSelection,
     /// The producer's exact selected hover element.
     ElementHoverSelection,
+    /// The producer's exact document target Element, if any.
+    DocumentTargetElementSelection,
 }
 
 /// Immutable, nonempty domain configuration of one publisher.
@@ -35,8 +37,10 @@ pub enum DomHostDomains {
     Focus,
     /// Hover selection only.
     Hover,
-    /// Both selection domains.
+    /// Focus and hover selection domains.
     FocusAndHover,
+    /// Document target Element selection only.
+    DocumentTarget,
 }
 
 /// Complete observations for exactly the domains named by its variant.
@@ -46,6 +50,11 @@ pub enum DomHostObservations {
     Focus(Observed<Option<NodeId>>),
     /// One hover-selection observation.
     Hover(Observed<Option<NodeId>>),
+    /// The externally established document target Element, including known absence.
+    /// This does not resolve a URL fragment, navigate or infer a target from an ID.
+    /// HTML's target-elements list contains this one Element or is empty:
+    /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#selector-target>.
+    DocumentTarget(Observed<Option<NodeId>>),
     /// Both observations, with independent availability.
     FocusAndHover {
         /// Focus-selection observation.
@@ -61,14 +70,16 @@ impl DomHostObservations {
             Self::Focus(_) => DomHostDomains::Focus,
             Self::Hover(_) => DomHostDomains::Hover,
             Self::FocusAndHover { .. } => DomHostDomains::FocusAndHover,
+            Self::DocumentTarget(_) => DomHostDomains::DocumentTarget,
         }
     }
 
-    fn values(self) -> [Option<Observed<Option<NodeId>>>; 2] {
+    fn values(self) -> [Option<Observed<Option<NodeId>>>; 3] {
         match self {
-            Self::Focus(focus) => [Some(focus), None],
-            Self::Hover(hover) => [None, Some(hover)],
-            Self::FocusAndHover { focus, hover } => [Some(focus), Some(hover)],
+            Self::Focus(focus) => [Some(focus), None, None],
+            Self::Hover(hover) => [None, Some(hover), None],
+            Self::FocusAndHover { focus, hover } => [Some(focus), Some(hover), None],
+            Self::DocumentTarget(target) => [None, None, Some(target)],
         }
     }
 }
@@ -165,11 +176,12 @@ pub enum DomHostChange {
     },
 }
 
-/// Constant-size complete adjacent coverage, ordered focus before hover.
+/// Constant-size complete adjacent coverage, ordered focus, hover, then target.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomHostChanges {
     from: DomHostStamp,
     to: DomHostStamp,
+    // FocusAndHover is the largest configured group. DocumentTarget is separate.
     changes: [Option<DomHostChange>; 2],
 }
 impl DomHostChanges {
@@ -400,10 +412,22 @@ impl DomHostPublisher {
                 DomHostChangeCoverage::Complete(DomHostChanges {
                     from: state.current.stamp.clone(),
                     to: stamp,
-                    changes: [
-                        change(DomHostDomain::ElementFocusSelection, old[0], new[0]),
-                        change(DomHostDomain::ElementHoverSelection, old[1], new[1]),
-                    ],
+                    changes: match self.domains {
+                        DomHostDomains::DocumentTarget => [
+                            change(
+                                DomHostDomain::DocumentTargetElementSelection,
+                                old[2],
+                                new[2],
+                            ),
+                            None,
+                        ],
+                        DomHostDomains::Focus
+                        | DomHostDomains::Hover
+                        | DomHostDomains::FocusAndHover => [
+                            change(DomHostDomain::ElementFocusSelection, old[0], new[0]),
+                            change(DomHostDomain::ElementHoverSelection, old[1], new[1]),
+                        ],
+                    },
                 })
             }
         };
@@ -521,6 +545,68 @@ mod tests {
     use super::*;
     use crate::{Dom, DomBatch, DomLimits};
     use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn target_revision_exhaustion_preserves_history_and_allows_dom_only_rebase() {
+        let mut dom = Dom::new(DomLimits::new(8, 512, 16, 2, 4096).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let element = batch.create_element(&document, "target");
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let element = commit.created(&element).unwrap().unwrap();
+        let id = commit.document(&document).unwrap();
+        let old = dom.snapshot();
+        let document = old.document(id).unwrap();
+        let mut publisher = DomHostPublisher::new(DomHostDomains::DocumentTarget);
+        let observations = DomHostObservations::DocumentTarget(Observed::Supported(None));
+        publisher
+            .publish(document, document.stamp(), observations)
+            .unwrap();
+        publisher
+            .state
+            .as_mut()
+            .unwrap()
+            .current
+            .stamp
+            .host_revision = HostStateRevision(u64::MAX);
+        let before = publisher.latest().unwrap().clone();
+        let coverage = publisher.changes_since(None).unwrap();
+        assert_eq!(
+            publisher.publish(
+                document,
+                document.stamp(),
+                DomHostObservations::DocumentTarget(Observed::Supported(Some(element)))
+            ),
+            Err(DomHostError::HostRevisionExhausted)
+        );
+        assert_eq!(publisher.latest(), Some(&before));
+        assert_eq!(publisher.changes_since(None).unwrap(), coverage);
+        assert_eq!(
+            publisher
+                .publish(document, document.stamp(), observations)
+                .unwrap()
+                .capture(),
+            &before
+        );
+        let mut batch = DomBatch::new();
+        batch.create_comment(id, "later");
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let snapshot = dom.snapshot();
+        let document = snapshot.document(id).unwrap();
+        let rebased = publisher
+            .publish(document, document.stamp(), observations)
+            .unwrap();
+        assert_eq!(rebased.capture().stamp().host_revision().get(), u64::MAX);
+        assert!(matches!(
+            rebased.changes(),
+            DomHostChangeCoverage::FullRecomputeRequired {
+                domains: DomHostDomains::DocumentTarget,
+                reason: DomHostRecomputeReason::DomBasisChanged,
+                ..
+            }
+        ));
+        assert_eq!(before.observations(), &observations);
+    }
 
     #[test]
     fn exhausted_host_revision_allows_equal_recapture_and_rejects_changed_facts_atomically() {

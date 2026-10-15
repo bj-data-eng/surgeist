@@ -107,6 +107,8 @@ impl RuntimeDomHostPublication {
 /// Typed adapter rejection; failed operations preserve binding and publisher state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeDomHostError {
+    /// Runtime has no producer for the requested external domain configuration.
+    UnsupportedDomains(DomHostDomains),
     /// The adapter belongs to another Runtime instance, even if numeric IDs coincide.
     ForeignRuntime,
     /// The source surface/reference/lifecycle failed its owning validation.
@@ -171,6 +173,9 @@ impl<State, R, Input> Runtime<State, R, Input> {
     ///
     /// References are validated by their actual owners. Numeric IDs are never
     /// converted between Runtime and DOM. The domain configuration is immutable.
+    /// Document target observations have no Runtime producer and are rejected
+    /// before surface/association admission; use the native DOM publisher when
+    /// an actual external host supplies that selection.
     pub fn bind_dom_host(
         &self,
         surface: SurfaceRef,
@@ -179,6 +184,9 @@ impl<State, R, Input> Runtime<State, R, Input> {
         domains: DomHostDomains,
         limits: SurfaceDomBindingLimits,
     ) -> Result<RuntimeDomHost, RuntimeDomHostError> {
+        if domains == DomHostDomains::DocumentTarget {
+            return Err(RuntimeDomHostError::UnsupportedDomains(domains));
+        }
         let current = self
             .current_surface(surface)
             .map_err(RuntimeDomHostError::Surface)?;
@@ -244,6 +252,11 @@ impl<State, R, Input> Runtime<State, R, Input> {
         }
         let mut work = BindingWork::new(host.limits.validation_work);
         let observations = match host.publisher.domains() {
+            DomHostDomains::DocumentTarget => {
+                return Err(RuntimeDomHostError::UnsupportedDomains(
+                    DomHostDomains::DocumentTarget,
+                ));
+            }
             DomHostDomains::Focus => DomHostObservations::Focus(Observed::Supported(selected(
                 current.focused_element(),
                 &host.associations,

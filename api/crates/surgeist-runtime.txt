@@ -133,6 +133,7 @@ pub surgeist_runtime::RuntimeDomHostError::Host(surgeist_dom::host::DomHostError
 pub surgeist_runtime::RuntimeDomHostError::MissingAssociation(surgeist_runtime::SurfaceElementRef)
 pub surgeist_runtime::RuntimeDomHostError::RepresentationExhausted
 pub surgeist_runtime::RuntimeDomHostError::Surface(surgeist_runtime::SurfaceError)
+pub surgeist_runtime::RuntimeDomHostError::UnsupportedDomains(surgeist_dom::host::DomHostDomains)
 pub surgeist_runtime::RuntimeDomHostError::ValidationWork
 pub surgeist_runtime::RuntimeDomHostError::ValidationWork::limit: usize
 pub surgeist_runtime::RuntimeDomHostError::ValidationWork::required: usize

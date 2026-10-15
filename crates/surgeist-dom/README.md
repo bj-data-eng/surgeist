@@ -233,17 +233,23 @@ template-hosted fragments must extend the host-including relation with their
 actual HTML owner hooks. This unit does not complete #1124's slot, flat-tree,
 language/control/pseudo or broader host-fact requirements.
 
-`DomHostPublisher` captures complete fixed focus/hover element-selection
+`DomHostPublisher` captures complete fixed focus/hover or document-target Element
 observations from an external producer against one exact `DomDocumentStamp`.
 Supported absence, unsupported capability and inapplicability remain distinct.
 Its immutable source identity includes the selected domain configuration; checked
 `HostStateRevision` advances only when observations change. DOM-only revisions
 require explicit whole-domain recomputation without advancing equal host facts.
 Captures retain exact historical values independently of the publisher. Complete
-adjacent coverage is bounded to two domains, with explicit fallback for older
-history and whole-domain invalidation for availability changes. This boundary
+adjacent coverage uses constant storage, with explicit fallback for older history
+and whole-domain invalidation for availability changes. The independent
+`DocumentTarget` variant retains the host's one selected target Element or known
+absence, following HTML's target-elements contract. It does not navigate, decode
+fragments or infer a target from IDs or URLs. An unknown current observation is
+not a supported absence: a producer must obtain a qualified value or report its
+unavailability without publishing. This boundary
 does not implement HTML focus policy, pointer processing or canonical controls;
 Runtime owns its concrete surface-selection association and capture adapter.
+It rejects document-target bindings because it has no target-selection producer.
 
 Native `create_document()` establishes an XML document with `application/xml`
 content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative
