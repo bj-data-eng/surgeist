@@ -310,6 +310,79 @@ fn runtime_key_requests_preserve_live_identity_reorder_and_retire_without_aliasi
 }
 
 #[test]
+fn selected_caller_item_data_survives_retirement_and_is_republished_on_a_fresh_node() {
+    // Selection belongs to the caller's logical records, independently of the
+    // live identity map. This ordinary data attribute is not HTML control state.
+    let item_data = [(ItemKey::A, true), (ItemKey::B, false)];
+    let mut requests = Runtime::new(Vec::new(), RequestReducer);
+    let mut mounted = MountedItems::new();
+
+    let publish = |mounted: &mut MountedItems, requests: &Requests| {
+        let mut prepared = mounted.prepare(requests.state()).unwrap();
+        for (key, planned) in &prepared.entries {
+            let selected = item_data.iter().find(|(item, _)| item == key).unwrap().1;
+            let operand = match planned {
+                PlannedNode::Existing(node) => NodeOperand::Existing(*node),
+                PlannedNode::Created(ticket) => NodeOperand::from(ticket),
+            };
+            prepared.batch.set_attribute(
+                operand,
+                "data-item-selected",
+                if selected { "true" } else { "false" },
+            );
+        }
+        mounted.publish(prepared, &AtomicBool::new(false)).unwrap();
+    };
+    let selected_content = |snapshot: &DomSnapshot, node| {
+        snapshot
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"data-item-selected".into())
+            .unwrap()
+            .to_utf8()
+            .unwrap()
+    };
+
+    schedule(&mut requests, &[ItemKey::A, ItemKey::B]);
+    publish(&mut mounted, &requests);
+    mounted.assert_keys(&[ItemKey::A, ItemKey::B]);
+    let a = mounted.node(ItemKey::A);
+    let b = mounted.node(ItemKey::B);
+    let old = mounted.dom.snapshot();
+    assert_eq!(selected_content(&old, a), "true");
+    assert_eq!(selected_content(&old, b), "false");
+
+    schedule(&mut requests, &[ItemKey::B]);
+    publish(&mut mounted, &requests);
+    mounted.assert_keys(&[ItemKey::B]);
+    assert_eq!(mounted.node(ItemKey::B), b);
+    assert_eq!(item_data, [(ItemKey::A, true), (ItemKey::B, false)]);
+    let absent = mounted.dom.snapshot();
+    assert_eq!(absent.node(a).unwrap_err(), DomError::StaleNode);
+    assert_eq!(selected_content(&absent, b), "false");
+
+    schedule(&mut requests, &[ItemKey::B, ItemKey::A]);
+    publish(&mut mounted, &requests);
+    mounted.assert_keys(&[ItemKey::B, ItemKey::A]);
+    let fresh_a = mounted.node(ItemKey::A);
+    assert_ne!(fresh_a, a);
+    assert_ne!(fresh_a, b);
+    assert_eq!(mounted.node(ItemKey::B), b);
+    let current = mounted.dom.snapshot();
+    assert_eq!(current.node(a).unwrap_err(), DomError::StaleNode);
+    assert_eq!(selected_content(&current, fresh_a), "true");
+    assert_eq!(selected_content(&current, b), "false");
+    assert_eq!(item_data, [(ItemKey::A, true), (ItemKey::B, false)]);
+    assert_eq!(old.node(mounted.parent).unwrap().children(), &[a, b]);
+    assert_eq!(selected_content(&old, a), "true");
+    // Reintroduction does not retroactively materialize A in either older view.
+    assert_eq!(absent.node(a).unwrap_err(), DomError::StaleNode);
+    assert_eq!(absent.node(fresh_a).unwrap_err(), DomError::StaleNode);
+}
+
+#[test]
 fn cancelled_dom_publication_keeps_committed_map_and_tree_while_request_remains_pending() {
     let (mut mounted, mut requests) = mounted_pair();
     let before = mounted.dom.snapshot();
