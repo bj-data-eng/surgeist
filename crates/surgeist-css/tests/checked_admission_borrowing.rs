@@ -111,13 +111,27 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
     let source = if inside {
         format!("(future: calc(1{comment}))")
     } else {
-        format!("(future: {comment}calc(1))")
+        format!("Future({comment})")
     };
     let input = parse_component_values(&source).unwrap();
     let expected_origin = input.items()[0].origin().clone();
-    let expected_function = children(&input.items()[0]).items().last().unwrap().clone();
+    let expected_function = if inside {
+        children(&input.items()[0]).items().last().unwrap()
+    } else {
+        &input.items()[0]
+    }
+    .clone();
     let (result, stats) = measured(|| CssMediaCondition::try_from_components(black_box(input)));
-    let condition = result.expect("unknown feature admits a number-root calculation");
+    let condition = result.expect("complete feature or opaque function");
+    if !inside {
+        let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+            panic!("the control retains its opaque future function");
+        };
+        assert_same_snapshot(enclosed.component().origin(), &expected_origin);
+        assert_eq!(enclosed.component(), &expected_function);
+        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        return stats;
+    }
     let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
         panic!("unknown feature has an explicit semantic result");
     };
@@ -132,12 +146,9 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
     };
     assert_same_snapshot(value.items()[0].origin(), expected_function.origin());
     assert_eq!(value.items(), &[expected_function]);
-    let expected = if inside {
-        format!("calc(1{comment})")
-    } else {
-        "calc(1)".to_owned()
-    };
+    let expected = format!("calc(1{comment})");
     assert_eq!(value.serialize().unwrap().as_css(), expected);
+    assert_eq!(condition.serialize().unwrap().as_css(), source);
     stats
 }
 
@@ -427,18 +438,20 @@ fn main() {
         grouped.saturating_sub(direct),
         METADATA_ALLOWANCE,
     );
-    let outside = growth("media-number-comment-outside", |payload| {
+    let opaque = growth("media-number-opaque-control", |payload| {
         media_value_sample(payload, false)
     });
     let inside = growth("media-number-comment-inside", |payload| {
         media_value_sample(payload, true)
     });
-    // Both retain a full enclosure. Only the inside case also retains the
-    // comment in its public value range: decoded content and exact spelling.
+    // Both canonical outputs emit the payload once, cancelling existing
+    // serialization costs. The opaque control retains one function graph;
+    // the feature additionally retains its public value-range graph, including
+    // the comment's decoded content and exact spelling.
     budget(
         &mut failures,
         "media-number-classification",
-        inside.saturating_sub(outside),
+        inside.saturating_sub(opaque),
         2 * PAYLOAD_GROWTH + METADATA_ALLOWANCE,
     );
     for property in [
