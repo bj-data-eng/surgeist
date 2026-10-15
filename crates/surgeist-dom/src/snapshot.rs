@@ -71,8 +71,8 @@ impl DomSnapshot {
 /// A document-qualified view over one exact immutable store revision.
 #[derive(Clone, Copy, Debug)]
 pub struct DomDocument<'a> {
-    snapshot: &'a DomSnapshot,
-    id: DocumentId,
+    pub(crate) snapshot: &'a DomSnapshot,
+    pub(crate) id: DocumentId,
 }
 
 impl<'a> DomDocument<'a> {
@@ -162,9 +162,11 @@ impl<'a> DomNode<'a> {
             .state();
         (state.mode() == crate::HtmlShadowRootMode::Open).then_some(root)
     }
-    /// The exact root's fragment host. Descendants use tree_scope().host().
+    /// The exact ShadowRoot's host. Template contents instead use fragment_host().
     pub fn shadow_host(self) -> Option<NodeId> {
-        self.node.host
+        matches!(self.kind(), DomNodeKind::ShadowRoot(_))
+            .then_some(self.node.host)
+            .flatten()
     }
     pub fn as_shadow_root(self) -> Option<DomShadowRoot<'a>> {
         matches!(self.kind(), DomNodeKind::ShadowRoot(_)).then_some(DomShadowRoot { node: self })
@@ -186,8 +188,7 @@ impl<'a> DomNode<'a> {
     pub fn shadow_including_parent(self) -> Option<NodeId> {
         self.parent().or(self.shadow_host())
     }
-    /// Host-including ancestry currently crosses admitted ShadowRoot hosts.
-    /// Template-hosted fragments are not an admitted capability yet.
+    /// Host-including ancestry crosses ShadowRoot and owned Template fragment hosts.
     pub fn host_including_parent(self) -> Option<NodeId> {
         self.parent().or(self.node.host)
     }

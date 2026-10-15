@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button families are admitted;
+Common profiles plus actual native Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -101,7 +101,20 @@ attribute/removal/insertion/adoption/clone paths invoke source steps. Explicit
 retirement alone clears matching surviving stored inverses and permitted-weak
 manual references, cancels exact pending signal recipients with evidence and
 never follows reused generations. Detach/adopt/disconnect do not cancel signals.
-Future template-owned fragments need their own actual producer state and hooks.
+Template owns a real contents Fragment and documents retain actual role/cache
+relations. Consume shared fresh-null insertion evidence only for native creation;
+keep parser/retained installation a different cause. Cache a fresh default inert
+Document (31 metadata units), with only HTML class marking inherited, not origin,
+content type or a skeleton. Sibling/nested owners reuse the selected actual cache.
+Host-including cycles cross Template hosts; shadow connectedness/source insertion
+and removal walks do not. Template cloning steps precede parent append/ordinary
+children, with per-frame actual documents. Adoption invokes the contents hook;
+direct Fragment adopt/replacement may preserve a different actual document.
+Never normalize that relation during same-document Template adoption. Direct
+destroy of still genuinely owned contents is InvalidDestruction despite empty/
+parent-null/different-document state. Owner destruction retires its real owned
+closure, preserving shared cache Documents and snapshots. Non-owning declarative
+references are not retirement edges and are not fabricated by native creation.
 
 DomLimits requires explicit aggregate installed Slot-reference and raw duplicate
 input capacities. Check raw input before resolution, installed replacements at
@@ -138,8 +151,9 @@ Do not reconstruct saved state from content attributes or rerun fresh native
 initialization while capturing. Keep kind/host mapping exhaustive. Shadow roots
 use their actual document independently of their host. Close actual associations,
 ancestors and shadow subtrees without declaring supplemental documents' unrelated
-trees complete. Template associations need their own actual closure expansion,
-not plain-fragment unhosted defaults. Slot supplements feed stored assignment to
+trees complete. Template closure includes actual contents, hosts, role/cache and
+documents; establish inert roles before ordinary cache links rather than using
+plain-fragment unhosted defaults. Slot supplements feed stored assignment to
 directionality and fresh flat facts to inertness, preserving actual related
 documents. Missing modal/live-control/fallback facts remain unavailable; detached
 flat exclusion does not establish empty inert ancestry. Preserve producer

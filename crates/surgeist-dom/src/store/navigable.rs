@@ -14,7 +14,7 @@ impl Draft {
         let mut ancestor = root;
         loop {
             admit()?;
-            match self.host_including_parent(ancestor)? {
+            match self.shadow_including_parent(ancestor)? {
                 Some(parent) => ancestor = parent,
                 None => break,
             }

@@ -22,6 +22,7 @@ mod import;
 mod navigable;
 mod shadow;
 mod slot;
+mod template;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
@@ -263,6 +264,8 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    /// Template contents ownership or a Document's appropriate-owner cache changed.
+    TemplateRelations,
     SlotManual(NodeId),
     SlotAssignedNodes(NodeId),
     ManualAssignment(NodeId),
@@ -392,6 +395,8 @@ pub(crate) struct Node {
     pub(crate) children: Vec<NodeId>,
     pub(crate) shadow_root: Option<NodeId>,
     pub(crate) host: Option<NodeId>,
+    pub(crate) template_contents: Option<NodeId>,
+    pub(crate) template_document: Option<crate::template::TemplateDocument<NodeId>>,
     pub(crate) manual_nodes: Vec<NodeId>,
     pub(crate) assigned_nodes: Vec<NodeId>,
     pub(crate) manual_slot: Option<NodeId>,
@@ -746,6 +751,8 @@ struct DraftNode {
     children: Vec<Key>,
     shadow_root: Option<Key>,
     host: Option<Key>,
+    template_contents: Option<Key>,
+    template_document: Option<crate::template::TemplateDocument<Key>>,
     manual_nodes: Vec<Key>,
     assigned_nodes: Vec<Key>,
     manual_slot: Option<Key>,
@@ -799,6 +806,10 @@ impl Draft {
                     parent: node.parent.map(|id| Key::Existing(id.slot)),
                     shadow_root: node.shadow_root.map(|id| Key::Existing(id.slot)),
                     host: node.host.map(|id| Key::Existing(id.slot)),
+                    template_contents: node.template_contents.map(|id| Key::Existing(id.slot)),
+                    template_document: node
+                        .template_document
+                        .map(|value| value.map(|id| Key::Existing(id.slot))),
                     children,
                     manual_nodes: map_keys(&node.manual_nodes, cancelled)?,
                     assigned_nodes: map_keys(&node.assigned_nodes, cancelled)?,
@@ -922,6 +933,8 @@ impl Draft {
         let form_past_names =
             matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some())
                 .then(crate::form::FormPastNames::fresh);
+        let template_document = matches!(kind, DomNodeKind::Document(_))
+            .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
         self.created.push(Some(DraftNode {
             document,
             kind,
@@ -929,6 +942,8 @@ impl Draft {
             children: Vec::new(),
             shadow_root: None,
             host: None,
+            template_contents: None,
+            template_document,
             manual_nodes: Vec::new(),
             assigned_nodes: Vec::new(),
             manual_slot: None,
@@ -1055,6 +1070,7 @@ impl Draft {
                     }
                 };
                 let key = self.allocate(kind, document, limits)?;
+                self.initialize_template(key, limits, cancelled)?;
                 self.register_ticket(key)?;
             }
             Command::Import {
@@ -1124,6 +1140,7 @@ impl Draft {
             Command::Destroy(node) => {
                 let node = self.resolve(node)?;
                 if self.node(node)?.parent.is_some()
+                    || self.node(node)?.host.is_some()
                     || matches!(
                         self.node(node)?.kind,
                         DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
@@ -1143,6 +1160,7 @@ impl Draft {
                     .expect("owned subtree");
                     pending.extend(node.children);
                     pending.extend(node.shadow_root);
+                    pending.extend(node.template_contents);
                     self.nodes -= 1;
                     self.units -= kind_units(&node.kind)?;
                     self.units -= form::name_units(node.form_past_names.as_ref(), cancelled)?;
@@ -1300,6 +1318,8 @@ impl Draft {
                 parent: source.parent.map(id),
                 shadow_root: source.shadow_root.map(id),
                 host: source.host.map(id),
+                template_contents: source.template_contents.map(id),
+                template_document: source.template_document.map(|value| value.map(id)),
                 children,
                 manual_nodes: map_ids(&source.manual_nodes, &id, cancelled)?,
                 assigned_nodes: map_ids(&source.assigned_nodes, &id, cancelled)?,
@@ -1487,14 +1507,47 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
             }));
         }
     }
+    let has_template = |state: &State| {
+        state.slots.iter().any(|slot| {
+            slot.node.as_ref().is_some_and(|node| {
+                node.template_contents.is_some()
+                    || node.template_document.is_some_and(|state| {
+                        matches!(state, crate::template::TemplateDocument::InertTemplate)
+                            || state.inert().is_some()
+                    })
+            })
+        })
+    };
+    let cache_changed = old.slots.iter().zip(&new.slots).any(|(a, b)| {
+        a.node.as_ref().zip(b.node.as_ref()).is_some_and(|(a, b)| {
+            a.template_document != b.template_document || a.template_contents != b.template_contents
+        })
+    });
+    if cache_changed
+        || ((has_template(old) || has_template(new))
+            && changes.iter().any(|change| {
+                matches!(
+                    change,
+                    DomChange::Created(_)
+                        | DomChange::Destroyed(_)
+                        | DomChange::Parent(_)
+                        | DomChange::Children(_)
+                        | DomChange::NodeDocument(_)
+                )
+            }))
+    {
+        reserve(&mut changes, 1)?;
+        changes.push(DomChange::TemplateRelations);
+    }
     // All derived shadow relations are invalidated conservatively whenever a
     // structural edit can affect a managed shadow tree. Ordinary-only stores
     // retain their existing precise change contract.
     let has_shadow = |state: &State| {
-        state
-            .slots
-            .iter()
-            .any(|slot| slot.node.as_ref().is_some_and(|node| node.host.is_some()))
+        state.slots.iter().any(|slot| {
+            slot.node
+                .as_ref()
+                .is_some_and(|node| matches!(node.kind, DomNodeKind::ShadowRoot(_)))
+        })
     };
     if (has_shadow(old) || has_shadow(new))
         && changes.iter().any(|change| {

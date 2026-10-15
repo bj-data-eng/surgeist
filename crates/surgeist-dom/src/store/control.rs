@@ -117,7 +117,7 @@ impl Draft {
     fn control_connected(&self, mut key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         loop {
             check_cancel(cancel)?;
-            match self.host_including_parent(key)? {
+            match self.shadow_including_parent(key)? {
                 Some(parent) => key = parent,
                 None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
             }

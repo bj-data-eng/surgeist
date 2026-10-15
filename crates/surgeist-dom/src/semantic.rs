@@ -320,15 +320,6 @@ fn add_document(
         DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
     };
     let subject = builder.add_document(metadata.mode(), scripting, registry)?;
-    builder.establish_document_template_facts(
-        &subject,
-        match metadata.class() {
-            DomDocumentClass::Xml => HtmlDocumentClass::NonHtml,
-            DomDocumentClass::Html => HtmlDocumentClass::Html,
-        },
-        HtmlTemplateDocumentRole::Ordinary,
-        HtmlCaptureTemplateCacheInput::Absent,
-    )?;
     builder.establish_document_nonce_environment(
         &subject,
         HtmlNonceDocumentEnvironment::new(environment, HtmlHeaderDeliveredCsp::Unavailable),
@@ -399,8 +390,14 @@ impl DomSnapshot {
             if let Some(parent) = node.parent() {
                 control.include(&mut planned, parent, false)?;
             }
-            if let Some(host) = node.shadow_host() {
+            if let Some(host) = node.fragment_host() {
                 control.include(&mut planned, host, false)?;
+            }
+            if let Some(contents) = node.node.template_contents {
+                control.include(&mut planned, contents, true)?;
+            }
+            if let Some(inert) = node.node.template_document.and_then(|state| state.inert()) {
+                control.include(&mut planned, inert, false)?;
             }
             if let Some(root) = node.hosted_shadow_root() {
                 control.include(&mut planned, root, true)?;
@@ -450,6 +447,42 @@ impl DomSnapshot {
                     node: entry.node,
                     subject: add_document(&mut builder, self, DocumentId(entry.node))?,
                 });
+            }
+        }
+        // All subjects exist before cache links, and inert roles precede their
+        // referring ordinary Documents regardless of arena creation order.
+        for inert_pass in [true, false] {
+            for entry in &planned {
+                control.charge(1)?;
+                let node = self.node(entry.node)?;
+                let Some(document) = node.as_document() else {
+                    continue;
+                };
+                let inert =
+                    document.template_role() == crate::DomTemplateDocumentRole::InertTemplate;
+                if inert != inert_pass {
+                    continue;
+                }
+                let subject = control.subject(&staged, entry.node)?;
+                let cache = match document.associated_inert_template_document() {
+                    Some(owner) => HtmlCaptureTemplateCacheInput::Document(
+                        control.subject(&staged, owner.node())?,
+                    ),
+                    None => HtmlCaptureTemplateCacheInput::Absent,
+                };
+                builder.establish_document_template_facts(
+                    &subject,
+                    match document.metadata().class() {
+                        DomDocumentClass::Xml => HtmlDocumentClass::NonHtml,
+                        DomDocumentClass::Html => HtmlDocumentClass::Html,
+                    },
+                    if inert {
+                        HtmlTemplateDocumentRole::InertTemplate
+                    } else {
+                        HtmlTemplateDocumentRole::Ordinary
+                    },
+                    cache,
+                )?;
             }
         }
         // Hosts precede their shadow roots even when arena order differs.
@@ -503,7 +536,9 @@ impl DomSnapshot {
                 }
                 DomNodeKind::DocumentFragment => {
                     let subject = builder.add_fragment(&root)?;
-                    builder.establish_unhosted(&subject)?;
+                    if node.fragment_host().is_none() {
+                        builder.establish_unhosted(&subject)?;
+                    }
                     subject
                 }
                 DomNodeKind::Text(data) => builder.add_text(&root, data.clone())?,
@@ -552,6 +587,14 @@ impl DomSnapshot {
                     node: entry.node,
                     subject,
                 });
+            }
+        }
+        for entry in &planned {
+            control.charge(1)?;
+            if let Some(template) = self.node(entry.node)?.as_template() {
+                let host = control.subject(&staged, entry.node)?;
+                let contents = control.subject(&staged, template.contents())?;
+                builder.establish_template_contents(&host, &contents)?;
             }
         }
         let mut children = Vec::new();

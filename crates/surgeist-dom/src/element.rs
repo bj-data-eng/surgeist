@@ -97,6 +97,11 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Form) => {
                 NativeFamily::Form(surgeist_html::HtmlFormNativeState::fresh())
             }
+            Requirement::KnownHtml(KnownHtmlElement::Template) => NativeFamily::Template(
+                initialization
+                    .template_insertion()
+                    .expect("actual Template fresh insertion evidence"),
+            ),
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
                 NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
             }
@@ -145,6 +150,15 @@ impl DomElement {
             family,
             captured_in_view_transition: false,
         })
+    }
+    /// Actual native Template insertion references; contents identity is in its snapshot view.
+    pub fn template_insertion_state(
+        &self,
+    ) -> Option<surgeist_html::HtmlTemplateFreshInsertionState> {
+        match self.family {
+            NativeFamily::Template(state) => Some(state),
+            _ => None,
+        }
     }
     /// Actual native Form scalars, independent of identity-bearing relations.
     pub fn form_state(&self) -> Option<surgeist_html::HtmlFormNativeState> {

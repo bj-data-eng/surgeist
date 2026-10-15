@@ -18,17 +18,29 @@ impl Draft {
         }
         let mut pending = Vec::new();
         reserve(&mut pending, 1)?;
-        pending.push(node);
-        while let Some(node) = pending.pop() {
+        pending.push((node, document));
+        while let Some((node, document)) = pending.pop() {
             check_cancel(cancelled)?;
             let children = &self.node(node)?.children;
             reserve(&mut pending, children.len())?;
-            pending.extend(children.iter().rev().copied());
+            pending.extend(
+                children
+                    .iter()
+                    .rev()
+                    .copied()
+                    .map(|child| (child, document)),
+            );
             if let Some(root) = self.node(node)?.shadow_root {
                 reserve(&mut pending, 1)?;
-                pending.push(root);
+                pending.push((root, document));
             }
             self.node_mut(node).document = document;
+            if let Some(contents) =
+                self.template_adoption_target(node, document, limits, cancelled)?
+            {
+                reserve(&mut pending, 1)?;
+                pending.push(contents);
+            }
             // Attributes are value records owned by this Element, not Attr
             // nodes. Their node-document is consequently this same relation.
         }

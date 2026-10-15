@@ -87,11 +87,19 @@ impl Draft {
     }
 
     /// Shadow roots are parentless ordinary roots. For cycle checks only, their
-    /// fragment host continues the ancestry chain. Future template hosts must
-    /// join this same source-defined relation rather than ordinary parent links.
+    /// fragment host continues the ancestry chain. Actual Template contents use
+    /// this same host concept, separately from shadow connectedness.
     pub(super) fn host_including_parent(&self, key: Key) -> Result<Option<Key>, DomError> {
         let node = self.node(key)?;
         Ok(node.parent.or(node.host))
+    }
+    pub(super) fn shadow_including_parent(&self, key: Key) -> Result<Option<Key>, DomError> {
+        let node = self.node(key)?;
+        Ok(node.parent.or_else(|| {
+            matches!(node.kind, DomNodeKind::ShadowRoot(_))
+                .then_some(node.host)
+                .flatten()
+        }))
     }
 }
 

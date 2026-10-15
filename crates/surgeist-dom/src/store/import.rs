@@ -4,6 +4,10 @@ use super::*;
 struct Frame {
     source: NodeId,
     copy: Key,
+    document: Key,
+    parent: Option<Key>,
+    template_child: usize,
+    appended: bool,
     next_child: usize,
     subtree: bool,
     shadow_started: bool,
@@ -25,6 +29,10 @@ impl Draft {
         frames.push(Frame {
             source,
             copy: root,
+            document,
+            parent: None,
+            template_child: 0,
+            appended: false,
             next_child: 0,
             subtree,
             shadow_started: false,
@@ -32,18 +40,56 @@ impl Draft {
         while let Some(frame) = frames.last_mut() {
             check_cancel(cancelled)?;
             let original = snapshot.node(frame.source)?;
+            // HTML's cloning extension precedes parent append and ordinary
+            // descendants. Each contents frame has its actual inert document.
+            if frame.subtree
+                && let Some(template) = original.as_template()
+            {
+                let contents = snapshot.node(template.contents())?;
+                if let Some(&source) = contents.children().get(frame.template_child) {
+                    frame.template_child += 1;
+                    let parent = self
+                        .node(frame.copy)?
+                        .template_contents
+                        .expect("fresh contents");
+                    let document = self.node(parent)?.document;
+                    let copy = self.clone_single(snapshot, source, document, limits, cancelled)?;
+                    reserve(&mut frames, 1)?;
+                    frames.push(Frame {
+                        source,
+                        copy,
+                        document,
+                        parent: Some(parent),
+                        template_child: 0,
+                        appended: false,
+                        next_child: 0,
+                        subtree: true,
+                        shadow_started: false,
+                    });
+                    continue;
+                }
+            }
+            if !frame.appended {
+                frame.appended = true;
+                if let Some(parent) = frame.parent {
+                    self.pre_insert(frame.copy, parent, None, limits, cancelled)?;
+                }
+            }
             if frame.subtree
                 && let Some(&source) = original.children().get(frame.next_child)
             {
                 frame.next_child += 1;
                 let parent = frame.copy;
+                let document = frame.document;
                 let copy = self.clone_single(snapshot, source, document, limits, cancelled)?;
-                // Append the initialized child before traversing its descendants.
-                self.pre_insert(copy, parent, None, limits, cancelled)?;
                 reserve(&mut frames, 1)?;
                 frames.push(Frame {
                     source,
                     copy,
+                    document,
+                    parent: Some(parent),
+                    template_child: 0,
+                    appended: false,
                     next_child: 0,
                     subtree: true,
                     shadow_started: false,
@@ -64,10 +110,15 @@ impl Draft {
                             limits,
                             cancelled,
                         )?;
+                        let document = frame.document;
                         reserve(&mut frames, 1)?;
                         frames.push(Frame {
                             source,
                             copy: root,
+                            document,
+                            parent: None,
+                            template_child: 0,
+                            appended: true,
                             next_child: 0,
                             subtree: true,
                             shadow_started: false,
@@ -118,6 +169,7 @@ impl Draft {
             DomNodeKind::DocumentType(value) => DomNodeKind::DocumentType(value.clone()),
         };
         let copy = self.allocate(kind, document, limits)?;
+        self.initialize_template(copy, limits, cancelled)?;
         if let Some(element) = original.as_element() {
             for attribute in element.attributes().iter() {
                 check_cancel(cancelled)?;

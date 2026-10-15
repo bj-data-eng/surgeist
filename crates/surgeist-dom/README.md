@@ -18,7 +18,7 @@ Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
 each document's content type, encoding name and URL serialization (31 units for
-native XML, 25 for native HTML). Element names and every attribute's namespace URI,
+native XML and inert owners, 25 for createHTMLDocument). Element names and every attribute's namespace URI,
 prefix, local name and value count as separate logical stored slots. An applicable
 cryptographic nonce slot counts independently of its content attribute.
 Limits do not promise a total heap bound: caller-owned batches, snapshot/report
@@ -31,14 +31,14 @@ coverage without mutating document state.
 ordered edits against private staged state and publishes once. Only a successful
 commit resolves surviving tickets to owner-qualified, generation-safe `NodeId`s.
 A failed or cancelled batch preserves tree state, revisions, identities, slot
-assignment and history. Unpublished creation followed by destruction is a
-semantic no-op. Final no-op batches do not advance `DomRevision`; replacing an
+assignment and history. Unpublished creation followed by destruction with no
+other final semantic change is a no-op. Final no-op batches do not advance `DomRevision`; replacing an
 existing node with an equal fresh node does. Revision and owner exhaustion reject
 without wrapping; a destroyed slot whose generation is exhausted is retired.
 
 The supported mutations insert/move nodes, transfer a fragment's children in
 order, replace a child, adopt within the same store, detach, destroy detached
-non-Document/non-ShadowRoot subtrees, including their owned shadow trees, and replace Text/Comment/PI data using UTF-16 code-unit
+non-Document/non-ShadowRoot subtrees, including their owned shadow and Template contents trees, and replace Text/Comment/PI data using UTF-16 code-unit
 offsets. Documents reject Text children and accept at most one Element and one
 doctype, with the doctype preceding the Element. Elements and fragments accept
 Elements and CharacterData. Doctypes cannot be inserted into them or have children.
@@ -85,7 +85,7 @@ A later `is` attribute does not rewrite saved creation state.
 `create_element_ns` validates the selected relaxed Element QName rules and derives
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
-and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button families,
+and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Template families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -270,8 +270,8 @@ proves nonce content remains visible without inventing CSP facts. No API attache
 a browsing context or advances the closed common tuple into interactive state.
 
 This common contribution does not complete native HTML. Remaining exact producer
-requirements include other native form/control relations and values, template hosted
-contents/inert documents, HTML/SVG script state and preparation, resource-capable
+requirements include other native form/control relations and values,
+HTML/SVG script state and preparation, resource-capable
 iframe navigables, link/style associations, details/dialog state, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
@@ -393,12 +393,38 @@ capture; `revalidate` checks the live owner and reports `SkippedDestroyedTarget`
 without following generation reuse. Later signals belong to the next checkpoint.
 New pending work advances the revision even when final node values are restored.
 
-Template contents/inert-document caches, declarative installation, registry objects and
-HTML callbacks remain separate unadmitted capabilities. Shadow-including and
-host-including ancestry coincide for admitted shadow boundaries today; future
-template-hosted fragments must extend the host-including relation with their
-actual HTML owner hooks. This unit does not complete #1124's remaining
-language/control/pseudo or broader host-fact requirements.
+Native HTML Template owns a separate real DocumentFragment. Its checked
+`DomNode::as_template()` view exposes contents and the HTML-owned known-null native
+insertion state. Use the contents NodeId in ordinary edits; ordinary Template
+children remain a different, legal native DOM child list. A connected Template
+does not connect its contents. `fragment_host` and host-including cycle checks
+cross its ownership edge; shadow ancestry, tree scopes and CSS flat queries do not.
+
+Documents retain their actual Template role and associated inert-document cache.
+First use creates a fresh default Document (31 metadata string units), marks it
+HTML when its source is HTML, and caches it. It keeps application/xml and a fresh
+opaque origin; it does not inherit createHTMLDocument's text/html, origin or
+skeleton. Siblings share that cached owner; Templates inside an algorithm-created
+owner reuse it. Destroying one Template preserves the shared cached Document.
+Fixed identity fields count through managed-node capacity; all auxiliary nodes
+and strings count toward the ordinary finite limits.
+
+Deep Template import clones contents before parent append/ordinary children, into
+the copy's actual appropriate owner. Shallow copies still own fresh empty contents.
+Adoption invokes the HTML Template steps after updating its node-document. Direct
+contents adoption/replacement can leave a different actual document while keeping
+its host; same-document Template adoption does not normalize that history. Captures
+preserve the real role/cache/contents and related documents. `TemplateRelations`
+covers derived ownership/cache facts separately from shadow relations.
+
+Direct explicit destroy of genuinely owned contents returns InvalidDestruction,
+even when empty, parentless or adopted elsewhere. Destroy the detached owning
+Template to retire its owned contents/nested/shadow closure atomically; old captures
+and shared inert Documents survive. A non-owning declarative-shadow reference
+would not be an ownership edge; native creation does not fabricate that state.
+Native for/shadow attributes do not start parser patching. Declarative/retained
+HTML installation, registry objects and HTML callbacks still require their real
+adapters, as do #1124's remaining language/control/pseudo/host capabilities.
 
 `DomHostPublisher` captures complete fixed focus/hover or document-target Element
 observations from an external producer against one exact `DomDocumentStamp`.
@@ -589,8 +615,8 @@ Connected inherited inertness therefore still needs current modal facts; own
 inert can succeed independently. Detached subjects are known flat-excluded, with
 inherited inert ancestry unavailable under the selected contract.
 
-This native shadow/Slot/Fieldset semantic profile does not complete #1124. Other live controls,
-template owner/cache state, registry objects,
+This native shadow/Slot/control/Template semantic profile does not complete #1124. Other live controls,
+registry objects,
 parser installation and the remaining qualified external domains still require
 their actual owning adapters. Future hosted kinds need their own real association
 closure and must not inherit ordinary fragment absence from this profile.

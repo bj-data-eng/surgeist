@@ -90,6 +90,11 @@ impl DomDocumentMetadata {
             DomOpaqueOrigin(Arc::new(OpaqueOriginIdentity)),
         )
     }
+    pub(crate) fn template_owner(class: DomDocumentClass) -> Self {
+        let mut metadata = Self::native();
+        metadata.class = class;
+        metadata
+    }
     /// Used only by the complete createHTMLDocument transaction, whose source
     /// Document supplies this identity. No caller can set arbitrary metadata.
     pub(crate) fn native_html(origin: DomOpaqueOrigin) -> Self {

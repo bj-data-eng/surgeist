@@ -23,6 +23,8 @@
 //! semantic capture and Slot supplementation retain actual control facts.
 //! Native Button shares those controls and retains independent weak reflected
 //! targets, source-ordered setters, scoped semantic getters and retirement cleanup.
+//! Native Template owns real separate contents and cached inert Documents;
+//! clone/adopt/retirement preserve source ownership and document distinctions.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -101,6 +103,7 @@ mod shadow;
 mod slot;
 mod snapshot;
 mod store;
+mod template;
 mod view_transition;
 
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
@@ -138,6 +141,7 @@ pub use surgeist_html::{
     Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, HtmlShadowRootMode,
     HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
+pub use template::{DomTemplate, DomTemplateDocumentRole};
 pub use view_transition::{
     CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
     DomViewTransition, DomViewTransitionBranches, DomViewTransitionCssomError, DomViewTransitionId,
