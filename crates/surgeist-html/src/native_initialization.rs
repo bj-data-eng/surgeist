@@ -1,4 +1,4 @@
-//! Selected native initialization requirements and fresh common state.
+//! Shared element classification, closed common values and native freshness.
 //!
 //! HTML877d #elements-in-the-dom defines interface dispatch, including obsolete
 //! exceptions and the custom/unknown fallback. The 113 concrete modern normative
@@ -12,30 +12,49 @@ use crate::{
     HtmlNativeFormAssociationKind, HtmlTemplateFreshInsertionState, KnownHtmlElement, QualifiedName,
 };
 
-/// Required native family initialization in addition to the common baseline.
+/// Name-derived family and namespace applicability, independent of creation cause.
 ///
-/// These are requirements, not caller-selected construction modes. Consumers
-/// derive them from the real validated name and must fulfill applicable state
-/// and hooks before publication. KnownHtml preserves an unadmitted built-in's
-/// actual identity; it does not claim every such element has another stored slot.
+/// Native creation must initialize each applicable family; retained installation
+/// must transfer its actual state. Classification proves neither operation.
+/// KnownHtml preserves an unadmitted built-in's actual identity; it does not
+/// claim every such element has another stored slot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlNativeInitializationRequirement {
+pub enum HtmlElementClass {
     GenericElement,
     CommonHtml,
     CommonSvg,
     CommonMathml,
-    NativeForm(HtmlNativeFormAssociationKind),
+    FormAssociated(HtmlNativeFormAssociationKind),
     KnownHtml(KnownHtmlElement),
     HtmlMarquee,
     HtmlFrame,
     SvgScript,
+}
+impl HtmlElementClass {
+    /// Applicable closed common fields, not evidence of their current values.
+    pub const fn common_scope(self) -> HtmlCommonScope {
+        match self {
+            Self::GenericElement | Self::CommonSvg | Self::CommonMathml | Self::SvgScript => {
+                HtmlCommonScope::Element
+            }
+            Self::CommonHtml
+            | Self::FormAssociated(_)
+            | Self::KnownHtml(_)
+            | Self::HtmlMarquee
+            | Self::HtmlFrame => HtmlCommonScope::Html,
+        }
+    }
+    /// Nonce slot applicability. This neither reads nor initializes that slot.
+    pub const fn has_nonce(self) -> bool {
+        !matches!(self, Self::GenericElement)
+    }
 }
 
 /// Admission immediately before the named actual borrowed operand read.
 /// Header includes the length and, for namespace, optional URI observation.
 /// Pair reads one actual UTF-16 unit and its exact canonical ASCII operand.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlNativeNameRead {
+pub enum HtmlElementNameRead {
     NamespaceHeader,
     NamespacePair,
     LocalNameHeader,
@@ -51,22 +70,30 @@ pub enum HtmlNativeNameRead {
 /// adapter, never reset by calling this native initializer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlNativeInitialization {
-    requirement: HtmlNativeInitializationRequirement,
-    common: HtmlNativeCommonState,
+    requirement: HtmlElementClass,
 }
 impl HtmlNativeInitialization {
-    pub const fn requirement(&self) -> HtmlNativeInitializationRequirement {
+    pub const fn requirement(&self) -> HtmlElementClass {
         self.requirement
     }
-    pub const fn common(&self) -> HtmlNativeCommonState {
-        self.common
+    pub const fn common(&self) -> HtmlCommonState {
+        HtmlCommonState::closed(self.requirement.common_scope())
+    }
+    /// Fresh nonce evidence belongs to native creation, separately from common
+    /// current values. Retained nonce readback must come from its actual owner.
+    pub const fn nonce(&self) -> Option<HtmlNativeFreshNonce> {
+        if self.requirement.has_nonce() {
+            Some(HtmlNativeFreshNonce::Empty)
+        } else {
+            None
+        }
     }
     /// Fresh insertion references for the actual HTML template requirement.
     /// The consumer creates the separate contents and owns all reference slots;
     /// this token cannot reset installed or retained insertion history.
     pub const fn template_insertion(&self) -> Option<HtmlTemplateFreshInsertionState> {
         match self.requirement {
-            HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Template) => {
+            HtmlElementClass::KnownHtml(KnownHtmlElement::Template) => {
                 Some(HtmlTemplateFreshInsertionState::NullTargetAndMarkers)
             }
             _ => None,
@@ -77,7 +104,7 @@ impl HtmlNativeInitialization {
     /// is creation evidence, not a current-empty flag after later assignment.
     pub const fn slot(&self) -> Option<HtmlNativeFreshSlot> {
         match self.requirement {
-            HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Slot) => {
+            HtmlElementClass::KnownHtml(KnownHtmlElement::Slot) => {
                 Some(HtmlNativeFreshSlot::EmptyManualAssignments)
             }
             _ => None,
@@ -91,37 +118,41 @@ pub enum HtmlNativeFreshSlot {
     EmptyManualAssignments,
 }
 
+/// Applicability of the shared common fields. SVG, MathML and generic elements
+/// have only the element tuple; nonce applicability is independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CommonScope {
+pub enum HtmlCommonScope {
     Element,
     Html,
-    Mixin,
 }
 
-/// Actual fresh common state, with scope selected from the exact namespace.
+/// The closed current common tuple, reusable across construction causes.
 ///
 /// A consuming owner may retain this closed tuple while its exposed operations
 /// preserve it. A capability that can change these slots requires richer current
-/// state before admission. The mutable nonce slot is separately materialized and
-/// owned by the consumer; this value carries only its fresh initialization.
+/// state before admission. This value carries no report, subject or creation
+/// authority: the actual producer must qualify it. The mutable nonce slot is
+/// separately owned and observed, and is not part of this tuple.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlNativeCommonState {
-    scope: CommonScope,
+pub struct HtmlCommonState {
+    scope: HtmlCommonScope,
 }
-impl HtmlNativeCommonState {
-    pub const fn element(&self) -> HtmlNativeClosedElementState {
-        HtmlNativeClosedElementState { closed: () }
+impl HtmlCommonState {
+    /// Constructs the literal closed values for the given applicability.
+    /// This does not establish that any particular element has these values.
+    pub const fn closed(scope: HtmlCommonScope) -> Self {
+        Self { scope }
     }
-    pub const fn html(&self) -> Option<HtmlNativeClosedHtmlState> {
-        match self.scope {
-            CommonScope::Html => Some(HtmlNativeClosedHtmlState { closed: () }),
-            CommonScope::Element | CommonScope::Mixin => None,
-        }
+    pub const fn scope(&self) -> HtmlCommonScope {
+        self.scope
     }
-    pub const fn nonce(&self) -> Option<HtmlNativeFreshNonce> {
+    pub const fn element(&self) -> HtmlClosedElementState {
+        HtmlClosedElementState { closed: () }
+    }
+    pub const fn html(&self) -> Option<HtmlClosedHtmlState> {
         match self.scope {
-            CommonScope::Element => None,
-            CommonScope::Html | CommonScope::Mixin => Some(HtmlNativeFreshNonce::Empty),
+            HtmlCommonScope::Html => Some(HtmlClosedHtmlState { closed: () }),
+            HtmlCommonScope::Element => None,
         }
     }
 }
@@ -130,10 +161,10 @@ impl HtmlNativeCommonState {
 /// per-element reaction queue; #activation gives each element an initially
 /// unset click-in-progress flag. This is not an agent queue or activation API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlNativeClosedElementState {
+pub struct HtmlClosedElementState {
     closed: (),
 }
-impl HtmlNativeClosedElementState {
+impl HtmlClosedElementState {
     pub const fn reaction_queue_is_empty(&self) -> bool {
         true
     }
@@ -142,15 +173,15 @@ impl HtmlNativeClosedElementState {
     }
 }
 
-/// The HTML-only fresh tuple from #previously-focused-element,
+/// The HTML-only closed tuple from #previously-focused-element,
 /// #attached-internals and #the-popover-attribute. These are actual null, hidden
 /// and false values, not missing observations or execution capabilities.
 /// Popover runtime visibility is distinct from HtmlPopoverState's attribute rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlNativeClosedHtmlState {
+pub struct HtmlClosedHtmlState {
     closed: (),
 }
-impl HtmlNativeClosedHtmlState {
+impl HtmlClosedHtmlState {
     pub const fn has_previously_focused_element(&self) -> bool {
         false
     }
@@ -184,26 +215,11 @@ pub enum HtmlNativeFreshNonce {
     Empty,
 }
 
-fn initialized(requirement: HtmlNativeInitializationRequirement) -> HtmlNativeInitialization {
-    use HtmlNativeInitializationRequirement as R;
-    let scope = match requirement {
-        R::GenericElement => CommonScope::Element,
-        R::CommonSvg | R::CommonMathml | R::SvgScript => CommonScope::Mixin,
-        R::CommonHtml | R::NativeForm(_) | R::KnownHtml(_) | R::HtmlMarquee | R::HtmlFrame => {
-            CommonScope::Html
-        }
-    };
-    HtmlNativeInitialization {
-        requirement,
-        common: HtmlNativeCommonState { scope },
-    }
-}
-
-fn known_requirement(element: KnownHtmlElement) -> HtmlNativeInitializationRequirement {
-    use HtmlNativeInitializationRequirement as R;
+fn known_class(element: KnownHtmlElement) -> HtmlElementClass {
+    use HtmlElementClass as R;
     use KnownHtmlElement as E;
     if let Some(kind) = HtmlNativeFormAssociationKind::from_element(element) {
-        return R::NativeForm(kind);
+        return R::FormAssociated(kind);
     }
     // The first 41 cases cover HTMLElement-only definitions plus div/span's
     // reflected interfaces. The next 41 reflected/child-text/tree-query
@@ -299,43 +315,43 @@ fn known_requirement(element: KnownHtmlElement) -> HtmlNativeInitializationRequi
 // HTML #elements-in-the-dom's 8 Unknown/12 HTMLElement/2 Pre exceptions,
 // plus the six additional obsolete interfaces. Names remain exact identities;
 // this is not a parser alias table. Only marquee/frame need separate state.
-const OBSOLETE: &[(&str, HtmlNativeInitializationRequirement)] = &[
-    ("applet", HtmlNativeInitializationRequirement::CommonHtml),
-    ("bgsound", HtmlNativeInitializationRequirement::CommonHtml),
-    ("blink", HtmlNativeInitializationRequirement::CommonHtml),
-    ("isindex", HtmlNativeInitializationRequirement::CommonHtml),
-    ("keygen", HtmlNativeInitializationRequirement::CommonHtml),
-    ("multicol", HtmlNativeInitializationRequirement::CommonHtml),
-    ("nextid", HtmlNativeInitializationRequirement::CommonHtml),
-    ("spacer", HtmlNativeInitializationRequirement::CommonHtml),
-    ("acronym", HtmlNativeInitializationRequirement::CommonHtml),
-    ("basefont", HtmlNativeInitializationRequirement::CommonHtml),
-    ("big", HtmlNativeInitializationRequirement::CommonHtml),
-    ("center", HtmlNativeInitializationRequirement::CommonHtml),
-    ("nobr", HtmlNativeInitializationRequirement::CommonHtml),
-    ("noembed", HtmlNativeInitializationRequirement::CommonHtml),
-    ("noframes", HtmlNativeInitializationRequirement::CommonHtml),
-    ("plaintext", HtmlNativeInitializationRequirement::CommonHtml),
-    ("rb", HtmlNativeInitializationRequirement::CommonHtml),
-    ("rtc", HtmlNativeInitializationRequirement::CommonHtml),
-    ("strike", HtmlNativeInitializationRequirement::CommonHtml),
-    ("tt", HtmlNativeInitializationRequirement::CommonHtml),
-    ("listing", HtmlNativeInitializationRequirement::CommonHtml),
-    ("xmp", HtmlNativeInitializationRequirement::CommonHtml),
-    ("dir", HtmlNativeInitializationRequirement::CommonHtml),
-    ("font", HtmlNativeInitializationRequirement::CommonHtml),
-    ("param", HtmlNativeInitializationRequirement::CommonHtml),
-    ("frameset", HtmlNativeInitializationRequirement::CommonHtml),
-    ("marquee", HtmlNativeInitializationRequirement::HtmlMarquee),
-    ("frame", HtmlNativeInitializationRequirement::HtmlFrame),
+const OBSOLETE: &[(&str, HtmlElementClass)] = &[
+    ("applet", HtmlElementClass::CommonHtml),
+    ("bgsound", HtmlElementClass::CommonHtml),
+    ("blink", HtmlElementClass::CommonHtml),
+    ("isindex", HtmlElementClass::CommonHtml),
+    ("keygen", HtmlElementClass::CommonHtml),
+    ("multicol", HtmlElementClass::CommonHtml),
+    ("nextid", HtmlElementClass::CommonHtml),
+    ("spacer", HtmlElementClass::CommonHtml),
+    ("acronym", HtmlElementClass::CommonHtml),
+    ("basefont", HtmlElementClass::CommonHtml),
+    ("big", HtmlElementClass::CommonHtml),
+    ("center", HtmlElementClass::CommonHtml),
+    ("nobr", HtmlElementClass::CommonHtml),
+    ("noembed", HtmlElementClass::CommonHtml),
+    ("noframes", HtmlElementClass::CommonHtml),
+    ("plaintext", HtmlElementClass::CommonHtml),
+    ("rb", HtmlElementClass::CommonHtml),
+    ("rtc", HtmlElementClass::CommonHtml),
+    ("strike", HtmlElementClass::CommonHtml),
+    ("tt", HtmlElementClass::CommonHtml),
+    ("listing", HtmlElementClass::CommonHtml),
+    ("xmp", HtmlElementClass::CommonHtml),
+    ("dir", HtmlElementClass::CommonHtml),
+    ("font", HtmlElementClass::CommonHtml),
+    ("param", HtmlElementClass::CommonHtml),
+    ("frameset", HtmlElementClass::CommonHtml),
+    ("marquee", HtmlElementClass::HtmlMarquee),
+    ("frame", HtmlElementClass::HtmlFrame),
 ];
 
 fn namespace_matches<E>(
     name: &QualifiedName,
     expected: &str,
-    admit: &mut impl FnMut(HtmlNativeNameRead) -> Result<(), E>,
+    admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<Option<bool>, E> {
-    admit(HtmlNativeNameRead::NamespaceHeader)?;
+    admit(HtmlElementNameRead::NamespaceHeader)?;
     let Some(value) = name.namespace().uri() else {
         return Ok(None);
     };
@@ -343,7 +359,7 @@ fn namespace_matches<E>(
         return Ok(Some(false));
     }
     for offset in 0..expected.len() {
-        admit(HtmlNativeNameRead::NamespacePair)?;
+        admit(HtmlElementNameRead::NamespacePair)?;
         if value.code_units()[offset] != u16::from(expected.as_bytes()[offset]) {
             return Ok(Some(false));
         }
@@ -354,15 +370,15 @@ fn namespace_matches<E>(
 fn local_matches<E>(
     name: &QualifiedName,
     expected: &str,
-    admit: &mut impl FnMut(HtmlNativeNameRead) -> Result<(), E>,
+    admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<bool, E> {
-    admit(HtmlNativeNameRead::LocalNameHeader)?;
+    admit(HtmlElementNameRead::LocalNameHeader)?;
     let value = name.local_name();
     if value.len() != expected.len() {
         return Ok(false);
     }
     for offset in 0..expected.len() {
-        admit(HtmlNativeNameRead::LocalNamePair)?;
+        admit(HtmlElementNameRead::LocalNamePair)?;
         if value.code_units()[offset] != u16::from(expected.as_bytes()[offset]) {
             return Ok(false);
         }
@@ -370,49 +386,62 @@ fn local_matches<E>(
     Ok(true)
 }
 
-/// Selects native creation requirements and common initial values from the
-/// actual expanded name. Name validity belongs to the preceding DOM operation.
+/// Classifies family and common/nonce applicability from the actual expanded
+/// name, independently of construction cause. Name validity belongs to the
+/// preceding operation. No current state or fresh evidence is supplied.
 /// Every Header/Pair is admitted before its actual read; errors stop immediately.
 /// No prefix, attribute, registry, custom grammar or external fact is inspected.
 ///
 /// Exact namespace dispatch precedes local-name access. Modern names use the
 /// canonical vocabulary; all obsolete cases are exhausted before this selected
 /// profile's custom/unknown fallback. Both final prototype branches need the
-/// same common tuple; actual custom state still uses its separate shared rule.
+/// same family classification; actual custom state uses its separate shared rule.
 /// This function never folds names or treats an unhandled known family as Common.
-pub fn native_element_initialization_with<E>(
+pub fn element_classification_with<E>(
     name: &QualifiedName,
-    mut admit: impl FnMut(HtmlNativeNameRead) -> Result<(), E>,
-) -> Result<HtmlNativeInitialization, E> {
-    use HtmlNativeInitializationRequirement as R;
+    mut admit: impl FnMut(HtmlElementNameRead) -> Result<(), E>,
+) -> Result<HtmlElementClass, E> {
+    use HtmlElementClass as R;
     match namespace_matches(name, HTML_NAMESPACE_URI, &mut admit)? {
-        None => return Ok(initialized(R::GenericElement)),
+        None => return Ok(R::GenericElement),
         Some(true) => {
             for &element in KnownHtmlElement::ALL {
                 if local_matches(name, element.local_name(), &mut admit)? {
-                    return Ok(initialized(known_requirement(element)));
+                    return Ok(known_class(element));
                 }
             }
             for &(local, requirement) in OBSOLETE {
                 if local_matches(name, local, &mut admit)? {
-                    return Ok(initialized(requirement));
+                    return Ok(requirement);
                 }
             }
-            return Ok(initialized(R::CommonHtml));
+            return Ok(R::CommonHtml);
         }
         Some(false) => {}
     }
     if namespace_matches(name, SVG_NAMESPACE_URI, &mut admit)? == Some(true) {
-        return Ok(initialized(
+        return Ok(
             if local_matches(name, KnownHtmlElement::Script.local_name(), &mut admit)? {
                 R::SvgScript
             } else {
                 R::CommonSvg
             },
-        ));
+        );
     }
     if namespace_matches(name, MATHML_NAMESPACE_URI, &mut admit)? == Some(true) {
-        return Ok(initialized(R::CommonMathml));
+        return Ok(R::CommonMathml);
     }
-    Ok(initialized(R::GenericElement))
+    Ok(R::GenericElement)
+}
+
+/// Selects and fulfills the shared common initial tuple for native creation.
+/// Applicable family state and hooks remain the consuming owner's obligation.
+/// Existing/parsed current state cannot be established by this fresh operation.
+/// Classification's exact name reads are admitted once, before each operand read.
+pub fn native_element_initialization_with<E>(
+    name: &QualifiedName,
+    admit: impl FnMut(HtmlElementNameRead) -> Result<(), E>,
+) -> Result<HtmlNativeInitialization, E> {
+    element_classification_with(name, admit)
+        .map(|requirement| HtmlNativeInitialization { requirement })
 }

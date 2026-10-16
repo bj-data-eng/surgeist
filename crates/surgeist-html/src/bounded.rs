@@ -39,7 +39,9 @@ pub use crate::form_owner::{
     HtmlFormOwnerResetCursorError, HtmlFormOwnerResetDecision, HtmlFormOwnerResetReply,
     HtmlFormOwnerResetTrigger, form_owner_lookup, form_owner_reset_trigger,
 };
-pub use crate::native_initialization::{HtmlNativeNameRead, native_element_initialization_with};
+pub use crate::native_initialization::{
+    HtmlElementNameRead, element_classification_with, native_element_initialization_with,
+};
 
 pub use crate::script_preparation::{
     HtmlScriptPreparationAction, HtmlScriptPreparationCursor, HtmlScriptPreparationError,

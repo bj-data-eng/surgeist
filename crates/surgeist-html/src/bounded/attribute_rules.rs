@@ -9,7 +9,8 @@ pub use crate::attributes::autocomplete::{
     autocomplete_materialization_work_bound,
 };
 pub use crate::attributes::bounded_rules::{
-    WritingSuggestionsProcessing, input_readonly_applies, stylesheet_link_context_work_bound,
+    HtmlAttributeKeywordRead, WritingSuggestionsProcessing, crossorigin_processing_with,
+    input_readonly_applies, referrerpolicy_processing_with, stylesheet_link_context_work_bound,
 };
 pub use crate::attributes::hash_name::{HashNameScan, HashNameScanStep};
 pub use crate::attributes::image_values::{

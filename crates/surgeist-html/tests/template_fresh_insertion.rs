@@ -3,8 +3,8 @@
 use std::convert::Infallible;
 use surgeist_html::bounded::native_element_initialization_with;
 use surgeist_html::{
-    HtmlNativeInitialization, HtmlNativeInitializationRequirement, HtmlTemplateFreshInsertionState,
-    KnownHtmlElement, Namespace, QualifiedName,
+    HtmlElementClass, HtmlNativeInitialization, HtmlTemplateFreshInsertionState, KnownHtmlElement,
+    Namespace, QualifiedName,
 };
 
 fn initialize(name: &QualifiedName) -> HtmlNativeInitialization {
@@ -19,7 +19,7 @@ fn exact_html_template_reports_null_initial_target_and_both_markers() {
     let initialization = initialize(&name);
     assert_eq!(
         initialization.requirement(),
-        HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Template)
+        HtmlElementClass::KnownHtml(KnownHtmlElement::Template)
     );
     assert_eq!(
         initialization.template_insertion(),

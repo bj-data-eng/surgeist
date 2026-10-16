@@ -2,26 +2,71 @@
 use crate::{DocumentString, KnownHtmlAttribute, Namespace};
 use std::{error::Error, fmt};
 
-/// Intrinsic creation history for a fresh native Style. Parser-created state
-/// needs its actual parser owner and is not inferred from attributes or a clone.
+/// Actual intrinsic creation and parser-stack state. This value carries no
+/// parser Document identity or associated CSSOM-sheet readiness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlStyleNativeState;
-impl HtmlStyleNativeState {
+pub struct HtmlStyleState {
+    creation: StyleCreation,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StyleCreation {
+    Other,
+    DocumentParser { on_stack: bool },
+}
+impl HtmlStyleState {
+    /// Script/native creation and general cloning have no parser history.
     pub const fn fresh() -> Self {
-        Self
+        Self {
+            creation: StyleCreation::Other,
+        }
+    }
+    /// Actual parser allocation precedes any push onto its open-element stack.
+    /// The parser owner separately retains its real parser Document relation.
+    pub const fn document_parser_created() -> Self {
+        Self {
+            creation: StyleCreation::DocumentParser { on_stack: false },
+        }
     }
     pub const fn on_parser_stack(self) -> bool {
-        false
+        matches!(
+            self.creation,
+            StyleCreation::DocumentParser { on_stack: true }
+        )
     }
     pub const fn created_by_document_parser(self) -> bool {
-        false
+        matches!(self.creation, StyleCreation::DocumentParser { .. })
+    }
+    /// Apply an actual parser push. Other creation causes cannot enter this state.
+    pub fn parser_stack_added(&mut self) -> Result<(), HtmlStyleParserStateError> {
+        let StyleCreation::DocumentParser { on_stack } = &mut self.creation else {
+            return Err(HtmlStyleParserStateError);
+        };
+        *on_stack = true;
+        Ok(())
+    }
+    /// Apply an actual parser pop, independently of stylesheet processing.
+    pub fn parser_stack_removed(&mut self) -> Result<(), HtmlStyleParserStateError> {
+        let StyleCreation::DocumentParser { on_stack } = &mut self.creation else {
+            return Err(HtmlStyleParserStateError);
+        };
+        *on_stack = false;
+        Ok(())
     }
 }
-impl Default for HtmlStyleNativeState {
+impl Default for HtmlStyleState {
     fn default() -> Self {
         Self::fresh()
     }
 }
+/// A non-parser Style cannot be placed on a parser's open-element stack.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlStyleParserStateError;
+impl fmt::Display for HtmlStyleParserStateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Style was not created by a document parser")
+    }
+}
+impl Error for HtmlStyleParserStateError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleUpdateAction {

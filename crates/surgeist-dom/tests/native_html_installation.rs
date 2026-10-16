@@ -484,7 +484,7 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
     let before = dom.snapshot();
     let usage = dom.usage();
     assert!(
-        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement::KnownHtml(surgeist_html::KnownHtmlElement::Audio)) }) if subject==id)
+        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::HtmlElementClass::KnownHtml(surgeist_html::KnownHtmlElement::Audio)) }) if subject==id)
     );
     unchanged(&dom, &before, usage, parent);
 }

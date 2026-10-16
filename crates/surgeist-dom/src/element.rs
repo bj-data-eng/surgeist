@@ -5,8 +5,8 @@ use crate::{
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
-    HtmlCanvasNoneState, HtmlFrameNullContent, HtmlIframeNativeState, HtmlMarqueeState,
-    HtmlNativeCommonState, HtmlNativeInitializationRequirement as Requirement, KnownHtmlElement,
+    HtmlCanvasNoneState, HtmlCommonState, HtmlElementClass as Requirement, HtmlFrameNullContent,
+    HtmlIframeNativeState, HtmlMarqueeState, KnownHtmlElement,
 };
 mod family;
 use family::NativeFamily;
@@ -28,7 +28,7 @@ pub struct DomElement {
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
     saved_is: Option<DocumentString>,
-    common: HtmlNativeCommonState,
+    common: HtmlCommonState,
     nonce: Option<DocumentString>,
     family: NativeFamily,
     captured_in_view_transition: bool,
@@ -143,26 +143,26 @@ impl DomElement {
                 };
                 NativeFamily::Slot
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Button) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Button) => {
                 NativeFamily::Button(crate::DomButtonState::fresh())
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
                 NativeFamily::Fieldset(crate::DomFieldsetState::fresh())
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Input) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Input) => {
                 NativeFamily::Input(std::sync::Arc::new(crate::DomInputState::fresh(
                     environment.input_platform(),
                 )))
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Textarea) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Textarea) => {
                 NativeFamily::Textarea(std::sync::Arc::new(crate::DomTextareaState::fresh(
                     environment.input_platform(),
                 )))
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
                 NativeFamily::Output(std::sync::Arc::new(crate::DomOutputState::fresh()))
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Select) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Select) => {
                 NativeFamily::Select(std::sync::Arc::new(crate::DomSelectState::fresh()))
             }
             Requirement::KnownHtml(KnownHtmlElement::Option) => {
@@ -174,7 +174,7 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::A | KnownHtmlElement::Area) => {
                 NativeFamily::Hyperlink
             }
-            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Image) => {
+            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Image) => {
                 NativeFamily::Img
             }
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
@@ -204,7 +204,7 @@ impl DomElement {
             custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
             saved_is,
             common,
-            nonce: common.nonce().map(|_| DocumentString::from("")),
+            nonce: initialization.nonce().map(|_| DocumentString::from("")),
             family,
             captured_in_view_transition: false,
         })
@@ -411,7 +411,7 @@ impl DomElement {
         matches!(self.family, NativeFamily::Script)
     }
     /// Actual closed common tuple. Exposed operations preserve its values.
-    pub fn common_state(&self) -> HtmlNativeCommonState {
+    pub fn common_state(&self) -> HtmlCommonState {
         self.common
     }
     /// Cryptographic nonce slot, independent of content. None means inapplicable.

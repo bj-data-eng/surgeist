@@ -248,11 +248,9 @@ fn folded_builtin_names_require_actual_family_initialization_and_validation_stil
     batch.create_element(html, "OBJECT");
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(
-            surgeist_html::HtmlNativeInitializationRequirement::NativeForm(
-                surgeist_html::HtmlNativeFormAssociationKind::Object
-            )
-        )
+        DomError::NativeInitializationRequired(surgeist_html::HtmlElementClass::FormAssociated(
+            surgeist_html::HtmlNativeFormAssociationKind::Object
+        ))
     );
     let mut batch = DomBatch::new();
     batch.create_element(html, "A B");

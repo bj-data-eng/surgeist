@@ -80,7 +80,7 @@ pub enum DomError {
     InvalidCharacter,
     Namespace,
     NotSupported,
-    NativeInitializationRequired(surgeist_html::HtmlNativeInitializationRequirement),
+    NativeInitializationRequired(surgeist_html::HtmlElementClass),
     NonceInapplicable,
     MarqueeInapplicable,
     CustomValidityInapplicable,

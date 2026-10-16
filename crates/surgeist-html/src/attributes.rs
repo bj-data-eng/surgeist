@@ -1526,6 +1526,53 @@ fn enum_value_selection<T: Copy + 'static>(
     rule: &EnumRule<T>,
     raw: Option<&DocumentString>,
 ) -> EnumValueSelection<T> {
+    match enum_value_selection_with(rule, raw, |_| Ok::<_, std::convert::Infallible>(())) {
+        Ok(selection) => selection,
+        Err(never) => match never {},
+    }
+}
+
+fn enum_keyword_matches_with<T, E>(
+    value: &DocumentString,
+    keyword: &Keyword<T>,
+    exact: bool,
+    admit: &mut impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<bool, E> {
+    use bounded_rules::HtmlAttributeKeywordRead as Read;
+    admit(Read::KeywordHeader)?;
+    let spelling = keyword.spelling;
+    if exact {
+        let mut actual = value.code_units().iter();
+        let mut expected = spelling.encode_utf16();
+        loop {
+            admit(Read::KeywordPair)?;
+            match (actual.next(), expected.next()) {
+                (None, None) => return Ok(true),
+                (Some(&actual), Some(expected)) if actual == expected => {}
+                _ => return Ok(false),
+            }
+        }
+    }
+    let units = value.code_units();
+    let bytes = spelling.as_bytes();
+    if units.len() != bytes.len() {
+        return Ok(false);
+    }
+    for offset in 0..units.len() {
+        admit(Read::KeywordPair)?;
+        if !ascii_keyword_unit(units[offset], bytes[offset]) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn enum_value_selection_with<T: Copy + 'static, E>(
+    rule: &EnumRule<T>,
+    raw: Option<&DocumentString>,
+    mut admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<EnumValueSelection<T>, E> {
+    admit(bounded_rules::HtmlAttributeKeywordRead::ValueHeader)?;
     let mut selection = EnumValueSelection {
         recognition: HtmlAttributeRecognition::Unapplied,
         author: HtmlAttributeAuthorState::Unapplied,
@@ -1538,17 +1585,15 @@ fn enum_value_selection<T: Copy + 'static>(
             selection.intrinsic = rule.missing;
         }
         Some(value) => {
-            if let Some(keyword) = rule.keywords.iter().find(|keyword| {
-                if rule.exact_keywords {
-                    value
-                        .code_units()
-                        .iter()
-                        .copied()
-                        .eq(keyword.spelling.encode_utf16())
-                } else {
-                    ascii_keyword(value, keyword.spelling)
+            let empty = value.is_empty();
+            let mut matched = None;
+            for keyword in rule.keywords {
+                if enum_keyword_matches_with(value, keyword, rule.exact_keywords, &mut admit)? {
+                    matched = Some(keyword);
+                    break;
                 }
-            }) {
+            }
+            if let Some(keyword) = matched {
                 selection.recognition = HtmlAttributeRecognition::Keyword {
                     matched: keyword.spelling,
                     canonical: keyword.canonical,
@@ -1561,7 +1606,7 @@ fn enum_value_selection<T: Copy + 'static>(
                     )
                 };
                 selection.intrinsic = Some(keyword.state);
-            } else if value.is_empty() {
+            } else if empty {
                 selection.recognition = HtmlAttributeRecognition::Empty;
                 selection.intrinsic = rule.empty.or(rule.invalid);
                 selection.author = if rule.empty.is_some() {
@@ -1580,7 +1625,7 @@ fn enum_value_selection<T: Copy + 'static>(
             }
         }
     }
-    selection
+    Ok(selection)
 }
 
 impl HtmlValueInterpreter {
@@ -2199,6 +2244,54 @@ impl HtmlValueInterpreter {
 // ordinary attribute value/report reexports.
 pub(crate) mod bounded_rules {
     use super::*;
+
+    /// Admission before one intrinsic enumeration observation. No name,
+    /// attribute applicability or captured-tree evidence is examined.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum HtmlAttributeKeywordRead {
+        /// Raw presence/length, missing default and fixed selection headers.
+        /// This occurs even when the raw attribute is missing.
+        ValueHeader,
+        /// One keyword's spelling/length and the raw comparison headers.
+        KeywordHeader,
+        /// One raw UTF-16 unit and canonical ASCII byte comparison. The shared
+        /// exact-keyword path instead compares UTF-16 units and admits its
+        /// optional next-unit/end observation through this same action.
+        KeywordPair,
+    }
+
+    /// CORS settings content-state processing for an already qualified caller.
+    /// Missing, empty and invalid defaults use the same rule as the ordinary
+    /// interpreter. This grants no element applicability or resource authority.
+    /// Each header/pair is admitted before its operand read; refusal stops
+    /// immediately, without allocation or mutation.
+    pub fn crossorigin_processing_with<E>(
+        raw: Option<&DocumentString>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlCrossOriginState, E> {
+        enum_value_selection_with(&CROSSORIGIN, raw, admit).map(|selection| {
+            selection
+                .intrinsic
+                .expect("CORS settings define every default state")
+        })
+    }
+
+    /// Referrer policy content-state processing, independently of element,
+    /// hyperlink or script applicability. The empty policy remains unresolved;
+    /// this does not choose a Document policy or parse an HTTP header.
+    /// Uses the shared vocabulary/defaults and admits each header/pair before
+    /// its operand read. No name or attribute record is constructed or scanned.
+    pub fn referrerpolicy_processing_with<E>(
+        raw: Option<&DocumentString>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlReferrerPolicy, E> {
+        enum_value_selection_with(&REFERRERPOLICY, raw, admit).map(|selection| {
+            selection
+                .intrinsic
+                .expect("referrer policy defines every default state")
+        })
+    }
+
     /// Shared source applicability for the captured candidacy consumer.
     /// Content Boolean presence and author-context reports remain separate.
     pub fn input_readonly_applies(state: HtmlInputType) -> bool {

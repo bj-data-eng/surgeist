@@ -111,3 +111,40 @@ fn networking_task_dispatch_precedes_script_removal_and_unblock() {
         }
     }
 }
+
+#[test]
+fn actual_parser_creation_and_stack_transitions_are_distinct_from_fresh_clone_state() {
+    use surgeist_html::{HtmlStyleParserStateError, HtmlStyleState};
+    let fresh = HtmlStyleState::fresh();
+    assert!(!fresh.created_by_document_parser());
+    assert!(!fresh.on_parser_stack());
+    let mut ordinary = fresh;
+    assert_eq!(
+        ordinary.parser_stack_added(),
+        Err(HtmlStyleParserStateError)
+    );
+    assert_eq!(ordinary, fresh);
+    let mut parsed = HtmlStyleState::document_parser_created();
+    assert!(parsed.created_by_document_parser());
+    assert!(
+        !parsed.on_parser_stack(),
+        "allocation is not an implicit stack push"
+    );
+    parsed.parser_stack_added().unwrap();
+    assert!(parsed.on_parser_stack());
+    assert!(!surgeist_html::style_update_is_required(
+        surgeist_html::HtmlStyleTrigger::ChildrenChanged {
+            on_parser_stack: parsed.on_parser_stack()
+        }
+    ));
+    parsed.parser_stack_removed().unwrap();
+    assert!(!parsed.on_parser_stack());
+    assert!(
+        parsed.created_by_document_parser(),
+        "a pop preserves actual creation history"
+    );
+    assert!(
+        !HtmlStyleState::fresh().created_by_document_parser(),
+        "general cloning initializes a fresh Style rather than copying parser flags"
+    );
+}

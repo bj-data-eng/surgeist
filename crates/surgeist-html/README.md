@@ -17,6 +17,15 @@ Parsing belongs to [surgeist-html-parser](../surgeist-html-parser/README.md);
 captured-tree queries belong to [surgeist-html-semantics](../surgeist-html-semantics/README.md).
 Consumers depend directly on the owner they use. No HTML result is a live DOM.
 
+`element_classification_with` selects family and common/nonce applicability from
+the exact expanded name through one bounded inventory. `HtmlCommonState` holds
+the shared closed current values; constructing a value does not qualify any
+element's state. Native creation obtains fresh common and nonce evidence through
+`native_element_initialization_with`. Parsed installation must instead consume
+the parser's completed-report and subject-qualified common-state readback, with
+the retained cryptographic nonce read independently. A profile permitting a
+common-state transition must extend its current-state model before admission.
+
 `HtmlCanvasNoneState` describes a native canvas with no bound rendering context,
 an origin-clean transparent-black bitmap and exact attribute-derived dimensions.
 It moves already-parsed dimensions without allocating pixels; consumers own
@@ -72,6 +81,11 @@ executes no CSSOM mutation or CSP interpretation. Exact type eligibility and
 source triggers are shared local rules. `HtmlStyleNotificationCursor` requires
 real event dispatch before reading current script-blocking predicates and
 unblocking; queue-time observations cannot replace post-handler reads.
+`HtmlStyleState` distinguishes fresh or general-clone creation from actual
+Document-parser creation. Allocation does not imply a stack push; actual parser
+push/pop operations update the stack flag while preserving creation history.
+The parser separately owns its creating Document relation. These values certify
+neither an associated stylesheet nor completed CSSOM processing.
 
 `HtmlHyperlinkSetUrlCursor` orders A/Area cache clearing, href presence,
 encoding-parse and successful storage. Shared attribute and tree decisions

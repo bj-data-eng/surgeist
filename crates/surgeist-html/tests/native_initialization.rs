@@ -2,12 +2,13 @@
 //! common initial slots. DOM validity, live identity and family hooks are later.
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    HtmlNativeNameRead as Read, is_nonce_element, native_element_initialization_with,
+    HtmlElementNameRead as Read, element_classification_with, is_nonce_element,
+    native_element_initialization_with,
 };
 use surgeist_html::{
-    DocumentString, HtmlNativeFormAssociationKind as F, HtmlNativeFreshNonce,
-    HtmlNativeInitialization, HtmlNativeInitializationRequirement as R, KnownHtmlElement as K,
-    Namespace, QualifiedName,
+    DocumentString, HtmlCommonScope, HtmlCommonState, HtmlElementClass as R,
+    HtmlNativeFormAssociationKind as F, HtmlNativeFreshNonce, HtmlNativeInitialization,
+    KnownHtmlElement as K, Namespace, QualifiedName,
 };
 
 fn initialize(name: &QualifiedName) -> HtmlNativeInitialization {
@@ -16,6 +17,14 @@ fn initialize(name: &QualifiedName) -> HtmlNativeInitialization {
 
 fn html(local: &str) -> HtmlNativeInitialization {
     initialize(&QualifiedName::new(Namespace::html(), None, local))
+}
+
+fn html_class(local: &str) -> R {
+    classify(&QualifiedName::new(Namespace::html(), None, local))
+}
+
+fn classify(name: &QualifiedName) -> R {
+    element_classification_with(name, |_| Ok::<_, Infallible>(())).unwrap()
 }
 
 // Each of these normative definitions uses HTMLElement, plus div/span's actual
@@ -60,7 +69,7 @@ tbody td template textarea tfoot th thead time title tr track u ul var video wbr
     assert_eq!(COMMON.split_whitespace().count(), 41);
     assert_eq!(REFLECTED_QUERY_COMMON.split_whitespace().count(), 41);
     for local in modern.split_whitespace() {
-        let requirement = html(local).requirement();
+        let requirement = html_class(local);
         let form = match local {
             "img" => Some(F::Image),
             "button" => Some(F::Button),
@@ -73,7 +82,7 @@ tbody td template textarea tfoot th thead time title tr track u ul var video wbr
             _ => None,
         };
         if let Some(form) = form {
-            assert_eq!(requirement, R::NativeForm(form), "{local}");
+            assert_eq!(requirement, R::FormAssociated(form), "{local}");
         } else if COMMON
             .split_whitespace()
             .chain(REFLECTED_QUERY_COMMON.split_whitespace())
@@ -96,10 +105,10 @@ acronym basefont big center nobr noembed noframes plaintext rb rtc strike tt
 listing xmp dir font param frameset";
     assert_eq!(common.split_whitespace().count(), 26);
     for local in common.split_whitespace() {
-        assert_eq!(html(local).requirement(), R::CommonHtml, "{local}");
+        assert_eq!(html_class(local), R::CommonHtml, "{local}");
     }
-    assert_eq!(html("marquee").requirement(), R::HtmlMarquee);
-    assert_eq!(html("frame").requirement(), R::HtmlFrame);
+    assert_eq!(html_class("marquee"), R::HtmlMarquee);
+    assert_eq!(html_class("frame"), R::HtmlFrame);
 }
 
 #[test]
@@ -129,7 +138,7 @@ fn known_specials_never_fall_through_as_common() {
         ("track", K::Track),
         ("video", K::Video),
     ] {
-        assert_eq!(html(local).requirement(), R::KnownHtml(element));
+        assert_eq!(html_class(local), R::KnownHtml(element));
     }
 }
 
@@ -145,10 +154,10 @@ fn exact_unknown_custom_and_uppercase_names_use_only_the_exhausted_fallback() {
         "X-widget",
         "annotation-xml",
     ] {
-        assert_eq!(html(local).requirement(), R::CommonHtml, "{local}");
+        assert_eq!(html_class(local), R::CommonHtml, "{local}");
     }
     let prefixed = QualifiedName::new(Namespace::html(), Some("p".into()), "input");
-    assert_eq!(initialize(&prefixed).requirement(), R::NativeForm(F::Input));
+    assert_eq!(classify(&prefixed), R::FormAssociated(F::Input));
 }
 
 #[test]
@@ -174,7 +183,7 @@ fn real_namespace_identity_separates_svg_script_mathml_and_generic_names() {
         ),
     ] {
         assert_eq!(
-            initialize(&QualifiedName::new(namespace, None, local)).requirement(),
+            classify(&QualifiedName::new(namespace, None, local)),
             expected
         );
     }
@@ -184,7 +193,10 @@ fn assert_common(initial: HtmlNativeInitialization, html: bool, nonce: bool) {
     let common = initial.common();
     assert!(common.element().reaction_queue_is_empty());
     assert!(!common.element().click_in_progress());
-    assert_eq!(common.nonce(), nonce.then_some(HtmlNativeFreshNonce::Empty));
+    assert_eq!(
+        initial.nonce(),
+        nonce.then_some(HtmlNativeFreshNonce::Empty)
+    );
     assert_eq!(common.html().is_some(), html);
     if let Some(state) = common.html() {
         assert!(!state.has_previously_focused_element());
@@ -216,7 +228,7 @@ fn actual_fresh_common_tuple_covers_every_requirement_and_exact_scope() {
         let name = QualifiedName::new(namespace, None, local);
         let initial = initialize(&name);
         assert_common(initial, html, nonce);
-        assert_eq!(initial.common().nonce().is_some(), is_nonce_element(&name));
+        assert_eq!(initial.nonce().is_some(), is_nonce_element(&name));
     }
 }
 
@@ -299,5 +311,120 @@ fn arbitrary_long_and_isolated_units_are_preserved_with_bounded_inspection() {
             assert_eq!(local_pairs, 0);
         }
         assert_eq!(name, before);
+    }
+}
+
+#[test]
+fn classification_separates_common_scope_and_nonce_applicability() {
+    for (namespace, local, scope, nonce) in [
+        (Namespace::none(), "div", HtmlCommonScope::Element, false),
+        (
+            Namespace::from_uri("urn:other"),
+            "script",
+            HtmlCommonScope::Element,
+            false,
+        ),
+        (Namespace::html(), "x-example", HtmlCommonScope::Html, true),
+        (Namespace::html(), "input", HtmlCommonScope::Html, true),
+        (Namespace::html(), "marquee", HtmlCommonScope::Html, true),
+        (Namespace::html(), "frame", HtmlCommonScope::Html, true),
+        (Namespace::svg(), "script", HtmlCommonScope::Element, true),
+        (Namespace::svg(), "div", HtmlCommonScope::Element, true),
+        (Namespace::mathml(), "div", HtmlCommonScope::Element, true),
+        (
+            Namespace::from_uri("http://www.w3.org/1999/XHTML"),
+            "div",
+            HtmlCommonScope::Element,
+            false,
+        ),
+    ] {
+        let class = classify(&QualifiedName::new(namespace, None, local));
+        assert_eq!(class.common_scope(), scope, "{local}");
+        assert_eq!(class.has_nonce(), nonce, "{local}");
+    }
+}
+
+#[test]
+fn shared_closed_values_preserve_all_element_and_html_fields() {
+    for scope in [HtmlCommonScope::Element, HtmlCommonScope::Html] {
+        let current = HtmlCommonState::closed(scope);
+        assert_eq!(current.scope(), scope);
+        assert!(current.element().reaction_queue_is_empty());
+        assert!(!current.element().click_in_progress());
+        assert_eq!(current.html().is_some(), scope == HtmlCommonScope::Html);
+        if let Some(html) = current.html() {
+            assert!(!html.has_previously_focused_element());
+            assert!(!html.has_attached_internals());
+            assert!(html.popover_is_hidden());
+            assert!(!html.has_popover_trigger());
+            assert!(!html.popover_is_hiding());
+            assert!(!html.has_popover_toggle_task_tracker());
+            assert!(!html.has_popover_close_watcher());
+            assert!(!html.has_popover_opened_in_mode());
+        }
+    }
+}
+
+#[test]
+fn native_freshness_uses_one_classification_read_sequence_and_preserves_scopes() {
+    for (namespace, local, scope, nonce) in [
+        (Namespace::none(), "input", HtmlCommonScope::Element, None),
+        (
+            Namespace::html(),
+            "input",
+            HtmlCommonScope::Html,
+            Some(HtmlNativeFreshNonce::Empty),
+        ),
+        (
+            Namespace::html(),
+            "template",
+            HtmlCommonScope::Html,
+            Some(HtmlNativeFreshNonce::Empty),
+        ),
+        (
+            Namespace::svg(),
+            "script",
+            HtmlCommonScope::Element,
+            Some(HtmlNativeFreshNonce::Empty),
+        ),
+        (
+            Namespace::mathml(),
+            "input",
+            HtmlCommonScope::Element,
+            Some(HtmlNativeFreshNonce::Empty),
+        ),
+    ] {
+        let name = QualifiedName::new(namespace, None, local);
+        let mut class_reads = Vec::new();
+        let class = element_classification_with(&name, |read| {
+            class_reads.push(read);
+            Ok::<_, Infallible>(())
+        })
+        .unwrap();
+        let mut native_reads = Vec::new();
+        let initial = native_element_initialization_with(&name, |read| {
+            native_reads.push(read);
+            Ok::<_, Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(native_reads, class_reads);
+        assert_eq!(initial.requirement(), class);
+        assert_eq!(initial.common().scope(), scope);
+        assert_eq!(initial.nonce(), nonce);
+        for (cut, &denied) in class_reads.iter().enumerate() {
+            let mut observed = 0;
+            let result = element_classification_with(&name, |read| {
+                assert!(observed <= cut, "read after first refusal");
+                let position = observed;
+                observed += 1;
+                if position == cut {
+                    Err((position, read))
+                } else {
+                    Ok(())
+                }
+            });
+            assert_eq!(result, Err((cut, denied)));
+            assert_eq!(observed, cut + 1);
+        }
     }
 }

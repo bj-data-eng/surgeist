@@ -6,7 +6,7 @@ use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomDocumentClass, DomError, DomLimits, DomResource,
     DomSnapshot, Namespace, NodeId,
 };
-use surgeist_html::{HtmlNativeFormAssociationKind, HtmlNativeInitializationRequirement};
+use surgeist_html::{HtmlElementClass, HtmlNativeFormAssociationKind};
 use surgeist_template::{
     AttributeKind, AttributeRule, ComponentRegistry, ComponentSpec, NativeElementRegistry,
     SourcePos, SourceSpan, TemplateDomError, TemplateDomUnresolvedKind as Unresolved,
@@ -372,7 +372,7 @@ fn real_dom_native_family_admission_is_deferred_to_apply() {
     assert_eq!(roots.len(), 2);
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(HtmlNativeInitializationRequirement::NativeForm(
+        DomError::NativeInitializationRequired(HtmlElementClass::FormAssociated(
             HtmlNativeFormAssociationKind::Object
         ))
     );

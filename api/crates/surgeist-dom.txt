@@ -112,7 +112,7 @@ pub surgeist_dom::DomError::InvalidViewTransitionState
 pub surgeist_dom::DomError::LinkProcessingUnavailable
 pub surgeist_dom::DomError::MarqueeInapplicable
 pub surgeist_dom::DomError::Namespace
-pub surgeist_dom::DomError::NativeInitializationRequired(surgeist_html::native_initialization::HtmlNativeInitializationRequirement)
+pub surgeist_dom::DomError::NativeInitializationRequired(surgeist_html::native_initialization::HtmlElementClass)
 pub surgeist_dom::DomError::NonceEnvironmentUnavailable(surgeist_html::nonce::HtmlNonceMissing)
 pub surgeist_dom::DomError::NonceInapplicable
 pub surgeist_dom::DomError::NotFound
@@ -608,7 +608,7 @@ pub fn surgeist_dom::DomElement::attributes(&self) -> &surgeist_html::values::Or
 pub fn surgeist_dom::DomElement::button_state(&self) -> core::option::Option<&surgeist_dom::DomButtonState>
 pub fn surgeist_dom::DomElement::canvas_none_state(&self) -> core::option::Option<&surgeist_html::canvas::HtmlCanvasNoneState>
 pub fn surgeist_dom::DomElement::captured_in_view_transition(&self) -> bool
-pub fn surgeist_dom::DomElement::common_state(&self) -> surgeist_html::native_initialization::HtmlNativeCommonState
+pub fn surgeist_dom::DomElement::common_state(&self) -> surgeist_html::native_initialization::HtmlCommonState
 pub fn surgeist_dom::DomElement::custom_element_definition(&self) -> surgeist_dom::DomElementDefinition
 pub fn surgeist_dom::DomElement::custom_element_registry(&self) -> surgeist_dom::DomRegistryBinding
 pub fn surgeist_dom::DomElement::custom_element_state(&self) -> surgeist_html::custom_element_state::HtmlCustomElementState

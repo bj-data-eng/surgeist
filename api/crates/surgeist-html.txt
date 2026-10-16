@@ -55,6 +55,10 @@ pub surgeist_html::bounded::FloatingPointParseMode::Recovery
 pub enum surgeist_html::bounded::HashNameScanStep<'raw>
 pub surgeist_html::bounded::HashNameScanStep::Complete(surgeist_html::HtmlHashNameReferenceReport)
 pub surgeist_html::bounded::HashNameScanStep::Continue(surgeist_html::bounded::HashNameScan<'raw>)
+pub enum surgeist_html::bounded::HtmlAttributeKeywordRead
+pub surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordHeader
+pub surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordPair
+pub surgeist_html::bounded::HtmlAttributeKeywordRead::ValueHeader
 #[non_exhaustive] pub enum surgeist_html::bounded::HtmlAttributeValidationError
 pub surgeist_html::bounded::HtmlAttributeValidationError::Consumed
 pub surgeist_html::bounded::HtmlAttributeValidationError::Duplicate
@@ -283,6 +287,11 @@ pub surgeist_html::bounded::HtmlCustomNameScanAction::Header
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedHeader
 pub surgeist_html::bounded::HtmlCustomNameScanAction::ReservedPair
 pub surgeist_html::bounded::HtmlCustomNameScanAction::Unit
+pub enum surgeist_html::bounded::HtmlElementNameRead
+pub surgeist_html::bounded::HtmlElementNameRead::LocalNameHeader
+pub surgeist_html::bounded::HtmlElementNameRead::LocalNamePair
+pub surgeist_html::bounded::HtmlElementNameRead::NamespaceHeader
+pub surgeist_html::bounded::HtmlElementNameRead::NamespacePair
 pub enum surgeist_html::bounded::HtmlFormOwnerLookup
 pub surgeist_html::bounded::HtmlFormOwnerLookup::FirstId
 pub surgeist_html::bounded::HtmlFormOwnerLookup::NearestAncestor
@@ -404,11 +413,6 @@ pub enum surgeist_html::bounded::HtmlMicrodataTokenStep
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::Complete
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::Continue
 pub surgeist_html::bounded::HtmlMicrodataTokenStep::TokenCommitted
-pub enum surgeist_html::bounded::HtmlNativeNameRead
-pub surgeist_html::bounded::HtmlNativeNameRead::LocalNameHeader
-pub surgeist_html::bounded::HtmlNativeNameRead::LocalNamePair
-pub surgeist_html::bounded::HtmlNativeNameRead::NamespaceHeader
-pub surgeist_html::bounded::HtmlNativeNameRead::NamespacePair
 pub enum surgeist_html::bounded::HtmlOptionDisabledAncestor
 pub surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue
 pub surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled
@@ -1443,6 +1447,8 @@ pub fn surgeist_html::bounded::HtmlRelMeter::reserve(&mut self, reservation: &mu
 pub fn surgeist_html::bounded::HtmlRelMeter::work(&mut self, units: usize) -> core::result::Result<(), Self::Error>
 pub fn surgeist_html::bounded::autocomplete_materialization_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::classify_rel<M: surgeist_html::bounded::HtmlRelMeter>(units: &[u16], meter: &mut M) -> core::result::Result<(core::option::Option<surgeist_html::HtmlRelKeyword>, surgeist_html::HtmlRelSpelling), surgeist_html::bounded::HtmlRelActionError<<M as surgeist_html::bounded::HtmlRelMeter>::Error>>
+pub fn surgeist_html::bounded::crossorigin_processing_with<E>(raw: core::option::Option<&surgeist_html::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCrossOriginState, E>
+pub fn surgeist_html::bounded::element_classification_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlElementClass, E>
 pub fn surgeist_html::bounded::embedded_dimension_applicability(element: core::option::Option<surgeist_html::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::EmbeddedDimensionContext>) -> surgeist_html::bounded::EmbeddedDimensionApplicability
 pub fn surgeist_html::bounded::fold_rel_ascii(unit: u16) -> u16
 pub const fn surgeist_html::bounded::form_owner_lookup(explicit_listed_form_attribute: bool, connected: bool) -> surgeist_html::bounded::HtmlFormOwnerLookup
@@ -1459,11 +1465,12 @@ pub fn surgeist_html::bounded::is_xml_name_start_code_point(cp: u32) -> bool
 pub fn surgeist_html::bounded::match_media_field<'raw, E>(attribute: &'raw surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlMediaFieldMatch<'raw>>, E>
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::media_field_matches(attribute: &surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField) -> bool
-pub fn surgeist_html::bounded::native_element_initialization_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlNativeNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlNativeInitialization, E>
+pub fn surgeist_html::bounded::native_element_initialization_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlNativeInitialization, E>
 pub fn surgeist_html::bounded::native_form_association_with<E>(compare: impl core::ops::function::FnMut(surgeist_html::KnownHtmlElement) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlNativeFormAssociationKind>, E>
 pub fn surgeist_html::bounded::option_disabled_ancestor(kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlOptionDisabledAncestor
 pub fn surgeist_html::bounded::parse_integer_long(input: &surgeist_html::DocumentString) -> core::result::Result<core::option::Option<i32>, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::parse_nonnegative_integer_capped(input: &surgeist_html::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::NumericParseError>
+pub fn surgeist_html::bounded::referrerpolicy_processing_with<E>(raw: core::option::Option<&surgeist_html::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlReferrerPolicy, E>
 pub fn surgeist_html::bounded::rel_ascii_keyword(units: &[u16], keyword: &str) -> bool
 pub const fn surgeist_html::bounded::select_display_size_default(multiple: bool) -> u8
 pub fn surgeist_html::bounded::select_option_rule(kind: core::option::Option<surgeist_html::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::HtmlSelectOptionRule
@@ -1870,6 +1877,9 @@ pub enum surgeist_html::HtmlCommandState
 pub surgeist_html::HtmlCommandState::Custom
 pub surgeist_html::HtmlCommandState::Standard(surgeist_html::HtmlStandardCommand)
 pub surgeist_html::HtmlCommandState::Unknown
+pub enum surgeist_html::HtmlCommonScope
+pub surgeist_html::HtmlCommonScope::Element
+pub surgeist_html::HtmlCommonScope::Html
 #[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
 pub surgeist_html::HtmlConstructionError::AllocationFailed
 pub surgeist_html::HtmlConstructionError::AssociationAlreadyOwned
@@ -2081,6 +2091,19 @@ pub fn surgeist_html::HtmlDraggable::into_attribute(self) -> surgeist_html::Attr
 pub enum surgeist_html::HtmlDraggableState
 pub surgeist_html::HtmlDraggableState::Auto
 pub surgeist_html::HtmlDraggableState::Keyword(surgeist_html::HtmlDraggable)
+pub enum surgeist_html::HtmlElementClass
+pub surgeist_html::HtmlElementClass::CommonHtml
+pub surgeist_html::HtmlElementClass::CommonMathml
+pub surgeist_html::HtmlElementClass::CommonSvg
+pub surgeist_html::HtmlElementClass::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind)
+pub surgeist_html::HtmlElementClass::GenericElement
+pub surgeist_html::HtmlElementClass::HtmlFrame
+pub surgeist_html::HtmlElementClass::HtmlMarquee
+pub surgeist_html::HtmlElementClass::KnownHtml(surgeist_html::KnownHtmlElement)
+pub surgeist_html::HtmlElementClass::SvgScript
+impl surgeist_html::HtmlElementClass
+pub const fn surgeist_html::HtmlElementClass::common_scope(self) -> surgeist_html::HtmlCommonScope
+pub const fn surgeist_html::HtmlElementClass::has_nonce(self) -> bool
 pub enum surgeist_html::HtmlEmbeddedDimensionContext
 pub surgeist_html::HtmlEmbeddedDimensionContext::InputState(surgeist_html::HtmlInputType)
 pub surgeist_html::HtmlEmbeddedDimensionContext::SourceParent(surgeist_html::HtmlImageSourceParent)
@@ -2665,16 +2688,6 @@ pub enum surgeist_html::HtmlNativeFreshNonce
 pub surgeist_html::HtmlNativeFreshNonce::Empty
 pub enum surgeist_html::HtmlNativeFreshSlot
 pub surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments
-pub enum surgeist_html::HtmlNativeInitializationRequirement
-pub surgeist_html::HtmlNativeInitializationRequirement::CommonHtml
-pub surgeist_html::HtmlNativeInitializationRequirement::CommonMathml
-pub surgeist_html::HtmlNativeInitializationRequirement::CommonSvg
-pub surgeist_html::HtmlNativeInitializationRequirement::GenericElement
-pub surgeist_html::HtmlNativeInitializationRequirement::HtmlFrame
-pub surgeist_html::HtmlNativeInitializationRequirement::HtmlMarquee
-pub surgeist_html::HtmlNativeInitializationRequirement::KnownHtml(surgeist_html::KnownHtmlElement)
-pub surgeist_html::HtmlNativeInitializationRequirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind)
-pub surgeist_html::HtmlNativeInitializationRequirement::SvgScript
 pub enum surgeist_html::HtmlNavigableTarget
 pub surgeist_html::HtmlNavigableTarget::Keyword(surgeist_html::HtmlNavigableTargetKeyword)
 pub surgeist_html::HtmlNavigableTarget::Name(surgeist_html::HtmlNavigableTargetName)
@@ -3952,6 +3965,20 @@ pub fn surgeist_html::HtmlCanvasNoneState::height_attribute_changed(&mut self, p
 pub const fn surgeist_html::HtmlCanvasNoneState::origin_clean(&self) -> bool
 pub fn surgeist_html::HtmlCanvasNoneState::width(&self) -> surgeist_html::HtmlCanvasBitmapDimension<'_>
 pub fn surgeist_html::HtmlCanvasNoneState::width_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::HtmlNonNegativeInteger>)
+pub struct surgeist_html::HtmlClosedElementState
+impl surgeist_html::HtmlClosedElementState
+pub const fn surgeist_html::HtmlClosedElementState::click_in_progress(&self) -> bool
+pub const fn surgeist_html::HtmlClosedElementState::reaction_queue_is_empty(&self) -> bool
+pub struct surgeist_html::HtmlClosedHtmlState
+impl surgeist_html::HtmlClosedHtmlState
+pub const fn surgeist_html::HtmlClosedHtmlState::has_attached_internals(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_close_watcher(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_opened_in_mode(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_toggle_task_tracker(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_trigger(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::has_previously_focused_element(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::popover_is_hidden(&self) -> bool
+pub const fn surgeist_html::HtmlClosedHtmlState::popover_is_hiding(&self) -> bool
 pub struct surgeist_html::HtmlCommaSeparatedTokens
 impl surgeist_html::HtmlCommaSeparatedTokens
 pub fn surgeist_html::HtmlCommaSeparatedTokens::as_document_string(&self) -> surgeist_html::DocumentString
@@ -3965,6 +3992,12 @@ pub struct surgeist_html::HtmlCommandReadback
 impl surgeist_html::HtmlCommandReadback
 pub fn surgeist_html::HtmlCommandReadback::custom_value(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub fn surgeist_html::HtmlCommandReadback::state(&self) -> surgeist_html::HtmlCommandState
+pub struct surgeist_html::HtmlCommonState
+impl surgeist_html::HtmlCommonState
+pub const fn surgeist_html::HtmlCommonState::closed(scope: surgeist_html::HtmlCommonScope) -> Self
+pub const fn surgeist_html::HtmlCommonState::element(&self) -> surgeist_html::HtmlClosedElementState
+pub const fn surgeist_html::HtmlCommonState::html(&self) -> core::option::Option<surgeist_html::HtmlClosedHtmlState>
+pub const fn surgeist_html::HtmlCommonState::scope(&self) -> surgeist_html::HtmlCommonScope
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize
@@ -4666,29 +4699,11 @@ pub fn surgeist_html::HtmlMonth::month(&self) -> u8
 pub fn surgeist_html::HtmlMonth::new(year: surgeist_html::HtmlYear, month: u8) -> core::result::Result<Self, surgeist_html::HtmlTemporalError>
 pub fn surgeist_html::HtmlMonth::to_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlMonth::year(&self) -> &surgeist_html::HtmlYear
-pub struct surgeist_html::HtmlNativeClosedElementState
-impl surgeist_html::HtmlNativeClosedElementState
-pub const fn surgeist_html::HtmlNativeClosedElementState::click_in_progress(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedElementState::reaction_queue_is_empty(&self) -> bool
-pub struct surgeist_html::HtmlNativeClosedHtmlState
-impl surgeist_html::HtmlNativeClosedHtmlState
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_attached_internals(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_popover_close_watcher(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_popover_opened_in_mode(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_popover_toggle_task_tracker(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_popover_trigger(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::has_previously_focused_element(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::popover_is_hidden(&self) -> bool
-pub const fn surgeist_html::HtmlNativeClosedHtmlState::popover_is_hiding(&self) -> bool
-pub struct surgeist_html::HtmlNativeCommonState
-impl surgeist_html::HtmlNativeCommonState
-pub const fn surgeist_html::HtmlNativeCommonState::element(&self) -> surgeist_html::HtmlNativeClosedElementState
-pub const fn surgeist_html::HtmlNativeCommonState::html(&self) -> core::option::Option<surgeist_html::HtmlNativeClosedHtmlState>
-pub const fn surgeist_html::HtmlNativeCommonState::nonce(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshNonce>
 pub struct surgeist_html::HtmlNativeInitialization
 impl surgeist_html::HtmlNativeInitialization
-pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlNativeCommonState
-pub const fn surgeist_html::HtmlNativeInitialization::requirement(&self) -> surgeist_html::HtmlNativeInitializationRequirement
+pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlCommonState
+pub const fn surgeist_html::HtmlNativeInitialization::nonce(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshNonce>
+pub const fn surgeist_html::HtmlNativeInitialization::requirement(&self) -> surgeist_html::HtmlElementClass
 pub const fn surgeist_html::HtmlNativeInitialization::slot(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshSlot>
 pub const fn surgeist_html::HtmlNativeInitialization::template_insertion(&self) -> core::option::Option<surgeist_html::HtmlTemplateFreshInsertionState>
 pub struct surgeist_html::HtmlNavigableTargetName
@@ -5165,22 +5180,29 @@ pub struct surgeist_html::HtmlSrcsetWidthError
 impl core::error::Error for surgeist_html::HtmlSrcsetWidthError
 impl core::fmt::Display for surgeist_html::HtmlSrcsetWidthError
 pub fn surgeist_html::HtmlSrcsetWidthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_html::HtmlStyleNativeState
-impl surgeist_html::HtmlStyleNativeState
-pub const fn surgeist_html::HtmlStyleNativeState::created_by_document_parser(self) -> bool
-pub const fn surgeist_html::HtmlStyleNativeState::fresh() -> Self
-pub const fn surgeist_html::HtmlStyleNativeState::on_parser_stack(self) -> bool
-impl core::default::Default for surgeist_html::HtmlStyleNativeState
-pub fn surgeist_html::HtmlStyleNativeState::default() -> Self
 pub struct surgeist_html::HtmlStyleNotificationCursor
 impl surgeist_html::HtmlStyleNotificationCursor
 pub const fn surgeist_html::HtmlStyleNotificationCursor::action(self) -> surgeist_html::HtmlStyleNotificationAction
 pub const fn surgeist_html::HtmlStyleNotificationCursor::new(success: bool) -> Self
 pub fn surgeist_html::HtmlStyleNotificationCursor::reply(&mut self, reply: surgeist_html::HtmlStyleNotificationReply) -> core::result::Result<(), surgeist_html::HtmlStyleProtocolError>
+pub struct surgeist_html::HtmlStyleParserStateError
+impl core::error::Error for surgeist_html::HtmlStyleParserStateError
+impl core::fmt::Display for surgeist_html::HtmlStyleParserStateError
+pub fn surgeist_html::HtmlStyleParserStateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlStyleProtocolError
 impl core::error::Error for surgeist_html::HtmlStyleProtocolError
 impl core::fmt::Display for surgeist_html::HtmlStyleProtocolError
 pub fn surgeist_html::HtmlStyleProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlStyleState
+impl surgeist_html::HtmlStyleState
+pub const fn surgeist_html::HtmlStyleState::created_by_document_parser(self) -> bool
+pub const fn surgeist_html::HtmlStyleState::document_parser_created() -> Self
+pub const fn surgeist_html::HtmlStyleState::fresh() -> Self
+pub const fn surgeist_html::HtmlStyleState::on_parser_stack(self) -> bool
+pub fn surgeist_html::HtmlStyleState::parser_stack_added(&mut self) -> core::result::Result<(), surgeist_html::HtmlStyleParserStateError>
+pub fn surgeist_html::HtmlStyleState::parser_stack_removed(&mut self) -> core::result::Result<(), surgeist_html::HtmlStyleParserStateError>
+impl core::default::Default for surgeist_html::HtmlStyleState
+pub fn surgeist_html::HtmlStyleState::default() -> Self
 pub struct surgeist_html::HtmlStyleUpdateCursor
 impl surgeist_html::HtmlStyleUpdateCursor
 pub const fn surgeist_html::HtmlStyleUpdateCursor::action(self) -> surgeist_html::HtmlStyleUpdateAction

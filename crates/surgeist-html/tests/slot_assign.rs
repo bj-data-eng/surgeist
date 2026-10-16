@@ -7,8 +7,7 @@ use surgeist_html::bounded::{
     HtmlSlotAssignReply as Reply, native_element_initialization_with,
 };
 use surgeist_html::{
-    HtmlNativeFreshSlot, HtmlNativeInitializationRequirement, KnownHtmlElement, Namespace,
-    QualifiedName,
+    HtmlElementClass, HtmlNativeFreshSlot, KnownHtmlElement, Namespace, QualifiedName,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -290,7 +289,7 @@ fn fresh_manual_set_is_empty_only_for_the_actual_qualified_slot_requirement() {
         if expected.is_some() {
             assert_eq!(
                 initial.requirement(),
-                HtmlNativeInitializationRequirement::KnownHtml(KnownHtmlElement::Slot)
+                HtmlElementClass::KnownHtml(KnownHtmlElement::Slot)
             );
             // Materialize the actual new manual set; the proof is not kept as
             // a current-empty bit after the identity-bearing state can change.
