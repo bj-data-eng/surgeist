@@ -109,7 +109,7 @@ Git blob identifiers name the complete fetched files; locations are one-based.
 
 | File | Git blob | Lines | Bounded observation |
 | --- | --- | --- | --- |
-| WebKit [FrameTree.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/FrameTree.cpp) | `add3b84805afa72ac2bb576c9dde17bb4be5cfa3` | 105–110, 134–147 | Detaching clears the live parent relation; removal also unlinks the sibling chain. |
+| WebKit [FrameTree.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/FrameTree.cpp) | `add3b84805afa72ac2bb576c9dde17bb4be5cfa3` | 59–66, 105–110, 134–147 | Specified-name storage accepts the supplied atom and clearName uses the null atom. Detaching clears the live parent relation; removal also unlinks the sibling chain. |
 | WebKit [FrameLoader.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/loader/FrameLoader.cpp) | `535f3f57176fa0574a5bd6af779a1cb7550356b8` | 3450–3508 | Frame removal retains the actual Frame while running cleanup and detaching it from its parent. |
 | WebKit [EventLoop.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/dom/EventLoop.cpp) | `3abc026892eaecbcb2cedb800d863fa75a7eeaa8` | 305–310, 335–349, 444–455 | Stopped groups lose queued tasks; stopped or missing groups are skipped without executing task bodies. |
 | Chromium [frame_tree.cc](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree.cc) | `0db015a39a1cf3206f7cf17274a8decb63a43ff6` | 578–585 | Frame removal invokes the actual parent's child-removal operation. |
@@ -129,7 +129,23 @@ Original copyrights and licenses remain in the linked files and the
 [Chromium license](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/LICENSE).
 No source-code copyright notice is stripped or browser implementation copied.
 
-Any selected native lifetime, cleanup eligibility or cancellation-settlement
+## Child target-name type conflict
+
+HTML877d raw71115–71120 initializes the child targetName operand to null, reads
+the name attribute only after browsing-context/Document creation, and directly
+assigns that operand to the initial DocumentState. The general DocumentState
+definition at raw72158–72159 instead declares a string initially empty.
+Initialization at raw70926–70946 supplies no conversion. All three clauses are
+already retained in the linked navigable-lifecycle reference. The current
+[child constructor](https://html.spec.whatwg.org/multipage/document-sequences.html#create-a-new-child-navigable)
+and [DocumentState definition](https://html.spec.whatwg.org/multipage/browsing-the-web.html#document-state)
+were checked on 16 October 2026 and retain this conflict; no newer edition is
+adopted. WebKit's specified-name storage above can retain a null atom, but it is
+not the HTML DocumentState model and does not establish a normative conversion
+between null and an empty string. The selected native initial-state typing
+qualification belongs to #1124; the original source text remains unchanged.
+
+Any selected native lifetime, target-name typing, cleanup eligibility or cancellation-settlement
 qualification must be recorded separately in the owning
 [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
 [#136](https://github.com/bj-data-eng/surgeist/issues/136) contracts. This source

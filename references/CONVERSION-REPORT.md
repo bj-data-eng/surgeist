@@ -1007,6 +1007,13 @@ the preceding 384-identity catalog. Adding these six gives 390 identities:
 No browser code, source excerpt, copied discussion transcript or passive asset
 is added. Git object identifiers are explicitly distinguished from SHA-256.
 
+The [target-name observation](html-child-history-lifetime--pinned-browser-metadata.md#child-target-name-type-conflict)
+also records the existing FrameTree.cpp identity's specified-name atom storage
+at lines 59–66. It separates that representation from HTML877d's conflicting
+nullable child-constructor operand and general string field. #1124 owns the
+native typing qualification. This metadata extension adds no copied browser
+code, source identity or standard edition and does not prescribe a conversion.
+
 The dated current-HTML and upstream-issue links are contextual observations,
 not retained response snapshots or an adopted new HTML edition. Existing
 references already contain the complete reached task association/runnability
