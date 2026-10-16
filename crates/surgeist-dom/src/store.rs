@@ -63,7 +63,7 @@ pub enum DomResource {
     DetailsToggleOutput,
     BaseObservations,
     ImageUpdateCancellations,
-    HyperlinkObservations,
+    EncodingUrlObservations,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -116,8 +116,8 @@ pub enum DomError {
     ImageProcessingUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
-    HyperlinkFacts(crate::DomHyperlinkFactsError),
-    HyperlinkWorkLimit {
+    EncodingUrlFacts(crate::DomEncodingUrlFactsError),
+    EncodingUrlWorkLimit {
         limit: u64,
     },
     BaseFacts(crate::DomBaseFactsError),
@@ -178,8 +178,8 @@ pub struct DomLimits {
     details_intentions: usize,
     base_observations: usize,
     base_work: u64,
-    hyperlink_observations: usize,
-    hyperlink_work: u64,
+    encoding_url_observations: usize,
+    encoding_url_work: u64,
     select_tasks: usize,
     select_scratch: usize,
     select_work: u64,
@@ -239,8 +239,8 @@ impl DomLimits {
             details_intentions: 0,
             base_observations: 0,
             base_work: 0,
-            hyperlink_observations: 0,
-            hyperlink_work: 0,
+            encoding_url_observations: 0,
+            encoding_url_work: 0,
             select_tasks: 0,
             select_scratch: 0,
             select_work: 0,
@@ -360,26 +360,26 @@ impl DomLimits {
     /// Aggregate retained href-observation capacity and cumulative qualified
     /// lookup/binding work. Cache/input UTF16 extents use canonical string units.
     /// Absent href and namespace/equality skips need no parse admission.
-    pub fn with_hyperlink_processing(
+    pub fn with_encoding_url_processing(
         mut self,
         observation_records: usize,
         work: u64,
     ) -> Result<Self, DomError> {
         if observation_records
             > isize::MAX as usize
-                / size_of::<surgeist_html_semantics::HtmlHyperlinkParseObservation>()
+                / size_of::<surgeist_html_semantics::HtmlEncodingUrlParseObservation>()
         {
-            return Err(DomError::InvalidLimit(DomResource::HyperlinkObservations));
+            return Err(DomError::InvalidLimit(DomResource::EncodingUrlObservations));
         }
-        self.hyperlink_observations = observation_records;
-        self.hyperlink_work = work;
+        self.encoding_url_observations = observation_records;
+        self.encoding_url_work = work;
         Ok(self)
     }
-    pub fn hyperlink_observation_records(self) -> usize {
-        self.hyperlink_observations
+    pub fn encoding_url_observation_records(self) -> usize {
+        self.encoding_url_observations
     }
-    pub fn hyperlink_work(self) -> u64 {
-        self.hyperlink_work
+    pub fn encoding_url_work(self) -> u64 {
+        self.encoding_url_work
     }
     /// Retained raw Details transitions, including staged cancellation evidence.
     /// Scans use canonical node/string/command bounds and per-step cancellation.
@@ -487,7 +487,7 @@ pub enum DomChange {
     TemplateRelations,
     /// Recompute Document-scoped URL/base-dependent facts and consumers.
     DocumentBase(DocumentId),
-    DocumentHyperlinks(DocumentId),
+    DocumentEncodingUrlFacts(DocumentId),
     SlotManual(NodeId),
     SlotAssignedNodes(NodeId),
     ManualAssignment(NodeId),
@@ -646,7 +646,7 @@ pub(crate) struct Node {
     pub(crate) link: Option<crate::base::LinkState<NodeId>>,
     pub(crate) image: Option<crate::image::ImageState<NodeId>>,
     pub(crate) hyperlink: Option<crate::hyperlink::HyperlinkState<NodeId>>,
-    pub(crate) hyperlink_document: Option<crate::hyperlink::HyperlinkDocument>,
+    pub(crate) encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -774,15 +774,15 @@ impl Dom {
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
-        let mut hyperlink_records = 0usize;
+        let mut encoding_url_records = 0usize;
         let mut records = 0usize;
         for slot in &self.state.slots {
             if let Some(node) = &slot.node {
-                hyperlink_records = hyperlink_records
+                encoding_url_records = encoding_url_records
                     .checked_add(
-                        node.hyperlink_document
+                        node.encoding_url_document
                             .as_ref()
-                            .map_or(0, crate::hyperlink::HyperlinkDocument::records),
+                            .map_or(0, crate::hyperlink::EncodingUrlDocument::records),
                     )
                     .ok_or(DomError::RepresentationExhausted)?;
                 records = records
@@ -800,9 +800,9 @@ impl Dom {
             DomResource::BaseObservations,
         )?;
         admit(
-            hyperlink_records,
-            limits.hyperlink_observations,
-            DomResource::HyperlinkObservations,
+            encoding_url_records,
+            limits.encoding_url_observations,
+            DomResource::EncodingUrlObservations,
         )?;
         admit(
             self.state.slot_reference_count(),
@@ -1091,7 +1091,7 @@ struct DraftNode {
     link: Option<crate::base::LinkState<Key>>,
     image: Option<crate::image::ImageState<Key>>,
     hyperlink: Option<crate::hyperlink::HyperlinkState<Key>>,
-    hyperlink_document: Option<crate::hyperlink::HyperlinkDocument>,
+    encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -1099,8 +1099,8 @@ struct Draft {
     basis: DomStamp,
     base_work: std::cell::Cell<u64>,
     base_work_limit: u64,
-    hyperlink_work: std::cell::Cell<u64>,
-    hyperlink_work_limit: u64,
+    encoding_url_work: std::cell::Cell<u64>,
+    encoding_url_work_limit: u64,
     view_transitions: DraftTransitions,
     signal_slots: Vec<Key>,
     notification_queued: bool,
@@ -1202,7 +1202,7 @@ impl Draft {
                         .hyperlink
                         .as_ref()
                         .map(|h| h.map(|id| Key::Existing(id.slot))),
-                    hyperlink_document: node.hyperlink_document.clone(),
+                    encoding_url_document: node.encoding_url_document.clone(),
                     script: node
                         .script
                         .map(|value| value.map(|id| Key::Existing(id.slot))),
@@ -1251,8 +1251,8 @@ impl Draft {
             },
             base_work: std::cell::Cell::new(0),
             base_work_limit: dom.limits.base_work,
-            hyperlink_work: std::cell::Cell::new(0),
-            hyperlink_work_limit: dom.limits.hyperlink_work,
+            encoding_url_work: std::cell::Cell::new(0),
+            encoding_url_work_limit: dom.limits.encoding_url_work,
             view_transitions: DraftTransitions::new(&dom.state.view_transitions)?,
             signal_slots: map_keys(&dom.state.signal_slots, cancelled)?,
             notification_queued: dom.state.notification_queued,
@@ -1382,8 +1382,8 @@ impl Draft {
             .then(|| crate::image::ImageState::fresh(key));
         let hyperlink = matches!(&kind,DomNodeKind::Element(e) if e.is_hyperlink())
             .then(crate::hyperlink::HyperlinkState::fresh);
-        let hyperlink_document = matches!(&kind, DomNodeKind::Document(_))
-            .then(crate::hyperlink::HyperlinkDocument::fresh);
+        let encoding_url_document = matches!(&kind, DomNodeKind::Document(_))
+            .then(crate::hyperlink::EncodingUrlDocument::fresh);
         let base_document =
             matches!(&kind, DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
         self.created.push(Some(DraftNode {
@@ -1393,7 +1393,7 @@ impl Draft {
             link,
             image,
             hyperlink,
-            hyperlink_document,
+            encoding_url_document,
             base_document,
             parent: None,
             children: Vec::new(),
@@ -1427,8 +1427,8 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
-            Command::BindNativeHyperlinkFacts { basis, facts } => {
-                self.bind_hyperlink_facts(basis, facts, limits, cancelled)?
+            Command::BindNativeEncodingUrlFacts { basis, facts } => {
+                self.bind_encoding_url_facts(basis, facts, limits, cancelled)?
             }
             Command::BindNativeBaseFacts { basis, facts } => {
                 self.bind_base_facts(basis, facts, limits, cancelled)?
@@ -1696,9 +1696,9 @@ impl Draft {
                         .as_ref()
                         .map_or(0, crate::hyperlink::HyperlinkState::units);
                     self.units -= node
-                        .hyperlink_document
+                        .encoding_url_document
                         .as_ref()
-                        .map_or(0, crate::hyperlink::HyperlinkDocument::units);
+                        .map_or(0, crate::hyperlink::EncodingUrlDocument::units);
                     self.units -= node
                         .base_document
                         .as_ref()
@@ -1912,7 +1912,7 @@ impl Draft {
                 link: source.link.as_ref().map(|b| b.map(id)),
                 image: source.image.as_ref().map(|b| b.map(id)),
                 hyperlink: source.hyperlink.as_ref().map(|h| h.map(id)),
-                hyperlink_document: source.hyperlink_document.clone(),
+                encoding_url_document: source.encoding_url_document.clone(),
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -2109,9 +2109,9 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::DocumentBase(DocumentId(id)));
                 }
-                if node.hyperlink_document != current.hyperlink_document {
+                if node.encoding_url_document != current.encoding_url_document {
                     reserve(&mut changes, 1)?;
-                    changes.push(DomChange::DocumentHyperlinks(DocumentId(id)));
+                    changes.push(DomChange::DocumentEncodingUrlFacts(DocumentId(id)));
                 }
                 let kind_change = if intrinsic_changed {
                     Some(

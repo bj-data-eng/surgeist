@@ -31,8 +31,8 @@ pub surgeist_html_semantics::HtmlBaseFactsError::Utf16Limit
 pub surgeist_html_semantics::HtmlBaseFactsError::WorkLimit
 pub surgeist_html_semantics::HtmlBaseFactsError::WrongBase
 pub surgeist_html_semantics::HtmlBaseFactsError::WrongDocument
-impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlHyperlinkFactsError
-pub fn surgeist_html_semantics::HtmlHyperlinkFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
+impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlEncodingUrlFactsError
+pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
 impl core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlBaseFactsError
 pub fn surgeist_html_semantics::HtmlBaseFactsError::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 impl core::error::Error for surgeist_html_semantics::HtmlBaseFactsError
@@ -366,6 +366,26 @@ pub surgeist_html_semantics::HtmlElementReferenceKey::PopoverTarget
 pub enum surgeist_html_semantics::HtmlElementReferenceOrigin
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ContentAttribute
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ExplicitPointer
+pub enum surgeist_html_semantics::HtmlEncodingUrlFactsError
+pub surgeist_html_semantics::HtmlEncodingUrlFactsError::ForeignProducer
+pub surgeist_html_semantics::HtmlEncodingUrlFactsError::Formation(surgeist_html_semantics::HtmlBaseFactsError)
+pub surgeist_html_semantics::HtmlEncodingUrlFactsError::InputsMismatch
+pub surgeist_html_semantics::HtmlEncodingUrlFactsError::MissingObservation
+pub surgeist_html_semantics::HtmlEncodingUrlFactsError::RevisionMismatch
+impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlEncodingUrlFactsError
+pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
+impl core::error::Error for surgeist_html_semantics::HtmlEncodingUrlFactsError
+impl core::fmt::Display for surgeist_html_semantics::HtmlEncodingUrlFactsError
+pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
+pub surgeist_html_semantics::HtmlEncodingUrlLookupError::Facts(surgeist_html_semantics::HtmlEncodingUrlFactsError)
+pub surgeist_html_semantics::HtmlEncodingUrlLookupError::Interrupted(E)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
+pub fn surgeist_html_semantics::HtmlEncodingUrlLookupError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html_semantics::HtmlEncodingUrlParseOutcome
+pub surgeist_html_semantics::HtmlEncodingUrlParseOutcome::Failure
+pub surgeist_html_semantics::HtmlEncodingUrlParseOutcome::Parsed(surgeist_html_semantics::HtmlBaseUrlRecord)
 pub enum surgeist_html_semantics::HtmlExplicitElementReference
 pub surgeist_html_semantics::HtmlExplicitElementReference::Element(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlExplicitElementReference::Null
@@ -429,26 +449,6 @@ impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::Html
 pub fn surgeist_html_semantics::HtmlHyperlinkCaptureError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
 pub fn surgeist_html_semantics::HtmlHyperlinkCaptureError<E>::from(value: surgeist_html_semantics::HtmlCaptureError) -> Self
-pub enum surgeist_html_semantics::HtmlHyperlinkFactsError
-pub surgeist_html_semantics::HtmlHyperlinkFactsError::ForeignProducer
-pub surgeist_html_semantics::HtmlHyperlinkFactsError::Formation(surgeist_html_semantics::HtmlBaseFactsError)
-pub surgeist_html_semantics::HtmlHyperlinkFactsError::InputsMismatch
-pub surgeist_html_semantics::HtmlHyperlinkFactsError::MissingObservation
-pub surgeist_html_semantics::HtmlHyperlinkFactsError::RevisionMismatch
-impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlHyperlinkFactsError
-pub fn surgeist_html_semantics::HtmlHyperlinkFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
-impl core::error::Error for surgeist_html_semantics::HtmlHyperlinkFactsError
-impl core::fmt::Display for surgeist_html_semantics::HtmlHyperlinkFactsError
-pub fn surgeist_html_semantics::HtmlHyperlinkFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html_semantics::HtmlHyperlinkLookupError<E>
-pub surgeist_html_semantics::HtmlHyperlinkLookupError::Facts(surgeist_html_semantics::HtmlHyperlinkFactsError)
-pub surgeist_html_semantics::HtmlHyperlinkLookupError::Interrupted(E)
-impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlHyperlinkLookupError<E>
-impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlHyperlinkLookupError<E>
-pub fn surgeist_html_semantics::HtmlHyperlinkLookupError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html_semantics::HtmlHyperlinkParseOutcome
-pub surgeist_html_semantics::HtmlHyperlinkParseOutcome::Failure
-pub surgeist_html_semantics::HtmlHyperlinkParseOutcome::Parsed(surgeist_html_semantics::HtmlBaseUrlRecord)
 pub enum surgeist_html_semantics::HtmlIconCloserExamination
 pub surgeist_html_semantics::HtmlIconCloserExamination::AttemptedThenInappropriate
 pub surgeist_html_semantics::HtmlIconCloserExamination::NotAttempted
@@ -1984,6 +1984,24 @@ pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::pair(&self)
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::resource(&self) -> core::option::Option<&surgeist_html_semantics::HtmlNaturalResourceKey>
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::width_attribute(&self) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html_semantics::HtmlEmbeddedDimensionAuthorReadback::width_syntax(&self) -> surgeist_html_semantics::HtmlDimensionAuthorSyntax
+pub struct surgeist_html_semantics::HtmlEncodingUrlParseFacts(_)
+impl surgeist_html_semantics::HtmlEncodingUrlParseFacts
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::base(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::encoding(&self) -> &surgeist_html_semantics::HtmlBaseEncoding
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::formation_usage(&self) -> surgeist_html_semantics::HtmlBaseFactsUsage
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::lookup_units_with<E>(&self, raw: &[u16], base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<&surgeist_html_semantics::HtmlEncodingUrlParseOutcome, surgeist_html_semantics::HtmlEncodingUrlLookupError<E>>
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::new(base: surgeist_html_semantics::HtmlBaseUrlRecord, encoding: surgeist_html_semantics::HtmlBaseEncoding, revision: surgeist_html_semantics::HtmlBaseFactsRevision, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlEncodingUrlParseObservation>, limits: surgeist_html_semantics::HtmlBaseFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlEncodingUrlFactsError>
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::resolve_hyperlink_with<E>(&self, raw: &surgeist_html::values::DocumentString, base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlHyperlinkUrlSnapshot, surgeist_html_semantics::HtmlEncodingUrlLookupError<E>>
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::revision(&self) -> &surgeist_html_semantics::HtmlBaseFactsRevision
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::same_owner(&self, other: &Self) -> bool
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::validate_inputs(&self, base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision) -> core::result::Result<(), surgeist_html_semantics::HtmlEncodingUrlFactsError>
+impl core::cmp::Eq for surgeist_html_semantics::HtmlEncodingUrlParseFacts
+impl core::cmp::PartialEq for surgeist_html_semantics::HtmlEncodingUrlParseFacts
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::eq(&self, other: &Self) -> bool
+pub struct surgeist_html_semantics::HtmlEncodingUrlParseObservation
+impl surgeist_html_semantics::HtmlEncodingUrlParseObservation
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseObservation::new(raw: surgeist_html::values::DocumentString, outcome: surgeist_html_semantics::HtmlEncodingUrlParseOutcome) -> Self
 pub struct surgeist_html_semantics::HtmlExternalResourceMediaGate
 impl surgeist_html_semantics::HtmlExternalResourceMediaGate
 pub fn surgeist_html_semantics::HtmlExternalResourceMediaGate::condition(&self) -> &surgeist_html_semantics::HtmlMediaCondition
@@ -2067,23 +2085,6 @@ pub fn surgeist_html_semantics::HtmlHostFactsRevision::hash<H: core::hash::Hashe
 pub struct surgeist_html_semantics::HtmlHyperlinkMediaAdvice
 impl surgeist_html_semantics::HtmlHyperlinkMediaAdvice
 pub fn surgeist_html_semantics::HtmlHyperlinkMediaAdvice::condition(&self) -> &surgeist_html_semantics::HtmlMediaCondition
-pub struct surgeist_html_semantics::HtmlHyperlinkParseFacts(_)
-impl surgeist_html_semantics::HtmlHyperlinkParseFacts
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::base(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::encoding(&self) -> &surgeist_html_semantics::HtmlBaseEncoding
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::formation_usage(&self) -> surgeist_html_semantics::HtmlBaseFactsUsage
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::new(base: surgeist_html_semantics::HtmlBaseUrlRecord, encoding: surgeist_html_semantics::HtmlBaseEncoding, revision: surgeist_html_semantics::HtmlBaseFactsRevision, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlHyperlinkParseObservation>, limits: surgeist_html_semantics::HtmlBaseFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlHyperlinkFactsError>
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::resolve_with<E>(&self, raw: &surgeist_html::values::DocumentString, base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlHyperlinkUrlSnapshot, surgeist_html_semantics::HtmlHyperlinkLookupError<E>>
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::revision(&self) -> &surgeist_html_semantics::HtmlBaseFactsRevision
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::same_owner(&self, other: &Self) -> bool
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::validate_inputs(&self, base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision) -> core::result::Result<(), surgeist_html_semantics::HtmlHyperlinkFactsError>
-impl core::cmp::Eq for surgeist_html_semantics::HtmlHyperlinkParseFacts
-impl core::cmp::PartialEq for surgeist_html_semantics::HtmlHyperlinkParseFacts
-pub fn surgeist_html_semantics::HtmlHyperlinkParseFacts::eq(&self, other: &Self) -> bool
-pub struct surgeist_html_semantics::HtmlHyperlinkParseObservation
-impl surgeist_html_semantics::HtmlHyperlinkParseObservation
-pub fn surgeist_html_semantics::HtmlHyperlinkParseObservation::new(raw: surgeist_html::values::DocumentString, outcome: surgeist_html_semantics::HtmlHyperlinkParseOutcome) -> Self
 pub struct surgeist_html_semantics::HtmlHyperlinkReferrerPolicyReadback
 impl surgeist_html_semantics::HtmlHyperlinkReferrerPolicyReadback
 pub fn surgeist_html_semantics::HtmlHyperlinkReferrerPolicyReadback::attribute_report(&self) -> &surgeist_html::attributes::HtmlAttributeReport<surgeist_html::attributes::HtmlReferrerPolicy>
@@ -2092,7 +2093,7 @@ pub struct surgeist_html_semantics::HtmlHyperlinkUrlSnapshot
 impl surgeist_html_semantics::HtmlHyperlinkUrlSnapshot
 pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::base(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord
 pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::encoding(&self) -> &surgeist_html_semantics::HtmlBaseEncoding
-pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::outcome(&self) -> &surgeist_html_semantics::HtmlHyperlinkParseOutcome
+pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::outcome(&self) -> &surgeist_html_semantics::HtmlEncodingUrlParseOutcome
 pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::raw(&self) -> &surgeist_html::values::DocumentString
 pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
 pub fn surgeist_html_semantics::HtmlHyperlinkUrlSnapshot::retained_utf16_extent(&self) -> usize

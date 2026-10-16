@@ -16,23 +16,23 @@ fn url(revision: &HtmlBaseFactsRevision, text: &str) -> HtmlBaseUrlRecord {
 fn limits() -> HtmlBaseFactsLimits {
     HtmlBaseFactsLimits::new(100, 10000, 10000)
 }
-fn facts(raw: DocumentString, outcome: HtmlHyperlinkParseOutcome) -> HtmlHyperlinkParseFacts {
+fn facts(raw: DocumentString, outcome: HtmlEncodingUrlParseOutcome) -> HtmlEncodingUrlParseFacts {
     let revision = match &outcome {
-        HtmlHyperlinkParseOutcome::Parsed(record) => record.revision().clone(),
+        HtmlEncodingUrlParseOutcome::Parsed(record) => record.revision().clone(),
         _ => rev(&HtmlBaseProducerId::fresh(), 1),
     };
-    HtmlHyperlinkParseFacts::new(
+    HtmlEncodingUrlParseFacts::new(
         url(&revision, "https://base/"),
         HtmlBaseEncoding::fresh(),
         revision,
-        vec![HtmlHyperlinkParseObservation::new(raw, outcome)],
+        vec![HtmlEncodingUrlParseObservation::new(raw, outcome)],
         limits(),
     )
     .unwrap()
 }
-fn resolve(facts: &HtmlHyperlinkParseFacts, raw: &DocumentString) -> HtmlHyperlinkUrlSnapshot {
+fn resolve(facts: &HtmlEncodingUrlParseFacts, raw: &DocumentString) -> HtmlHyperlinkUrlSnapshot {
     facts
-        .resolve_with(
+        .resolve_hyperlink_with(
             raw,
             facts.base(),
             facts.encoding(),
@@ -81,16 +81,16 @@ fn positive_and_failed_snapshots_keep_exact_qualified_history() {
     let parsed = url(&revision, "https://frozen/result");
     let encoding = HtmlBaseEncoding::fresh();
     let raw = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
-    let facts = HtmlHyperlinkParseFacts::new(
+    let facts = HtmlEncodingUrlParseFacts::new(
         base.clone(),
         encoding.clone(),
         revision.clone(),
         vec![
-            HtmlHyperlinkParseObservation::new(
+            HtmlEncodingUrlParseObservation::new(
                 raw.clone(),
-                HtmlHyperlinkParseOutcome::Parsed(parsed.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(parsed.clone()),
             ),
-            HtmlHyperlinkParseObservation::new("".into(), HtmlHyperlinkParseOutcome::Failure),
+            HtmlEncodingUrlParseObservation::new("".into(), HtmlEncodingUrlParseOutcome::Failure),
         ],
         limits(),
     )
@@ -107,18 +107,18 @@ fn positive_and_failed_snapshots_keep_exact_qualified_history() {
     assert_eq!(failed.url(), None);
     assert!(matches!(
         failed.outcome(),
-        HtmlHyperlinkParseOutcome::Failure
+        HtmlEncodingUrlParseOutcome::Failure
     ));
     assert_eq!(
-        facts.resolve_with(
+        facts.resolve_hyperlink_with(
             &"absent".into(),
             &base,
             &encoding,
             &revision,
             || Ok::<_, ()>(())
         ),
-        Err(HtmlHyperlinkLookupError::Facts(
-            HtmlHyperlinkFactsError::MissingObservation
+        Err(HtmlEncodingUrlLookupError::Facts(
+            HtmlEncodingUrlFactsError::MissingObservation
         ))
     );
     drop(facts);
@@ -126,15 +126,15 @@ fn positive_and_failed_snapshots_keep_exact_qualified_history() {
 }
 #[test]
 fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
-    let facts = facts("A".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("A".into(), HtmlEncodingUrlParseOutcome::Failure);
     let another = url(facts.revision(), "https://base/");
     assert_eq!(
         facts.validate_inputs(&another, facts.encoding(), facts.revision()),
-        Err(HtmlHyperlinkFactsError::InputsMismatch)
+        Err(HtmlEncodingUrlFactsError::InputsMismatch)
     );
     assert_eq!(
         facts.validate_inputs(facts.base(), &HtmlBaseEncoding::fresh(), facts.revision()),
-        Err(HtmlHyperlinkFactsError::InputsMismatch)
+        Err(HtmlEncodingUrlFactsError::InputsMismatch)
     );
     for changed in [
         HtmlBaseFactsRevision::new(facts.revision().producer().clone(), 2, 1, 1),
@@ -143,7 +143,7 @@ fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
     ] {
         assert_eq!(
             facts.validate_inputs(facts.base(), facts.encoding(), &changed),
-            Err(HtmlHyperlinkFactsError::RevisionMismatch)
+            Err(HtmlEncodingUrlFactsError::RevisionMismatch)
         );
     }
     assert_eq!(
@@ -152,18 +152,18 @@ fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
             facts.encoding(),
             &rev(&HtmlBaseProducerId::fresh(), 1)
         ),
-        Err(HtmlHyperlinkFactsError::ForeignProducer)
+        Err(HtmlEncodingUrlFactsError::ForeignProducer)
     );
     assert!(matches!(
-        facts.resolve_with(
+        facts.resolve_hyperlink_with(
             &"a".into(),
             facts.base(),
             facts.encoding(),
             facts.revision(),
             || Ok::<_, ()>(())
         ),
-        Err(HtmlHyperlinkLookupError::Facts(
-            HtmlHyperlinkFactsError::MissingObservation
+        Err(HtmlEncodingUrlLookupError::Facts(
+            HtmlEncodingUrlFactsError::MissingObservation
         ))
     ));
 }
@@ -176,19 +176,19 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
     let raw = DocumentString::from_utf16(raw);
     let raw_extent = raw.shared_code_units().capacity();
     let mut observations = Vec::with_capacity(8);
-    observations.push(HtmlHyperlinkParseObservation::new(
+    observations.push(HtmlEncodingUrlParseObservation::new(
         raw.clone(),
-        HtmlHyperlinkParseOutcome::Failure,
+        HtmlEncodingUrlParseOutcome::Failure,
     ));
     let capacity = observations.capacity();
     let encoding = HtmlBaseEncoding::fresh();
     let make = |limits| {
         let mut bank = Vec::with_capacity(capacity);
-        bank.push(HtmlHyperlinkParseObservation::new(
+        bank.push(HtmlEncodingUrlParseObservation::new(
             raw.clone(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         ));
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
@@ -197,7 +197,7 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
         )
     };
     // Clone of Vec can trim spare capacity, so form the original bank to observe it.
-    let formed = HtmlHyperlinkParseFacts::new(
+    let formed = HtmlEncodingUrlParseFacts::new(
         base.clone(),
         encoding.clone(),
         revision.clone(),
@@ -217,19 +217,19 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
     );
     assert!(matches!(
         make(HtmlBaseFactsLimits::new(capacity - 1, 1000, 100)),
-        Err(HtmlHyperlinkFactsError::Formation(
+        Err(HtmlEncodingUrlFactsError::Formation(
             HtmlBaseFactsError::RecordLimit
         ))
     ));
     assert!(matches!(
         make(HtmlBaseFactsLimits::new(8, raw_extent, 100)),
-        Err(HtmlHyperlinkFactsError::Formation(
+        Err(HtmlEncodingUrlFactsError::Formation(
             HtmlBaseFactsError::Utf16Limit
         ))
     ));
     assert!(matches!(
         make(HtmlBaseFactsLimits::new(8, 1000, 2)),
-        Err(HtmlHyperlinkFactsError::Formation(
+        Err(HtmlEncodingUrlFactsError::Formation(
             HtmlBaseFactsError::WorkLimit
         ))
     ));
@@ -248,41 +248,41 @@ fn duplicate_and_wrong_result_revision_are_refused() {
     let base = url(&revision, "b");
     let encoding = HtmlBaseEncoding::fresh();
     let observation =
-        HtmlHyperlinkParseObservation::new("x".into(), HtmlHyperlinkParseOutcome::Failure);
+        HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Failure);
     assert!(matches!(
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
             vec![observation.clone(), observation],
             limits()
         ),
-        Err(HtmlHyperlinkFactsError::Formation(
+        Err(HtmlEncodingUrlFactsError::Formation(
             HtmlBaseFactsError::DuplicateObservation
         ))
     ));
     let wrong = url(&rev(revision.producer(), 2), "p");
     assert!(matches!(
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base,
             encoding,
             revision,
-            vec![HtmlHyperlinkParseObservation::new(
+            vec![HtmlEncodingUrlParseObservation::new(
                 "x".into(),
-                HtmlHyperlinkParseOutcome::Parsed(wrong)
+                HtmlEncodingUrlParseOutcome::Parsed(wrong)
             )],
             limits()
         ),
-        Err(HtmlHyperlinkFactsError::RevisionMismatch)
+        Err(HtmlEncodingUrlFactsError::RevisionMismatch)
     ));
 }
 #[test]
 fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
-    let facts = facts("abcd".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("abcd".into(), HtmlEncodingUrlParseOutcome::Failure);
     // Context + observation + four compared units + issuance = seven steps.
     for failure in 1..=7 {
         let mut calls = 0;
-        let result = facts.resolve_with(
+        let result = facts.resolve_hyperlink_with(
             &"abcd".into(),
             facts.base(),
             facts.encoding(),
@@ -298,7 +298,7 @@ fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
         );
         assert_eq!(
             result,
-            Err(HtmlHyperlinkLookupError::Interrupted((
+            Err(HtmlEncodingUrlLookupError::Interrupted((
                 failure,
                 "actual consumer error"
             )))
@@ -307,7 +307,7 @@ fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
     }
     let mut calls = 0;
     facts
-        .resolve_with(
+        .resolve_hyperlink_with(
             &"abcd".into(),
             facts.base(),
             facts.encoding(),
@@ -351,7 +351,7 @@ fn element(
 }
 #[test]
 fn capture_preserves_historical_document_separately_from_current_document() {
-    let facts = facts("x".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("x".into(), HtmlEncodingUrlParseOutcome::Failure);
     let snapshot = resolve(&facts, &"x".into());
     let mut builder =
         HtmlCaptureBuilder::new(capture_limits(10000, 100), HtmlHostFactsRevision::fresh());
@@ -412,7 +412,7 @@ fn capture_preserves_historical_document_separately_from_current_document() {
 }
 #[test]
 fn capture_refusals_and_every_interruption_leave_history_and_usage_untouched() {
-    let facts = facts("x".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("x".into(), HtmlEncodingUrlParseOutcome::Failure);
     let snapshot = resolve(&facts, &"x".into());
     let mut builder =
         HtmlCaptureBuilder::new(capture_limits(10000, 100), HtmlHostFactsRevision::fresh());
@@ -469,7 +469,7 @@ fn capture_refusals_and_every_interruption_leave_history_and_usage_untouched() {
 }
 #[test]
 fn capture_admission_counts_actual_snapshot_extent_and_historical_relation() {
-    let facts = facts("x".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("x".into(), HtmlEncodingUrlParseOutcome::Failure);
     let snapshot = resolve(&facts, &"x".into());
     for relation_short in [false, true] {
         let mut probe =
@@ -504,7 +504,7 @@ fn capture_admission_counts_actual_snapshot_extent_and_historical_relation() {
 
 #[test]
 fn capture_null_requires_absent_null_namespace_href_and_validates_document_kind() {
-    let facts = facts("x".into(), HtmlHyperlinkParseOutcome::Failure);
+    let facts = facts("x".into(), HtmlEncodingUrlParseOutcome::Failure);
     let snapshot = resolve(&facts, &"x".into());
     let mut builder =
         HtmlCaptureBuilder::new(capture_limits(10000, 100), HtmlHostFactsRevision::fresh());
@@ -574,15 +574,15 @@ fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
     .unwrap();
     let result_extent = result.serialization().shared_code_units().capacity();
     let mut observations = Vec::with_capacity(32);
-    observations.push(HtmlHyperlinkParseObservation::new(
+    observations.push(HtmlEncodingUrlParseObservation::new(
         "".into(),
-        HtmlHyperlinkParseOutcome::Parsed(result.clone()),
+        HtmlEncodingUrlParseOutcome::Parsed(result.clone()),
     ));
-    observations.push(HtmlHyperlinkParseObservation::new(
+    observations.push(HtmlEncodingUrlParseObservation::new(
         "other input".into(),
-        HtmlHyperlinkParseOutcome::Failure,
+        HtmlEncodingUrlParseOutcome::Failure,
     ));
-    let facts = HtmlHyperlinkParseFacts::new(
+    let facts = HtmlEncodingUrlParseFacts::new(
         base.clone(),
         HtmlBaseEncoding::fresh(),
         revision,
@@ -608,13 +608,13 @@ fn snapshot_equality_uses_parse_content_and_identities_not_spare_backing_capacit
     let make = |capacity| {
         let mut raw = Vec::with_capacity(capacity);
         raw.push(120);
-        let facts = HtmlHyperlinkParseFacts::new(
+        let facts = HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
-            vec![HtmlHyperlinkParseObservation::new(
+            vec![HtmlEncodingUrlParseObservation::new(
                 DocumentString::from_utf16(raw),
-                HtmlHyperlinkParseOutcome::Failure,
+                HtmlEncodingUrlParseOutcome::Failure,
             )],
             limits(),
         )

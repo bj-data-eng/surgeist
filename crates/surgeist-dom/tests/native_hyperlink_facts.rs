@@ -14,7 +14,7 @@ fn owner() -> Dom {
             .unwrap()
             .with_base_processing(256, 10_000_000)
             .unwrap()
-            .with_hyperlink_processing(256, 10_000_000)
+            .with_encoding_url_processing(256, 10_000_000)
             .unwrap(),
     )
     .unwrap()
@@ -38,12 +38,12 @@ struct Environment {
     base: HtmlBaseUrlRecord,
     encoding: HtmlBaseEncoding,
     base_facts: HtmlParseBaseFacts,
-    hyperlink_facts: HtmlHyperlinkParseFacts,
+    encoding_url_facts: HtmlEncodingUrlParseFacts,
 }
 fn environment(
     revision: &HtmlBaseFactsRevision,
     base_spelling: &str,
-    outcomes: Vec<(DocumentString, HtmlHyperlinkParseOutcome)>,
+    outcomes: Vec<(DocumentString, HtmlEncodingUrlParseOutcome)>,
 ) -> Environment {
     let fallback = record(revision, "about:blank", true);
     let base = record(revision, base_spelling, false);
@@ -73,13 +73,13 @@ fn environment(
         HtmlBaseFactsLimits::new(64, 32768, 1_000_000),
     )
     .unwrap();
-    let hyperlink_facts = HtmlHyperlinkParseFacts::new(
+    let encoding_url_facts = HtmlEncodingUrlParseFacts::new(
         base.clone(),
         encoding.clone(),
         revision.clone(),
         outcomes
             .into_iter()
-            .map(|(raw, outcome)| HtmlHyperlinkParseObservation::new(raw, outcome))
+            .map(|(raw, outcome)| HtmlEncodingUrlParseObservation::new(raw, outcome))
             .collect(),
         HtmlBaseFactsLimits::new(64, 32768, 1_000_000),
     )
@@ -88,7 +88,7 @@ fn environment(
         base,
         encoding,
         base_facts,
-        hyperlink_facts,
+        encoding_url_facts,
     }
 }
 fn bind_base(dom: &mut Dom, document: DocumentId, base: NodeId, environment: &Environment) {
@@ -102,9 +102,9 @@ fn bind_base(dom: &mut Dom, document: DocumentId, base: NodeId, environment: &En
 }
 fn bind_hyperlinks(dom: &mut Dom, document: DocumentId, environment: &Environment) {
     let mut batch = DomBatch::new();
-    batch.bind_native_hyperlink_facts(
+    batch.bind_native_encoding_url_facts(
         dom.snapshot().document(document).unwrap().stamp(),
-        &environment.hyperlink_facts,
+        &environment.encoding_url_facts,
     );
     apply(dom, batch);
 }
@@ -163,7 +163,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
             "https://first.test/base/",
             vec![(
                 "same".into(),
-                HtmlHyperlinkParseOutcome::Parsed(old_url.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(old_url.clone()),
             )],
         );
         let second = environment(
@@ -171,7 +171,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
             "https://second.test/base/",
             vec![(
                 "changed".into(),
-                HtmlHyperlinkParseOutcome::Parsed(new_url.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(new_url.clone()),
             )],
         );
         bind_base(&mut f.dom, f.first, f.first_base, &first);
@@ -203,7 +203,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
             adopted
                 .document(f.second)
                 .unwrap()
-                .hyperlink_facts()
+                .encoding_url_facts()
                 .is_none()
         );
         let mut batch = DomBatch::new();
@@ -224,7 +224,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
         batch.set_attribute(f.hyperlink, "href", "changed");
         assert_eq!(
             f.dom.apply(batch, &cancel()).unwrap_err(),
-            DomError::HyperlinkFacts(DomHyperlinkFactsError::MissingFacts)
+            DomError::EncodingUrlFacts(DomEncodingUrlFactsError::MissingFacts)
         );
         assert_eq!(f.dom.snapshot().stamp(), namespaced.stamp());
         assert_eq!(
@@ -286,7 +286,7 @@ fn clone_parses_copied_href_in_its_destination_instead_of_copying_source_record_
             "https://source.test/base/",
             vec![(
                 raw.clone(),
-                HtmlHyperlinkParseOutcome::Parsed(source_url.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(source_url.clone()),
             )],
         );
         let second = environment(
@@ -294,7 +294,7 @@ fn clone_parses_copied_href_in_its_destination_instead_of_copying_source_record_
             "https://target.test/base/",
             vec![(
                 raw.clone(),
-                HtmlHyperlinkParseOutcome::Parsed(target_url.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(target_url.clone()),
             )],
         );
         bind_base(&mut f.dom, f.first, f.first_base, &first);
@@ -341,12 +341,12 @@ fn exact_utf16_success_failure_empty_and_absent_href_have_distinct_history_and_a
             vec![
                 (
                     raw.clone(),
-                    HtmlHyperlinkParseOutcome::Parsed(parsed_url.clone()),
+                    HtmlEncodingUrlParseOutcome::Parsed(parsed_url.clone()),
                 ),
-                (failure_raw.clone(), HtmlHyperlinkParseOutcome::Failure),
+                (failure_raw.clone(), HtmlEncodingUrlParseOutcome::Failure),
                 (
                     "".into(),
-                    HtmlHyperlinkParseOutcome::Parsed(empty_url.clone()),
+                    HtmlEncodingUrlParseOutcome::Parsed(empty_url.clone()),
                 ),
             ],
         );
@@ -377,7 +377,7 @@ fn exact_utf16_success_failure_empty_and_absent_href_have_distinct_history_and_a
         assert_eq!(view.parse_observation().unwrap().raw(), &failure_raw);
         assert_eq!(
             view.parse_observation().unwrap().outcome(),
-            &HtmlHyperlinkParseOutcome::Failure
+            &HtmlEncodingUrlParseOutcome::Failure
         );
         let mut batch = DomBatch::new();
         batch.set_attribute(f.hyperlink, "href", failure_raw);
@@ -399,8 +399,8 @@ fn exact_utf16_success_failure_empty_and_absent_href_have_distinct_history_and_a
         batch.set_attribute(f.hyperlink, "href", missing_raw);
         assert_eq!(
             f.dom.apply(batch, &cancel()).unwrap_err(),
-            DomError::HyperlinkFacts(DomHyperlinkFactsError::Producer(
-                HtmlHyperlinkFactsError::MissingObservation
+            DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(
+                HtmlEncodingUrlFactsError::MissingObservation
             ))
         );
         assert_eq!(f.dom.snapshot().stamp(), empty.stamp());

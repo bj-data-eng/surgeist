@@ -190,7 +190,7 @@ pub surgeist_html_parser::HtmlParseHyperlinkState::Unavailable(&'a surgeist_html
 pub enum surgeist_html_parser::HtmlParseHyperlinkUnavailable
 pub surgeist_html_parser::HtmlParseHyperlinkUnavailable::Base(surgeist_html_semantics::base::HtmlBaseMissing)
 pub surgeist_html_parser::HtmlParseHyperlinkUnavailable::DocumentEnvironment
-pub surgeist_html_parser::HtmlParseHyperlinkUnavailable::Observation(surgeist_html_semantics::hyperlink::HtmlHyperlinkFactsError)
+pub surgeist_html_parser::HtmlParseHyperlinkUnavailable::Observation(surgeist_html_semantics::hyperlink::HtmlEncodingUrlFactsError)
 pub enum surgeist_html_parser::HtmlParseImageUpdate
 pub surgeist_html_parser::HtmlParseImageUpdate::UnavailableActivity
 pub surgeist_html_parser::HtmlParseImageUpdate::UnavailableActivity::latest_started: u64
@@ -588,7 +588,7 @@ pub fn surgeist_html_parser::HtmlDocumentParseRequest::parse(self) -> core::resu
 pub fn surgeist_html_parser::HtmlDocumentParseRequest::scripting_mode(&self) -> surgeist_html::fragment_initialization::HtmlParserScriptingMode
 pub fn surgeist_html_parser::HtmlDocumentParseRequest::source(&self) -> &surgeist_html_parser::HtmlSource
 pub fn surgeist_html_parser::HtmlDocumentParseRequest::with_base_facts(self, facts: surgeist_html_semantics::base::HtmlParseBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
-pub fn surgeist_html_parser::HtmlDocumentParseRequest::with_hyperlink_facts(self, facts: alloc::vec::Vec<surgeist_html_semantics::hyperlink::HtmlHyperlinkParseFacts>) -> Self
+pub fn surgeist_html_parser::HtmlDocumentParseRequest::with_encoding_url_facts(self, facts: alloc::vec::Vec<surgeist_html_semantics::hyperlink::HtmlEncodingUrlParseFacts>) -> Self
 pub fn surgeist_html_parser::HtmlDocumentParseRequest::with_template_base_facts(self, facts: surgeist_html_semantics::base::HtmlParseBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
 pub struct surgeist_html_parser::HtmlFragmentParseRequest
 impl surgeist_html_parser::HtmlFragmentParseRequest
@@ -717,9 +717,9 @@ pub fn surgeist_html_parser::HtmlParseFailure::context(&self) -> core::option::O
 pub fn surgeist_html_parser::HtmlParseFailure::diagnostics(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDiagnostics<'_>>
 pub fn surgeist_html_parser::HtmlParseFailure::document(&self) -> core::option::Option<&surgeist_html_semantics::capture::HtmlCaptureDocumentId>
 pub fn surgeist_html_parser::HtmlParseFailure::document_base_facts(&self) -> core::option::Option<&surgeist_html_semantics::base::HtmlParseBaseFacts>
+pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_fact_capacity(&self) -> core::option::Option<usize>
+pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_facts(&self) -> core::option::Option<&[surgeist_html_semantics::hyperlink::HtmlEncodingUrlParseFacts]>
 pub fn surgeist_html_parser::HtmlParseFailure::first_stop(&self) -> core::option::Option<surgeist_html_parser::HtmlParseStop>
-pub fn surgeist_html_parser::HtmlParseFailure::hyperlink_fact_capacity(&self) -> core::option::Option<usize>
-pub fn surgeist_html_parser::HtmlParseFailure::hyperlink_facts(&self) -> core::option::Option<&[surgeist_html_semantics::hyperlink::HtmlHyperlinkParseFacts]>
 pub fn surgeist_html_parser::HtmlParseFailure::limits(&self) -> &surgeist_html_parser::HtmlParseLimits
 pub fn surgeist_html_parser::HtmlParseFailure::reason(&self) -> surgeist_html_parser::HtmlParseFailureReason
 pub fn surgeist_html_parser::HtmlParseFailure::requested_scripting_mode(&self) -> surgeist_html::fragment_initialization::HtmlParserScriptingMode

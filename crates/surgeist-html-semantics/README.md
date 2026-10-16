@@ -22,12 +22,16 @@ defines behavior.
 
 `select_document_base` selects the actual first href Base's frozen URL or the
 qualified Document fallback, preserving historical frozen record identity.
-`HtmlHyperlinkParseFacts` admits exact encoding-parse observations for one
+`HtmlEncodingUrlParseFacts` admits exact encoding-parse observations for one
 selected base, opaque encoding and full producer revision. Formation counts
 retained vector/string capacities; lookup charges a caller callback before each
-comparison unit and preserves its first interruption. A chosen immutable snapshot
-retains only its raw input, qualification and observed result, including explicit
-parse failure. Missing observations remain unavailable evidence. Adapters bind
+comparison unit and preserves its first interruption. `lookup_units_with` borrows
+an exact UTF-16 input, including a Meta refresh substring, and returns the bank's
+observed outcome without copying the input or creating Element history.
+`resolve_hyperlink_with` establishes the genuine A/Area snapshot, retaining only
+its raw input, qualification and observed result, including explicit parse failure.
+Both use the same qualified lookup. Missing observations remain unavailable
+evidence. Adapters bind
 these facts to actual Documents and encoding truth; this crate parses no URL.
 
 Capture builders can establish A/Area URL cache history with the actual historical
@@ -40,7 +44,7 @@ references atomically. It establishes no origin, Blob-store or navigation facts.
 selection with `select_document_base`. Its caller establishes the serialized
 fallback; the helper does not infer a native Document or manufacture a URL record.
 
-URL records, Base parse-facts banks, Hyperlink banks and selected Hyperlink
+URL records, Base parse-facts banks, EncodingUrl banks and selected Hyperlink
 snapshots expose checked `retained_storage_usage()`. This counts owner payload
 headers, actual record capacity and UTF-16 backing capacity, including private
 fallbacks and spare capacity. Aliased occurrences are conservatively counted

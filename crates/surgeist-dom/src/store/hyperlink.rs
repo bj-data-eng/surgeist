@@ -1,40 +1,40 @@
 //! Qualified actual href parsing through HTML's ordered set-URL actions.
 use super::*;
-use crate::hyperlink::{DomHyperlinkFactsError as Failure, Parsed};
+use crate::hyperlink::{DomEncodingUrlFactsError as Failure, Parsed};
 use surgeist_html::{
     HtmlHyperlinkAttributeEffect, HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
     HtmlHyperlinkSetUrlReply as Reply, HtmlHyperlinkTreeMutation, KnownHtmlAttribute,
 };
 use surgeist_html_semantics::{
     HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
-    HtmlDocumentFirstBase, HtmlHyperlinkLookupError, HtmlHyperlinkParseFacts,
+    HtmlDocumentFirstBase, HtmlEncodingUrlLookupError, HtmlEncodingUrlParseFacts,
 };
 
 fn failure(error: Failure) -> DomError {
-    DomError::HyperlinkFacts(error)
+    DomError::EncodingUrlFacts(error)
 }
 impl Draft {
-    fn hyperlink_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+    fn encoding_url_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.effect_step(cancel)?;
         let next = self
-            .hyperlink_work
+            .encoding_url_work
             .get()
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
-        if next > self.hyperlink_work_limit {
-            return Err(DomError::HyperlinkWorkLimit {
-                limit: self.hyperlink_work_limit,
+        if next > self.encoding_url_work_limit {
+            return Err(DomError::EncodingUrlWorkLimit {
+                limit: self.encoding_url_work_limit,
             });
         }
-        self.hyperlink_work.set(next);
+        self.encoding_url_work.set(next);
         Ok(())
     }
-    fn hyperlink_environment(
+    fn encoding_url_environment(
         &self,
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<(HtmlBaseUrlRecord, HtmlBaseEncoding, HtmlBaseFactsRevision), DomError> {
-        self.hyperlink_step(cancel)?;
+        self.encoding_url_step(cancel)?;
         let node = self.node(document)?;
         let DomNodeKind::Document(metadata) = &node.kind else {
             return Err(DomError::WrongNodeKind);
@@ -58,7 +58,7 @@ impl Draft {
             .encoding()
             .ok_or_else(|| failure(Failure::Base(HtmlBaseMissing::CharacterEncoding)))?;
         let first = if let Some(key) = base.first {
-            self.hyperlink_step(cancel)?;
+            self.encoding_url_step(cancel)?;
             HtmlDocumentFirstBase::Present(
                 self.node(key)?
                     .base
@@ -69,7 +69,7 @@ impl Draft {
         } else {
             HtmlDocumentFirstBase::Absent
         };
-        self.hyperlink_step(cancel)?;
+        self.encoding_url_step(cancel)?;
         let value = surgeist_html_semantics::select_document_base(Some(facts.document()), first)
             .map_err(|missing| failure(Failure::Base(missing)))?;
         Ok((
@@ -78,10 +78,10 @@ impl Draft {
             facts.document().revision().clone(),
         ))
     }
-    pub(super) fn bind_hyperlink_facts(
+    pub(super) fn bind_encoding_url_facts(
         &mut self,
         basis: crate::DomDocumentStamp,
-        facts: HtmlHyperlinkParseFacts,
+        facts: HtmlEncodingUrlParseFacts,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -92,16 +92,16 @@ impl Draft {
             return Err(failure(Failure::BasisRevisionMismatch));
         }
         let key = self.resolve(basis.document().into())?;
-        let (base, encoding, revision) = self.hyperlink_environment(key, cancel)?;
-        self.hyperlink_step(cancel)?;
+        let (base, encoding, revision) = self.encoding_url_environment(key, cancel)?;
+        self.encoding_url_step(cancel)?;
         facts
             .validate_inputs(&base, &encoding, &revision)
             .map_err(|e| failure(Failure::Producer(e)))?;
         let mut records = facts.formation_usage().record_capacity();
         for (i, node) in self.existing.iter().enumerate() {
-            self.hyperlink_step(cancel)?;
+            self.encoding_url_step(cancel)?;
             if key != Key::Existing(i)
-                && let Some(doc) = node.as_ref().and_then(|n| n.hyperlink_document.as_ref())
+                && let Some(doc) = node.as_ref().and_then(|n| n.encoding_url_document.as_ref())
             {
                 records = records
                     .checked_add(doc.records())
@@ -109,9 +109,9 @@ impl Draft {
             }
         }
         for (i, node) in self.created.iter().enumerate() {
-            self.hyperlink_step(cancel)?;
+            self.encoding_url_step(cancel)?;
             if key != Key::Created(i)
-                && let Some(doc) = node.as_ref().and_then(|n| n.hyperlink_document.as_ref())
+                && let Some(doc) = node.as_ref().and_then(|n| n.encoding_url_document.as_ref())
             {
                 records = records
                     .checked_add(doc.records())
@@ -120,12 +120,12 @@ impl Draft {
         }
         admit(
             records,
-            limits.hyperlink_observations,
-            DomResource::HyperlinkObservations,
+            limits.encoding_url_observations,
+            DomResource::EncodingUrlObservations,
         )?;
         let previous = self
             .node(key)?
-            .hyperlink_document
+            .encoding_url_document
             .as_ref()
             .expect("native Document")
             .units();
@@ -133,9 +133,9 @@ impl Draft {
             .checked_add(facts.formation_usage().utf16_extent())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        self.hyperlink_step(cancel)?;
+        self.encoding_url_step(cancel)?;
         self.node_mut(key)
-            .hyperlink_document
+            .encoding_url_document
             .as_mut()
             .expect("Document")
             .facts = Some(facts);
@@ -198,27 +198,27 @@ impl Draft {
                 }
                 Action::ReadHref => Reply::HrefPresent(href.is_some()),
                 Action::ParseHref => {
-                    self.hyperlink_step(cancel)?;
+                    self.encoding_url_step(cancel)?;
                     let document = self.node(key)?.document;
                     let (base, encoding, revision) =
-                        self.hyperlink_environment(document, cancel)?;
+                        self.encoding_url_environment(document, cancel)?;
                     let facts = self
                         .node(document)?
-                        .hyperlink_document
+                        .encoding_url_document
                         .as_ref()
                         .and_then(|d| d.facts.clone())
                         .ok_or_else(|| failure(Failure::MissingFacts))?;
                     let value = facts
-                        .resolve_with(
+                        .resolve_hyperlink_with(
                             href.expect("actual present href"),
                             &base,
                             &encoding,
                             &revision,
-                            || self.hyperlink_step(cancel),
+                            || self.encoding_url_step(cancel),
                         )
                         .map_err(|e| match e {
-                            HtmlHyperlinkLookupError::Facts(e) => failure(Failure::Producer(e)),
-                            HtmlHyperlinkLookupError::Interrupted(e) => e,
+                            HtmlEncodingUrlLookupError::Facts(e) => failure(Failure::Producer(e)),
+                            HtmlEncodingUrlLookupError::Interrupted(e) => e,
                         })?;
                     let success = value.url().is_some();
                     if success {
@@ -339,7 +339,7 @@ mod tests {
             .unwrap()
             .with_base_processing(64, 1_000_000)
             .unwrap()
-            .with_hyperlink_processing(64, work)
+            .with_encoding_url_processing(64, work)
             .unwrap()
     }
     fn fixture(
@@ -348,8 +348,8 @@ mod tests {
         Dom,
         DocumentId,
         NodeId,
-        HtmlHyperlinkParseFacts,
-        HtmlHyperlinkParseFacts,
+        HtmlEncodingUrlParseFacts,
+        HtmlEncodingUrlParseFacts,
     ) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(policy(1_000_000, 65536)).unwrap();
@@ -389,18 +389,18 @@ mod tests {
         let bank = |capacity: usize| {
             let mut raw = Vec::with_capacity(capacity);
             raw.extend("target".encode_utf16());
-            HtmlHyperlinkParseFacts::new(
+            HtmlEncodingUrlParseFacts::new(
                 base.clone(),
                 encoding.clone(),
                 r.clone(),
                 vec![
-                    HtmlHyperlinkParseObservation::new(
+                    HtmlEncodingUrlParseObservation::new(
                         DocumentString::from_utf16(raw),
-                        HtmlHyperlinkParseOutcome::Parsed(url.clone()),
+                        HtmlEncodingUrlParseOutcome::Parsed(url.clone()),
                     ),
-                    HtmlHyperlinkParseObservation::new(
+                    HtmlEncodingUrlParseObservation::new(
                         "next".into(),
-                        HtmlHyperlinkParseOutcome::Parsed(url.clone()),
+                        HtmlEncodingUrlParseOutcome::Parsed(url.clone()),
                     ),
                 ],
                 HtmlBaseFactsLimits::new(64, 65536, 1_000_000),
@@ -411,7 +411,7 @@ mod tests {
         let alternative = bank(if capacity == 64 { 8 } else { 64 });
         let mut b = DomBatch::new();
         b.bind_native_base_facts(dom.snapshot().document(doc).unwrap().stamp(), &env);
-        b.bind_native_hyperlink_facts(dom.snapshot().document(doc).unwrap().stamp(), &original);
+        b.bind_native_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), &original);
         b.set_attribute(a, "href", "target");
         dom.apply(b, &cancel).unwrap();
         (dom, doc, a, original, alternative)
@@ -427,16 +427,16 @@ mod tests {
         dom: &Dom,
         doc: DocumentId,
         a: NodeId,
-        original: &HtmlHyperlinkParseFacts,
-        alternative: &HtmlHyperlinkParseFacts,
+        original: &HtmlEncodingUrlParseFacts,
+        alternative: &HtmlEncodingUrlParseFacts,
         semantic: bool,
     ) -> DomBatch {
         let stamp = dom.snapshot().document(doc).unwrap().stamp();
         let mut b = DomBatch::new();
-        b.bind_native_hyperlink_facts(stamp, alternative);
+        b.bind_native_encoding_url_facts(stamp, alternative);
         b.set_attribute(a, "href", "next");
         b.set_attribute(a, "href", "target");
-        b.bind_native_hyperlink_facts(stamp, original);
+        b.bind_native_encoding_url_facts(stamp, original);
         if semantic {
             b.set_attribute(a, "title", "changed");
         }
@@ -554,7 +554,7 @@ mod tests {
             for command in b.commands {
                 d.apply(command, dom.limits, &cancel).unwrap();
             }
-            d.hyperlink_work.get()
+            d.encoding_url_work.get()
         };
         let one = usage(edit(a, &["next"]));
         let total = usage(edit(a, &["next", "target"]));
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(
             dom.apply(edit(a, &["next", "target"]), &cancel)
                 .unwrap_err(),
-            DomError::HyperlinkWorkLimit { limit: one }
+            DomError::EncodingUrlWorkLimit { limit: one }
         );
         assert_eq!(dom.snapshot().stamp(), old.stamp());
         dom.set_limits(policy(total, 65536)).unwrap();
@@ -576,7 +576,7 @@ mod tests {
             d.apply(b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
                 .unwrap_err(),
             failure(Failure::Producer(
-                HtmlHyperlinkFactsError::MissingObservation
+                HtmlEncodingUrlFactsError::MissingObservation
             ))
         );
         assert!(

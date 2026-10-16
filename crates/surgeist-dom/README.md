@@ -677,7 +677,7 @@ frozen record when present; it does not substitute the fallback or rerun Base's
 CSP selection. Exact equal optional href values and namespaced attributes return
 before parsing, including after adoption. Present-empty href still parses.
 
-`DomBatch::bind_native_hyperlink_facts` binds immutable producer observations to
+`DomBatch::bind_native_encoding_url_facts` binds immutable producer observations to
 an exact initial `DomDocumentStamp`. The existing native Base-facts binding
 establishes opaque URL/encoding identities against the real UTF8/about:blank
 Document environment; identity binding never infers a charset from an arbitrary
@@ -688,7 +688,7 @@ qualified failed parse instead retains its provenance with a null URL.
 `DomNode::as_hyperlink` reads the stored URL and historical parse Document without
 reinitializing an href IDL getter. Observation updates do not silently reparse.
 
-`DomLimits::with_hyperlink_processing` bounds aggregate installed observation
+`DomLimits::with_encoding_url_processing` bounds aggregate installed observation
 capacity and cumulative batch work, separately from producer formation limits.
 Both allowances default to zero. Canonical unit admission charges actual retained
 raw/base/result string backing capacity for each bank and chosen cache, including

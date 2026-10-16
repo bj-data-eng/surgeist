@@ -156,7 +156,7 @@ pub use host::{
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
-pub use hyperlink::{DomHyperlink, DomHyperlinkFactsError};
+pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg};
 pub use input::{DomInput, DomInputState};

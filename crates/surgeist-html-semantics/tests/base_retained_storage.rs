@@ -115,17 +115,17 @@ fn hyperlink_snapshot_footprint_keeps_only_selected_observation_and_is_not_seman
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
     let make = |spare, extra| {
-        let mut rows = vec![HtmlHyperlinkParseObservation::new(
+        let mut rows = vec![HtmlEncodingUrlParseObservation::new(
             text("chosen", spare),
-            HtmlHyperlinkParseOutcome::Parsed(result.clone()),
+            HtmlEncodingUrlParseOutcome::Parsed(result.clone()),
         )];
         if extra {
-            rows.push(HtmlHyperlinkParseObservation::new(
+            rows.push(HtmlEncodingUrlParseObservation::new(
                 text("unselected", 311),
-                HtmlHyperlinkParseOutcome::Failure,
+                HtmlEncodingUrlParseOutcome::Failure,
             ));
         }
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
@@ -136,9 +136,9 @@ fn hyperlink_snapshot_footprint_keeps_only_selected_observation_and_is_not_seman
     };
     let small = make(0, false);
     let large = make(67, true);
-    let resolve = |facts: &HtmlHyperlinkParseFacts| {
+    let resolve = |facts: &HtmlEncodingUrlParseFacts| {
         facts
-            .resolve_with(&"chosen".into(), &base, &encoding, &revision, || {
+            .resolve_hyperlink_with(&"chosen".into(), &base, &encoding, &revision, || {
                 Ok::<_, ()>(())
             })
             .unwrap()
@@ -171,7 +171,7 @@ fn hyperlink_empty_bank_spare_capacity_is_counted() {
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
     let make = |capacity| {
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
@@ -188,7 +188,7 @@ fn hyperlink_empty_bank_spare_capacity_is_counted() {
     );
     assert_eq!(
         b.retained_storage_usage().retained_bytes() - a.retained_storage_usage().retained_bytes(),
-        17 * size_of::<HtmlHyperlinkParseObservation>()
+        17 * size_of::<HtmlEncodingUrlParseObservation>()
     );
 }
 

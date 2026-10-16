@@ -163,9 +163,9 @@ impl HtmlDocumentParseRequest {
     }
     /// Supplies immutable URL observations; admission/qualification is performed
     /// by the original execution control, never by an extra URL interpreter.
-    pub fn with_hyperlink_facts(
+    pub fn with_encoding_url_facts(
         mut self,
-        facts: Vec<surgeist_html_semantics::HtmlHyperlinkParseFacts>,
+        facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
         self.associated_mut().hyperlinks = facts;
         self

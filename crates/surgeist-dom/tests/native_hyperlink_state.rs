@@ -10,7 +10,7 @@ fn policy(records: usize, work: u64, units: usize) -> DomLimits {
         .unwrap()
         .with_base_processing(128, 1_000_000)
         .unwrap()
-        .with_hyperlink_processing(records, work)
+        .with_encoding_url_processing(records, work)
         .unwrap()
 }
 fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
@@ -72,19 +72,19 @@ fn href_facts(
     encoding: &HtmlBaseEncoding,
     r: &HtmlBaseFactsRevision,
     entries: &[(&str, Option<HtmlBaseUrlRecord>)],
-) -> HtmlHyperlinkParseFacts {
-    HtmlHyperlinkParseFacts::new(
+) -> HtmlEncodingUrlParseFacts {
+    HtmlEncodingUrlParseFacts::new(
         base.clone(),
         encoding.clone(),
         r.clone(),
         entries
             .iter()
             .map(|(raw, out)| {
-                HtmlHyperlinkParseObservation::new(
+                HtmlEncodingUrlParseObservation::new(
                     (*raw).into(),
                     out.clone().map_or(
-                        HtmlHyperlinkParseOutcome::Failure,
-                        HtmlHyperlinkParseOutcome::Parsed,
+                        HtmlEncodingUrlParseOutcome::Failure,
+                        HtmlEncodingUrlParseOutcome::Parsed,
                     ),
                 )
             })
@@ -96,10 +96,10 @@ fn href_facts(
 fn bind(
     dom: &mut Dom,
     doc: DocumentId,
-    facts: &HtmlHyperlinkParseFacts,
+    facts: &HtmlEncodingUrlParseFacts,
 ) -> Result<DomCommit, DomError> {
     let mut b = DomBatch::new();
-    b.bind_native_hyperlink_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
+    b.bind_native_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
     dom.apply(b, &cancel())
 }
 fn set(dom: &mut Dom, node: NodeId, raw: &str) -> Result<DomCommit, DomError> {
@@ -158,7 +158,7 @@ fn detached_success_failure_empty_and_removal_retain_actual_nullable_cache_witho
     assert!(view.url().is_none());
     assert!(matches!(
         view.parse_observation().unwrap().outcome(),
-        HtmlHyperlinkParseOutcome::Failure
+        HtmlEncodingUrlParseOutcome::Failure
     ));
     set(&mut dom, area, "").unwrap();
     assert!(
@@ -220,8 +220,8 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
     let wrong = href_facts(&fallback, &encoding, &r, &[("target", Some(url.clone()))]);
     assert_eq!(
         bind(&mut dom, doc, &wrong).unwrap_err(),
-        DomError::HyperlinkFacts(DomHyperlinkFactsError::Producer(
-            HtmlHyperlinkFactsError::InputsMismatch
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(
+            HtmlEncodingUrlFactsError::InputsMismatch
         ))
     );
     bind(
@@ -295,8 +295,8 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
     let before = dom.snapshot();
     assert_eq!(
         set(&mut dom, a, "target").unwrap_err(),
-        DomError::HyperlinkFacts(DomHyperlinkFactsError::Producer(
-            HtmlHyperlinkFactsError::InputsMismatch
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(
+            HtmlEncodingUrlFactsError::InputsMismatch
         ))
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -315,7 +315,9 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
     let facts = href_facts(&fallback, &encoding, &r, &[("x", None)]);
     assert_eq!(
         bind(&mut dom, doc, &facts).unwrap_err(),
-        DomError::HyperlinkFacts(DomHyperlinkFactsError::Base(HtmlBaseMissing::DocumentFacts))
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Base(
+            HtmlBaseMissing::DocumentFacts
+        ))
     );
     bind_base(
         &mut dom,
@@ -323,23 +325,23 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
         &environment(&r, &encoding, &fallback, vec![]),
     );
     let mut b = DomBatch::new();
-    b.bind_native_hyperlink_facts(before.document(doc).unwrap().stamp(), &facts);
+    b.bind_native_encoding_url_facts(before.document(doc).unwrap().stamp(), &facts);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
-        DomError::HyperlinkFacts(DomHyperlinkFactsError::BasisRevisionMismatch)
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::BasisRevisionMismatch)
     );
     let inputs = [
         (
             href_facts(&fallback, &HtmlBaseEncoding::fresh(), &r, &[("x", None)]),
-            HtmlHyperlinkFactsError::InputsMismatch,
+            HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
             href_facts(&record(&r, "about:blank"), &encoding, &r, &[("x", None)]),
-            HtmlHyperlinkFactsError::InputsMismatch,
+            HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
             href_facts(&fallback, &encoding, &revision(), &[("x", None)]),
-            HtmlHyperlinkFactsError::ForeignProducer,
+            HtmlEncodingUrlFactsError::ForeignProducer,
         ),
         (
             href_facts(
@@ -348,14 +350,14 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
                 &HtmlBaseFactsRevision::new(r.producer().clone(), 1, 99, 3),
                 &[("x", None)],
             ),
-            HtmlHyperlinkFactsError::RevisionMismatch,
+            HtmlEncodingUrlFactsError::RevisionMismatch,
         ),
     ];
     for (facts, error) in inputs {
         let old = dom.snapshot();
         assert_eq!(
             bind(&mut dom, doc, &facts).unwrap_err(),
-            DomError::HyperlinkFacts(DomHyperlinkFactsError::Producer(error))
+            DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(error))
         );
         assert_eq!(dom.snapshot().stamp(), old.stamp());
     }
@@ -363,8 +365,8 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
     let old = dom.snapshot();
     assert_eq!(
         set(&mut dom, a, "unobserved").unwrap_err(),
-        DomError::HyperlinkFacts(DomHyperlinkFactsError::Producer(
-            HtmlHyperlinkFactsError::MissingObservation
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(
+            HtmlEncodingUrlFactsError::MissingObservation
         ))
     );
     assert_eq!(dom.snapshot().stamp(), old.stamp());
@@ -393,13 +395,13 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     let mut raw_units = Vec::with_capacity(64);
     raw_units.extend("success".encode_utf16());
     let raw = DocumentString::from_utf16(raw_units);
-    let facts = HtmlHyperlinkParseFacts::new(
+    let facts = HtmlEncodingUrlParseFacts::new(
         fallback.clone(),
         encoding.clone(),
         r.clone(),
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             raw.clone(),
-            HtmlHyperlinkParseOutcome::Parsed(url.clone()),
+            HtmlEncodingUrlParseOutcome::Parsed(url.clone()),
         )],
         HtmlBaseFactsLimits::new(128, 65536, 1_000_000),
     )
@@ -412,7 +414,7 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     assert!(matches!(
         bind(&mut dom, doc, &facts),
         Err(DomError::ResourceLimit {
-            resource: DomResource::HyperlinkObservations,
+            resource: DomResource::EncodingUrlObservations,
             ..
         })
     ));
@@ -454,7 +456,7 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     assert!(matches!(
         bind(&mut dom, second, &facts),
         Err(DomError::ResourceLimit {
-            resource: DomResource::HyperlinkObservations,
+            resource: DomResource::EncodingUrlObservations,
             ..
         })
     ));
@@ -465,7 +467,7 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     assert!(matches!(
         dom.set_limits(policy(records * 2 - 1, 1_000_000, 131072)),
         Err(DomError::ResourceLimit {
-            resource: DomResource::HyperlinkObservations,
+            resource: DomResource::EncodingUrlObservations,
             ..
         })
     ));

@@ -7,8 +7,8 @@ use surgeist_html::{
     HtmlImageUpdateStartDecision, HtmlImgFreshState, KnownHtmlAttribute, KnownHtmlElement,
 };
 use surgeist_html_semantics::{
-    HtmlBaseMissing, HtmlDocumentFirstBase, HtmlHyperlinkFactsError, HtmlHyperlinkLookupError,
-    HtmlHyperlinkParseFacts, HtmlHyperlinkUrlSnapshot,
+    HtmlBaseMissing, HtmlDocumentFirstBase, HtmlEncodingUrlFactsError, HtmlEncodingUrlLookupError,
+    HtmlEncodingUrlParseFacts, HtmlHyperlinkUrlSnapshot,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -79,7 +79,7 @@ impl AssociatedStorageUsage {
 #[derive(Debug, Default)]
 pub(crate) struct Inputs {
     pub(crate) template: Option<crate::HtmlParseBaseFacts>,
-    pub(crate) hyperlinks: Vec<HtmlHyperlinkParseFacts>,
+    pub(crate) hyperlinks: Vec<HtmlEncodingUrlParseFacts>,
 }
 impl Inputs {
     fn usage(&self, c: &mut ParseControl) -> Result<AssociatedStorageUsage, SessionError> {
@@ -89,7 +89,7 @@ impl Inputs {
         let header = self
             .hyperlinks
             .capacity()
-            .checked_mul(mem::size_of::<HtmlHyperlinkParseFacts>())
+            .checked_mul(mem::size_of::<HtmlEncodingUrlParseFacts>())
             .and_then(|v| mem::size_of::<Self>().checked_add(v))
             .ok_or_else(|| {
                 c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
@@ -132,7 +132,7 @@ impl Inputs {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HyperlinkUnavailable {
     Base(HtmlBaseMissing),
-    Observation(HtmlHyperlinkFactsError),
+    Observation(HtmlEncodingUrlFactsError),
     DocumentEnvironment,
 }
 pub(super) enum HyperlinkValue {
@@ -479,10 +479,10 @@ impl SessionStorage {
         };
         let Some(inputs) = self.associated_inputs(c)? else {
             return Ok(Err(HyperlinkUnavailable::Observation(
-                HtmlHyperlinkFactsError::MissingObservation,
+                HtmlEncodingUrlFactsError::MissingObservation,
             )));
         };
-        let mut missing = HtmlHyperlinkFactsError::MissingObservation;
+        let mut missing = HtmlEncodingUrlFactsError::MissingObservation;
         for candidate in &inputs.hyperlinks {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let Err(error) = candidate.validate_inputs(base, encoding, expected) {
@@ -491,17 +491,17 @@ impl SessionStorage {
             }
             payload_write::<HtmlHyperlinkUrlSnapshot>(c, 1)?;
             c.charge(WorkCategory::ProviderCall, 1)?;
-            return match candidate.resolve_with(raw, base, encoding, expected, || {
+            return match candidate.resolve_hyperlink_with(raw, base, encoding, expected, || {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 // A provider step can compare two UTF-16 operands. Headers
                 // conservatively receive the same fixed four-byte allowance.
                 c.charge(WorkCategory::InspectByte, 4)
             }) {
                 Ok(value) => Ok(Ok(value)),
-                Err(HtmlHyperlinkLookupError::Facts(error)) => {
+                Err(HtmlEncodingUrlLookupError::Facts(error)) => {
                     Ok(Err(HyperlinkUnavailable::Observation(error)))
                 }
-                Err(HtmlHyperlinkLookupError::Interrupted(stop)) => Err(stop.into()),
+                Err(HtmlEncodingUrlLookupError::Interrupted(stop)) => Err(stop.into()),
             };
         }
         Ok(Err(HyperlinkUnavailable::Observation(missing)))
@@ -785,13 +785,13 @@ mod tests {
             HtmlBaseFactsLimits::new(10, 1000, 10000),
         )
         .unwrap();
-        let fact = HtmlHyperlinkParseFacts::new(
+        let fact = HtmlEncodingUrlParseFacts::new(
             base,
             encoding,
             revision,
-            vec![HtmlHyperlinkParseObservation::new(
+            vec![HtmlEncodingUrlParseObservation::new(
                 "x".into(),
-                HtmlHyperlinkParseOutcome::Failure,
+                HtmlEncodingUrlParseOutcome::Failure,
             )],
             HtmlBaseFactsLimits::new(10, 1000, 10000),
         )
@@ -802,12 +802,12 @@ mod tests {
         )
         .with_base_facts(environment)
         .unwrap()
-        .with_hyperlink_facts(vec![fact.clone()]);
+        .with_encoding_url_facts(vec![fact.clone()]);
         CANCEL_AFTER_SELECTED
             .with(|hook| *hook.borrow_mut() = Some(request.cancellation().clone()));
         let failure = request.parse().unwrap_err();
         assert_eq!(failure.first_stop(), Some(crate::HtmlParseStop::Cancelled));
-        assert!(failure.hyperlink_facts().unwrap()[0].same_owner(&fact));
+        assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&fact));
         assert_eq!(failure.cleanup_error(), None);
         for resource in [
             HtmlParseResource::ManagedCapacityBytes,

@@ -1,16 +1,16 @@
 //! Canonical stored A/Area URL state. Readback does not reinitialize an IDL URL.
 use crate::{DocumentId, DomNode, NodeId};
 use surgeist_html_semantics::{
-    HtmlBaseMissing, HtmlBaseUrlRecord, HtmlHyperlinkParseFacts, HtmlHyperlinkUrlSnapshot,
+    HtmlBaseMissing, HtmlBaseUrlRecord, HtmlEncodingUrlParseFacts, HtmlHyperlinkUrlSnapshot,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DomHyperlinkFactsError {
+pub enum DomEncodingUrlFactsError {
     BasisRevisionMismatch,
     EnvironmentMismatch,
     Base(HtmlBaseMissing),
     MissingFacts,
-    Producer(surgeist_html_semantics::HtmlHyperlinkFactsError),
+    Producer(surgeist_html_semantics::HtmlEncodingUrlFactsError),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Parsed<K> {
@@ -40,10 +40,10 @@ impl<K: Copy> HyperlinkState<K> {
     }
 }
 #[derive(Clone, Debug)]
-pub(crate) struct HyperlinkDocument {
-    pub(crate) facts: Option<HtmlHyperlinkParseFacts>,
+pub(crate) struct EncodingUrlDocument {
+    pub(crate) facts: Option<HtmlEncodingUrlParseFacts>,
 }
-impl PartialEq for HyperlinkDocument {
+impl PartialEq for EncodingUrlDocument {
     fn eq(&self, other: &Self) -> bool {
         match (&self.facts, &other.facts) {
             (None, None) => true,
@@ -52,8 +52,8 @@ impl PartialEq for HyperlinkDocument {
         }
     }
 }
-impl Eq for HyperlinkDocument {}
-impl HyperlinkDocument {
+impl Eq for EncodingUrlDocument {}
+impl EncodingUrlDocument {
     pub(crate) fn fresh() -> Self {
         Self { facts: None }
     }
@@ -108,12 +108,12 @@ impl<'a> DomNode<'a> {
     }
 }
 impl<'a> crate::DomDocument<'a> {
-    pub fn hyperlink_facts(self) -> Option<&'a HtmlHyperlinkParseFacts> {
+    pub fn encoding_url_facts(self) -> Option<&'a HtmlEncodingUrlParseFacts> {
         self.snapshot
             .node(self.id.node())
             .expect("Document")
             .node
-            .hyperlink_document
+            .encoding_url_document
             .as_ref()?
             .facts
             .as_ref()

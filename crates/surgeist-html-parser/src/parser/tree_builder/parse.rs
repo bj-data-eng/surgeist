@@ -69,11 +69,13 @@ impl HtmlParseFailure {
     }
     /// Actual original supplied observation bank, including unused entries.
     /// Failure does not replace it with a selected or reconstructed collection.
-    pub fn hyperlink_facts(&self) -> Option<&[surgeist_html_semantics::HtmlHyperlinkParseFacts]> {
+    pub fn encoding_url_facts(
+        &self,
+    ) -> Option<&[surgeist_html_semantics::HtmlEncodingUrlParseFacts]> {
         self.associated_inputs()
             .map(|inputs| inputs.hyperlinks.as_slice())
     }
-    pub fn hyperlink_fact_capacity(&self) -> Option<usize> {
+    pub fn encoding_url_fact_capacity(&self) -> Option<usize> {
         self.associated_inputs()
             .map(|inputs| inputs.hyperlinks.capacity())
     }

@@ -54,9 +54,9 @@ fn environment(base: &HtmlBaseUrlRecord, encoding: &HtmlBaseEncoding) -> HtmlPar
 fn bank(
     base: &HtmlBaseUrlRecord,
     encoding: &HtmlBaseEncoding,
-    observations: Vec<HtmlHyperlinkParseObservation>,
-) -> HtmlHyperlinkParseFacts {
-    HtmlHyperlinkParseFacts::new(
+    observations: Vec<HtmlEncodingUrlParseObservation>,
+) -> HtmlEncodingUrlParseFacts {
+    HtmlEncodingUrlParseFacts::new(
         base.clone(),
         encoding.clone(),
         base.revision().clone(),
@@ -145,21 +145,21 @@ fn earlier_anchor_preserves_actual_cached_record_when_later_base_changes() {
     )
     .with_base_facts(base_facts)
     .unwrap()
-    .with_hyperlink_facts(vec![
+    .with_encoding_url_facts(vec![
         bank(
             &old,
             &encoding,
-            vec![HtmlHyperlinkParseObservation::new(
+            vec![HtmlEncodingUrlParseObservation::new(
                 "x".into(),
-                HtmlHyperlinkParseOutcome::Parsed(old_x.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(old_x.clone()),
             )],
         ),
         bank(
             &new,
             &encoding,
-            vec![HtmlHyperlinkParseObservation::new(
+            vec![HtmlEncodingUrlParseObservation::new(
                 "x".into(),
-                HtmlHyperlinkParseOutcome::Parsed(new_x.clone()),
+                HtmlEncodingUrlParseOutcome::Parsed(new_x.clone()),
             )],
         ),
     ]);
@@ -180,17 +180,17 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
         &base,
         &encoding,
         vec![
-            HtmlHyperlinkParseObservation::new(
+            HtmlEncodingUrlParseObservation::new(
                 "".into(),
-                HtmlHyperlinkParseOutcome::Parsed(record(
+                HtmlEncodingUrlParseOutcome::Parsed(record(
                     &revision,
                     "https://example.test/",
                     false,
                 )),
             ),
-            HtmlHyperlinkParseObservation::new(
+            HtmlEncodingUrlParseObservation::new(
                 "http://[".into(),
-                HtmlHyperlinkParseOutcome::Failure,
+                HtmlEncodingUrlParseOutcome::Failure,
             ),
         ],
     );
@@ -202,7 +202,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
     )
     .with_base_facts(environment(&base, &encoding))
     .unwrap()
-    .with_hyperlink_facts(vec![facts])
+    .with_encoding_url_facts(vec![facts])
     .parse()
     .unwrap();
     let mut cursor = report.metadata();
@@ -240,7 +240,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
 }
 
 #[test]
-fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
+fn reached_meta_csp_cannot_reuse_pre_policy_encoding_url_facts() {
     // HTML877d11896–11903: only a direct-head, nonempty CSP pragma reaches
     // parse/filter/enforce. Its resulting policy revision is not established by
     // the independently supplied pre-policy URL context, even if URL spelling
@@ -252,9 +252,9 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
     let facts = bank(
         &base,
         &encoding,
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "x".into(),
-            HtmlHyperlinkParseOutcome::Parsed(resolved.clone()),
+            HtmlEncodingUrlParseOutcome::Parsed(resolved.clone()),
         )],
     );
     for (source, policy_unavailable) in [
@@ -274,7 +274,7 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
         let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
-            .with_hyperlink_facts(vec![facts.clone()])
+            .with_encoding_url_facts(vec![facts.clone()])
             .parse()
             .expect("missing Meta execution facts preserve completed structural report");
         let mut cursor = report.metadata();
@@ -370,12 +370,12 @@ fn template_url_facts_bind_only_actual_independent_inert_document() {
     )
     .with_template_base_facts(environment(&blank, &encoding))
     .unwrap()
-    .with_hyperlink_facts(vec![bank(
+    .with_encoding_url_facts(vec![bank(
         &blank,
         &encoding,
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "x".into(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         )],
     )])
     .parse()
@@ -414,14 +414,14 @@ fn unused_execution_banks_are_released_before_successful_report_usage() {
     banks.push(bank(
         &base,
         &encoding,
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "unused".into(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         )],
     ));
     let report =
         HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
-            .with_hyperlink_facts(banks)
+            .with_encoding_url_facts(banks)
             .parse()
             .unwrap();
     let usage = report
@@ -439,16 +439,16 @@ fn spare_execution_capacity_does_not_overlap_successful_retained_receipt_and_fai
     let fact = bank(
         &base,
         &encoding,
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "unused".into(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         )],
     );
     let parse = |capacity| {
         let mut inputs = Vec::with_capacity(capacity);
         inputs.push(fact.clone());
         HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
-            .with_hyperlink_facts(inputs)
+            .with_encoding_url_facts(inputs)
             .parse()
             .unwrap()
     };
@@ -480,11 +480,11 @@ fn spare_execution_capacity_does_not_overlap_successful_retained_receipt_and_fai
     inputs.push(fact.clone());
     let denied = limits().into_builder().source_units(0).finish().unwrap();
     let failure = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), denied)
-        .with_hyperlink_facts(inputs)
+        .with_encoding_url_facts(inputs)
         .parse()
         .unwrap_err();
-    assert_eq!(failure.hyperlink_fact_capacity(), Some(128));
-    assert!(failure.hyperlink_facts().unwrap()[0].same_owner(&fact));
+    assert_eq!(failure.encoding_url_fact_capacity(), Some(128));
+    assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&fact));
 }
 #[test]
 fn source_insertion_updates_actual_picture_images_in_source_order() {
@@ -617,15 +617,15 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
     let facts = bank(
         &base,
         &encoding,
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "x".into(),
-            HtmlHyperlinkParseOutcome::Parsed(record(&revision, "https://example.test/x", false)),
+            HtmlEncodingUrlParseOutcome::Parsed(record(&revision, "https://example.test/x", false)),
         )],
     );
     let request = |limits| {
         HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x></a><img src=x crossorigin=anonymous referrerpolicy=origin>"), limits)
         .with_base_facts(environment(&base, &encoding)).unwrap()
-        .with_hyperlink_facts(vec![facts.clone()])
+        .with_encoding_url_facts(vec![facts.clone()])
     };
     let report = request(limits()).parse().unwrap();
     for resource in [
@@ -652,7 +652,7 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
         assert!(
             matches!(failure.first_stop(), Some(HtmlParseStop::LimitExceeded { resource: actual, .. }) if actual == resource)
         );
-        assert!(failure.hyperlink_facts().unwrap()[0].same_owner(&facts));
+        assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&facts));
         assert_eq!(failure.cleanup_error(), None);
         for resource in [
             HtmlParseResource::ManagedEdges,
@@ -678,7 +678,7 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
     request.cancellation().cancel();
     let failure = request.parse().unwrap_err();
     assert_eq!(failure.first_stop(), Some(HtmlParseStop::Cancelled));
-    assert!(failure.hyperlink_facts().unwrap()[0].same_owner(&facts));
+    assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&facts));
     assert_eq!(failure.cleanup_error(), None);
 }
 
@@ -746,11 +746,11 @@ fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_rel
     let encoding = HtmlBaseEncoding::fresh();
     let make = |raw: &str, capacity| {
         let mut observations = Vec::with_capacity(capacity);
-        observations.push(HtmlHyperlinkParseObservation::new(
+        observations.push(HtmlEncodingUrlParseObservation::new(
             raw.into(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         ));
-        let fact = HtmlHyperlinkParseFacts::new(
+        let fact = HtmlEncodingUrlParseFacts::new(
             base.clone(),
             encoding.clone(),
             revision.clone(),
@@ -761,7 +761,7 @@ fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_rel
         HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x>"), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
-            .with_hyperlink_facts(vec![fact])
+            .with_encoding_url_facts(vec![fact])
             .parse()
             .unwrap()
     };
@@ -816,13 +816,13 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
     let base = record(&revision, "https://example.test/", false);
     let encoding = HtmlBaseEncoding::fresh();
     let observation = || {
-        vec![HtmlHyperlinkParseObservation::new(
+        vec![HtmlEncodingUrlParseObservation::new(
             "x".into(),
-            HtmlHyperlinkParseOutcome::Failure,
+            HtmlEncodingUrlParseOutcome::Failure,
         )]
     };
     let facts = |base, encoding, revision| {
-        HtmlHyperlinkParseFacts::new(
+        HtmlEncodingUrlParseFacts::new(
             base,
             encoding,
             revision,
@@ -838,7 +838,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
                 encoding.clone(),
                 HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3),
             ),
-            HtmlHyperlinkFactsError::ForeignProducer,
+            HtmlEncodingUrlFactsError::ForeignProducer,
         ),
         (
             facts(
@@ -846,7 +846,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
                 encoding.clone(),
                 HtmlBaseFactsRevision::new(producer, 2, 2, 3),
             ),
-            HtmlHyperlinkFactsError::RevisionMismatch,
+            HtmlEncodingUrlFactsError::RevisionMismatch,
         ),
         (
             facts(
@@ -854,11 +854,11 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
                 encoding.clone(),
                 revision.clone(),
             ),
-            HtmlHyperlinkFactsError::InputsMismatch,
+            HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
             facts(base.clone(), HtmlBaseEncoding::fresh(), revision.clone()),
-            HtmlHyperlinkFactsError::InputsMismatch,
+            HtmlEncodingUrlFactsError::InputsMismatch,
         ),
     ] {
         let report = HtmlDocumentParseRequest::offline(
@@ -867,7 +867,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
         )
         .with_base_facts(environment(&base, &encoding))
         .unwrap()
-        .with_hyperlink_facts(vec![candidate])
+        .with_encoding_url_facts(vec![candidate])
         .parse()
         .unwrap();
         let mut cursor = report.metadata();
@@ -928,7 +928,7 @@ fn reached_general_clones_use_current_base_and_fresh_image_update_identity() {
     )
     .unwrap();
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><a href=x><img src=x></a><base href='https://example.test/new/'></option></select>"), limits())
-        .with_base_facts(environment).unwrap().with_hyperlink_facts(vec![bank(&old,&encoding,vec![HtmlHyperlinkParseObservation::new("x".into(),HtmlHyperlinkParseOutcome::Parsed(old_x.clone()))]), bank(&new,&encoding,vec![HtmlHyperlinkParseObservation::new("x".into(),HtmlHyperlinkParseOutcome::Parsed(new_x.clone()))])]).parse().unwrap();
+        .with_base_facts(environment).unwrap().with_encoding_url_facts(vec![bank(&old,&encoding,vec![HtmlEncodingUrlParseObservation::new("x".into(),HtmlEncodingUrlParseOutcome::Parsed(old_x.clone()))]), bank(&new,&encoding,vec![HtmlEncodingUrlParseObservation::new("x".into(),HtmlEncodingUrlParseOutcome::Parsed(new_x.clone()))])]).parse().unwrap();
     let mut cursor = report.metadata();
     let mut links = Vec::new();
     let mut images = Vec::new();
@@ -1012,14 +1012,14 @@ fn missing_inert_context_and_duplicate_execution_contexts_remain_explicit() {
     let fact = bank(&base, &encoding, vec![]);
     let failure =
         HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x>"), limits())
-            .with_hyperlink_facts(vec![fact.clone(), fact.clone()])
+            .with_encoding_url_facts(vec![fact.clone(), fact.clone()])
             .parse()
             .unwrap_err();
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::InvalidAssociatedFacts)
     );
-    let original = failure.hyperlink_facts().unwrap();
+    let original = failure.encoding_url_facts().unwrap();
     assert_eq!(original.len(), 2);
     assert!(original.iter().all(|f| f.same_owner(&fact)));
     assert_eq!(failure.cleanup_error(), None);

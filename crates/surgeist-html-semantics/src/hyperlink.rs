@@ -1,4 +1,5 @@
-//! Exact encoding-parse observations for A/Area set-the-url. No URL parser,
+//! Shared encoding-parse observations for actual Document-relative URL parsing.
+//! A/Area history and Meta refresh consume the same qualified bank. No URL parser,
 //! CSP selection, navigable, resource effect or second URL identity is created.
 use crate::{
     DocumentString, HtmlBaseEncoding, HtmlBaseFactsError, HtmlBaseFactsLimits,
@@ -7,47 +8,47 @@ use crate::{
 use std::{error::Error, fmt, sync::Arc};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HtmlHyperlinkParseOutcome {
+pub enum HtmlEncodingUrlParseOutcome {
     Failure,
     Parsed(HtmlBaseUrlRecord),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlHyperlinkParseObservation {
+pub struct HtmlEncodingUrlParseObservation {
     raw: DocumentString,
-    outcome: HtmlHyperlinkParseOutcome,
+    outcome: HtmlEncodingUrlParseOutcome,
 }
-impl HtmlHyperlinkParseObservation {
+impl HtmlEncodingUrlParseObservation {
     /// Attests the actual URL-standard result for this exact raw input and the
     /// enclosing facts' base/encoding/revision, including Blob-store effects.
-    pub fn new(raw: DocumentString, outcome: HtmlHyperlinkParseOutcome) -> Self {
+    pub fn new(raw: DocumentString, outcome: HtmlEncodingUrlParseOutcome) -> Self {
         Self { raw, outcome }
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HtmlHyperlinkFactsError {
+pub enum HtmlEncodingUrlFactsError {
     Formation(HtmlBaseFactsError),
     ForeignProducer,
     RevisionMismatch,
     InputsMismatch,
     MissingObservation,
 }
-impl From<HtmlBaseFactsError> for HtmlHyperlinkFactsError {
+impl From<HtmlBaseFactsError> for HtmlEncodingUrlFactsError {
     fn from(value: HtmlBaseFactsError) -> Self {
         Self::Formation(value)
     }
 }
-impl fmt::Display for HtmlHyperlinkFactsError {
+impl fmt::Display for HtmlEncodingUrlFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "hyperlink facts: {self:?}")
+        write!(f, "encoding URL facts: {self:?}")
     }
 }
-impl Error for HtmlHyperlinkFactsError {}
+impl Error for HtmlEncodingUrlFactsError {}
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HtmlHyperlinkLookupError<E> {
-    Facts(HtmlHyperlinkFactsError),
+pub enum HtmlEncodingUrlLookupError<E> {
+    Facts(HtmlEncodingUrlFactsError),
     Interrupted(E),
 }
-impl<E: fmt::Display> fmt::Display for HtmlHyperlinkLookupError<E> {
+impl<E: fmt::Display> fmt::Display for HtmlEncodingUrlLookupError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Facts(e) => e.fmt(f),
@@ -55,14 +56,14 @@ impl<E: fmt::Display> fmt::Display for HtmlHyperlinkLookupError<E> {
         }
     }
 }
-impl<E: Error + 'static> Error for HtmlHyperlinkLookupError<E> {}
+impl<E: Error + 'static> Error for HtmlEncodingUrlLookupError<E> {}
 
 #[derive(Debug)]
 struct Facts {
     base: HtmlBaseUrlRecord,
     encoding: HtmlBaseEncoding,
     revision: HtmlBaseFactsRevision,
-    observations: Vec<HtmlHyperlinkParseObservation>,
+    observations: Vec<HtmlEncodingUrlParseObservation>,
     usage: HtmlBaseFactsUsage,
     retained: HtmlBaseRetainedStorageUsage,
 }
@@ -73,21 +74,21 @@ struct Facts {
 /// it may be a historical frozen record. The URL revision must include every
 /// influencing URL/Blob-store change; encoding is opaque identity, not a label.
 #[derive(Clone, Debug)]
-pub struct HtmlHyperlinkParseFacts(Arc<Facts>);
-impl PartialEq for HtmlHyperlinkParseFacts {
+pub struct HtmlEncodingUrlParseFacts(Arc<Facts>);
+impl PartialEq for HtmlEncodingUrlParseFacts {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
-impl Eq for HtmlHyperlinkParseFacts {}
-impl HtmlHyperlinkParseFacts {
+impl Eq for HtmlEncodingUrlParseFacts {}
+impl HtmlEncodingUrlParseFacts {
     pub fn new(
         base: HtmlBaseUrlRecord,
         encoding: HtmlBaseEncoding,
         revision: HtmlBaseFactsRevision,
-        observations: Vec<HtmlHyperlinkParseObservation>,
+        observations: Vec<HtmlEncodingUrlParseObservation>,
         limits: HtmlBaseFactsLimits,
-    ) -> Result<Self, HtmlHyperlinkFactsError> {
+    ) -> Result<Self, HtmlEncodingUrlFactsError> {
         let mut v = crate::base::Validation::new(limits);
         v.records(observations.capacity())?;
         let mut retained = HtmlBaseRetainedStorageUsage {
@@ -97,7 +98,7 @@ impl HtmlHyperlinkParseFacts {
         retained.add(
             observations
                 .capacity()
-                .checked_mul(size_of::<HtmlHyperlinkParseObservation>())
+                .checked_mul(size_of::<HtmlEncodingUrlParseObservation>())
                 .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
         )?;
         retained.url(&base)?;
@@ -106,9 +107,9 @@ impl HtmlHyperlinkParseFacts {
             v.step()?;
             retained.string(&observation.raw)?;
             v.retained_string(&observation.raw)?;
-            if let HtmlHyperlinkParseOutcome::Parsed(record) = &observation.outcome {
+            if let HtmlEncodingUrlParseOutcome::Parsed(record) = &observation.outcome {
                 if record.revision() != &revision {
-                    return Err(HtmlHyperlinkFactsError::RevisionMismatch);
+                    return Err(HtmlEncodingUrlFactsError::RevisionMismatch);
                 }
                 retained.url(record)?;
                 v.retained_string(record.serialization())?;
@@ -157,91 +158,117 @@ impl HtmlHyperlinkParseFacts {
         base: &HtmlBaseUrlRecord,
         encoding: &HtmlBaseEncoding,
         expected: &HtmlBaseFactsRevision,
-    ) -> Result<(), HtmlHyperlinkFactsError> {
+    ) -> Result<(), HtmlEncodingUrlFactsError> {
         if self.revision().producer() != expected.producer() {
-            return Err(HtmlHyperlinkFactsError::ForeignProducer);
+            return Err(HtmlEncodingUrlFactsError::ForeignProducer);
         }
         if self.revision() != expected {
-            return Err(HtmlHyperlinkFactsError::RevisionMismatch);
+            return Err(HtmlEncodingUrlFactsError::RevisionMismatch);
         }
         if self.base() != base || self.encoding() != encoding {
-            return Err(HtmlHyperlinkFactsError::InputsMismatch);
+            return Err(HtmlEncodingUrlFactsError::InputsMismatch);
         }
         Ok(())
     }
-    /// Charge/poll before context qualification, each observation and every
-    /// compared raw code unit. No allocation or normalization is hidden; the
-    /// returned snapshot shares only the selected inputs/outcome, not this Vec.
-    /// Callback errors propagate exactly, including first failure/cancellation.
-    pub fn resolve_with<E>(
+    /// Borrow the exact observed outcome for these original UTF-16 units.
+    /// Context qualification, observation headers, compared operands and the
+    /// selected result are admitted before reading. No input copy, URL parse,
+    /// normalization, retained history or allocation occurs. Failure differs
+    /// from missing/foreign/stale evidence; caller interruption propagates first.
+    pub fn lookup_units_with<E>(
+        &self,
+        raw: &[u16],
+        base: &HtmlBaseUrlRecord,
+        encoding: &HtmlBaseEncoding,
+        expected: &HtmlBaseFactsRevision,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<&HtmlEncodingUrlParseOutcome, HtmlEncodingUrlLookupError<E>> {
+        self.find_with(raw, base, encoding, expected, &mut step)
+            .map(|observation| &observation.outcome)
+    }
+    /// Select actual A/Area history, retaining only the selected input/outcome.
+    /// The original qualification, tariff and owner-computed footprint are
+    /// preserved; this does not retain the observation Vec or create a URL.
+    pub fn resolve_hyperlink_with<E>(
         &self,
         raw: &DocumentString,
         base: &HtmlBaseUrlRecord,
         encoding: &HtmlBaseEncoding,
         expected: &HtmlBaseFactsRevision,
         mut step: impl FnMut() -> Result<(), E>,
-    ) -> Result<HtmlHyperlinkUrlSnapshot, HtmlHyperlinkLookupError<E>> {
-        step().map_err(HtmlHyperlinkLookupError::Interrupted)?;
+    ) -> Result<HtmlHyperlinkUrlSnapshot, HtmlEncodingUrlLookupError<E>> {
+        let observation = self.find_with(raw.code_units(), base, encoding, expected, &mut step)?;
+        let result_units = match &observation.outcome {
+            HtmlEncodingUrlParseOutcome::Failure => 0,
+            HtmlEncodingUrlParseOutcome::Parsed(record) => {
+                record.serialization().shared_code_units().capacity()
+            }
+        };
+        let units = observation
+            .raw
+            .shared_code_units()
+            .capacity()
+            .checked_add(base.serialization().shared_code_units().capacity())
+            .and_then(|n| n.checked_add(result_units))
+            .ok_or_else(|| {
+                HtmlEncodingUrlLookupError::Facts(
+                    HtmlBaseFactsError::RepresentationExhausted.into(),
+                )
+            })?;
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<HtmlHyperlinkUrlSnapshot>(),
+            units: 0,
+        };
+        let footprint = (|| {
+            retained.string(&observation.raw)?;
+            retained.url(self.base())?;
+            if let HtmlEncodingUrlParseOutcome::Parsed(record) = &observation.outcome {
+                retained.url(record)?;
+            }
+            Ok::<_, HtmlBaseFactsError>(())
+        })();
+        footprint.map_err(|e| HtmlEncodingUrlLookupError::Facts(e.into()))?;
+        debug_assert_eq!(retained.utf16_extent(), units);
+        Ok(HtmlHyperlinkUrlSnapshot {
+            raw: observation.raw.clone(),
+            base: self.base().clone(),
+            encoding: self.encoding().clone(),
+            revision: self.revision().clone(),
+            outcome: observation.outcome.clone(),
+            retained_bytes: retained.retained_bytes(),
+        })
+    }
+    fn find_with<E>(
+        &self,
+        raw: &[u16],
+        base: &HtmlBaseUrlRecord,
+        encoding: &HtmlBaseEncoding,
+        expected: &HtmlBaseFactsRevision,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<&HtmlEncodingUrlParseObservation, HtmlEncodingUrlLookupError<E>> {
+        step().map_err(HtmlEncodingUrlLookupError::Interrupted)?;
         self.validate_inputs(base, encoding, expected)
-            .map_err(HtmlHyperlinkLookupError::Facts)?;
+            .map_err(HtmlEncodingUrlLookupError::Facts)?;
         for observation in &self.0.observations {
-            step().map_err(HtmlHyperlinkLookupError::Interrupted)?;
+            step().map_err(HtmlEncodingUrlLookupError::Interrupted)?;
             if raw.len() != observation.raw.len() {
                 continue;
             }
             let mut equal = true;
-            for (a, b) in raw.code_units().iter().zip(observation.raw.code_units()) {
-                step().map_err(HtmlHyperlinkLookupError::Interrupted)?;
+            for (a, b) in raw.iter().zip(observation.raw.code_units()) {
+                step().map_err(HtmlEncodingUrlLookupError::Interrupted)?;
                 if a != b {
                     equal = false;
                     break;
                 }
             }
             if equal {
-                step().map_err(HtmlHyperlinkLookupError::Interrupted)?;
-                let result_units = match &observation.outcome {
-                    HtmlHyperlinkParseOutcome::Failure => 0,
-                    HtmlHyperlinkParseOutcome::Parsed(record) => {
-                        record.serialization().shared_code_units().capacity()
-                    }
-                };
-                let units = observation
-                    .raw
-                    .shared_code_units()
-                    .capacity()
-                    .checked_add(base.serialization().shared_code_units().capacity())
-                    .and_then(|n| n.checked_add(result_units))
-                    .ok_or_else(|| {
-                        HtmlHyperlinkLookupError::Facts(
-                            HtmlBaseFactsError::RepresentationExhausted.into(),
-                        )
-                    })?;
-                let mut retained = HtmlBaseRetainedStorageUsage {
-                    bytes: size_of::<HtmlHyperlinkUrlSnapshot>(),
-                    units: 0,
-                };
-                let footprint = (|| {
-                    retained.string(&observation.raw)?;
-                    retained.url(self.base())?;
-                    if let HtmlHyperlinkParseOutcome::Parsed(record) = &observation.outcome {
-                        retained.url(record)?;
-                    }
-                    Ok::<_, HtmlBaseFactsError>(())
-                })();
-                footprint.map_err(|e| HtmlHyperlinkLookupError::Facts(e.into()))?;
-                debug_assert_eq!(retained.utf16_extent(), units);
-                return Ok(HtmlHyperlinkUrlSnapshot {
-                    raw: observation.raw.clone(),
-                    base: self.base().clone(),
-                    encoding: self.encoding().clone(),
-                    revision: self.revision().clone(),
-                    outcome: observation.outcome.clone(),
-                    retained_bytes: retained.retained_bytes(),
-                });
+                step().map_err(HtmlEncodingUrlLookupError::Interrupted)?;
+                return Ok(observation);
             }
         }
-        Err(HtmlHyperlinkLookupError::Facts(
-            HtmlHyperlinkFactsError::MissingObservation,
+        Err(HtmlEncodingUrlLookupError::Facts(
+            HtmlEncodingUrlFactsError::MissingObservation,
         ))
     }
 }
@@ -255,7 +282,7 @@ pub struct HtmlHyperlinkUrlSnapshot {
     base: HtmlBaseUrlRecord,
     encoding: HtmlBaseEncoding,
     revision: HtmlBaseFactsRevision,
-    outcome: HtmlHyperlinkParseOutcome,
+    outcome: HtmlEncodingUrlParseOutcome,
     retained_bytes: usize,
 }
 impl PartialEq for HtmlHyperlinkUrlSnapshot {
@@ -288,13 +315,13 @@ impl HtmlHyperlinkUrlSnapshot {
     pub fn revision(&self) -> &HtmlBaseFactsRevision {
         &self.revision
     }
-    pub fn outcome(&self) -> &HtmlHyperlinkParseOutcome {
+    pub fn outcome(&self) -> &HtmlEncodingUrlParseOutcome {
         &self.outcome
     }
     pub fn url(&self) -> Option<&HtmlBaseUrlRecord> {
         match &self.outcome {
-            HtmlHyperlinkParseOutcome::Failure => None,
-            HtmlHyperlinkParseOutcome::Parsed(record) => Some(record),
+            HtmlEncodingUrlParseOutcome::Failure => None,
+            HtmlEncodingUrlParseOutcome::Parsed(record) => Some(record),
         }
     }
     pub fn retained_utf16_extent(&self) -> usize {
