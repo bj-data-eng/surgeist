@@ -664,3 +664,16 @@ called by the existing [HTML session-history-entry definition](html-hosted-navig
 | Representation | Complete original source | Original SHA-256 | Coverage |
 | --- | --- | --- | --- |
 | [Random UUID generation clauses](webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md) | [W3C Web Cryptography Overview.html at 811c24c6](https://github.com/w3c/webcrypto/blob/811c24c69eb22d477af5f1678cb70dbc611c7c40/spec/Overview.html) | 00a094ac4298f0c7a5a4afe599281827c98fefbe72b09756f1f5859746f52c97 | partial; original lines 805–840 retain the Crypto definition, complete IDL and entropy notes; lines 901–979 retain the complete randomUUID method, named generation algorithm and hexadecimal definition as literal source |
+
+## Child navigable history and traversal support — 2026-10-16
+
+This bounded representation reuses the existing complete HTML877d identity;
+the collection remains 375 identities: 260 full, 101 partial and 14 metadata-only.
+It supplements the retained child callers and Frame/Iframe hooks, without
+admitting a general navigation/history service or the conditional replacement
+chain. The [edition boundary](SOURCE-EDITIONS.md#child-navigable-history-and-traversal-support)
+records the source selection and separately qualified caller type.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [Child navigable history and traversal](html-child-navigable-history--877d6146487f--a9f635b298df.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; eleven complete selected History/latest-entry definitions, Navigation abort/child-destruction helpers, traversal queue and history-update/apply/lookup bodies; all selected algorithm branches remain literal source |

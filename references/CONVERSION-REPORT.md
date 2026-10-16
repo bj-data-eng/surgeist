@@ -438,6 +438,35 @@ The collection now contains 375 identities: 260 full, 101 partial and 14
 metadata-only. This bounded retention does not imply transitive source closure,
 full Web Crypto support or an executed native random provider.
 
+## Child navigable history and traversal support — 2026-10-16
+
+The [bounded reference](html-child-navigable-history--877d6146487f--a9f635b298df.md) adds a representation of existing
+HTML877d, not a source identity. Complete original: 14,930,614 bytes, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. Eleven fragments comprise 615 original
+lines, joined in ascending source order with one extra LF; joined SHA-256:
+`a9f635b298df880ce64558a848b6d4b7131ad28907ad05d444dca2e9f266cb3f`.
+Individual complete ranges and fragment hashes appear in the reference.
+
+Original HTML remains byte-identical in fenced text, including source-authored
+whitespace, defining containers, ordered steps, every selected branch, variable
+spelling, notes, issue markers and hrefs. Added Markdown headings, attribution,
+provenance and explicitly editorial scope/qualification notes are separate.
+No source link is rewritten, no scripts or renderer run, and no software or
+new source edition is acquired. The [WHATWG notice](../licenses/whatwg/NOTICE.md#child-navigable-history-and-traversal-clauses--2026-10-16)
+records the extraction and applicable existing license.
+
+Each of the sixteen selected algorithm divs and all sixty-two selected
+defining/list containers is complete; independent full-original indexing checks
+the selected boundaries. The History note ends at raw67734, including its
+closing paragraph. These are selected-boundary fidelity checks, not a whole
+HTML validity or transitive browser-source-closure claim.
+
+The caller-type qualification in #1124 remains editorial; the original linked
+Document/Navigable discrepancy and earlier ancestor-URL guard are unchanged in
+their existing references. Conditional replacement/finalization source bodies
+are excluded. The collection remains 375 identities: 260 full, 101 partial and
+14 metadata-only; no passive asset is added.
+
 ## HTML autocomplete credential determination — 2026-10-11
 
 The [WebAuthn edge determination](html-autocomplete-webauthn--877d6146487f.md)

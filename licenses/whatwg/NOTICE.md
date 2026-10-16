@@ -383,3 +383,32 @@ The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
 International terms for this specification prose. Its BSD 3-Clause provision
 applies only to portions incorporated into code. The separate W3C HR-Time
 reference has its own notice and license.
+
+## Child navigable history and traversal clauses — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [child history/traversal reference](../../references/html-child-navigable-history--877d6146487f--a9f635b298df.md)
+retains eleven complete selected source fragments from HTML revision
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, original complete snapshot SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. The reference records 615 original
+lines, exact fragment ranges/hashes and joined original SHA-256
+`a9f635b298df880ce64558a848b6d4b7131ad28907ad05d444dca2e9f266cb3f`.
+The existing [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for specification prose; its BSD 3-Clause provision applies
+to portions incorporated into code, not as an alternative prose license.
+
+Changes by Surgeist on 2026-10-16: bounded offline extraction and explanatory
+Markdown headings, provenance, attribution and separately identified editorial
+scope/qualification notes. Original HTML remains byte-identical inside fenced
+text, including whitespace, defining containers, all selected branches,
+variables, ordered steps, notes, issue markers and links. No source href is
+rewritten, no script or renderer is executed, and no endorsement is implied.
+
+The #1124 Document-to-navigable caller qualification is identified separately;
+it does not alter the literal source mismatch in the existing Frame/Iframe and
+collection references or claim an upstream correction. Conditional URL/history
+replacement/finalization bodies are not selected by this reference. This is
+implementation-support retention, not a replacement technical specification,
+implementation acceptance or whole-browser conformance claim. The repository's
+own license remains unchanged.

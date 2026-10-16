@@ -527,6 +527,16 @@ and [attribution and modification notice](licenses/w3c/NOTICE.md#native-hosted-h
 accompany the literal bounded source. These references support implementation;
 they do not certify a complete browser environment or change this project's license.
 
+## Child navigable history and traversal source
+
+The [child history/traversal clauses](references/html-child-navigable-history--877d6146487f--a9f635b298df.md)
+contain bounded extracts from the existing immutable WHATWG HTML edition.
+The [complete license](licenses/whatwg/LICENSE) and
+[attribution and modification notice](licenses/whatwg/NOTICE.md#child-navigable-history-and-traversal-clauses--2026-10-16)
+accompany the literal source. Editorial native qualifications remain distinct
+from the unchanged algorithms; this reference does not establish a general
+navigation/history service, transitive source closure or browser conformance.
+
 ## Native hosted random UUID source
 
 The [random UUID generation clauses](references/webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md)

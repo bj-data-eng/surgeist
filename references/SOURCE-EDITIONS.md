@@ -605,6 +605,36 @@ prose; marked IDL has the separate Code Components terms described in the
 [W3C notice](../licenses/w3c/NOTICE.md#native-hosted-random-uuid-clauses).
 Source retention does not certify an implementation or a cryptographic sample.
 
+### Child navigable history and traversal support
+
+The [child history/traversal reference](html-child-navigable-history--877d6146487f--a9f635b298df.md) reuses HTML877d,
+complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Eleven fragments retain complete History/latest-entry definitions, Navigation
+aborting and child-destruction notification bodies, traversal queue and append/
+runner definitions, creation/destruction history update, full apply-history-step
+and its lookup helpers. Actual queued/global-task execution, History writes,
+completion waits and source order remain obligations; retaining JavaScript-only
+branches does not turn them into native no-ops.
+
+The existing [child lifecycle callers](html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md),
+[Iframe hooks](html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md)
+and [Frame hooks](html-language-obsolete--877d6146487f--66870e9cdabe.md)
+remain separate unchanged references. The new reference separately records
+[#1124](https://github.com/bj-data-eng/surgeist/issues/1124)'s caller-type
+qualification: invoke the Document helper on the element's actual current node
+Document D, obtain D.nodeNavigable N and append N to the source ancestor list.
+N is the containing parent, not the new child; missing or retired N is not an
+empty list. The literal source's Document/Navigable mismatch is not rewritten.
+
+For no srcdoc and absent/empty src under an actual initial-about:blank parent,
+the ancestor URL match returns null before the later URL/history, load and lazy
+branches. This does not waive earlier #1218 policy work: present-empty src can
+still require actual URL parsing/origin evidence in that separate phase.
+Conditional URL/history replacement/finalization and later navigation branches
+are not selected by this retention. No new HTML source identity, changed edition
+or implementation/conformance verdict is implied.
+
 ### HTML autocomplete credential recovery
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the
