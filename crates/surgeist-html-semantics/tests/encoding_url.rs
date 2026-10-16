@@ -35,33 +35,35 @@ fn borrowed_exact_units_distinguish_observed_failure_javascript_success_and_miss
     let (revision, base, encoding) = context();
     let javascript = HtmlBaseUrlRecord::observed(
         revision.clone(),
-        "javascript:observed".into(),
+        "javascript:0".into(),
         HtmlBaseUrlScheme::Javascript,
         false,
     )
     .unwrap();
     let result = HtmlBaseUrlRecord::observed(
         revision.clone(),
-        "https://observed.test/".into(),
+        "https://observed.test/%EF%BF%BDx%EF%BF%BD".into(),
         HtmlBaseUrlScheme::Other,
         false,
     )
     .unwrap();
+    let mut raw = "https://observed.test/".encode_utf16().collect::<Vec<_>>();
+    raw.extend_from_slice(&[0xd800, 120, 0xdc00]);
     let bank = facts(
         &revision,
         &base,
         &encoding,
         vec![
             HtmlEncodingUrlParseObservation::new(
-                "bad".into(),
+                "https://[".into(),
                 HtmlEncodingUrlParseOutcome::Failure,
             ),
             HtmlEncodingUrlParseObservation::new(
-                "js".into(),
+                "javascript:0".into(),
                 HtmlEncodingUrlParseOutcome::Parsed(javascript.clone()),
             ),
             HtmlEncodingUrlParseObservation::new(
-                DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]),
+                DocumentString::from_utf16(raw.clone()),
                 HtmlEncodingUrlParseOutcome::Parsed(result.clone()),
             ),
         ],
@@ -70,17 +72,20 @@ fn borrowed_exact_units_distinguish_observed_failure_javascript_success_and_miss
         bank.lookup_units_with(raw, &base, &encoding, &revision, || Ok::<_, Infallible>(()))
     };
     assert_eq!(
-        lookup(&[98, 97, 100]).unwrap(),
+        lookup(&"https://[".encode_utf16().collect::<Vec<_>>()).unwrap(),
         &HtmlEncodingUrlParseOutcome::Failure
     );
     assert_eq!(
-        lookup(&[106, 115]).unwrap(),
+        lookup(&"javascript:0".encode_utf16().collect::<Vec<_>>()).unwrap(),
         &HtmlEncodingUrlParseOutcome::Parsed(javascript)
     );
-    let original = [32, 39, 0xd800, 0, 0xdc00, 39, 32];
-    let selected = lookup(&original[2..5]).unwrap();
+    let mut original = vec![32, 39];
+    original.extend_from_slice(&raw);
+    original.extend_from_slice(&[39, 32]);
+    // The literal URL prefix is 22 ASCII units, followed by three exact units.
+    let selected = lookup(&original[2..27]).unwrap();
     assert_eq!(selected, &HtmlEncodingUrlParseOutcome::Parsed(result));
-    assert!(std::ptr::eq(selected, lookup(&original[2..5]).unwrap()));
+    assert!(std::ptr::eq(selected, lookup(&original[2..27]).unwrap()));
     assert_eq!(
         lookup(&original).unwrap_err(),
         HtmlEncodingUrlLookupError::Facts(HtmlEncodingUrlFactsError::MissingObservation)
@@ -95,7 +100,7 @@ fn opaque_context_and_complete_revision_are_checked_independently_from_text() {
         &base,
         &encoding,
         vec![HtmlEncodingUrlParseObservation::new(
-            "x".into(),
+            "https://[".into(),
             HtmlEncodingUrlParseOutcome::Failure,
         )],
     );
@@ -106,6 +111,7 @@ fn opaque_context_and_complete_revision_are_checked_independently_from_text() {
         true,
     )
     .unwrap();
+    let raw = "https://[".encode_utf16().collect::<Vec<_>>();
     for (base, encoding, expected, error) in [
         (
             equal_text_base,
@@ -133,9 +139,13 @@ fn opaque_context_and_complete_revision_are_checked_independently_from_text() {
         ),
     ] {
         assert_eq!(
-            bank.lookup_units_with(&[120], &base, &encoding, &expected, || Ok::<_, Infallible>(
-                ()
-            ))
+            bank.lookup_units_with(
+                &raw,
+                &base,
+                &encoding,
+                &expected,
+                || Ok::<_, Infallible>(())
+            )
             .unwrap_err(),
             HtmlEncodingUrlLookupError::Facts(error)
         );
@@ -150,20 +160,22 @@ fn original_hyperlink_history_and_borrowed_lookup_have_the_same_admission_bounda
         &base,
         &encoding,
         vec![HtmlEncodingUrlParseObservation::new(
-            "abc".into(),
+            "https://[".into(),
             HtmlEncodingUrlParseOutcome::Failure,
         )],
     );
-    for allowance in 0..=6 {
+    // One context + one observation + nine UTF-16 comparisons + one result.
+    let raw: DocumentString = "https://[".into();
+    for allowance in 0..=12 {
         let mut used = 0;
-        let outcome = bank.lookup_units_with(&[97, 98, 99], &base, &encoding, &revision, || {
+        let outcome = bank.lookup_units_with(raw.code_units(), &base, &encoding, &revision, || {
             if used == allowance {
                 return Err("stop");
             }
             used += 1;
             Ok(())
         });
-        if allowance < 6 {
+        if allowance < 12 {
             assert_eq!(
                 outcome.unwrap_err(),
                 HtmlEncodingUrlLookupError::Interrupted("stop")
@@ -174,14 +186,14 @@ fn original_hyperlink_history_and_borrowed_lookup_have_the_same_admission_bounda
         assert_eq!(used, allowance);
         let mut history_used = 0;
         let history =
-            bank.resolve_hyperlink_with(&"abc".into(), &base, &encoding, &revision, || {
+            bank.resolve_hyperlink_with(&"https://[".into(), &base, &encoding, &revision, || {
                 if history_used == allowance {
                     return Err("stop");
                 }
                 history_used += 1;
                 Ok(())
             });
-        if allowance < 6 {
+        if allowance < 12 {
             assert_eq!(
                 history.unwrap_err(),
                 HtmlEncodingUrlLookupError::Interrupted("stop")
@@ -209,20 +221,21 @@ fn selected_historical_base_identity_does_not_replace_current_full_revision() {
         &base,
         &encoding,
         vec![HtmlEncodingUrlParseObservation::new(
-            "x".into(),
+            "https://observed.test/current".into(),
             HtmlEncodingUrlParseOutcome::Parsed(result.clone()),
         )],
     );
+    let raw = "https://observed.test/current"
+        .encode_utf16()
+        .collect::<Vec<_>>();
     assert_ne!(base.revision(), &current);
     assert_eq!(
-        bank.lookup_units_with(&[120], &base, &encoding, &current, || Ok::<_, Infallible>(
-            ()
-        ))
-        .unwrap(),
+        bank.lookup_units_with(&raw, &base, &encoding, &current, || Ok::<_, Infallible>(()))
+            .unwrap(),
         &HtmlEncodingUrlParseOutcome::Parsed(result)
     );
     assert_eq!(
-        bank.lookup_units_with(&[120], &base, &encoding, &old, || Ok::<_, Infallible>(()))
+        bank.lookup_units_with(&raw, &base, &encoding, &old, || Ok::<_, Infallible>(()))
             .unwrap_err(),
         HtmlEncodingUrlLookupError::Facts(HtmlEncodingUrlFactsError::RevisionMismatch)
     );
