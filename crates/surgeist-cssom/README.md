@@ -159,6 +159,13 @@ Source sheet getters and the guarded deprecated `rules` alias retain
 the same live identities. Owner attribute captures update title/media (absence
 clears), without changing fixed location or emitting a host attribute write.
 Disabled mutations do not inherit cssRules security/modification guards.
+`CssomBatch::remove_sheet` removes selected host-list membership and clears the
+sheet's owner node, owner rule and derived parent sheet. The stylesheet, rules,
+media, live handles and old captures remain available; removal does not reclaim
+their quotas or cancel pending replacement work. An importing rule retains its
+forward `styleSheet` reference. A subsequent explicit `associate_import` with
+the same inputs restores the removed sheet's owner-rule relationship. Repeating
+removal after membership and those owner links are already absent is a no-op.
 `insert_sheet_rule` uses the shared rule insertion owner after stylesheet security,
 modification and preliminary syntax/constructed-import checks. That owner checks
 index, contextual admission, hierarchy and whole-list namespace state, then adopts

@@ -866,6 +866,7 @@ impl CssomBatch {
             if child_sheet.as_ref() == Some(sheet)
                 && old == &resolved_location
                 && old_input.as_ref() == Some(&input)
+                && this.staged.sheet(sheet)?.owner_rule.as_ref() == Some(rule)
             {
                 return Ok(false);
             }

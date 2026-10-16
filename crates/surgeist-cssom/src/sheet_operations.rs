@@ -126,6 +126,68 @@ impl CssomSnapshot {
 }
 
 impl CssomBatch {
+    /// Removes this sheet from the selected host list and clears its parent,
+    /// owner node and owner rule. The sheet, rules and existing handles survive.
+    ///
+    /// An importing rule's forward `styleSheet` reference is retained. Pending
+    /// replacement work and its modification lock are independent of removal.
+    /// Returns whether selected membership or an owner link changed.
+    pub fn remove_sheet(&mut self, id: &CssomSheetId) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            let sheet = this.staged.sheet(id)?;
+            let owned = sheet.inputs.owner.is_some();
+            let imported = sheet.owner_rule.is_some();
+            let retained = this
+                .staged
+                .sheet_order
+                .iter()
+                .filter(|sheet| *sheet != id)
+                .count();
+            let listed = retained != this.staged.sheet_order.len();
+            if !listed && !owned && !imported {
+                return Ok(false);
+            }
+            if listed {
+                let mut members = Vec::new();
+                members
+                    .try_reserve_exact(retained)
+                    .map_err(|_| CssomError::Limit {
+                        resource: "sheet list capacity",
+                        maximum: this.limits.max_entries,
+                    })?;
+                members.extend(
+                    this.staged
+                        .sheet_order
+                        .iter()
+                        .filter(|sheet| *sheet != id)
+                        .cloned(),
+                );
+                this.staged.sheet_order = std::sync::Arc::new(members);
+                this.affect(
+                    CssomObjectId::SheetList(this.staged.sheet_list.clone()),
+                    &[CssomChange::SheetMembership, CssomChange::Order],
+                );
+                this.affect(
+                    CssomObjectId::Sheet(id.clone()),
+                    &[CssomChange::SheetMembership],
+                );
+            }
+            if owned || imported {
+                let sheet = this.staged.sheets.get_mut(id).expect("checked sheet");
+                sheet.inputs.owner = None;
+                sheet.owner_rule = None;
+                this.affect(CssomObjectId::Sheet(id.clone()), &[CssomChange::Owner]);
+            }
+            if imported {
+                this.affect(
+                    CssomObjectId::Sheet(id.clone()),
+                    &[CssomChange::Ancestry, CssomChange::ImportLinks],
+                );
+                this.full_recompute = true;
+            }
+            Ok(true)
+        })
+    }
     /// Source construction starts empty and does not assert host list membership.
     pub fn construct_sheet(
         &mut self,

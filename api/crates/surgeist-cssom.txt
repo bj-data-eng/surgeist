@@ -2875,6 +2875,7 @@ pub fn surgeist_cssom::CssomBatch::set_font_feature_families(&mut self, id: &sur
 pub fn surgeist_cssom::CssomBatch::set_font_feature_family_text(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str) -> core::result::Result<bool, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::construct_sheet(&mut self, document: surgeist_cssom::CssomConstructorDocument, init: surgeist_cssom::CssomSheetInit<'_>) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::remove_sheet(&mut self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_sheet_list_membership(&mut self, id: &surgeist_cssom::CssomSheetListId, members: &[surgeist_cssom::CssomSheetId]) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_sheet_owner_attributes(&mut self, id: &surgeist_cssom::CssomSheetId, attributes: surgeist_cssom::CssomSheetOwnerAttributes<'_>) -> core::result::Result<surgeist_cssom::CssomSheetAttributeEdit, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
