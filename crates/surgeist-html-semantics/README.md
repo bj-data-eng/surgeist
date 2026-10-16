@@ -53,6 +53,19 @@ within existing bounded construction/resolution and does not change logical
 formation limits or semantic equality. A selected snapshot counts its chosen
 observation, not the original observation bank.
 
+`HtmlCapture::retained_storage_usage_with` observes the complete immutable
+capture's actual retained bytes and UTF-16 capacities without allocation or a
+cached finalization scan. The caller's callback precedes each header, row and
+nested provider observation; its first interruption is preserved. This includes
+private record/registry banks, child/dependent banks, registry definitions,
+attributes and exact string backings. Nested selected Hyperlink receipts exclude
+the snapshot header already held inline in the record bank. Shared payloads count
+conservatively per occurrence; consumers can count a complete shared capture once
+by its opaque capture identity. Public capture handles, opaque Arc control blocks
+and allocator bookkeeping are excluded. Logical capture usage and formation
+limits retain their existing meaning. Separately supplied `HtmlCapturedBaseFacts`
+banks are outside the capture and require their own admission contract.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

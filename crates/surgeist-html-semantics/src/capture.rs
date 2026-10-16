@@ -20,7 +20,9 @@ use std::{
 
 mod construction;
 mod preflight;
+mod storage;
 pub use construction::*;
+pub use storage::{HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError};
 
 macro_rules! identity {
     ($name:ident, $doc:literal) => {
