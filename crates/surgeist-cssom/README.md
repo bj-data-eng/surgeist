@@ -63,7 +63,11 @@ fixed location and constructor identity; nullable base URL remains separate.
 MediaList constructor input is copied through its actual CSSOM text and reparsed,
 including recovered `not all` text. Construction does not assert membership in a
 host's styleSheets collection: `set_sheet_list_membership` publishes its supplied
-selection/order. Length/item inspect that collection and return null out of range.
+selection/order. Its `CssomSheetListTarget::Existing` identities and `Created`
+creation tickets can be mixed in one batch, so a newly parsed sheet reaches its
+correct caller-selected position in the same publication. Tickets are validated
+against that exact batch and never expose tentative live IDs. Length/item inspect
+that collection and return null out of range.
 
 The supplied parser context applies to subsequent parsed creation/replacement;
 context updates preserve existing checked values and their original parser facts.

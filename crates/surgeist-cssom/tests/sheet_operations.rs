@@ -164,8 +164,14 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     assert_eq!(captured_list(&owner, &captured).length().unwrap(), 0);
     let mut edit = batch(&owner);
     assert!(
-        edit.set_sheet_list_membership(captured.sheet_list(), &[second.clone(), first.clone()])
-            .unwrap()
+        edit.set_sheet_list_membership(
+            captured.sheet_list(),
+            &[
+                CssomSheetListTarget::Existing(&second),
+                CssomSheetListTarget::Existing(&first)
+            ]
+        )
+        .unwrap()
     );
     owner.commit(edit).unwrap();
     let selected = owner.snapshot();
@@ -196,7 +202,13 @@ fn constructor_defaults_fixed_location_and_explicit_ordered_host_membership() {
     let mut edit = batch(&owner);
     assert!(
         !edit
-            .set_sheet_list_membership(selected.sheet_list(), &[second, first])
+            .set_sheet_list_membership(
+                selected.sheet_list(),
+                &[
+                    CssomSheetListTarget::Existing(&second),
+                    CssomSheetListTarget::Existing(&first)
+                ]
+            )
             .unwrap()
     );
     assert!(

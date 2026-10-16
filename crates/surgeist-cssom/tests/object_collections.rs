@@ -193,8 +193,14 @@ fn live_and_captured_sheet_lists_follow_distinct_ordered_memberships() {
         .unwrap();
     let empty = list.capture(&owner.snapshot()).unwrap();
     let mut edit = batch(&owner);
-    edit.set_sheet_list_membership(list.id(), &[second.id().clone(), first.id().clone()])
-        .unwrap();
+    edit.set_sheet_list_membership(
+        list.id(),
+        &[
+            CssomSheetListTarget::Existing(second.id()),
+            CssomSheetListTarget::Existing(first.id()),
+        ],
+    )
+    .unwrap();
     owner.commit(edit).unwrap();
     let captured = list.capture(&owner.snapshot()).unwrap();
     assert_eq!(list.length(&owner).unwrap(), 2);
@@ -203,7 +209,7 @@ fn live_and_captured_sheet_lists_follow_distinct_ordered_memberships() {
     assert!(list.item(&owner, usize::MAX).unwrap().is_none());
     assert_eq!(empty.length().unwrap(), 0);
     let mut edit = batch(&owner);
-    edit.set_sheet_list_membership(list.id(), &[first.id().clone()])
+    edit.set_sheet_list_membership(list.id(), &[CssomSheetListTarget::Existing(first.id())])
         .unwrap();
     owner.commit(edit).unwrap();
     assert_eq!(list.length(&owner).unwrap(), 1);
@@ -798,7 +804,7 @@ fn sheet_list_items_expose_css_stylesheet_interface_and_retained_rule_chain() {
         .style_sheet_list(owner.snapshot().sheet_list())
         .unwrap();
     let mut edit = batch(&owner);
-    edit.set_sheet_list_membership(list.id(), &[sheet.id().clone()])
+    edit.set_sheet_list_membership(list.id(), &[CssomSheetListTarget::Existing(sheet.id())])
         .unwrap();
     owner.commit(edit).unwrap();
     let live_item: CssStyleSheet = list.item(&owner, 0).unwrap().unwrap();

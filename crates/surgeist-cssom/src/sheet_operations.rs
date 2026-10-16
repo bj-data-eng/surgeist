@@ -59,6 +59,17 @@ impl CssomSheetConstruction {
     }
 }
 
+/// One member of the caller-selected host stylesheet collection.
+/// Creation tickets resolve only inside their originating batch; a live sheet
+/// identity is exposed only by that batch's successful commit.
+#[derive(Clone, Copy, Debug)]
+pub enum CssomSheetListTarget<'a> {
+    /// An existing owner-qualified stylesheet identity.
+    Existing(&'a CssomSheetId),
+    /// A stylesheet created in this exact batch.
+    Created(&'a CssomSheetTicket),
+}
+
 /// Actual owner media input. UTF8 text is parsed in the current staged context;
 /// parsed reports must carry their complete matching source/context attestation.
 pub enum CssomOwnerMediaInput<'a> {
@@ -247,10 +258,11 @@ impl CssomBatch {
         })
     }
     /// Publishes the supplied selected host collection; CSSOM does not select a DOM list.
+    /// Existing sheets and this batch's creations can occur in the same order.
     pub fn set_sheet_list_membership(
         &mut self,
         id: &CssomSheetListId,
-        members: &[CssomSheetId],
+        members: &[CssomSheetListTarget<'_>],
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
             if id.owner() != &this.staged.owner {
@@ -265,10 +277,18 @@ impl CssomBatch {
                     maximum: this.limits.max_entries,
                 });
             }
-            for member in members {
-                this.staged.sheet(member)?;
+            let mut unchanged = this.staged.sheet_order.len() == members.len();
+            for (index, member) in members.iter().enumerate() {
+                let id = match member {
+                    CssomSheetListTarget::Existing(id) => {
+                        this.staged.sheet(id)?;
+                        *id
+                    }
+                    CssomSheetListTarget::Created(ticket) => this.created_sheet_id(ticket)?,
+                };
+                unchanged &= this.staged.sheet_order.get(index) == Some(id);
             }
-            if this.staged.sheet_order.as_slice() == members {
+            if unchanged {
                 return Ok(false);
             }
             let mut selected = Vec::new();
@@ -278,7 +298,13 @@ impl CssomBatch {
                     resource: "sheet list capacity",
                     maximum: this.limits.max_entries,
                 })?;
-            selected.extend_from_slice(members);
+            for member in members {
+                let id = match member {
+                    CssomSheetListTarget::Existing(id) => *id,
+                    CssomSheetListTarget::Created(ticket) => this.created_sheet_id(ticket)?,
+                };
+                selected.push(id.clone());
+            }
             this.staged.sheet_order = std::sync::Arc::new(selected);
             this.affect(
                 CssomObjectId::SheetList(id.clone()),

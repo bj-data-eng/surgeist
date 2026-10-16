@@ -400,8 +400,11 @@ fn removal_keeps_pending_replacement_and_its_terminal_work_on_the_same_sheet() {
         .unwrap()
         .clone();
     let mut edit = batch(&owner);
-    edit.set_sheet_list_membership(owner.snapshot().sheet_list(), std::slice::from_ref(&sheet))
-        .unwrap();
+    edit.set_sheet_list_membership(
+        owner.snapshot().sheet_list(),
+        &[CssomSheetListTarget::Existing(&sheet)],
+    )
+    .unwrap();
     owner.commit(edit).unwrap();
     let job = owner
         .begin_replace_sheet(guard(&owner), &sheet, "a { color: red; }")

@@ -336,6 +336,9 @@ pub enum surgeist_cssom::CssomSelectors
 pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelectorList)
 pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
 impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomSelectors
+pub enum surgeist_cssom::CssomSheetListTarget<'a>
+pub surgeist_cssom::CssomSheetListTarget::Created(&'a surgeist_cssom::CssomSheetTicket)
+pub surgeist_cssom::CssomSheetListTarget::Existing(&'a surgeist_cssom::CssomSheetId)
 pub enum surgeist_cssom::CssomUsabilityRequirement
 pub surgeist_cssom::CssomUsabilityRequirement::AllCheckedValues
 pub surgeist_cssom::CssomUsabilityRequirement::WholeDeclarationDecision
@@ -2888,7 +2891,7 @@ pub fn surgeist_cssom::CssomBatch::set_font_feature_family_text(&mut self, id: &
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::construct_sheet(&mut self, document: surgeist_cssom::CssomConstructorDocument, init: surgeist_cssom::CssomSheetInit<'_>) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::remove_sheet(&mut self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<bool, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssomBatch::set_sheet_list_membership(&mut self, id: &surgeist_cssom::CssomSheetListId, members: &[surgeist_cssom::CssomSheetId]) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_sheet_list_membership(&mut self, id: &surgeist_cssom::CssomSheetListId, members: &[surgeist_cssom::CssomSheetListTarget<'_>]) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_sheet_owner_attributes(&mut self, id: &surgeist_cssom::CssomSheetId, attributes: surgeist_cssom::CssomSheetOwnerAttributes<'_>) -> core::result::Result<surgeist_cssom::CssomSheetAttributeEdit, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::delete_feature(&mut self, id: &surgeist_cssom::CssomFeatureMapId, key: &str) -> core::result::Result<bool, surgeist_cssom::CssomError>
