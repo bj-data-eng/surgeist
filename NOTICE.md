@@ -527,6 +527,20 @@ and [attribution and modification notice](licenses/w3c/NOTICE.md#native-hosted-h
 accompany the literal bounded source. These references support implementation;
 they do not certify a complete browser environment or change this project's license.
 
+## Native hosted random UUID source
+
+The [random UUID generation clauses](references/webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md)
+contain bounded material derived from W3C Web Cryptography commit
+`811c24c69eb22d477af5f1678cb70dbc611c7c40`, supporting the existing
+[HTML session-history-entry caller](references/html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md#complete-session-history-entry-items-and-document-getter).
+The complete [W3C Document License 2023](licenses/w3c/document-license-2023.txt)
+applies to the prose; the marked Web IDL is separately covered by its Code
+Components provision under the [W3C Software and Document License](licenses/w3c/software-license-2023.txt).
+The [attribution and modification notice](licenses/w3c/NOTICE.md#native-hosted-random-uuid-clauses)
+identifies the exact source and literal extraction. This source reference
+does not claim full Web Crypto, JavaScript execution or a newer UUID RFC,
+and does not change Surgeist's license.
+
 ## HTML-delegated SVG script material
 
 The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) supplies HTML-delegated script

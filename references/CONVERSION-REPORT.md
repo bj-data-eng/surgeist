@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **374 source identities: 260 full documents/source witnesses, 100 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **375 source identities: 260 full documents/source witnesses, 101 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -409,6 +409,34 @@ identities relative to the preceding catalog: 374 total, comprising 260 full,
 100 partial and 14 metadata-only. Historical counts above and below remain
 dated evidence. No transitive browser-source closure or implementation verdict
 is implied by this retention.
+
+## Native hosted entry UUID source — 2026-10-16
+
+The [random UUID reference](webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md) adds one partial source identity from
+W3C Web Cryptography revision `811c24c69eb22d477af5f1678cb70dbc611c7c40`. The complete
+674,900-byte `spec/Overview.html` has SHA-256
+`00a094ac4298f0c7a5a4afe599281827c98fefbe72b09756f1f5859746f52c97` and Git blob
+`d568caa38f4f1fe7b1b8034a578b99d2008b7477`.
+
+Two complete bounded units retain original lines 805–840 and 901–979, 115 lines
+total, byte for byte in fenced text. The first contains the Crypto definition,
+complete IDL and both entropy notes; the second is the complete randomUUID
+section, named algorithm and hexadecimal definition. Their original-fragment
+hashes and immutable line links appear in the reference; their joined SHA-256
+is `1c697c6b1d484b25225d711dc68666d05a3aceced4d2f5e454eb2d8fad6d9b24`.
+Only explanatory Markdown headings, provenance, attribution and separately
+identified scope notes are added. Original HTML/ReSpec syntax, source order,
+variables, conditions, notes, citation markers and links are unchanged.
+No ReSpec, scripts, stylesheet or executable is acquired or run; no RFC text
+is acquired or upgraded.
+
+The exact repository license declaration selects the existing local W3C
+Document License 2023 for prose. Its Code Components provision separately
+covers marked Web IDL under the W3C Software and Document License; it is not an
+alternative prose license. See the [attribution and modification notice](../licenses/w3c/NOTICE.md#native-hosted-random-uuid-clauses).
+The collection now contains 375 identities: 260 full, 101 partial and 14
+metadata-only. This bounded retention does not imply transitive source closure,
+full Web Crypto support or an executed native random provider.
 
 ## HTML autocomplete credential determination — 2026-10-11
 

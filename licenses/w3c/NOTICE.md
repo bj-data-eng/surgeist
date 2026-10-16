@@ -7,7 +7,7 @@ This material accompanies the Surgeist software source checkout as implementatio
 * [Software and Document License, 2023](software-license-2023.txt): documents whose exact source links the current permissive software/document license, and the pinned CSSWG repository source declarations
 * [Software and Document License, 2015](software-license-2015.txt): documents whose exact source explicitly links the 2015 permissive license
 * [Document License, 2015](document-license-2015.txt): document-use licensed technical reports, including their chapters and supporting errata
-* [Document License, 2023](document-license-2023.txt): the captured W3C CSS Values 5 publication-history page and bounded Referrer Policy vocabulary
+* [Document License, 2023](document-license-2023.txt): the captured W3C CSS Values 5 publication-history page, bounded Referrer Policy vocabulary and Web Cryptography random UUID prose
 * [Document License, 2002](document-license-2002.txt): retained historical terms for pre-2015 document-use publications; it is not used as a grant to modify them
 
 The [official 5 February 2015 W3C announcement](https://www.w3.org/news/2015/w3c-updates-general-document-license/) makes the updated document license available for existing publications. The [official 2015 FAQ](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#2015published) expressly covers all technical reports published under previous versions, whose original notices were not edited in place. Its [reformatting guidance](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#format) points to the implementation-support derivative permission. The 2015 and 2023 document licenses permit supporting materials accompanying software while expressly prohibiting derivative works for use as a technical specification. The required derived-material notices appear in the prominent wrappers of the corresponding converted documents.
@@ -1565,3 +1565,39 @@ inside text fences; conditions, algorithm order, branches, notes and unresolved
 source issues are unchanged. No source compiler or scripts are run, endorsement
 is not implied, and this support reference is not a replacement specification.
 The repository's own license is unchanged.
+
+## Native hosted random UUID clauses
+
+Copyright © 2026 World Wide Web Consortium.
+Copyright © 2023 W3C®. This software or document includes material copied from
+or derived from [Web Cryptography API](https://github.com/w3c/webcrypto/blob/811c24c69eb22d477af5f1678cb70dbc611c7c40/spec/Overview.html).
+The [bounded random UUID reference](../../references/webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md)
+accompanies Surgeist as implementation-support material under the complete
+[W3C Document License 2023](document-license-2023.txt). It is not independently
+published for use as a technical specification. W3C is not responsible for
+added material or formatting errors; the original document and its status
+remain authoritative. No endorsement is implied.
+
+The reference selects commit `811c24c69eb22d477af5f1678cb70dbc611c7c40` (11 August 2026),
+complete `spec/Overview.html` SHA-256
+`00a094ac4298f0c7a5a4afe599281827c98fefbe72b09756f1f5859746f52c97`, Git blob
+`d568caa38f4f1fe7b1b8034a578b99d2008b7477`. The exact pinned repository
+[LICENSE.md](https://github.com/w3c/webcrypto/blob/811c24c69eb22d477af5f1678cb70dbc611c7c40/LICENSE.md)
+licenses repository documents by contributors under the W3C Document License;
+its official link resolves to the existing complete local 2023 license.
+The 155-byte declaration has SHA-256
+`7a3ad7d36b8855bc301276279769da4aff648ea5d7b92f3f023c0823ee948764`.
+
+The prose is document-licensed. The expressly marked Web IDL is covered
+separately by that license's Code Components provision under the complete
+[W3C Software and Document License 2023](software-license-2023.txt).
+That provision does not offer an alternative license for the prose.
+
+Changes by Surgeist on 16 October 2026: bounded extraction of original lines
+805–840 and 901–979, explanatory Markdown headings, immutable source-line links,
+provenance, attribution and separately identified editorial scope notes.
+The source bodies remain byte-identical in text fences, including HTML/ReSpec
+syntax, variables, conditions, step order, notes and original RFC citations.
+No source links are rewritten, no renderer or script is run, and no newer RFC
+or full Web Crypto implementation is represented. The repository's own license
+is unchanged.

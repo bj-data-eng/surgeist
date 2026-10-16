@@ -583,6 +583,28 @@ excluding JavaScript realm execution and Performance/Unix exposure. Retained
 source algorithms are not rewritten to make those exclusions normative no-ops.
 This source selection certifies neither implementation nor browser conformance.
 
+### Native hosted entry UUID generation
+
+The [random UUID reference](webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md) selects W3C Web Cryptography commit
+`811c24c69eb22d477af5f1678cb70dbc611c7c40` (11 August 2026), preceding HTML877d.
+Complete `spec/Overview.html` SHA-256:
+`00a094ac4298f0c7a5a4afe599281827c98fefbe72b09756f1f5859746f52c97`.
+It supplies the named “generate a random UUID” algorithm reached by the retained
+[HTML session-history-entry definition](html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md#complete-session-history-entry-items-and-document-getter).
+The complete Crypto IDL, entropy notes, randomUUID method, generation algorithm
+and hexadecimal definition remain literal source, including the exposed
+method's `[SecureContext]` attribute and original RFC4122/RFC2141 citations.
+
+This selects a bounded external algorithm, not full Web Crypto, JavaScript
+execution, a new general secure-context guard or a newer UUID RFC. The native
+entry-identifier owner, actual random-source failure, Pending custody and
+no-collision-retry contract are determined separately in
+[#136](https://github.com/bj-data-eng/surgeist/issues/136).
+The exact repository declaration selects the W3C Document License 2023 for
+prose; marked IDL has the separate Code Components terms described in the
+[W3C notice](../licenses/w3c/NOTICE.md#native-hosted-random-uuid-clauses).
+Source retention does not certify an implementation or a cryptographic sample.
+
 ### HTML autocomplete credential recovery
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the
