@@ -79,7 +79,7 @@ impl AssociatedStorageUsage {
 #[derive(Debug, Default)]
 pub(crate) struct Inputs {
     pub(crate) template: Option<crate::HtmlParseBaseFacts>,
-    pub(crate) hyperlinks: Vec<HtmlEncodingUrlParseFacts>,
+    pub(crate) encoding_urls: Vec<HtmlEncodingUrlParseFacts>,
 }
 impl Inputs {
     fn usage(&self, c: &mut ParseControl) -> Result<AssociatedStorageUsage, SessionError> {
@@ -87,7 +87,7 @@ impl Inputs {
         // Like the original controller's shared payload tickets, this counts
         // the actual payload and Vec capacity, not opaque std Arc headers.
         let header = self
-            .hyperlinks
+            .encoding_urls
             .capacity()
             .checked_mul(mem::size_of::<HtmlEncodingUrlParseFacts>())
             .and_then(|v| mem::size_of::<Self>().checked_add(v))
@@ -95,7 +95,7 @@ impl Inputs {
                 c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
                     .unwrap_err()
             })?;
-        usage.add(header, 0, self.hyperlinks.capacity(), c)?;
+        usage.add(header, 0, self.encoding_urls.capacity(), c)?;
         if let Some(facts) = &self.template {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let retained = facts.retained_storage_usage();
@@ -106,9 +106,9 @@ impl Inputs {
                 c,
             )?;
         }
-        for (i, facts) in self.hyperlinks.iter().enumerate() {
+        for (i, facts) in self.encoding_urls.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            for previous in &self.hyperlinks[..i] {
+            for previous in &self.encoding_urls[..i] {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if previous.base() == facts.base()
                     && previous.encoding() == facts.encoding()
@@ -134,6 +134,8 @@ pub enum HyperlinkUnavailable {
     Base(HtmlBaseMissing),
     Observation(HtmlEncodingUrlFactsError),
     DocumentEnvironment,
+    /// A reached CSP operation left the current Document policy unqualified.
+    PolicyHistory,
 }
 pub(super) enum HyperlinkValue {
     Absent,
@@ -190,6 +192,12 @@ impl ParserArenaSession {
             });
         Ok(())
     }
+}
+pub(super) struct EncodingUrlContext<'a> {
+    pub(super) facts: &'a HtmlEncodingUrlParseFacts,
+    pub(super) base: &'a crate::HtmlBaseUrlRecord,
+    pub(super) encoding: &'a crate::HtmlBaseEncoding,
+    pub(super) expected: &'a crate::HtmlBaseFactsRevision,
 }
 impl SessionStorage {
     fn associated_inputs(
@@ -421,10 +429,41 @@ impl SessionStorage {
         node: usize,
         raw: usize,
     ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HyperlinkUnavailable>, SessionError> {
+        let RetainedPayload::String { value: raw, .. } = &self.payloads.values[raw] else {
+            return Err(SessionError::WrongToken);
+        };
+        let context = match self.encoding_url_context(c, node)? {
+            Ok(value) => value,
+            Err(missing) => return Ok(Err(missing)),
+        };
+        payload_write::<HtmlHyperlinkUrlSnapshot>(c, 1)?;
+        c.charge(WorkCategory::ProviderCall, 1)?;
+        match context.facts.resolve_hyperlink_with(
+            raw,
+            context.base,
+            context.encoding,
+            context.expected,
+            || encoding_url_step(c),
+        ) {
+            Ok(value) => Ok(Ok(value)),
+            Err(HtmlEncodingUrlLookupError::Facts(error)) => {
+                Ok(Err(HyperlinkUnavailable::Observation(error)))
+            }
+            Err(HtmlEncodingUrlLookupError::Interrupted(stop)) => Err(stop.into()),
+        }
+    }
+    pub(super) fn encoding_url_context<'a>(
+        &'a self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
         let document = match self.node_document_ref(c, node)? {
             DocumentRef::Owned(d) => d,
             DocumentRef::Captured(_) => return Ok(Err(HyperlinkUnavailable::DocumentEnvironment)),
         };
+        if self.meta_policy_missing(c, document)?.is_some() {
+            return Ok(Err(HyperlinkUnavailable::PolicyHistory));
+        }
         let mut environment = None;
         for payload in &self.payloads.values {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -451,7 +490,7 @@ impl SessionStorage {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if let RetainedPayload::Base {
                     node: Some(node),
-                    frozen: Some(value),
+                    frozen: base::BaseValue::Frozen(value),
                     ..
                 } = payload
                     && node == first
@@ -474,35 +513,24 @@ impl SessionStorage {
             Err(e) => return Ok(Err(HyperlinkUnavailable::Base(e))),
         };
         let expected = facts.document().revision();
-        let RetainedPayload::String { value: raw, .. } = &self.payloads.values[raw] else {
-            return Err(SessionError::WrongToken);
-        };
         let Some(inputs) = self.associated_inputs(c)? else {
             return Ok(Err(HyperlinkUnavailable::Observation(
                 HtmlEncodingUrlFactsError::MissingObservation,
             )));
         };
         let mut missing = HtmlEncodingUrlFactsError::MissingObservation;
-        for candidate in &inputs.hyperlinks {
+        for candidate in &inputs.encoding_urls {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let Err(error) = candidate.validate_inputs(base, encoding, expected) {
                 missing = error;
                 continue;
             }
-            payload_write::<HtmlHyperlinkUrlSnapshot>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
-            return match candidate.resolve_hyperlink_with(raw, base, encoding, expected, || {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                // A provider step can compare two UTF-16 operands. Headers
-                // conservatively receive the same fixed four-byte allowance.
-                c.charge(WorkCategory::InspectByte, 4)
-            }) {
-                Ok(value) => Ok(Ok(value)),
-                Err(HtmlEncodingUrlLookupError::Facts(error)) => {
-                    Ok(Err(HyperlinkUnavailable::Observation(error)))
-                }
-                Err(HtmlEncodingUrlLookupError::Interrupted(stop)) => Err(stop.into()),
-            };
+            return Ok(Ok(EncodingUrlContext {
+                facts: candidate,
+                base,
+                encoding,
+                expected,
+            }));
         }
         Ok(Err(HyperlinkUnavailable::Observation(missing)))
     }
@@ -729,6 +757,11 @@ impl SessionStorage {
         }
         Ok(())
     }
+}
+
+pub(super) fn encoding_url_step(c: &mut ParseControl) -> Result<(), ParseStop> {
+    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(WorkCategory::InspectByte, 4)
 }
 
 #[cfg(test)]

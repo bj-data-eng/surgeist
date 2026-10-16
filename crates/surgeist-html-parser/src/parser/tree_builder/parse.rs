@@ -73,11 +73,11 @@ impl HtmlParseFailure {
         &self,
     ) -> Option<&[surgeist_html_semantics::HtmlEncodingUrlParseFacts]> {
         self.associated_inputs()
-            .map(|inputs| inputs.hyperlinks.as_slice())
+            .map(|inputs| inputs.encoding_urls.as_slice())
     }
     pub fn encoding_url_fact_capacity(&self) -> Option<usize> {
         self.associated_inputs()
-            .map(|inputs| inputs.hyperlinks.capacity())
+            .map(|inputs| inputs.encoding_urls.capacity())
     }
     pub fn reason(&self) -> HtmlParseFailureReason {
         self.reason

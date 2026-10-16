@@ -20,6 +20,24 @@ pub(super) struct FrozenBase {
     pub(super) response: Response,
 }
 
+pub(super) enum BaseValue {
+    Unfrozen,
+    Frozen(FrozenBase),
+    Unavailable {
+        missing: usize,
+        previous: Option<FrozenBase>,
+    },
+}
+impl BaseValue {
+    pub(super) fn previous(&self) -> Option<&FrozenBase> {
+        match self {
+            Self::Unfrozen => None,
+            Self::Frozen(value) => Some(value),
+            Self::Unavailable { previous, .. } => previous.as_ref(),
+        }
+    }
+}
+
 #[cfg(test)]
 std::thread_local! {
     static CANCEL_AFTER_BINDING: std::cell::RefCell<Option<crate::HtmlParseCancellation>> = const { std::cell::RefCell::new(None) };
@@ -115,7 +133,7 @@ impl SessionStorage {
         self.payloads.values.push(RetainedPayload::Base {
             node: Some(node),
             domain,
-            frozen: None,
+            frozen: BaseValue::Unfrozen,
         });
         Ok(())
     }
@@ -195,6 +213,48 @@ impl SessionStorage {
             return Ok(());
         }
         let first = self.first_base_href(c, document, detached)?;
+        let missing_policy = self.meta_policy_missing(c, document)?;
+        if let Some(missing) = missing_policy {
+            let previous_first = if let Some(slot) = self.base_document_slot(c, document)? {
+                let RetainedPayload::BaseDocument { first, .. } = &self.payloads.values[slot]
+                else {
+                    unreachable!()
+                };
+                *first
+            } else {
+                None
+            };
+            if first == previous_first && !(href_changed && first == Some(node)) {
+                return Ok(());
+            }
+            if let Some(slot) = self.base_document_slot(c, document)? {
+                payload_write::<Option<usize>>(c, 1)?;
+                let RetainedPayload::BaseDocument { first: binding, .. } =
+                    &mut self.payloads.values[slot]
+                else {
+                    unreachable!()
+                };
+                *binding = first;
+            }
+            if let Some(first) = first {
+                let slot = if first == node {
+                    base_slot
+                } else {
+                    self.base_slot(c, first)?
+                };
+                payload_write::<BaseValue>(c, 1)?;
+                let RetainedPayload::Base { frozen, .. } = &mut self.payloads.values[slot] else {
+                    unreachable!()
+                };
+                let previous = match mem::replace(frozen, BaseValue::Unfrozen) {
+                    BaseValue::Unfrozen => None,
+                    BaseValue::Frozen(value) => Some(value),
+                    BaseValue::Unavailable { previous, .. } => previous,
+                };
+                *frozen = BaseValue::Unavailable { missing, previous };
+            }
+            return Ok(());
+        }
         let Some(document_slot) = self.base_document_slot(c, document)? else {
             if first.is_some() {
                 return Err(c.stop_base_facts(HtmlBaseMissing::DocumentFacts).into());
@@ -256,7 +316,7 @@ impl SessionStorage {
         let (value, respond) = crate::select_frozen_base(fallback, outcome)
             .map_err(|missing| SessionError::Stop(c.stop_base_facts(missing)))?;
         c.charge(WorkCategory::ProviderCall, 2)?;
-        payload_write::<Option<FrozenBase>>(c, 1)?;
+        payload_write::<BaseValue>(c, 1)?;
         payload_write::<Option<usize>>(c, 1)?;
         let frozen = FrozenBase {
             value: value.clone(),
@@ -280,7 +340,7 @@ impl SessionStorage {
         else {
             unreachable!()
         };
-        *binding = Some(frozen);
+        *binding = BaseValue::Frozen(frozen);
         #[cfg(test)]
         CANCEL_AFTER_BINDING.with(|slot| {
             if let Some(cancellation) = slot.borrow_mut().take() {
@@ -299,7 +359,7 @@ impl SessionStorage {
             };
             payload_write::<Response>(c, 1)?;
             let RetainedPayload::Base {
-                frozen: Some(frozen),
+                frozen: BaseValue::Frozen(frozen),
                 ..
             } = &mut self.payloads.values[chosen_slot]
             else {
@@ -319,8 +379,24 @@ impl SessionStorage {
                 }
             }
             if let RetainedPayload::Base {
+                frozen: BaseValue::Unavailable { missing, .. },
+                ..
+            } = payload
+            {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if !matches!(
+                    self.payloads.values.get(*missing),
+                    Some(RetainedPayload::MetaMissing {
+                        kind: meta::MetaMissingKind::Csp,
+                        ..
+                    })
+                ) {
+                    return Err(SessionError::WrongToken);
+                }
+            }
+            if let RetainedPayload::Base {
                 node,
-                frozen: Some(frozen),
+                frozen: BaseValue::Frozen(frozen),
                 ..
             } = payload
             {
@@ -461,7 +537,7 @@ mod tests {
             .find_map(|payload| match payload {
                 RetainedPayload::Base {
                     node: Some(owner),
-                    frozen: Some(value),
+                    frozen: BaseValue::Frozen(value),
                     ..
                 } if *owner == node.index => Some((
                     value.value.serialization().code_units().to_vec(),
@@ -509,7 +585,7 @@ mod tests {
             .unwrap()]
         {
             RetainedPayload::Base {
-                frozen: Some(value),
+                frozen: BaseValue::Frozen(value),
                 ..
             } => value.value.clone(),
             _ => unreachable!(),
@@ -533,7 +609,7 @@ mod tests {
             .find_map(|payload| match payload {
                 RetainedPayload::Base {
                     node: Some(owner),
-                    frozen: Some(value),
+                    frozen: BaseValue::Frozen(value),
                     ..
                 } if *owner == base.index => Some((value.value.clone(), value.response)),
                 _ => None,
@@ -772,7 +848,10 @@ mod tests {
             // href lookup costs16; observation header+3 providers+2 headers+
             // one UTF16 pair costs sizeof(observation)+10. Finally two
             // provider clones and two actual binding receivers commit before
-            // the response's visit+fixed receiver. No usage sample is oracle.
+            // the response's visit+fixed receiver. Current-policy qualification
+            // adds a Document header+prefix and one history observation (the
+            // extra document+2). The binding receiver is the actual BaseValue
+            // enum, not the former nullable frozen slot. No usage sample is oracle.
             let total = base_slot
                 + node_document
                 + 1
@@ -781,11 +860,13 @@ mod tests {
                 + 2
                 + 20
                 + environment
+                + document
+                + 2
                 + 16
                 + mem::size_of::<crate::HtmlBaseParseObservation>() as u64
                 + 10
                 + 2
-                + mem::size_of::<Option<FrozenBase>>() as u64
+                + mem::size_of::<BaseValue>() as u64
                 + 1
                 + mem::size_of::<Option<usize>>() as u64
                 + 1
@@ -1091,5 +1172,67 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn unavailable_policy_recomputation_keeps_real_prior_frozen_value() {
+        let request = request(
+            "<head><base href=A><meta http-equiv=content-security-policy content=policy><i href=B>",
+        );
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let head = node(&mut session, &mut c, &mut lexer);
+        session
+            .insert_parser(&mut c, &root, &head, None, &capability)
+            .unwrap();
+        let base = node(&mut session, &mut c, &mut lexer);
+        session
+            .insert_parser(&mut c, &head, &base, None, &capability)
+            .unwrap();
+        assert_value(&session, &base, "https://base.test/A");
+        let meta = node(&mut session, &mut c, &mut lexer);
+        session
+            .insert_parser(&mut c, &head, &meta, None, &capability)
+            .unwrap();
+        let mut incoming = attribute(&mut lexer, &mut c);
+        session
+            .set_managed_attribute(
+                &mut c,
+                &base,
+                &mut incoming,
+                &capability,
+                mutation::ManagedFamily::Base,
+            )
+            .unwrap();
+        let storage = session.active().unwrap();
+        let slot = storage.base_slot(&mut c, base.index).unwrap();
+        let RetainedPayload::Base {
+            frozen:
+                BaseValue::Unavailable {
+                    missing,
+                    previous: Some(value),
+                },
+            ..
+        } = &storage.payloads.values[slot]
+        else {
+            panic!("unknown recomputation retains real historical state")
+        };
+        assert_eq!(
+            value.value.serialization(),
+            &DocumentString::from("https://base.test/A")
+        );
+        assert!(value.response == Response::Finished);
+        assert!(matches!(
+            storage.payloads.values[*missing],
+            RetainedPayload::MetaMissing {
+                kind: meta::MetaMissingKind::Csp,
+                ..
+            }
+        ));
+        assert_eq!(first(&session), Some(base.index));
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
     }
 }

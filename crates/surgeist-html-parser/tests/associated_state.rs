@@ -240,7 +240,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
 }
 
 #[test]
-fn reached_meta_csp_cannot_reuse_pre_policy_encoding_url_facts() {
+fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
     // HTML877d11896–11903: only a direct-head, nonempty CSP pragma reaches
     // parse/filter/enforce. Its resulting policy revision is not established by
     // the independently supplied pre-policy URL context, even if URL spelling

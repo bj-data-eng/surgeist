@@ -924,6 +924,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         self.initial_nonce_attribute(c, node, position)?;
         self.initial_associated_attribute(c, node, position)?;
+        self.initial_meta_attribute(c, node, position)?;
         if bindings.details.is_some() {
             self.initial_details_attribute(c, node, position)?;
         }

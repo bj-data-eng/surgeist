@@ -47,7 +47,7 @@ impl<'a> PreparedReportStorage<'a> {
                     // Unused Vec capacity needs no per-element destruction.
                     payload_write::<RetainedPayload>(c, 1)?;
                     c.charge(WorkCategory::ProviderCall, 2)?;
-                    for _ in &inputs.hyperlinks {
+                    for _ in &inputs.encoding_urls {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         c.charge(WorkCategory::ProviderCall, 1)?;
                     }
@@ -173,7 +173,19 @@ impl<'a> PreparedReportStorage<'a> {
                     if !base::is_base(arena.node_at(node).expect("qualified metadata node")) {
                         return Err(SessionError::WrongToken);
                     }
-                    if let Some(frozen) = frozen {
+                    if let base::BaseValue::Unavailable { missing, .. } = frozen {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if !matches!(
+                            storage.payloads.values.get(*missing),
+                            Some(RetainedPayload::MetaMissing {
+                                kind: meta::MetaMissingKind::Csp,
+                                ..
+                            })
+                        ) {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                    if let Some(frozen) = frozen.previous() {
                         checked_document(storage, &DocumentRef::Owned(frozen.document), c)?;
                         if frozen.response == base::Response::Pending {
                             return Err(SessionError::WrongToken);
@@ -361,9 +373,59 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                 }
                 RetainedPayload::Document {
-                    state: template::DocumentState::Ordinary { inert: Some(inert) },
+                    node, state, meta, ..
+                } => {
+                    let document = node.ok_or(SessionError::WrongToken)?;
+                    if let template::DocumentState::Ordinary { inert: Some(inert) } = state {
+                        checked_node(arena, *inert, c)?;
+                    }
+                    if let Some(raw) = meta.language {
+                        checked_raw(storage, raw, c)?;
+                    }
+                    let mut earliest = None;
+                    for domain in meta::MetaDomain::ALL {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let Some(gap) = meta.gaps[domain.index()] {
+                            let Some(RetainedPayload::MetaMissing {
+                                document: owner,
+                                kind,
+                                ..
+                            }) = storage.payloads.values.get(gap)
+                            else {
+                                return Err(SessionError::WrongToken);
+                            };
+                            if *owner != document || kind.domain() != domain {
+                                return Err(SessionError::WrongToken);
+                            }
+                            if earliest.is_none_or(|(index, _)| gap < index) {
+                                earliest = Some((gap, domain));
+                            }
+                        }
+                    }
+                    if earliest.map(|(_, domain)| domain) != meta.first {
+                        return Err(SessionError::WrongToken);
+                    }
+                }
+                RetainedPayload::MetaMissing {
+                    document,
+                    subject,
+                    cause,
                     ..
-                } => checked_node(arena, *inert, c)?,
+                } => {
+                    checked_document(storage, &DocumentRef::Owned(*document), c)?;
+                    checked_node(arena, *subject, c)?;
+                    if let Some(cause) = cause {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if storage
+                            .evidence
+                            .as_ref()
+                            .and_then(|e| e.retained_cause(cause))
+                            .is_none()
+                        {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                }
                 RetainedPayload::InputSource {
                     token,
                     value_attribute,
@@ -606,6 +668,139 @@ pub struct MetadataTemplate<'a> {
     pub(crate) start: Option<HtmlNode<'a>>,
     pub(crate) end: Option<HtmlNode<'a>>,
 }
+/// Qualified current Base state; old snapshots are historical, never defaults.
+pub enum MetadataBaseState<'a> {
+    Unfrozen,
+    Frozen(MetadataBase<'a>),
+    Unavailable {
+        missing: MetadataMetaMissing<'a>,
+        previous: Option<MetadataBase<'a>>,
+    },
+}
+/// A completed intrinsic/external domain or its actual first missing operation.
+pub enum MetadataMetaDisposition<'a> {
+    Complete,
+    Unavailable(MetadataMetaMissing<'a>),
+}
+pub enum MetadataMetaRefresh<'a> {
+    Known(bool),
+    Unavailable(MetadataMetaMissing<'a>),
+}
+/// Original-controller closed offline policy. This value is not a native
+/// initialization token and conveys no canonical target UI association proof.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MetadataMetaProfile {
+    OfflineDoNothingNoUi,
+}
+pub struct MetadataMetaMissing<'a> {
+    history: &'a FrozenHistory,
+    storage: &'a FrozenStorage,
+    arena: &'a HtmlConstructionResult,
+    slot: usize,
+}
+impl<'a> MetadataMetaMissing<'a> {
+    fn row(
+        &self,
+    ) -> (
+        &'a usize,
+        &'a usize,
+        &'a meta::MetaMissingKind,
+        &'a Option<provenance::ConstructionCauseRef>,
+    ) {
+        let RetainedPayload::MetaMissing {
+            document,
+            subject,
+            kind,
+            cause,
+        } = &self.storage.payloads.values[self.slot]
+        else {
+            unreachable!("qualified missing row")
+        };
+        (document, subject, kind, cause)
+    }
+    pub fn document(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(*self.row().0)
+            .expect("qualified Document")
+            .as_node()
+    }
+    pub fn subject(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(*self.row().1)
+            .expect("qualified Meta subject")
+            .as_node()
+    }
+    pub fn kind(&self) -> &'a meta::MetaMissingKind {
+        self.row().2
+    }
+    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+        self.row().3.as_ref().map(|cause| {
+            read::HtmlParseCause::qualified(
+                self.history,
+                self.storage
+                    .evidence
+                    .as_ref()
+                    .and_then(|e| e.retained_cause(cause))
+                    .expect("qualified Meta cause"),
+            )
+        })
+    }
+}
+pub struct MetadataDocumentMeta<'a> {
+    history: &'a FrozenHistory,
+    storage: &'a FrozenStorage,
+    arena: &'a HtmlConstructionResult,
+    document: usize,
+    meta: &'a meta::MetaHistory,
+}
+impl<'a> MetadataDocumentMeta<'a> {
+    pub fn document(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(self.document)
+            .expect("qualified Document")
+            .as_node()
+    }
+    pub fn profile(&self) -> MetadataMetaProfile {
+        MetadataMetaProfile::OfflineDoNothingNoUi
+    }
+    /// Known absent and Known tag: both are original-controller current values.
+    pub fn pragma_language(&self) -> Option<&'a DocumentString> {
+        self.meta.language.map(|slot| {
+            let RetainedPayload::String { value, .. } = &self.storage.payloads.values[slot] else {
+                unreachable!("qualified current language")
+            };
+            value
+        })
+    }
+    pub fn referrer_policy(&self) -> HtmlReferrerPolicy {
+        self.meta.referrer
+    }
+    fn missing(&self, slot: usize) -> MetadataMetaMissing<'a> {
+        MetadataMetaMissing {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+            slot,
+        }
+    }
+    pub fn refresh(&self) -> MetadataMetaRefresh<'a> {
+        match self.meta.gaps[meta::MetaDomain::Refresh.index()] {
+            Some(slot) => MetadataMetaRefresh::Unavailable(self.missing(slot)),
+            None => MetadataMetaRefresh::Known(self.meta.refresh),
+        }
+    }
+    pub fn disposition(&self, domain: meta::MetaDomain) -> MetadataMetaDisposition<'a> {
+        match self.meta.gaps[domain.index()] {
+            Some(slot) => MetadataMetaDisposition::Unavailable(self.missing(slot)),
+            None => MetadataMetaDisposition::Complete,
+        }
+    }
+    pub fn first_missing(&self) -> Option<MetadataMetaMissing<'a>> {
+        self.meta.first.map(|domain| {
+            self.missing(self.meta.gaps[domain.index()].expect("qualified first gap"))
+        })
+    }
+}
 pub struct MetadataBase<'a> {
     value: &'a crate::HtmlBaseUrlRecord,
     document: HtmlNode<'a>,
@@ -813,19 +1008,54 @@ impl<'a> MetadataRef<'a> {
         })
     }
 
-    /// Wrong metadata row is None; a real base with no frozen slot is Some(None).
-    pub fn base_frozen(&self) -> Option<Option<MetadataBase<'a>>> {
-        match self.payload {
-            RetainedPayload::Base { frozen, .. } => {
-                Some(frozen.as_ref().map(|frozen| MetadataBase {
-                    value: &frozen.value,
-                    document: self.native(frozen.document),
-                    revision: frozen.environment.document().revision(),
-                    responded: frozen.response == base::Response::Finished,
-                }))
-            }
-            _ => None,
+    /// Wrong row is None. Unfrozen and unavailable current state are distinct;
+    /// a genuine prior frozen value remains historical inside Unavailable.
+    pub fn base_state(&self) -> Option<MetadataBaseState<'a>> {
+        let RetainedPayload::Base { frozen, .. } = self.payload else {
+            return None;
+        };
+        Some(match frozen {
+            base::BaseValue::Unfrozen => MetadataBaseState::Unfrozen,
+            base::BaseValue::Frozen(value) => MetadataBaseState::Frozen(self.base_view(value)),
+            base::BaseValue::Unavailable { missing, previous } => MetadataBaseState::Unavailable {
+                missing: self.missing_view(*missing),
+                previous: previous.as_ref().map(|value| self.base_view(value)),
+            },
+        })
+    }
+    fn base_view(&self, value: &'a base::FrozenBase) -> MetadataBase<'a> {
+        MetadataBase {
+            value: &value.value,
+            document: self.native(value.document),
+            revision: value.environment.document().revision(),
+            responded: value.response == base::Response::Finished,
         }
+    }
+    fn missing_view(&self, slot: usize) -> MetadataMetaMissing<'a> {
+        MetadataMetaMissing {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+            slot,
+        }
+    }
+    /// Actual per-Document history. No getter traverses the tree or replays Meta.
+    pub fn document_meta(&self) -> Option<MetadataDocumentMeta<'a>> {
+        let RetainedPayload::Document {
+            node: Some(document),
+            meta,
+            ..
+        } = self.payload
+        else {
+            return None;
+        };
+        Some(MetadataDocumentMeta {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+            document: *document,
+            meta,
+        })
     }
     pub fn document_base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
         match self.payload {

@@ -53,6 +53,9 @@ pub use construction::history::{
     HistoryLeaf as HtmlParseHistoryLeaf, HistoryOrigin as HtmlParseHistoryOrigin,
     HistoryReadError as HtmlParseHistoryError, HistoryStep as HtmlParseHistoryStep,
 };
+pub use construction::meta::{
+    MetaDomain as HtmlParseMetaDomain, MetaMissingKind as HtmlParseMetaMissingKind,
+};
 pub use construction::provenance::reverse::{
     AssociationRelation as HtmlParseAssociationRelation, ReverseQueryError as HtmlParseReverseError,
 };
@@ -83,6 +86,12 @@ pub use construction::report::{
     MetadataBase as HtmlParseBase, MetadataCursor as HtmlParseMetadataCursor,
     MetadataDocument as HtmlParseMetadataDocument, MetadataRef as HtmlParseMetadata,
     MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
+};
+pub use construction::report::{
+    MetadataBaseState as HtmlParseBaseState, MetadataDocumentMeta as HtmlParseDocumentMeta,
+    MetadataMetaDisposition as HtmlParseMetaDisposition,
+    MetadataMetaMissing as HtmlParseMetaMissing, MetadataMetaProfile as HtmlParseMetaProfile,
+    MetadataMetaRefresh as HtmlParseMetaRefresh,
 };
 pub use construction::report::{
     MetadataHyperlink as HtmlParseHyperlink, MetadataHyperlinkState as HtmlParseHyperlinkState,

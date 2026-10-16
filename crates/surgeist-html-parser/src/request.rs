@@ -167,7 +167,7 @@ impl HtmlDocumentParseRequest {
         mut self,
         facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
-        self.associated_mut().hyperlinks = facts;
+        self.associated_mut().encoding_urls = facts;
         self
     }
     /// Attests the actual default URL/encoding context of this parse's separately

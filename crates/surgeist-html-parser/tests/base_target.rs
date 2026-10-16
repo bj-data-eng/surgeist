@@ -1,4 +1,5 @@
 use surgeist_html::*;
+use surgeist_html_parser::HtmlParseBaseState;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseFailureReason, HtmlParseLimits,
     HtmlParseMetadataStep, HtmlParseRequestError, HtmlParseResource, HtmlParseStop, HtmlSource,
@@ -277,14 +278,16 @@ fn first_href_binds_decoded_value_and_actual_node_before_later_bases() {
                         assert_eq!(first.unwrap().id(), bases[1]);
                         document_binding = true;
                     }
-                    if let Some(frozen) = record.base_frozen() {
+                    if let Some(frozen) = record.base_state() {
                         let position = bases
                             .iter()
                             .position(|id| *id == record.node().id())
                             .unwrap();
                         seen[position] = true;
                         if position == 1 {
-                            let frozen = frozen.unwrap();
+                            let HtmlParseBaseState::Frozen(frozen) = frozen else {
+                                panic!("actual frozen Base");
+                            };
                             assert!(frozen.responded());
                             assert_eq!(frozen.document().id(), document.root().id());
                             assert_eq!(
@@ -292,7 +295,7 @@ fn first_href_binds_decoded_value_and_actual_node_before_later_bases() {
                                 &DocumentString::from("https://example.test/original/A&B")
                             );
                         } else {
-                            assert!(frozen.is_none());
+                            assert!(matches!(frozen, HtmlParseBaseState::Unfrozen));
                         }
                     }
                 }
@@ -341,7 +344,7 @@ fn failure_blocked_and_forbidden_schemes_freeze_fallback_without_response() {
         loop {
             match metadata.advance() {
                 HtmlParseMetadataStep::Record(record) => {
-                    if let Some(Some(frozen)) = record.base_frozen() {
+                    if let Some(HtmlParseBaseState::Frozen(frozen)) = record.base_state() {
                         count += 1;
                         assert!(!frozen.responded());
                         assert_eq!(

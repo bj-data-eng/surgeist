@@ -56,6 +56,23 @@ CSSOM association disposition is explicitly pending. Construction completion
 therefore does not assert that every semantic observation or downstream
 association is available.
 
+Each source-created Document separately retains actual Meta pragma-language,
+canonical policy-container referrer policy and declarative-refresh history.
+The closed offline profile chooses Do nothing after a successful refresh; it
+performs no navigation or timer work. Shared encoding-URL observation banks serve
+A/Area and Meta with exact source-time base, encoding and independent full revision.
+Missing URL facts leave refresh explicitly unavailable, and an unknown prior flag
+cannot be treated as false. Reached CSSOM preferred-set, CSP, theme CSS/media and
+color-scheme requirements remain distinct unavailable dispositions; structural
+parse success does not certify their execution. Language and referrer updates
+continue where their own inputs are qualified. `document_meta()` lends these
+actual Document-qualified values and the first missing operation without replay.
+A reached unavailable CSP invalidates later required policy-dependent URL/Base
+operations while preserving earlier cached observations. `base_state()` separates
+unfrozen, frozen and unavailable current state, retaining a genuine previous
+frozen value as history. An installer must refuse required unavailable state;
+it cannot substitute target defaults or null.
+
 `retained_construction_bytes()` is the original controller's inclusive retained
 construction payload/capacity receipt. It counts the owned payload Vec's inline
 snapshot header once and adds the provider's checked selected backing; declared

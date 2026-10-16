@@ -49,6 +49,7 @@ mod base;
 mod clone;
 mod input_color;
 mod input_image;
+pub(crate) mod meta;
 pub(crate) mod style;
 #[cfg(test)]
 use input_image::append_native_input_value;
@@ -395,7 +396,7 @@ enum RetainedPayload {
     Base {
         node: Option<usize>,
         domain: base::ResponseDomain,
-        frozen: Option<base::FrozenBase>,
+        frozen: base::BaseValue,
     },
     Shadow {
         root: Option<usize>,
@@ -427,6 +428,13 @@ enum RetainedPayload {
         node: Option<usize>,
         state: template::DocumentState,
         class: crate::HtmlDocumentClass,
+        meta: meta::MetaHistory,
+    },
+    MetaMissing {
+        document: usize,
+        subject: usize,
+        kind: meta::MetaMissingKind,
+        cause: Option<provenance::ConstructionCauseRef>,
     },
     Template {
         node: Option<usize>,
@@ -732,6 +740,7 @@ impl PayloadStorage {
                 | RetainedPayload::Shadow { .. }
                 | RetainedPayload::StandaloneDocumentCompletion { .. }
                 | RetainedPayload::Document { .. }
+                | RetainedPayload::MetaMissing { .. }
                 | RetainedPayload::Template { .. }
                 | RetainedPayload::FormAssociation { .. }
                 | RetainedPayload::Textarea { .. }
@@ -1165,6 +1174,7 @@ impl SessionStorage {
                     node: Some(0),
                     state: template::DocumentState::Ordinary { inert: None },
                     class: crate::HtmlDocumentClass::Html,
+                    meta: meta::MetaHistory::offline(),
                 });
                 session.prepare_payload_slot_owned(control)?;
                 session.payloads.values.push(RetainedPayload::NodeDocument {
@@ -2839,6 +2849,7 @@ impl SessionStorage {
             *element = Some(node.index);
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
+            self.initial_meta_attributes(control, node.index)?;
             self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
             Ok(node)
         })();
@@ -3349,6 +3360,7 @@ impl SessionStorage {
         }
         for position in start..start + count {
             self.initial_nonce_attribute(control, target, position)?;
+            self.initial_meta_attribute(control, target, position)?;
         }
         if base::is_base(
             self.construction
@@ -3936,6 +3948,7 @@ impl SessionStorage {
                 "details",
                 "img",
                 "source",
+                "meta",
             ] {
                 if self.html_local(control, node, name)? {
                     local = true;
@@ -4453,6 +4466,13 @@ impl SessionStorage {
                                 surgeist_html::HtmlImageTreeChange::Inserted
                             },
                             effects.root,
+                            effects.old_parent,
+                        )?;
+                        self.meta_tree_hook(
+                            control,
+                            node,
+                            detached,
+                            effects.stage == FormEffectStage::Removal,
                             effects.old_parent,
                         )?;
                         self.intrinsic_tree_hook(

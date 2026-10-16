@@ -417,6 +417,7 @@ impl SessionStorage {
                     node: None,
                     state: DocumentState::InertTemplate,
                     class,
+                    meta: meta::MetaHistory::offline(),
                 });
                 self.prepare_payload_slot_owned(c)?;
                 let binding = self.payloads.values.len();
