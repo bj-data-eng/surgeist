@@ -2,6 +2,102 @@
 use crate::{DocumentString, KnownHtmlAttribute, Namespace};
 use std::{error::Error, fmt};
 
+/// The explicit processing set of a blocking attribute. Token splitting and
+/// keyword comparison use the same rules as the ordinary value interpreter.
+/// Poll before every cursor step and every keyword header/code-unit read; no
+/// token buffer or normalized string is allocated.
+pub fn blocking_tokens_with<E>(
+    value: Option<&DocumentString>,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<crate::HtmlBlockingTokens, E> {
+    let Some(value) = value else {
+        return Ok(crate::HtmlBlockingTokens::Empty);
+    };
+    let mut cursor = crate::tokens::SpaceTokenCursor::new(value.code_units());
+    loop {
+        step()?;
+        match cursor.step() {
+            crate::tokens::SpaceTokenStep::Continue => {}
+            crate::tokens::SpaceTokenStep::Done => return Ok(crate::HtmlBlockingTokens::Empty),
+            crate::tokens::SpaceTokenStep::Token { start, end } => {
+                if blocking_token_is_render_with(&value.code_units()[start..end], &mut step)? {
+                    return Ok(crate::HtmlBlockingTokens::Render);
+                }
+            }
+        }
+    }
+}
+pub(crate) fn blocking_token_is_render_with<E>(
+    units: &[u16],
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    step()?;
+    if units.len() != 6 {
+        return Ok(false);
+    }
+    for (actual, expected) in units.iter().zip(b"render") {
+        step()?;
+        let actual = *actual;
+        let actual = if (65..=90).contains(&actual) {
+            actual + 32
+        } else {
+            actual
+        };
+        if actual != u16::from(*expected) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The parser relation is an actual identity join supplied by the tree owner,
+/// independently of the Style's historical creation state.
+pub const fn style_is_potentially_render_blocking(
+    explicit: crate::HtmlBlockingTokens,
+    state: HtmlStyleState,
+    created_by_current_document_parser: bool,
+) -> bool {
+    matches!(explicit, crate::HtmlBlockingTokens::Render)
+        || (state.created_by_document_parser() && created_by_current_document_parser)
+}
+
+/// HTML's Document gate for adding render-blocking Elements. Neither a missing
+/// browsing context nor an unavailable body observation supplies these facts.
+pub const fn document_allows_render_blocking(
+    content_type_is_html: bool,
+    body_present: bool,
+) -> bool {
+    content_type_is_html && !body_present
+}
+
+/// Name roles consumed by the actual Document.body tree selection: the first
+/// document Element must be HTML html, then only its direct body/frameset child
+/// is eligible. This value establishes no tree relation or body absence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentBodyRole {
+    Html,
+    Body,
+    Other,
+}
+pub fn document_body_role_with<E>(
+    name: &crate::QualifiedName,
+    mut admit: impl FnMut(crate::bounded::HtmlElementNameRead) -> Result<(), E>,
+) -> Result<HtmlDocumentBodyRole, E> {
+    use crate::native_initialization::{local_matches, namespace_matches};
+    if namespace_matches(name, crate::values::HTML_NAMESPACE_URI, &mut admit)? != Some(true) {
+        return Ok(HtmlDocumentBodyRole::Other);
+    }
+    if local_matches(name, "html", &mut admit)? {
+        Ok(HtmlDocumentBodyRole::Html)
+    } else if local_matches(name, "body", &mut admit)?
+        || local_matches(name, "frameset", &mut admit)?
+    {
+        Ok(HtmlDocumentBodyRole::Body)
+    } else {
+        Ok(HtmlDocumentBodyRole::Other)
+    }
+}
+
 /// Actual intrinsic creation and parser-stack state. This value carries no
 /// parser Document identity or associated CSSOM-sheet readiness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

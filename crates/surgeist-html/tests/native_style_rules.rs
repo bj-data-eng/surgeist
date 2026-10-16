@@ -1,5 +1,100 @@
 use surgeist_html::*;
 #[test]
+fn document_body_roles_use_exact_html_names_and_admit_each_name_read() {
+    for (namespace, local, expected) in [
+        (Namespace::html(), "html", HtmlDocumentBodyRole::Html),
+        (Namespace::html(), "body", HtmlDocumentBodyRole::Body),
+        (Namespace::html(), "frameset", HtmlDocumentBodyRole::Body),
+        (Namespace::html(), "BODY", HtmlDocumentBodyRole::Other),
+        (Namespace::svg(), "body", HtmlDocumentBodyRole::Other),
+        (Namespace::none(), "html", HtmlDocumentBodyRole::Other),
+    ] {
+        let name = QualifiedName::new(namespace, None, local);
+        let mut work = 0;
+        assert_eq!(
+            document_body_role_with(&name, |_| {
+                work += 1;
+                Ok::<_, ()>(())
+            })
+            .unwrap(),
+            expected
+        );
+        for cut in 0..work {
+            let mut spent = 0;
+            assert_eq!(
+                document_body_role_with(&name, |_| {
+                    if spent == cut {
+                        return Err(cut);
+                    }
+                    spent += 1;
+                    Ok(())
+                }),
+                Err(cut)
+            );
+            assert_eq!(spent, cut);
+        }
+    }
+}
+#[test]
+fn explicit_blocking_processing_uses_ascii_space_tokens_and_stops_before_unadmitted_reads() {
+    for (raw, expected) in [
+        (None, HtmlBlockingTokens::Empty),
+        (Some(""), HtmlBlockingTokens::Empty),
+        (Some("other\tReNdEr\nother"), HtmlBlockingTokens::Render),
+        (Some("rendering render\u{a0}"), HtmlBlockingTokens::Empty),
+        (Some("\u{c}render\r"), HtmlBlockingTokens::Render),
+        (Some("rеnder"), HtmlBlockingTokens::Empty),
+    ] {
+        let raw = raw.map(DocumentString::from);
+        let mut work = 0;
+        assert_eq!(
+            blocking_tokens_with(raw.as_ref(), || {
+                work += 1;
+                Ok::<_, ()>(())
+            })
+            .unwrap(),
+            expected
+        );
+        for cut in 0..work {
+            let mut reached = 0;
+            assert_eq!(
+                blocking_tokens_with(raw.as_ref(), || {
+                    if reached == cut {
+                        return Err(cut);
+                    }
+                    reached += 1;
+                    Ok(())
+                }),
+                Err(cut)
+            );
+            assert_eq!(reached, cut);
+        }
+    }
+}
+#[test]
+fn potential_blocking_requires_actual_parser_document_join_and_document_body_gate() {
+    for state in [
+        HtmlStyleState::fresh(),
+        HtmlStyleState::document_parser_created(),
+    ] {
+        for current in [false, true] {
+            assert!(style_is_potentially_render_blocking(
+                HtmlBlockingTokens::Render,
+                state,
+                current
+            ));
+            assert_eq!(
+                style_is_potentially_render_blocking(HtmlBlockingTokens::Empty, state, current),
+                state.created_by_document_parser() && current
+            );
+        }
+    }
+    assert!(document_allows_render_blocking(true, false));
+    assert!(!document_allows_render_blocking(false, false));
+    assert!(!document_allows_render_blocking(true, true));
+    assert!(!document_allows_render_blocking(false, true));
+}
+#[test]
 fn removal_precedes_disconnection_type_and_csp_guards() {
     for stop in 0..3 {
         let mut c = HtmlStyleUpdateCursor::new();

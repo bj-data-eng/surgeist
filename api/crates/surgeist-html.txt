@@ -2088,6 +2088,10 @@ pub fn surgeist_html::HtmlDir::into_attribute(self) -> surgeist_html::Attribute
 pub enum surgeist_html::HtmlDirState
 pub surgeist_html::HtmlDirState::Keyword(surgeist_html::HtmlDir)
 pub surgeist_html::HtmlDirState::Undefined
+pub enum surgeist_html::HtmlDocumentBodyRole
+pub surgeist_html::HtmlDocumentBodyRole::Body
+pub surgeist_html::HtmlDocumentBodyRole::Html
+pub surgeist_html::HtmlDocumentBodyRole::Other
 pub enum surgeist_html::HtmlDocumentMode
 pub surgeist_html::HtmlDocumentMode::LimitedQuirks
 pub surgeist_html::HtmlDocumentMode::NoQuirks
@@ -5621,9 +5625,12 @@ pub fn surgeist_html::VocabularySource::retained_capture_sha256(self) -> &'stati
 pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
+pub fn surgeist_html::blocking_tokens_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlBlockingTokens, E>
 pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState
 pub const fn surgeist_html::default_document_referrer_policy() -> surgeist_html::HtmlReferrerPolicy
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
+pub const fn surgeist_html::document_allows_render_blocking(content_type_is_html: bool, body_present: bool) -> bool
+pub fn surgeist_html::document_body_role_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlDocumentBodyRole, E>
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
 pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
@@ -5653,6 +5660,7 @@ pub const fn surgeist_html::output_default_source(has_override: bool) -> surgeis
 pub fn surgeist_html::reflected_element_attribute_change(reflected: surgeist_html::KnownHtmlAttribute, changed: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
 pub fn surgeist_html::style_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute) -> surgeist_html::HtmlStyleAttributeEffect
+pub const fn surgeist_html::style_is_potentially_render_blocking(explicit: surgeist_html::HtmlBlockingTokens, state: surgeist_html::HtmlStyleState, created_by_current_document_parser: bool) -> bool
 pub fn surgeist_html::style_type_allows_css_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub const fn surgeist_html::style_update_is_required(trigger: surgeist_html::HtmlStyleTrigger) -> bool
 pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument

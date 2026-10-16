@@ -346,7 +346,7 @@ const OBSOLETE: &[(&str, HtmlElementClass)] = &[
     ("frame", HtmlElementClass::HtmlFrame),
 ];
 
-fn namespace_matches<E>(
+pub(crate) fn namespace_matches<E>(
     name: &QualifiedName,
     expected: &str,
     admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,
@@ -367,7 +367,7 @@ fn namespace_matches<E>(
     Ok(Some(true))
 }
 
-fn local_matches<E>(
+pub(crate) fn local_matches<E>(
     name: &QualifiedName,
     expected: &str,
     admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,

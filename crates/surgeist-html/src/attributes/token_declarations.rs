@@ -606,11 +606,12 @@ impl HtmlValueInterpreter {
                 explicit: None,
             });
         }
-        let explicit = if input
-            .tokens()
-            .iter()
-            .any(|t| ascii_keyword_units(t.value().code_units(), "render"))
-        {
+        let explicit = if input.tokens().iter().any(|t| {
+            crate::style::blocking_token_is_render_with(t.value().code_units(), || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .expect("infallible ordinary blocking-token comparison")
+        }) {
             HtmlBlockingTokens::Render
         } else {
             HtmlBlockingTokens::Empty
