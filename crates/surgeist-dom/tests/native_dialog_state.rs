@@ -301,7 +301,7 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
 }
 
 #[test]
-fn actual_parsed_document_history_is_not_reset_when_native_dialog_cleanup_reaches_it() {
+fn actual_parsed_document_history_supports_native_dialog_cleanup_without_resetting_old_snapshots() {
     use std::sync::Arc;
     use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
     use surgeist_html_semantics::{
@@ -377,7 +377,6 @@ fn actual_parsed_document_history_is_not_reset_when_native_dialog_cleanup_reache
     b.set_dialog_return_value(node, "retained");
     apply(&mut dom, b);
     let before = dom.snapshot();
-    let usage = dom.usage();
     assert_eq!(
         before.node(node).unwrap().owner_document(),
         Some(parsed_document)
@@ -390,18 +389,33 @@ fn actual_parsed_document_history_is_not_reset_when_native_dialog_cleanup_reache
     b.set_dialog_return_value(node, "partial");
     // Removal must clean the actual list BEFORE any inactive return.
     b.remove_attribute(node, "open");
+    apply(&mut dom, b);
+    let current = dom.snapshot();
+    assert_ne!(current.stamp(), before.stamp());
     assert_eq!(
-        dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
-        DomError::DialogDocumentStateUnavailable
+        current.node(node).unwrap().owner_document(),
+        Some(parsed_document)
     );
-    assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert_eq!(dom.usage(), usage);
     assert_eq!(
-        dialog(&dom.snapshot(), node).return_value(),
+        dialog(&current, node).return_value(),
+        &DocumentString::from("partial")
+    );
+    assert_eq!(
+        current
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&DocumentString::from("open")),
+        None
+    );
+    closed_services(dialog(&current, node));
+    assert_eq!(
+        dialog(&before, node).return_value(),
         &DocumentString::from("retained")
     );
     assert!(
-        dom.snapshot()
+        before
             .node(node)
             .unwrap()
             .as_element()

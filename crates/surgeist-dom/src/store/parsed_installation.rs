@@ -949,9 +949,13 @@ impl Dom {
             if capture.is_some() {
                 qualify_svg_destination(&metadata)?;
             }
+            let interaction = state::document_interaction(&source, node, &mut c)?;
             let own = Key::Created(draft.created.len());
             let key =
                 draft.allocate(DomNodeKind::Document(metadata), own, self.limits, cancelled)?;
+            // Only this genuinely new owned Document receives its original
+            // qualified history. Captured current Documents are never reset.
+            draft.node_mut(key).interactive_document = Some(interaction);
             source.rows[i].key = Some(key);
         }
         for i in 0..source.rows.len() {

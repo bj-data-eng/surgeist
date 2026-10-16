@@ -853,6 +853,7 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
     ) -> Result<(), SessionError> {
+        self.dialog_tree_hook(c, node, detached, removal)?;
         if base::is_base(
             self.construction
                 .node_at(node)

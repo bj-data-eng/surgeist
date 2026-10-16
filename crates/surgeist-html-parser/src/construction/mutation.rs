@@ -8,6 +8,7 @@ pub(super) enum ManagedFamily {
     Base,
     Link,
     Details,
+    Dialog,
     Input,
 }
 #[cfg(test)]
@@ -17,6 +18,7 @@ impl ManagedFamily {
             Self::Base => "base",
             Self::Link => "link",
             Self::Details => "details",
+            Self::Dialog => "dialog",
             Self::Input => "input",
         }
     }
@@ -24,7 +26,7 @@ impl ManagedFamily {
         match self {
             Self::Base => "target",
             Self::Link => "disabled",
-            Self::Details => "open",
+            Self::Details | Self::Dialog => "open",
             Self::Input => "checked",
         }
     }
@@ -32,6 +34,7 @@ impl ManagedFamily {
 #[cfg(test)]
 #[derive(Clone, Copy)]
 enum ManagedEffect {
+    Dialog,
     BaseHref,
     BaseTarget,
     LinkFlags(Option<crate::HtmlLinkFlags>),
@@ -57,6 +60,7 @@ impl SessionStorage {
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<ManagedEffect>(c, 1)?;
         Ok(match family {
+            ManagedFamily::Dialog => ManagedEffect::Dialog,
             ManagedFamily::Base if local == "href" => ManagedEffect::BaseHref,
             ManagedFamily::Base => ManagedEffect::BaseTarget,
             ManagedFamily::Link => {
@@ -126,6 +130,9 @@ impl SessionStorage {
         effect: ManagedEffect,
     ) -> Result<(), SessionError> {
         match effect {
+            // The generic actual backing owner already ran the exact Dialog
+            // hook, including equal writes and removed attributes.
+            ManagedEffect::Dialog => Ok(()),
             ManagedEffect::BaseHref => self.base_change(c, node, None, true),
             ManagedEffect::BaseTarget => Ok(()),
             ManagedEffect::LinkFlags(flags) => {
@@ -377,6 +384,7 @@ impl SessionStorage {
         })();
         drop(incoming);
         replace?;
+        self.dialog_attribute_at(c, node, position, true)?;
         Ok(())
     }
     pub(super) fn remove_managed_field(
@@ -510,6 +518,9 @@ impl SessionStorage {
             shared,
             element,
         });
+        if local == "open" {
+            self.dialog_open_changed(c, node, true, false)?;
+        }
         if base::is_base(
             self.construction
                 .node_at(node)

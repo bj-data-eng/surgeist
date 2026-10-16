@@ -110,6 +110,18 @@ and imports; independently parsed Documents get different origins even for the
 same supplied source/capture. Ordinary reports and inert/captured Documents cannot
 issue this distinct constructor descriptor.
 
+Dialog metadata lends the original controller's current return value separately
+from content attributes and its closed-service or first-unfulfilled-operation
+disposition. The original creation, clone, exact open-change and tree hooks
+consume HTML's shared Dialog cursor. Document interaction metadata belongs to
+each actual owned Document; it records the constructor and admitted transition
+history rather than inferring empty lists from final markup. Captured Documents
+are never certified to have empty historical lists. A newly created Dialog's
+proved nonmembership can support its cleanup without certifying unrelated
+members. Reached missing activity or services retain their actual subject,
+Document, action and cause; no successful host operation is invented. These
+fixed metadata reads do not replay processing or grant hosted Dialog services.
+
 `retained_construction_bytes()` is the original controller's inclusive retained
 construction payload/capacity receipt. It counts the owned payload Vec's inline
 snapshot header once and adds the provider's checked selected backing; declared

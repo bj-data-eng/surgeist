@@ -165,6 +165,12 @@ pub enum DomParsedHtmlInstallError {
     ImageActivityUnavailable {
         subject: HtmlNodeId,
     },
+    /// First unfulfilled original Dialog operation. Its exact Document and cause
+    /// remain available from the qualified immutable report metadata.
+    DialogStateUnavailable {
+        subject: HtmlNodeId,
+        action: surgeist_html::HtmlDialogAction,
+    },
     SourceLookup {
         subject: HtmlNodeId,
         error: surgeist_html::ForeignHtmlResult,

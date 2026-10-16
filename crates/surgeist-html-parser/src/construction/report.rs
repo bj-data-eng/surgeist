@@ -91,6 +91,28 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                     associated_usage.checked_sum(state.diagnostic_usage(), c)?;
                 }
+                RetainedPayload::Dialog { node, state } => {
+                    checked_raw(storage, state.value, c)?;
+                    let HtmlNodeKind::Element(element) =
+                        arena.node_at(*node).ok_or(SessionError::WrongToken)?.kind()
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    if !exact_ascii(
+                        c,
+                        element.name().namespace().uri(),
+                        "http://www.w3.org/1999/xhtml",
+                    )? || !exact_ascii(c, Some(element.name().local_name()), "dialog")?
+                    {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(missing) = &state.first {
+                        checked_dialog_missing(storage, missing, c)?;
+                        if missing.subject != *node {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                }
                 RetainedPayload::Style { node, state } => {
                     let HtmlNodeKind::Element(element) =
                         arena.node_at(*node).ok_or(SessionError::WrongToken)?.kind()
@@ -351,6 +373,9 @@ impl<'a> PreparedReportStorage<'a> {
                             surgeist_html::HtmlElementClass::KnownHtml(
                                 surgeist_html::KnownHtmlElement::Style,
                             ) => 3,
+                            surgeist_html::HtmlElementClass::KnownHtml(
+                                surgeist_html::KnownHtmlElement::Dialog,
+                            ) => 4,
                             _ => 0,
                         };
                         if family != 0 {
@@ -360,7 +385,8 @@ impl<'a> PreparedReportStorage<'a> {
                                 if matches!((family, candidate),
                                     (1, RetainedPayload::Hyperlink { node, .. })
                                     | (2, RetainedPayload::Image {node, ..})
-                                    | (3, RetainedPayload::Style {node, ..}) if *node == subject)
+                                    | (3, RetainedPayload::Style {node, ..})
+                                    | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
                                 {
                                     count += 1;
                                 }
@@ -395,9 +421,19 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                 }
                 RetainedPayload::Document {
-                    node, state, meta, ..
+                    node,
+                    state,
+                    meta,
+                    interaction,
+                    ..
                 } => {
                     let document = node.ok_or(SessionError::WrongToken)?;
+                    if let Some(missing) = &interaction.first {
+                        checked_dialog_missing(storage, missing, c)?;
+                        if missing.document != DocumentRef::Owned(document) {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
                     if let template::DocumentState::Ordinary { inert: Some(inert) } = state {
                         checked_node(arena, *inert, c)?;
                     }
@@ -566,6 +602,25 @@ fn checked_raw(
     c.require_document_string(allocation, value)?;
     Ok(())
 }
+fn checked_dialog_missing(
+    storage: &FrozenStorage,
+    missing: &dialog::Missing,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    checked_node(arena(storage), missing.subject, c)?;
+    checked_document(storage, &missing.document, c)?;
+    c.charge(WorkCategory::RecordVisit, 1)?;
+    if let Some(cause) = &missing.cause
+        && storage
+            .evidence
+            .as_ref()
+            .and_then(|e| e.retained_cause(cause))
+            .is_none()
+    {
+        return Err(SessionError::WrongToken);
+    }
+    Ok(())
+}
 fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
     match payload {
         // Notification eligibility is a parser proof, not authored state.
@@ -576,7 +631,8 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         | RetainedPayload::BaseDocument { node, .. }
         | RetainedPayload::Hyperlink { node, .. }
         | RetainedPayload::Image { node, .. }
-        | RetainedPayload::Style { node, .. } => Some(*node),
+        | RetainedPayload::Style { node, .. }
+        | RetainedPayload::Dialog { node, .. } => Some(*node),
         RetainedPayload::Base { node, .. }
         | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::LookupRegistry { node, .. }
@@ -690,6 +746,104 @@ pub struct MetadataRef<'a> {
 pub enum MetadataDocument<'a> {
     Owned(HtmlNode<'a>),
     Captured(crate::HtmlCapturedNode<'a>),
+}
+/// Current source-qualified closed-services prefix, or its first real gap.
+/// Closed does not assert that the Dialog lacks an open content attribute.
+pub enum MetadataDialogDisposition<'a> {
+    Closed,
+    Unavailable(MetadataDialogMissing<'a>),
+}
+pub struct MetadataDialogMissing<'a> {
+    history: &'a FrozenHistory,
+    storage: &'a FrozenStorage,
+    arena: &'a HtmlConstructionResult,
+    missing: &'a dialog::Missing,
+}
+impl<'a> MetadataDialogMissing<'a> {
+    pub fn subject(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(self.missing.subject)
+            .expect("qualified missing subject")
+            .as_node()
+    }
+    pub fn document(&self) -> MetadataDocument<'a> {
+        match &self.missing.document {
+            DocumentRef::Owned(node) => MetadataDocument::Owned(
+                self.arena
+                    .node_at(*node)
+                    .expect("qualified Document")
+                    .as_node(),
+            ),
+            DocumentRef::Captured(document) => MetadataDocument::Captured(
+                self.storage
+                    .fragment
+                    .as_ref()
+                    .expect("qualified context")
+                    .context
+                    .capture()
+                    .node(document.subject())
+                    .expect("qualified captured Document"),
+            ),
+        }
+    }
+    pub fn action(&self) -> surgeist_html::HtmlDialogAction {
+        self.missing.action
+    }
+    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+        self.missing.cause.as_ref().map(|cause| {
+            read::HtmlParseCause::qualified(
+                self.history,
+                self.storage
+                    .evidence
+                    .as_ref()
+                    .and_then(|e| e.retained_cause(cause))
+                    .expect("qualified Dialog cause"),
+            )
+        })
+    }
+}
+struct DialogDispositionRef<'a> {
+    history: &'a FrozenHistory,
+    storage: &'a FrozenStorage,
+    arena: &'a HtmlConstructionResult,
+    missing: Option<&'a dialog::Missing>,
+}
+impl<'a> DialogDispositionRef<'a> {
+    fn view(&self) -> MetadataDialogDisposition<'a> {
+        match self.missing {
+            None => MetadataDialogDisposition::Closed,
+            Some(missing) => MetadataDialogDisposition::Unavailable(MetadataDialogMissing {
+                history: self.history,
+                storage: self.storage,
+                arena: self.arena,
+                missing,
+            }),
+        }
+    }
+}
+pub struct MetadataDialog<'a> {
+    value: &'a DocumentString,
+    disposition: DialogDispositionRef<'a>,
+}
+impl<'a> MetadataDialog<'a> {
+    pub fn return_value(&self) -> &'a DocumentString {
+        self.value
+    }
+    pub fn disposition(&self) -> MetadataDialogDisposition<'a> {
+        self.disposition.view()
+    }
+}
+pub struct MetadataDocumentInteraction<'a> {
+    document: HtmlNode<'a>,
+    disposition: DialogDispositionRef<'a>,
+}
+impl<'a> MetadataDocumentInteraction<'a> {
+    pub fn document(&self) -> HtmlNode<'a> {
+        self.document
+    }
+    pub fn disposition(&self) -> MetadataDialogDisposition<'a> {
+        self.disposition.view()
+    }
 }
 pub struct MetadataTemplate<'a> {
     pub(crate) contents: HtmlNode<'a>,
@@ -976,6 +1130,40 @@ impl<'a> MetadataRef<'a> {
         Some(surgeist_html::HtmlCommonState::closed(state.common_scope))
     }
 
+    fn dialog_disposition(&self, missing: Option<&'a dialog::Missing>) -> DialogDispositionRef<'a> {
+        DialogDispositionRef {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+            missing,
+        }
+    }
+    /// Fixed current Dialog state issued by the actual original controller.
+    pub fn dialog(&self) -> Option<MetadataDialog<'a>> {
+        let RetainedPayload::Dialog { state, .. } = self.payload else {
+            return None;
+        };
+        Some(MetadataDialog {
+            value: self.raw(state.value),
+            disposition: self.dialog_disposition(state.first.as_ref()),
+        })
+    }
+    /// Interaction history of this actual newly owned Document, not a captured
+    /// target's whole list state and not native-constructor evidence.
+    pub fn document_interaction(&self) -> Option<MetadataDocumentInteraction<'a>> {
+        let RetainedPayload::Document {
+            node: Some(node),
+            interaction,
+            ..
+        } = self.payload
+        else {
+            return None;
+        };
+        Some(MetadataDocumentInteraction {
+            document: self.native(*node),
+            disposition: self.dialog_disposition(interaction.first.as_ref()),
+        })
+    }
     pub fn style(&self) -> Option<MetadataStyle<'a>> {
         let RetainedPayload::Style { state, .. } = self.payload else {
             return None;

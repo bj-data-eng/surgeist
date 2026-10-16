@@ -40,8 +40,10 @@ use surgeist_html::bounded::{
 };
 use surgeist_html::*;
 
+mod activity;
 mod attribute_writer;
 mod construction_owner;
+mod dialog;
 use crate::bounded::HtmlConstructionAttributeEditMode;
 use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_slot};
 pub(crate) mod associated;
@@ -373,6 +375,10 @@ enum RetainedPayload {
         inputs: Arc<associated::Inputs>,
         usage: associated::AssociatedStorageUsage,
     },
+    Dialog {
+        node: usize,
+        state: dialog::DialogMetadata,
+    },
     Style {
         node: usize,
         state: style::StyleMetadata,
@@ -430,6 +436,7 @@ enum RetainedPayload {
         state: template::DocumentState,
         class: crate::HtmlDocumentClass,
         meta: meta::MetaHistory,
+        interaction: dialog::InteractionHistory,
     },
     MetaMissing {
         document: usize,
@@ -755,6 +762,7 @@ impl PayloadStorage {
                 | RetainedPayload::AssociatedInputs { .. }
                 | RetainedPayload::Hyperlink { .. }
                 | RetainedPayload::Image { .. }
+                | RetainedPayload::Dialog { .. }
                 | RetainedPayload::Style { .. }
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
@@ -1176,6 +1184,7 @@ impl SessionStorage {
                     state: template::DocumentState::Ordinary { inert: None },
                     class: crate::HtmlDocumentClass::Html,
                     meta: meta::MetaHistory::offline(),
+                    interaction: dialog::InteractionHistory::new(),
                 });
                 session.prepare_payload_slot_owned(control)?;
                 session.payloads.values.push(RetainedPayload::NodeDocument {
@@ -3362,6 +3371,7 @@ impl SessionStorage {
         for position in start..start + count {
             self.initial_nonce_attribute(control, target, position)?;
             self.initial_meta_attribute(control, target, position)?;
+            self.initial_dialog_attribute(control, target, position)?;
         }
         if base::is_base(
             self.construction
@@ -3947,6 +3957,7 @@ impl SessionStorage {
                 "selectedcontent",
                 "script",
                 "details",
+                "dialog",
                 "img",
                 "source",
                 "meta",
@@ -22161,8 +22172,11 @@ mod tests {
         let (setup, complete) = run(None);
         let envelope = complete - setup;
         eprintln!("controlled complete named merge coverage envelope: {envelope}");
+        // This bounds harness runtime, not the semantic tariff. Retained
+        // representation growth and newly admitted hooks can increase the real
+        // complete envelope; every actual setup..complete cut is still tested.
         assert!(
-            envelope <= 32768,
+            envelope <= 65536,
             "finite coverage bound; literal fields/backings are the oracle"
         );
         // Every actual work cut spans borrowed planning (Tag still occupied),

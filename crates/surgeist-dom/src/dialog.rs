@@ -1,4 +1,4 @@
-//! Canonical native Dialog values for the admitted closed operation domain.
+//! Canonical Dialog values for the admitted closed operation domain.
 //!
 //! Ordinary open/tree hooks and returnValue assignment cannot create modal,
 //! watcher, queued-task or request-close state. Positive show/close/hosted service
@@ -13,6 +13,14 @@ struct ClosedDialogServices;
 impl ClosedDialogServices {
     fn from_fresh(_: surgeist_html::HtmlDialogFreshState) -> Self {
         Self
+    }
+    fn from_parsed<'a>(
+        disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
+    ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
+        match disposition {
+            surgeist_html_parser::HtmlParseDialogDisposition::Closed => Ok(Self),
+            surgeist_html_parser::HtmlParseDialogDisposition::Unavailable(missing) => Err(missing),
+        }
     }
     const fn is_modal(self) -> bool {
         false
@@ -42,6 +50,18 @@ impl DomDialogState {
             return_value: fresh.return_value().into(),
             services: ClosedDialogServices::from_fresh(fresh),
         }
+    }
+    /// Transfers the original controller's current state, never native fresh
+    /// initialization. The caller admits the independent string occurrence.
+    pub(crate) fn from_parsed<'a>(
+        return_value: DocumentString,
+        disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
+    ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
+        let services = ClosedDialogServices::from_parsed(disposition)?;
+        Ok(Self {
+            return_value,
+            services,
+        })
     }
     pub(crate) fn return_value(&self) -> &DocumentString {
         &self.return_value
@@ -108,8 +128,9 @@ impl<'a> DomDialog<'a> {
 /// The one Document-owned managed state, independent of each Dialog and of the
 /// Runtime task owner. None at the Node level means non-Document; Unavailable
 /// means a Document whose actual retained history has not established these lists.
-/// Current native constructors establish known empty lists. Positive hosted
-/// operations must consume the same canonical lists, never a second top layer.
+/// Native constructors and qualified original parser history establish known
+/// empty lists. Positive hosted operations must consume these same canonical
+/// lists, never a second top layer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum DocumentInteractiveState<K> {
     Known {
@@ -119,6 +140,18 @@ pub(crate) enum DocumentInteractiveState<K> {
     Unavailable,
 }
 impl<K> DocumentInteractiveState<K> {
+    /// Called only for a genuinely new owned Document whose exact report row
+    /// establishes its complete noninteraction prefix. This never qualifies an
+    /// existing captured Document or resets its historical list contents.
+    pub(crate) fn from_parsed<'a>(
+        disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
+    ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
+        ClosedDialogServices::from_parsed(disposition)?;
+        Ok(Self::Known {
+            open_dialogs: Vec::new(),
+            top_layer: Vec::new(),
+        })
+    }
     pub(crate) fn native_closed() -> Self {
         Self::Known {
             open_dialogs: Vec::new(),

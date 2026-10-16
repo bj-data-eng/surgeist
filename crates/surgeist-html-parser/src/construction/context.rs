@@ -251,6 +251,7 @@ impl SessionStorage {
             state: template::DocumentState::InertTemplate,
             class,
             meta: meta::MetaHistory::offline(),
+            interaction: dialog::InteractionHistory::new(),
         });
         self.prepare_payload_slot_owned(c)?;
         let binding = self.payloads.values.len();

@@ -842,3 +842,108 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
     assert_eq!(control.work, 0);
     assert_eq!(*dom.state, *before.state);
 }
+
+#[test]
+fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_atomic() {
+    use crate::dialog::DocumentInteractiveState;
+    let cancel = AtomicBool::new(false);
+    let mut dom =
+        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let environment = environment(&mut dom);
+    let report = report_for(
+        "<!doctype html><dialog open returnvalue=content></dialog><template><dialog open></dialog></template>",
+    );
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let full = Limits::new(256, 10_000_000, 16_000_000, 100_000_000);
+    let pending = dom
+        .prepare_parsed_html_installation(
+            before.stamp(),
+            report.clone(),
+            environment.clone(),
+            full,
+            &cancel,
+        )
+        .unwrap();
+    let mut documents = 0;
+    let mut dialogs = 0;
+    for binding in &pending.bindings {
+        let node = pending
+            .prepared
+            .state
+            .node(dom.owner, binding.node())
+            .unwrap();
+        if matches!(node.kind, DomNodeKind::Document(_)) {
+            documents += 1;
+            let Some(DocumentInteractiveState::Known {
+                open_dialogs,
+                top_layer,
+            }) = &node.interactive_document
+            else {
+                panic!("each actual new root/inert Document has original qualified history");
+            };
+            assert!(open_dialogs.is_empty());
+            assert!(top_layer.is_empty());
+        }
+        if let DomNodeKind::Element(element) = &node.kind
+            && let Some(dialog) = element.dialog_state()
+        {
+            dialogs += 1;
+            assert_eq!(dialog.return_value().code_units(), []);
+            assert!(!dialog.is_modal());
+            assert!(!dialog.has_close_watcher());
+        }
+    }
+    assert_eq!(documents, 2);
+    assert_eq!(dialogs, 2);
+    let work = pending.admitted_work;
+    let scratch = pending.admitted_scratch_bytes;
+    let mapped = pending.bindings.len();
+    assert!(matches!(
+        dom.publish_parsed_html_installation(pending, &AtomicBool::new(true)),
+        Err(Error::Cancelled)
+    ));
+    assert_eq!(*dom.state, *before.state);
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+    for (limits, resource) in [
+        (
+            Limits::new(mapped - 1, work, scratch, 100_000_000),
+            Resource::MappedNodes,
+        ),
+        (
+            Limits::new(mapped, work - 1, scratch, 100_000_000),
+            Resource::Work,
+        ),
+        (
+            Limits::new(mapped, work, scratch - 1, 100_000_000),
+            Resource::ScratchBytes,
+        ),
+    ] {
+        assert!(matches!(
+            dom.prepare_parsed_html_installation(before.stamp(), report.clone(), environment.clone(), limits, &cancel),
+            Err(Error::ResourceLimit { resource: actual, .. }) if actual == resource
+        ));
+        assert_eq!(*dom.state, *before.state);
+        assert_eq!(dom.usage(), usage);
+    }
+    let exact = dom
+        .prepare_parsed_html_installation(
+            before.stamp(),
+            report,
+            environment,
+            Limits::new(mapped, work, scratch, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let installed = dom
+        .publish_parsed_html_installation(exact, &cancel)
+        .unwrap();
+    assert_eq!(installed.bindings().len(), mapped);
+    assert_ne!(installed.snapshot().stamp(), before.stamp());
+}

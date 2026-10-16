@@ -1313,7 +1313,17 @@ state in detached fragment or Template contents. Installation does not replay
 processing; later explicit canonical insertion uses the actual connection rule.
 Captured target, auxiliary parser and inert-template Documents keep their
 distinct identities and historical bindings. This grants no acquisition,
-execution or load/error notification capability. Other report profiles and
+execution or load/error notification capability.
+
+Parsed Dialog transfer consumes the original controller's retained current
+return value and closed-service qualification, independently of content
+attributes. Newly owned Documents transfer their own qualified interaction
+history; captured target Documents retain their existing lists. An unfulfilled
+original Dialog operation refuses installation with its subject and action,
+while its Document and cause remain in the immutable report. Materialization
+does not replay hooks. Later canonical open changes, removal and insertion run
+the ordinary hooks against the then-current node Document. This does not grant
+hosted show/close, focus, watcher or top-layer services. Other report profiles and
 missing family state remain under
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
 

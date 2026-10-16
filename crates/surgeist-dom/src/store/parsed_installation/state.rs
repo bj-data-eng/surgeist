@@ -18,6 +18,30 @@ fn missing_meta(value: surgeist_html_parser::HtmlParseMetaMissing<'_>) -> Error 
     }
 }
 
+fn missing_dialog(value: &surgeist_html_parser::HtmlParseDialogMissing<'_>) -> Error {
+    Error::DialogStateUnavailable {
+        subject: value.subject().id(),
+        action: value.action(),
+    }
+}
+
+pub(super) fn document_interaction(
+    source: &Source<'_>,
+    node: HtmlNode<'_>,
+    c: &mut Control<'_>,
+) -> Result<crate::dialog::DocumentInteractiveState<Key>, Error> {
+    let view = required(
+        source.observation(&node.id(), c, |r| r.document_interaction())?,
+        node,
+    )?;
+    c.step(1)?;
+    if view.document().id() != node.id() {
+        return Err(Error::UnsupportedState { subject: node.id() });
+    }
+    crate::dialog::DocumentInteractiveState::from_parsed(view.disposition())
+        .map_err(|missing| missing_dialog(&missing))
+}
+
 /// Qualify original per-Document processing before canonical allocation. The
 /// destination constructor independently establishes its current association
 /// environment; the source's offline profile never supplies that witness.
@@ -625,6 +649,26 @@ fn family(
         Requirement::KnownHtml(Element::Template) => {
             required(source.observation(&node.id(), c, |r| r.template())?, node)?;
             NativeFamily::Template
+        }
+        Requirement::KnownHtml(Element::Dialog) => {
+            let view = required(source.observation(&node.id(), c, |r| r.dialog())?, node)?;
+            c.step(1)?;
+            let disposition = view.disposition();
+            if let surgeist_html_parser::HtmlParseDialogDisposition::Unavailable(missing) =
+                &disposition
+            {
+                return Err(missing_dialog(missing));
+            }
+            // Qualify before retaining the shared value; its actual canonical
+            // occurrence is admitted by the existing string/kind allocation.
+            c.string(view.return_value())?;
+            NativeFamily::Dialog(Arc::new(
+                crate::dialog::DomDialogState::from_parsed(
+                    view.return_value().clone(),
+                    disposition,
+                )
+                .map_err(|missing| missing_dialog(&missing))?,
+            ))
         }
         Requirement::KnownHtml(Element::Details) => NativeFamily::Details,
         Requirement::KnownHtml(Element::Meta) => NativeFamily::Meta,

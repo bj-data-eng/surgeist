@@ -84,7 +84,9 @@ pub use construction::read::{
 };
 pub use construction::report::{
     MetadataBase as HtmlParseBase, MetadataCursor as HtmlParseMetadataCursor,
-    MetadataDocument as HtmlParseMetadataDocument, MetadataRef as HtmlParseMetadata,
+    MetadataDialog as HtmlParseDialog, MetadataDialogDisposition as HtmlParseDialogDisposition,
+    MetadataDialogMissing as HtmlParseDialogMissing, MetadataDocument as HtmlParseMetadataDocument,
+    MetadataDocumentInteraction as HtmlParseDocumentInteraction, MetadataRef as HtmlParseMetadata,
     MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
 };
 pub use construction::report::{

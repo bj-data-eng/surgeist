@@ -3912,3 +3912,439 @@ fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
     assert_eq!(node.as_dialog().unwrap().return_value().code_units(), []);
     assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
 }
+
+#[test]
+fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_history() {
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><dialog id=outer open></dialog><template><dialog id=inner open></dialog></template>",
+    ));
+    let (mut dom, environment) = setup();
+    let result = install(&mut dom, report, environment);
+    let initial = result.snapshot().clone();
+    let template = element(&result, "template");
+    let contents = initial
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inner = initial.node(contents).unwrap().children()[0];
+    let inert = initial.node(contents).unwrap().owner_document().unwrap();
+    assert_ne!(inert, result.document());
+    assert_eq!(initial.node(inner).unwrap().owner_document(), Some(inert));
+    assert_eq!(initial.node(inner).unwrap().parent(), Some(contents));
+    assert_eq!(
+        initial
+            .node(inner)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"id".into()),
+        Some(&"inner".into())
+    );
+    assert_eq!(
+        initial
+            .node(inner)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value()
+            .code_units(),
+        []
+    );
+    assert_parsed_dialog_closed_services(initial.node(inner).unwrap().as_dialog().unwrap());
+    let source = result
+        .bindings()
+        .iter()
+        .find(|b| b.node() == inner)
+        .unwrap()
+        .source()
+        .clone();
+    let exact = DocumentString::from_utf16(vec![0xd800, 13, 10, 0xdc00]);
+    let mut batch = DomBatch::new();
+    batch.set_dialog_return_value(inner, exact.clone());
+    // Adoption removes an open Dialog from the actual inert owner first.
+    batch.adopt(inner, result.document());
+    batch.insert_before(inner, element(&result, "body"), None);
+    batch.remove_attribute(inner, "open");
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let current = dom.snapshot();
+    assert_eq!(
+        current.node(inner).unwrap().owner_document(),
+        Some(result.document())
+    );
+    assert_eq!(
+        current
+            .node(inner)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value(),
+        &exact
+    );
+    assert_eq!(
+        current
+            .node(inner)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into()),
+        None
+    );
+    assert!(current.node(contents).unwrap().children().is_empty());
+    assert_parsed_dialog_closed_services(current.node(inner).unwrap().as_dialog().unwrap());
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&DomChange::NodeDocument(inner))
+    );
+    assert_eq!(result.node_for(&source), Some(inner));
+    assert_eq!(initial.node(inner).unwrap().owner_document(), Some(inert));
+    assert_eq!(
+        initial
+            .node(inner)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value()
+            .code_units(),
+        []
+    );
+    assert!(
+        initial
+            .node(inner)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+    assert_eq!(initial.node(contents).unwrap().children(), &[inner]);
+}
+
+#[test]
+fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_later_hooks() {
+    let (mut dom, _, document, host) = fragment_fixture("div");
+    let mut batch = DomBatch::new();
+    let existing = batch.create_element_ns(document, Namespace::html(), "dialog");
+    batch.set_dialog_return_value(&existing, "pre-existing");
+    batch.set_attribute(&existing, "open", "");
+    batch.insert_before(&existing, host, None);
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let existing = commit.created(&existing).unwrap().unwrap();
+    let before = dom.snapshot();
+    let capture = before
+        .html_capture(
+            document,
+            None,
+            surgeist_html_semantics::HtmlCaptureLimits::new(
+                1024, 4096, 4096, 1_000_000, 1024, 0, 0,
+            ),
+            DomHtmlCaptureLimits::new(1024, 1_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    // Style supplies a real retained parser-Document association. It stays
+    // detached: later ordinary operations below move only the Dialog subtree.
+    let report = fragment_report(
+        &capture,
+        host,
+        HtmlSource::utf8(
+            "<dialog open id=root><dialog open id=nested></dialog></dialog><style>a{}</style>",
+        ),
+        false,
+    );
+    let parser_document = report.fragment_parser_document().unwrap().document().id();
+    let source_root = report.fragment().unwrap().root().id();
+    let installed = dom
+        .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
+        .unwrap();
+    let initial = installed.snapshot().clone();
+    assert_eq!(installed.document(), document);
+    assert_eq!(installed.context_basis(), Some(capture.basis()));
+    assert_eq!(installed.node_for(&source_root), Some(installed.root()));
+    assert_eq!(
+        installed.captured_node_for(&capture.subject(host).unwrap()),
+        Some(host)
+    );
+    assert_eq!(
+        installed.captured_node_for(&capture.subject(document.node()).unwrap()),
+        Some(document.node())
+    );
+    assert_eq!(initial.node(installed.root()).unwrap().parent(), None);
+    assert_eq!(initial.node(host).unwrap().children(), &[existing]);
+    let root = initial.node(installed.root()).unwrap().children()[0];
+    let nested = initial.node(root).unwrap().children()[0];
+    let auxiliary = installed
+        .node_for(&parser_document)
+        .expect("actual retained Style parser Document");
+    assert_ne!(auxiliary, document.node());
+    assert!(initial.node(auxiliary).unwrap().as_document().is_some());
+    for node in [root, nested] {
+        assert_eq!(initial.node(node).unwrap().owner_document(), Some(document));
+        assert_eq!(
+            initial
+                .node(node)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .return_value()
+                .code_units(),
+            []
+        );
+        assert_parsed_dialog_closed_services(initial.node(node).unwrap().as_dialog().unwrap());
+    }
+    let mut batch = DomBatch::new();
+    batch.insert_before(root, host, None);
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let connected = dom.snapshot();
+    assert!(connected.node(root).unwrap().is_connected());
+    assert!(connected.node(nested).unwrap().is_connected());
+    let mut batch = DomBatch::new();
+    batch.detach(root);
+    batch.remove_attribute(nested, "open");
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let current = dom.snapshot();
+    assert!(!current.node(root).unwrap().is_connected());
+    assert!(!current.node(nested).unwrap().is_connected());
+    assert_eq!(current.node(root).unwrap().owner_document(), Some(document));
+    assert_eq!(
+        current
+            .node(nested)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into()),
+        None
+    );
+    assert_eq!(current.node(host).unwrap().children(), &[existing]);
+    assert_eq!(
+        current
+            .node(existing)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value(),
+        &"pre-existing".into()
+    );
+    assert!(
+        current
+            .node(existing)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+    assert_eq!(initial.node(root).unwrap().parent(), Some(installed.root()));
+    assert_eq!(initial.node(nested).unwrap().parent(), Some(root));
+    assert!(
+        initial
+            .node(nested)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+    assert_eq!(
+        before
+            .node(existing)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value(),
+        &"pre-existing".into()
+    );
+}
+
+#[test]
+fn actual_selectedcontent_dialog_clone_has_distinct_original_metadata_and_current_identity() {
+    use surgeist_html_parser::{HtmlParseDialogDisposition, HtmlParseMetadataStep};
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><dialog open data-copy=literal></dialog></option></select>",
+    ));
+    let (mut dom, environment) = setup();
+    let result = install(&mut dom, report.clone(), environment);
+    let mut pair = Vec::new();
+    for binding in result.bindings() {
+        let node = result.snapshot().node(binding.node()).unwrap();
+        let Some(dialog) = node.as_dialog() else {
+            continue;
+        };
+        let Some(parent) = node
+            .parent()
+            .and_then(|p| result.snapshot().node(p).unwrap().as_element())
+        else {
+            continue;
+        };
+        let local = parent.name().local_name();
+        if local != &DocumentString::from("option")
+            && local != &DocumentString::from("selectedcontent")
+        {
+            continue;
+        }
+        assert_eq!(dialog.return_value().code_units(), []);
+        assert_parsed_dialog_closed_services(dialog);
+        assert_eq!(
+            node.as_element().unwrap().attribute(&"data-copy".into()),
+            Some(&"literal".into())
+        );
+        assert!(
+            node.as_element()
+                .unwrap()
+                .attribute(&"open".into())
+                .is_some()
+        );
+        pair.push((local.clone(), binding.source().clone(), node.id()));
+    }
+    assert_eq!(
+        pair.len(),
+        2,
+        "actual original and selectedcontent clone must both exist"
+    );
+    let original = pair
+        .iter()
+        .find(|p| p.0 == DocumentString::from("option"))
+        .unwrap();
+    let copy = pair
+        .iter()
+        .find(|p| p.0 == DocumentString::from("selectedcontent"))
+        .unwrap();
+    assert_ne!(original.1, copy.1);
+    assert_ne!(original.2, copy.2);
+    for (_, source, canonical) in &pair {
+        assert_eq!(result.node_for(source), Some(*canonical));
+        let mut metadata = report.metadata();
+        let mut observed = false;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(row) if row.node().id() == *source => {
+                    if let Some(state) = row.dialog() {
+                        assert!(matches!(
+                            state.disposition(),
+                            HtmlParseDialogDisposition::Closed
+                        ));
+                        assert_eq!(state.return_value().code_units(), []);
+                        observed = true;
+                    }
+                }
+                HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        assert!(
+            observed,
+            "each actual clone identity needs its own current Dialog row"
+        );
+    }
+    let mut batch = DomBatch::new();
+    batch.set_dialog_return_value(original.2, "later original only");
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert_eq!(
+        dom.snapshot()
+            .node(original.2)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value(),
+        &"later original only".into()
+    );
+    assert_eq!(
+        dom.snapshot()
+            .node(copy.2)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value()
+            .code_units(),
+        []
+    );
+    assert_eq!(
+        result
+            .snapshot()
+            .node(original.2)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .return_value()
+            .code_units(),
+        []
+    );
+}
+
+#[test]
+fn dialog_bearing_report_refusal_and_cancellation_leave_maps_unpublished_then_recover() {
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><dialog open><span>bounded</span></dialog>",
+    ));
+    let (mut dom, environment) = setup();
+    let control = install(&mut dom, report.clone(), environment.clone());
+    // The high-budget real flow establishes the actual mapped-node admission
+    // requirement; this is setup, not an independently predicted parser tariff.
+    let required = control.bindings().len();
+    assert!(required > 1);
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert!(matches!(
+        dom.install_parsed_html_document(
+            before.stamp(),
+            report.clone(),
+            environment.clone(),
+            limits(),
+            &AtomicBool::new(true),
+        ),
+        Err(DomParsedHtmlInstallError::Cancelled)
+    ));
+    assert!(matches!(
+        dom.install_parsed_html_document(
+            before.stamp(),
+            report.clone(),
+            environment.clone(),
+            DomParsedHtmlInstallLimits::new(required - 1, 10_000_000, 16_000_000, 100_000_000),
+            &AtomicBool::new(false),
+        ),
+        Err(DomParsedHtmlInstallError::ResourceLimit {
+            resource: DomParsedHtmlInstallResource::MappedNodes,
+            ..
+        })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+    let recovered = dom
+        .install_parsed_html_document(
+            before.stamp(),
+            report,
+            environment,
+            DomParsedHtmlInstallLimits::new(required, 10_000_000, 16_000_000, 100_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_eq!(recovered.bindings().len(), required);
+    assert_ne!(recovered.root(), control.root());
+    assert_eq!(recovered.source_root(), control.source_root());
+    assert_eq!(
+        control.node_for(control.source_root()),
+        Some(control.root())
+    );
+    assert_eq!(
+        recovered.node_for(recovered.source_root()),
+        Some(recovered.root())
+    );
+    assert_parsed_dialog_closed_services(
+        recovered
+            .snapshot()
+            .node(element(&recovered, "dialog"))
+            .unwrap()
+            .as_dialog()
+            .unwrap(),
+    );
+}
