@@ -412,3 +412,48 @@ replacement/finalization bodies are not selected by this reference. This is
 implementation-support retention, not a replacement technical specification,
 implementation acceptance or whole-browser conformance claim. The repository's
 own license remains unchanged.
+
+## Initial opener-policy values and record — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [opener-policy reference](../../references/html-opener-policy-defaults--877d6146487f--d124556cde21.md)
+retains complete raw64771–64827 from HTML revision
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. The single original
+fragment is 57 lines, 8,104 bytes, SHA-256
+`d124556cde21fa872bee44e6a57bc1c98473b8a8f9a2c60b09283f1c2d77e9e5`.
+The existing [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for specification prose. Its BSD 3-Clause provision applies
+to portions incorporated into code, not as an alternative prose license.
+
+Changes by Surgeist on 2026-10-16: bounded offline selection, Markdown headings,
+provenance, attribution and separately identified editorial source boundaries.
+The complete value list, informative notes and four-field default record
+remain byte-identical inside a text fence, including source whitespace,
+defining containers, original IDs and links. No source href is rewritten,
+source scripts or renderer run, new edition selected or endorsement implied.
+
+The associated language values/default record do not establish actual Document
+provenance or replace the creator's conditional inheritance of the actual
+top-level active Document policy. Native no-opener creation is not the distinct
+COOP noopener-allow-popups value. Matching, header parsing, reporting, response
+enforcement and group-switch algorithms remain outside this source selection.
+Retention is implementation support, not child lifecycle completion or a
+replacement technical specification. Surgeist's own license remains unchanged.
+
+## Legacy Frame sandbox caller qualification — 2026-10-16
+
+The separately authored [WebKit Frame metadata witness](../../references/webkit-frame-sandbox--73aa6c89e2cb-metadata.md)
+records nine exact upstream file/Git-blob identities and bounded observations;
+it contains no transcribed browser source. Its upstream copyright/license
+provenance is separate from this WHATWG license and is identified in that
+reference. No WebKit code is relicensed under the WHATWG prose license.
+
+The [HTML sandboxing reference](../../references/html-sandboxing--877d6146487f.md)
+retains the original slot definition and creation union unchanged. #1124's
+bounded caller qualification gives legacy Frame an empty element-specific
+contribution plus its actual parent Document's active flags; only Iframe
+contributes the iframe-owned slot. This is editorial native qualification,
+not modified HTML source, an upstream fix or an implementation-conformance claim.
+The COOP value/record excerpt above remains a separate HTML source selection.

@@ -1,6 +1,6 @@
 # Exact source catalog
 
-375 retained source identities: 260 full documents/source witnesses, 101 partial witnesses, and 14 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+390 retained source identities: 260 full documents/source witnesses, 101 partial witnesses, and 29 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments, the bounded WebKit Autofill.cpp witness and the nine WebKit Frame-sandbox files as corroborating URL/hash or Git-blob provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -677,3 +677,58 @@ records the source selection and separately qualified caller type.
 | Representation | Complete original source | Original SHA-256 | Coverage |
 | --- | --- | --- | --- |
 | [Child navigable history and traversal](html-child-navigable-history--877d6146487f--a9f635b298df.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; eleven complete selected History/latest-entry definitions, Navigation abort/child-destruction helpers, traversal queue and history-update/apply/lookup bodies; all selected algorithm branches remain literal source |
+
+## Initial opener-policy values and record — 2026-10-16
+
+This representation reuses the existing HTML877d source identity and adds no
+source identity. Only the complete selected value definitions and record are
+retained; COOP matching,
+header parsing, reporting and group-switch algorithms are not selected.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [Opener-policy values and default record](html-opener-policy-defaults--877d6146487f--d124556cde21.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; complete raw64771–64827 opener-policy value list, informative notes and four-field record defaults, preserved as literal source |
+
+## Legacy Frame sandbox contribution witness — 2026-10-16
+
+The [bounded metadata witness](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) identifies nine exact WebKit
+files at revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`. None of these
+revision/path identities was previously cataloged. This adds nine metadata-only
+identities, not one per Markdown file: 384 total, comprising 260 full, 101 partial
+and 23 metadata-only. The opener-policy representation above reuses HTML877d
+and adds no identity; earlier dated counts remain historical.
+
+Git blob IDs below identify complete inspected source files; they are Git object
+identifiers, not SHA-256 values. The reference retains URLs, line locators and
+bounded observations, with no transcribed WebKit implementation source.
+
+| Metadata representation | Exact complete-file source | Git blob | Coverage |
+| --- | --- | --- | --- |
+| [HTMLFrameOwnerElement.h](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFrameOwnerElement.h) | `8bbb16b4e91e2437ab27d41e03a21cc51e3476f5` | metadata-only corroboration; inspected lines 60, 81; no browser source excerpt |
+| [HTMLFrameOwnerElement.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFrameOwnerElement.cpp) | `79a67c264f678d7ee0a434e42d516d1aaf24acd7` | metadata-only corroboration; inspected lines 47–50, 112–116; no browser source excerpt |
+| [Frame.h](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/Frame.h) | `2815188c644cc66d5ce398a202b0e8b60ce3f2c4` | metadata-only corroboration; inspected lines 70; no browser source excerpt |
+| [OptionSet.h](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WTF/wtf/OptionSet.h) | `ec0b932fd2c98dabb99f08db98a50c3e024aff62` | metadata-only corroboration; inspected lines 86, 215; no browser source excerpt |
+| [HTMLFrameElement.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFrameElement.cpp) | `12a6b5592f2bca8a57f8281a1a66f7aad3b3c16f` | metadata-only corroboration; inspected lines 43–47, 84–95; no browser source excerpt |
+| [HTMLFrameElementBase.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLFrameElementBase.cpp) | `a68868092882872caa59458fb4cc057b788c3697` | metadata-only corroboration; inspected lines 61–64, 130–153; no browser source excerpt |
+| [HTMLIFrameElement.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/html/HTMLIFrameElement.cpp) | `d260a8f498d6cca1a96535ca2718931d78e9c497` | metadata-only corroboration; inspected lines 132–140; no browser source excerpt |
+| [WebFrame.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebKit/WebProcess/WebPage/WebFrame.cpp) | `b8650e94ff3c139271a14be70bbfd0e26d23f48c` | metadata-only corroboration; inspected lines 165–179; no browser source excerpt |
+| [LocalFrame.cpp](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/LocalFrame.cpp) | `96c8e2a3b0be12b61642d30483a6c2b81d1d831a` | metadata-only corroboration; inspected lines 1450–1455; no browser source excerpt |
+
+## Child destruction and queued history metadata — 2026-10-16
+
+The [lifetime source observations](html-child-history-lifetime--pinned-browser-metadata.md)
+add six previously uncataloged pinned browser file identities. The collection
+now has 390 source identities: 260 full, 101 partial and 29 metadata-only.
+Git blobs identify complete inspected files, not SHA-256 values or excerpts.
+Dated links to current HTML and upstream issue discussion provide context;
+they are not retained response snapshots or additional adopted standard editions.
+The reference supplies no normative cancellation or cleanup policy.
+
+| Metadata representation | Exact complete-file source | Git blob | Coverage |
+| --- | --- | --- | --- |
+| [FrameTree.cpp](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/page/FrameTree.cpp) | `add3b84805afa72ac2bb576c9dde17bb4be5cfa3` | metadata-only corroboration; inspected lines 105–110, 134–147; no browser source excerpt |
+| [FrameLoader.cpp](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/loader/FrameLoader.cpp) | `535f3f57176fa0574a5bd6af779a1cb7550356b8` | metadata-only corroboration; inspected lines 3450–3508; no browser source excerpt |
+| [EventLoop.cpp](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/dom/EventLoop.cpp) | `3abc026892eaecbcb2cedb800d863fa75a7eeaa8` | metadata-only corroboration; inspected lines 305–310, 335–349, 444–455; no browser source excerpt |
+| [frame_tree.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree.cc) | `0db015a39a1cf3206f7cf17274a8decb63a43ff6` | metadata-only corroboration; inspected lines 578–585; no browser source excerpt |
+| [frame_tree_node.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree_node.cc) | `4e4b14ebc84ab4e570ad46bb4622e454a2fbf9d9` | metadata-only corroboration; inspected lines 195–257, 290–302; no browser source excerpt |
+| [navigation_controller_impl.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/navigation_controller_impl.cc) | `580d1a893d488d255329cddefc9aeaf4bcf8a67a` | metadata-only corroboration; inspected lines 5452–5466; no browser source excerpt |

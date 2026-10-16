@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **375 source identities: 260 full documents/source witnesses, 101 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **390 source identities: 260 full documents/source witnesses, 101 partial witnesses and 29 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -466,6 +466,56 @@ Document/Navigable discrepancy and earlier ancestor-URL guard are unchanged in
 their existing references. Conditional replacement/finalization source bodies
 are excluded. The collection remains 375 identities: 260 full, 101 partial and
 14 metadata-only; no passive asset is added.
+
+## Initial opener-policy values and record — 2026-10-16
+
+The [bounded reference](html-opener-policy-defaults--877d6146487f--d124556cde21.md) adds a representation of the
+existing complete HTML877d source, 14,930,614 bytes, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. Its single original
+raw64771–64827 fragment is 57 lines and 8,104 bytes, SHA-256
+`d124556cde21fa872bee44e6a57bc1c98473b8a8f9a2c60b09283f1c2d77e9e5`; the one-fragment joined
+hash is identical. Full value-list dl64777–64819 includes the complete nested
+informative note/list; the record ul64825–64827 closes before the matching
+algorithm starts64829.
+
+Original HTML is byte-identical in fenced text, including source-authored
+whitespace, complete defining containers, every selected value, notes and
+hrefs. Added headings, provenance, attribution and editorial source boundaries
+remain outside the original body. No source links are rewritten, renderer or
+scripts run, software acquired or source edition changed. The final closing
+fence has exactly one following LF, with no wrapper blank line at EOF.
+The [WHATWG notice](../licenses/whatwg/NOTICE.md#initial-opener-policy-values-and-record--2026-10-16)
+records the bounded extraction and existing license.
+
+The language producer's initial record is distinct from actual Document policy
+inheritance; this source retention does not claim child construction complete.
+COOP matching, headers, reporting, enforcement and group-switch algorithms are
+excluded. This additional HTML representation adds no source identity or passive
+asset; the combined Frame metadata count is recorded below.
+
+## Legacy Frame sandbox metadata — 2026-10-16
+
+The Architecture-owned [Frame sandbox witness](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) contains
+provenance and behavioral summaries for nine exact WebKit files at
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. The nine complete-file
+revision/path identities and Git blob identifiers were compared with the
+preceding actual catalog; none was already represented. Nine metadata-only
+identities are added, giving 384 total: 260 full, 101 partial and 23 metadata-only.
+This is source-file counting, not a count of reference documents. The separate
+COOP excerpt reuses the existing HTML identity and adds no source identity.
+
+No browser source excerpt, implementation code or new license text is copied by
+this metadata reference. Original source URLs, complete-file Git blobs and
+one-based line locators remain in the reserved witness; its file is not
+rewritten by the documentation integration. Git blobs are explicitly labeled,
+not represented as complete-file SHA-256 values. The static observations are
+not executed browser results and do not select a browser engine implementation.
+
+The bounded #1124 Frame qualification remains editorial and separate from the
+unchanged HTML sandbox-slot wording: preserve the actual parent's active flags
+while treating only Frame's element-specific contribution as empty. No
+transitive browser closure, whole child lifecycle completion or HTML edition
+change follows. Earlier dated source totals remain historical.
 
 ## HTML autocomplete credential determination — 2026-10-11
 
@@ -946,3 +996,21 @@ UTF-8/LF, local paths/fragments and scoped whitespace checks passed. The
 [WHATWG notice](../licenses/whatwg/NOTICE.md#document-policy-container-initial-state--2026-10-16)
 retains copyright, exact local license and modification disclosure. These checks
 establish bounded reference fidelity, not implementation acceptance.
+
+## Child lifetime browser metadata — 2026-10-16
+
+The [child destruction/history source observations](html-child-history-lifetime--pinned-browser-metadata.md)
+retain six exact WebKit/Chromium file URLs, Git blobs and line locators as
+metadata with behavioral summaries. Each revision/path identity is absent from
+the preceding 384-identity catalog. Adding these six gives 390 identities:
+260 full, 101 partial and 29 metadata-only. Earlier dated totals remain historical.
+No browser code, source excerpt, copied discussion transcript or passive asset
+is added. Git object identifiers are explicitly distinguished from SHA-256.
+
+The dated current-HTML and upstream-issue links are contextual observations,
+not retained response snapshots or an adopted new HTML edition. Existing
+references already contain the complete reached task association/runnability
+and history/destruction bodies. Static witnesses distinguish live membership,
+historical records, cleanup custody and cancellation; they do not independently
+supply the missing HTML completion rule. Actual native qualifications belong to
+the linked owning issues, separately from literal retained source.

@@ -537,6 +537,37 @@ accompany the literal source. Editorial native qualifications remain distinct
 from the unchanged algorithms; this reference does not establish a general
 navigation/history service, transitive source closure or browser conformance.
 
+## Legacy Frame sandbox metadata
+
+The [Frame sandbox witness](references/webkit-frame-sandbox--73aa6c89e2cb-metadata.md) retains immutable
+WebKit file/blob/line provenance and bounded behavioral summaries, without
+transcribing browser source or ingesting an implementation. Original copyright
+and license information remains in the exact linked upstream files and
+[WebKit license inventory](https://webkit.org/licensing-webkit/).
+The [source qualification](references/SOURCE-EDITIONS.md#legacy-frame-creation-sandbox-contribution)
+is a bounded #1124 decision; it does not adopt a browser loader or certify
+native child lifecycle completion.
+
+## Child history and destruction metadata
+
+The [child lifetime source record](references/html-child-history-lifetime--pinned-browser-metadata.md)
+retains pinned WebKit/Chromium URLs, Git-blob identities, line locators and
+behavioral summaries. It contains no copied browser implementation or discussion
+transcript. Original copyright and license provenance remains in those exact
+upstream files and linked project license inventories. Dated current-standard
+and issue observations do not change the license of the retained HTML source
+or certify a native lifetime policy or implementation.
+
+## Initial opener-policy source
+
+The [opener-policy values and default record](references/html-opener-policy-defaults--877d6146487f--d124556cde21.md)
+contain bounded material from the existing immutable WHATWG HTML edition.
+The [complete WHATWG license](licenses/whatwg/LICENSE) and
+[attribution and modification notice](licenses/whatwg/NOTICE.md#initial-opener-policy-values-and-record--2026-10-16)
+accompany the literal source. This supplies language definitions and default
+record evidence; it does not establish child lifecycle completion, header
+processing, COOP enforcement or browser conformance.
+
 ## Native hosted random UUID source
 
 The [random UUID generation clauses](references/webcrypto-random-uuid--811c24c69eb2--1c697c6b1d48.md)

@@ -635,6 +635,74 @@ Conditional URL/history replacement/finalization and later navigation branches
 are not selected by this retention. No new HTML source identity, changed edition
 or implementation/conformance verdict is implied.
 
+### Initial opener-policy values and record
+
+The [opener-policy reference](html-opener-policy-defaults--877d6146487f--d124556cde21.md) selects complete
+raw64771–64827 from the existing HTML877d edition, original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+It retains the complete value list and informative notes, followed by the
+four-field record: value unsafe-none, reporting endpoint null, report-only
+value unsafe-none, report-only reporting endpoint null. Native creation without
+an opener does not select the distinct value noopener-allow-popups.
+
+The [HTML language producer](../crates/surgeist-html/src/opener_policy.rs)
+owns the exact five `HtmlOpenerPolicyValue` spellings and the immutable
+`HtmlOpenerPolicy` initial record. This qualifies language values and defaults;
+it establishes no Document provenance, actual parent association or policy
+effects. The retained [BC/Document creator](html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md)
+supplies the separate source condition and actual top-level active Document
+policy inheritance. Consumers must copy that actual source-selected record
+when the condition holds, rather than manufacture a fresh default from a
+no-opener label.
+
+Matching64829 onward, header parsing, response enforcement/reporting and
+group-switch algorithms are outside this selection. Retaining all value
+definitions does not admit their broader navigation effects or certify native
+child lifecycle implementation. Existing source identities and edition remain
+unchanged.
+
+### Legacy Frame creation sandbox contribution
+
+The [WebKit Frame witness](webkit-frame-sandbox--73aa6c89e2cb-metadata.md) records static metadata for nine
+complete source files at the existing preferred WebKit revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Its exact Git blobs and line
+locators corroborate empty legacy Frame element-specific flags while preserving
+the parent's actual active sandbox restrictions. The witness is not a copied
+browser implementation or an executed conformance test.
+
+The selected [HTML sandboxing source](html-sandboxing--877d6146487f.md)
+defines its sandbox slot only for Iframe but creation union raw65785–65794
+refers to it for an element embedder. [#1124](https://github.com/bj-data-eng/surgeist/issues/1124),
+“Legacy Frame: creation sandbox contribution”, supplies the separate bounded
+qualification: only actual Iframe contributes its iframe-owned slot; legacy
+Frame contributes an empty element-specific set, unioned with its current node
+Document's actual active flags. Empty Frame contribution does not erase inherited
+restrictions, and a raw sandbox attribute on Frame acquires no Iframe semantics.
+Literal HTML remains unchanged; no upstream fix or newer edition is claimed.
+
+This selects neither WebKit loader/IPC/remote-frame behavior nor arbitrary
+frame-owner families, navigation, CSP or referrer-policy implementation. The
+COOP language record/defaults remain separately qualified above; neither source
+selection certifies a complete native child lifecycle.
+
+### Child destruction and queued history lifetime
+
+The [child lifetime reference](html-child-history-lifetime--pinned-browser-metadata.md)
+combines the existing pinned HTML clauses with dated upstream discussion and
+six metadata-only browser witnesses at the existing WebKit/Chromium revisions.
+It identifies the lack of a late nested-history prune, cleanup-task eligibility
+and canceled nonchanging-job settlement in the selected HTML text. The browser
+witnesses support distinguishing live membership from retained cleanup ownership
+and task execution from cancellation; they do not implement that exact HTML
+counter algorithm or select a replacement rule.
+
+Keep the literal HTML unchanged. Native lifetime and completion qualifications
+belong to [#1124](https://github.com/bj-data-eng/surgeist/issues/1124) and
+[#136](https://github.com/bj-data-eng/surgeist/issues/136). These source
+observations alone establish neither implemented behavior nor child-lifecycle
+readiness. No newer standard, browser loader/unload schedule, conditional
+history pruning or general navigation service is adopted by this reference.
+
 ### HTML autocomplete credential recovery
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the
