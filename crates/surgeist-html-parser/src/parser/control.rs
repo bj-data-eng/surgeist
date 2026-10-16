@@ -2547,9 +2547,9 @@ mod tests {
         };
         use crate::parser::tree_builder::StandaloneDocumentDriver;
         // One node-document binding precedes the unchanged four Hidden
-        // metadata slots. Four extra slots stop before lexical take; five
+        // metadata slots and one independent creation row. Five extra slots stop before lexical take; six
         // reach the first lexical String-slot admission after take.
-        for additional in [4, 5] {
+        for additional in [5, 6] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head></head><input type=hidden>"),
                 limits()
@@ -2622,7 +2622,7 @@ mod tests {
                     ..
                 }))
             ));
-            if additional == 4 {
+            if additional == 5 {
                 assert_eq!(
                     input
                         .as_ref()

@@ -31,6 +31,11 @@ Unsupported or reached unavailable facts return typed failures. Failure retains
 the original request and live ownership until explicit cleanup; no successful
 partial report is returned.
 
+Completed reports retain each ordinary element's no-definition custom-element
+state and independent creation-time `is` value through the public metadata
+cursor. Formatting reconstruction and cloning preserve their actual creation
+causes; later HTML/body attribute merges do not rewrite that saved value.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

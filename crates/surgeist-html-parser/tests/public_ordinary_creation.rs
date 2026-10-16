@@ -88,9 +88,8 @@ fn saved_is_preserves_creation_before_later_body_attribute_merge() {
     // DOM3071 create-element's no-definition branch saves the creation is
     // independently. HTML877d's repeated-body recovery merges attributes into
     // the existing body; it does not create that element again or change its is.
-    let initial = completed_document(
-        "<!doctype html><html><head></head><body is=x-control></body></html>",
-    );
+    let initial =
+        completed_document("<!doctype html><html><head></head><body is=x-control></body></html>");
     let merged = completed_document(
         "<!doctype html><html><head></head><body><body is=x-control></body></html>",
     );

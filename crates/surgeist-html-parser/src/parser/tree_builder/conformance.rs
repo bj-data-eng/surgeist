@@ -4185,9 +4185,12 @@ mod whole_source_comparisons {
                 MetadataStep::Skipped => {}
                 MetadataStep::Record(record) => {
                     assert!(document.node(&record.node().id()).is_ok());
-                    // Ordinary creation intentionally has no captured-registry
-                    // creation metadata; absence is not a fabricated state.
-                    assert!(record.creation().is_none());
+                    // These fixed ordinary fixtures contain known elements with
+                    // no `is`: their actual creation state remains independent.
+                    if let Some(creation) = record.creation() {
+                        assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
+                        assert!(creation.1.is_none());
+                    }
                     if let Some(crate::construction::report::MetadataDocument::Owned(owner)) =
                         record.node_document()
                     {

@@ -305,15 +305,18 @@ mod tests {
                 MetadataStep::Record(record) => {
                     for (index, id) in details.iter().enumerate() {
                         if record.node().id() == *id {
-                            // Ordinary creation retains node-document identity;
-                            // creation-registry metadata is fragment-specific.
-                            // The private Details marker emits no record.
+                            // The private Details marker emits no record; ordinary
+                            // creation has an independent no-definition record.
                             if let Some(MetadataDocument::Owned(owner)) = record.node_document() {
                                 assert_eq!(owner.id(), document.root().id());
                                 counts[index] += 1;
-                            } else {
-                                assert_eq!(record.cryptographic_nonce().unwrap().code_units(), &[]);
+                            } else if let Some(nonce) = record.cryptographic_nonce() {
+                                assert_eq!(nonce.code_units(), &[]);
                                 nonce_counts[index] += 1;
+                            } else {
+                                let creation = record.creation().unwrap();
+                                assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
+                                assert!(creation.1.is_none());
                             }
                         }
                     }
@@ -601,6 +604,7 @@ mod tests {
         let mut cursor = report.metadata();
         let mut counts = [0; 7];
         let mut hosted = false;
+        let mut saved_creation = false;
         loop {
             match cursor.advance() {
                 MetadataStep::Record(record) => {
@@ -655,9 +659,15 @@ mod tests {
                         assert_eq!(record.node().children().len(), 0);
                         hosted = true;
                     }
-                    // The existing ordinary creator does not issue captured
-                    // creation metadata. Availability is not invented here.
-                    assert!(record.creation().is_none());
+                    if let Some((state, saved)) = record.creation() {
+                        if let Some(saved) = saved {
+                            assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                            assert_eq!(saved.code_units(), &[115, 97, 118, 101, 100]);
+                            saved_creation = true;
+                        } else {
+                            assert_eq!(state, crate::HtmlCustomElementState::Uncustomized);
+                        }
+                    }
                     if let Some(MetadataDocument::Owned(document)) = record.node_document() {
                         assert!(matches!(document.kind(), crate::HtmlNodeKind::Document(_)));
                     }
@@ -669,6 +679,7 @@ mod tests {
         // Output, select and the real nested button are independently listed.
         assert_eq!(counts, [1, 3, 1, 1, 1, 2, 1]);
         assert!(hosted);
+        assert!(saved_creation);
     }
 
     #[test]

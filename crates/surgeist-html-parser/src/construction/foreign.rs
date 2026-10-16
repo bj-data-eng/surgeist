@@ -119,13 +119,11 @@ impl ParserArenaSession {
             self.active_mut()?
                 .prepare_document_allocation(c, Some(document), false)?;
         let mut is_value = None;
-        if self.active()?.fragment.is_some() {
-            for attribute in tag.attributes.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if exact_ascii(c, Some(attribute.name.value.text()), "is")? {
-                    is_value = Some(&attribute.value);
-                    break;
-                }
+        for attribute in tag.attributes.as_slice() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if exact_ascii(c, Some(attribute.name.value.text()), "is")? {
+                is_value = Some(&attribute.value);
+                break;
             }
         }
         self.active_mut()?.prepare_creation_registry(

@@ -674,7 +674,7 @@ impl SessionStorage {
                 },
             )?);
         }
-        if self.fragment.is_some() {
+        {
             let registry = self.lookup_registry_ref(c, source)?;
             let original = self.element_creation_state(c, source)?;
             c.charge(WorkCategory::RecordVisit, 1)?;

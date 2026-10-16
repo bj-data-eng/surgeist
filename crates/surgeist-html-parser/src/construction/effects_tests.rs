@@ -876,12 +876,12 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
-    // Document/html contribute two append-field index entries before lexical
-    // take; the successful Select record contributes the third. The pre-take
-    // metadata cap is 16. The completed Select needs 28 coexisting entries from
-    // nodes, index, causes, nonce, fields, metadata, staging and snapshot;
-    // twenty-seven stops after take at the reset option snapshot.
-    for cap in [16, 27, 28] {
+    // Document/html retain16 slots including html's independent creation row.
+    // Select's document binding fills17 before its own creation/state/nonce rows
+    // and native fields. At17 the tag remains owned; completed Select needs30
+    // coexisting entries including its creation row and empty-option snapshot.
+    // At29 it stops after take at that snapshot, preserving all actual owners.
+    for cap in [17, 29, 30] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -908,7 +908,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 28 {
+        if cap == 30 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(
@@ -922,7 +922,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                28
+                30
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -935,7 +935,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 16);
+            assert_eq!(input.is_some(), cap == 17);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))

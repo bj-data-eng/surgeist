@@ -790,9 +790,6 @@ impl SessionStorage {
         prepared: &mut Option<template::PreparedDocuments>,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
-        if self.fragment.is_none() {
-            return Ok(());
-        }
         let registry = self.lookup_registry_ref(c, parent)?;
         let potential_definition = self.require_no_definition(
             c,
@@ -3265,87 +3262,108 @@ mod tests {
         let request =
             HtmlFragmentParseRequest::new(HtmlSource::utf8("<div is='A&amp;B'>"), context, limits)
                 .unwrap();
-        let mut complete_work = None;
-        // The first run measures ONLY the finite coverage extent. It supplies
-        // no expected category totals or behavioral oracle for subsequent cuts.
-        // Every actual admission from borrowed preflight through native binding
-        // is then interrupted independently with the same lexical input.
-        let mut credit = None;
-        loop {
-            let mut c = ParseControl::new(limits, request.cancellation().clone());
-            c.admit_source(request.source()).unwrap();
-            let mut session =
-                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
-                    .unwrap();
-            session.initialize_standalone_document(&mut c).unwrap();
-            let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
-            let mut input = lexical_tag(&mut lexer, &mut c);
-            if let Some(credit) = credit {
-                let remaining = limits.work_credits()
-                    - c.usage().resource(HtmlParseResource::WorkCredits).current;
-                c.charge(WorkCategory::StateStep, remaining - credit)
-                    .unwrap();
-            }
-            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
-            let result = session.allocate_html_tag_for_creation(
-                &mut c,
-                &mut input,
-                &bootstrap.root,
-                None,
-                CreationContext::Ordinary,
-            );
-            match credit {
-                None => {
-                    complete_work =
-                        Some(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
-                    assert!(
-                        complete_work.unwrap() < 60_000,
-                        "bounded literal coverage extent: {}",
-                        complete_work.unwrap()
-                    );
-                    assert!(result.is_ok());
+        let ordinary_request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<div is='A&amp;B'>"),
+            limits,
+        );
+        for ordinary in [false, true] {
+            let source = if ordinary {
+                ordinary_request.source()
+            } else {
+                request.source()
+            };
+            let cancellation = if ordinary {
+                ordinary_request.cancellation()
+            } else {
+                request.cancellation()
+            };
+            let mut complete_work = None;
+            // The first run measures ONLY the finite coverage extent. It supplies
+            // no expected category totals or behavioral oracle for subsequent cuts.
+            // Every actual admission from borrowed preflight through native binding
+            // is then interrupted independently with the same lexical input.
+            let mut credit = None;
+            loop {
+                let mut c = ParseControl::new(limits, cancellation.clone());
+                c.admit_source(source).unwrap();
+                let mut session =
+                    ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                        .unwrap();
+                session.initialize_standalone_document(&mut c).unwrap();
+                let parent = if ordinary {
+                    session.allocate_implicit_html(&mut c).unwrap()
+                } else {
+                    session.initialize_fragment(&mut c, &request).unwrap().root
+                };
+                let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+                let mut input = lexical_tag(&mut lexer, &mut c);
+                if let Some(credit) = credit {
+                    let remaining = limits.work_credits()
+                        - c.usage().resource(HtmlParseResource::WorkCredits).current;
+                    c.charge(WorkCategory::StateStep, remaining - credit)
+                        .unwrap();
                 }
-                Some(credit) if credit < complete_work.unwrap() => {
-                    let first = c.stop().unwrap();
-                    assert!(matches!(
-                        first,
-                        ParseStop::LimitExceeded {
-                            resource: HtmlParseResource::WorkCredits,
-                            ..
-                        }
-                    ));
-                    assert!(matches!(result, Err(SessionError::Stop(stop)) if stop == first));
-                    assert_eq!(
-                        session.freeze(&mut c).err(),
-                        Some(SessionError::Stop(first))
-                    );
+                let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+                let result = session.allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut input,
+                    &parent,
+                    None,
+                    CreationContext::Ordinary,
+                );
+                match credit {
+                    None => {
+                        complete_work = Some(
+                            c.usage().resource(HtmlParseResource::WorkCredits).current - before,
+                        );
+                        assert!(
+                            complete_work.unwrap() < 60_000,
+                            "bounded literal coverage extent: {}",
+                            complete_work.unwrap()
+                        );
+                        assert!(result.is_ok());
+                    }
+                    Some(credit) if credit < complete_work.unwrap() => {
+                        let first = c.stop().unwrap();
+                        assert!(matches!(
+                            first,
+                            ParseStop::LimitExceeded {
+                                resource: HtmlParseResource::WorkCredits,
+                                ..
+                            }
+                        ));
+                        assert!(matches!(result, Err(SessionError::Stop(stop)) if stop == first));
+                        assert_eq!(
+                            session.freeze(&mut c).err(),
+                            Some(SessionError::Stop(first))
+                        );
+                        assert_eq!(c.stop(), Some(first));
+                    }
+                    Some(_) => {
+                        assert!(result.is_ok());
+                        assert!(input.is_none());
+                    }
+                }
+                if let Some(tag) = input.take() {
+                    tag.name.release(&mut c).unwrap();
+                    release_token_attributes(tag.attributes, &mut c).unwrap();
+                }
+                lexer.release(&mut c).unwrap();
+                // At the exact successful creation budget, cleanup's own active
+                // preflight may latch the first stop and retain the session. Retry
+                // only that same owner through its terminal disposal contract.
+                if let Err(error) = session.release(&mut c) {
+                    let first = c.stop().expect("cleanup preflight first stop");
+                    assert_eq!(error, SessionError::Stop(first));
+                    session.release(&mut c).unwrap();
                     assert_eq!(c.stop(), Some(first));
                 }
-                Some(_) => {
-                    assert!(result.is_ok());
-                    assert!(input.is_none());
+                crate::parser::tree_builder::tests::assert_released(&c);
+                match credit {
+                    None => credit = Some(0),
+                    Some(value) if value < complete_work.unwrap() => credit = Some(value + 1),
+                    Some(_) => break,
                 }
-            }
-            if let Some(tag) = input.take() {
-                tag.name.release(&mut c).unwrap();
-                release_token_attributes(tag.attributes, &mut c).unwrap();
-            }
-            lexer.release(&mut c).unwrap();
-            // At the exact successful creation budget, cleanup's own active
-            // preflight may latch the first stop and retain the session. Retry
-            // only that same owner through its terminal disposal contract.
-            if let Err(error) = session.release(&mut c) {
-                let first = c.stop().expect("cleanup preflight first stop");
-                assert_eq!(error, SessionError::Stop(first));
-                session.release(&mut c).unwrap();
-                assert_eq!(c.stop(), Some(first));
-            }
-            crate::parser::tree_builder::tests::assert_released(&c);
-            match credit {
-                None => credit = Some(0),
-                Some(value) if value < complete_work.unwrap() => credit = Some(value + 1),
-                Some(_) => break,
             }
         }
     }
