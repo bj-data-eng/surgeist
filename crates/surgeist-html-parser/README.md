@@ -51,6 +51,11 @@ latest inactive update wait with its generation and flags. Source/Picture hooks
 and real clones use the original source effect owner. Disabled image support
 cannot skip the source-prior wait for a fully active Document. These are retained
 algorithm states, without resource fetching or a live parser continuation.
+Contextual updates use the actual node-Document at each invocation: the closed
+auxiliary parser Document and source-created inert template Documents are
+inactive independently of the captured target. An established absent captured
+browsing context also proves inactivity; Present or Unavailable alone leaves
+activity unavailable. Scripting mode and image-support policy prove neither.
 Style records preserve actual parser creation, creating parser Document and
 completed stack-pop history; general clones have fresh creation state. Their
 CSSOM association disposition is explicitly pending. Construction completion

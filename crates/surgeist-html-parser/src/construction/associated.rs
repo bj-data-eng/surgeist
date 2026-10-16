@@ -631,6 +631,81 @@ impl SessionStorage {
         old_usage.release(c, &self.control);
         Ok(())
     }
+    fn image_document_activity(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<HtmlImageDocumentActivity, SessionError> {
+        let document = match self.node_document_ref(c, node) {
+            Ok(document) => document,
+            Err(SessionError::NodeDocumentUnavailable) => {
+                return Ok(HtmlImageDocumentActivity::Unavailable);
+            }
+            Err(error) => return Err(error),
+        };
+        match document {
+            DocumentRef::Owned(document) => {
+                let slot = self.document_slot(c, document)?;
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if matches!(
+                    self.payloads.values[slot],
+                    RetainedPayload::Document {
+                        state: template::DocumentState::InertTemplate,
+                        ..
+                    }
+                ) {
+                    // The actual template-owner constructor creates this
+                    // independent Document without a navigable or host ingress.
+                    return Ok(HtmlImageDocumentActivity::NotFullyActive);
+                }
+                let completion = match self.completion_slot_during_effects(c) {
+                    Ok(slot) => slot,
+                    Err(SessionError::CompletionMetadataUnavailable) => {
+                        return Ok(HtmlImageDocumentActivity::Unavailable);
+                    }
+                    Err(error) => return Err(error),
+                };
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                // This original closed constructor issues the fresh ordinary
+                // parser Document, including the distinct §13.4 auxiliary
+                // Document. Its completion record cannot qualify another owner.
+                Ok(match self.payloads.values[completion] {
+                    RetainedPayload::StandaloneDocumentCompletion { node, .. }
+                        if node == document =>
+                    {
+                        HtmlImageDocumentActivity::NotFullyActive
+                    }
+                    _ => HtmlImageDocumentActivity::Unavailable,
+                })
+            }
+            DocumentRef::Captured(document) => {
+                c.charge(WorkCategory::RecordVisit, 3)?;
+                let capture = self
+                    .fragment
+                    .as_ref()
+                    .ok_or(SessionError::ContextUnavailable)?
+                    .context
+                    .capture();
+                let node = capture
+                    .node(document.subject())
+                    .map_err(|_| SessionError::ContextUnavailable)?;
+                let crate::HtmlCapturedNodeKind::Document(facts) = node.kind() else {
+                    return Err(SessionError::NotDocument);
+                };
+                // HTML #fully-active and #nav-bc: an absent actual browsing
+                // context rules out activity. Present does not establish it.
+                Ok(match facts.nonce_environment().browsing_context() {
+                    surgeist_html::HtmlBrowsingContextPresence::Absent => {
+                        HtmlImageDocumentActivity::NotFullyActive
+                    }
+                    surgeist_html::HtmlBrowsingContextPresence::Present
+                    | surgeist_html::HtmlBrowsingContextPresence::Unavailable => {
+                        HtmlImageDocumentActivity::Unavailable
+                    }
+                })
+            }
+        }
+    }
     pub(super) fn start_img_update(
         &mut self,
         c: &mut ParseControl,
@@ -648,20 +723,8 @@ impl SessionStorage {
         let Some(slot) = slot else {
             return Ok(());
         };
-        let inactive = if self.fragment.is_some() {
-            false
-        } else {
-            match self.completion_slot_during_effects(c) {
-                Ok(_) => true,
-                Err(SessionError::Stop(stop)) => return Err(stop.into()),
-                Err(_) => false,
-            }
-        };
-        let decision = surgeist_html::image_update_start(if inactive {
-            HtmlImageDocumentActivity::NotFullyActive
-        } else {
-            HtmlImageDocumentActivity::Unavailable
-        });
+        let activity = self.image_document_activity(c, node)?;
+        let decision = surgeist_html::image_update_start(activity);
         let cause = self.associated_cause(c)?;
         let RetainedPayload::Image { state, .. } = &self.payloads.values[slot] else {
             unreachable!()
