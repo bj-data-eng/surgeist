@@ -361,6 +361,7 @@ impl Draft {
             )?;
             self.control_removing_node(key, cancel)?;
             self.base_tree_change(key, limits, cancel)?;
+            self.hyperlink_tree_change(key, Some(old_parent), cancel)?;
         }
         Ok(())
     }
@@ -439,6 +440,7 @@ impl Draft {
                 cancel,
             )?;
             self.base_tree_change(key, limits, cancel)?;
+            self.hyperlink_tree_change(key, None, cancel)?;
             self.select_insertion(key, limits, cancel)?;
             self.details_exclusivity(
                 key,

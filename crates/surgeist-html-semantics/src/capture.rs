@@ -448,6 +448,9 @@ pub enum HtmlCaptureSubjectKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureError {
     NotHtmlLink,
+    NotHtmlHyperlink,
+    HyperlinkUrlAlreadyEstablished,
+    HyperlinkHrefMismatch,
     LinkHistoryAlreadyEstablished,
     ForeignBuilder,
     ForeignCapture,
@@ -588,8 +591,12 @@ pub struct HtmlCapturedElement {
     custom_context: Option<CustomElementContext>,
     nonce: HtmlCapturedNonce,
     link_history: Option<crate::HtmlLinkHistory>,
+    hyperlink_url: Option<crate::HtmlCapturedHyperlinkUrl>,
 }
 impl HtmlCapturedElement {
+    pub fn hyperlink_url(&self) -> Option<&crate::HtmlCapturedHyperlinkUrl> {
+        self.hyperlink_url.as_ref()
+    }
     pub fn cryptographic_nonce(&self) -> &HtmlCapturedNonce {
         &self.nonce
     }
@@ -794,6 +801,80 @@ fn namespace(ns: &Namespace, uri: &str) -> bool {
     ns.uri().is_some_and(|v| exact(v, uri))
 }
 impl HtmlCaptureBuilder {
+    /// Establishes actual A/Area cache history. The observed Document is the
+    /// historical parsing Document, which may differ after adoption. No URL,
+    /// Blob-store, origin or current-Document facts are inferred from this join.
+    /// Checks, admission and interruption complete before any state is written.
+    pub fn establish_hyperlink_url_with<E>(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        observation: Option<(&HtmlCaptureBuilderSubject, crate::HtmlHyperlinkUrlSnapshot)>,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), crate::HtmlHyperlinkCaptureError<E>> {
+        use crate::{HtmlCapturedHyperlinkUrl, HtmlHyperlinkCaptureError as Error};
+        step().map_err(Error::Interrupted)?;
+        let index = self.index(subject)?;
+        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
+            return Err(HtmlCaptureError::NotHtmlHyperlink.into());
+        };
+        if !html(element.name(), "a") && !html(element.name(), "area") {
+            return Err(HtmlCaptureError::NotHtmlHyperlink.into());
+        }
+        if element.hyperlink_url.is_some() {
+            return Err(HtmlCaptureError::HyperlinkUrlAlreadyEstablished.into());
+        }
+        let mut href = None;
+        for attribute in element.attributes.iter() {
+            step().map_err(Error::Interrupted)?;
+            if attribute.name().namespace().uri().is_none()
+                && exact(attribute.name().local_name(), "href")
+            {
+                href = Some(attribute.value());
+                break;
+            }
+        }
+        let (state, units, relations) = match observation {
+            None => {
+                if href.is_some() {
+                    return Err(HtmlCaptureError::HyperlinkHrefMismatch.into());
+                }
+                (HtmlCapturedHyperlinkUrl::Null, 0, 0)
+            }
+            Some((document, snapshot)) => {
+                let document = self.index(document)?;
+                self.require(document, HtmlCaptureSubjectKind::Document)?;
+                let Some(href) = href else {
+                    return Err(HtmlCaptureError::HyperlinkHrefMismatch.into());
+                };
+                if href.len() != snapshot.raw().len() {
+                    return Err(HtmlCaptureError::HyperlinkHrefMismatch.into());
+                }
+                for (a, b) in href.code_units().iter().zip(snapshot.raw().code_units()) {
+                    step().map_err(Error::Interrupted)?;
+                    if a != b {
+                        return Err(HtmlCaptureError::HyperlinkHrefMismatch.into());
+                    }
+                }
+                let units = snapshot.retained_utf16_extent();
+                (
+                    HtmlCapturedHyperlinkUrl::Observed {
+                        document: HtmlCaptureDocumentId(subject_id(&self.data, document)),
+                        snapshot,
+                    },
+                    units,
+                    1,
+                )
+            }
+        };
+        let usage = self.admit(0, relations, 0, units, 0, 0)?;
+        step().map_err(Error::Interrupted)?;
+        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
+            unreachable!()
+        };
+        element.hyperlink_url = Some(state);
+        self.data.usage = usage;
+        Ok(())
+    }
     /// Attests actual canonical flags and parser creation relative to this
     /// immutable capture's node document and host revision. No provenance is
     /// inferred from attributes or namespace.
@@ -1190,6 +1271,7 @@ impl HtmlCaptureBuilder {
                 custom_context: None,
                 nonce: HtmlCapturedNonce::Unavailable,
                 link_history: None,
+                hyperlink_url: None,
             }),
             document,
             Parent::Unavailable,

@@ -457,6 +457,9 @@ impl DomSnapshot {
             if let Some(owner) = node.node.control_owner {
                 control.include(&mut planned, owner, false)?;
             }
+            if let Some(parsed) = node.node.hyperlink.as_ref().and_then(|h| h.parsed.as_ref()) {
+                control.include(&mut planned, parsed.document, false)?;
+            }
             if let Some(script) = node.node.script {
                 for document in [script.parser_document, script.preparation_document]
                     .into_iter()
@@ -578,6 +581,36 @@ impl DomSnapshot {
                     if let Some(link) = node.as_link() {
                         control.charge(1)?;
                         builder.establish_link_history(&subject, link.history())?;
+                    }
+                    if let Some(hyperlink) = node.as_hyperlink() {
+                        let history = if let Some(observation) = hyperlink.parse_observation() {
+                            let document = control.subject(
+                                &staged,
+                                hyperlink
+                                    .parse_document()
+                                    .expect("actual parsed provenance")
+                                    .node(),
+                            )?;
+                            Some((document, observation.clone()))
+                        } else {
+                            None
+                        };
+                        builder
+                            .establish_hyperlink_url_with(
+                                &subject,
+                                history
+                                    .as_ref()
+                                    .map(|(document, snapshot)| (document, snapshot.clone())),
+                                || control.charge(1),
+                            )
+                            .map_err(|e| match e {
+                                surgeist_html_semantics::HtmlHyperlinkCaptureError::Capture(e) => {
+                                    DomHtmlCaptureError::Capture(e)
+                                }
+                                surgeist_html_semantics::HtmlHyperlinkCaptureError::Interrupted(
+                                    e,
+                                ) => e,
+                            })?;
                     }
                     if let Some(nonce) = element.nonce() {
                         builder.establish_element_nonce(&subject, nonce.clone())?;

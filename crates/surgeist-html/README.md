@@ -62,6 +62,13 @@ dimension-source/form identities, checked invocation order, waiting work,
 retirement, finite admission and atomic publication. These values do not execute
 resources, complete a suspended update or replace retained image history.
 
+`HtmlHyperlinkSetUrlCursor` orders A/Area cache clearing, href presence,
+encoding-parse and successful storage. Shared attribute and tree decisions
+preserve the namespace/equality and connection guards. Consumers retain actual
+URL history and current node-Document identity; missing external parse evidence
+is distinct from URL failure. These steps provide no URL engine or speculative
+loading service.
+
 `reflected_element_attribute_change` owns the exact name/namespace clear rule
 for caller-established nullable Element reflected properties, including redundant
 attribute sets. `HtmlReflectedElementSetter` supplies the asymmetric null/non-null

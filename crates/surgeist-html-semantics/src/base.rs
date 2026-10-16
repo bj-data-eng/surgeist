@@ -337,13 +337,33 @@ impl From<HtmlCaptureError> for HtmlBaseFactsError {
         Self::Capture(error)
     }
 }
-struct Validation {
+pub(crate) struct Validation {
     limits: HtmlBaseFactsLimits,
     work: usize,
     units: usize,
 }
 impl Validation {
-    fn step(&mut self) -> Result<(), HtmlBaseFactsError> {
+    pub(crate) fn new(limits: HtmlBaseFactsLimits) -> Self {
+        Self {
+            limits,
+            work: 0,
+            units: 0,
+        }
+    }
+    pub(crate) fn records(&self, capacity: usize) -> Result<(), HtmlBaseFactsError> {
+        if capacity > self.limits.records {
+            return Err(HtmlBaseFactsError::RecordLimit);
+        }
+        Ok(())
+    }
+    pub(crate) fn usage(&self, records: usize) -> HtmlBaseFactsUsage {
+        HtmlBaseFactsUsage {
+            records,
+            utf16_units: self.units,
+            validation_work: self.work,
+        }
+    }
+    pub(crate) fn step(&mut self) -> Result<(), HtmlBaseFactsError> {
         self.work = self
             .work
             .checked_add(1)
@@ -353,7 +373,7 @@ impl Validation {
         }
         Ok(())
     }
-    fn string(&mut self, text: &DocumentString) -> Result<(), HtmlBaseFactsError> {
+    pub(crate) fn string(&mut self, text: &DocumentString) -> Result<(), HtmlBaseFactsError> {
         self.step()?;
         self.units = self
             .units
@@ -364,7 +384,21 @@ impl Validation {
         }
         Ok(())
     }
-    fn equal(
+    pub(crate) fn retained_string(
+        &mut self,
+        text: &DocumentString,
+    ) -> Result<(), HtmlBaseFactsError> {
+        self.step()?;
+        self.units = self
+            .units
+            .checked_add(text.shared_code_units().capacity())
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        if self.units > self.limits.utf16_units {
+            return Err(HtmlBaseFactsError::Utf16Limit);
+        }
+        Ok(())
+    }
+    pub(crate) fn equal(
         &mut self,
         a: &DocumentString,
         b: &DocumentString,
@@ -631,6 +665,26 @@ impl HtmlCapturedBaseFacts {
     }
     pub fn formation_usage(&self) -> HtmlBaseFactsUsage {
         self.usage
+    }
+}
+
+/// Actual ordinary-tree first Base selection, supplied by the topology owner.
+#[derive(Clone, Copy, Debug)]
+pub enum HtmlDocumentFirstBase<'a> {
+    Absent,
+    /// A first Base exists; None is unavailable frozen state, never fallback.
+    Present(Option<&'a HtmlBaseUrlRecord>),
+}
+/// HTML #document-base-url selection without a second tree or URL engine.
+/// The first frozen record may be historical; its revision need not equal the
+/// current Document facts. That branch requires no unrelated fallback facts.
+pub fn select_document_base<'a>(
+    document: Option<&'a HtmlBaseDocumentFacts>,
+    first: HtmlDocumentFirstBase<'a>,
+) -> Result<&'a HtmlBaseUrlRecord, HtmlBaseMissing> {
+    match first {
+        HtmlDocumentFirstBase::Present(value) => value.ok_or(HtmlBaseMissing::FrozenBase),
+        HtmlDocumentFirstBase::Absent => document.ok_or(HtmlBaseMissing::DocumentFacts)?.fallback(),
     }
 }
 

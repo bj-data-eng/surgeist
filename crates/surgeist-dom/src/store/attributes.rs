@@ -229,6 +229,14 @@ impl Draft {
             old_value.as_ref(),
             Some(&details_new_value),
             cancelled,
+        )?;
+        self.hyperlink_attribute_change(
+            node,
+            &changed,
+            old_value.as_ref(),
+            Some(&details_new_value),
+            limits,
+            cancelled,
         )
     }
 
@@ -289,7 +297,8 @@ impl Draft {
         self.select_attribute(node, &changed, AttributeChange::Removed, limits, cancelled)?;
         self.details_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)?;
         self.base_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)?;
-        self.image_attribute_change(node, &changed, old_value.as_ref(), None, cancelled)
+        self.image_attribute_change(node, &changed, old_value.as_ref(), None, cancelled)?;
+        self.hyperlink_attribute_change(node, &changed, old_value.as_ref(), None, limits, cancelled)
     }
 
     fn publish_element(

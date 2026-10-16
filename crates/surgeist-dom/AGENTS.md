@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Img/Picture/Source/Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
+Common profiles plus actual native A/Area/Img/Picture/Source/Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -347,8 +347,7 @@ Link consumes shared disabled-removal flags and actual nullable parser Document.
 Its native null stylesheet/initial empty render-blocking set and exact BC-connected
 trigger guards establish the bounded processing prefix, not a generic render-blocked
 false or resource-service implementation. Reject resource-bearing state explicitly;
-VT CSSOM bindings are no Link sheet installation. Anchor name processing remains
-conditional on actual Anchor admission. Future parsed/resources ingress has a
+VT CSSOM bindings are no Link sheet installation. Actual A name processing runs the same source hook over that empty set. Future parsed/resources ingress has a
 separate cause and cannot copy native closed proof or erase retained history.
 
 Standalone Img consumes the shared closed fresh request tuple, with an actual
@@ -373,3 +372,22 @@ publication; its temporary bank joins the existing live scratch ledger. Private
 create/destroy closures get no fabricated public IDs. Detach/adopt do not cancel,
 pin or rebind. No unused handoff/scheduler API or resource/geometry default is
 added; future transferred work requires its owner's exact liveness policy.
+
+Native A/Area retain nullable associated URL plus actual qualified parse provenance
+and historical parse Document. Consume shared set-URL actions and current Document
+base selection; changed href clears before parsing, exact optional equality and
+non-null namespaces skip first. Bind observations to the initial exact Document
+stamp and actual selected base/encoding/full revision, independently of historical
+frozen-base revision. Native Base facts attest real UTF8/about:blank identity;
+no parser, CSP or charset-label inference belongs here. Aggregate actual bank
+capacity and canonical string backing extent are bounded separately from producer
+formation; work decreases across every reached parse/bind in the batch. Constructor,
+absent removal and equal href need no reached-parse allowance. Admit actual chosen
+storage and cancellation even for later no-ops. Compare whole final semantic state
+with only derived aggregate units excluded; equal candidates retain old backing,
+usage and revision, while real semantic changes publish candidate actual usage.
+Adoption preserves history; clone/native installation initialize then execute copied
+attributes in destination context. Initial/Slot captures close the actual historical
+parse Document independently from current nodeDocument and retain exact observed
+failure versus fresh null. Native speculative processing stops at the actual null
+node-navigable guard; no task/navigation/Blob/IDL/resource service is fabricated.

@@ -20,6 +20,22 @@ execute scripts, load resources or mutate a live tree. The
 [selected language edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior.
 
+`select_document_base` selects the actual first href Base's frozen URL or the
+qualified Document fallback, preserving historical frozen record identity.
+`HtmlHyperlinkParseFacts` admits exact encoding-parse observations for one
+selected base, opaque encoding and full producer revision. Formation counts
+retained vector/string capacities; lookup charges a caller callback before each
+comparison unit and preserves its first interruption. A chosen immutable snapshot
+retains only its raw input, qualification and observed result, including explicit
+parse failure. Missing observations remain unavailable evidence. Adapters bind
+these facts to actual Documents and encoding truth; this crate parses no URL.
+
+Capture builders can establish A/Area URL cache history with the actual historical
+parsing Document, independently of current node-Document membership after adoption.
+Fresh/cleared null, observed parse failure and unavailable history remain distinct.
+The join checks the exact current href and admits retained UTF-16 and Document
+references atomically. It establishes no origin, Blob-store or navigation facts.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

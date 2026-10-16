@@ -20,6 +20,7 @@ mod control;
 mod details;
 mod document;
 mod form;
+mod hyperlink;
 mod image;
 mod import;
 mod input;
@@ -62,6 +63,7 @@ pub enum DomResource {
     DetailsToggleOutput,
     BaseObservations,
     ImageUpdateCancellations,
+    HyperlinkObservations,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -113,6 +115,11 @@ pub enum DomError {
     LinkProcessingUnavailable,
     ImageProcessingUnavailable,
     ImageUpdateExhausted,
+    HyperlinkProcessingUnavailable,
+    HyperlinkFacts(crate::DomHyperlinkFactsError),
+    HyperlinkWorkLimit {
+        limit: u64,
+    },
     BaseFacts(crate::DomBaseFactsError),
     BaseWorkLimit {
         limit: u64,
@@ -171,6 +178,8 @@ pub struct DomLimits {
     details_intentions: usize,
     base_observations: usize,
     base_work: u64,
+    hyperlink_observations: usize,
+    hyperlink_work: u64,
     select_tasks: usize,
     select_scratch: usize,
     select_work: u64,
@@ -230,6 +239,8 @@ impl DomLimits {
             details_intentions: 0,
             base_observations: 0,
             base_work: 0,
+            hyperlink_observations: 0,
+            hyperlink_work: 0,
             select_tasks: 0,
             select_scratch: 0,
             select_work: 0,
@@ -346,6 +357,30 @@ impl DomLimits {
     pub fn base_work(self) -> u64 {
         self.base_work
     }
+    /// Aggregate retained href-observation capacity and cumulative qualified
+    /// lookup/binding work. Cache/input UTF16 extents use canonical string units.
+    /// Absent href and namespace/equality skips need no parse admission.
+    pub fn with_hyperlink_processing(
+        mut self,
+        observation_records: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if observation_records
+            > isize::MAX as usize
+                / size_of::<surgeist_html_semantics::HtmlHyperlinkParseObservation>()
+        {
+            return Err(DomError::InvalidLimit(DomResource::HyperlinkObservations));
+        }
+        self.hyperlink_observations = observation_records;
+        self.hyperlink_work = work;
+        Ok(self)
+    }
+    pub fn hyperlink_observation_records(self) -> usize {
+        self.hyperlink_observations
+    }
+    pub fn hyperlink_work(self) -> u64 {
+        self.hyperlink_work
+    }
     /// Retained raw Details transitions, including staged cancellation evidence.
     /// Scans use canonical node/string/command bounds and per-step cancellation.
     pub fn with_details_toggle_intentions(mut self, max_pending: usize) -> Result<Self, DomError> {
@@ -452,6 +487,7 @@ pub enum DomChange {
     TemplateRelations,
     /// Recompute Document-scoped URL/base-dependent facts and consumers.
     DocumentBase(DocumentId),
+    DocumentHyperlinks(DocumentId),
     SlotManual(NodeId),
     SlotAssignedNodes(NodeId),
     ManualAssignment(NodeId),
@@ -609,6 +645,8 @@ pub(crate) struct Node {
     pub(crate) base_document: Option<crate::base::BaseDocument<NodeId>>,
     pub(crate) link: Option<crate::base::LinkState<NodeId>>,
     pub(crate) image: Option<crate::image::ImageState<NodeId>>,
+    pub(crate) hyperlink: Option<crate::hyperlink::HyperlinkState<NodeId>>,
+    pub(crate) hyperlink_document: Option<crate::hyperlink::HyperlinkDocument>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -736,9 +774,17 @@ impl Dom {
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
+        let mut hyperlink_records = 0usize;
         let mut records = 0usize;
         for slot in &self.state.slots {
             if let Some(node) = &slot.node {
+                hyperlink_records = hyperlink_records
+                    .checked_add(
+                        node.hyperlink_document
+                            .as_ref()
+                            .map_or(0, crate::hyperlink::HyperlinkDocument::records),
+                    )
+                    .ok_or(DomError::RepresentationExhausted)?;
                 records = records
                     .checked_add(
                         node.base_document
@@ -752,6 +798,11 @@ impl Dom {
             records,
             limits.base_observations,
             DomResource::BaseObservations,
+        )?;
+        admit(
+            hyperlink_records,
+            limits.hyperlink_observations,
+            DomResource::HyperlinkObservations,
         )?;
         admit(
             self.state.slot_reference_count(),
@@ -833,7 +884,7 @@ impl Dom {
     ) -> Result<DomCommit, DomError> {
         check_cancel(cancelled)?;
         let Prepared {
-            state,
+            mut state,
             owner,
             created,
             documents,
@@ -841,7 +892,14 @@ impl Dom {
             record_ids,
             changes,
         } = prepared;
+        // All chosen storage has already been admitted. Aggregate units are
+        // derived allocation accounting, not a semantic mutation: compare every
+        // other State field, then restore the candidate's actual usage. A whole
+        // semantic no-op retains the old canonical backing and its truthful usage.
+        let candidate_units = state.units;
+        state.units = self.state.units;
         let changed = state != *self.state;
+        state.units = candidate_units;
         let revision = if changed {
             DomRevision(
                 self.revision
@@ -1032,6 +1090,8 @@ struct DraftNode {
     base_document: Option<crate::base::BaseDocument<Key>>,
     link: Option<crate::base::LinkState<Key>>,
     image: Option<crate::image::ImageState<Key>>,
+    hyperlink: Option<crate::hyperlink::HyperlinkState<Key>>,
+    hyperlink_document: Option<crate::hyperlink::HyperlinkDocument>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -1039,6 +1099,8 @@ struct Draft {
     basis: DomStamp,
     base_work: std::cell::Cell<u64>,
     base_work_limit: u64,
+    hyperlink_work: std::cell::Cell<u64>,
+    hyperlink_work_limit: u64,
     view_transitions: DraftTransitions,
     signal_slots: Vec<Key>,
     notification_queued: bool,
@@ -1089,6 +1151,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.initialize_template_contents(key, limits, cancel)?;
+        if self.node(key)?.hyperlink.is_some() {
+            self.set_hyperlink_url(key, None, limits, cancel)?;
+        }
         if self.node(key)?.image.is_some() {
             self.start_image_update(
                 key,
@@ -1133,6 +1198,11 @@ impl Draft {
                         .image
                         .as_ref()
                         .map(|b| b.map(|id| Key::Existing(id.slot))),
+                    hyperlink: node
+                        .hyperlink
+                        .as_ref()
+                        .map(|h| h.map(|id| Key::Existing(id.slot))),
+                    hyperlink_document: node.hyperlink_document.clone(),
                     script: node
                         .script
                         .map(|value| value.map(|id| Key::Existing(id.slot))),
@@ -1181,6 +1251,8 @@ impl Draft {
             },
             base_work: std::cell::Cell::new(0),
             base_work_limit: dom.limits.base_work,
+            hyperlink_work: std::cell::Cell::new(0),
+            hyperlink_work_limit: dom.limits.hyperlink_work,
             view_transitions: DraftTransitions::new(&dom.state.view_transitions)?,
             signal_slots: map_keys(&dom.state.signal_slots, cancelled)?,
             notification_queued: dom.state.notification_queued,
@@ -1308,6 +1380,10 @@ impl Draft {
             .then(crate::base::LinkState::fresh);
         let image = matches!(&kind,DomNodeKind::Element(e) if e.is_img())
             .then(|| crate::image::ImageState::fresh(key));
+        let hyperlink = matches!(&kind,DomNodeKind::Element(e) if e.is_hyperlink())
+            .then(crate::hyperlink::HyperlinkState::fresh);
+        let hyperlink_document = matches!(&kind, DomNodeKind::Document(_))
+            .then(crate::hyperlink::HyperlinkDocument::fresh);
         let base_document =
             matches!(&kind, DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
         self.created.push(Some(DraftNode {
@@ -1316,6 +1392,8 @@ impl Draft {
             base,
             link,
             image,
+            hyperlink,
+            hyperlink_document,
             base_document,
             parent: None,
             children: Vec::new(),
@@ -1349,6 +1427,9 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::BindNativeHyperlinkFacts { basis, facts } => {
+                self.bind_hyperlink_facts(basis, facts, limits, cancelled)?
+            }
             Command::BindNativeBaseFacts { basis, facts } => {
                 self.bind_base_facts(basis, facts, limits, cancelled)?
             }
@@ -1611,6 +1692,14 @@ impl Draft {
                     self.units -= kind_units(&node.kind)?;
                     self.units -= node.base.as_ref().map_or(0, crate::base::BaseState::units);
                     self.units -= node
+                        .hyperlink
+                        .as_ref()
+                        .map_or(0, crate::hyperlink::HyperlinkState::units);
+                    self.units -= node
+                        .hyperlink_document
+                        .as_ref()
+                        .map_or(0, crate::hyperlink::HyperlinkDocument::units);
+                    self.units -= node
                         .base_document
                         .as_ref()
                         .map_or(0, crate::base::BaseDocument::units);
@@ -1822,6 +1911,8 @@ impl Draft {
                     .transpose()?,
                 link: source.link.as_ref().map(|b| b.map(id)),
                 image: source.image.as_ref().map(|b| b.map(id)),
+                hyperlink: source.hyperlink.as_ref().map(|h| h.map(id)),
+                hyperlink_document: source.hyperlink_document.clone(),
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -2000,6 +2091,7 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                         || node.base != current.base
                         || node.link != current.link
                         || node.image != current.image
+                        || node.hyperlink != current.hyperlink
                         || node.script != current.script
                         || node.option_select != current.option_select)
                 {
@@ -2016,6 +2108,10 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                 if node.base_document != current.base_document {
                     reserve(&mut changes, 1)?;
                     changes.push(DomChange::DocumentBase(DocumentId(id)));
+                }
+                if node.hyperlink_document != current.hyperlink_document {
+                    reserve(&mut changes, 1)?;
+                    changes.push(DomChange::DocumentHyperlinks(DocumentId(id)));
                 }
                 let kind_change = if intrinsic_changed {
                     Some(

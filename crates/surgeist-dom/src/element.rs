@@ -171,6 +171,9 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
             Requirement::KnownHtml(KnownHtmlElement::Base) => NativeFamily::Base,
             Requirement::KnownHtml(KnownHtmlElement::Link) => NativeFamily::Link,
+            Requirement::KnownHtml(KnownHtmlElement::A | KnownHtmlElement::Area) => {
+                NativeFamily::Hyperlink
+            }
             Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Image) => {
                 NativeFamily::Img
             }
@@ -274,6 +277,9 @@ impl DomElement {
     }
     pub(crate) fn is_base(&self) -> bool {
         matches!(self.family, NativeFamily::Base)
+    }
+    pub(crate) fn is_hyperlink(&self) -> bool {
+        matches!(self.family, NativeFamily::Hyperlink)
     }
     pub(crate) fn is_img(&self) -> bool {
         matches!(self.family, NativeFamily::Img)

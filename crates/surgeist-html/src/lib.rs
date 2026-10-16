@@ -22,6 +22,7 @@ mod form_native;
 mod form_owner;
 mod fragment_initialization;
 mod frame;
+mod hyperlink;
 mod iframe;
 mod image;
 mod input;
@@ -68,6 +69,7 @@ pub use fragment_initialization::{
     fragment_insertion_mode, fragment_tokenizer_state,
 };
 pub use frame::{HtmlFrameNullContent, HtmlFramePostConnectionDecision, frame_post_connection};
+pub use hyperlink::*;
 pub use iframe::{
     HtmlIframeNativeState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
     iframe_post_connection,

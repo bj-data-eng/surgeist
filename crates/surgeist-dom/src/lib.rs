@@ -118,6 +118,7 @@ mod element;
 mod fieldset;
 mod form;
 mod host;
+mod hyperlink;
 mod identity;
 mod image;
 mod input;
@@ -155,6 +156,7 @@ pub use host::{
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
+pub use hyperlink::{DomHyperlink, DomHyperlinkFactsError};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
 pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg};
 pub use input::{DomInput, DomInputState};

@@ -2172,6 +2172,26 @@ pub surgeist_html::HtmlHiddenState::NotHidden
 pub enum surgeist_html::HtmlHyperlinkAttributeContext
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithHref
 pub surgeist_html::HtmlHyperlinkAttributeContext::WithoutHref
+pub enum surgeist_html::HtmlHyperlinkAttributeEffect
+pub surgeist_html::HtmlHyperlinkAttributeEffect::ConsiderSpeculativeLoads
+pub surgeist_html::HtmlHyperlinkAttributeEffect::None
+pub surgeist_html::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
+pub enum surgeist_html::HtmlHyperlinkSetUrlAction
+pub surgeist_html::HtmlHyperlinkSetUrlAction::ClearUrl
+pub surgeist_html::HtmlHyperlinkSetUrlAction::Complete
+pub surgeist_html::HtmlHyperlinkSetUrlAction::ParseHref
+pub surgeist_html::HtmlHyperlinkSetUrlAction::ReadHref
+pub surgeist_html::HtmlHyperlinkSetUrlAction::StoreParsedUrl
+pub enum surgeist_html::HtmlHyperlinkSetUrlReply
+pub surgeist_html::HtmlHyperlinkSetUrlReply::Applied
+pub surgeist_html::HtmlHyperlinkSetUrlReply::HrefPresent(bool)
+pub surgeist_html::HtmlHyperlinkSetUrlReply::Parsed(bool)
+pub enum surgeist_html::HtmlHyperlinkTreeMutation
+pub surgeist_html::HtmlHyperlinkTreeMutation::Insertion
+pub surgeist_html::HtmlHyperlinkTreeMutation::Insertion::connected: bool
+pub surgeist_html::HtmlHyperlinkTreeMutation::Moving
+pub surgeist_html::HtmlHyperlinkTreeMutation::Removal
+pub surgeist_html::HtmlHyperlinkTreeMutation::Removal::old_ancestor_connected: bool
 pub enum surgeist_html::HtmlIconSize
 pub surgeist_html::HtmlIconSize::Bitmap(surgeist_html::HtmlBitmapIconSize)
 pub surgeist_html::HtmlIconSize::Scalable
@@ -4139,6 +4159,17 @@ pub fn surgeist_html::HtmlHashNameReferenceReport::processing(&self) -> surgeist
 pub fn surgeist_html::HtmlHashNameReferenceReport::processing_name_units(&self) -> core::option::Option<&[u16]>
 pub fn surgeist_html::HtmlHashNameReferenceReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlHashNameReferenceReport::raw(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub struct surgeist_html::HtmlHyperlinkSetUrlCursor
+impl surgeist_html::HtmlHyperlinkSetUrlCursor
+pub const fn surgeist_html::HtmlHyperlinkSetUrlCursor::action(&self) -> surgeist_html::HtmlHyperlinkSetUrlAction
+pub const fn surgeist_html::HtmlHyperlinkSetUrlCursor::new() -> Self
+pub fn surgeist_html::HtmlHyperlinkSetUrlCursor::reply(&mut self, reply: surgeist_html::HtmlHyperlinkSetUrlReply) -> core::result::Result<(), surgeist_html::HtmlHyperlinkSetUrlError>
+impl core::default::Default for surgeist_html::HtmlHyperlinkSetUrlCursor
+pub fn surgeist_html::HtmlHyperlinkSetUrlCursor::default() -> Self
+pub struct surgeist_html::HtmlHyperlinkSetUrlError
+impl core::error::Error for surgeist_html::HtmlHyperlinkSetUrlError
+impl core::fmt::Display for surgeist_html::HtmlHyperlinkSetUrlError
+pub fn surgeist_html::HtmlHyperlinkSetUrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlIconSizeKeyword
 impl surgeist_html::HtmlIconSizeKeyword
 pub fn surgeist_html::HtmlIconSizeKeyword::result(&self) -> core::result::Result<&surgeist_html::HtmlIconSize, surgeist_html::HtmlIconSizeError>
@@ -5487,6 +5518,8 @@ pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInv
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
 pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
 pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
+pub fn surgeist_html::hyperlink_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, values_equal: bool) -> surgeist_html::HtmlHyperlinkAttributeEffect
+pub const fn surgeist_html::hyperlink_tree_considers_speculative_loads(change: surgeist_html::HtmlHyperlinkTreeMutation) -> bool
 pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool
 pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlIframePostConnectionDecision
 pub fn surgeist_html::image_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, change: surgeist_html::HtmlImageAttributeChange) -> surgeist_html::HtmlImageAttributeEffect

@@ -65,6 +65,10 @@ pub(crate) enum Creation {
 
 #[derive(Debug)]
 pub(crate) enum Command {
+    BindNativeHyperlinkFacts {
+        basis: DomDocumentStamp,
+        facts: surgeist_html_semantics::HtmlHyperlinkParseFacts,
+    },
     BindNativeBaseFacts {
         basis: DomDocumentStamp,
         facts: surgeist_html_semantics::HtmlParseBaseFacts,
@@ -200,6 +204,19 @@ impl Default for DomBatch {
 }
 
 impl DomBatch {
+    /// Qualifies href parse observations against this exact native Document's
+    /// already-bound encoding, current Document base URL and full revision.
+    /// This changes no existing hyperlink cache or Document metadata.
+    pub fn bind_native_hyperlink_facts(
+        &mut self,
+        basis: DomDocumentStamp,
+        facts: &surgeist_html_semantics::HtmlHyperlinkParseFacts,
+    ) {
+        self.commands.push(Command::BindNativeHyperlinkFacts {
+            basis,
+            facts: facts.clone(),
+        });
+    }
     /// Binds external observations to this exact native about:blank/UTF8
     /// Document. The encoding token is explicitly bound to that actual
     /// encoding; its identity is never interpreted as a charset label.

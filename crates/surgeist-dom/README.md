@@ -87,7 +87,7 @@ native initialization from the actual expanded name through HTML's shared produc
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
 and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/
 Textarea/Output/Select/Option/Optgroup/Selectedcontent/Details/Base/Link/Img/Picture/
-Source/Template/Script and SVG Script families,
+Source/A/Area/Template/Script and SVG Script families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -655,8 +655,8 @@ stylesheet, modulepreload, preload, prefetch, preconnect, dns-prefetch and expec
 processing triggers require browsing-context connectedness. Disabled-set has no
 associated sheet to disable; id/anchor-name processing iterates the actual empty
 render-blocking set. This proves no general render-blocked Boolean. Actual HTML
-Anchor creation remains unadmitted, so its name-hook coverage is conditional;
-ordinary name attributes on other Elements are exclusion evidence.
+A name changes now execute that hook; other Elements' ordinary name attributes
+remain exclusion evidence.
 
 Icon/manifest/alternate-feed/search UI, discovery and service uses have no admitted
 native recipient; this owner advertises no supported processing-token registry.
@@ -667,6 +667,55 @@ actual facts, frozen history, flags and remapped Document references under its
 own cause before installation hooks; native fresh initialization cannot erase
 unknown resources/history. Current public Document destruction remains
 unadmitted; this unit neither widens it nor pins historical references.
+
+Native A/Area start with a null associated URL and execute HTML's real set-URL
+creation steps, returning on absent href without external facts or extra query
+admission. A changed null-namespace href first clears the cache, then encoding-
+parses the exact UTF16 against the **current Document base URL** and actual
+encoding. The shared Document-base selection uses the current first Base's
+frozen record when present; it does not substitute the fallback or rerun Base's
+CSP selection. Exact equal optional href values and namespaced attributes return
+before parsing, including after adoption. Present-empty href still parses.
+
+`DomBatch::bind_native_hyperlink_facts` binds immutable producer observations to
+an exact initial `DomDocumentStamp`. The existing native Base-facts binding
+establishes opaque URL/encoding identities against the real UTF8/about:blank
+Document environment; identity binding never infers a charset from an arbitrary
+label. The hyperlink bank validates the complete current parse revision, selected
+base identity and encoding identity. A frozen base may retain an older revision.
+A missing, stale, foreign or mismatched context refuses atomically; an actual
+qualified failed parse instead retains its provenance with a null URL.
+`DomNode::as_hyperlink` reads the stored URL and historical parse Document without
+reinitializing an href IDL getter. Observation updates do not silently reparse.
+
+`DomLimits::with_hyperlink_processing` bounds aggregate installed observation
+capacity and cumulative batch work, separately from producer formation limits.
+Both allowances default to zero. Canonical unit admission charges actual retained
+raw/base/result string backing capacity for each bank and chosen cache, including
+transient parses later discarded. Scans and raw comparisons poll cancellation;
+Select composition also charges its actual enclosing work. All admission and
+cancellation precede the single publication. Whole final semantic equality ignores
+only derived aggregate unit accounting: a capacity-only candidate retains the
+old canonical backing, usage and revision, including at exhausted revision.
+Other real semantic changes publish the candidate's actual admitted usage and
+complete changes; no per-node allocation restoration or synthetic revision occurs.
+
+Adoption preserves URL history; a later changed href parses its actual new
+Document context. Clone/import-as-clone and native immutable installation create
+fresh null state, then run real copied-attribute/tree hooks in the destination.
+Snapshots and captures preserve selected opaque parse identities and history.
+Captures map the historical parse Document independently from current nodeDocument,
+with producer string/relation retention and cancellable adapter work admission;
+Slot supplements preserve those same observations. Explicit destruction retires
+ordinary state without pinning Documents or following a reused generation.
+
+A/Area href/rel/referrerpolicy and insertion/removal hooks consider speculative
+loads using actual current/old-ancestor facts. The native Document's exact null
+node-navigable guard returns before task/service processing. A name/id hooks use
+the existing actual empty render-blocking-set proof. These steps provide no
+navigation, download, loading service, Blob-store truth, origin/components or
+href-IDL reinitialization. Future parsed installation must transfer its actual
+history under its own creation cause.
 
 Native HTML Details derives open state solely from exact null-namespace `open`
 presence. Generic name/open changes and per-node insertion consume HTML's shared

@@ -193,7 +193,12 @@ impl<'a> HtmlSemanticSession<'a> {
                         let Some(value) = &row.value else { break };
                         self.charge(3)?;
                         return Ok(HtmlSemanticValue::Known(HtmlDocumentBaseUrl {
-                            value: value.clone(),
+                            value: crate::select_document_base(
+                                None,
+                                crate::HtmlDocumentFirstBase::Present(Some(value)),
+                            )
+                            .expect("present frozen record")
+                            .clone(),
                             base_element: Some(id),
                             frozen_revision: Some(row.frozen_revision.clone()),
                         }));
@@ -207,7 +212,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let Some(facts) = self.base_environment(&document_id)? else {
             return self.base_missing(document.id(), HtmlBaseMissing::DocumentFacts);
         };
-        match facts.document().fallback() {
+        match crate::select_document_base(
+            Some(facts.document()),
+            crate::HtmlDocumentFirstBase::Absent,
+        ) {
             Ok(value) => {
                 self.charge(1)?;
                 Ok(HtmlSemanticValue::Known(HtmlDocumentBaseUrl {
