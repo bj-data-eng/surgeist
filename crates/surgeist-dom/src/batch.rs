@@ -119,6 +119,12 @@ pub(crate) enum Command {
         slot: NodeOperand,
         incoming: Vec<NodeOperand>,
     },
+    CreateXmlDocument {
+        associated_document: NodeOperand,
+        namespace: Namespace,
+        qualified_name: DocumentString,
+        doctype: Option<NodeOperand>,
+    },
     CreateHtmlDocument {
         associated_document: NodeOperand,
         title: Option<DocumentString>,
@@ -432,6 +438,25 @@ impl DomBatch {
     /// Creates an empty native XML Document with the selected DOM defaults.
     pub fn create_document(&mut self) -> CreatedNode {
         self.create(Creation::Document, None)
+    }
+    /// Creates an XML Document with an optional namespaced root and actual
+    /// DocumentType. Origin follows the associated Document; XML metadata and
+    /// the closed environment are established independently.
+    pub fn create_xml_document(
+        &mut self,
+        associated_document: impl Into<NodeOperand>,
+        namespace: Namespace,
+        qualified_name: impl Into<DocumentString>,
+        doctype: Option<NodeOperand>,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::CreateXmlDocument {
+            associated_document: associated_document.into(),
+            namespace,
+            qualified_name: qualified_name.into(),
+            doctype,
+        });
+        ticket
     }
     /// Creates a native HTML Document through DOM's complete createHTMLDocument
     /// algorithm. The actual same-store associated Document supplies origin;

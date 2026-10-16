@@ -1775,6 +1775,22 @@ impl Draft {
                 let slot = self.resolve(slot.clone())?;
                 self.assign_manual(slot, incoming, limits, cancelled)?;
             }
+            Command::CreateXmlDocument {
+                associated_document,
+                namespace,
+                qualified_name,
+                doctype,
+            } => {
+                let associated_document = self.resolve(associated_document.clone())?;
+                self.create_xml_document(
+                    associated_document,
+                    namespace,
+                    qualified_name,
+                    doctype.as_ref(),
+                    limits,
+                    cancelled,
+                )?;
+            }
             Command::CreateHtmlDocument {
                 associated_document,
                 title,

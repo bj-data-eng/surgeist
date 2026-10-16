@@ -352,6 +352,16 @@ pub(in crate::store) fn commands(
             Command::BindEncodingUrlFacts { facts, .. } => {
                 payload.producer(facts.retained_storage_usage())?
             }
+            Command::CreateXmlDocument {
+                namespace,
+                qualified_name,
+                ..
+            } => {
+                if let Some(uri) = namespace.uri() {
+                    payload.string(uri)?;
+                }
+                payload.string(qualified_name)?;
+            }
             Command::CreateHtmlDocument {
                 title: Some(value), ..
             }

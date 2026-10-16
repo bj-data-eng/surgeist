@@ -154,7 +154,10 @@ clonable-root import and owned destruction. `create_html_document` consumes an
 actual associated Document's origin and builds the complete native HTML skeleton,
 including the distinction between omitted and supplied-empty title. Source-aware
 Element creation and attribute lookup use the captured current node-document.
-The separate XML DOMImplementation creator, remaining special family state/hooks,
+`create_xml_document` implements DOMImplementation's optional namespaced root and
+actual doctype adoption, copies the associated origin and selects XHTML/SVG/XML
+MIME while retaining XML class. Its finalization survives actual Source insertion
+effects. Remaining special family state/hooks,
 complete immutable HTML installation, slot assignment and
 flat-tree captures remain contribution work. The facade exposes this same owner
 as `surgeist::dom`; the former `surgeist-retained` package and export are retired.

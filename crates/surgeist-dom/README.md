@@ -1008,12 +1008,14 @@ Native `create_document()` establishes an XML document with `application/xml`
 content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative
 shadow roots disabled and a known-null custom element registry. A checked
 document view exposes these canonical values through `metadata()`. Each native
-document has a fresh opaque origin, distinct across documents and stores even
+creation through this primitive has a fresh opaque origin, distinct across
+documents and stores even
 when their URLs match. Cloning an origin preserves its identity; URL spellings
 and source labels do not establish origins. Metadata and origins are staged
 privately with the rest of the batch, and old snapshots retain them. Ordinary
-doctype edits do not change document mode. Host/imported metadata and registry
-objects have no admission API yet. Native environment proof also survives captures.
+doctype edits do not change document mode. There is no general host-metadata or
+registry-object setter; qualified completed-report transfer is described below.
+Native environment proof also survives captures.
 
 `create_html_document(associated_document, title)` implements the selected DOM
 createHTMLDocument tree in the same staged owner: Document, html doctype, HTML
@@ -1034,10 +1036,34 @@ allocations available in the committed snapshot. Omitted-title creation adds
 store usage and all failures/cancellation roll back the complete graph. There is
 no class/metadata setter or empty-HTML shortcut. The existing zero-argument
 native XML creator keeps its fresh opaque origin; it does not claim WebIDL
-new Document()'s associated-global origin semantics. DOMImplementation's separate
-XML createDocument(namespace, qualifiedName, doctype) algorithm, including its
-XHTML/SVG content types, remains unexposed. The source createElement XHTML MIME
-branch does not imply that creator or a metadata override capability.
+new Document()'s associated-global origin semantics.
+
+`create_xml_document(associated_document, namespace, qualified_name, doctype)`
+implements the separate DOMImplementation XML creator. The new Document keeps
+XML class and default metadata. A nonempty qualified name creates an exact
+namespaced root; an empty name creates no root. A supplied actual DocumentType
+is moved and adopted through the ordinary canonical operations before the root
+is appended. Its identity survives, including when it came from another Document
+in this store. Only the new Document receives this operation's caller ticket.
+
+After insertion, the creator copies the associated Document's actual origin and
+selects content type from the namespace argument: HTML gives
+`application/xhtml+xml`, SVG gives `image/svg+xml`, and all others give
+`application/xml`. This selection also applies to an empty qualified name.
+The closed native environment uses the associated Document's explicit input
+policy; it does not acquire a browsing context or execution service. Final
+metadata occupies 37 XHTML, 29 SVG or 31 ordinary XML UTF-16 units, independently
+of root and doctype fields. Admission also covers initial default metadata and
+overlapping replacement backing. XHTML `create_element` uses HTML namespace
+without changing the XML Document's case-preserving behavior.
+
+A root such as HTML Style can reach external processing during insertion.
+Ordinary atomic application refuses that boundary without publication. Composed
+Source execution retains the actual same-command tail through publication,
+parking and reacquisition: insertion effects finish before origin, MIME and
+ticket finalization, exactly once. It neither restarts creation nor promises
+rollback of an already published phase. Complete change evidence and old
+snapshots follow the same canonical owner.
 
 `import_node` reads a checked node from an owned immutable `DomSnapshot` and
 copies it into a target Document with fresh identities and a detached root.
@@ -1272,7 +1298,7 @@ historical request data; it does not override the current canonical bindings.
 Contextual SVG processing and the remaining report profiles stay under
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
 
-Remaining native special families and XML DOMImplementation creation also remain
+Remaining native special families also remain
 unadmitted capabilities. This crate does not claim complete DOM or
 HTML conformance. Those remaining
 contracts stay with [#1074](https://github.com/bj-data-eng/surgeist/issues/1074),

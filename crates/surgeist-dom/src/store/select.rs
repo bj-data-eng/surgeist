@@ -926,6 +926,7 @@ pub(super) enum SelectAfter {
 }
 pub(super) enum Effect {
     Style(style::Frame),
+    XmlDocument(super::document::XmlDocumentFrame),
     ChildrenChanged {
         parent: Key,
         stage: u8,
@@ -992,6 +993,7 @@ impl Effect {
     ) -> Result<style::storage::Payload, DomError> {
         step()?;
         match self {
+            Self::XmlDocument(frame) => frame.retained_payload(step),
             Self::Output(frame) => frame.retained_payload(step),
             Self::Setter {
                 edit: crate::select::Edit::Value(value),
@@ -1018,6 +1020,7 @@ impl EffectFrame {
         let payload = a.effect_payload(retained, cancel)?;
         let effect = match &self.effect {
             Effect::Style(frame) => Effect::Style(*frame),
+            Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
                 stage: *stage,
@@ -1114,7 +1117,7 @@ impl Draft {
         // graph occurrence is admitted before it is materialized or cloned.
         debug_assert!(!matches!(
             &effect,
-            Effect::Output(_) | Effect::Setter { .. } | Effect::Clone(_)
+            Effect::Output(_) | Effect::Setter { .. } | Effect::Clone(_) | Effect::XmlDocument(_)
         ));
         self.push_effect_retained(effect, scoped, None, cancel)
     }
@@ -1215,6 +1218,9 @@ impl Draft {
                 self.effect_scoped = scoped;
                 match effect {
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
+                    Effect::XmlDocument(frame) => {
+                        self.xml_document_effect(frame, payload, limits, cancel)?
+                    }
                     Effect::ChildrenChanged { parent, stage } => {
                         self.children_changed_effect(parent, stage, limits, cancel)?
                     }

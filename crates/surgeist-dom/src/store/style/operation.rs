@@ -1123,6 +1123,7 @@ impl DomStyleEditLease<'_> {
                         | Command::Import { .. }
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
+                        | Command::CreateXmlDocument { .. }
                 ) {
                     ticket_count = ticket_count
                         .checked_add(1)
@@ -2127,6 +2128,123 @@ pub(in crate::store) mod accounting_tests {
     use super::*;
     fn limits(work: u64) -> DomStyleEditLimits {
         DomStyleEditLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096)
+    }
+    fn xml_command(work_limit: u64) -> (Result<(), DomError>, u64) {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let associated = setup.create_document();
+        let associated = dom
+            .apply(setup, &cancel)
+            .unwrap()
+            .document(&associated)
+            .unwrap();
+        let before = dom.snapshot();
+        let mut commands = DomBatch::new();
+        let created =
+            commands.create_xml_document(associated, crate::Namespace::svg(), "Root", None);
+        let mut lease = match dom.begin_style_batch(commands, limits(work_limit), &cancel) {
+            Ok(lease) => lease,
+            Err(error) => return (Err(error), 0),
+        };
+        let work = lease
+            .dom
+            .source_operation
+            .as_ref()
+            .unwrap()
+            .draft
+            .source_work
+            .clone();
+        let result = (|| {
+            let DomStyleProgress::Complete(done) = lease.advance(&cancel)? else {
+                panic!("SVG root needs no service")
+            };
+            let document = done.commit().document(&created).unwrap();
+            assert_eq!(
+                lease
+                    .snapshot()
+                    .document(document)
+                    .unwrap()
+                    .metadata()
+                    .content_type(),
+                &DocumentString::from("image/svg+xml")
+            );
+            Ok(())
+        })();
+        if result.is_err() {
+            assert_eq!(lease.snapshot().stamp(), before.stamp());
+        }
+        drop(lease);
+        (result, work.load(Ordering::Relaxed))
+    }
+    #[test]
+    fn xml_creator_source_work_is_cumulative_and_exact_budget_finishes_the_same_command() {
+        let (result, spent) = xml_command(100_000_000);
+        result.unwrap();
+        assert!(spent > 1);
+        let (exact, actual) = xml_command(spent);
+        exact.unwrap();
+        assert_eq!(actual, spent);
+        let (short, actual) = xml_command(spent - 1);
+        assert_eq!(
+            short.unwrap_err(),
+            DomError::StyleWorkLimit { limit: spent - 1 }
+        );
+        assert_eq!(actual, spent - 1);
+    }
+    #[test]
+    fn xml_style_root_reserves_final_metadata_and_ticket_revision_before_first_exposure() {
+        for (remaining, success) in [(6, false), (7, true)] {
+            let cancel = AtomicBool::new(false);
+            let mut dom =
+                Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+            let mut setup = DomBatch::new();
+            let associated = setup.create_document();
+            let doctype = setup.create_document_type(&associated, "source", "", "");
+            setup.insert_before(&doctype, &associated, None);
+            let created = dom.apply(setup, &cancel).unwrap();
+            let associated = created.document(&associated).unwrap();
+            let doctype = created.created(&doctype).unwrap().unwrap();
+            dom.revision = DomRevision(u64::MAX - remaining);
+            let before = dom.snapshot();
+            let mut commands = DomBatch::new();
+            commands.create_xml_document(
+                associated,
+                crate::Namespace::html(),
+                "style",
+                Some(doctype.into()),
+            );
+            let mut lease = dom
+                .begin_style_batch(commands, limits(100_000_000), &cancel)
+                .unwrap();
+            let result = lease.advance(&cancel);
+            if success {
+                let DomStyleProgress::Request(request) = result.unwrap() else {
+                    panic!("actual inline policy")
+                };
+                assert_eq!(
+                    request.action(),
+                    DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+                );
+                let metadata = lease.snapshot();
+                assert_eq!(
+                    metadata
+                        .document(request.source().document())
+                        .unwrap()
+                        .metadata()
+                        .content_type(),
+                    &DocumentString::from("application/xml")
+                );
+            } else {
+                assert_eq!(result.unwrap_err(), DomError::RevisionExhausted);
+                assert_eq!(lease.snapshot().stamp(), before.stamp());
+                assert_eq!(
+                    lease.snapshot().node(doctype).unwrap().parent(),
+                    Some(associated.node())
+                );
+                assert!(!lease.status().has_published());
+            }
+        }
     }
     fn fixture() -> (Dom, DomBatch) {
         let cancel = AtomicBool::new(false);

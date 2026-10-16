@@ -20,7 +20,15 @@ lines 2110–2112), including a fresh opaque origin and known-null registry.
 Stored content type, encoding name and URL count toward string admission;
 doctype edits do not infer compatibility mode. Keep metadata and origin
 identity within the same staged publication and immutable snapshot as the tree.
-The native XML entry preserves its fresh opaque origin. The HTML creator must
+The zero-argument native XML entry preserves its fresh opaque origin.
+`create_xml_document` follows the distinct DOMImplementation algorithm: optional
+root creation, actual doctype adoption, root insertion, then associated-origin
+and namespace-selected XHTML/SVG/XML MIME finalization. Empty qualified name
+skips root creation but still selects MIME; XML class remains. A reached Style
+root retains finalization and its Document ticket in the original Source effect
+queue across actual external publication. Count initial and replacement metadata
+and command/effect Namespace occurrences without resetting spent work.
+The HTML creator must
 publish the complete createHTMLDocument skeleton, distinguish omitted/empty title
 and copy only an actual associated Document origin. No empty-HTML shortcut,
 metadata/class setter or fake browsing context is admitted. Private skeleton

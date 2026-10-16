@@ -250,6 +250,14 @@ impl DomDocumentMetadata {
             meta_ui: NoAssociatedMetaThemeConsumer,
         })
     }
+    // Only the canonical createDocument tail calls these source-ordered writes.
+    // They do not provide caller mutation of arbitrary Document metadata.
+    pub(crate) fn finish_xml_origin(&mut self, origin: DomOpaqueOrigin) {
+        self.origin = origin;
+    }
+    pub(crate) fn finish_xml_content_type(&mut self, content_type: DocumentString) {
+        self.content_type = content_type;
+    }
     pub(crate) fn from_parsed(
         class: DomDocumentClass,
         mode: HtmlDocumentMode,
