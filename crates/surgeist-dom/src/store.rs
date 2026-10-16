@@ -18,6 +18,7 @@ mod base;
 mod children;
 mod control;
 mod details;
+mod dialog;
 mod document;
 mod form;
 mod hyperlink;
@@ -92,6 +93,12 @@ pub enum DomError {
     NonceInapplicable,
     TemplateContentsUnavailable,
     MarqueeInapplicable,
+    DialogInapplicable,
+    DialogDocumentStateUnavailable,
+    DialogProcessingUnavailable {
+        action: surgeist_html::HtmlDialogAction,
+    },
+    DialogProtocol(surgeist_html::HtmlDialogCursorError),
     CustomValidityInapplicable,
     ButtonInapplicable,
     InputInapplicable,
@@ -533,6 +540,7 @@ pub enum DomChange {
     /// Recompute Document-scoped URL/base-dependent facts and consumers.
     DocumentBase(DocumentId),
     DocumentMeta(DocumentId),
+    DocumentInteractiveState(DocumentId),
     DocumentRenderBlocking(DocumentId),
     DocumentEncodingUrlFacts(DocumentId),
     SlotManual(NodeId),
@@ -696,6 +704,7 @@ pub(crate) struct Node {
     pub(crate) image: Option<crate::image::ImageState<NodeId>>,
     pub(crate) hyperlink: Option<crate::hyperlink::HyperlinkState<NodeId>>,
     pub(crate) encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
+    pub(crate) interactive_document: Option<crate::dialog::DocumentInteractiveState<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -1191,6 +1200,7 @@ struct DraftNode {
     image: Option<crate::image::ImageState<Key>>,
     hyperlink: Option<crate::hyperlink::HyperlinkState<Key>>,
     encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
+    interactive_document: Option<crate::dialog::DocumentInteractiveState<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -1331,6 +1341,29 @@ impl Draft {
                         .as_ref()
                         .map(|h| h.map(|id| Key::Existing(id.slot))),
                     encoding_url_document: node.encoding_url_document.clone(),
+                    interactive_document: node
+                        .interactive_document
+                        .as_ref()
+                        .map(|state| {
+                            use crate::dialog::DocumentInteractiveState as Interactive;
+                            Ok::<_, DomError>(match state {
+                                Interactive::Known {
+                                    open_dialogs,
+                                    top_layer,
+                                } => Interactive::Known {
+                                    open_dialogs: style::initial::map_keys(
+                                        open_dialogs,
+                                        initial,
+                                        cancelled,
+                                    )?,
+                                    top_layer: style::initial::map_keys(
+                                        top_layer, initial, cancelled,
+                                    )?,
+                                },
+                                Interactive::Unavailable => Interactive::Unavailable,
+                            })
+                        })
+                        .transpose()?,
                     style_parser_document: node
                         .style_parser_document
                         .map(|id| Key::Existing(id.slot)),
@@ -1560,6 +1593,19 @@ impl Draft {
         let form_past_names =
             matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some())
                 .then(crate::form::FormPastNames::fresh);
+        let interactive_document = match &kind {
+            DomNodeKind::Document(metadata) => Some(
+                if matches!(
+                    metadata.creation_cause(),
+                    crate::DomDocumentCreationCause::Native
+                ) {
+                    crate::dialog::DocumentInteractiveState::native_closed()
+                } else {
+                    crate::dialog::DocumentInteractiveState::Unavailable
+                },
+            ),
+            _ => None,
+        };
         let template_document = matches!(kind, DomNodeKind::Document(_))
             .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
         let script = matches!(&kind, DomNodeKind::Element(element) if element.is_html_script())
@@ -1620,6 +1666,7 @@ impl Draft {
             image,
             hyperlink,
             encoding_url_document,
+            interactive_document,
             base_document,
             parent: None,
             children: Vec::new(),
@@ -1942,6 +1989,10 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
             }
+            Command::SetDialogReturnValue { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_dialog_return_value(node, value, limits, cancelled)?;
+            }
             Command::SetNonce { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_nonce(node, value, limits, cancelled)?;
@@ -2225,6 +2276,23 @@ impl Draft {
                 image: source.image.as_ref().map(|b| b.map(id)),
                 hyperlink: source.hyperlink.as_ref().map(|h| h.map(id)),
                 encoding_url_document: source.encoding_url_document.clone(),
+                interactive_document: source
+                    .interactive_document
+                    .as_ref()
+                    .map(|state| {
+                        use crate::dialog::DocumentInteractiveState as Interactive;
+                        Ok::<_, DomError>(match state {
+                            Interactive::Known {
+                                open_dialogs,
+                                top_layer,
+                            } => Interactive::Known {
+                                open_dialogs: map_ids(open_dialogs, &id, budget, cancelled)?,
+                                top_layer: map_ids(top_layer, &id, budget, cancelled)?,
+                            },
+                            Interactive::Unavailable => Interactive::Unavailable,
+                        })
+                    })
+                    .transpose()?,
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -2440,6 +2508,10 @@ fn difference(
                     let change = DomChange::DocumentBase(DocumentId(frozen.document));
                     style::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(change);
+                }
+                if node.interactive_document != current.interactive_document {
+                    style::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentInteractiveState(DocumentId(id)));
                 }
                 if node.base_document != current.base_document {
                     style::formation::reserve(&mut changes, 1, budget, cancelled)?;

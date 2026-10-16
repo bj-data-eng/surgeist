@@ -349,6 +349,23 @@ impl DraftNode {
             image: self.image.clone(),
             hyperlink: self.hyperlink.clone(),
             encoding_url_document: self.encoding_url_document.clone(),
+            interactive_document: self
+                .interactive_document
+                .as_ref()
+                .map(|state| {
+                    use crate::dialog::DocumentInteractiveState as Interactive;
+                    Ok::<_, DomError>(match state {
+                        Interactive::Known {
+                            open_dialogs,
+                            top_layer,
+                        } => Interactive::Known {
+                            open_dialogs: a.copy(open_dialogs, cancel)?,
+                            top_layer: a.copy(top_layer, cancel)?,
+                        },
+                        Interactive::Unavailable => Interactive::Unavailable,
+                    })
+                })
+                .transpose()?,
         })
     }
 }
@@ -532,6 +549,14 @@ impl Draft {
             add(node.children.capacity(), size_of::<Key>())?;
             add(node.manual_nodes.capacity(), size_of::<Key>())?;
             add(node.assigned_nodes.capacity(), size_of::<Key>())?;
+            if let Some(crate::dialog::DocumentInteractiveState::Known {
+                open_dialogs,
+                top_layer,
+            }) = &node.interactive_document
+            {
+                add(open_dialogs.capacity(), size_of::<Key>())?;
+                add(top_layer.capacity(), size_of::<Key>())?;
+            }
             if let Some(d) = &node.base_document {
                 add(d.render_blocking.capacity(), size_of::<Key>())?;
             }

@@ -489,6 +489,13 @@ impl Draft {
         self.control_attribute_change(node, changed, old_value, cancelled)?;
         self.select_attribute(node, changed, change, limits, cancelled)?;
         self.details_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
+        self.dialog_attribute_change(
+            node,
+            changed,
+            old_value.is_some(),
+            new_value.is_some(),
+            cancelled,
+        )?;
         self.base_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
         self.image_attribute_change(node, changed, old_value, new_value, cancelled)?;
         self.style_attribute_change(node, changed, limits, cancelled)?;

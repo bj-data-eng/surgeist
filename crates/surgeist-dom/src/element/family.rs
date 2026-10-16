@@ -28,6 +28,7 @@ pub(super) struct AttributeMutation<'a> {
 pub(crate) enum NativeFamily {
     Common,
     Details,
+    Dialog(Arc<crate::dialog::DomDialogState>),
     Meta,
     Style(Arc<crate::DomStyleState>),
     Base,
@@ -65,6 +66,7 @@ impl NativeFamily {
             }
         }
         match self {
+            Self::Dialog(state) => Some(state.return_value().len()),
             Self::Fieldset(state) => Some(state.control.message.len()),
             Self::Button(state) => Some(state.control.message.len()),
             Self::Input(state) => state.units(),

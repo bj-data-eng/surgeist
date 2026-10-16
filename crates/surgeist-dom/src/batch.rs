@@ -166,6 +166,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         value: DocumentString,
     },
+    SetDialogReturnValue {
+        node: NodeOperand,
+        value: DocumentString,
+    },
     SetNonce {
         node: NodeOperand,
         value: DocumentString,
@@ -638,6 +642,17 @@ impl DomBatch {
         self.commands.push(Command::AssignSlot {
             slot: slot.into(),
             incoming,
+        });
+    }
+    /// Sets the exact UTF-16 returnValue of a native HTML Dialog.
+    pub fn set_dialog_return_value(
+        &mut self,
+        node: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetDialogReturnValue {
+            node: node.into(),
+            value: value.into(),
         });
     }
     /// Turns a native HTML Marquee on without changing its loop index.

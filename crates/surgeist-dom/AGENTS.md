@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native A/Area/Img/Picture/Source/Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
+Common profiles plus actual native A/Area/Img/Picture/Source/Base/Link/Details/Dialog/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and

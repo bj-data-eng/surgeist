@@ -117,6 +117,10 @@ pub(crate) fn family_payload(
             payload.add_bytes(size_of::<crate::DomSelectState>())?;
             payload.string(&state.control.message)?;
         }
+        NativeFamily::Dialog(state) => {
+            payload.add_bytes(size_of::<crate::dialog::DomDialogState>())?;
+            payload.string(state.return_value())?;
+        }
         NativeFamily::Style(_) => payload.add_bytes(size_of::<crate::DomStyleState>())?,
         NativeFamily::Canvas(state) => {
             payload.add_bytes(size_of::<surgeist_html::HtmlCanvasNoneState>())?;
@@ -276,6 +280,14 @@ fn state_usage(
             payload.bank::<NodeId>(node.children.capacity())?;
             payload.bank::<NodeId>(node.manual_nodes.capacity())?;
             payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
+            if let Some(crate::dialog::DocumentInteractiveState::Known {
+                open_dialogs,
+                top_layer,
+            }) = &node.interactive_document
+            {
+                payload.bank::<NodeId>(open_dialogs.capacity())?;
+                payload.bank::<NodeId>(top_layer.capacity())?;
+            }
             if let Some(document) = &node.base_document {
                 payload.bank::<NodeId>(document.render_blocking.capacity())?;
             }
@@ -347,6 +359,7 @@ pub(in crate::store) fn commands(
             | Command::SetTextareaDefaultValue { value, .. }
             | Command::SetInputValue { value, .. }
             | Command::SetCustomValidity { value, .. }
+            | Command::SetDialogReturnValue { value, .. }
             | Command::SetNonce { value, .. } => payload.string(value)?,
             Command::Select {
                 edit: crate::select::Edit::Value(value),

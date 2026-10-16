@@ -115,6 +115,7 @@ mod batch;
 mod button;
 mod control;
 mod details;
+mod dialog;
 mod document;
 mod element;
 mod fieldset;
@@ -150,6 +151,7 @@ pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
     DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
 };
+pub use dialog::DomDialog;
 pub use document::DomNativeInputPlatform;
 pub use document::{
     DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentMetadata,

@@ -245,6 +245,9 @@ impl DomElement {
                 Requirement::FormAssociated(
                     surgeist_html::HtmlNativeFormAssociationKind::Select,
                 ) => size_of::<crate::DomSelectState>() + string,
+                Requirement::KnownHtml(KnownHtmlElement::Dialog) => {
+                    size_of::<crate::dialog::DomDialogState>() + string
+                }
                 Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
                     size_of::<HtmlCanvasNoneState>()
                 }
@@ -313,6 +316,9 @@ impl DomElement {
             }
             Requirement::KnownHtml(KnownHtmlElement::Option) => {
                 NativeFamily::Option(crate::DomOptionState::default())
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Dialog) => {
+                NativeFamily::Dialog(std::sync::Arc::new(crate::dialog::DomDialogState::fresh()))
             }
             Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
             Requirement::KnownHtml(KnownHtmlElement::Meta) => NativeFamily::Meta,
@@ -481,6 +487,18 @@ impl DomElement {
         match &self.family {
             NativeFamily::Style(state) => Some(state),
             _ => None,
+        }
+    }
+    pub(crate) fn dialog_state(&self) -> Option<&crate::dialog::DomDialogState> {
+        match &self.family {
+            NativeFamily::Dialog(state) => Some(state),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_dialog_state(&mut self, value: crate::dialog::DomDialogState) {
+        match &mut self.family {
+            NativeFamily::Dialog(state) => *state = std::sync::Arc::new(value),
+            _ => unreachable!("checked Dialog"),
         }
     }
     pub(crate) fn is_link(&self) -> bool {

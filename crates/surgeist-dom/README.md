@@ -935,6 +935,16 @@ concurrent writers. Private numerical accounting uses shared atomics while
 owner-local cells remain, so this contract does not provide `Sync`. Runtime owns
 its separate session, resource/task lifecycle and controlled event reentry.
 
+Native HTML Dialog exposes retained `returnValue` through `DomNode::as_dialog`.
+`set_dialog_return_value` preserves exact UTF-16 and old snapshots; equal values
+are no-ops. Native clone/import starts with the source-defined fresh return value,
+while adoption preserves the existing value. Ordinary `open` attribute and tree
+hooks consume HTML's rules against the actual closed Document environment and
+canonical Document lists. Their admitted transitions preserve null watcher,
+tracker and request-close state and false modal state. Reached unsupported
+processing refuses atomically. Positive show/close, focus, watchers and hosted
+top-layer operations require their eventful adapters.
+
 Native HTML Template owns a separate real DocumentFragment. Its checked
 `DomNode::as_template()` view exposes contents and the HTML-owned known-null native
 insertion state. Its structural `contents()` read returns `Result<NodeId, DomError>`;
