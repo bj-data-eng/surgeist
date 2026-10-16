@@ -43,25 +43,30 @@ domain exposes no rendering-layer increment or general animation counter;
 copying a stopped value preserves its state, while fresh creation is on/index0.
 These values establish neither rendering nor execution capability.
 
-`HtmlFrameNullContent` represents the actual initially null child-content
-relationship. Its src/removal and actual load-delay decisions apply only while
-that relationship remains null. `frame_post_connection` preserves the exact
-browsing-context guard, including an unavailable fact; the consuming live owner
-retains child identity, navigation capability and all three mutation hooks.
+`HtmlChildNavigablePresence` supplies local guards over the consuming owner's
+actual null or present child relationship. Null content returns before access,
+attribute processing or child destruction and cannot delay the load event.
+Present content requires the remaining source steps: it establishes neither an
+accessible Document/Window nor a load delay. `frame_post_connection` and
+`iframe_post_connection` preserve the actual node-document browsing-context
+guard, including unavailable facts. The live owner retains child identities and
+executes navigation, access checks and mutation hooks.
 
-`HtmlIframeNativeState` represents the actual fresh never-browsing-context,
-unprocessed/null-child phase, with initially false current-navigation-lazy and
-null timing/resumption values. Its srcdoc/src/sandbox/removal decisions stop at
-the actual null-content guards; loading changes use the shared semantic loading
-states and return when native resumption is null. `iframe_post_connection`
-checks the current node-document browsing context before sandbox parsing or
-child creation. Exact absent, present-empty and token-valued sandbox attributes
-remain distinct; independent local directive flags are not live sandbox policy.
-Current null content alone cannot reinitialize processed/imported history.
-Clone-as-new and retained-state installation are distinct causes; adoption
-preserves established state. This type grants no numeric sandbox readback,
-resource-capable transition, navigation or default-allow policy. Future child or
-context creation needs its actual initialization before policy consumption.
+`HtmlIframeInitialState` holds the source-initial intrinsic tuple: false
+current-navigation-lazy and null timing/resumption values. It is independent of
+child presence; creating a child alone does not change those fields. The owner
+must leave this initial domain before a reached intrinsic write and cannot
+reset processed/imported history from null content. Loading changes use shared
+semantic loading states; sandbox parsing preserves absent, present-empty and
+token-valued attributes. Local directive flags do not establish live policy.
+Clone-as-new initializes fresh fields, while adoption preserves actual state.
+
+`HtmlOpenerPolicyValue` supplies the five pinned language values, and
+`HtmlOpenerPolicy::initial` creates the actual four-field default record. Both
+policy values start as unsafe-none and both reporting endpoints are null.
+Inheritance copies the source-selected actual parent record; a native no-opener
+relationship does not select noopener-allow-popups. These immutable values
+perform no header parsing, matching, reporting or browsing-context group change.
 
 `HtmlNewlineNormalizer` applies Infra's CR LF/CR normalization one raw UTF-16
 unit at a time, preserving all other units. Keep its state across chunks of one

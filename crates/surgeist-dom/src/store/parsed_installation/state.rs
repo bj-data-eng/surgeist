@@ -721,9 +721,9 @@ fn family(
         // navigable, and construction exposes neither a resumption nor an
         // activation/navigation ingress. This is the actual selected profile,
         // not a null-content observation used to infer previous history.
-        Requirement::HtmlFrame => NativeFamily::Frame(surgeist_html::HtmlFrameNullContent::fresh()),
+        Requirement::HtmlFrame => NativeFamily::Frame,
         Requirement::KnownHtml(Element::Iframe) => {
-            NativeFamily::Iframe(surgeist_html::HtmlIframeNativeState::fresh())
+            NativeFamily::Iframe(surgeist_html::HtmlIframeInitialState::fresh())
         }
         // No parser operation invokes Marquee's start/stop API or animation
         // resources; its initial on/index scalars remain unchanged.

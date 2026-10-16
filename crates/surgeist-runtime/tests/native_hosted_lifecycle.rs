@@ -316,8 +316,11 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
     assert!(settings.environment_ready());
     assert_eq!(settings.clock_source(), top.host().source());
     assert_eq!(settings.time_origin_microseconds() % 100, 0);
-    assert_eq!(settings.creation_url(), "about:blank");
-    assert_eq!(settings.top_level_creation_url(), "about:blank");
+    assert_eq!(
+        settings.creation_url().serialization(),
+        &surgeist_html::DocumentString::from("about:blank")
+    );
+    assert_eq!(settings.top_level_creation_url(), settings.creation_url());
     assert!(!settings.cross_origin_isolated());
     assert!(!settings.cross_site());
     let entry = hosted.history_entry(&dom, top.entry(), &cancel()).unwrap();

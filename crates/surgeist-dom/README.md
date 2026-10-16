@@ -891,15 +891,17 @@ New pending work advances the revision even when final node values are restored.
 
 Native HTML Style retains its creation history and nullable CSSOM association.
 Ordinary atomic edits refuse at an external processing boundary without
-publishing a partial edit. `begin_style_batch` instead runs the same canonical
-source engine and returns a lease for actual external requests. Once a source
-phase publishes, dropping the lease parks its mandatory continuation in the DOM;
-`resume_style_edit` reacquires that exact operation. An acknowledged CSSOM
-publication is retained across a failed later DOM segment and is not reissued.
-Cancellation can discard unstarted later commands, but does not roll back an
-already published phase or fabricate its completion.
+publishing a partial edit. `begin_source_edit` runs one `DomSourceEdit` through
+the same canonical source engine and returns a lease for actual external
+requests. Constructors take existing identities; callers sequence separate
+operations explicitly. Native installation and Select completion retain their
+own feature roots in that engine. Once a source phase publishes, dropping the
+lease parks its mandatory continuation in the DOM; `resume_source_edit`
+reacquires that exact operation. An acknowledged CSSOM publication survives a
+failed later segment and is not reissued. Cancellation preserves an already
+published phase and its remaining cleanup obligations.
 
-`DomStyleEditLimits` bounds represented live bytes, UTF-16 backing capacity,
+`DomSourceLimits` bounds represented live bytes, UTF-16 backing capacity,
 cumulative work, phase publications, output records and published native
 identities. Storage includes simultaneous private candidates, checkpoints,
 temporary banks and retained outputs. Shared immutable payloads are charged per
@@ -1019,6 +1021,15 @@ Permissions Policy, actual Global association, loaded time and initial entry.
 Operation and phase checks reject foreign, stale and replayed publications while
 preserving the valid continuation. Dropping a permission does not finish its
 operation. Explicit record, byte and work limits admit the actual state.
+
+The initial no-opener constructor establishes one immutable COOP policy and
+URL/base/encoding payload before handing execution to Runtime. The published
+Document borrows these actual values through `opener_policy()` and
+`base_document_facts()`; other native creation profiles return `None`. Its
+`document_base_record()` selects the actual current base through the same Base
+owner as `document_base_url()`. Reads and retries preserve the constructor's URL,
+encoding and provenance identities, including in historical snapshots after
+destruction. These facts do not qualify an external URL parser or its responses.
 
 The initial hosted Document has a real non-null, complete empty Global registry.
 Its canonical registry view consumes the original HTML-semantics lookup over the

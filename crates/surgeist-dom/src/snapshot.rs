@@ -29,7 +29,7 @@ impl DomSnapshot {
     pub fn incomplete_hosted_operation(&self) -> Option<crate::hosted::DomHostedOperationId> {
         self.state.incomplete_hosted
     }
-    pub fn incomplete_source_operation(&self) -> Option<crate::DomStyleOperationId> {
+    pub fn incomplete_source_operation(&self) -> Option<crate::DomSourceOperationId> {
         self.state.incomplete_source
     }
     pub(crate) fn require_complete_source(&self) -> Result<(), DomError> {

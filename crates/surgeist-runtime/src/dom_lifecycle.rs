@@ -150,6 +150,8 @@ pub struct DomHostedSettings {
     document: surgeist_dom::DocumentId,
     ready: bool,
     time_origin: clock::CoarsenedSample,
+    creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
+    top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
 }
 impl DomHostedSettings {
     /// Native Global whose actual settings were read.
@@ -191,13 +193,13 @@ impl DomHostedSettings {
     pub fn time_origin_microseconds(&self) -> u64 {
         self.time_origin.microseconds
     }
-    /// Intrinsic creation URL for the admitted no-opener initial blank creator.
-    pub const fn creation_url(&self) -> &'static str {
-        "about:blank"
+    /// Actual URL record sampled when the original native Settings was created.
+    pub fn creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        &self.creation_url
     }
-    /// No-opener top-level creation URL.
-    pub const fn top_level_creation_url(&self) -> &'static str {
-        "about:blank"
+    /// Actual top-level creation URL sampled by the original constructor.
+    pub fn top_level_creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        &self.top_level_creation_url
     }
     /// Group mode none does not provide cross-origin isolation.
     pub const fn cross_origin_isolated(&self) -> bool {
@@ -461,6 +463,14 @@ impl HostedState {
     }
 }
 impl HostedRuntime {
+    pub(crate) fn validate_view(&self, dom: &DomEventDom<'_>) -> Result<(), DomHostedRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)
+    }
+
     fn state(&self) -> Result<Rc<RefCell<HostedState>>, DomHostedRuntimeError> {
         self.state
             .upgrade()
@@ -537,6 +547,8 @@ impl HostedRuntime {
                     document,
                     ready: native.settings.ready,
                     time_origin: native.settings.navigation_start,
+                    creation_url: native.settings.creation_url.clone(),
+                    top_level_creation_url: native.settings.top_level_creation_url.clone(),
                 });
             }
         }
@@ -620,6 +632,16 @@ fn native_retained_bytes(
         for record in &host.top_levels {
             spend(work, limit, cancel)?;
             if let Some(cluster) = record.group.as_ref().and_then(|g| g.cluster.as_ref()) {
+                if let Some(global) = &cluster.agent.global {
+                    spend(work, limit, cancel)?;
+                    spend(work, limit, cancel)?;
+                    bytes = bytes
+                        .checked_add(settings_url_payload_bytes(
+                            &global.settings.creation_url,
+                            &global.settings.top_level_creation_url,
+                        )?)
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                }
                 let event_loop = cluster
                     .agent
                     .event_loop
@@ -651,6 +673,20 @@ fn native_retained_bytes(
         }
     }
     Ok(bytes)
+}
+
+// Each retained Settings field is one declared payload occurrence, including
+// when both source inputs identify the same URL record. Inline handles already
+// live in the admitted Composition bank. Producer receipts own private layout.
+fn settings_url_payload_bytes(
+    creation: &surgeist_html_semantics::HtmlBaseUrlRecord,
+    top_level: &surgeist_html_semantics::HtmlBaseUrlRecord,
+) -> Result<usize, DomHostedRuntimeError> {
+    creation
+        .retained_storage_usage()
+        .retained_bytes()
+        .checked_add(top_level.retained_storage_usage().retained_bytes())
+        .ok_or(DomHostedRuntimeError::Admission)
 }
 
 fn spend(work: &mut u64, limit: u64, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
@@ -700,6 +736,7 @@ fn drive_creation(
     } = input;
     let limit = limits.work;
     let storage_limit = limits.storage_bytes;
+    let mut retained_added = 0usize;
     let mut index = None;
     for (candidate, host) in hosts.iter().enumerate() {
         spend(work, limit, cancel)?;
@@ -793,6 +830,7 @@ fn drive_creation(
                     {
                         return Err(DomHostedRuntimeError::Admission);
                     }
+                    retained_added = size_of::<RefCell<records::WindowLoop>>();
                     group.cluster = Some(records::OriginCluster {
                         origin: request.origin().clone(),
                         agent: records::NativeAgent {
@@ -824,12 +862,27 @@ fn drive_creation(
                     .expect("actual opaque-key cluster")
                     .agent;
                 if agent.global.is_none() {
+                    spend(work, limit, cancel)?;
+                    spend(work, limit, cancel)?;
+                    let payload = settings_url_payload_bytes(
+                        request.creation_url(),
+                        request.top_level_creation_url(),
+                    )?;
+                    if retained_before
+                        .checked_add(retained_added)
+                        .and_then(|bytes| bytes.checked_add(payload))
+                        .is_none_or(|bytes| bytes > storage_limit)
+                    {
+                        return Err(DomHostedRuntimeError::Admission);
+                    }
                     agent.global = Some(records::Global {
                         id: global,
                         settings: records::Settings {
                             navigation_start: sample,
                             document: None,
                             ready: false,
+                            creation_url: request.creation_url().clone(),
+                            top_level_creation_url: request.top_level_creation_url().clone(),
                         },
                     });
                 }
@@ -1401,5 +1454,160 @@ impl HostedRuntime {
             }
         }
         Err(DomHostedRuntimeError::TargetNotFound)
+    }
+}
+
+#[cfg(all(
+    test,
+    any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "android",
+        target_os = "ios"
+    )
+))]
+mod constructor_settings_tests {
+    use super::*;
+    use crate::{DomDetailsRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits};
+    use surgeist_css::CssUtf16InputLimits;
+    use surgeist_dom::{DomHostedRecordLimits, DomLimits};
+
+    #[test]
+    fn settings_url_payload_refusal_and_exact_retry_keep_original_execution() {
+        let cancel = AtomicBool::new(false);
+        let mut limits = DomHostedRuntimeLimits {
+            canonical: DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                16_000_000,
+                16_000_000,
+                1_000_000,
+            ),
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            scratch_bytes: 16_000_000,
+            work: 1_000_000,
+        };
+        let mut session = DomSession::new(
+            Dom::new(DomLimits::new(128, 200_000, 256, 256, 256, 32, 1_000_000).unwrap()).unwrap(),
+            DomSessionLimits {
+                style: DomStyleRuntimeLimits {
+                    roots: 4,
+                    completions: 32,
+                    reports: 32,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                    css_input: CssUtf16InputLimits::default(),
+                },
+                details: DomDetailsRuntimeLimits {
+                    tasks: 32,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                hosted: limits,
+            },
+        )
+        .unwrap();
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let owner = hosted.state().unwrap();
+        // Reserve the actual original composition bank, so the measured limit
+        // below isolates the reached Settings payload rather than Vec growth.
+        let before_loop = {
+            let mut state = owner.borrow_mut();
+            state.reserve_composition(0, &cancel).unwrap();
+            state.retained_bytes(&cancel).unwrap()
+        };
+        limits.storage_bytes = before_loop + size_of::<RefCell<records::WindowLoop>>();
+        hosted.set_limits(&mut dom, limits, &cancel).unwrap();
+        assert!(matches!(
+            hosted.create_top_level(&mut dom, host, &cancel),
+            Err(DomHostedRuntimeError::Admission)
+        ));
+        let (operation, creation_url, top_url, exact, spent) = {
+            let mut state = owner.borrow_mut();
+            let retained = state.retained_bytes(&cancel).unwrap();
+            assert_eq!(retained, limits.storage_bytes);
+            let creation = state.creation.as_ref().unwrap();
+            let DomHostedCreationStep::NativeExecution(request) =
+                creation.lease.as_ref().unwrap().step(dom.raw()).unwrap()
+            else {
+                panic!("Settings refusal must retain the original Execution phase")
+            };
+            let creation_url = request.creation_url().clone();
+            let top_url = request.top_level_creation_url().clone();
+            // Two actual Settings fields retain two declared occurrences even
+            // when the canonical constructor selected the same record for both.
+            assert_eq!(creation_url, top_url);
+            let exact = retained
+                + creation_url.retained_storage_usage().retained_bytes()
+                + top_url.retained_storage_usage().retained_bytes();
+            assert!(
+                state.hosts[0].top_levels[0]
+                    .group
+                    .as_ref()
+                    .unwrap()
+                    .cluster
+                    .as_ref()
+                    .unwrap()
+                    .agent
+                    .global
+                    .is_none()
+            );
+            (
+                request.operation(),
+                creation_url,
+                top_url,
+                exact,
+                state.work,
+            )
+        };
+        limits.storage_bytes = exact - 1;
+        hosted.set_limits(&mut dom, limits, &cancel).unwrap();
+        assert!(matches!(
+            hosted.resume(&mut dom, &cancel),
+            Err(DomHostedRuntimeError::Admission)
+        ));
+        {
+            let state = owner.borrow();
+            let DomHostedCreationStep::NativeExecution(request) = state
+                .creation
+                .as_ref()
+                .unwrap()
+                .lease
+                .as_ref()
+                .unwrap()
+                .step(dom.raw())
+                .unwrap()
+            else {
+                panic!("one-short admission must preserve the same phase")
+            };
+            assert_eq!(request.operation(), operation);
+            assert_eq!(request.creation_url(), &creation_url);
+            assert_eq!(request.top_level_creation_url(), &top_url);
+            assert!(state.work > spent);
+        }
+        limits.storage_bytes = exact;
+        let cancelled = AtomicBool::new(true);
+        assert_eq!(
+            hosted.set_limits(&mut dom, limits, &cancelled),
+            Err(DomHostedRuntimeError::Cancelled)
+        );
+        assert_eq!(owner.borrow().limits.storage_bytes, exact - 1);
+        assert!(matches!(
+            hosted.resume(&mut dom, &cancelled),
+            Err(DomHostedRuntimeError::Cancelled)
+        ));
+        hosted.set_limits(&mut dom, limits, &cancel).unwrap();
+        let DomHostedProgress::Created(top) = hosted.resume(&mut dom, &cancel).unwrap() else {
+            panic!("exact admitted payload must finish the retained constructor")
+        };
+        let settings = hosted.settings(&dom, top.global(), &cancel).unwrap();
+        assert_eq!(settings.creation_url(), &creation_url);
+        assert_eq!(settings.top_level_creation_url(), &top_url);
+        let mut state = owner.borrow_mut();
+        assert_eq!(state.retained_bytes(&cancel).unwrap(), exact);
+        assert!(state.creation.is_none());
     }
 }

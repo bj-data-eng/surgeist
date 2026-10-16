@@ -57,8 +57,8 @@ impl Draft {
                         .expect("checked reflected slot") = None
                 }
                 Effect::RemoveContentAttribute => {
-                    let operand = style::formation::Formation::new(self, cancel)?;
-                    let name = style::formation::string(
+                    let operand = source::formation::Formation::new(self, cancel)?;
+                    let name = source::formation::string(
                         key.attribute().local_name(),
                         operand.as_ref(),
                         cancel,
@@ -72,13 +72,13 @@ impl Draft {
                     )?;
                 }
                 Effect::SetEmptyContentAttribute => {
-                    let operand = style::formation::Formation::new(self, cancel)?;
-                    let name = style::formation::string(
+                    let operand = source::formation::Formation::new(self, cancel)?;
+                    let name = source::formation::string(
                         key.attribute().local_name(),
                         operand.as_ref(),
                         cancel,
                     )?;
-                    let value = style::formation::string("", operand.as_ref(), cancel)?;
+                    let value = source::formation::string("", operand.as_ref(), cancel)?;
                     self.set_attribute(
                         node,
                         Some(&crate::Namespace::none()),

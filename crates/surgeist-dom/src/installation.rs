@@ -2,6 +2,34 @@
 use crate::{DocumentId, DomChanges, DomDocumentStamp, DomError, DomSnapshot, DomStamp, NodeId};
 use surgeist_html::HtmlNodeId;
 
+/// Requested insertion target for one native HTML installation. These operands
+/// are not a qualification: the canonical receiver checks their current basis,
+/// owner, node kinds and relationships before publishing any phase.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomNativeHtmlInstallTarget {
+    pub(crate) basis: DomDocumentStamp,
+    pub(crate) parent: NodeId,
+    pub(crate) before: Option<NodeId>,
+}
+impl DomNativeHtmlInstallTarget {
+    pub const fn new(basis: DomDocumentStamp, parent: NodeId, before: Option<NodeId>) -> Self {
+        Self {
+            basis,
+            parent,
+            before,
+        }
+    }
+    pub const fn basis(self) -> DomDocumentStamp {
+        self.basis
+    }
+    pub const fn parent(self) -> NodeId {
+        self.parent
+    }
+    pub const fn before(self) -> Option<NodeId> {
+        self.before
+    }
+}
+
 /// Adapter-owned source/map work and simultaneous retained heap storage.
 /// Canonical Draft/tree/name/family work remains bounded by DomLimits and its
 /// cancellation checks; this counter does not claim to meter that owner's work.

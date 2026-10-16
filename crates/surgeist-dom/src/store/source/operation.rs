@@ -1,13 +1,58 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
 use super::*;
+use crate::source::*;
 use crate::style::*;
 use surgeist_cssom::{CssomCommit, CssomPublication, CssomSheetTicket, CssomSnapshot};
+use surgeist_html::{HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Reply};
 
+// One public edit stays inline through admission. Named operations retain their
+// own original controllers. Only owner-local engine tests supply command lists.
+#[cfg_attr(
+    not(test),
+    expect(
+        clippy::large_enum_variant,
+        reason = "The single original Command stays inline in the admitted boxed operation; boxing it would allocate before initial source admission"
+    )
+)]
+enum OperationRoot {
+    Edit([Command; 1]),
+    NativeInstallation,
+    SelectCompletion,
+    #[cfg(test)]
+    Commands(Vec<Command>),
+}
+impl OperationRoot {
+    fn capacity(&self) -> usize {
+        match self {
+            #[cfg(test)]
+            Self::Commands(commands) => commands.capacity(),
+            _ => 0,
+        }
+    }
+}
+impl std::ops::Deref for OperationRoot {
+    type Target = [Command];
+    fn deref(&self) -> &[Command] {
+        match self {
+            Self::Edit(commands) => commands,
+            Self::NativeInstallation | Self::SelectCompletion => &[],
+            #[cfg(test)]
+            Self::Commands(commands) => commands,
+        }
+    }
+}
+impl<'a> IntoIterator for &'a OperationRoot {
+    type Item = &'a Command;
+    type IntoIter = std::slice::Iter<'a, Command>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
 pub(in crate::store) struct Operation {
-    id: DomStyleOperationId,
+    id: DomSourceOperationId,
     draft: Draft,
-    commands: Vec<Command>,
+    commands: OperationRoot,
     index: usize,
     started: bool,
     published: bool,
@@ -46,13 +91,13 @@ enum Receipt {
 }
 /// Execution permission for exactly one DOM-owned source operation. Drop parks
 /// a published operation; it never runs cleanup or discards its mandatory tail.
-pub struct DomStyleEditLease<'a> {
+pub struct DomSourceLease<'a> {
     dom: &'a mut Dom,
-    id: DomStyleOperationId,
+    id: DomSourceOperationId,
     complete: bool,
     select_authorization: Option<Arc<crate::select::Authorization>>,
 }
-impl Drop for DomStyleEditLease<'_> {
+impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
         if !self.complete
             && self
@@ -106,7 +151,7 @@ impl Dom {
             })
             .ok_or(DomError::RepresentationExhausted)
     }
-    pub(in crate::store) fn require_style_source_idle(&self) -> Result<(), DomError> {
+    pub(in crate::store) fn require_sync_source_idle(&self) -> Result<(), DomError> {
         if self.source_operation.is_some() {
             Err(DomError::SourceOperationPending)
         } else {
@@ -114,34 +159,63 @@ impl Dom {
         }
     }
     pub(in crate::store) fn require_source_idle(&self) -> Result<(), DomError> {
-        self.require_style_source_idle()?;
+        self.require_sync_source_idle()?;
         if self.state.incomplete_hosted.is_some() {
             Err(DomError::SourceOperationPending)
         } else {
             Ok(())
         }
     }
-    pub fn pending_style_edit(&self) -> Option<DomStyleEditStatus> {
+    pub fn pending_source_edit(&self) -> Option<DomSourceStatus> {
         self.source_operation.as_ref().map(|o| o.status())
     }
-    pub fn begin_style_batch(
+    /// Begin exactly one requested edit through the original canonical engine.
+    pub fn begin_source_edit(
+        &mut self,
+        edit: DomSourceEdit,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLease<'_>, DomError> {
+        self.begin_source_root(
+            OperationRoot::Edit([edit.command]),
+            Arc::new(BatchIdentity),
+            limits,
+            cancel,
+        )
+    }
+    #[cfg(test)]
+    pub(crate) fn begin_source_commands(
         &mut self,
         batch: DomBatch,
-        limits: DomStyleEditLimits,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, DomError> {
+    ) -> Result<DomSourceLease<'_>, DomError> {
+        self.begin_source_root(
+            OperationRoot::Commands(batch.commands),
+            batch.owner,
+            limits,
+            cancel,
+        )
+    }
+    fn begin_source_root(
+        &mut self,
+        commands: OperationRoot,
+        owner: Arc<BatchIdentity>,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLease<'_>, DomError> {
         self.require_source_idle()?;
         check_cancel(cancel)?;
         let (draft, canonical_storage, command_storage) =
-            Draft::new_source(self, batch.owner, &batch.commands, limits, cancel)?;
-        let id = DomStyleOperationId {
+            Draft::new_source_root(self, owner, &commands, commands.capacity(), limits, cancel)?;
+        let id = DomSourceOperationId {
             owner: self.owner,
             serial: self.next_source_operation,
         };
         let mut op = Box::new(Operation {
             id,
             draft,
-            commands: batch.commands,
+            commands,
             index: 0,
             started: false,
             published: false,
@@ -170,19 +244,19 @@ impl Dom {
             .ok_or(DomError::RepresentationExhausted)?;
         self.source_operation = Some(op);
         self.next_source_operation = next;
-        Ok(DomStyleEditLease {
+        Ok(DomSourceLease {
             dom: self,
             id,
             complete: false,
             select_authorization: None,
         })
     }
-    pub fn resume_style_edit(
+    pub fn resume_source_edit(
         &mut self,
-        id: DomStyleOperationId,
-        limits: DomStyleEditLimits,
+        id: DomSourceOperationId,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, DomError> {
+    ) -> Result<DomSourceLease<'_>, DomError> {
         if self
             .source_operation
             .as_ref()
@@ -194,10 +268,10 @@ impl Dom {
     }
     fn resume_source_permission(
         &mut self,
-        id: DomStyleOperationId,
-        limits: DomStyleEditLimits,
+        id: DomSourceOperationId,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, DomError> {
+    ) -> Result<DomSourceLease<'_>, DomError> {
         check_cancel(cancel)?;
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
@@ -219,7 +293,7 @@ impl Dom {
                     .ok_or(DomError::RepresentationExhausted)?
             || limits.outputs < op.outputs
         {
-            return Err(DomError::InvalidLimit(DomResource::StyleRetainedBytes));
+            return Err(DomError::InvalidLimit(DomResource::SourceRetainedBytes));
         }
         if op.published {
             self.revision
@@ -236,7 +310,7 @@ impl Dom {
             op.draft.source_limits = previous;
             return Err(e);
         }
-        Ok(DomStyleEditLease {
+        Ok(DomSourceLease {
             dom: self,
             id,
             complete: false,
@@ -376,8 +450,8 @@ impl Operation {
             draft.select_scratch_limit = limits.select_scratch;
         }
     }
-    fn status(&self) -> DomStyleEditStatus {
-        DomStyleEditStatus {
+    fn status(&self) -> DomSourceStatus {
+        DomSourceStatus {
             operation: self.id,
             published: self.published,
             cancelled: self.cancelled,
@@ -837,7 +911,7 @@ impl Operation {
             .checked_add(remaining)
             .ok_or(DomError::RepresentationExhausted)?;
         if required_phases > limits.phases {
-            return Err(DomError::StylePublicationLimit);
+            return Err(DomError::SourcePublicationLimit);
         }
         if changed {
             dom.revision
@@ -853,7 +927,7 @@ impl Operation {
             .checked_add(usize::from(incomplete))
             .is_none_or(|required| required > limits.outputs)
         {
-            return Err(DomError::StyleOutputLimit);
+            return Err(DomError::SourceOutputLimit);
         }
         let ids = std::mem::take(&mut prepared.allocation_ids);
         let count = ids
@@ -868,7 +942,7 @@ impl Operation {
             .checked_add(u64::try_from(count).map_err(|_| DomError::RepresentationExhausted)?)
             .ok_or(DomError::RepresentationExhausted)?;
         if identities > limits.identities {
-            return Err(DomError::StyleIdentityLimit);
+            return Err(DomError::SourceIdentityLimit);
         }
         let mut historical = Vec::new();
         formation::reserve(
@@ -920,7 +994,7 @@ impl Operation {
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
                 if identities > limits.identities {
-                    return Err(DomError::StyleIdentityLimit);
+                    return Err(DomError::SourceIdentityLimit);
                 }
                 Some(DomStyleAssociationId {
                     element: source.element,
@@ -1043,15 +1117,15 @@ impl Operation {
         Ok(commit)
     }
 }
-impl DomStyleEditLease<'_> {
-    pub fn status(&self) -> DomStyleEditStatus {
+impl DomSourceLease<'_> {
+    pub fn status(&self) -> DomSourceStatus {
         self.dom
             .source_operation
             .as_ref()
             .expect("live lease")
             .status()
     }
-    pub fn operation(&self) -> DomStyleOperationId {
+    pub fn operation(&self) -> DomSourceOperationId {
         self.id
     }
     pub fn request_cancel(&mut self) {
@@ -1063,7 +1137,7 @@ impl DomStyleEditLease<'_> {
     pub fn snapshot(&self) -> DomSnapshot {
         self.dom.snapshot()
     }
-    pub fn advance(&mut self, cancel: &AtomicBool) -> Result<DomStyleProgress, DomError> {
+    pub fn advance(&mut self, cancel: &AtomicBool) -> Result<DomSourceProgress, DomError> {
         check_cancel(cancel)?;
         // Independent public capabilities may commit concurrently. Keep the
         // exact owner locked from receipt validation through canonical source
@@ -1102,7 +1176,7 @@ impl DomStyleEditLease<'_> {
             .take()
             .ok_or(DomError::InvalidSourceOperation)?;
         let result = self.advance_operation(&mut op, cancel);
-        if matches!(&result, Ok(DomStyleProgress::Complete(_))) {
+        if matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
         } else {
             self.dom.source_operation = Some(op);
@@ -1113,7 +1187,7 @@ impl DomStyleEditLease<'_> {
         &mut self,
         op: &mut Operation,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleProgress, DomError> {
+    ) -> Result<DomSourceProgress, DomError> {
         if op.cancelled && !op.published {
             // No canonical phase or external effect occurred. Return the actual
             // current stamp directly; a second Draft/candidate would only copy
@@ -1121,7 +1195,7 @@ impl DomStyleEditLease<'_> {
             op.refresh_admission(cancel)?;
             let formation = formation::Formation::new(&op.draft, cancel)?;
             let budget = formation.as_ref().expect("source cancellation admission");
-            budget.retain_bytes(size_of::<DomStyleEditCompletion>(), cancel)?;
+            budget.retain_bytes(size_of::<DomSourceCompletion>(), cancel)?;
             let mut ticket_count = 0usize;
             for command in &op.commands {
                 op.draft.source_step(cancel)?;
@@ -1161,10 +1235,9 @@ impl DomStyleEditLease<'_> {
                     changes: Arc::from([]),
                 },
             };
-            return Ok(DomStyleProgress::Complete(DomStyleEditCompletion {
+            return Ok(DomSourceProgress::Complete(DomSourceCompletion {
                 operation: op.id,
                 cancelled: true,
-                owner: op.draft.owner.clone(),
                 published,
                 commit,
                 installation: None,
@@ -1173,7 +1246,9 @@ impl DomStyleEditLease<'_> {
         if let Some(request) = &op.request
             && op.receipt.is_none()
         {
-            return Ok(DomStyleProgress::Request(request.clone()));
+            return Ok(DomSourceProgress::Request(DomSourceRequest::Style(
+                request.clone(),
+            )));
         }
         loop {
             op.refresh_admission(cancel)?;
@@ -1253,7 +1328,7 @@ impl DomStyleEditLease<'_> {
                         .as_ref()
                         .expect("request formed before publication")
                         .clone();
-                    return Ok(DomStyleProgress::Request(request));
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::Style(request)));
                 }
                 Err(e) => {
                     checkpoint.restore(&mut op.draft);
@@ -1312,10 +1387,9 @@ impl DomStyleEditLease<'_> {
                                 .consume();
                             self.dom.active_task = std::sync::Weak::new();
                         }
-                        return Ok(DomStyleProgress::Complete(DomStyleEditCompletion {
+                        return Ok(DomSourceProgress::Complete(DomSourceCompletion {
                             operation: op.id,
                             cancelled: op.cancelled,
-                            owner: op.draft.owner.clone(),
                             published: std::mem::take(&mut op.historical),
                             commit,
                             installation,
@@ -1859,16 +1933,21 @@ impl Dom {
         }
         Ok(())
     }
-    pub fn begin_style_select_completion(
+    pub fn begin_select_completion(
         &mut self,
         task: &crate::DomSelectTask,
         checkpoint: crate::DomNativeCheckpointLimits,
-        limits: DomStyleEditLimits,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, DomError> {
+    ) -> Result<DomSourceLease<'_>, DomError> {
         self.require_source_idle()?;
         self.validate_style_select(task)?;
-        let mut lease = self.begin_style_batch(DomBatch::new(), limits, cancel)?;
+        let mut lease = self.begin_source_root(
+            OperationRoot::SelectCompletion,
+            Arc::new(BatchIdentity),
+            limits,
+            cancel,
+        )?;
         let op = lease.dom.source_operation.as_mut().expect("new operation");
         op.draft.select_scratch_limit = checkpoint.scratch;
         op.draft.select_work_limit = checkpoint.work;
@@ -1880,13 +1959,13 @@ impl Dom {
         lease.select_authorization = Some(task.authorization.clone());
         Ok(lease)
     }
-    pub fn resume_style_select_completion(
+    pub fn resume_select_completion(
         &mut self,
-        id: DomStyleOperationId,
+        id: DomSourceOperationId,
         task: &crate::DomSelectTask,
-        limits: DomStyleEditLimits,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, DomError> {
+    ) -> Result<DomSourceLease<'_>, DomError> {
         self.validate_style_select(task)?;
         let op = self
             .source_operation
@@ -1903,17 +1982,20 @@ impl Dom {
 }
 
 impl Dom {
-    pub fn begin_style_native_installation(
+    pub fn begin_native_installation(
         &mut self,
-        basis: crate::DomDocumentStamp,
-        parent: NodeId,
-        before: Option<NodeId>,
+        target: crate::DomNativeHtmlInstallTarget,
         source: &surgeist_html::HtmlFragment,
-        budgets: crate::DomStyleNativeHtmlInstallLimits,
+        budgets: crate::DomSourceNativeHtmlInstallLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleEditLease<'_>, crate::DomNativeHtmlInstallError> {
+    ) -> Result<DomSourceLease<'_>, crate::DomNativeHtmlInstallError> {
         use crate::DomNativeHtmlInstallError as Error;
-        let crate::DomStyleNativeHtmlInstallLimits {
+        let crate::DomNativeHtmlInstallTarget {
+            basis,
+            parent,
+            before,
+        } = target;
+        let crate::DomSourceNativeHtmlInstallLimits {
             native: installation_limits,
             source: limits,
         } = budgets;
@@ -1932,7 +2014,7 @@ impl Dom {
         staged
             .continuation
             .prepare_source_closing(&staged.draft, cancel)?;
-        let id = DomStyleOperationId {
+        let id = DomSourceOperationId {
             owner: self.owner,
             serial: self.next_source_operation,
         };
@@ -1941,7 +2023,7 @@ impl Dom {
         let mut op = Box::new(Operation {
             id,
             draft: staged.draft,
-            commands: Vec::new(),
+            commands: OperationRoot::NativeInstallation,
             index: 0,
             started: false,
             published: false,
@@ -1970,7 +2052,7 @@ impl Dom {
             .ok_or(Error::Target(DomError::RepresentationExhausted))?;
         self.source_operation = Some(op);
         self.next_source_operation = next;
-        Ok(DomStyleEditLease {
+        Ok(DomSourceLease {
             dom: self,
             id,
             complete: false,
@@ -2134,8 +2216,8 @@ impl DomStyleSource {
 #[cfg(test)]
 pub(in crate::store) mod accounting_tests {
     use super::*;
-    fn limits(work: u64) -> DomStyleEditLimits {
-        DomStyleEditLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096)
+    fn limits(work: u64) -> DomSourceLimits {
+        DomSourceLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096)
     }
     fn xml_command(work_limit: u64) -> (Result<(), DomError>, u64) {
         let cancel = AtomicBool::new(false);
@@ -2151,7 +2233,7 @@ pub(in crate::store) mod accounting_tests {
         let mut commands = DomBatch::new();
         let created =
             commands.create_xml_document(associated, crate::Namespace::svg(), "Root", None);
-        let mut lease = match dom.begin_style_batch(commands, limits(work_limit), &cancel) {
+        let mut lease = match dom.begin_source_commands(commands, limits(work_limit), &cancel) {
             Ok(lease) => lease,
             Err(error) => return (Err(error), 0),
         };
@@ -2164,7 +2246,7 @@ pub(in crate::store) mod accounting_tests {
             .source_work
             .clone();
         let result = (|| {
-            let DomStyleProgress::Complete(done) = lease.advance(&cancel)? else {
+            let DomSourceProgress::Complete(done) = lease.advance(&cancel)? else {
                 panic!("SVG root needs no service")
             };
             let document = done.commit().document(&created).unwrap();
@@ -2196,7 +2278,7 @@ pub(in crate::store) mod accounting_tests {
         let (short, actual) = xml_command(spent - 1);
         assert_eq!(
             short.unwrap_err(),
-            DomError::StyleWorkLimit { limit: spent - 1 }
+            DomError::SourceWorkLimit { limit: spent - 1 }
         );
         assert_eq!(actual, spent - 1);
     }
@@ -2223,11 +2305,12 @@ pub(in crate::store) mod accounting_tests {
                 Some(doctype.into()),
             );
             let mut lease = dom
-                .begin_style_batch(commands, limits(100_000_000), &cancel)
+                .begin_source_commands(commands, limits(100_000_000), &cancel)
                 .unwrap();
             let result = lease.advance(&cancel);
             if success {
-                let DomStyleProgress::Request(request) = result.unwrap() else {
+                let DomSourceProgress::Request(DomSourceRequest::Style(request)) = result.unwrap()
+                else {
                     panic!("actual inline policy")
                 };
                 assert_eq!(
@@ -2292,16 +2375,18 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
         let source = builder.finish();
-        let budgets = crate::DomStyleNativeHtmlInstallLimits::new(
+        let budgets = crate::DomSourceNativeHtmlInstallLimits::new(
             crate::DomNativeHtmlInstallLimits::new(8, 1_000_000, 1_000_000),
             limits(10_000_000),
         );
         let before = dom.snapshot();
         let lease = dom
-            .begin_style_native_installation(
-                before.document(document).unwrap().stamp(),
-                parent,
-                None,
+            .begin_native_installation(
+                crate::DomNativeHtmlInstallTarget::new(
+                    before.document(document).unwrap().stamp(),
+                    parent,
+                    None,
+                ),
                 &source,
                 budgets,
                 &cancel,
@@ -2317,13 +2402,15 @@ pub(in crate::store) mod accounting_tests {
         drop(lease); // An unexposed installation aborts and drops its actual bank.
         assert_eq!(live.load(Ordering::Relaxed), 0);
         assert_eq!(dom.snapshot().stamp(), before.stamp());
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
 
         let mut lease = dom
-            .begin_style_native_installation(
-                before.document(document).unwrap().stamp(),
-                parent,
-                None,
+            .begin_native_installation(
+                crate::DomNativeHtmlInstallTarget::new(
+                    before.document(document).unwrap().stamp(),
+                    parent,
+                    None,
+                ),
                 &source,
                 budgets,
                 &cancel,
@@ -2336,7 +2423,7 @@ pub(in crate::store) mod accounting_tests {
             + op.installation.as_ref().unwrap().bindings.capacity()
                 * size_of::<crate::DomNativeHtmlBinding>();
         let request = match lease.advance(&cancel).unwrap() {
-            DomStyleProgress::Request(request) => request,
+            DomSourceProgress::Request(DomSourceRequest::Style(request)) => request,
             other => panic!("real connected native Style CSP boundary, got {other:?}"),
         };
         assert_eq!(
@@ -2350,17 +2437,17 @@ pub(in crate::store) mod accounting_tests {
         assert_eq!(live.load(Ordering::Relaxed), bytes);
         cancel.store(true, Ordering::Release);
         assert!(matches!(
-            dom.resume_style_edit(id, budgets.source(), &cancel),
+            dom.resume_source_edit(id, budgets.source(), &cancel),
             Err(DomError::Cancelled)
         ));
         assert_eq!(dom.snapshot().stamp(), published);
         assert_eq!(live.load(Ordering::Relaxed), bytes);
         cancel.store(false, Ordering::Release);
         let mut lease = dom
-            .resume_style_edit(id, budgets.source(), &cancel)
+            .resume_source_edit(id, budgets.source(), &cancel)
             .unwrap();
         let resumed = match lease.advance(&cancel).unwrap() {
-            DomStyleProgress::Request(request) => request,
+            DomSourceProgress::Request(DomSourceRequest::Style(request)) => request,
             other => panic!("same parked CSP request, got {other:?}"),
         };
         assert!(Arc::ptr_eq(&request.source, &resumed.source));
@@ -2378,14 +2465,14 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         let result = match lease.advance(&cancel).unwrap() {
-            DomStyleProgress::Complete(result) => result,
+            DomSourceProgress::Complete(result) => result,
             other => panic!("denied native Style closes actual installation, got {other:?}"),
         };
         assert_eq!(result.native_installation().unwrap().bindings().len(), 3);
         assert!(result.cancellation_requested());
         drop(lease);
         assert_eq!(live.load(Ordering::Relaxed), 0);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert_eq!(before.node(parent).unwrap().children().len(), 0);
         assert_eq!(dom.snapshot().node(parent).unwrap().children().len(), 1);
     }
@@ -2443,7 +2530,7 @@ pub(in crate::store) mod accounting_tests {
             Resource::Work
         };
         let cap = if scratch { closing_bytes - 1 } else { work };
-        let budgets = crate::DomStyleNativeHtmlInstallLimits::new(
+        let budgets = crate::DomSourceNativeHtmlInstallLimits::new(
             crate::DomNativeHtmlInstallLimits::new(
                 8,
                 if scratch { 1_000_000 } else { cap },
@@ -2451,10 +2538,12 @@ pub(in crate::store) mod accounting_tests {
             ),
             limits(100_000_000),
         );
-        let mut lease = match dom.begin_style_native_installation(
-            before.document(document).unwrap().stamp(),
-            parent,
-            None,
+        let mut lease = match dom.begin_native_installation(
+            crate::DomNativeHtmlInstallTarget::new(
+                before.document(document).unwrap().stamp(),
+                parent,
+                None,
+            ),
             &source,
             budgets,
             &cancel,
@@ -2470,14 +2559,14 @@ pub(in crate::store) mod accounting_tests {
             ),
         };
         let policy = match lease.advance(&cancel) {
-            Ok(DomStyleProgress::Request(request)) => request,
-            Err(DomError::StyleWorkLimit { limit }) if !scratch && limit == cap as u64 => {
+            Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => request,
+            Err(DomError::SourceWorkLimit { limit }) if !scratch && limit == cap as u64 => {
                 assert!(!lease.status().has_published());
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 return;
             }
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 limit,
             }) if scratch && limit == cap => {
                 assert!(!lease.status().has_published());
@@ -2499,7 +2588,9 @@ pub(in crate::store) mod accounting_tests {
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual native Style creation")
         };
         assert_eq!(create.action(), DomStyleAction::Update(Action::CreateSheet));
@@ -2510,12 +2601,12 @@ pub(in crate::store) mod accounting_tests {
             assert_eq!(
                 error,
                 DomError::ResourceLimit {
-                    resource: DomResource::StyleRetainedBytes,
+                    resource: DomResource::SourceRetainedBytes,
                     limit: cap
                 }
             );
         } else {
-            assert_eq!(error, DomError::StyleWorkLimit { limit: cap as u64 });
+            assert_eq!(error, DomError::SourceWorkLimit { limit: cap as u64 });
         }
         assert!(
             !lease.status().has_published(),
@@ -2553,16 +2644,18 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
         let source = builder.finish();
-        let bounds = crate::DomStyleNativeHtmlInstallLimits::new(
+        let bounds = crate::DomSourceNativeHtmlInstallLimits::new(
             crate::DomNativeHtmlInstallLimits::new(8, 1_000_000, 1_000_000),
             limits(100_000_000),
         );
         let before = dom.snapshot();
         let mut lease = dom
-            .begin_style_native_installation(
-                before.document(document).unwrap().stamp(),
-                parent,
-                None,
+            .begin_native_installation(
+                crate::DomNativeHtmlInstallTarget::new(
+                    before.document(document).unwrap().stamp(),
+                    parent,
+                    None,
+                ),
                 &source,
                 bounds,
                 &cancel,
@@ -2589,7 +2682,9 @@ pub(in crate::store) mod accounting_tests {
             .draft
             .source_formation_bytes
             .clone();
-        let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual CSP")
         };
         lease
@@ -2599,7 +2694,9 @@ pub(in crate::store) mod accounting_tests {
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual sheet creation")
         };
         let root = commit_actual_empty_sheet(&mut lease, &create, &cancel);
@@ -2619,12 +2716,12 @@ pub(in crate::store) mod accounting_tests {
             live.load(Ordering::Relaxed) >= capacity * size_of::<crate::DomNativeHtmlBinding>()
         );
         assert!(matches!(
-            dom.resume_style_edit(operation, bounds.source(), &cancel),
+            dom.resume_source_edit(operation, bounds.source(), &cancel),
             Err(DomError::Cancelled)
         ));
         cancel.store(false, Ordering::Release);
         let mut lease = dom
-            .resume_style_edit(operation, bounds.source(), &cancel)
+            .resume_source_edit(operation, bounds.source(), &cancel)
             .unwrap();
         assert!(
             lease
@@ -2637,7 +2734,7 @@ pub(in crate::store) mod accounting_tests {
                 .load(Ordering::Relaxed)
                 >= spent
         );
-        let DomStyleProgress::Complete(result) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Complete(result) = lease.advance(&cancel).unwrap() else {
             panic!("same partial bank closes without CSSOM replay")
         };
         let installation = result.native_installation().unwrap();
@@ -2650,7 +2747,7 @@ pub(in crate::store) mod accounting_tests {
         assert_eq!(root.snapshot().unwrap().sheets().len(), 1);
         drop(lease);
         assert_eq!(live.load(Ordering::Relaxed), 0);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
     }
     fn actual_input_alias(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
@@ -2665,8 +2762,8 @@ pub(in crate::store) mod accounting_tests {
         raw.push(u16::from(b'a'));
         let mut batch = DomBatch::new();
         batch.set_input_value(input, DocumentString::from_utf16(raw));
-        let bounds = DomStyleEditLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, bounds, &cancel) else {
+        let bounds = DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, bounds, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::InputAlias);
@@ -2703,8 +2800,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.replace_data(text, 1, 0, "new");
-        let limit = DomStyleEditLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::ReplaceData);
@@ -2747,8 +2844,8 @@ pub(in crate::store) mod accounting_tests {
         } else {
             batch.set_input_value(input, "a\r\nb".repeat(20_000));
         }
-        let limit = DomStyleEditLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(if validity {
@@ -2810,8 +2907,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.insert_before(fragment, parent, None);
-        let limit = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::Children);
@@ -2821,7 +2918,7 @@ pub(in crate::store) mod accounting_tests {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         growth
     }
     fn actual_select_task_growth(bytes: usize) -> Option<formation::mutation_observation::Growth> {
@@ -2852,8 +2949,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.detach(option);
-        let limit = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::SelectTasks);
@@ -2863,7 +2960,7 @@ pub(in crate::store) mod accounting_tests {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         growth
     }
     fn actual_metadata_creation(bytes: usize) -> Option<formation::mutation_observation::Growth> {
@@ -2873,8 +2970,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.create_document();
-        let limit = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::Metadata);
@@ -2884,7 +2981,7 @@ pub(in crate::store) mod accounting_tests {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         growth
     }
     fn actual_shared_input_family_copy(
@@ -2900,8 +2997,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_input_checked(input, true);
-        let limits = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limits, &cancel) else {
+        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::Family);
@@ -2942,8 +3039,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_output_value(output, "new");
-        let limits = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limits, &cancel) else {
+        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::Output);
@@ -2991,9 +3088,11 @@ pub(in crate::store) mod accounting_tests {
             let mut connect = DomBatch::new();
             connect.insert_before(output, document.node(), None);
             let mut lease = dom
-                .begin_style_batch(connect, limits(10_000_000), &cancel)
+                .begin_source_commands(connect, limits(10_000_000), &cancel)
                 .unwrap();
-            let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+            let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+                lease.advance(&cancel).unwrap()
+            else {
                 panic!("actual CSP boundary")
             };
             lease
@@ -3003,23 +3102,27 @@ pub(in crate::store) mod accounting_tests {
                     &cancel,
                 )
                 .unwrap();
-            let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+            let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+                lease.advance(&cancel).unwrap()
+            else {
                 panic!("actual sheet creation")
             };
             let root = commit_actual_empty_sheet(&mut lease, &create, &cancel);
             assert!(matches!(
                 lease.advance(&cancel).unwrap(),
-                DomStyleProgress::Complete(_)
+                DomSourceProgress::Complete(_)
             ));
             root
         };
         let mut batch = DomBatch::new();
         batch.set_output_value(output, "new");
         let mut lease = dom
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let id = lease.operation();
-        let DomStyleProgress::Request(remove) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(remove)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("nested actual sheet removal")
         };
         assert_eq!(
@@ -3066,11 +3169,11 @@ pub(in crate::store) mod accounting_tests {
             (live_bytes, live_units, frame_bytes, frame_units)
         };
         drop(lease);
-        assert!(dom.pending_style_edit().is_some());
+        assert!(dom.pending_source_edit().is_some());
         assert_eq!(live_bytes.load(Ordering::Relaxed), frame_bytes);
         assert_eq!(live_units.load(Ordering::Relaxed), frame_units);
         let mut lease = dom
-            .resume_style_edit(id, limits(10_000_000), &cancel)
+            .resume_source_edit(id, limits(10_000_000), &cancel)
             .unwrap();
         cancel.store(true, Ordering::Release);
         assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));
@@ -3091,10 +3194,10 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            DomStyleProgress::Complete(_)
+            DomSourceProgress::Complete(_)
         ));
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert_eq!(live_bytes.load(Ordering::Relaxed), 0);
         assert_eq!(live_units.load(Ordering::Relaxed), 0);
         let snapshot = dom.snapshot();
@@ -3131,8 +3234,8 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_textarea_value(textarea, "after\r\n".repeat(1024));
-        let limit = DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limit, &cancel) else {
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
         formation::mutation_observation::start(formation::mutation_observation::Site::TextareaApi);
@@ -3219,19 +3322,19 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.insert_before(container, document.node(), None);
-        let small = DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 2, 4096, 4096);
-        let mut lease = dom.begin_style_batch(batch, small, &cancel).unwrap();
+        let small = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 2, 4096, 4096);
+        let mut lease = dom.begin_source_commands(batch, small, &cancel).unwrap();
         let operation = lease.operation();
         // Refusal at the original private boundary is the valid outcome. The
         // diagnostic branch below demonstrates the actual irreversible trap
         // if an implementation instead exposes the first reached request.
         let policy = match lease.advance(&cancel) {
-            Err(DomError::RevisionExhausted | DomError::StylePublicationLimit) => {
+            Err(DomError::RevisionExhausted | DomError::SourcePublicationLimit) => {
                 assert!(!lease.status().has_published());
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 return;
             }
-            Ok(DomStyleProgress::Request(request)) => request,
+            Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => request,
             other => panic!("unexpected initial result: {other:?}"),
         };
         assert!(lease.status().has_published());
@@ -3242,7 +3345,9 @@ pub(in crate::store) mod accounting_tests {
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual first creation")
         };
         let root = DomStyleCssomRoot::new(
@@ -3303,21 +3408,21 @@ pub(in crate::store) mod accounting_tests {
         assert_eq!(root.snapshot().unwrap().sheets(), &[actual_sheet]);
         assert_eq!(
             lease.advance(&cancel).unwrap_err(),
-            DomError::StylePublicationLimit
+            DomError::SourcePublicationLimit
         );
         drop(lease);
-        let larger = DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 3, 4096, 4096);
+        let larger = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 3, 4096, 4096);
         assert!(matches!(
-            dom.resume_style_edit(operation, larger, &cancel),
+            dom.resume_source_edit(operation, larger, &cancel),
             Err(DomError::RevisionExhausted)
         ));
-        assert!(dom.pending_style_edit().unwrap().has_published());
+        assert!(dom.pending_source_edit().unwrap().has_published());
         panic!(
             "first publication stranded the original mandatory command after a genuine CSSOM commit; raising phases cannot create closing revisions"
         );
     }
     pub(in crate::store) fn commit_actual_empty_sheet(
-        lease: &mut DomStyleEditLease<'_>,
+        lease: &mut DomSourceLease<'_>,
         create: &DomStyleRequest,
         cancel: &AtomicBool,
     ) -> DomStyleCssomRoot {
@@ -3432,9 +3537,9 @@ pub(in crate::store) mod accounting_tests {
         commands.insert_before(moving, root, None);
         commands.adopt(moving, other_document);
         commands.destroy(retired);
-        let mut lease = match dom.begin_style_batch(commands, limits(work), &cancel) {
+        let mut lease = match dom.begin_source_commands(commands, limits(work), &cancel) {
             Ok(lease) => lease,
-            Err(DomError::StyleWorkLimit { limit }) if limit == work => return (false, work),
+            Err(DomError::SourceWorkLimit { limit }) if limit == work => return (false, work),
             Err(error) => panic!("actual Source work setup: {error:?}"),
         };
         let meter = lease
@@ -3450,7 +3555,7 @@ pub(in crate::store) mod accounting_tests {
         let result = lease.advance(&cancel);
         let spent = meter.load(Ordering::Relaxed);
         match result {
-            Ok(DomStyleProgress::Complete(_)) => {
+            Ok(DomSourceProgress::Complete(_)) => {
                 assert!(!cancelled);
                 let snapshot = lease.snapshot();
                 assert_eq!(
@@ -3472,7 +3577,7 @@ pub(in crate::store) mod accounting_tests {
                 );
                 (true, spent)
             }
-            Err(DomError::StyleWorkLimit { limit }) if limit == work => {
+            Err(DomError::SourceWorkLimit { limit }) if limit == work => {
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 (false, spent)
             }
@@ -3520,7 +3625,9 @@ pub(in crate::store) mod accounting_tests {
         commands.insert_before(second, parent, None);
         let mut policy = limits(100_000_000);
         policy.outputs = 0;
-        let mut lease = dom.begin_style_batch(commands, policy, &cancel).unwrap();
+        let mut lease = dom
+            .begin_source_commands(commands, policy, &cancel)
+            .unwrap();
         let operation = lease.operation();
         // Real fixed-counter boundary: one remaining ordinal can serve the
         // first command, and failed unpublished attempts must not consume it.
@@ -3535,7 +3642,7 @@ pub(in crate::store) mod accounting_tests {
         for _ in 0..2 {
             assert_eq!(
                 lease.advance(&cancel).unwrap_err(),
-                DomError::StyleOutputLimit
+                DomError::SourceOutputLimit
             );
             let op = lease.dom.source_operation.as_ref().unwrap();
             assert_eq!(op.draft.source_invocation, u64::MAX - 1);
@@ -3551,9 +3658,11 @@ pub(in crate::store) mod accounting_tests {
         // raises only the failed output budget without dropping the operation.
         let mut raised = lease
             .dom
-            .resume_style_edit(operation, limits(100_000_000), &cancel)
+            .resume_source_edit(operation, limits(100_000_000), &cancel)
             .unwrap();
-        let DomStyleProgress::Request(csp) = raised.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(csp)) =
+            raised.advance(&cancel).unwrap()
+        else {
             panic!("actual first CSP request")
         };
         assert_eq!(csp.source().ordinal(), u64::MAX - 1);
@@ -3567,7 +3676,7 @@ pub(in crate::store) mod accounting_tests {
             let mut too_small = original;
             too_small.phases = op.phases + reserved - 1;
             assert!(matches!(
-                raised.dom.resume_style_edit(operation, too_small, &cancel),
+                raised.dom.resume_source_edit(operation, too_small, &cancel),
                 Err(DomError::InvalidLimit(_))
             ));
             assert_eq!(
@@ -3581,7 +3690,9 @@ pub(in crate::store) mod accounting_tests {
                 Some(original)
             );
         }
-        let DomStyleProgress::Request(repeated) = raised.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(repeated)) =
+            raised.advance(&cancel).unwrap()
+        else {
             panic!("same exposed request")
         };
         assert_eq!(repeated.source().operation(), csp.source().operation());
@@ -3605,7 +3716,9 @@ pub(in crate::store) mod accounting_tests {
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = raised.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            raised.advance(&cancel).unwrap()
+        else {
             panic!("actual same-invocation create")
         };
         assert_eq!(create.source().ordinal(), csp.source().ordinal());
@@ -3631,7 +3744,7 @@ pub(in crate::store) mod accounting_tests {
         raised.request_cancel();
         assert!(matches!(
             raised.advance(&cancel).unwrap(),
-            DomStyleProgress::Complete(_)
+            DomSourceProgress::Complete(_)
         ));
         assert_eq!(root.snapshot().unwrap().revision(), &cssom_revision);
         assert_eq!(root.snapshot().unwrap().sheets().len(), 1);
@@ -3692,7 +3805,7 @@ pub(in crate::store) mod accounting_tests {
         let mut batch = DomBatch::new();
         batch.insert_before(container, connected, None);
         let mut lease = dom
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let policy = match lease.advance(&cancel) {
             Err(DomError::RepresentationExhausted) => {
@@ -3700,7 +3813,7 @@ pub(in crate::store) mod accounting_tests {
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 return;
             }
-            Ok(DomStyleProgress::Request(request)) => request,
+            Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => request,
             other => {
                 panic!("expected pre-publication counter refusal or real CSP boundary: {other:?}")
             }
@@ -3712,7 +3825,9 @@ pub(in crate::store) mod accounting_tests {
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual creation")
         };
         let root = commit_actual_empty_sheet(&mut lease, &create, &cancel);
@@ -3759,9 +3874,11 @@ pub(in crate::store) mod accounting_tests {
             let mut connect = DomBatch::new();
             connect.insert_before(select, document.node(), None);
             let mut lease = dom
-                .begin_style_batch(connect, limits(10_000_000), &cancel)
+                .begin_source_commands(connect, limits(10_000_000), &cancel)
                 .unwrap();
-            let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+            let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+                lease.advance(&cancel).unwrap()
+            else {
                 panic!("real CSP")
             };
             lease
@@ -3771,13 +3888,15 @@ pub(in crate::store) mod accounting_tests {
                     &cancel,
                 )
                 .unwrap();
-            let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+            let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+                lease.advance(&cancel).unwrap()
+            else {
                 panic!("real sheet creation")
             };
             let root = commit_actual_empty_sheet(&mut lease, &create, &cancel);
             assert!(matches!(
                 lease.advance(&cancel).unwrap(),
-                DomStyleProgress::Complete(_)
+                DomSourceProgress::Complete(_)
             ));
             root
         };
@@ -3804,7 +3923,7 @@ pub(in crate::store) mod accounting_tests {
         let mut batch = DomBatch::new();
         batch.detach(container);
         let mut lease = dom
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let remove = match lease.advance(&cancel) {
             Err(DomError::RepresentationExhausted) => {
@@ -3812,7 +3931,7 @@ pub(in crate::store) mod accounting_tests {
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 return;
             }
-            Ok(DomStyleProgress::Request(request)) => request,
+            Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => request,
             other => {
                 panic!("expected pre-publication counter refusal or actual removal: {other:?}")
             }
@@ -3874,7 +3993,7 @@ pub(in crate::store) mod accounting_tests {
         let mut batch = DomBatch::new();
         batch.set_select_value(select, "different");
         let mut lease = dom
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let Err(DomError::SelectSemantic(first)) = lease.advance(&cancel) else {
             panic!("actual finite child query failure");
@@ -3932,7 +4051,7 @@ pub(in crate::store) mod accounting_tests {
         let cancel = AtomicBool::new(false);
         let (mut measured, batch) = fixture();
         let first = measured
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let initial = first
             .dom
@@ -3946,11 +4065,14 @@ pub(in crate::store) mod accounting_tests {
         let (mut dom, batch) = fixture();
         let before = dom.snapshot();
         let mut lease = dom
-            .begin_style_batch(batch, limits(initial), &cancel)
+            .begin_source_commands(batch, limits(initial), &cancel)
             .unwrap();
         lease.request_cancel();
         assert!(
-            matches!(lease.advance(&cancel), Err(DomError::StyleWorkLimit { .. })),
+            matches!(
+                lease.advance(&cancel),
+                Err(DomError::SourceWorkLimit { .. })
+            ),
             "cancellation must admit its real result scan/formation before doing the work"
         );
         assert_eq!(lease.snapshot().stamp(), before.stamp());
@@ -3962,20 +4084,20 @@ pub(in crate::store) mod accounting_tests {
         dom.next_source_operation = u64::MAX;
         let before = dom.snapshot();
         assert!(matches!(
-            dom.begin_style_batch(DomBatch::new(), limits(10_000_000), &cancel),
+            dom.begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel),
             Err(DomError::RepresentationExhausted)
         ));
         assert!(dom.source_operation.is_none());
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         dom.next_source_operation = u64::MAX - 1;
         let lease = dom
-            .begin_style_batch(DomBatch::new(), limits(10_000_000), &cancel)
+            .begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel)
             .unwrap();
         assert_eq!(lease.operation().serial, u64::MAX - 1);
         drop(lease);
         assert_eq!(dom.next_source_operation, u64::MAX);
         assert!(matches!(
-            dom.begin_style_batch(DomBatch::new(), limits(10_000_000), &cancel),
+            dom.begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel),
             Err(DomError::RepresentationExhausted)
         ));
     }
@@ -3990,7 +4112,7 @@ pub(in crate::store) mod accounting_tests {
         setup.create_text(&document, text);
         dom.apply(setup, &cancel).unwrap();
         let lease = dom
-            .begin_style_batch(DomBatch::new(), limits(10_000_000), &cancel)
+            .begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel)
             .unwrap();
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
         let prepared = draft.finish(lease.dom, &cancel).unwrap();
@@ -4042,9 +4164,9 @@ pub(in crate::store) mod accounting_tests {
             let limit = exact - usize::from(short);
             let before = dom.snapshot();
             let lease = dom
-                .begin_style_batch(
+                .begin_source_commands(
                     DomBatch::new(),
-                    DomStyleEditLimits::new(16_000_000, limit, 10_000_000, 64, 4096, 4096),
+                    DomSourceLimits::new(16_000_000, limit, 10_000_000, 64, 4096, 4096),
                     &cancel,
                 )
                 .unwrap();
@@ -4052,7 +4174,7 @@ pub(in crate::store) mod accounting_tests {
             let result = draft.finish(lease.dom, &cancel);
             if short {
                 assert!(
-                    matches!(result, Err(DomError::ResourceLimit { resource: DomResource::StyleRetainedUnits, limit: actual }) if actual == limit)
+                    matches!(result, Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedUnits, limit: actual }) if actual == limit)
                 );
             } else {
                 let prepared = result.unwrap();
@@ -4083,9 +4205,9 @@ pub(in crate::store) mod accounting_tests {
         dom.apply(setup, &cancel).unwrap();
         let before = dom.snapshot();
         let lease = dom
-            .begin_style_batch(
+            .begin_source_commands(
                 DomBatch::new(),
-                DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096),
                 &cancel,
             )
             .unwrap();
@@ -4120,7 +4242,7 @@ pub(in crate::store) mod accounting_tests {
             "one-short refuses before the candidate Text retains its spare-capacity backing"
         );
         assert!(
-            matches!(result, Err(DomError::ResourceLimit { resource: DomResource::StyleRetainedBytes, limit }) if limit == boundary.required - 1)
+            matches!(result, Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit }) if limit == boundary.required - 1)
         );
     }
     #[test]
@@ -4138,7 +4260,7 @@ pub(in crate::store) mod accounting_tests {
         let mut batch = DomBatch::new();
         batch.insert_before(style, document, None);
         let lease = dom
-            .begin_style_batch(batch, limits(10_000_000), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
         let actual_limits = lease.dom.limits;
         let op = lease.dom.source_operation.as_mut().unwrap();
@@ -4211,18 +4333,18 @@ pub(in crate::store) mod accounting_tests {
         batch.assign_slot(slot, vec![y.into(), x.into(), y.into()]);
         (dom, batch, slot, x, y)
     }
-    fn slot_operation_with_limits(limits: DomStyleEditLimits) -> bool {
+    fn slot_operation_with_limits(limits: DomSourceLimits) -> bool {
         let (mut dom, batch, slot, x, y) = slot_operation_fixture();
         let before = dom.snapshot();
         let cancel = AtomicBool::new(false);
-        let result = match dom.begin_style_batch(batch, limits, &cancel) {
+        let result = match dom.begin_source_commands(batch, limits, &cancel) {
             Err(error) => Err(error),
             Ok(mut lease) => match lease.advance(&cancel) {
-                Ok(DomStyleProgress::Complete(done)) => {
+                Ok(DomSourceProgress::Complete(done)) => {
                     assert!(!done.cancellation_requested());
                     Ok(())
                 }
-                Ok(DomStyleProgress::Request(_)) => {
+                Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
                     panic!("Slot assignment has no external Style work")
                 }
                 Err(error) => Err(error),
@@ -4251,10 +4373,10 @@ pub(in crate::store) mod accounting_tests {
             }
             Err(
                 DomError::ResourceLimit {
-                    resource: DomResource::StyleRetainedBytes | DomResource::StyleRetainedUnits,
+                    resource: DomResource::SourceRetainedBytes | DomResource::SourceRetainedUnits,
                     ..
                 }
-                | DomError::StyleWorkLimit { .. },
+                | DomError::SourceWorkLimit { .. },
             ) => {
                 assert_eq!(current.stamp(), before.stamp());
                 assert_eq!(current.slot(slot).unwrap().manual_assignments(), &[x]);
@@ -4273,7 +4395,7 @@ pub(in crate::store) mod accounting_tests {
     fn actual_slot_operation_admits_exact_bytes_units_and_work_and_rolls_back_one_short() {
         for dimension in 0..3 {
             let limits = |value: usize| {
-                DomStyleEditLimits::new(
+                DomSourceLimits::new(
                     if dimension == 0 { value } else { 16_000_000 },
                     if dimension == 1 { value } else { 1_000_000 },
                     if dimension == 2 {

@@ -1,5 +1,6 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlBrowsingContextPresence, HtmlIframeNativeState,
+    Attribute, DocumentString, HtmlBrowsingContextPresence, HtmlChildNavigableAccessDecision,
+    HtmlChildNavigableLoadDelayDecision, HtmlChildNavigablePresence, HtmlIframeInitialState,
     HtmlIframePostConnectionDecision, HtmlLoading, HtmlSandboxDirectiveState, HtmlSandboxFlag,
     HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, iframe_loading_became_eager,
     iframe_post_connection,
@@ -10,16 +11,26 @@ fn fresh_native_iframe_has_source_false_null_tuple_without_actual_load_delay() {
     // #child-navigables, #current-navigation-was-lazy-loaded,
     // #iframe-pending-resource-timing-start-time, #iframe-pending-resource-timing-url
     // and #lazy-load-resumption-steps give these independent literal values.
-    let state = HtmlIframeNativeState::fresh();
-    assert!(state.content_navigable_is_null());
-    assert!(state.content_document_is_null());
-    assert!(state.content_window_is_null());
+    let state = HtmlIframeInitialState::fresh();
+    let content = HtmlChildNavigablePresence::Null;
+    assert_eq!(content, HtmlChildNavigablePresence::Null);
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::ReturnNull
+    );
     assert!(!state.current_navigation_was_lazy_loaded());
     assert!(state.pending_resource_timing_start_time_is_null());
     assert!(state.pending_resource_timing_url_is_null());
     assert!(state.lazy_load_resumption_is_null());
     assert!(state.potentially_delays_load());
-    assert!(!state.delays_load());
+    assert_eq!(
+        content.load_delay(),
+        HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+    );
 }
 
 #[test]
@@ -44,16 +55,17 @@ fn post_connection_distinguishes_actual_null_present_and_unavailable_context() {
 
 #[test]
 fn null_content_stops_srcdoc_src_sandbox_and_removing_effects() {
-    let state = HtmlIframeNativeState::fresh();
+    let state = HtmlIframeInitialState::fresh();
+    let content = HtmlChildNavigablePresence::Null;
     // #the-iframe-element: content must be nonnull before any srcdoc/src
     // processing or sandbox parse/clear. #destroy-a-child-navigable returns.
     for _ in 0..2 {
-        assert!(!state.srcdoc_change_requires_processing());
-        assert!(!state.src_change_requires_processing());
-        assert!(!state.sandbox_change_requires_processing());
-        assert!(!state.sandbox_removal_requires_clearing());
-        assert!(!state.removal_requires_child_destruction());
-        assert!(state.content_navigable_is_null());
+        assert!(!content.attribute_change_requires_processing());
+        assert!(!content.attribute_change_requires_processing());
+        assert!(!content.attribute_change_requires_processing());
+        assert!(!content.attribute_change_requires_processing());
+        assert!(!content.removal_requires_child_destruction());
+        assert_eq!(content, HtmlChildNavigablePresence::Null);
         assert!(!state.current_navigation_was_lazy_loaded());
         assert!(state.pending_resource_timing_start_time_is_null());
         assert!(state.pending_resource_timing_url_is_null());
@@ -61,7 +73,7 @@ fn null_content_stops_srcdoc_src_sandbox_and_removing_effects() {
     }
     let copied = state;
     assert_eq!(copied, state);
-    assert!(copied.content_navigable_is_null());
+    assert_eq!(content, HtmlChildNavigablePresence::Null);
 }
 
 #[test]
@@ -76,7 +88,7 @@ fn only_semantic_lazy_to_eager_reaches_the_null_resumption_return() {
     }
     // Even the reached Eager hook returns before invoking anything in this
     // source-initialized phase, because its resumption is actually null.
-    let state = HtmlIframeNativeState::fresh();
+    let state = HtmlIframeInitialState::fresh();
     assert!(state.lazy_load_resumption_is_null());
     assert!(!state.current_navigation_was_lazy_loaded());
 }
@@ -113,7 +125,8 @@ fn existing_loading_interpreter_preserves_defaults_and_semantic_transition_ident
 fn absent_empty_and_raw_token_sandbox_reports_are_separate_from_unprocessed_native_policy() {
     let interpreter = HtmlValueInterpreter::new(64);
     let iframe = KnownHtmlElement::Iframe.qualified_name();
-    let state = HtmlIframeNativeState::fresh();
+    let state = HtmlIframeInitialState::fresh();
+    let content = HtmlChildNavigablePresence::Null;
     assert_eq!(
         interpreter
             .iframe_sandbox(&iframe, None)
@@ -148,8 +161,33 @@ fn absent_empty_and_raw_token_sandbox_reports_are_separate_from_unprocessed_nati
     assert_eq!(flags.len(), 14);
     assert!(!flags.contains(HtmlSandboxFlag::Scripts));
     assert!(!flags.contains(HtmlSandboxFlag::AutomaticFeatures));
-    assert!(!state.sandbox_change_requires_processing());
-    assert!(!state.sandbox_removal_requires_clearing());
-    assert!(state.content_navigable_is_null());
+    assert!(!content.attribute_change_requires_processing());
+    assert!(!content.attribute_change_requires_processing());
+    assert_eq!(content, HtmlChildNavigablePresence::Null);
     assert!(state.pending_resource_timing_url_is_null());
+}
+
+#[test]
+fn present_child_continues_real_access_and_load_rules_without_changing_initial_intrinsics() {
+    // Installing a child is not an intrinsic write. The selected absent-src,
+    // no-srcdoc initial path returns at the shared ancestor-URL guard before
+    // either lazy setup or navigation timing. These are independent source
+    // values; Continue establishes no Window, Document or completed load delay.
+    let state = HtmlIframeInitialState::fresh();
+    let content = HtmlChildNavigablePresence::Present;
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::Continue
+    );
+    assert_eq!(
+        content.load_delay(),
+        HtmlChildNavigableLoadDelayDecision::Continue
+    );
+    assert!(content.attribute_change_requires_processing());
+    assert!(content.removal_requires_child_destruction());
+    assert!(!state.current_navigation_was_lazy_loaded());
+    assert!(state.pending_resource_timing_start_time_is_null());
+    assert!(state.pending_resource_timing_url_is_null());
+    assert!(state.lazy_load_resumption_is_null());
+    assert!(state.potentially_delays_load());
 }

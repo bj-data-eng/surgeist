@@ -1339,10 +1339,10 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
     ));
 }
 
-fn style_edit_limits() -> surgeist_dom::DomStyleEditLimits {
-    surgeist_dom::DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
+fn style_edit_limits() -> surgeist_dom::DomSourceLimits {
+    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
 }
-fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::DomStyleOperationId {
+fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::DomSourceOperationId {
     let mut b = DomBatch::new();
     let style = b.create_element_ns(document, Namespace::html(), "style");
     let parent = dom
@@ -1351,14 +1351,19 @@ fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::Do
         .unwrap()
         .document_element()
         .unwrap();
-    b.insert_before(&style, parent, None);
+    let commit = dom.apply(b, &AtomicBool::new(false)).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
     let mut lease = dom
-        .begin_style_batch(b, style_edit_limits(), &AtomicBool::new(false))
+        .begin_source_edit(
+            surgeist_dom::DomSourceEdit::insert_before(style, parent, None),
+            style_edit_limits(),
+            &AtomicBool::new(false),
+        )
         .unwrap();
     let operation = lease.operation();
     assert!(matches!(
         lease.advance(&AtomicBool::new(false)).unwrap(),
-        surgeist_dom::DomStyleProgress::Request(_)
+        surgeist_dom::DomSourceProgress::Request(_)
     ));
     assert_eq!(
         lease.snapshot().incomplete_source_operation(),
@@ -1366,11 +1371,11 @@ fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::Do
     );
     operation
 }
-fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::DomStyleOperationId) {
+fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::DomSourceOperationId) {
     let mut lease = dom
-        .resume_style_edit(operation, style_edit_limits(), &AtomicBool::new(false))
+        .resume_source_edit(operation, style_edit_limits(), &AtomicBool::new(false))
         .unwrap();
-    let surgeist_dom::DomStyleProgress::Request(request) =
+    let surgeist_dom::DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
         lease.advance(&AtomicBool::new(false)).unwrap()
     else {
         panic!("retained actual CSP request")
@@ -1389,7 +1394,7 @@ fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::DomStyleOperat
         .unwrap();
     assert!(matches!(
         lease.advance(&AtomicBool::new(false)).unwrap(),
-        surgeist_dom::DomStyleProgress::Complete(_)
+        surgeist_dom::DomSourceProgress::Complete(_)
     ));
 }
 #[test]
@@ -1437,7 +1442,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
             f.target,
             DomEventType::Load,
             DomEventCallback::new(
-                move |dom, _, c: &mut Vec<surgeist_dom::DomStyleOperationId>, _| {
+                move |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
                     c.push(park_real_style_tail(dom.raw_mut(), document));
                     Ok(())
                 },
@@ -1451,7 +1456,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
             f.target,
             DomEventType::Load,
             DomEventCallback::new(
-                |dom, _, c: &mut Vec<surgeist_dom::DomStyleOperationId>, _| {
+                |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
                     assert_eq!(dom.snapshot().incomplete_source_operation(), None);
                     c.push(c[0]);
                     Ok(())

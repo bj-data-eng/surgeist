@@ -51,7 +51,7 @@ pub(super) enum Frame {
 impl Frame {
     pub(super) fn checkpoint(
         &self,
-        a: &mut style::checkpoint::Admission<'_>,
+        a: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         Ok(match self {
@@ -119,7 +119,7 @@ impl Frame {
 impl Insertion {
     fn checkpoint(
         &self,
-        a: &mut style::checkpoint::Admission<'_>,
+        a: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         let moving = self.moving.checkpoint(a, cancel)?;
@@ -156,7 +156,7 @@ impl Draft {
         &mut self,
         key: Key,
         raw: DocumentString,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -490,17 +490,17 @@ impl Draft {
             let growth = if self.node(parent)?.children.len() + moving.len()
                 > self.node(parent)?.children.capacity()
             {
-                style::formation::mutation_observation::before(
+                source::formation::mutation_observation::before(
                     self,
-                    style::formation::mutation_observation::Site::Children,
+                    source::formation::mutation_observation::Site::Children,
                     cancelled,
                 )?
             } else {
                 None
             };
-            style::reserve_bank(&mut self.node_mut(parent).children, moving.len(), admitted)?;
+            source::reserve_bank(&mut self.node_mut(parent).children, moving.len(), admitted)?;
             #[cfg(test)]
-            style::formation::mutation_observation::grew(
+            source::formation::mutation_observation::grew(
                 growth,
                 self.node(parent)?.children.capacity() * size_of::<Key>(),
             );

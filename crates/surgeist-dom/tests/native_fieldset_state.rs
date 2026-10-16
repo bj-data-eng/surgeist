@@ -465,9 +465,9 @@ fn fragment_replacement_shadow_adoption_and_frame_hooks_share_one_atomic_owner()
             .unwrap()
             .as_element()
             .unwrap()
-            .frame_null_content()
+            .child_navigable()
             .unwrap()
-            .content_navigable_is_null()
+            .is_none()
     );
     let copied_shadow = s.node(clone).unwrap().hosted_shadow_root().unwrap();
     let copied_f = s.node(copied_shadow).unwrap().children()[0];

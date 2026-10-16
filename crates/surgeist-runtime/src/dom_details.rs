@@ -273,6 +273,20 @@ struct DetailsState {
     hosted: Option<crate::dom_lifecycle::HostedRuntime>,
 }
 impl DomDetailsRuntime {
+    pub(crate) fn validate_view(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<(), DomDetailsRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        if state.dom != dom.owner() {
+            return Err(DomDetailsRuntimeError::Binding);
+        }
+        Ok(())
+    }
+
     fn state(&self) -> Result<Rc<RefCell<DetailsState>>, DomDetailsRuntimeError> {
         self.state
             .upgrade()

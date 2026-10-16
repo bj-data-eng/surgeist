@@ -41,11 +41,17 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
         .unwrap()
         .as_element()
         .unwrap()
-        .frame_null_content()
+        .child_navigable_presence()
         .unwrap();
-    assert!(state.content_navigable_is_null());
-    assert!(state.content_document_is_null());
-    assert!(state.content_window_is_null());
+    assert_eq!(state, surgeist_html::HtmlChildNavigablePresence::Null);
+    assert_eq!(
+        state.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        state.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
     assert_eq!(old.slot(slot).unwrap().assigned_nodes(), &[frame]);
     assert_eq!(
         old.node(frame)
@@ -71,7 +77,7 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
         &[cloned_frame]
     );
     let element = s.node(cloned_frame).unwrap().as_element().unwrap();
-    assert_eq!(element.frame_null_content(), Some(state));
+    assert_eq!(element.child_navigable_presence(), Some(state));
     assert_eq!(element.attribute(&"src".into()), Some(&"literal".into()));
 
     let mut b = DomBatch::new();
@@ -82,7 +88,7 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
     assert_eq!(adopted.parent(), None);
     assert_eq!(adopted.owner_document(), Some(target));
     assert_eq!(
-        adopted.as_element().unwrap().frame_null_content(),
+        adopted.as_element().unwrap().child_navigable_presence(),
         Some(state)
     );
     assert_eq!(

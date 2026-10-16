@@ -1,5 +1,5 @@
 //! Canonical native Style state and real CSSOM association provenance.
-use crate::{DomNode, NodeId};
+use crate::{DomNode, DomSourceOperationId, NodeId};
 mod cssom_root;
 pub use cssom_root::{DomStyleCssomRoot, DomStyleCssomRootError};
 
@@ -129,62 +129,6 @@ impl<'a> DomNode<'a> {
     }
 }
 
-/// Absolute finite admission for one composed source operation. Resuming does
-/// not reset work or publication/output counters. CSS and CSSOM retain their
-/// independent producer limits.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomStyleEditLimits {
-    pub(crate) retained_bytes: usize,
-    pub(crate) retained_units: usize,
-    pub(crate) work: u64,
-    pub(crate) phases: u64,
-    pub(crate) outputs: usize,
-    pub(crate) identities: u64,
-}
-impl DomStyleEditLimits {
-    pub const fn new(
-        retained_bytes: usize,
-        retained_units: usize,
-        work: u64,
-        phases: u64,
-        outputs: usize,
-        identities: u64,
-    ) -> Self {
-        Self {
-            retained_bytes,
-            retained_units,
-            work,
-            phases,
-            outputs,
-            identities,
-        }
-    }
-    pub const fn retained_bytes(self) -> usize {
-        self.retained_bytes
-    }
-    pub const fn retained_string_code_units(self) -> usize {
-        self.retained_units
-    }
-    pub const fn work(self) -> u64 {
-        self.work
-    }
-    pub const fn phase_publications(self) -> u64 {
-        self.phases
-    }
-    pub const fn output_records(self) -> usize {
-        self.outputs
-    }
-    pub const fn published_native_identities(self) -> u64 {
-        self.identities
-    }
-}
-
-/// One retained synchronous source command, qualified by its canonical owner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomStyleOperationId {
-    pub(crate) owner: crate::DomOwnerId,
-    pub(crate) serial: u64,
-}
 /// The actual ordinary root at this source invocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomStyleRootKind {
@@ -192,10 +136,10 @@ pub enum DomStyleRootKind {
     ShadowRoot,
     Detached,
 }
-/// Exact source-time inputs. Later commands cannot rewrite this invocation.
+/// Exact source-time inputs. Later mutations cannot rewrite this invocation.
 #[derive(Clone, Debug)]
 pub struct DomStyleSource {
-    pub(crate) operation: DomStyleOperationId,
+    pub(crate) operation: DomSourceOperationId,
     pub(crate) ordinal: u64,
     pub(crate) stamp: crate::DomStamp,
     pub(crate) metadata: crate::DomDocumentMetadata,
@@ -263,7 +207,7 @@ impl DomStyleSource {
             .ok_or(crate::DomError::RepresentationExhausted)?;
         Ok(bytes)
     }
-    pub fn operation(&self) -> DomStyleOperationId {
+    pub fn operation(&self) -> DomSourceOperationId {
         self.operation
     }
     pub fn ordinal(&self) -> u64 {
@@ -364,80 +308,6 @@ impl DomStyleRequest {
         self.sheet_order.as_deref().map_or(&[], Vec::as_slice)
     }
 }
-/// Actual publication status; structural snapshots remain readable while source
-/// hooks are incomplete, and dependent semantic reads reject that state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomStyleEditStatus {
-    pub(crate) operation: DomStyleOperationId,
-    pub(crate) published: bool,
-    pub(crate) cancelled: bool,
-    pub(crate) work: u64,
-    pub(crate) phases: u64,
-}
-impl DomStyleEditStatus {
-    pub fn operation(self) -> DomStyleOperationId {
-        self.operation
-    }
-    pub fn has_published(self) -> bool {
-        self.published
-    }
-    pub fn cancellation_requested(self) -> bool {
-        self.cancelled
-    }
-    pub fn spent_work(self) -> u64 {
-        self.work
-    }
-    pub fn published_phases(self) -> u64 {
-        self.phases
-    }
-}
-/// A source boundary or a completed synchronous command sequence.
-#[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Mutually exclusive admitted source request and completion transfer without another publication allocation"
-)]
-pub enum DomStyleProgress {
-    Request(DomStyleRequest),
-    Complete(DomStyleEditCompletion),
-}
-#[derive(Debug)]
-pub struct DomStyleEditCompletion {
-    pub(crate) operation: DomStyleOperationId,
-    pub(crate) commit: crate::DomCommit,
-    pub(crate) cancelled: bool,
-    pub(crate) owner: std::sync::Arc<crate::batch::BatchIdentity>,
-    pub(crate) published: Vec<Option<NodeId>>,
-    pub(crate) installation: Option<crate::DomNativeHtmlInstallation>,
-}
-impl DomStyleEditCompletion {
-    pub fn operation(&self) -> DomStyleOperationId {
-        self.operation
-    }
-    pub fn native_installation(&self) -> Option<&crate::DomNativeHtmlInstallation> {
-        self.installation.as_ref()
-    }
-    pub fn commit(&self) -> &crate::DomCommit {
-        &self.commit
-    }
-    pub fn cancellation_requested(&self) -> bool {
-        self.cancelled
-    }
-    /// Historical first publication, including a creation subsequently retired.
-    pub fn published_creation(
-        &self,
-        ticket: &crate::CreatedNode,
-    ) -> Result<Option<NodeId>, crate::DomError> {
-        if !std::sync::Arc::ptr_eq(&self.owner, &ticket.owner) {
-            return Err(crate::DomError::ForeignBatch);
-        }
-        self.published
-            .get(ticket.index)
-            .copied()
-            .ok_or(crate::DomError::UnavailableCreation)
-    }
-}
-
 /// An external full-policy capture, distinct from an absent response header or
 /// native browsing-context facts. The supplier owns CSP evaluation.
 #[derive(Clone, Debug)]
@@ -572,12 +442,12 @@ impl DomStyleCssomPublicationRejection {
 /// dispatch. The composing Runtime acknowledges it only after dispatch finishes.
 #[derive(Debug)]
 pub struct DomStyleNotificationToken {
-    pub(crate) operation: DomStyleOperationId,
+    pub(crate) operation: DomSourceOperationId,
     pub(crate) association: DomStyleAssociationId,
     pub(crate) complete: bool,
 }
 impl DomStyleNotificationToken {
-    pub fn operation(&self) -> DomStyleOperationId {
+    pub fn operation(&self) -> DomSourceOperationId {
         self.operation
     }
     pub fn association(&self) -> DomStyleAssociationId {
@@ -592,25 +462,4 @@ impl DomStyleNotificationToken {
 pub enum DomStyleNotificationCompletion {
     Complete(crate::DomCommit),
     TargetDestroyed,
-}
-
-/// Separate producer/DOM-source allowances composed by native installation.
-#[derive(Clone, Copy, Debug)]
-pub struct DomStyleNativeHtmlInstallLimits {
-    pub(crate) native: crate::DomNativeHtmlInstallLimits,
-    pub(crate) source: DomStyleEditLimits,
-}
-impl DomStyleNativeHtmlInstallLimits {
-    pub const fn new(
-        native: crate::DomNativeHtmlInstallLimits,
-        source: DomStyleEditLimits,
-    ) -> Self {
-        Self { native, source }
-    }
-    pub const fn native(self) -> crate::DomNativeHtmlInstallLimits {
-        self.native
-    }
-    pub const fn source(self) -> DomStyleEditLimits {
-        self.source
-    }
 }

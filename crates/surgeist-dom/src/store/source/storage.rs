@@ -517,14 +517,14 @@ mod tests {
         assert_eq!(payload.units, usage.utf16_extent());
         let cancel = AtomicBool::new(false);
         let limits =
-            |bytes| crate::DomStyleEditLimits::new(bytes, usage.utf16_extent(), 1000, 1, 1, 1);
+            |bytes| crate::DomSourceLimits::new(bytes, usage.utf16_extent(), 1000, 1, 1, 1);
         let exact = super::super::initial::Initial::new(limits(out_of_line));
         exact.retain(payload, &cancel).unwrap();
         let short = super::super::initial::Initial::new(limits(out_of_line - 1));
         assert_eq!(
             short.retain(payload, &cancel),
             Err(DomError::ResourceLimit {
-                resource: crate::DomResource::StyleRetainedBytes,
+                resource: crate::DomResource::SourceRetainedBytes,
                 limit: out_of_line - 1
             })
         );

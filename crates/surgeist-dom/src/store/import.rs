@@ -33,10 +33,10 @@ impl Frame {
     pub(super) fn retained_payload(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<style::storage::Payload, DomError> {
+    ) -> Result<source::storage::Payload, DomError> {
         match &self.source {
-            Source::Published(snapshot, _) => style::storage::state(&snapshot.state, step),
-            Source::Staged(_) => Ok(style::storage::Payload::default()),
+            Source::Published(snapshot, _) => source::storage::state(&snapshot.state, step),
+            Source::Staged(_) => Ok(source::storage::Payload::default()),
         }
     }
     pub(super) fn checkpoint(&self) -> Self {
@@ -66,17 +66,17 @@ impl Draft {
         snapshot: &DomSnapshot,
         id: NodeId,
         cancel: &AtomicBool,
-    ) -> Result<(Source, Option<style::checkpoint::Charge>), DomError> {
-        let formation = style::formation::Formation::new(self, cancel)?;
+    ) -> Result<(Source, Option<source::checkpoint::Charge>), DomError> {
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(formation) = &formation {
             formation.retain_payload(
-                style::storage::state(&snapshot.state, || self.source_step(cancel))?,
+                source::storage::state(&snapshot.state, || self.source_step(cancel))?,
                 cancel,
             )?;
         }
         Ok((
             Source::Published(snapshot.clone(), id),
-            formation.map(style::formation::Formation::into_charge),
+            formation.map(source::formation::Formation::into_charge),
         ))
     }
     fn source_child(
@@ -85,7 +85,7 @@ impl Draft {
         index: usize,
         template: bool,
         cancel: &AtomicBool,
-    ) -> Result<Option<(Source, Option<style::checkpoint::Charge>)>, DomError> {
+    ) -> Result<Option<(Source, Option<source::checkpoint::Charge>)>, DomError> {
         self.source_step(cancel)?;
         match source {
             Source::Published(s, id) => {
@@ -133,7 +133,7 @@ impl Draft {
         Option<(
             Source,
             crate::DomShadowRootState,
-            Option<style::checkpoint::Charge>,
+            Option<source::checkpoint::Charge>,
         )>,
         DomError,
     > {
@@ -185,7 +185,7 @@ impl Draft {
     pub(super) fn begin_clone(
         &mut self,
         source: Source,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         request: CloneRequest,
         limits: DomLimits,
         cancel: &AtomicBool,
@@ -225,7 +225,7 @@ impl Draft {
         &mut self,
         mut frame: Frame,
         scoped: bool,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -328,14 +328,14 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancel)?;
-        let original_formation = style::formation::Formation::new(self, cancel)?;
+        let original_formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = &original_formation {
             let original = match source {
                 Source::Published(snapshot, id) => snapshot.node(*id)?.kind(),
                 Source::Staged(key) => &self.node(*key)?.kind,
             };
             budget.retain_payload(
-                style::storage::kind(original, || self.source_step(cancel))?,
+                source::storage::kind(original, || self.source_step(cancel))?,
                 cancel,
             )?;
         }
@@ -351,7 +351,7 @@ impl Draft {
             Source::Published(s, id) => s.node(*id)?.node.script.map(|v| v.flags),
             Source::Staged(k) => self.node(*k)?.script.map(|v| v.flags),
         };
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         let kind = match &original {
             DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
                 return Err(DomError::NotSupported);
@@ -364,7 +364,7 @@ impl Draft {
             kind => {
                 if let Some(budget) = &formation {
                     budget.retain_payload(
-                        style::storage::kind(kind, || self.source_step(cancel))?,
+                        source::storage::kind(kind, || self.source_step(cancel))?,
                         cancel,
                     )?;
                 }

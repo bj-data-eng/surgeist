@@ -170,6 +170,7 @@ mod dom_details;
 mod dom_event;
 mod dom_host;
 mod dom_lifecycle;
+mod dom_source;
 mod dom_style;
 mod effect;
 mod event;
@@ -224,12 +225,14 @@ pub use dom_lifecycle::{
     DomHostedHistoryEntry, DomHostedProgress, DomHostedRuntimeError, DomHostedRuntimeLimits,
     DomHostedSettings, DomHostedTopLevel, HostedRuntime,
 };
+pub use dom_source::{
+    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceUnavailable,
+};
 pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,
-    DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleDriveProgress,
-    DomStyleEventContext, DomStyleNetworkingProgress, DomStyleNetworkingTaskId,
-    DomStyleProcessedSheet, DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits,
-    DomStyleUnavailable,
+    DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext,
+    DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
+    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

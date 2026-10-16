@@ -43,9 +43,11 @@ pub(super) struct Settings {
     pub navigation_start: clock::CoarsenedSample,
     pub document: Option<DocumentId>,
     pub ready: bool,
-    // Creation URL and top-level creation URL are the intrinsic initial blank
-    // URL in this closed no-opener constructor. Current base/origin/policy are
-    // read through the actual associated Document, never cached here.
+    // Sampled from the original canonical ExecutionRequest before native
+    // Settings construction. Current base/origin/policy still read the actual
+    // associated Document rather than these historical creation inputs.
+    pub creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
+    pub top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
 }
 
 pub(super) struct Top {

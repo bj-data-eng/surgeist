@@ -249,24 +249,22 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
     let value = DocumentString::from_utf16(backing);
     let before = dom.snapshot();
     let usage = dom.usage();
-    let mut b = DomBatch::new();
-    b.set_dialog_return_value(node, value.clone());
-    let bounded = DomStyleEditLimits::new(16_000_000, 4095, 10_000_000, 16, 4096, 4096);
+    let edit = DomSourceEdit::set_dialog_return_value(node, value.clone());
+    let bounded = DomSourceLimits::new(16_000_000, 4095, 10_000_000, 16, 4096, 4096);
     assert!(matches!(
-        dom.begin_style_batch(b, bounded, &cancel),
+        dom.begin_source_edit(edit, bounded, &cancel),
         Err(DomError::ResourceLimit {
-            resource: DomResource::StyleRetainedUnits,
+            resource: DomResource::SourceRetainedUnits,
             ..
         })
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
 
-    let generous = DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
-    let mut b = DomBatch::new();
-    b.set_dialog_return_value(node, value.clone());
-    let mut lease = dom.begin_style_batch(b, generous, &cancel).unwrap();
+    let generous = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+    let edit = DomSourceEdit::set_dialog_return_value(node, value.clone());
+    let mut lease = dom.begin_source_edit(edit, generous, &cancel).unwrap();
     assert_eq!(
         lease.advance(&AtomicBool::new(true)).unwrap_err(),
         DomError::Cancelled
@@ -274,12 +272,11 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
     drop(lease);
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
 
-    let mut b = DomBatch::new();
-    b.set_dialog_return_value(node, value);
-    let mut lease = dom.begin_style_batch(b, generous, &cancel).unwrap();
-    let DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+    let edit = DomSourceEdit::set_dialog_return_value(node, value);
+    let mut lease = dom.begin_source_edit(edit, generous, &cancel).unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
         panic!("closed returnValue setter needs no external service");
     };
     assert_eq!(

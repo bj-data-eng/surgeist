@@ -1,35 +1,38 @@
 //! Source-selected native Style intrinsic and atomic boundary behavior.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomError, DomLimits, Namespace};
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomLimits, DomSourceEdit, DomSourceRequest, Namespace,
+};
 use surgeist_html::HtmlStyleUpdateAction;
 
 #[test]
-fn unstarted_command_payload_joins_the_simultaneous_utf16_allowance() {
+fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let style = batch.create_element_ns(&document, Namespace::html(), "style");
+    batch.set_attribute(&style, "type", "text/plain");
+    let text = batch.create_text(&document, "");
+    batch.insert_before(&text, &style, None);
+    batch.insert_before(&style, &document, None);
     let commit = dom.apply(batch, &cancel).unwrap();
-    let document = commit.created(&document).unwrap().unwrap();
     let style = commit.created(&style).unwrap().unwrap();
+    let text = commit.created(&text).unwrap().unwrap();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(style, "type", "text/css");
+    dom.apply(batch, &cancel).unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut units = Vec::with_capacity(16_384);
     units.push(0xd800);
     let capacity = units.capacity();
-    let text = surgeist_dom::DocumentString::from_utf16(units);
-    let commands = || {
-        let mut batch = DomBatch::new();
-        batch.insert_before(style, document, None);
-        // This command has not begun when the Style reaches its first boundary.
-        batch.create_text(document, text.clone());
-        batch
-    };
+    let payload = surgeist_dom::DocumentString::from_utf16(units);
+    let edit = || DomSourceEdit::replace_data(text, 0, 0, payload.clone());
     assert!(matches!(
-        dom.begin_style_batch(
-            commands(),
-            surgeist_dom::DomStyleEditLimits::new(
+        dom.begin_source_edit(
+            edit(),
+            surgeist_dom::DomSourceLimits::new(
                 16_000_000,
                 capacity - 1,
                 10_000_000,
@@ -40,20 +43,22 @@ fn unstarted_command_payload_joins_the_simultaneous_utf16_allowance() {
             &cancel,
         ),
         Err(DomError::ResourceLimit {
-            resource: surgeist_dom::DomResource::StyleRetainedUnits,
+            resource: surgeist_dom::DomResource::SourceRetainedUnits,
             ..
         })
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     let mut lease = dom
-        .begin_style_batch(commands(), source_limits(), &cancel)
+        .begin_source_edit(edit(), source_limits(), &cancel)
         .unwrap();
     let request = match lease.advance(&cancel).unwrap() {
-        surgeist_dom::DomStyleProgress::Request(request) => request,
+        surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => request,
         other => panic!("expected the first Style boundary, got {other:?}"),
     };
+    assert_eq!(request.source().element(), style);
+    assert_eq!(request.source().text().as_ref(), payload.code_units());
     assert_eq!(
         request.action(),
         surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
@@ -66,26 +71,26 @@ fn first_external_phase_reserves_its_required_closing_publication() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
+    let style = batch.create_element_ns(&document, Namespace::html(), "style");
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.created(&document).unwrap().unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
-    let mut batch = DomBatch::new();
-    let style = batch.create_element_ns(document, Namespace::html(), "style");
-    batch.insert_before(&style, document, None);
+    let edit = DomSourceEdit::insert_before(style, document, None);
     let limits =
-        surgeist_dom::DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096);
-    let mut lease = dom.begin_style_batch(batch, limits, &cancel).unwrap();
+        surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096);
+    let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
     assert_eq!(
         lease.advance(&cancel).unwrap_err(),
-        DomError::StylePublicationLimit
+        DomError::SourcePublicationLimit
     );
     assert_eq!(lease.snapshot().stamp(), before.stamp());
     assert!(!lease.status().has_published());
     drop(lease);
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
 }
 
 #[test]
@@ -134,22 +139,23 @@ fn unrelated_actual_attribute_backing_is_admitted_with_the_retained_source_opera
                 .value()
                 .shared_code_units()
                 .capacity();
-            let mut batch = DomBatch::new();
-            batch.insert_before(style, parent, None);
-            let limits = surgeist_dom::DomStyleEditLimits::new(
+            let edit = DomSourceEdit::insert_before(style, parent, None);
+            let limits = surgeist_dom::DomSourceLimits::new(
                 allowance, 1_000_000, 10_000_000, 128, 4096, 4096,
             );
-            let admitted = match dom.begin_style_batch(batch, limits, &cancel) {
+            let admitted = match dom.begin_source_edit(edit, limits, &cancel) {
                 Ok(mut lease) => match lease.advance(&cancel) {
-                    Ok(surgeist_dom::DomStyleProgress::Request(_)) => true,
+                    Ok(surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
+                        true
+                    }
                     Err(DomError::ResourceLimit {
-                        resource: surgeist_dom::DomResource::StyleRetainedBytes,
+                        resource: surgeist_dom::DomResource::SourceRetainedBytes,
                         ..
                     }) => false,
                     other => panic!("unexpected admission: {other:?}"),
                 },
                 Err(DomError::ResourceLimit {
-                    resource: surgeist_dom::DomResource::StyleRetainedBytes,
+                    resource: surgeist_dom::DomResource::SourceRetainedBytes,
                     ..
                 }) => false,
                 Err(other) => panic!("unexpected admission: {other:?}"),
@@ -243,8 +249,8 @@ fn equal_comment_data_reaches_style_but_nested_text_and_type_attribute_alone_do_
     assert!(!dom.snapshot().node(style).unwrap().is_connected());
 }
 
-fn source_limits() -> surgeist_dom::DomStyleEditLimits {
-    surgeist_dom::DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
+fn source_limits() -> surgeist_dom::DomSourceLimits {
+    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
 }
 fn cssom() -> surgeist_cssom::CssomStore {
     surgeist_cssom::CssomStore::new(Default::default(), Default::default()).unwrap()
@@ -265,34 +271,50 @@ fn lease_drop_before_publication_discards_only_the_private_candidate() {
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let before = dom.snapshot();
-    let mut b = DomBatch::new();
-    b.create_document();
-    let lease = dom.begin_style_batch(b, source_limits(), &cancel).unwrap();
+    let lease = dom
+        .begin_source_edit(DomSourceEdit::create_document(), source_limits(), &cancel)
+        .unwrap();
     drop(lease);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.snapshot().nodes().count(), 0);
 }
 
 #[test]
-fn published_source_parks_exact_tail_and_cancel_discards_only_later_commands() {
-    use surgeist_dom::{DomStyleOperationId, DomStyleProgress};
+fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertion() {
+    use surgeist_dom::{DomSourceOperationId, DomSourceProgress};
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
-    let mut b = DomBatch::new();
-    let document = b.create_document();
-    let style = b.create_element_ns(&document, Namespace::html(), "style");
-    b.insert_before(&style, &document, None);
-    b.set_attribute(&style, "unstarted", "must not run");
-    let operation: DomStyleOperationId;
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let container = setup.create_element_ns(&document, Namespace::html(), "div");
+    let first = setup.create_element_ns(&document, Namespace::html(), "style");
+    let second = setup.create_element_ns(&document, Namespace::html(), "style");
+    setup.insert_before(&first, &container, None);
+    setup.insert_before(&second, &container, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let document = commit.created(&document).unwrap().unwrap();
+    let container = commit.created(&container).unwrap().unwrap();
+    let first = commit.created(&first).unwrap().unwrap();
+    let second = commit.created(&second).unwrap().unwrap();
+    let operation: DomSourceOperationId;
     let request;
     {
-        let mut lease = dom.begin_style_batch(b, source_limits(), &cancel).unwrap();
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(container, document, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
         operation = lease.operation();
-        let DomStyleProgress::Request(r) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(r)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual connected Style requires CSP");
         };
         request = r;
+        assert_eq!(request.source().element(), first);
         assert_eq!(
             request.action(),
             surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
@@ -301,7 +323,7 @@ fn published_source_parks_exact_tail_and_cancel_discards_only_later_commands() {
         assert!(matches!(
             lease
                 .snapshot()
-                .node(request.source().element())
+                .node(first)
                 .unwrap()
                 .as_style()
                 .unwrap()
@@ -309,15 +331,17 @@ fn published_source_parks_exact_tail_and_cancel_discards_only_later_commands() {
             Err(DomError::IncompleteSourceOperation)
         ));
     }
-    assert!(dom.pending_style_edit().unwrap().has_published());
+    assert!(dom.pending_source_edit().unwrap().has_published());
     assert!(matches!(
         dom.apply(DomBatch::new(), &cancel),
         Err(DomError::SourceOperationPending)
     ));
     let mut lease = dom
-        .resume_style_edit(operation, source_limits(), &cancel)
+        .resume_source_edit(operation, source_limits(), &cancel)
         .unwrap();
-    let DomStyleProgress::Request(reissued) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(reissued)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("retained request");
     };
     assert_eq!(reissued.source().ordinal(), request.source().ordinal());
@@ -326,39 +350,64 @@ fn published_source_parks_exact_tail_and_cancel_discards_only_later_commands() {
     lease
         .accept_inline_csp(&reissued, &block(&reissued), &cancel)
         .unwrap();
-    let DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
-        panic!("blocked source completes");
+    let DomSourceProgress::Request(DomSourceRequest::Style(tail)) = lease.advance(&cancel).unwrap()
+    else {
+        panic!("cancellation must finish the other Style hook in this insertion");
+    };
+    assert_eq!(tail.source().element(), second);
+    assert!(tail.source().ordinal() > reissued.source().ordinal());
+    lease
+        .accept_inline_csp(&tail, &block(&tail), &cancel)
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("blocked insertion completes");
     };
     assert!(done.cancellation_requested());
-    let id = done.published_creation(&style).unwrap().unwrap();
-    assert_eq!(id, request.source().element());
+    assert_eq!(done.output(), None);
     drop(lease);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     assert!(dom.snapshot().incomplete_source_operation().is_none());
-    let snapshot = dom.snapshot();
-    let element = snapshot.node(id).unwrap().as_element().unwrap();
-    assert!(
-        !element
-            .attributes()
-            .iter()
-            .any(|a| a.name().local_name().code_units()
-                == "unstarted".encode_utf16().collect::<Vec<_>>())
-    );
+    for id in [first, second] {
+        let snapshot = dom.snapshot();
+        assert_eq!(snapshot.node(id).unwrap().parent(), Some(container));
+        assert_eq!(
+            snapshot
+                .node(id)
+                .unwrap()
+                .as_style()
+                .unwrap()
+                .sheet()
+                .unwrap(),
+            None
+        );
+        assert!(
+            snapshot
+                .node(id)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .attribute(&"unstarted".into())
+                .is_none()
+        );
+    }
+    // An unrelated edit is a later atomic operation, never a hidden Source tail.
+    let mut later = DomBatch::new();
+    later.set_attribute(first, "unstarted", "runs only after completion");
+    dom.apply(later, &cancel).unwrap();
     assert_eq!(
-        snapshot
-            .node(id)
+        dom.snapshot()
+            .node(first)
             .unwrap()
-            .as_style()
+            .as_element()
             .unwrap()
-            .sheet()
-            .unwrap(),
-        None
+            .attribute(&"unstarted".into()),
+        Some(&"runs only after completion".into())
     );
 }
 
 #[test]
 fn same_parent_text_move_keeps_two_source_time_direct_text_captures() {
-    use surgeist_dom::DomStyleProgress;
+    use surgeist_dom::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut b = DomBatch::new();
@@ -379,10 +428,18 @@ fn same_parent_text_move_keeps_two_source_time_direct_text_captures() {
     let a = commit.created(&a).unwrap().unwrap();
     let mut b = DomBatch::new();
     b.set_attribute(s, "type", "text/css");
-    b.insert_before(a, s, None);
-    let mut lease = dom.begin_style_batch(b, source_limits(), &cancel).unwrap();
+    dom.apply(b, &cancel).unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(a, s, None),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
     let mut captured = Vec::new();
-    while let DomStyleProgress::Request(r) = lease.advance(&cancel).unwrap() {
+    while let DomSourceProgress::Request(DomSourceRequest::Style(r)) =
+        lease.advance(&cancel).unwrap()
+    {
         captured.push(String::from_utf16(r.source().text()).unwrap());
         lease.accept_inline_csp(&r, &block(&r), &cancel).unwrap();
     }
@@ -445,7 +502,9 @@ fn actual_creation_receipt(
     use std::sync::Arc;
     use surgeist_css::{CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
-    use surgeist_dom::{DomStyleCssomOwnerBinding, DomStyleInlineCspObservation, DomStyleProgress};
+    use surgeist_dom::{
+        DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleInlineCspObservation,
+    };
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut b = DomBatch::new();
@@ -458,10 +517,20 @@ fn actual_creation_receipt(
     }
     let text = b.create_text(&document, "a { color: red }");
     b.insert_before(&text, &style, None);
-    b.insert_before(&style, &document, None);
-    let mut lease = dom.begin_style_batch(b, source_limits(), &cancel).unwrap();
+    let setup = dom.apply(b, &cancel).unwrap();
+    let document = setup.created(&document).unwrap().unwrap();
+    let style = setup.created(&style).unwrap().unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, document, None),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
     let operation = lease.operation();
-    let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("policy")
     };
     lease
@@ -471,7 +540,9 @@ fn actual_creation_receipt(
             &cancel,
         )
         .unwrap();
-    let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("creation")
     };
     assert_eq!(
@@ -606,13 +677,15 @@ fn actual_creation_receipt(
             surgeist_cssom::CssomOwnerEffectStatus::Pending
         );
         assert_eq!(snapshot.revision(), &revision);
-        let DomStyleProgress::Request(retry) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(retry)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("pending owner output must not acknowledge creation")
         };
         assert_eq!(retry.association(), create.association());
         assert_eq!(retry.cssom_revision(), create.cssom_revision());
         drop(lease);
-        assert!(dom.pending_style_edit().unwrap().has_published());
+        assert!(dom.pending_source_edit().unwrap().has_published());
         assert!(dom.has_style_cssom_roots());
         return;
     }
@@ -630,7 +703,9 @@ fn actual_creation_receipt(
         );
         assert_eq!(returned_snapshot.revision(), &revision);
         assert!(returned_snapshot.sheet(&sheet).is_ok());
-        let DomStyleProgress::Request(retry) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(retry)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("rejected publication must leave the creation request outstanding")
         };
         assert_eq!(retry.association(), create.association());
@@ -662,26 +737,27 @@ fn actual_creation_receipt(
         let destination_cancel = AtomicBool::new(true);
         let before = dom.snapshot().stamp();
         assert!(matches!(
-            dom.resume_style_edit(operation, source_limits(), &destination_cancel),
+            dom.resume_source_edit(operation, source_limits(), &destination_cancel),
             Err(DomError::Cancelled)
         ));
         assert_eq!(dom.snapshot().stamp(), before);
         destination_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
         let insufficient =
-            surgeist_dom::DomStyleEditLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096);
+            surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096);
         assert!(matches!(
-            dom.resume_style_edit(operation, insufficient, &destination_cancel),
+            dom.resume_source_edit(operation, insufficient, &destination_cancel),
             Err(DomError::InvalidLimit(_))
         ));
         assert_eq!(dom.snapshot().stamp(), before);
         let mut lease = dom
-            .resume_style_edit(operation, source_limits(), &destination_cancel)
+            .resume_source_edit(operation, source_limits(), &destination_cancel)
             .unwrap();
         let owner = lease.cssom_root(&create).unwrap();
-        let DomStyleProgress::Complete(done) = lease.advance(&destination_cancel).unwrap() else {
+        let DomSourceProgress::Complete(done) = lease.advance(&destination_cancel).unwrap() else {
             panic!("external creation must not replay")
         };
-        let id = done.published_creation(&style).unwrap().unwrap();
+        assert_eq!(done.output(), None);
+        let id = style;
         drop(lease);
         (dom, owner, id)
     })
@@ -722,14 +798,15 @@ fn exercise_wrong_owner_media(
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomOwnerMediaInput,
         CssomSheetOwnerAttributes,
     };
-    use surgeist_dom::{DomStyleCssomOwnerBinding, DomStyleProgress};
+    use surgeist_dom::{DomSourceProgress, DomStyleCssomOwnerBinding};
     let cancel = AtomicBool::new(false);
-    let mut batch = DomBatch::new();
-    batch.set_attribute(element, "media", "print");
+    let edit = DomSourceEdit::set_attribute(element, "media", "print");
     let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("actual owner attribute request")
     };
     assert_eq!(
@@ -790,7 +867,9 @@ fn exercise_wrong_owner_media(
         },
         &revision
     );
-    let DomStyleProgress::Request(retry) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(retry)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("owner update still outstanding")
     };
     assert_eq!(retry.association(), request.association());
@@ -804,7 +883,7 @@ fn exercise_disabled_sheet(
     sheet: &surgeist_cssom::CssomSheetId,
 ) {
     use surgeist_cssom::CssomEditGuard;
-    use surgeist_dom::{DomStyleAction, DomStyleProgress};
+    use surgeist_dom::{DomSourceProgress, DomStyleAction};
     let cancel = AtomicBool::new(false);
     let historical_css = owner.snapshot().unwrap();
     assert!(!historical_css.sheet(sheet).unwrap().inputs().disabled);
@@ -832,13 +911,14 @@ fn exercise_disabled_sheet(
             DomError::StyleDisabledCompositionRequired
         );
         assert_eq!(dom.snapshot().stamp(), before.stamp());
-        let mut batch = DomBatch::new();
-        batch.set_style_disabled(element, disabled);
+        let edit = DomSourceEdit::set_style_disabled(element, disabled);
         let mut lease = dom
-            .begin_style_batch(batch, source_limits(), &cancel)
+            .begin_source_edit(edit, source_limits(), &cancel)
             .unwrap();
         let operation = lease.operation();
-        let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("associated sheet requires its real CSSOM owner")
         };
         assert_eq!(request.action(), DomStyleAction::SetDisabled(disabled));
@@ -863,7 +943,9 @@ fn exercise_disabled_sheet(
             let (_, commit, snapshot) = rejected.into_parts();
             assert!(commit.owner_effects().is_empty());
             assert!(!snapshot.sheet(sheet).unwrap().inputs().disabled);
-            let DomStyleProgress::Request(retry) = lease.advance(&cancel).unwrap() else {
+            let DomSourceProgress::Request(DomSourceRequest::Style(retry)) =
+                lease.advance(&cancel).unwrap()
+            else {
                 panic!("invalid reply retains actual request")
             };
             assert_eq!(retry.association(), request.association());
@@ -890,11 +972,11 @@ fn exercise_disabled_sheet(
         ));
         cancel.store(false, std::sync::atomic::Ordering::Relaxed);
         let mut lease = dom
-            .resume_style_edit(operation, source_limits(), &cancel)
+            .resume_source_edit(operation, source_limits(), &cancel)
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            DomStyleProgress::Complete(_)
+            DomSourceProgress::Complete(_)
         ));
         drop(lease);
         let current = dom.snapshot();
@@ -982,7 +1064,7 @@ fn disabled_without_an_association_is_a_no_op_and_does_not_accept_other_families
 
 #[test]
 fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
-    use surgeist_dom::{DomStyleEditLimits, DomStyleProgress};
+    use surgeist_dom::{DomSourceLimits, DomSourceProgress};
     let cancel = AtomicBool::new(false);
     for work_bound in [false, true] {
         let attempt = |bound: usize| {
@@ -997,7 +1079,7 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
             let document = commit.document(&document).unwrap();
             let before = dom.snapshot();
             let usage = dom.usage();
-            let limits = DomStyleEditLimits::new(
+            let limits = DomSourceLimits::new(
                 if work_bound { 16_000_000 } else { bound },
                 100_000,
                 if work_bound { bound as u64 } else { 10_000_000 },
@@ -1005,12 +1087,11 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                 4096,
                 4096,
             );
-            let mut batch = DomBatch::new();
-            batch.insert_before(style, document, None);
+            let edit = DomSourceEdit::insert_before(style, document.node(), None);
             let mut reached = false;
-            if let Ok(mut lease) = dom.begin_style_batch(batch, limits, &cancel) {
+            if let Ok(mut lease) = dom.begin_source_edit(edit, limits, &cancel) {
                 match lease.advance(&cancel) {
-                    Ok(DomStyleProgress::Request(request)) => {
+                    Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => {
                         assert_eq!(
                             request.action(),
                             surgeist_dom::DomStyleAction::Update(
@@ -1024,9 +1105,9 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                         );
                         reached = true;
                     }
-                    Err(DomError::StyleWorkLimit { .. }) if work_bound => {}
+                    Err(DomError::SourceWorkLimit { .. }) if work_bound => {}
                     Err(DomError::ResourceLimit {
-                        resource: surgeist_dom::DomResource::StyleRetainedBytes,
+                        resource: surgeist_dom::DomResource::SourceRetainedBytes,
                         ..
                     }) if !work_bound => {}
                     other => panic!("unexpected source admission outcome: {other:?}"),
@@ -1036,7 +1117,7 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                 assert_eq!(dom.snapshot().stamp(), before.stamp());
                 assert_eq!(dom.usage(), usage);
                 assert_eq!(dom.snapshot().node(style).unwrap().parent(), None);
-                assert!(dom.pending_style_edit().is_none());
+                assert!(dom.pending_source_edit().is_none());
             }
             reached
         };
@@ -1059,9 +1140,9 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
 }
 
 #[test]
-fn transition_generation_and_original_tickets_survive_intermediate_style_phases() {
+fn committed_transition_generations_and_request_snapshots_survive_style_phases() {
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
-    use surgeist_dom::{DomStyleAction, DomStyleProgress};
+    use surgeist_dom::{DomSourceProgress, DomStyleAction};
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(64, 10000, 256, 0, 0, 16, 100000)
@@ -1112,60 +1193,89 @@ fn transition_generation_and_original_tickets_survive_intermediate_style_phases(
         .unwrap(),
     );
     dom.apply(batch, &cancel).unwrap();
-    let basis = dom.snapshot().document(document).unwrap().stamp();
-    let mut batch = DomBatch::new();
-    let first = batch.begin_view_transition(basis);
-    batch.insert_before(first_style, parent, None);
-    batch.clear_view_transition_state(basis, &first);
-    batch.release_view_transition(basis, &first);
-    let second = batch.begin_view_transition(basis);
-    batch.insert_before(second_style, parent, None);
-    let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
-        .unwrap();
     let mut observed = Vec::new();
-    let completion = loop {
-        match lease.advance(&cancel).unwrap() {
-            DomStyleProgress::Request(request) => {
-                assert_eq!(
-                    request.action(),
-                    DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
-                );
-                observed.push(
-                    lease
-                        .snapshot()
-                        .document(document)
-                        .unwrap()
-                        .view_transitions()
-                        .unwrap()
-                        .active()
-                        .unwrap(),
-                );
-                lease
-                    .accept_inline_csp(&request, &block(&request), &cancel)
-                    .unwrap();
-            }
-            DomStyleProgress::Complete(done) => break done,
-        }
-    };
+    let mut historical = Vec::new();
+    for style in [first_style, second_style] {
+        let basis = dom.snapshot().document(document).unwrap().stamp();
+        let mut batch = DomBatch::new();
+        let ticket = batch.begin_view_transition(basis);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let transition = commit.view_transition(&ticket).unwrap().unwrap();
+        let before = dom.snapshot();
+        assert_eq!(
+            before
+                .document(document)
+                .unwrap()
+                .view_transitions()
+                .unwrap()
+                .active(),
+            Some(transition)
+        );
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(style, parent, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("policy boundary");
+        };
+        assert_eq!(
+            request.action(),
+            DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+        );
+        assert_eq!(request.source().element(), style);
+        assert_eq!(
+            lease
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .view_transitions()
+                .unwrap()
+                .active(),
+            Some(transition)
+        );
+        observed.push(transition);
+        historical.push(lease.snapshot());
+        lease
+            .accept_inline_csp(&request, &block(&request), &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("one blocked Style insertion completes");
+        };
+        assert_eq!(done.output(), None);
+        drop(lease);
+        let basis = dom.snapshot().document(document).unwrap().stamp();
+        let mut batch = DomBatch::new();
+        batch.clear_view_transition_state(basis, transition);
+        batch.release_view_transition(basis, transition);
+        dom.apply(batch, &cancel).unwrap();
+    }
     assert_eq!(observed.len(), 2);
     assert_ne!(
         observed[0], observed[1],
         "a publicly retired transition identity must never revive"
     );
-    assert_eq!(
-        completion.commit().view_transition(&first).unwrap(),
-        Some(observed[0])
-    );
-    assert_eq!(
-        completion.commit().view_transition(&second).unwrap(),
-        Some(observed[1])
-    );
+    for (snapshot, transition) in historical.iter().zip(observed) {
+        assert_eq!(
+            snapshot
+                .document(document)
+                .unwrap()
+                .view_transitions()
+                .unwrap()
+                .active(),
+            Some(transition),
+            "a request snapshot keeps its original committed transition identity"
+        );
+    }
 }
 
 #[test]
 fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_complete() {
-    use surgeist_dom::DomStyleProgress;
+    use surgeist_dom::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut batch = DomBatch::new();
@@ -1186,12 +1296,13 @@ fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_
         .unwrap()
         .unwrap()
         .id();
-    let mut batch = DomBatch::new();
-    batch.insert_before(style, document, None);
+    let edit = DomSourceEdit::insert_before(style, document.node(), None);
     let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("actual source boundary");
     };
     let pending = lease.snapshot();
@@ -1229,7 +1340,7 @@ fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_
         .unwrap();
     assert!(matches!(
         lease.advance(&cancel).unwrap(),
-        DomStyleProgress::Complete(_)
+        DomSourceProgress::Complete(_)
     ));
     drop(lease);
     assert_eq!(
@@ -1262,18 +1373,23 @@ fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_
 #[test]
 fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_request_retryable() {
     use surgeist_dom::{
-        DocumentString, DomResource, DomStyleInlineCspObservation, DomStyleProgress,
+        DocumentString, DomResource, DomSourceProgress, DomStyleInlineCspObservation,
     };
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let style = batch.create_element_ns(&document, Namespace::html(), "style");
-    batch.insert_before(&style, &document, None);
+    let setup = dom.apply(batch, &cancel).unwrap();
+    let style = setup.created(&style).unwrap().unwrap();
+    let document = setup.created(&document).unwrap().unwrap();
+    let edit = DomSourceEdit::insert_before(style, document, None);
     let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("policy boundary");
     };
     let phase = lease.snapshot().stamp();
@@ -1288,7 +1404,7 @@ fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_reques
     assert!(matches!(
         lease.accept_inline_csp(&request, &oversized, &cancel),
         Err(DomError::ResourceLimit {
-            resource: DomResource::StyleRetainedUnits,
+            resource: DomResource::SourceRetainedUnits,
             ..
         })
     ));
@@ -1299,7 +1415,9 @@ fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_reques
         Err(DomError::Cancelled)
     );
     cancel.store(false, std::sync::atomic::Ordering::Relaxed);
-    let DomStyleProgress::Request(retry) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(retry)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("same unacknowledged request");
     };
     assert_eq!(retry.source().stamp(), request.source().stamp());
@@ -1309,14 +1427,14 @@ fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_reques
         .unwrap();
     assert!(matches!(
         lease.advance(&cancel).unwrap(),
-        DomStyleProgress::Complete(_)
+        DomSourceProgress::Complete(_)
     ));
 }
 
 #[test]
 fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() {
     use surgeist_dom::{
-        DomNativeCheckpoint, DomNativeCheckpointLimits, DomSlotQueryLimits, DomStyleProgress,
+        DomNativeCheckpoint, DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceProgress,
     };
     let cancel = AtomicBool::new(false);
     let checkpoint = DomNativeCheckpointLimits::new(
@@ -1373,10 +1491,12 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
     ));
     assert_eq!(dom.pending_native_tasks(), 1);
     let mut lease = dom
-        .begin_style_select_completion(&task, checkpoint, source_limits(), &cancel)
+        .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
         .unwrap();
     let source_operation = lease.operation();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("copied connected Style boundary");
     };
     assert_ne!(request.source().element(), original_style);
@@ -1403,9 +1523,11 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
     assert_eq!(reacquired.operation(), operation);
     assert_eq!(reacquired.select(), select);
     let mut lease = dom
-        .resume_style_select_completion(source_operation, &reacquired, source_limits(), &cancel)
+        .resume_select_completion(source_operation, &reacquired, source_limits(), &cancel)
         .unwrap();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("same exact unfinished source request");
     };
     lease
@@ -1413,7 +1535,7 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
         .unwrap();
     assert!(matches!(
         lease.advance(&cancel).unwrap(),
-        DomStyleProgress::Complete(_)
+        DomSourceProgress::Complete(_)
     ));
     drop(lease);
     assert_eq!(dom.pending_native_tasks(), 0);
@@ -1433,8 +1555,8 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
     use surgeist_css::{CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
-        DomChange, DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleInlineCspObservation,
-        DomStyleProgress,
+        DomChange, DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+        DomStyleInlineCspObservation,
     };
     let cancel = AtomicBool::new(false);
     for body_present in [true, false] {
@@ -1456,11 +1578,15 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
         batch.set_attribute(&style, "blocking", "other\trender\nrender");
         let text = batch.create_text(document, "a {}");
         batch.insert_before(&text, &style, None);
-        batch.insert_before(&style, head, None);
+        let setup = dom.apply(batch, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, head, None);
         let mut lease = dom
-            .begin_style_batch(batch, source_limits(), &cancel)
+            .begin_source_edit(edit, source_limits(), &cancel)
             .unwrap();
-        let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual CSP request")
         };
         lease
@@ -1470,7 +1596,9 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
                 &cancel,
             )
             .unwrap();
-        let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual creation")
         };
         let root = DomStyleCssomRoot::new(document.node(), cssom());
@@ -1522,10 +1650,10 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
                 Some(construction.ticket()),
             )
             .unwrap();
-        let DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
             panic!("completed synchronous source")
         };
-        let style = done.published_creation(&style).unwrap().unwrap();
+        assert_eq!(done.output(), None);
         drop(lease);
         let completed = dom.snapshot();
         assert_eq!(
@@ -1592,7 +1720,7 @@ fn dropped_unpublished_permission_id_cannot_resume_a_later_published_tail() {
     stale_operation_id_case(2);
 }
 fn stale_operation_id_case(end: u8) {
-    use surgeist_dom::DomStyleProgress;
+    use surgeist_dom::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut setup = DomBatch::new();
@@ -1602,7 +1730,11 @@ fn stale_operation_id_case(end: u8) {
     let document = commit.document(&document).unwrap();
     let style = commit.created(&style).unwrap().unwrap();
     let mut first = dom
-        .begin_style_batch(DomBatch::new(), source_limits(), &cancel)
+        .begin_source_edit(
+            DomSourceEdit::remove_attribute(style, "absent"),
+            source_limits(),
+            &cancel,
+        )
         .unwrap();
     let old = first.operation();
     if end != 2 {
@@ -1611,35 +1743,38 @@ fn stale_operation_id_case(end: u8) {
         }
         assert!(matches!(
             first.advance(&cancel).unwrap(),
-            DomStyleProgress::Complete(_)
+            DomSourceProgress::Complete(_)
         ));
     }
     drop(first);
-    let mut batch = DomBatch::new();
-    batch.insert_before(style, document, None);
+    let edit = DomSourceEdit::insert_before(style, document.node(), None);
     let mut current = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
     let id = current.operation();
-    let DomStyleProgress::Request(request) = current.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        current.advance(&cancel).unwrap()
+    else {
         panic!("actual published policy tail")
     };
     drop(current);
     assert!(
         matches!(
-            dom.resume_style_edit(old, source_limits(), &cancel),
+            dom.resume_source_edit(old, source_limits(), &cancel),
             Err(DomError::InvalidSourceOperation)
         ),
         "an old issued ID must not grant a different operation"
     );
     assert_ne!(old, id);
-    let mut current = dom.resume_style_edit(id, source_limits(), &cancel).unwrap();
+    let mut current = dom
+        .resume_source_edit(id, source_limits(), &cancel)
+        .unwrap();
     current
         .accept_inline_csp(&request, &block(&request), &cancel)
         .unwrap();
     assert!(matches!(
         current.advance(&cancel).unwrap(),
-        DomStyleProgress::Complete(_)
+        DomSourceProgress::Complete(_)
     ));
 }
 
@@ -1672,16 +1807,16 @@ fn manual_slot_input_fixture(inputs: usize) -> (Dom, surgeist_dom::NodeId, surge
     )
 }
 
-fn execute_source_batch(
+fn execute_slot_source_edit(
     dom: &mut Dom,
-    batch: DomBatch,
+    edit: DomSourceEdit,
     cancel: &AtomicBool,
 ) -> Result<(), DomError> {
-    match dom.begin_style_batch(batch, source_limits(), cancel) {
+    match dom.begin_source_edit(edit, source_limits(), cancel) {
         Err(error) => Err(error),
         Ok(mut lease) => match lease.advance(cancel)? {
-            surgeist_dom::DomStyleProgress::Complete(_) => Ok(()),
-            surgeist_dom::DomStyleProgress::Request(request) => {
+            surgeist_dom::DomSourceProgress::Complete(_) => Ok(()),
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 panic!("manual Slot assignment has no external Style phase: {request:?}")
             }
         },
@@ -1707,12 +1842,16 @@ fn source_slot_inputs_preserve_the_canonical_zero_allowance_before_publication()
     assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(
-        execute_source_batch(&mut dom, commands(), &cancel),
+        execute_slot_source_edit(
+            &mut dom,
+            DomSourceEdit::assign_slot(slot, vec![text]),
+            &cancel
+        ),
         Err(expected)
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     assert!(
         dom.snapshot()
             .slot(slot)
@@ -1744,7 +1883,7 @@ fn source_slot_inputs_preserve_the_canonical_zero_allowance_before_publication()
 }
 
 #[test]
-fn source_slot_inputs_admit_the_whole_raw_batch_at_exact_and_one_short() {
+fn slot_inputs_admit_atomic_batch_totals_and_one_source_bank_at_exact_and_one_short() {
     use surgeist_dom::DomResource;
     let cancel = AtomicBool::new(false);
     for (limit, duplicate, raw_count) in [(1, false, 2), (2, false, 2), (2, true, 3), (3, true, 3)]
@@ -1765,6 +1904,34 @@ fn source_slot_inputs_admit_the_whole_raw_batch_at_exact_and_one_short() {
             batch.assign_slot(slot, vec![text.into()]);
             batch
         };
+        let ordinary_before = dom.snapshot();
+        if limit < raw_count {
+            assert_eq!(
+                dom.apply(commands(), &cancel).unwrap_err(),
+                DomError::ResourceLimit {
+                    resource: DomResource::SlotAssignmentInputs,
+                    limit,
+                }
+            );
+            assert_eq!(dom.snapshot().stamp(), ordinary_before.stamp());
+        } else {
+            dom.apply(commands(), &cancel).unwrap();
+            assert_eq!(
+                dom.snapshot().slot(slot).unwrap().manual_assignments(),
+                &[text]
+            );
+            assert!(
+                ordinary_before
+                    .slot(slot)
+                    .unwrap()
+                    .manual_assignments()
+                    .is_empty()
+            );
+        }
+        // A Source operation has one actual AssignSlot input bank. Its raw
+        // duplicates remain admission inputs even though the final set deduplicates.
+        let (mut dom, slot, text) = manual_slot_input_fixture(limit);
+        let source_edit = || DomSourceEdit::assign_slot(slot, vec![text; raw_count]);
         let before = dom.snapshot();
         let usage = dom.usage();
         if limit < raw_count {
@@ -1772,9 +1939,8 @@ fn source_slot_inputs_admit_the_whole_raw_batch_at_exact_and_one_short() {
                 resource: DomResource::SlotAssignmentInputs,
                 limit,
             };
-            assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
             assert_eq!(
-                execute_source_batch(&mut dom, commands(), &cancel),
+                execute_slot_source_edit(&mut dom, source_edit(), &cancel),
                 Err(expected)
             );
             assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -1793,7 +1959,7 @@ fn source_slot_inputs_admit_the_whole_raw_batch_at_exact_and_one_short() {
                     .is_empty()
             );
         } else {
-            execute_source_batch(&mut dom, commands(), &cancel).unwrap();
+            execute_slot_source_edit(&mut dom, source_edit(), &cancel).unwrap();
             assert_eq!(
                 dom.snapshot().slot(slot).unwrap().manual_assignments(),
                 &[text]
@@ -1818,7 +1984,7 @@ fn source_slot_inputs_admit_the_whole_raw_batch_at_exact_and_one_short() {
             assert!(before.slot(slot).unwrap().manual_assignments().is_empty());
             assert_ne!(dom.snapshot().stamp(), before.stamp());
         }
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
     }
 }
 
@@ -1838,7 +2004,11 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
         DomError::Cancelled
     );
     assert_eq!(
-        execute_source_batch(&mut dom, commands(), &cancelled),
+        execute_slot_source_edit(
+            &mut dom,
+            DomSourceEdit::assign_slot(slot, vec![text]),
+            &cancelled
+        ),
         Err(DomError::Cancelled)
     );
     dom.set_limits(DomLimits::new(32, 4096, 0, 32, 0, 8, 65536).unwrap())
@@ -1850,14 +2020,14 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
     };
     assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
     assert!(
-        matches!(dom.begin_style_batch(commands(), surgeist_dom::DomStyleEditLimits::new(0, 0, 0, 0, 0, 0), &cancel), Err(error) if error == expected)
+        matches!(dom.begin_source_edit(DomSourceEdit::assign_slot(slot, vec![text]), surgeist_dom::DomSourceLimits::new(0, 0, 0, 0, 0, 0), &cancel), Err(error) if error == expected)
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
 }
 
 #[test]
-fn source_slot_inputs_are_admitted_before_an_earlier_style_can_publish() {
+fn atomic_batch_slot_inputs_are_admitted_before_an_earlier_style_can_publish() {
     use surgeist_dom::DomResource;
     let cancel = AtomicBool::new(false);
     let (mut dom, slot, text) = manual_slot_input_fixture(0);
@@ -1869,8 +2039,8 @@ fn source_slot_inputs_are_admitted_before_an_earlier_style_can_publish() {
         let mut batch = DomBatch::new();
         let style = batch.create_element_ns(document, Namespace::html(), "style");
         batch.insert_before(&style, host, None);
-        // This later raw input must be checked before even the preceding
-        // Style insertion can publish a policy request or creation identity.
+        // An ordinary atomic batch admits its complete raw input before any
+        // preceding command can reach an external Style service.
         batch.assign_slot(slot, vec![text.into()]);
         batch
     };
@@ -1879,11 +2049,8 @@ fn source_slot_inputs_are_admitted_before_an_earlier_style_can_publish() {
         limit: 0,
     };
     assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
-    assert!(
-        matches!(dom.begin_style_batch(commands(), source_limits(), &cancel), Err(error) if error == expected)
-    );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     assert_eq!(dom.snapshot().node(host).unwrap().children().len(), 1);
     assert!(
         dom.changes_since(before.stamp())
@@ -1918,15 +2085,15 @@ fn raised_independent_meta_budget_reaches_the_exact_published_source_tail() {
     }
 }
 fn meta_budget_reaches_first_style_request(low: u64) -> bool {
-    use surgeist_dom::{DomMetaError, DomStyleProgress};
+    use surgeist_dom::{DomMetaError, DomSourceProgress};
     let cancel = AtomicBool::new(false);
-    let (mut dom, _, _, batch) = meta_recovery_fixture(low);
+    let (mut dom, _, _, edit) = meta_recovery_fixture(low);
     let before = dom.snapshot();
     let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
     match lease.advance(&cancel) {
-        Ok(DomStyleProgress::Request(_)) => {
+        Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
             assert!(lease.status().has_published());
             true
         }
@@ -1938,7 +2105,7 @@ fn meta_budget_reaches_first_style_request(low: u64) -> bool {
         other => panic!("actual same-command Meta preflight: {other:?}"),
     }
 }
-fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId, DomBatch) {
+fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId, DomSourceEdit) {
     let cancel = AtomicBool::new(false);
     let high = DomLimits::new(128, 32768, 512, 0, 0, 16, 1_000_000)
         .unwrap()
@@ -1957,20 +2124,21 @@ fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId,
     let document = created.document(&document).unwrap();
     let container = created.created(&container).unwrap().unwrap();
     dom.set_limits(high.with_meta_processing_work(low)).unwrap();
-    let mut batch = DomBatch::new();
-    batch.insert_before(container, document.node(), None);
-    (dom, high, document, batch)
+    let edit = DomSourceEdit::insert_before(container, document.node(), None);
+    (dom, high, document, edit)
 }
 fn resume_after_meta_work_refusal(low: u64) {
-    use surgeist_dom::{DomMetaError, DomStyleProgress};
+    use surgeist_dom::{DomMetaError, DomSourceProgress};
     let cancel = AtomicBool::new(false);
-    let (mut dom, high, document, batch) = meta_recovery_fixture(low);
+    let (mut dom, high, document, edit) = meta_recovery_fixture(low);
     let before = dom.snapshot();
     let mut lease = dom
-        .begin_style_batch(batch, source_limits(), &cancel)
+        .begin_source_edit(edit, source_limits(), &cancel)
         .unwrap();
     let operation = lease.operation();
-    let DomStyleProgress::Request(request) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("first Style policy boundary")
     };
     assert!(lease.status().has_published());
@@ -1996,7 +2164,7 @@ fn resume_after_meta_work_refusal(low: u64) {
     }
     cancel.store(true, std::sync::atomic::Ordering::Relaxed);
     assert!(matches!(
-        dom.resume_style_edit(operation, source_limits(), &cancel),
+        dom.resume_source_edit(operation, source_limits(), &cancel),
         Err(DomError::Cancelled)
     ));
     assert_eq!(dom.limits(), old_limits);
@@ -2005,13 +2173,13 @@ fn resume_after_meta_work_refusal(low: u64) {
     dom.set_limits(high).unwrap();
     assert_eq!(dom.snapshot().stamp(), published);
     let mut lease = dom
-        .resume_style_edit(operation, source_limits(), &cancel)
+        .resume_source_edit(operation, source_limits(), &cancel)
         .unwrap();
     assert!(lease.status().spent_work() >= spent);
     assert!(
         matches!(
             lease.advance(&cancel).unwrap(),
-            DomStyleProgress::Complete(_)
+            DomSourceProgress::Complete(_)
         ),
         "raising the independent bound must finish the retained command"
     );

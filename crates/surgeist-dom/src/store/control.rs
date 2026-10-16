@@ -73,15 +73,15 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::CustomValidity,
+            source::formation::mutation_observation::Site::CustomValidity,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         let mut normalized = match &formation {
             Some(formation) => {
-                style::formation::utf16_buffer(length, limits.units, Some(formation), cancel)?
+                source::formation::utf16_buffer(length, limits.units, Some(formation), cancel)?
             }
             None => {
                 let mut output = Vec::new();
@@ -100,7 +100,7 @@ impl Draft {
         self.source_step(cancel)?;
         let normalized = DocumentString::from_utf16(normalized);
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             size_of::<Vec<u16>>() + normalized.shared_code_units().capacity() * size_of::<u16>(),
         );

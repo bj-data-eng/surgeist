@@ -1,6 +1,6 @@
 //! Actual native family state; cloning this storage preserves snapshots, while
 //! DOM single-node cloning selects fresh initialization before copied attrs.
-use crate::store::style::{
+use crate::store::source::{
     formation::Formation,
     storage::{self, Payload},
 };
@@ -11,9 +11,8 @@ use surgeist_html::bounded::{
     IntegerPrefixScanner, IntegerUnitStepError, NumericMaterializationError,
 };
 use surgeist_html::{
-    HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlFrameNullContent, HtmlIframeNativeState,
-    HtmlLoading, HtmlMarqueeState, HtmlNonNegativeInteger, HtmlValueInterpreter,
-    KnownHtmlAttribute,
+    HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlIframeInitialState, HtmlLoading,
+    HtmlMarqueeState, HtmlNonNegativeInteger, HtmlValueInterpreter, KnownHtmlAttribute,
 };
 
 pub(super) struct AttributeMutation<'a> {
@@ -21,7 +20,7 @@ pub(super) struct AttributeMutation<'a> {
     pub name: &'a QualifiedName,
     pub previous: &'a [Attribute],
     pub attributes: &'a [Attribute],
-    pub removed: bool,
+    pub content: Option<surgeist_html::HtmlChildNavigablePresence>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,8 +52,8 @@ pub(crate) enum NativeFamily {
     SvgScript(crate::svg_script::SvgScriptState),
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
-    Frame(HtmlFrameNullContent),
-    Iframe(HtmlIframeNativeState),
+    Frame,
+    Iframe(HtmlIframeInitialState),
 }
 
 impl NativeFamily {
@@ -93,7 +92,7 @@ impl NativeFamily {
             | Self::Script
             | Self::SvgScript(_)
             | Self::Marquee(_)
-            | Self::Frame(_)
+            | Self::Frame
             | Self::Iframe(_) => Some(0),
         }
     }
@@ -110,37 +109,31 @@ impl NativeFamily {
             name,
             previous,
             attributes,
-            removed,
+            content,
         } = change;
-        if matches!(self, Self::Frame(_) | Self::Iframe(_)) {
+        if matches!(self, Self::Frame | Self::Iframe(_)) {
             // One actual child-navigable hook boundary. The common src guard
             // checks content before Iframe's additional srcdoc-absence condition.
             if attribute_is(name, KnownHtmlAttribute::Src, budget, cancel)? {
                 admit()?;
-                let process = match self {
-                    Self::Frame(state) => state.src_change_requires_processing(),
-                    Self::Iframe(state) => state.src_change_requires_processing(),
-                    _ => unreachable!("native navigable-container family"),
-                };
-                if process {
-                    unreachable!("stored native null content cannot process src attributes")
+                if content
+                    .expect("actual container relation")
+                    .attribute_change_requires_processing()
+                {
+                    return Err(DomError::HostedSourceUnavailable);
                 }
             }
+
             if let Self::Iframe(state) = self {
-                if attribute_is(name, KnownHtmlAttribute::Srcdoc, budget, cancel)? {
+                if attribute_is(name, KnownHtmlAttribute::Srcdoc, budget, cancel)?
+                    || attribute_is(name, KnownHtmlAttribute::Sandbox, budget, cancel)?
+                {
                     admit()?;
-                    if state.srcdoc_change_requires_processing() {
-                        unreachable!("stored native null content cannot process srcdoc")
-                    }
-                } else if attribute_is(name, KnownHtmlAttribute::Sandbox, budget, cancel)? {
-                    admit()?;
-                    let process = if removed {
-                        state.sandbox_removal_requires_clearing()
-                    } else {
-                        state.sandbox_change_requires_processing()
-                    };
-                    if process {
-                        unreachable!("stored native unprocessed sandbox has no live policy write")
+                    if content
+                        .expect("actual container relation")
+                        .attribute_change_requires_processing()
+                    {
+                        return Err(DomError::HostedSourceUnavailable);
                     }
                 } else if attribute_is(name, KnownHtmlAttribute::Loading, budget, cancel)? {
                     let old = loading_state(element_name, previous, admit, budget, cancel)?;
@@ -446,7 +439,7 @@ mod tests {
                 name: &name,
                 previous: &[],
                 attributes: &attributes,
-                removed: false,
+                content: None,
             },
             &mut || {
                 reads += 1;

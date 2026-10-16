@@ -55,12 +55,12 @@ impl Draft {
         // state moves this value; it does not deep-clone the old string or use
         // Arc::make_mut. Preadmit the complete new occurrence while old state and
         // any source operands remain live, before the Arc payload allocation.
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(formation) = &formation {
             formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
         }
         self.source_step(cancel)?;
-        let value = style::formation::share(value, formation.as_ref(), cancel)?;
+        let value = source::formation::share(value, formation.as_ref(), cancel)?;
         self.source_step(cancel)?;
         let next = self.dialog_state(key)?.with_return_value(value);
         self.element_mut(key).set_dialog_state(next);
@@ -252,8 +252,8 @@ mod tests {
         let cancel = AtomicBool::new(false);
         for failure in [
             None,
-            Some(DomResource::StyleRetainedBytes),
-            Some(DomResource::StyleRetainedUnits),
+            Some(DomResource::SourceRetainedBytes),
+            Some(DomResource::SourceRetainedUnits),
         ] {
             let (dom, dialog) = fixture();
             let before = dom.snapshot();
@@ -264,7 +264,7 @@ mod tests {
             let mut batch = DomBatch::new();
             batch.set_dialog_return_value(dialog, value.clone());
             let generous =
-                crate::DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
             let (mut draft, _, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
@@ -284,10 +284,10 @@ mod tests {
             let replacement_bytes =
                 size_of::<DomDialogState>() + size_of::<Vec<u16>>() + capacity * size_of::<u16>();
             let byte_limit = base_bytes + replacement_bytes
-                - usize::from(failure == Some(DomResource::StyleRetainedBytes));
+                - usize::from(failure == Some(DomResource::SourceRetainedBytes));
             let unit_limit = base_units + capacity
-                - usize::from(failure == Some(DomResource::StyleRetainedUnits));
-            draft.source_limits = Some(crate::DomStyleEditLimits::new(
+                - usize::from(failure == Some(DomResource::SourceRetainedUnits));
+            draft.source_limits = Some(crate::DomSourceLimits::new(
                 byte_limit, unit_limit, 10_000_000, 16, 4096, 4096,
             ));
             let key = draft.resolve(dialog.into()).unwrap();
@@ -298,7 +298,7 @@ mod tests {
                     result.unwrap_err(),
                     DomError::ResourceLimit {
                         resource,
-                        limit: if resource == DomResource::StyleRetainedBytes {
+                        limit: if resource == DomResource::SourceRetainedBytes {
                             byte_limit
                         } else {
                             unit_limit
@@ -343,8 +343,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         batch.set_dialog_return_value(dialog, "unpublished");
-        let limits =
-            crate::DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+        let limits = crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
         let (mut draft, _, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let original = draft.units;
@@ -376,7 +375,7 @@ mod tests {
             let before = dom.snapshot();
             let batch = DomBatch::new();
             let generous =
-                crate::DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
             let (mut draft, _, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
@@ -391,7 +390,7 @@ mod tests {
             // One actual entry action plus one admitted read for each of the
             // five literal UTF16 pairs. Begin a fresh measured setter interval;
             // initial Source formation was separately admitted above.
-            draft.source_limits = Some(crate::DomStyleEditLimits::new(
+            draft.source_limits = Some(crate::DomSourceLimits::new(
                 16_000_000, 100_000, work, 16, 4096, 4096,
             ));
             draft.source_work.store(0, Ordering::Relaxed);
@@ -399,7 +398,7 @@ mod tests {
             if work == compared {
                 assert_eq!(
                     result.unwrap_err(),
-                    DomError::StyleWorkLimit { limit: work }
+                    DomError::SourceWorkLimit { limit: work }
                 );
             } else {
                 result.unwrap();

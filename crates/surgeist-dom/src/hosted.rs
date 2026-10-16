@@ -959,7 +959,7 @@ macro_rules! request {
 }
 request!(DomHostedPolicyRequest, "The exact initial no-opener Permissions Policy phase.", origin: crate::DomOpaqueOrigin);
 request!(DomHostedExecutionRequest, "Creation of the actual native agent, loop, Global and settings.",
-    origin: crate::DomOpaqueOrigin);
+    origin: crate::DomOpaqueOrigin, inputs: crate::document::HostedDocumentInputs);
 request!(DomHostedMakeActiveRequest, "Make the actual Document/Global association active.",
     document: crate::DocumentId, global: DomHostedGlobalId);
 request!(DomHostedFinishLoadingRequest, "The fresh completion sample from the same original epoch.",
@@ -982,6 +982,18 @@ impl DomHostedPolicyRequest {
     }
 }
 impl DomHostedExecutionRequest {
+    pub fn creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        self.inputs.url()
+    }
+    pub fn top_level_creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        self.inputs.url()
+    }
+    pub fn base_document_facts(&self) -> &surgeist_html_semantics::HtmlBaseDocumentFacts {
+        &self.inputs.0.facts
+    }
+    pub fn opener_policy(&self) -> &surgeist_html::HtmlOpenerPolicy {
+        &self.inputs.0.opener
+    }
     pub fn origin(&self) -> &crate::DomOpaqueOrigin {
         &self.origin
     }

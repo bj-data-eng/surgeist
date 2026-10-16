@@ -1113,23 +1113,22 @@ fn source_phase_admits_language_token_units_and_keeps_history_atomic_at_the_actu
         apply(&mut dom, batch);
         let before = dom.snapshot();
         let usage = dom.usage();
-        let mut batch = DomBatch::new();
-        batch.insert_before(meta, root, None);
+        let edit = DomSourceEdit::insert_before(meta, root, None);
         let result = {
-            match dom.begin_style_batch(
-                batch,
-                DomStyleEditLimits::new(16_000_000, allowance, 10_000_000, 64, 4096, 4096),
+            match dom.begin_source_edit(
+                edit,
+                DomSourceLimits::new(16_000_000, allowance, 10_000_000, 64, 4096, 4096),
                 &cancel(),
             ) {
                 Err(error) => Err(error),
                 Ok(mut lease) => match lease.advance(&cancel()) {
-                    Ok(DomStyleProgress::Complete(_)) => Ok(()),
+                    Ok(DomSourceProgress::Complete(_)) => Ok(()),
                     Ok(other) => panic!("Meta requires no external Style request: {other:?}"),
                     Err(error) => Err(error),
                 },
             }
         };
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert_eq!(language(&before, document), Some(&old));
         match result {
             Ok(()) => {
@@ -1142,7 +1141,7 @@ fn source_phase_admits_language_token_units_and_keeps_history_atomic_at_the_actu
                     matches!(
                         error,
                         DomError::ResourceLimit {
-                            resource: DomResource::StyleRetainedUnits,
+                            resource: DomResource::SourceRetainedUnits,
                             ..
                         }
                     ),

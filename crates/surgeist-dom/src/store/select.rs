@@ -46,7 +46,7 @@ impl<T> Drop for ScratchVec<T> {
 impl<T: Clone> ScratchVec<T> {
     pub(super) fn checkpoint(
         &self,
-        admission: &mut style::checkpoint::Admission<'_>,
+        admission: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         let bytes = self
@@ -96,13 +96,13 @@ pub(super) enum Pending {
 }
 pub(super) fn draft_tasks_formed(
     tasks: &[Task<NodeId>],
-    initial: Option<&style::initial::Initial>,
+    initial: Option<&source::initial::Initial>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Pending>, DomError> {
     let mut out = Vec::new();
-    style::initial::reserve(&mut out, tasks.len(), initial, cancel)?;
+    source::initial::reserve(&mut out, tasks.len(), initial, cancel)?;
     for task in tasks {
-        style::initial::step(initial, cancel)?;
+        source::initial::step(initial, cancel)?;
         out.push(match *task {
             Task::Slots => Pending::Slots,
             Task::Update { serial, target } => Pending::Update {
@@ -125,7 +125,7 @@ struct SelectContinuation {
 struct SetterContinuation {
     edit: crate::select::Edit,
     acknowledge: bool,
-    payload: Option<style::checkpoint::Charge>,
+    payload: Option<source::checkpoint::Charge>,
 }
 impl Draft {
     fn queue_select(
@@ -153,17 +153,17 @@ impl Draft {
         )?;
         #[cfg(test)]
         let growth = if self.native_tasks.len() == self.native_tasks.capacity() {
-            style::formation::mutation_observation::before(
+            source::formation::mutation_observation::before(
                 self,
-                style::formation::mutation_observation::Site::SelectTasks,
+                source::formation::mutation_observation::Site::SelectTasks,
                 cancel,
             )?
         } else {
             None
         };
-        style::reserve_bank(&mut self.native_tasks, 1, admitted)?;
+        source::reserve_bank(&mut self.native_tasks, 1, admitted)?;
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             self.native_tasks.capacity() * size_of::<Pending>(),
         );
@@ -217,7 +217,7 @@ impl Draft {
                         1,
                         cancel,
                     )?;
-                    style::reserve_bank(&mut self.cancelled_selects, 1, admitted)?;
+                    source::reserve_bank(&mut self.cancelled_selects, 1, admitted)?;
                     self.source_admit(0, cancel)?;
                     self.cancelled_selects.push((serial, id));
                 }
@@ -233,14 +233,14 @@ impl Draft {
         &self,
         dom: &Dom,
         id: &impl Fn(Key) -> NodeId,
-        budget: Option<&style::formation::Formation>,
+        budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FinishedTasks, DomError> {
         let mut next = dom.state.next_task;
         let mut out = Vec::new();
         let mut cancelled = Vec::new();
-        style::formation::reserve(&mut out, self.native_tasks.len(), budget, cancel)?;
-        style::formation::reserve(&mut cancelled, self.cancelled_selects.len(), budget, cancel)?;
+        source::formation::reserve(&mut out, self.native_tasks.len(), budget, cancel)?;
+        source::formation::reserve(&mut cancelled, self.cancelled_selects.len(), budget, cancel)?;
         let mut serial = |old: Option<u64>| -> Result<u64, DomError> {
             if let Some(id) = old {
                 Ok(id)
@@ -253,7 +253,7 @@ impl Draft {
             }
         };
         for task in &self.native_tasks {
-            style::formation::step(budget, cancel)?;
+            source::formation::step(budget, cancel)?;
             if matches!(task, Pending::Update {target,..} if self.is_private(*target)) {
                 continue;
             }
@@ -269,7 +269,7 @@ impl Draft {
             });
         }
         for entry in &self.cancelled_selects {
-            style::formation::step(budget, cancel)?;
+            source::formation::step(budget, cancel)?;
             let (old, target) = *entry;
             cancelled.push((serial(old)?, target));
         }
@@ -427,16 +427,16 @@ impl Draft {
             return Ok(());
         };
         #[cfg(test)]
-        let before = style::formation::mutation_observation::before(
+        let before = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::Family,
+            source::formation::mutation_observation::Site::Family,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?.expect("source context");
+        let formation = source::formation::Formation::new(self, cancel)?.expect("source context");
         formation.retain_payload(payload, cancel)?;
         self.element_mut(key).make_family_unique();
         #[cfg(test)]
-        style::formation::mutation_observation::grew(before, payload.bytes);
+        source::formation::mutation_observation::grew(before, payload.bytes);
         drop(formation);
         Ok(())
     }
@@ -984,13 +984,13 @@ pub(super) enum Effect {
 pub(super) struct EffectFrame {
     pub(super) effect: Effect,
     pub(super) scoped: bool,
-    payload: Option<style::checkpoint::Charge>,
+    payload: Option<source::checkpoint::Charge>,
 }
 impl Effect {
     fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<style::storage::Payload, DomError> {
+    ) -> Result<source::storage::Payload, DomError> {
         step()?;
         match self {
             Self::XmlDocument(frame) => frame.retained_payload(step),
@@ -999,19 +999,19 @@ impl Effect {
                 edit: crate::select::Edit::Value(value),
                 ..
             } => {
-                let mut payload = style::storage::Payload::default();
+                let mut payload = source::storage::Payload::default();
                 payload.string(value)?;
                 Ok(payload)
             }
             Self::Clone(frame) => frame.retained_payload(step),
-            _ => Ok(style::storage::Payload::default()),
+            _ => Ok(source::storage::Payload::default()),
         }
     }
 }
 impl EffectFrame {
     pub(super) fn checkpoint(
         &self,
-        a: &mut style::checkpoint::Admission<'_>,
+        a: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         check_cancel(cancel)?;
@@ -1125,7 +1125,7 @@ impl Draft {
         &mut self,
         effect: Effect,
         scoped: bool,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let old = self.effects.capacity() * size_of::<EffectFrame>();
@@ -1607,9 +1607,9 @@ impl Draft {
                     .ok_or(DomError::SelectInapplicable)?;
                 let options = self.options(key, cancel)?;
                 let cursor = HtmlSelectSetterCursor::new(options.len());
-                let formation = style::formation::Formation::new(self, cancel)?;
+                let formation = source::formation::Formation::new(self, cancel)?;
                 if let (Some(formation), crate::select::Edit::Value(value)) = (&formation, edit) {
-                    let mut payload = style::storage::Payload::default();
+                    let mut payload = source::storage::Payload::default();
                     payload.string(value)?;
                     formation.retain_payload(payload, cancel)?;
                 }
@@ -1623,7 +1623,7 @@ impl Draft {
                         acknowledge: false,
                     },
                     true,
-                    formation.map(style::formation::Formation::into_charge),
+                    formation.map(source::formation::Formation::into_charge),
                     cancel,
                 )?;
             }

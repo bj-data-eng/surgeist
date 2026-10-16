@@ -22,9 +22,9 @@ pub(super) struct Row {
 }
 pub(super) struct NativeInstallation {
     pub rows: Vec<Row>,
-    pub rows_payload: Option<style::checkpoint::Charge>,
+    pub rows_payload: Option<source::checkpoint::Charge>,
     pub bindings: Vec<DomNativeHtmlBinding>,
-    pub bindings_payload: Option<style::checkpoint::Charge>,
+    pub bindings_payload: Option<source::checkpoint::Charge>,
     pub destination: DomDocumentStamp,
     pub source_root: HtmlNodeId,
     pub wrapper: Key,
@@ -79,7 +79,7 @@ struct Control<'a> {
     bytes: usize,
     cancel: &'a AtomicBool,
     // Work only: storage admission always uses a fresh current-Draft Formation.
-    source_work: Option<style::formation::Formation>,
+    source_work: Option<source::formation::Formation>,
 }
 impl Control<'_> {
     fn check(&self) -> Result<(), Error> {
@@ -150,7 +150,7 @@ impl Control<'_> {
         &mut self,
         draft: &Draft,
         values: &mut Vec<T>,
-        payload: &mut Option<style::checkpoint::Charge>,
+        payload: &mut Option<source::checkpoint::Charge>,
         additional: usize,
     ) -> Result<(), Error> {
         if draft.source_limits.is_none() {
@@ -173,7 +173,7 @@ impl Control<'_> {
         // reservation policy. Source additionally admits the whole replacement.
         self.retain(net)?;
         let formation =
-            style::formation::Formation::new(draft, self.cancel).map_err(Error::Target)?;
+            source::formation::Formation::new(draft, self.cancel).map_err(Error::Target)?;
         let budget = formation.as_ref().expect("Source staging");
         budget
             .retain_bytes(
@@ -203,7 +203,7 @@ impl Control<'_> {
         &mut self,
         draft: &Draft,
         rows: &mut Vec<Row>,
-        payload: &mut Option<style::checkpoint::Charge>,
+        payload: &mut Option<source::checkpoint::Charge>,
         source: HtmlNodeId,
         key: Key,
     ) -> Result<(), Error> {
@@ -253,7 +253,7 @@ fn association(subject: &HtmlNodeId, kind: Association) -> Error {
 
 pub(super) struct Budgets {
     pub native: DomNativeHtmlInstallLimits,
-    pub source: Option<crate::DomStyleEditLimits>,
+    pub source: Option<crate::DomSourceLimits>,
 }
 impl Dom {
     /// Installs exact immutable fields using fresh native creation, then actual
@@ -334,7 +334,7 @@ impl Dom {
             None => Draft::new(self, Arc::new(BatchIdentity), cancelled).map_err(Error::Target)?,
         };
         control.source_work =
-            style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
+            source::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
         let document = draft
             .resolve(basis.document().into())
             .map_err(Error::Target)?;
@@ -353,7 +353,7 @@ impl Dom {
             .map_err(Error::Target)?;
         let source_root = source.root().id();
         let pending_header =
-            style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
+            source::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
         if let Some(budget) = &pending_header {
             budget
                 .retain_bytes(size_of::<Vec<Visit>>(), cancelled)
@@ -422,7 +422,7 @@ impl Dom {
                     .expect("ordinary source child has a staged parent");
                 let document = draft.node(parent).map_err(Error::Target)?.document;
                 let formation =
-                    style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
+                    source::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
                 let kind = match original.kind() {
                     HtmlNodeKind::Element(element) => {
                         control.name(element.name())?;
@@ -441,14 +441,14 @@ impl Dom {
                     HtmlNodeKind::Text(value) => {
                         control.charge(value.len())?;
                         DomNodeKind::Text(
-                            style::formation::share(value, formation.as_ref(), cancelled)
+                            source::formation::share(value, formation.as_ref(), cancelled)
                                 .map_err(|error| source_error(&visit.source, error))?,
                         )
                     }
                     HtmlNodeKind::Comment(value) => {
                         control.charge(value.len())?;
                         DomNodeKind::Comment(
-                            style::formation::share(value, formation.as_ref(), cancelled)
+                            source::formation::share(value, formation.as_ref(), cancelled)
                                 .map_err(|error| source_error(&visit.source, error))?,
                         )
                     }
@@ -484,13 +484,13 @@ impl Dom {
                         let public = value
                             .public_id()
                             .is_none()
-                            .then(|| style::formation::string("", formation.as_ref(), cancelled))
+                            .then(|| source::formation::string("", formation.as_ref(), cancelled))
                             .transpose()
                             .map_err(Error::Target)?;
                         let system = value
                             .system_id()
                             .is_none()
-                            .then(|| style::formation::string("", formation.as_ref(), cancelled))
+                            .then(|| source::formation::string("", formation.as_ref(), cancelled))
                             .transpose()
                             .map_err(Error::Target)?;
                         let kind = crate::DomDocumentType::new(
@@ -508,7 +508,7 @@ impl Dom {
                         )
                         .map_err(|error| source_error(&visit.source, error))?;
                         for temporary in [public, system].into_iter().flatten() {
-                            let mut payload = style::storage::Payload::default();
+                            let mut payload = source::storage::Payload::default();
                             payload.string(&temporary).map_err(Error::Target)?;
                             drop(temporary);
                             if let Some(budget) = &formation {
@@ -863,14 +863,16 @@ mod tests {
         let source = builder.finish();
         let before = dom.snapshot();
         staging_observation::start();
-        let result = dom.begin_style_native_installation(
-            before.document(document).unwrap().stamp(),
-            parent,
-            None,
+        let result = dom.begin_native_installation(
+            crate::DomNativeHtmlInstallTarget::new(
+                before.document(document).unwrap().stamp(),
+                parent,
+                None,
+            ),
             &source,
-            crate::DomStyleNativeHtmlInstallLimits::new(
+            crate::DomSourceNativeHtmlInstallLimits::new(
                 DomNativeHtmlInstallLimits::new(4096, 10_000_000, 10_000_000),
-                crate::DomStyleEditLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
+                crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
             ),
             &cancel,
         );
@@ -878,7 +880,7 @@ mod tests {
         drop(result);
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         assert_eq!(*dom.state, *before.state);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         actual
     }
 

@@ -2,7 +2,7 @@
 //!
 //! The original scratch tariff is independent from Source's actual ownership
 //! admission. Both work domains remain cumulative across reached operations.
-use super::style::{checkpoint::Charge, formation::Formation, storage::Payload};
+use super::source::{checkpoint::Charge, formation::Formation, storage::Payload};
 use super::{DomError, DomResource, check_cancel};
 use crate::DocumentString;
 use std::{mem::size_of, sync::atomic::AtomicBool};
@@ -710,13 +710,13 @@ pub(super) mod source_observation {
 mod source_tests {
     use super::*;
     use crate::store::{BatchIdentity, Draft};
-    use crate::{Dom, DomBatch, DomLimits, DomStyleEditLimits, Namespace};
+    use crate::{Dom, DomBatch, DomLimits, DomSourceLimits, Namespace};
     use std::sync::{Arc, atomic::Ordering};
 
     fn draft(cancel: &AtomicBool, bytes: usize, units: usize) -> Draft {
         let dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), cancel).unwrap();
-        draft.source_limits = Some(DomStyleEditLimits::new(
+        draft.source_limits = Some(DomSourceLimits::new(
             usize::MAX,
             usize::MAX,
             100_000_000,
@@ -726,7 +726,7 @@ mod source_tests {
         ));
         let base = draft.source_storage_bytes(cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(cancel).unwrap() + draft.source_other_units;
-        draft.source_limits = Some(DomStyleEditLimits::new(
+        draft.source_limits = Some(DomSourceLimits::new(
             base + bytes,
             base_units + units,
             100_000_000,
@@ -864,9 +864,9 @@ mod source_tests {
                 assert_eq!(bank, [7]);
             } else {
                 let resource = if shortage == 1 {
-                    DomResource::StyleRetainedBytes
+                    DomResource::SourceRetainedBytes
                 } else {
-                    DomResource::StyleRetainedUnits
+                    DomResource::SourceRetainedUnits
                 };
                 let limit = if shortage == 1 {
                     draft.source_limits.unwrap().retained_bytes
@@ -1031,7 +1031,7 @@ mod source_tests {
                 assert_eq!(
                     result.err(),
                     Some(DomError::ResourceLimit {
-                        resource: DomResource::StyleRetainedUnits,
+                        resource: DomResource::SourceRetainedUnits,
                         limit: 255
                     })
                 );
@@ -1087,8 +1087,8 @@ mod source_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_input_value(input, "rgb(255 0 0 / .5)");
-        let limits = DomStyleEditLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limits, &cancel) else {
+        let limits = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
         source_observation::start();

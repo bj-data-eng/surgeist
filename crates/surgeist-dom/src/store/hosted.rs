@@ -3,6 +3,135 @@
 use super::*;
 use crate::hosted::*;
 
+// Backing fields precede their debit, including on every failed formation.
+struct ConstructorFormation {
+    units: Vec<u16>,
+    serialization: Option<DocumentString>,
+    record: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
+    retained: Retained,
+}
+impl crate::document::HostedDocumentInputs {
+    pub(crate) fn form(
+        source: &DomHostedSource,
+        work: &Work,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomHostedError> {
+        use crate::document::HostedDocumentInputData;
+        use surgeist_html_semantics::{
+            HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsRevision,
+            HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
+        };
+        // The original constructor's intrinsic URL, not an external URL parse.
+        const URL: &[u16] = &[97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107];
+        work.step(cancel)?;
+        let requested_string = size_of::<Vec<u16>>() + size_of_val(URL);
+        let header = size_of::<HostedDocumentInputData>();
+        crate::hosted::admit(
+            size_of::<ConstructorFormation>() + header + requested_string,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        let retained = source.retain(
+            header
+                .checked_add(requested_string)
+                .ok_or(DomHostedError::RepresentationExhausted)?,
+            cancel,
+        )?;
+        let mut candidate = ConstructorFormation {
+            units: Vec::new(),
+            serialization: None,
+            record: None,
+            retained,
+        };
+        candidate
+            .units
+            .try_reserve_exact(URL.len())
+            .map_err(|_| DomHostedError::AllocationFailed)?;
+        let actual_string = candidate
+            .units
+            .capacity()
+            .checked_mul(size_of::<u16>())
+            .and_then(|bytes| bytes.checked_add(size_of::<Vec<u16>>()))
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        crate::hosted::admit(
+            size_of::<ConstructorFormation>()
+                .checked_add(header)
+                .and_then(|n| n.checked_add(actual_string))
+                .ok_or(DomHostedError::RepresentationExhausted)?,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        candidate.retained.append(
+            source.retain(
+                actual_string
+                    .checked_sub(requested_string)
+                    .ok_or(DomHostedError::RepresentationExhausted)?,
+                cancel,
+            )?,
+        )?;
+        for unit in URL {
+            work.step(cancel)?;
+            candidate.units.push(*unit);
+        }
+        candidate.serialization = Some(DocumentString::from_utf16(std::mem::take(
+            &mut candidate.units,
+        )));
+        let serialization = candidate
+            .serialization
+            .as_ref()
+            .expect("formed serialization");
+        let usage = HtmlBaseUrlRecord::observed_storage_usage(serialization)
+            .map_err(|_| DomHostedError::RepresentationExhausted)?;
+        // Transfer the already admitted serialization occurrence to its actual
+        // producer record: only the additional private record extent is new.
+        let additional = usage
+            .retained_bytes()
+            .checked_sub(actual_string)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        crate::hosted::admit(
+            size_of::<ConstructorFormation>()
+                .checked_add(header)
+                .and_then(|n| n.checked_add(usage.retained_bytes()))
+                .ok_or(DomHostedError::RepresentationExhausted)?,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        candidate
+            .retained
+            .append(source.retain(additional, cancel)?)?;
+        work.step(cancel)?;
+        // This producer's initial immutable constructor configuration has no
+        // URL/CSP changes. It is distinct from any external parse producer.
+        let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 0, 0, 0);
+        candidate.record = Some(
+            HtmlBaseUrlRecord::observed(
+                revision.clone(),
+                candidate
+                    .serialization
+                    .take()
+                    .expect("admitted same serialization"),
+                HtmlBaseUrlScheme::Other,
+                true,
+            )
+            .expect("same prepriced serialization and intrinsic about:blank predicates"),
+        );
+        let facts = HtmlBaseDocumentFacts::new(
+            revision,
+            candidate.record.take(),
+            HtmlAboutBaseUrl::KnownNull,
+            false,
+            Some(HtmlBaseEncoding::fresh()),
+        )
+        .expect("constructor record has its exact original revision and is not srcdoc");
+        // All fallible admission and cancellation precede the immutable owner.
+        Ok(Self(Arc::new(HostedDocumentInputData {
+            facts,
+            opener: surgeist_html::HtmlOpenerPolicy::initial(),
+            _retained: candidate.retained,
+        })))
+    }
+}
+
 enum CreationPhase {
     Policy(DomHostedPolicyRequest),
     Execution(DomHostedExecutionRequest),
@@ -213,7 +342,7 @@ impl DomHostedCreationLease {
         publication: &mut Option<DomHostedPolicyPublication>,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
-        dom.require_style_source_idle()?;
+        dom.require_sync_source_idle()?;
         dom.validate_hosted_source(source)?;
         let operation = dom.hosted_operation(self.operation)?;
         if !matches!(operation.phase, CreationPhase::Policy(_)) {
@@ -226,9 +355,14 @@ impl DomHostedCreationLease {
             return Err(DomHostedError::WrongPhase);
         }
         let request = operation.next_request()?;
+        // Settings consumes these same once-established records during execution.
+        // Formation failure leaves the original Policy publication and phase intact.
+        let inputs =
+            crate::document::HostedDocumentInputs::form(source, &operation.request().work, cancel)?;
         let next = CreationPhase::Execution(DomHostedExecutionRequest {
             request,
             origin: operation.origin.clone(),
+            inputs,
         });
         let permit = source.permit(operation.request(), current.revision, false, cancel)?;
         let pending = dom
@@ -250,7 +384,7 @@ impl DomHostedCreationLease {
         publication: &mut Option<DomHostedCreationPublication>,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
-        dom.require_style_source_idle()?;
+        dom.require_sync_source_idle()?;
         dom.validate_hosted_source(source)?;
         let operation = dom.hosted_operation(self.operation)?;
         let current = publication
@@ -263,7 +397,7 @@ impl DomHostedCreationLease {
         let next_request = operation.next_request()?;
         let (mut prepared, next) = match (&operation.phase, &current.value) {
             (
-                CreationPhase::Execution(_),
+                CreationPhase::Execution(execution),
                 PublicationValue::NativeExecution {
                     global,
                     navigation_start,
@@ -287,6 +421,7 @@ impl DomHostedCreationLease {
                     source,
                     *global,
                     *navigation_start,
+                    &execution.inputs,
                     cancel,
                 )?;
                 (
@@ -435,7 +570,7 @@ impl DomHostedCreationLease {
         source: &mut DomHostedSource,
         cancel: &AtomicBool,
     ) -> Result<DomHostedCreation, DomHostedError> {
-        dom.require_style_source_idle()?;
+        dom.require_sync_source_idle()?;
         dom.validate_hosted_source(source)?;
         let operation = dom.hosted_operation(self.operation)?;
         let CreationPhase::Complete(request, result) = &operation.phase else {
@@ -460,7 +595,7 @@ fn set_pending(
     cancel: &AtomicBool,
 ) -> Result<(), DomError> {
     if prepared.state.incomplete_hosted != operation {
-        style::formation::reserve(
+        source::formation::reserve(
             &mut prepared.changes,
             1,
             prepared.formation.as_ref(),
@@ -484,7 +619,7 @@ impl Dom {
         source: &DomHostedSource,
         cancel: &AtomicBool,
     ) -> Result<Draft, DomHostedError> {
-        let limits = crate::DomStyleEditLimits::new(
+        let limits = crate::DomSourceLimits::new(
             source
                 .remaining_bytes()?
                 .min(source.limits().scratch_bytes()),
@@ -509,6 +644,7 @@ impl Dom {
         source: &DomHostedSource,
         global: DomHostedGlobalId,
         navigation_start: DomHostedMoment,
+        inputs: &crate::document::HostedDocumentInputs,
         cancel: &AtomicBool,
     ) -> Result<(Prepared, DocumentId), DomHostedError> {
         let request = operation.request();
@@ -532,14 +668,23 @@ impl Dom {
         });
         let mut draft = self.hosted_draft(operation, source, cancel)?;
         draft.registries = Some(registries);
-        let formation = style::formation::Formation::new(&draft, cancel)?;
+        let formation = source::formation::Formation::new(&draft, cancel)?;
+        if let Some(formation) = &formation {
+            let mut payload = source::storage::Payload::default();
+            payload.add_bytes(inputs.payload_bytes()?)?;
+            payload.add_units(inputs.url().retained_storage_usage().utf16_extent())?;
+            // Metadata also retains its URL occurrence, sharing this actual backing.
+            payload.string(inputs.url().serialization())?;
+            formation.retain_payload(payload, cancel)?;
+        }
         let metadata = DomDocumentMetadata::hosted_initial(
             self.document_environment.input_platform(),
             operation.origin.clone(),
             registry,
             association,
             request.key.operation,
-            &mut |text| style::formation::string(text, formation.as_ref(), cancel),
+            inputs.clone(),
+            &mut |text| source::formation::string(text, formation.as_ref(), cancel),
         )?;
         let document = Key::Created(draft.created.len());
         let document = draft.allocate(
@@ -651,7 +796,7 @@ impl GlobalDocumentIndex {
         document: DocumentId,
         source: &DomHostedSource,
         work: &Work,
-        formation: Option<&style::formation::Formation>,
+        formation: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Arc<Self>, DomHostedError> {
         work.step(cancel)?;
@@ -1051,3 +1196,6 @@ impl DomHostedDestructionLease {
 
 #[cfg(test)]
 mod index_tests;
+
+#[cfg(test)]
+mod constructor_tests;

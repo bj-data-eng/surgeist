@@ -89,7 +89,7 @@ impl<'a> Admission<'a> {
         admit(
             live_bytes,
             limits.retained_bytes,
-            DomResource::StyleRetainedBytes,
+            DomResource::SourceRetainedBytes,
         )?;
         Ok(Self {
             original,
@@ -117,7 +117,7 @@ impl<'a> Admission<'a> {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         if next > limits.work {
-            return Err(DomError::StyleWorkLimit { limit: limits.work });
+            return Err(DomError::SourceWorkLimit { limit: limits.work });
         }
         self.original.source_work.store(next, Ordering::Relaxed);
         Ok(())
@@ -127,7 +127,7 @@ impl<'a> Admission<'a> {
             .total
             .checked_add(bytes)
             .ok_or(DomError::RepresentationExhausted)?;
-        admit(next, self.maximum, DomResource::StyleRetainedBytes)?;
+        admit(next, self.maximum, DomResource::SourceRetainedBytes)?;
         if self.original.select_work.get() != 0 {
             self.original.select_scratch(bytes)?;
         }
@@ -581,7 +581,7 @@ impl Draft {
                     })
                     .ok_or(DomError::RepresentationExhausted)?,
                 limits.retained_units,
-                DomResource::StyleRetainedUnits,
+                DomResource::SourceRetainedUnits,
             )?;
         }
         bytes

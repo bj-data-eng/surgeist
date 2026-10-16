@@ -38,8 +38,8 @@ fn limits() -> DomSessionLimits {
         },
     }
 }
-fn source_limits() -> DomStyleEditLimits {
-    DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
+fn source_limits() -> DomSourceLimits {
+    DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
 }
 fn event_limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
@@ -52,6 +52,7 @@ fn event_limits() -> DomEventDispatchLimits {
 }
 struct Context {
     styles: DomStyleRuntime,
+    source: DomSourceRuntime,
     events: Vec<(DomEventType, NodeId, DocumentId)>,
     observations: Vec<NativeDomEvent>,
     replacement: Option<DomStyleRuntime>,
@@ -79,6 +80,7 @@ fn fixture() -> (DomSession, Context, DocumentId, NodeId, DocumentId, NodeId) {
     let mut session = DomSession::new(dom, limits()).unwrap();
     let mut context = Context {
         styles: session.style_execution(),
+        source: session.source_execution(),
         events: Vec::new(),
         observations: Vec::new(),
         replacement: None,
@@ -116,21 +118,23 @@ fn policy(source: &DomStyleSource) -> Option<DomStyleInlineCspObservation> {
 fn drive(
     dom: &mut DomEventDom<'_>,
     context: &mut Context,
-    batch: DomBatch,
-) -> DomStyleEditCompletion {
+    edit: DomSourceEdit,
+) -> DomSourceCompletion {
     match context
-        .styles
-        .apply(dom, batch, source_limits(), policy, &cancel())
+        .source
+        .apply(dom, edit, source_limits(), policy, &cancel())
         .unwrap()
     {
-        DomStyleDriveProgress::Complete(done) => done,
+        DomSourceDriveProgress::Complete(done) => done,
         other => panic!("supported synchronous association did not finish: {other:?}"),
     }
 }
 fn connect(dom: &mut DomEventDom<'_>, context: &mut Context, style: NodeId, parent: NodeId) {
-    let mut batch = DomBatch::new();
-    batch.insert_before(style, parent, None);
-    drive(dom, context, batch);
+    drive(
+        dom,
+        context,
+        DomSourceEdit::insert_before(style, parent, None),
+    );
 }
 fn cssom(context: &Context, document: DocumentId) -> CssomSnapshot {
     context.styles.snapshot(document.node()).unwrap().unwrap()
@@ -236,9 +240,7 @@ fn imports_have_a_real_wait_and_no_networking_delivery_before_or_after_owner_rem
     let mut dispatcher = registry();
     listen(&dom, &mut dispatcher, style);
     empty(&mut dom, &mut dispatcher, &mut context);
-    let mut batch = DomBatch::new();
-    batch.detach(style);
-    drive(&mut dom, &mut context, batch);
+    drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     assert!(association(&dom.snapshot(), style).is_none());
     let current = cssom(&context, document);
     assert!(current.sheets().is_empty());
@@ -278,9 +280,7 @@ fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_object
     assert_eq!(context.styles.waiting_resources().unwrap(), 0);
     let mut dispatcher = registry();
     listen(&dom, &mut dispatcher, style);
-    let mut batch = DomBatch::new();
-    batch.detach(style);
-    drive(&mut dom, &mut context, batch);
+    drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let removed = cssom(&context, document);
     assert!(removed.sheets().is_empty());
     assert!(removed.sheet(old.id()).unwrap().inputs().owner.is_none());
@@ -302,9 +302,11 @@ fn queued_old_and_replacement_sheets_each_deliver_without_replacing_current_asso
     let first_dom = dom.snapshot();
     let first = association(&first_dom, style).unwrap();
     let first_cssom = cssom(&context, document);
-    let mut batch = DomBatch::new();
-    batch.replace_data(text, 0, usize::MAX, "p { color: blue }");
-    drive(&mut dom, &mut context, batch);
+    drive(
+        &mut dom,
+        &mut context,
+        DomSourceEdit::replace_data(text, 0, usize::MAX, "p { color: blue }"),
+    );
     let second = association(&dom.snapshot(), style).unwrap();
     assert_ne!(first.id(), second.id());
     assert_ne!(first.association(), second.association());
@@ -347,9 +349,11 @@ fn queued_historical_load_uses_the_same_live_element_after_adoption() {
     let old = association(&dom.snapshot(), style).unwrap();
     let mut dispatcher = registry();
     listen(&dom, &mut dispatcher, style);
-    let mut batch = DomBatch::new();
-    batch.adopt(style, other);
-    drive(&mut dom, &mut context, batch);
+    drive(
+        &mut dom,
+        &mut context,
+        DomSourceEdit::adopt(style, other.node()),
+    );
     assert_eq!(
         dom.snapshot().node(style).unwrap().owner_document(),
         Some(other)
@@ -382,9 +386,7 @@ fn explicit_target_destruction_skips_queued_load_without_dispatching_to_reuse() 
     let old = association(&old_dom, style).unwrap();
     let mut dispatcher = registry();
     listen(&dom, &mut dispatcher, style);
-    let mut batch = DomBatch::new();
-    batch.detach(style);
-    drive(&mut dom, &mut context, batch);
+    drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let mut batch = DomBatch::new();
     batch.destroy(style);
     let fresh = batch.create_element_ns(document, Namespace::html(), "style");
@@ -428,17 +430,20 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
     let (style, _) = detached(&mut dom, document, "p { color: red }");
     let old_dom = dom.snapshot();
     let old_cssom = cssom(&context, document);
-    let mut batch = DomBatch::new();
-    batch.insert_before(style, parent, None);
+    let edit = DomSourceEdit::insert_before(style, parent, None);
     let operation = {
-        let DomStyleDriveProgress::Pending { request, reason } = context
-            .styles
-            .apply(&mut dom, batch, source_limits(), |_| None, &cancel())
+        let DomSourceDriveProgress::Pending { request, reason } = context
+            .source
+            .apply(&mut dom, edit, source_limits(), |_| None, &cancel())
             .unwrap()
         else {
             panic!("missing actual policy cannot imply Allowed")
         };
-        assert_eq!(reason, DomStyleUnavailable::InlinePolicy);
+        assert_eq!(
+            reason,
+            DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy)
+        );
+        let DomSourceRequest::Style(request) = request;
         assert_eq!(request.source().element(), style);
         assert!(matches!(
             dom.snapshot()
@@ -456,10 +461,10 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
     assert!(cssom(&context, document).sheets().is_empty());
     assert!(matches!(
         context
-            .styles
+            .source
             .resume(&mut dom, operation, source_limits(), policy, &cancel())
             .unwrap(),
-        DomStyleDriveProgress::Complete(_)
+        DomSourceDriveProgress::Complete(_)
     ));
     let joined = association(&dom.snapshot(), style).unwrap();
     let current = cssom(&context, document);

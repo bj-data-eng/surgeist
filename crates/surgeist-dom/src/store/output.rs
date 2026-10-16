@@ -17,8 +17,8 @@ impl Frame {
     pub(super) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<style::storage::Payload, DomError> {
-        let mut payload = style::storage::Payload::default();
+    ) -> Result<source::storage::Payload, DomError> {
+        let mut payload = source::storage::Payload::default();
         for value in [self.supplied.as_ref(), self.read.as_ref()]
             .into_iter()
             .flatten()
@@ -54,7 +54,7 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let retained = value
-            .map(|value| style::formation::shared_string(self, value, cancel))
+            .map(|value| source::formation::shared_string(self, value, cancel))
             .transpose()?;
         self.prepare_family_mutation(key, cancel)?;
         let (value, payload) = match retained {
@@ -125,12 +125,12 @@ impl Draft {
         key: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<(DocumentString, Option<style::checkpoint::Charge>), DomError> {
+    ) -> Result<(DocumentString, Option<source::checkpoint::Charge>), DomError> {
         let state = self.output_state(key)?;
         if surgeist_html::output_default_source(state.default_override.is_some())
             == HtmlOutputDefaultSource::Override
         {
-            return style::formation::shared_string(
+            return source::formation::shared_string(
                 self,
                 state.default_override.as_ref().expect("actual override"),
                 cancel,
@@ -149,15 +149,15 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         check_cancel(cancel)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::Output,
+            source::formation::mutation_observation::Site::Output,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(formation) = &formation {
             formation.retain_payload(
-                style::storage::Payload {
+                source::storage::Payload {
                     bytes: size_of::<Vec<u16>>(),
                     units: length,
                 },
@@ -166,7 +166,7 @@ impl Draft {
         }
         let mut output = Vec::new();
         if formation.is_some() {
-            style::formation::reserve(&mut output, length, formation.as_ref(), cancel)?;
+            source::formation::reserve(&mut output, length, formation.as_ref(), cancel)?;
         } else {
             output
                 .try_reserve_exact(length)
@@ -174,7 +174,7 @@ impl Draft {
         }
         if let Some(formation) = &formation {
             formation.retain_payload(
-                style::storage::Payload {
+                source::storage::Payload {
                     bytes: 0,
                     units: output
                         .capacity()
@@ -197,13 +197,13 @@ impl Draft {
             Ok(())
         })?;
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             size_of::<Vec<u16>>() + output.capacity() * size_of::<u16>(),
         );
         Ok((
             DocumentString::from_utf16(output),
-            formation.map(style::formation::Formation::into_charge),
+            formation.map(source::formation::Formation::into_charge),
         ))
     }
     pub(super) fn output_edit(
@@ -227,7 +227,7 @@ impl Draft {
         key: Key,
         edit: &crate::output::Edit,
         cancel: &AtomicBool,
-    ) -> Result<(Frame, Option<style::checkpoint::Charge>), DomError> {
+    ) -> Result<(Frame, Option<source::checkpoint::Charge>), DomError> {
         let state = self.output_state(key)?;
         let (operation, supplied) = match edit {
             crate::output::Edit::Value(value) => (HtmlOutputOperation::ValueSetter, Some(value)),
@@ -241,7 +241,7 @@ impl Draft {
         };
         let (supplied, payload) = match supplied {
             Some(value) => {
-                let (value, payload) = style::formation::shared_string(self, value, cancel)?;
+                let (value, payload) = source::formation::shared_string(self, value, cancel)?;
                 (Some(value), payload)
             }
             None => (None, None),
@@ -263,16 +263,16 @@ impl Draft {
     fn output_action(
         &mut self,
         frame: &mut Frame,
-        payload: &mut Option<style::checkpoint::Charge>,
+        payload: &mut Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<Option<(DocumentString, Option<style::checkpoint::Charge>)>, DomError> {
+    ) -> Result<Option<(DocumentString, Option<source::checkpoint::Charge>)>, DomError> {
         let action = frame.cursor.action();
         match action {
             Action::ReadDefaultValue => {
                 let (read, incoming) = self.output_default(frame.key, limits, cancel)?;
                 frame.read = Some(read);
-                style::formation::merge_charge(payload, incoming);
+                source::formation::merge_charge(payload, incoming);
             }
             Action::StoreReadDefaultAsOverride => self.output_override(
                 frame.key,
@@ -287,7 +287,7 @@ impl Draft {
                 cancel,
             )?,
             Action::ReplaceAllWithSuppliedValue => {
-                return style::formation::shared_string(
+                return source::formation::shared_string(
                     self,
                     frame.supplied.as_ref().expect("cursor supplied value"),
                     cancel,
@@ -295,7 +295,7 @@ impl Draft {
                 .map(Some);
             }
             Action::ReplaceAllWithReadDefault => {
-                return style::formation::shared_string(
+                return source::formation::shared_string(
                     self,
                     frame.read.as_ref().expect("cursor read default"),
                     cancel,
@@ -316,7 +316,7 @@ impl Draft {
     pub(super) fn output_effect(
         &mut self,
         mut frame: Frame,
-        mut payload: Option<style::checkpoint::Charge>,
+        mut payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {

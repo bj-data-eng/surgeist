@@ -63,7 +63,7 @@ impl Formation {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         if next > self.work_limit {
-            return Err(DomError::StyleWorkLimit {
+            return Err(DomError::SourceWorkLimit {
                 limit: self.work_limit,
             });
         }
@@ -90,7 +90,7 @@ impl Formation {
                 .checked_add(units)
                 .ok_or(DomError::RepresentationExhausted)?,
             self.unit_limit,
-            DomResource::StyleRetainedUnits,
+            DomResource::SourceRetainedUnits,
         )?;
         let own_units = self
             .own_units
@@ -120,7 +120,7 @@ impl Formation {
                 .and_then(|v| v.checked_add(new))
                 .ok_or(DomError::RepresentationExhausted)?,
             self.limit,
-            DomResource::StyleRetainedBytes,
+            DomResource::SourceRetainedBytes,
         )
     }
     fn before_units(&self, new: usize) -> Result<(), DomError> {
@@ -130,7 +130,7 @@ impl Formation {
                 .and_then(|n| n.checked_add(new))
                 .ok_or(DomError::RepresentationExhausted)?,
             self.unit_limit,
-            DomResource::StyleRetainedUnits,
+            DomResource::SourceRetainedUnits,
         )
     }
     fn reserve<T>(

@@ -1,36 +1,55 @@
-//! Shared #child-navigables null relationship, without family load policy.
+//! Local child-navigable guards over the live owner's actual relationship.
 
-/// Proof of the actual initially-null relationship. Families leave this domain
-/// before installing content; present or unknown retained content cannot enter it.
+/// Actual current presence supplied by the canonical relationship owner.
+/// This value carries no identity, origin, resource, history or creation proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct NullChildNavigable {
-    closed: (),
+pub enum HtmlChildNavigablePresence {
+    Null,
+    Present,
 }
 
-impl NullChildNavigable {
-    pub(crate) const fn fresh() -> Self {
-        Self { closed: () }
+/// The first content-Document/Window guard, before their distinct access rules.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlChildNavigableAccessDecision {
+    ReturnNull,
+    /// Read the actual child and execute the applicable origin/Window rules.
+    Continue,
+}
+
+/// The content guard for an element that potentially delays the load event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlChildNavigableLoadDelayDecision {
+    DoesNotDelay,
+    /// Consult actual child load state; presence does not prove a load delay.
+    Continue,
+}
+
+impl HtmlChildNavigablePresence {
+    pub const fn content_access(self) -> HtmlChildNavigableAccessDecision {
+        match self {
+            Self::Null => HtmlChildNavigableAccessDecision::ReturnNull,
+            Self::Present => HtmlChildNavigableAccessDecision::Continue,
+        }
     }
 
-    pub(crate) const fn is_null(&self) -> bool {
-        true
+    /// Applicable only after the element's potential-delay classification.
+    pub const fn load_delay(self) -> HtmlChildNavigableLoadDelayDecision {
+        match self {
+            Self::Null => HtmlChildNavigableLoadDelayDecision::DoesNotDelay,
+            Self::Present => HtmlChildNavigableLoadDelayDecision::Continue,
+        }
     }
 
-    // The content-document/window algorithms return null before origin or
-    // WindowProxy access. Actual delay and destroy-child both require content.
-    pub(crate) const fn content_document_is_null(&self) -> bool {
-        self.is_null()
+    /// First guard for Frame src and Iframe src/srcdoc/sandbox mutations.
+    /// True requires the caller's remaining family-specific steps, including
+    /// srcdoc precedence; it does not parse attributes or update live policy.
+    pub const fn attribute_change_requires_processing(self) -> bool {
+        matches!(self, Self::Present)
     }
 
-    pub(crate) const fn content_window_is_null(&self) -> bool {
-        self.is_null()
-    }
-
-    pub(crate) const fn delays_load(&self) -> bool {
-        !self.is_null()
-    }
-
-    pub(crate) const fn removal_requires_child_destruction(&self) -> bool {
-        !self.is_null()
+    /// Destroy-child returns on null before clearing or destroying anything.
+    /// True requires the real destruction owner; it does not clear the relation.
+    pub const fn removal_requires_child_destruction(self) -> bool {
+        matches!(self, Self::Present)
     }
 }

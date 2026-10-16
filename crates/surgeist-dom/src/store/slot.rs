@@ -499,7 +499,7 @@ mod tests {
             &dom,
             batch.owner,
             &batch.commands,
-            crate::DomStyleEditLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128),
+            crate::DomSourceLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128),
             &cancel,
         )
         .unwrap();
@@ -528,7 +528,7 @@ mod tests {
     fn source_slot_resolution_cannot_run_past_its_spent_work_allowance() {
         let (dom, s, x) = fixture();
         let cancel = AtomicBool::new(false);
-        let limits = |work| crate::DomStyleEditLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,
@@ -546,7 +546,7 @@ mod tests {
         let target = draft.resolve(s.into()).unwrap();
         assert_eq!(
             draft.assign_manual(target, &[x.into()], dom_limits(), &cancel),
-            Err(DomError::StyleWorkLimit { limit: spent })
+            Err(DomError::SourceWorkLimit { limit: spent })
         );
         assert!(draft.node(target).unwrap().manual_nodes.is_empty());
         assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
@@ -556,7 +556,7 @@ mod tests {
     fn source_slot_attribute_hook_admits_work_before_reading_its_name() {
         let (dom, s, _) = fixture();
         let cancel = AtomicBool::new(false);
-        let limits = |work| crate::DomStyleEditLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,
@@ -575,7 +575,7 @@ mod tests {
         let name = crate::QualifiedName::new(crate::Namespace::none(), None, "name");
         assert_eq!(
             draft.slot_attribute(key, &name, None, dom.limits(), &cancel),
-            Err(DomError::StyleWorkLimit { limit: spent })
+            Err(DomError::SourceWorkLimit { limit: spent })
         );
     }
     #[test]
@@ -588,8 +588,7 @@ mod tests {
         let prepared = setup.finish(&dom, &cancel).unwrap();
         dom.publish(prepared, &cancel).unwrap();
         assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
-        let limits =
-            |bytes| crate::DomStyleEditLimits::new(bytes, 100_000, 1_000_000, 32, 128, 128);
+        let limits = |bytes| crate::DomSourceLimits::new(bytes, 100_000, 1_000_000, 32, 128, 128);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,
@@ -615,7 +614,7 @@ mod tests {
         assert_eq!(
             draft.slot_retirement(key, dom.limits(), &cancel),
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 limit: retained
             })
         );

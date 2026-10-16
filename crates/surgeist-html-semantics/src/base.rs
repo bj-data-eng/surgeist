@@ -85,11 +85,7 @@ impl HtmlBaseUrlRecord {
         if matches_about_blank && scheme != HtmlBaseUrlScheme::Other {
             return Err(HtmlBaseFactsError::ContradictoryObservation);
         }
-        let mut retained = HtmlBaseRetainedStorageUsage {
-            bytes: size_of::<UrlRecord>(),
-            units: 0,
-        };
-        retained.string(&serialization)?;
+        let retained = Self::observed_storage_usage(&serialization)?;
         Ok(Self(Arc::new(UrlRecord {
             revision,
             serialization,
@@ -97,6 +93,25 @@ impl HtmlBaseUrlRecord {
             about_blank: matches_about_blank,
             retained,
         })))
+    }
+    /// Exact payload extent for observing this immutable serialization, before
+    /// allocating the record. Includes the private record header and actual
+    /// UTF-16 backing capacity, including spare capacity. It does not allocate,
+    /// retain the input, validate URL truth or establish an observation.
+    ///
+    /// `observed` uses this same measurement. A caller may admit the result then
+    /// move the same serialization into that constructor. The returned public
+    /// handle's inline occurrence and allocator/Arc bookkeeping are excluded,
+    /// consistently with `retained_storage_usage`.
+    pub fn observed_storage_usage(
+        serialization: &DocumentString,
+    ) -> Result<HtmlBaseRetainedStorageUsage, HtmlBaseFactsError> {
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<UrlRecord>(),
+            units: 0,
+        };
+        retained.string(serialization)?;
+        Ok(retained)
     }
     /// Actual retained record payload and UTF-16 backing, independent of any
     /// optional ParseFacts bank. This does not attest a Document or parse result.

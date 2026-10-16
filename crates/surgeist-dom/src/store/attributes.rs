@@ -25,7 +25,7 @@ struct AttributeWrite<'a> {
     name: QualifiedName,
     value: &'a DocumentString,
     cause: AttributeCause,
-    name_formation: Option<style::formation::Formation>,
+    name_formation: Option<source::formation::Formation>,
 }
 struct HookChange<'a> {
     changed: &'a QualifiedName,
@@ -42,12 +42,12 @@ fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
 
 fn retain_string(
     value: &DocumentString,
-    budget: Option<&style::formation::Formation>,
+    budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<DocumentString, DomError> {
     if let Some(budget) = budget {
         budget.step(cancel)?;
-        let mut payload = style::storage::Payload::default();
+        let mut payload = source::storage::Payload::default();
         payload.string(value)?;
         budget.retain_payload(payload, cancel)?;
     }
@@ -55,12 +55,12 @@ fn retain_string(
 }
 fn retain_name(
     value: &QualifiedName,
-    budget: Option<&style::formation::Formation>,
+    budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<QualifiedName, DomError> {
     if let Some(budget) = budget {
         budget.step(cancel)?;
-        let mut payload = style::storage::Payload::default();
+        let mut payload = source::storage::Payload::default();
         payload.name(value)?;
         budget.retain_payload(payload, cancel)?;
     }
@@ -68,7 +68,7 @@ fn retain_name(
 }
 fn publish_attributes(
     attributes: Vec<Attribute>,
-    budget: Option<&style::formation::Formation>,
+    budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<OrderedAttributes, DomError> {
     if let Some(budget) = budget {
@@ -77,7 +77,7 @@ fn publish_attributes(
     let mut validation =
         HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes)).validate();
     loop {
-        style::formation::step(budget, cancel)?;
+        source::formation::step(budget, cancel)?;
         let Some(action) = validation.next_action().expect("unique expanded names") else {
             break;
         };
@@ -87,7 +87,7 @@ fn publish_attributes(
             .checked_add(layout.inspected_bytes())
             .ok_or(DomError::RepresentationExhausted)?;
         for _ in 0..work {
-            style::formation::step(budget, cancel)?;
+            source::formation::step(budget, cancel)?;
         }
         action
             .advance()
@@ -209,7 +209,7 @@ impl Draft {
             .checked_add(value.len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let candidate = style::formation::Formation::new(self, cancelled)?;
+        let candidate = source::formation::Formation::new(self, cancelled)?;
         let value = retain_string(value, candidate.as_ref(), cancelled)?;
         let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
             unreachable!("checked Element");
@@ -231,14 +231,14 @@ impl Draft {
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        let mut name_formation = style::formation::Formation::new(self, cancelled)?;
+        let mut name_formation = source::formation::Formation::new(self, cancelled)?;
         let (position, mut name) = if let Some(namespace) = namespace {
             let name = attribute_name(
                 namespace,
                 name,
                 &mut || self.source_step(cancelled),
                 &mut |input, lower| {
-                    style::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                    source::formation::units(input, lower, name_formation.as_ref(), cancelled)
                 },
                 &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
             )?;
@@ -258,7 +258,7 @@ impl Draft {
                     name,
                     &mut || self.source_step(cancelled),
                     &mut |input, lower| {
-                        style::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                        source::formation::units(input, lower, name_formation.as_ref(), cancelled)
                     },
                     &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
                 )?
@@ -273,7 +273,7 @@ impl Draft {
         if let Some(position) = position {
             drop(name);
             drop(name_formation);
-            name_formation = style::formation::Formation::new(self, cancelled)?;
+            name_formation = source::formation::Formation::new(self, cancelled)?;
             name = retain_name(
                 element.attributes().as_slice()[position].name(),
                 name_formation.as_ref(),
@@ -305,7 +305,7 @@ impl Draft {
         if !matches!(&self.node(node)?.kind, DomNodeKind::Element(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        let name_formation = style::formation::Formation::new(self, cancelled)?;
+        let name_formation = source::formation::Formation::new(self, cancelled)?;
         let name = retain_name(attribute.name(), name_formation.as_ref(), cancelled)?;
         self.write_attribute(
             AttributeWrite {
@@ -369,7 +369,7 @@ impl Draft {
             .and_then(|n| n.checked_add(nonce_units))
             .ok_or(DomError::RepresentationExhausted)?;
         admit(minimum, limits.units, DomResource::StringCodeUnits)?;
-        let hook = style::formation::Formation::new(self, cancelled)?;
+        let hook = source::formation::Formation::new(self, cancelled)?;
         let changed = retain_name(&write.name, hook.as_ref(), cancelled)?;
         let details_new_value = retain_string(value, hook.as_ref(), cancelled)?;
         let old_value = position
@@ -381,14 +381,14 @@ impl Draft {
                 )
             })
             .transpose()?;
-        let candidate = style::formation::Formation::new(self, cancelled)?;
+        let candidate = source::formation::Formation::new(self, cancelled)?;
         let replacement = Attribute::new(
             write.name,
             retain_string(value, candidate.as_ref(), cancelled)?,
         );
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
         let mut attributes = Vec::new();
-        style::formation::reserve(
+        source::formation::reserve(
             &mut attributes,
             element.attributes().as_slice().len(),
             candidate.as_ref(),
@@ -408,7 +408,7 @@ impl Draft {
         if let Some(position) = position {
             attributes.insert(position, replacement);
         } else {
-            style::formation::reserve(&mut attributes, 1, candidate.as_ref(), cancelled)?;
+            source::formation::reserve(&mut attributes, 1, candidate.as_ref(), cancelled)?;
             attributes.push(replacement);
         }
         let attributes = publish_attributes(attributes, candidate.as_ref(), cancelled)?;
@@ -422,7 +422,6 @@ impl Draft {
         let staged = element.with_attributes_formed(
             attributes,
             &changed,
-            false,
             nonce,
             candidate.as_ref(),
             cancelled,
@@ -513,13 +512,13 @@ impl Draft {
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        let name_formation = style::formation::Formation::new(self, cancelled)?;
+        let name_formation = source::formation::Formation::new(self, cancelled)?;
         let name = if namespace.is_none() && self.html_element_in_html_document(node)? {
             crate::names::ascii_lowercase(
                 name,
                 &mut || self.source_step(cancelled),
                 &mut |input, lower| {
-                    style::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                    source::formation::units(input, lower, name_formation.as_ref(), cancelled)
                 },
                 &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
             )?
@@ -537,18 +536,18 @@ impl Draft {
         #[cfg(test)]
         let copy_boundary =
             attribute_copy_observation::before(self, removed.name(), false, cancelled)?;
-        let hook = style::formation::Formation::new(self, cancelled)?;
+        let hook = source::formation::Formation::new(self, cancelled)?;
         let changed = retain_name(removed.name(), hook.as_ref(), cancelled)?;
         let old_value = retain_string(removed.value(), hook.as_ref(), cancelled)?;
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
-        let candidate = style::formation::Formation::new(self, cancelled)?;
+        let candidate = source::formation::Formation::new(self, cancelled)?;
         for _ in 0..surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND {
             self.source_step(cancelled)?;
         }
         let nonce_value = surgeist_html::nonce_attribute_change(element.name(), &changed, None);
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
         let mut attributes = Vec::new();
-        style::formation::reserve(
+        source::formation::reserve(
             &mut attributes,
             element.attributes().as_slice().len(),
             candidate.as_ref(),
@@ -575,7 +574,6 @@ impl Draft {
         let staged = element.with_attributes_formed(
             attributes,
             &changed,
-            true,
             nonce,
             candidate.as_ref(),
             cancelled,
@@ -621,7 +619,7 @@ impl Draft {
 fn nonce_after_effect(
     element: &DomElement,
     effect: surgeist_html::HtmlNonceAttributeEffect<'_>,
-    budget: Option<&style::formation::Formation>,
+    budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<DocumentString>, DomError> {
     use surgeist_html::HtmlNonceAttributeEffect;
@@ -631,7 +629,7 @@ fn nonce_after_effect(
             .map(|value| retain_string(value, budget, cancel))
             .transpose(),
         HtmlNonceAttributeEffect::ClearSlot => {
-            style::formation::units(&[], false, budget, cancel).map(Some)
+            source::formation::units(&[], false, budget, cancel).map(Some)
         }
         HtmlNonceAttributeEffect::CopyValue(value) => {
             retain_string(value, budget, cancel).map(Some)
@@ -811,8 +809,8 @@ mod tests {
         } else {
             batch.set_attribute(element, if append { "data-new" } else { "data-31" }, "new");
         }
-        let limits = crate::DomStyleEditLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(batch, limits, &cancel) else {
+        let limits = crate::DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
         attribute_copy_observation::start();
@@ -899,12 +897,11 @@ mod tests {
         let mut batch = DomBatch::new();
         batch.set_attribute_ns(element, namespace.clone(), "second:item", value.clone());
         batch.set_attribute(element, "NoNcE", "new nonce");
-        let limits =
-            crate::DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let mut lease = dom.begin_style_batch(batch, limits, &cancel).unwrap();
+        let limits = crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_source_commands(batch, limits, &cancel).unwrap();
         assert!(matches!(
             lease.advance(&cancel),
-            Ok(crate::DomStyleProgress::Complete(_))
+            Ok(crate::DomSourceProgress::Complete(_))
         ));
         drop(lease);
         let current = dom.snapshot();
@@ -963,9 +960,8 @@ mod tests {
         let mut late = DomBatch::new();
         late.set_attribute(element, "kept", "new");
         late.set_attribute(document, "wrong-kind", "x");
-        let limits =
-            crate::DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
-        let mut lease = dom.begin_style_batch(late, limits, &cancel).unwrap();
+        let limits = crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_source_commands(late, limits, &cancel).unwrap();
         assert_eq!(lease.advance(&cancel).unwrap_err(), DomError::WrongNodeKind);
         assert_eq!(lease.snapshot().stamp(), old.stamp());
         drop(lease);

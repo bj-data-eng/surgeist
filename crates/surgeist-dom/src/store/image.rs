@@ -216,14 +216,14 @@ impl Draft {
         &self,
         name: &crate::QualifiedName,
         value: Option<&DocumentString>,
-        budget: Option<&style::formation::Formation>,
+        budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Option<crate::Attribute>, DomError> {
         value
             .map(|value| {
                 if let Some(budget) = budget {
                     budget.step(cancel)?;
-                    let mut payload = style::storage::Payload::default();
+                    let mut payload = source::storage::Payload::default();
                     payload.name(name)?;
                     payload.string(value)?;
                     budget.retain_payload(payload, cancel)?;
@@ -237,11 +237,11 @@ impl Draft {
         element: &crate::QualifiedName,
         raw: Option<&crate::Attribute>,
         cancel: &AtomicBool,
-    ) -> Result<Option<style::formation::Formation>, DomError> {
-        let budget = style::formation::Formation::new(self, cancel)?;
+    ) -> Result<Option<source::formation::Formation>, DomError> {
+        let budget = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = budget.as_ref() {
             budget.step(cancel)?;
-            let mut payload = style::storage::Payload::default();
+            let mut payload = source::storage::Payload::default();
             payload.name(element)?;
             if let Some(raw) = raw {
                 budget.step(cancel)?;
@@ -385,7 +385,7 @@ impl Draft {
         }
         // This lease precedes both real Attribute owners, so their graphs drop
         // before its debit on every return/error, including nested updates.
-        let pair = style::formation::Formation::new(self, cancel)?;
+        let pair = source::formation::Formation::new(self, cancel)?;
         let old_attr = self.image_attribute_operand(name, old, pair.as_ref(), cancel)?;
         let new_attr = self.image_attribute_operand(name, new, pair.as_ref(), cancel)?;
         if self.source_limits.is_some() {
@@ -601,15 +601,15 @@ mod tests {
         let mut new = Vec::with_capacity(65_536);
         new.extend("eager".encode_utf16());
         edit.set_attribute(img, "loading", DocumentString::from_utf16(new));
-        let limits = crate::DomStyleEditLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(edit, limits, &cancel) else {
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
         source_observation::start();
         let result = lease.advance(&cancel);
         let report = source_observation::finish();
         if require_complete {
-            assert!(matches!(result, Ok(crate::DomStyleProgress::Complete(_))));
+            assert!(matches!(result, Ok(crate::DomSourceProgress::Complete(_))));
             assert_eq!(
                 lease
                     .snapshot()
@@ -654,7 +654,7 @@ mod tests {
     }
     fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
         let cancel = AtomicBool::new(false);
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             usize::MAX,
             usize::MAX,
             100_000_000,
@@ -664,7 +664,7 @@ mod tests {
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             base + bytes,
             base_units + units,
             100_000_000,
@@ -738,8 +738,8 @@ mod tests {
         assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
         for (b, u, resource) in [
-            (bytes - 1, units, DomResource::StyleRetainedBytes),
-            (bytes, units - 1, DomResource::StyleRetainedUnits),
+            (bytes - 1, units, DomResource::SourceRetainedBytes),
+            (bytes, units - 1, DomResource::SourceRetainedUnits),
         ] {
             source_budget(&mut draft, b, u);
             let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
@@ -792,9 +792,9 @@ mod tests {
                 }
                 if source {
                     let mut lease = dom
-                        .begin_style_batch(
+                        .begin_source_commands(
                             edit,
-                            crate::DomStyleEditLimits::new(
+                            crate::DomSourceLimits::new(
                                 8_000_000,
                                 4_000_000,
                                 100_000_000,
@@ -807,7 +807,7 @@ mod tests {
                         .unwrap();
                     assert!(matches!(
                         lease.advance(&cancel).unwrap(),
-                        crate::DomStyleProgress::Complete(_)
+                        crate::DomSourceProgress::Complete(_)
                     ));
                 } else {
                     dom.apply(edit, &cancel).unwrap();
@@ -851,20 +851,19 @@ mod tests {
             edit.set_attribute(img, "loading", "eager");
             edit
         };
-        let limits =
-            crate::DomStyleEditLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
-        let mut lease = dom.begin_style_batch(edit(), limits, &cancel).unwrap();
+        let limits = crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_source_commands(edit(), limits, &cancel).unwrap();
         report_cancellation::start();
         assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));
         assert_eq!(lease.snapshot().stamp(), before.stamp());
         drop(lease);
         assert_eq!(report_cancellation::finish(), (0, 0));
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         cancel.store(false, Ordering::Release);
-        let mut lease = dom.begin_style_batch(edit(), limits, &cancel).unwrap();
+        let mut lease = dom.begin_source_commands(edit(), limits, &cancel).unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            crate::DomStyleProgress::Complete(_)
+            crate::DomSourceProgress::Complete(_)
         ));
         drop(lease);
         assert_eq!(

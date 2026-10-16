@@ -4,7 +4,7 @@ use super::storage::Payload;
 use std::cell::Cell;
 
 pub(in crate::store) struct Initial {
-    limits: crate::DomStyleEditLimits,
+    limits: crate::DomSourceLimits,
     bytes: Cell<usize>,
     units: Cell<usize>,
     work: Work,
@@ -28,7 +28,7 @@ impl Work {
     }
 }
 impl Initial {
-    pub(in crate::store) fn new(limits: crate::DomStyleEditLimits) -> Self {
+    pub(in crate::store) fn new(limits: crate::DomSourceLimits) -> Self {
         Self {
             limits,
             bytes: Cell::new(0),
@@ -37,7 +37,7 @@ impl Initial {
         }
     }
     pub(in crate::store) fn with_work(
-        limits: crate::DomStyleEditLimits,
+        limits: crate::DomSourceLimits,
         work: Arc<AtomicU64>,
     ) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl Initial {
             work: Work::Shared(work),
         }
     }
-    pub(in crate::store) fn limits(&self) -> crate::DomStyleEditLimits {
+    pub(in crate::store) fn limits(&self) -> crate::DomSourceLimits {
         self.limits
     }
     pub(in crate::store) fn work(&self) -> u64 {
@@ -61,7 +61,7 @@ impl Initial {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         if next > self.limits.work {
-            return Err(DomError::StyleWorkLimit {
+            return Err(DomError::SourceWorkLimit {
                 limit: self.limits.work,
             });
         }
@@ -87,12 +87,12 @@ impl Initial {
         admit(
             bytes,
             self.limits.retained_bytes,
-            DomResource::StyleRetainedBytes,
+            DomResource::SourceRetainedBytes,
         )?;
         admit(
             units,
             self.limits.retained_units,
-            DomResource::StyleRetainedUnits,
+            DomResource::SourceRetainedUnits,
         )?;
         self.bytes.set(bytes);
         self.units.set(units);
@@ -116,7 +116,7 @@ impl Initial {
                 .checked_add(requested)
                 .ok_or(DomError::RepresentationExhausted)?,
             self.limits.retained_bytes,
-            DomResource::StyleRetainedBytes,
+            DomResource::SourceRetainedBytes,
         )?;
         values
             .try_reserve_exact(count)
@@ -204,7 +204,17 @@ impl Draft {
         dom: &Dom,
         owner: Arc<BatchIdentity>,
         commands: &Vec<Command>,
-        limits: crate::DomStyleEditLimits,
+        limits: crate::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(Self, Payload, Payload), DomError> {
+        Self::new_source_root(dom, owner, commands, commands.capacity(), limits, cancel)
+    }
+    pub(in crate::store) fn new_source_root(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        commands: &[Command],
+        command_capacity: usize,
+        limits: crate::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload, Payload), DomError> {
         let initial = Initial::new(limits);
@@ -212,6 +222,7 @@ impl Draft {
             dom,
             owner,
             commands,
+            command_capacity,
             initial,
             size_of::<super::operation::Operation>()
                 .checked_sub(size_of::<Draft>())
@@ -222,14 +233,13 @@ impl Draft {
     pub(in crate::store) fn new_hosted_source(
         dom: &Dom,
         owner: Arc<BatchIdentity>,
-        limits: crate::DomStyleEditLimits,
+        limits: crate::DomSourceLimits,
         work: Arc<AtomicU64>,
         operation: crate::hosted::DomHostedOperationId,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         let initial = Initial::with_work(limits, work.clone());
-        let (mut draft, _, _) =
-            Self::new_source_initial(dom, owner, &Vec::new(), initial, 0, cancel)?;
+        let (mut draft, _, _) = Self::new_source_initial(dom, owner, &[], 0, initial, 0, cancel)?;
         draft.source_work = work;
         draft.hosted_owner = Some(operation);
         Ok(draft)
@@ -237,7 +247,8 @@ impl Draft {
     fn new_source_initial(
         dom: &Dom,
         owner: Arc<BatchIdentity>,
-        commands: &Vec<Command>,
+        commands: &[Command],
+        command_capacity: usize,
         initial: Initial,
         owner_bytes: usize,
         cancel: &AtomicBool,
@@ -253,7 +264,7 @@ impl Draft {
         retained.add_bytes(dom.history_bytes)?;
         retained.add_bytes(dom.style_cssom_custody_bytes()?)?;
         retained.add_bytes(owner_bytes)?;
-        retained.bank::<Command>(commands.capacity())?;
+        retained.bank::<Command>(command_capacity)?;
         for command in commands {
             initial.step(cancel)?;
             if let Command::AssignSlot { incoming, .. } = command {

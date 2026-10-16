@@ -12,7 +12,7 @@ use surgeist_html_semantics::{
 
 struct RetainedParse {
     value: surgeist_html_semantics::HtmlHyperlinkUrlSnapshot,
-    payload: Option<style::checkpoint::Charge>,
+    payload: Option<source::checkpoint::Charge>,
 }
 
 fn failure(error: Failure) -> DomError {
@@ -207,20 +207,20 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         self.encoding_url_step(cancel)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::EncodingFacts,
+            source::formation::mutation_observation::Site::EncodingFacts,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = formation.as_ref() {
-            let mut payload = style::storage::Payload::default();
+            let mut payload = source::storage::Payload::default();
             payload.producer(facts.retained_storage_usage())?;
             budget.retain_payload(payload, cancel)?;
         }
         let facts = facts.clone();
         #[cfg(test)]
-        style::formation::mutation_observation::grew_payload(
+        source::formation::mutation_observation::grew_payload(
             growth,
             facts.retained_storage_usage().retained_bytes(),
             facts.retained_storage_usage().utf16_extent(),
@@ -315,18 +315,18 @@ impl Draft {
                             |usage| {
                                 #[cfg(test)]
                                 snapshot_growth
-                                    .set(style::formation::mutation_observation::before(
+                                    .set(source::formation::mutation_observation::before(
                                     self,
-                                    style::formation::mutation_observation::Site::HyperlinkSnapshot,
+                                    source::formation::mutation_observation::Site::HyperlinkSnapshot,
                                     cancel,
                                 )?);
-                                let formation = style::formation::Formation::new(self, cancel)?;
+                                let formation = source::formation::Formation::new(self, cancel)?;
                                 if let Some(budget) = formation.as_ref() {
-                                    let mut payload = style::storage::Payload::default();
+                                    let mut payload = source::storage::Payload::default();
                                     payload.producer(usage)?;
                                     budget.retain_payload(payload, cancel)?;
                                 }
-                                retained = formation.map(style::formation::Formation::into_charge);
+                                retained = formation.map(source::formation::Formation::into_charge);
                                 Ok(())
                             },
                         )
@@ -336,7 +336,7 @@ impl Draft {
                         })?;
                     #[cfg(test)]
                     if snapshot_growth.get().is_some() {
-                        style::formation::mutation_observation::grew_payload(
+                        source::formation::mutation_observation::grew_payload(
                             snapshot_growth.get(),
                             value.retained_storage_usage().retained_bytes(),
                             value.retained_storage_usage().utf16_extent(),
@@ -571,14 +571,14 @@ mod tests {
     fn source_snapshot_alias(
         bytes: usize,
         bind: bool,
-    ) -> Option<style::formation::mutation_observation::Growth> {
+    ) -> Option<source::formation::mutation_observation::Growth> {
         source_snapshot_alias_limits(bytes, 10_000_000, bind)
     }
     fn source_snapshot_alias_limits(
         bytes: usize,
         units: usize,
         bind: bool,
-    ) -> Option<style::formation::mutation_observation::Growth> {
+    ) -> Option<source::formation::mutation_observation::Growth> {
         use surgeist_html_semantics::*;
         let cancel = AtomicBool::new(false);
         let domain = DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 100_000)
@@ -646,31 +646,31 @@ mod tests {
         } else {
             batch.set_attribute(anchor, "href", "r");
         }
-        let mut lease = match dom.begin_style_batch(
+        let mut lease = match dom.begin_source_commands(
             batch,
-            crate::DomStyleEditLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
+            crate::DomSourceLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
             &cancel,
         ) {
             Ok(lease) => lease,
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => return None,
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedUnits,
+                resource: DomResource::SourceRetainedUnits,
                 ..
             }) if units < 10_000_000 => return None,
             Err(error) => panic!("actual Source setup admission: {error:?}"),
         };
-        style::formation::mutation_observation::start(if bind {
-            style::formation::mutation_observation::Site::EncodingFacts
+        source::formation::mutation_observation::start(if bind {
+            source::formation::mutation_observation::Site::EncodingFacts
         } else {
-            style::formation::mutation_observation::Site::HyperlinkSnapshot
+            source::formation::mutation_observation::Site::HyperlinkSnapshot
         });
         let result = lease.advance(&cancel);
-        let actual = style::formation::mutation_observation::finish();
+        let actual = source::formation::mutation_observation::finish();
         match result {
-            Ok(crate::DomStyleProgress::Complete(_)) => {
+            Ok(crate::DomSourceProgress::Complete(_)) => {
                 if !bind {
                     let snapshot = lease.snapshot();
                     let observation = snapshot
@@ -686,11 +686,11 @@ mod tests {
                 }
             }
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => assert_eq!(lease.snapshot().stamp(), before.stamp()),
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedUnits,
+                resource: DomResource::SourceRetainedUnits,
                 ..
             }) if units < 10_000_000 => assert_eq!(lease.snapshot().stamp(), before.stamp()),
             other => panic!("actual Source hyperlink result: {other:?}"),

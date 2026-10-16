@@ -1,13 +1,13 @@
 use crate::names::{name_units, qualified_equals, valid_element_local_name};
-use crate::store::style::formation::{self, Formation};
+use crate::store::source::formation::{self, Formation};
 use crate::{
     DocumentString, DomError, DomRegistryBinding, HtmlCustomElementState, Namespace,
     OrderedAttributes, QualifiedName,
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
-    HtmlCanvasNoneState, HtmlCommonState, HtmlElementClass as Requirement, HtmlFrameNullContent,
-    HtmlIframeNativeState, HtmlMarqueeState, KnownHtmlElement,
+    HtmlCanvasNoneState, HtmlCommonState, HtmlElementClass as Requirement, HtmlIframeInitialState,
+    HtmlMarqueeState, KnownHtmlElement,
 };
 mod family;
 pub(crate) use family::NativeFamily;
@@ -32,6 +32,7 @@ pub struct DomElement {
     common: HtmlCommonState,
     nonce: Option<DocumentString>,
     family: NativeFamily,
+    content_navigable: Option<crate::DomHostedNavigableId>,
     captured_in_view_transition: bool,
 }
 
@@ -39,8 +40,8 @@ impl DomElement {
     pub(crate) fn retained_payload(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<crate::store::style::storage::Payload, DomError> {
-        crate::store::style::storage::element(self, &self.family, step)
+    ) -> Result<crate::store::source::storage::Payload, DomError> {
+        crate::store::source::storage::element(self, &self.family, step)
     }
     /// Completed retained materialization. The crate-owned importer proves the
     /// ordinary-report/profile boundary; this does not replay native hooks.
@@ -63,6 +64,7 @@ impl DomElement {
             common,
             nonce,
             family,
+            content_navigable: None,
             captured_in_view_transition: false,
         }
     }
@@ -163,7 +165,7 @@ impl DomElement {
         cancel: &AtomicBool,
     ) -> Result<QualifiedName, DomError> {
         if let Some(budget) = budget {
-            let mut payload = crate::store::style::storage::Payload::default();
+            let mut payload = crate::store::source::storage::Payload::default();
             payload.name(name)?;
             budget.retain_payload(payload, cancel)?;
         }
@@ -176,7 +178,6 @@ impl DomElement {
         &self,
         attributes: OrderedAttributes,
         changed: &QualifiedName,
-        removed: bool,
         nonce: Option<DocumentString>,
         budget: Option<&Formation>,
         cancel: &AtomicBool,
@@ -193,7 +194,7 @@ impl DomElement {
                 name: changed,
                 previous: self.attributes.as_slice(),
                 attributes: attributes.as_slice(),
-                removed,
+                content: self.child_navigable_presence(),
             },
             &mut || formation::step(budget, cancel),
             budget,
@@ -209,6 +210,7 @@ impl DomElement {
             common: self.common,
             nonce,
             family,
+            content_navigable: self.content_navigable,
             captured_in_view_transition: self.captured_in_view_transition,
         })
     }
@@ -292,7 +294,7 @@ impl DomElement {
                 // Every admitted target Document has the actual native never-BC
                 // environment. This is fresh element creation, not reconstruction
                 // from current null content or missing imported metadata.
-                NativeFamily::Iframe(HtmlIframeNativeState::fresh())
+                NativeFamily::Iframe(HtmlIframeInitialState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Script) => NativeFamily::Script,
             Requirement::SvgScript => {
@@ -354,7 +356,7 @@ impl DomElement {
                 NativeFamily::Selectedcontent(false)
             }
             Requirement::HtmlMarquee => NativeFamily::Marquee(HtmlMarqueeState::fresh()),
-            Requirement::HtmlFrame => NativeFamily::Frame(HtmlFrameNullContent::fresh()),
+            Requirement::HtmlFrame => NativeFamily::Frame,
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
         };
         let common = initialization.common();
@@ -376,6 +378,7 @@ impl DomElement {
             common,
             nonce: initialization.nonce().map(|_| DocumentString::from("")),
             family,
+            content_navigable: None,
             captured_in_view_transition: false,
         })
     }
@@ -412,7 +415,7 @@ impl DomElement {
     pub(crate) fn shared_family_payload(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<Option<crate::store::style::storage::Payload>, DomError> {
+    ) -> Result<Option<crate::store::source::storage::Payload>, DomError> {
         let shared = match &self.family {
             NativeFamily::Input(state) => std::sync::Arc::strong_count(state) > 1,
             NativeFamily::Textarea(state) => std::sync::Arc::strong_count(state) > 1,
@@ -421,7 +424,7 @@ impl DomElement {
             _ => false,
         };
         if shared {
-            crate::store::style::storage::family_payload(&self.family, step).map(Some)
+            crate::store::source::storage::family_payload(&self.family, step).map(Some)
         } else {
             Ok(None)
         }
@@ -657,18 +660,21 @@ impl DomElement {
             _ => None,
         }
     }
-    /// The actual Frame null-content relationship, or another family's
-    /// inapplicability. This reads stored state; it never reconstructs a child
-    /// relationship from attributes or fills unknown imported facts.
-    pub fn frame_null_content(&self) -> Option<HtmlFrameNullContent> {
-        match self.family {
-            NativeFamily::Frame(state) => Some(state),
-            _ => None,
-        }
+    /// Actual content navigable for Frame/Iframe. Outer None is inapplicable;
+    /// Some(None) is the stored null relationship, not a creation/history proof.
+    pub fn child_navigable(&self) -> Option<Option<crate::DomHostedNavigableId>> {
+        matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
+            .then_some(self.content_navigable)
     }
-    /// Actual stored native unprocessed/null-child Iframe state. Other families
-    /// are inapplicable; no numeric sandbox policy or missing state is inferred.
-    pub fn iframe_native_state(&self) -> Option<HtmlIframeNativeState> {
+    /// Local guards consume this projection of the one canonical relationship.
+    pub fn child_navigable_presence(&self) -> Option<surgeist_html::HtmlChildNavigablePresence> {
+        self.child_navigable().map(|content| match content {
+            None => surgeist_html::HtmlChildNavigablePresence::Null,
+            Some(_) => surgeist_html::HtmlChildNavigablePresence::Present,
+        })
+    }
+    /// Independent retained intrinsic Iframe tuple, without child identity.
+    pub fn iframe_initial_state(&self) -> Option<HtmlIframeInitialState> {
         match self.family {
             NativeFamily::Iframe(state) => Some(state),
             _ => None,

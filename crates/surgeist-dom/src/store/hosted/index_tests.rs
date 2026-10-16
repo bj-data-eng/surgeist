@@ -75,7 +75,13 @@ impl Fixture {
             .metadata()
             .origin()
             .clone();
-        let execution = DomHostedExecutionRequest { request, origin };
+        let inputs =
+            crate::document::HostedDocumentInputs::form(&self.source, &work, &cancel).unwrap();
+        let execution = DomHostedExecutionRequest {
+            request,
+            origin,
+            inputs,
+        };
         let global = self.source.issue_global(&execution, &cancel).unwrap();
         let mut request = execution.request;
         // Exercise the original issuer's exact role/phase predicates. These

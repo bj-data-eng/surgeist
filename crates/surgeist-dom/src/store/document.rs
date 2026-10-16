@@ -17,9 +17,9 @@ impl XmlDocumentFrame {
     pub(super) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<style::storage::Payload, DomError> {
+    ) -> Result<source::storage::Payload, DomError> {
         step()?;
-        let mut payload = style::storage::Payload::default();
+        let mut payload = source::storage::Payload::default();
         if let Some(uri) = self.namespace.uri() {
             payload.string(uri)?;
         }
@@ -81,10 +81,10 @@ impl Draft {
             limits.units,
             DomResource::StringCodeUnits,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         let metadata =
             DomDocumentMetadata::native(crate::DomDocumentEnvironment::new(input), &mut |text| {
-                style::formation::string(text, formation.as_ref(), cancel)
+                source::formation::string(text, formation.as_ref(), cancel)
             })?;
         let document = Key::Created(self.created.len());
         let document = self.allocate(DomNodeKind::Document(metadata), document, limits, cancel)?;
@@ -93,7 +93,7 @@ impl Draft {
         let root = if qualified_name.is_empty() {
             None
         } else {
-            let formation = style::formation::Formation::new(self, cancel)?;
+            let formation = source::formation::Formation::new(self, cancel)?;
             let element = DomElement::native_ns(
                 namespace,
                 qualified_name,
@@ -121,7 +121,7 @@ impl Draft {
         #[cfg(test)]
         let namespace_before = xml_observation::before(self, cancel)?;
         let (namespace, payload) = if let Some(uri) = namespace.uri() {
-            let (uri, payload) = style::formation::shared_string(self, uri, cancel)?;
+            let (uri, payload) = source::formation::shared_string(self, uri, cancel)?;
             (crate::Namespace::from_uri(uri), payload)
         } else {
             (crate::Namespace::none(), None)
@@ -148,7 +148,7 @@ impl Draft {
     pub(super) fn xml_document_effect(
         &mut self,
         mut frame: XmlDocumentFrame,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -208,9 +208,9 @@ impl Draft {
                 admit(units, limits.units, DomResource::StringCodeUnits)?;
                 #[cfg(test)]
                 let mime_before = xml_observation::before(self, cancel)?;
-                let formation = style::formation::Formation::new(self, cancel)?;
+                let formation = source::formation::Formation::new(self, cancel)?;
                 let content_type =
-                    style::formation::string(content_type, formation.as_ref(), cancel)?;
+                    source::formation::string(content_type, formation.as_ref(), cancel)?;
                 let DomNodeKind::Document(metadata) = &mut self.node_mut(frame.document).kind
                 else {
                     unreachable!("created XML Document")
@@ -244,21 +244,21 @@ impl Draft {
         // Origin follows the source operation; the selected immutable native
         // environment also remains established. Other metadata uses defaults;
         // no browsing context or host/resource capability is implicitly copied.
-        let formation = style::formation::Formation::new(self, cancelled)?;
+        let formation = source::formation::Formation::new(self, cancelled)?;
         let metadata = DomDocumentMetadata::native_html(
             source.origin().clone(),
             source.document_environment(),
-            &mut |text| style::formation::string(text, formation.as_ref(), cancelled),
+            &mut |text| source::formation::string(text, formation.as_ref(), cancelled),
         )?;
         let document = Key::Created(self.created.len());
         let document =
             self.allocate(DomNodeKind::Document(metadata), document, limits, cancelled)?;
         drop(formation);
-        let operands = style::formation::Formation::new(self, cancelled)?;
-        let name = style::formation::string("html", operands.as_ref(), cancelled)?;
-        let public = style::formation::string("", operands.as_ref(), cancelled)?;
-        let system = style::formation::string("", operands.as_ref(), cancelled)?;
-        let formation = style::formation::Formation::new(self, cancelled)?;
+        let operands = source::formation::Formation::new(self, cancelled)?;
+        let name = source::formation::string("html", operands.as_ref(), cancelled)?;
+        let public = source::formation::string("", operands.as_ref(), cancelled)?;
+        let system = source::formation::string("", operands.as_ref(), cancelled)?;
+        let formation = source::formation::Formation::new(self, cancelled)?;
         let doctype = DomDocumentType::new(&name, &public, &system, formation.as_ref(), cancelled)?;
         drop((name, public, system));
         drop(operands);
@@ -277,7 +277,7 @@ impl Draft {
         if let Some(title) = title {
             let element = self.html_skeleton_element(document, "title", limits, cancelled)?;
             self.pre_insert(element, head, None, limits, cancelled)?;
-            let (title, payload) = style::formation::shared_string(self, title, cancelled)?;
+            let (title, payload) = source::formation::shared_string(self, title, cancelled)?;
             let text = self.allocate(DomNodeKind::Text(title), document, limits, cancelled)?;
             drop(payload);
             self.pre_insert(text, element, None, limits, cancelled)?;
@@ -297,9 +297,9 @@ impl Draft {
         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
             unreachable!("canonical skeleton Document")
         };
-        let operand = style::formation::Formation::new(self, cancelled)?;
-        let local_name = style::formation::string(local_name, operand.as_ref(), cancelled)?;
-        let formation = style::formation::Formation::new(self, cancelled)?;
+        let operand = source::formation::Formation::new(self, cancelled)?;
+        let local_name = source::formation::string(local_name, operand.as_ref(), cancelled)?;
+        let formation = source::formation::Formation::new(self, cancelled)?;
         let element = DomElement::native(&local_name, metadata, cancelled, formation.as_ref())?;
         drop(local_name);
         drop(operand);
@@ -497,12 +497,12 @@ mod xml_tests {
         );
         let observation = xml_observation::Binding::new(cancelled_tail);
         let result = (|| {
-            let mut lease = dom.begin_style_batch(
+            let mut lease = dom.begin_source_commands(
                 batch,
-                crate::DomStyleEditLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
+                crate::DomSourceLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
                 &cancel,
             )?;
-            let crate::DomStyleProgress::Complete(done) = lease.advance(&cancel)? else {
+            let crate::DomSourceProgress::Complete(done) = lease.advance(&cancel)? else {
                 panic!("empty root needs no service")
             };
             let created = done.commit().document(&document).unwrap();
@@ -530,7 +530,7 @@ mod xml_tests {
         if result.is_err() {
             assert_eq!(dom.snapshot().stamp(), before.stamp());
             assert_eq!(dom.usage(), usage);
-            assert!(dom.pending_style_edit().is_none());
+            assert!(dom.pending_source_edit().is_none());
         }
         (result, observed)
     }
@@ -541,15 +541,15 @@ mod xml_tests {
         assert_eq!(peak.reached, 2);
         assert!(!peak.exceeded);
         for resource in [
-            DomResource::StyleRetainedBytes,
-            DomResource::StyleRetainedUnits,
+            DomResource::SourceRetainedBytes,
+            DomResource::SourceRetainedUnits,
         ] {
-            let bytes = if resource == DomResource::StyleRetainedBytes {
+            let bytes = if resource == DomResource::SourceRetainedBytes {
                 peak.bytes
             } else {
                 16_000_000
             };
-            let units = if resource == DomResource::StyleRetainedUnits {
+            let units = if resource == DomResource::SourceRetainedUnits {
                 peak.units
             } else {
                 1_000_000
@@ -559,8 +559,8 @@ mod xml_tests {
             assert_eq!(exact.reached, 2);
             assert!(!exact.exceeded);
             let (result, short) = run(
-                bytes - usize::from(resource == DomResource::StyleRetainedBytes),
-                units - usize::from(resource == DomResource::StyleRetainedUnits),
+                bytes - usize::from(resource == DomResource::SourceRetainedBytes),
+                units - usize::from(resource == DomResource::SourceRetainedUnits),
                 false,
             );
             assert!(

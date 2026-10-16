@@ -7,7 +7,7 @@ use surgeist_html::bounded::{
     is_xml_name_start_code_point,
 };
 
-use crate::store::style::{
+use crate::store::source::{
     formation::{self, Formation},
     storage::Payload,
 };
@@ -27,8 +27,8 @@ impl DomProcessingInstruction {
     pub(crate) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<crate::store::style::storage::Payload, DomError> {
-        let mut payload = crate::store::style::storage::Payload::default();
+    ) -> Result<crate::store::source::storage::Payload, DomError> {
+        let mut payload = crate::store::source::storage::Payload::default();
         payload.string(&self.target)?;
         payload.string(&self.data)?;
         payload.add_bytes(std::mem::size_of::<Vec<(DocumentString, DocumentString)>>())?;
@@ -494,7 +494,7 @@ pub(crate) mod source_observation {
 #[cfg(test)]
 mod source_tests {
     use super::*;
-    use crate::{Dom, DomBatch, DomLimits, DomStyleEditLimits};
+    use crate::{Dom, DomBatch, DomLimits, DomSourceLimits};
     #[test]
     fn ordinary_pi_validation_precedes_cancellation_and_replacement_keeps_original_grammar() {
         let cancelled = AtomicBool::new(true);
@@ -590,13 +590,13 @@ mod source_tests {
         let public = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
         let doctype = batch.create_document_type(document, "", public.clone(), "system > id");
         let mut lease = dom
-            .begin_style_batch(
+            .begin_source_commands(
                 batch,
-                DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096),
                 &cancel,
             )
             .unwrap();
-        let crate::DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        let crate::DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
             panic!("no external service is reached");
         };
         let valid = done.commit().created(&valid).unwrap().unwrap();
@@ -633,7 +633,7 @@ mod source_tests {
         assert_eq!(doctype.name(), &DocumentString::default());
         assert_eq!(doctype.public_id(), &public);
         assert_eq!(doctype.system_id(), &DocumentString::from("system > id"));
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
     }
     struct PiRun {
         growth: Option<source_observation::Growth>,
@@ -654,8 +654,8 @@ mod source_tests {
             "pi",
             format!("a='{}' b='literal'", "x".repeat(4096)),
         );
-        let limits = DomStyleEditLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
-        let mut lease = match dom.begin_style_batch(batch, limits, &cancel) {
+        let limits = DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
+        let mut lease = match dom.begin_source_commands(batch, limits, &cancel) {
             Ok(lease) => lease,
             Err(error) => {
                 return PiRun {
@@ -676,7 +676,7 @@ mod source_tests {
             assert_eq!(dom.snapshot().stamp(), before.stamp());
             assert_eq!(dom.usage(), usage);
         }
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         PiRun {
             growth: observed,
             error,
@@ -702,13 +702,13 @@ mod source_tests {
         assert!(matches!(
             exact.error,
             None | Some(DomError::ResourceLimit {
-                resource: crate::DomResource::StyleRetainedBytes,
+                resource: crate::DomResource::SourceRetainedBytes,
                 ..
             })
         ));
         let short = actual_pi_growth(high.required - 1, 1_000_000);
         assert!(
-            matches!(short.error,Some(DomError::ResourceLimit{resource:crate::DomResource::StyleRetainedBytes,limit}) if limit==high.required-1)
+            matches!(short.error,Some(DomError::ResourceLimit{resource:crate::DomResource::SourceRetainedBytes,limit}) if limit==high.required-1)
         );
         if let Some(actual) = short.growth {
             assert!(
@@ -736,13 +736,13 @@ mod source_tests {
         assert!(matches!(
             exact.error,
             None | Some(DomError::ResourceLimit {
-                resource: crate::DomResource::StyleRetainedUnits,
+                resource: crate::DomResource::SourceRetainedUnits,
                 ..
             })
         ));
         let short = actual_pi_growth(16_000_000, high.required_units - 1);
         assert!(
-            matches!(short.error,Some(DomError::ResourceLimit{resource:crate::DomResource::StyleRetainedUnits,limit}) if limit==high.required_units-1)
+            matches!(short.error,Some(DomError::ResourceLimit{resource:crate::DomResource::SourceRetainedUnits,limit}) if limit==high.required_units-1)
         );
         if let Some(actual) = short.growth {
             assert!(actual.required_units <= actual.unit_limit);

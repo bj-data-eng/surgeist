@@ -140,8 +140,10 @@ mod semantic;
 mod shadow;
 mod slot;
 mod snapshot;
+mod source;
 mod store;
 mod style;
+pub use source::*;
 mod svg_script;
 mod template;
 mod textarea;
@@ -183,7 +185,8 @@ pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdate
 pub use input::{DomInput, DomInputState};
 pub use installation::{
     DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,
-    DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallation,
+    DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallTarget,
+    DomNativeHtmlInstallation,
 };
 pub use meta::{DomDocumentPolicyContainer, DomMetaDocumentState, DomMetaError};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
@@ -240,12 +243,11 @@ pub use button::{DomButton, DomButtonState};
 pub use fieldset::{DomFieldset, DomFieldsetState};
 pub use form::DomForm;
 
-pub use store::style::operation::DomStyleEditLease;
+pub use store::source::operation::DomSourceLease;
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,
-    DomStyleEditCompletion, DomStyleEditLimits, DomStyleEditStatus, DomStyleInlineCspObservation,
-    DomStyleNativeHtmlInstallLimits, DomStyleNotificationCompletion, DomStyleNotificationToken,
-    DomStyleOperationId, DomStyleProgress, DomStyleRequest, DomStyleRootKind, DomStyleSheet,
-    DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource, DomStyleState,
+    DomStyleInlineCspObservation, DomStyleNotificationCompletion, DomStyleNotificationToken,
+    DomStyleRequest, DomStyleRootKind, DomStyleSheet, DomStyleSheetAvailability,
+    DomStyleSheetPlacement, DomStyleSource, DomStyleState,
 };

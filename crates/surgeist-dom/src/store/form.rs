@@ -5,11 +5,11 @@ use crate::form::{FormPastName, FormPastNames};
 pub(super) fn map_names_formed<A: Copy, B>(
     source: &FormPastNames<A>,
     mut map: impl FnMut(A) -> B,
-    budget: Option<&style::formation::Formation>,
+    budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<FormPastNames<B>, DomError> {
     let mut entries = Vec::new();
-    style::formation::reserve(&mut entries, source.entries.len(), budget, cancel)?;
+    source::formation::reserve(&mut entries, source.entries.len(), budget, cancel)?;
     for entry in source.entries.iter() {
         check_cancel(cancel)?;
         entries.push(FormPastName {

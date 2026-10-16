@@ -84,8 +84,8 @@ impl<'a> DomEventDom<'a> {
     }
     /// Actual parked source status, including unpublished formation. This read
     /// lends no source lease or notification token.
-    pub fn pending_style_edit(&self) -> Option<surgeist_dom::DomStyleEditStatus> {
-        self.dom.pending_style_edit()
+    pub fn pending_source_edit(&self) -> Option<surgeist_dom::DomSourceStatus> {
+        self.dom.pending_source_edit()
     }
     /// Reissues an independently owned capability to an already retained current
     /// root; it cannot replace the store or establish a new association.
@@ -101,21 +101,21 @@ impl<'a> DomEventDom<'a> {
     pub(crate) fn raw(&self) -> &Dom {
         self.dom
     }
-    pub(crate) fn begin_style_batch(
+    pub(crate) fn begin_source_edit(
         &mut self,
-        batch: surgeist_dom::DomBatch,
-        limits: surgeist_dom::DomStyleEditLimits,
+        edit: surgeist_dom::DomSourceEdit,
+        limits: surgeist_dom::DomSourceLimits,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<surgeist_dom::DomStyleEditLease<'_>, DomError> {
-        self.dom.begin_style_batch(batch, limits, cancel)
+    ) -> Result<surgeist_dom::DomSourceLease<'_>, DomError> {
+        self.dom.begin_source_edit(edit, limits, cancel)
     }
-    pub(crate) fn resume_style_edit(
+    pub(crate) fn resume_source_edit(
         &mut self,
-        id: surgeist_dom::DomStyleOperationId,
-        limits: surgeist_dom::DomStyleEditLimits,
+        id: surgeist_dom::DomSourceOperationId,
+        limits: surgeist_dom::DomSourceLimits,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<surgeist_dom::DomStyleEditLease<'_>, DomError> {
-        self.dom.resume_style_edit(id, limits, cancel)
+    ) -> Result<surgeist_dom::DomSourceLease<'_>, DomError> {
+        self.dom.resume_source_edit(id, limits, cancel)
     }
 }
 
@@ -375,7 +375,7 @@ pub enum DomEventDispatchOutcome {
     Retained(DomEventResource),
     /// A callback published an unfinished canonical source hook tail. Finish
     /// that exact DOM operation before resuming; no listener is replayed.
-    RetainedSourceOperation(surgeist_dom::DomStyleOperationId),
+    RetainedSourceOperation(surgeist_dom::DomSourceOperationId),
     /// A published native creator tail must complete before later invocations.
     /// Coherent queued destruction does not trigger this state.
     RetainedHostedOperation(surgeist_dom::DomHostedOperationId),
@@ -1245,7 +1245,7 @@ impl Dispatch {
 enum RunStop {
     Abandoned,
     Resource(DomEventResource),
-    SourceOperation(surgeist_dom::DomStyleOperationId),
+    SourceOperation(surgeist_dom::DomSourceOperationId),
     HostedOperation(surgeist_dom::DomHostedOperationId),
     HostedAuthority(DomHostedError),
     ForeignOwner,

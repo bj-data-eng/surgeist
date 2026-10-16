@@ -11,7 +11,7 @@ pub(super) struct ProcessingTrace {
 impl ProcessingTrace {
     pub(super) fn checkpoint(
         &self,
-        a: &mut style::checkpoint::Admission<'_>,
+        a: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         Ok(Self {

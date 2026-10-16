@@ -1,6 +1,7 @@
 use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlFrameNullContent, HtmlFramePostConnectionDecision,
-    frame_post_connection,
+    HtmlBrowsingContextPresence, HtmlChildNavigableAccessDecision,
+    HtmlChildNavigableLoadDelayDecision, HtmlChildNavigablePresence,
+    HtmlFramePostConnectionDecision, frame_post_connection, frame_potentially_delays_load,
 };
 
 #[test]
@@ -31,21 +32,46 @@ fn unavailable_browsing_context_establishes_neither_source_branch() {
 fn actual_fresh_null_content_has_null_getters_and_no_src_or_destruction_work() {
     // #child-navigables: initially null; #frames: src processing only when
     // non-null; #destroy-a-child-navigable: null returns before any effect.
-    let content = HtmlFrameNullContent::fresh();
-    assert!(content.content_navigable_is_null());
-    assert!(content.content_document_is_null());
-    assert!(content.content_window_is_null());
-    assert!(!content.src_change_requires_processing());
+    let content = HtmlChildNavigablePresence::Null;
+    assert_eq!(content, HtmlChildNavigablePresence::Null);
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert!(!content.attribute_change_requires_processing());
     assert!(!content.removal_requires_child_destruction());
     // Repeating src/removal decisions does not invent a child or change state.
-    assert!(!content.src_change_requires_processing());
+    assert!(!content.attribute_change_requires_processing());
     assert!(!content.removal_requires_child_destruction());
-    assert!(content.content_navigable_is_null());
+    assert_eq!(content, HtmlChildNavigablePresence::Null);
 }
 
 #[test]
 fn frame_potential_classification_does_not_create_actual_load_delay() {
-    let content = HtmlFrameNullContent::fresh();
-    assert!(content.potentially_delays_load());
-    assert!(!content.delays_load());
+    let content = HtmlChildNavigablePresence::Null;
+    assert!(frame_potentially_delays_load());
+    assert_eq!(
+        content.load_delay(),
+        HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+    );
+}
+
+#[test]
+fn present_frame_requires_actual_child_processing_access_load_and_destruction() {
+    let content = HtmlChildNavigablePresence::Present;
+    assert!(content.attribute_change_requires_processing());
+    assert!(content.removal_requires_child_destruction());
+    assert_eq!(
+        content.content_access(),
+        HtmlChildNavigableAccessDecision::Continue
+    );
+    assert!(frame_potentially_delays_load());
+    assert_eq!(
+        content.load_delay(),
+        HtmlChildNavigableLoadDelayDecision::Continue
+    );
 }

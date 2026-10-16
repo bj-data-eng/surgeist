@@ -22,10 +22,9 @@ use surgeist_cssom::{
     CssomSheetOwnerAttributes, CssomSnapshot,
 };
 use surgeist_dom::{
-    Dom, DomBatch, DomError, DomOwnerId, DomSnapshot, DomStyleAction, DomStyleCssomOwnerBinding,
-    DomStyleCssomRoot, DomStyleCssomRootError, DomStyleEditCompletion, DomStyleEditLease,
-    DomStyleEditLimits, DomStyleInlineCspObservation, DomStyleNotificationCompletion,
-    DomStyleNotificationToken, DomStyleOperationId, DomStyleProgress, DomStyleRequest,
+    Dom, DomError, DomOwnerId, DomSnapshot, DomSourceLease, DomSourceOperationId, DomStyleAction,
+    DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleCssomRootError,
+    DomStyleNotificationCompletion, DomStyleNotificationToken, DomStyleRequest,
     DomStyleSheetPlacement, DomStyleSource, NodeId,
 };
 use surgeist_html::{
@@ -92,7 +91,7 @@ pub enum DomStyleRuntimeError {
     /// A new session cannot reconstruct preexisting root/task custody.
     PreboundSession,
     /// An actual canonical source operation is already pending at bootstrap.
-    SourcePending(DomStyleOperationId),
+    SourcePending(DomSourceOperationId),
     /// The exact retained CSSOM resource is temporarily unavailable or refused work.
     Resource(DomStyleCssomRootError),
 }
@@ -128,20 +127,11 @@ impl From<surgeist_cssom::CssomError> for DomStyleRuntimeError {
         Self::Cssom(e)
     }
 }
-/// One actual synchronous source result, never a promise of resource completion.
-#[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Return the already owned canonical completion or actual source request without another allocation after publication"
-)]
-pub enum DomStyleDriveProgress {
-    /// The canonical synchronous operation and all serviced CSSOM actions finished.
-    Complete(DomStyleEditCompletion),
-    /// This exact retained source request still needs an actual external service.
+/// Private result of servicing one actual yielded Style request.
+pub(crate) enum DomStyleServiceProgress {
+    Serviced,
     Pending {
-        /// Exact outstanding source request.
         request: DomStyleRequest,
-        /// Actual missing service.
         reason: DomStyleUnavailable,
     },
 }
@@ -988,10 +978,7 @@ impl StyleState {
         });
         Ok(())
     }
-    fn acknowledge(
-        &mut self,
-        lease: &mut DomStyleEditLease<'_>,
-    ) -> Result<(), DomStyleRuntimeError> {
+    fn acknowledge(&mut self, lease: &mut DomSourceLease<'_>) -> Result<(), DomStyleRuntimeError> {
         let publication = self
             .publication
             .as_mut()
@@ -1068,257 +1055,91 @@ impl StyleState {
             }
         }
     }
-    /// Drive the SAME canonical source engine. The policy supplier evaluates an
-    /// exact source context; returning None preserves a genuine missing service.
-    pub fn drive(
+    fn flush_source(
         &mut self,
-        lease: &mut DomStyleEditLease<'_>,
+        lease: &mut DomSourceLease<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleDriveProgress, DomStyleRuntimeError> {
-        loop {
-            self.step(cancel)?;
-            if self.staged.is_some() {
-                self.commit_staged()?;
+    ) -> Result<(), DomStyleRuntimeError> {
+        self.step(cancel)?;
+        if self.staged.is_some() {
+            self.commit_staged()?;
+        }
+        if self.publication.is_some() {
+            self.acknowledge(lease)?;
+        }
+        Ok(())
+    }
+    fn service_source_request(
+        &mut self,
+        lease: &mut DomSourceLease<'_>,
+        request: DomStyleRequest,
+        cancel: &AtomicBool,
+    ) -> Result<DomStyleServiceProgress, DomStyleRuntimeError> {
+        self.step(cancel)?;
+        match request.action() {
+            DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
+                return Ok(DomStyleServiceProgress::Pending {
+                    request,
+                    reason: DomStyleUnavailable::InlinePolicy,
+                });
             }
-            if self.publication.is_some() {
-                self.acknowledge(lease)?;
-            }
-            let request = match lease.advance(cancel)? {
-                DomStyleProgress::Complete(done) => {
-                    return Ok(DomStyleDriveProgress::Complete(done));
-                }
-                DomStyleProgress::Request(r) => r,
-            };
-            match request.action() {
-                DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
-                    return Ok(DomStyleDriveProgress::Pending {
+            DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
+            | DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet) => {
+                let root = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
+                let Some(index) = self.roots.iter().position(|r| r.node == root) else {
+                    return Ok(DomStyleServiceProgress::Pending {
                         request,
-                        reason: DomStyleUnavailable::InlinePolicy,
+                        reason: DomStyleUnavailable::RootList,
                     });
-                }
-                DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
-                | DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet) => {
-                    let root = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
-                    let Some(index) = self.roots.iter().position(|r| r.node == root) else {
-                        return Ok(DomStyleDriveProgress::Pending {
-                            request,
-                            reason: DomStyleUnavailable::RootList,
-                        });
-                    };
-                    lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
-                    let snapshot = self.roots[index].store.snapshot()?;
-                    let request = lease.qualify_cssom(&request, root, &snapshot)?;
-                    let mut batch = self.roots[index]
-                        .store
-                        .batch(CssomEditGuard::from_snapshot(&snapshot))?;
-                    let created = if request.action()
-                        == DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
-                    {
-                        self.reserve_output(cancel)?;
-                        let root = &self.roots[index];
-                        let serial = root
-                            .serial
-                            .checked_add(1)
-                            .ok_or(DomStyleRuntimeError::Admission)?;
-                        let mut label = String::new();
-                        label
-                            .try_reserve_exact(
-                                root.label
-                                    .len()
-                                    .checked_add(21)
-                                    .ok_or(DomStyleRuntimeError::Admission)?,
-                            )
-                            .map_err(|_| DomStyleRuntimeError::Admission)?;
-                        for character in root.label.chars() {
-                            self.step(cancel)?;
-                            label.push(character);
-                        }
-                        label.push(':');
-                        use std::fmt::Write;
-                        write!(&mut label, "{serial}")
-                            .map_err(|_| DomStyleRuntimeError::Admission)?;
-                        let version = CssomInputVersion {
-                            role: CssomInputRole::Owner,
-                            identity: label.clone(),
-                            revision: serial,
-                        };
-                        lease.bind_cssom_owner(
-                            &request,
-                            DomStyleCssomOwnerBinding::new(
-                                &request,
-                                version.clone(),
-                                label.clone(),
-                            )?,
-                            cancel,
-                        )?;
-                        let poll = || {
-                            if cancel.load(Ordering::Relaxed) {
-                                Err(DomError::Cancelled)
-                            } else {
-                                Ok(())
-                            }
-                        };
-                        let context = self.source_parser_context(
-                            &snapshot,
-                            request.source(),
-                            &root.label,
-                            &mut batch,
-                            cancel,
-                        )?;
-                        let report = context
-                            .parse_sheet_utf16_with_limits(
-                                request.source().text().clone(),
-                                self.limits.css_input,
-                                poll,
-                            )
-                            .map_err(DomStyleRuntimeError::Css)?;
-                        // HTML's critical CSS subresources are imported sheets;
-                        // no @import means no transitive import graph exists.
-                        let imports = report
-                            .syntax()
-                            .rules()
-                            .iter()
-                            .any(|r| matches!(r, CssRule::Import(_)));
-                        let media = context
-                            .parse_media_query_list_utf16_with_limits(
-                                request
-                                    .source()
-                                    .media()
-                                    .map(|value| value.shared_code_units().clone())
-                                    .unwrap_or_default(),
-                                self.limits.css_input,
-                                poll,
-                            )
-                            .map_err(DomStyleRuntimeError::Css)?;
-                        let mut inputs = CssomSheetInputs::external(version, true);
-                        inputs.owner = Some(label);
-                        if matches!(
-                            request.source().root_kind(),
-                            surgeist_dom::DomStyleRootKind::Document
-                        ) && let Some(title) = request.source().title()
-                        {
-                            inputs.title = title.shared_code_units().clone();
-                        }
-                        let construction =
-                            batch.create_parsed_sheet_with_media_reports(report, media, inputs)?;
-
-                        let list = snapshot.sheet_list().clone();
-                        let bytes = request
-                            .sheet_order()
-                            .len()
-                            .checked_mul(size_of::<CssomSheetListTarget<'_>>())
-                            .ok_or(DomStyleRuntimeError::Admission)?;
-                        self.admit(bytes, cancel)?;
-                        let mut members = Vec::new();
-                        members
-                            .try_reserve_exact(request.sheet_order().len())
-                            .map_err(|_| DomStyleRuntimeError::Admission)?;
-                        self.admit(
-                            members
-                                .capacity()
-                                .checked_mul(size_of::<CssomSheetListTarget<'_>>())
-                                .ok_or(DomStyleRuntimeError::Admission)?,
-                            cancel,
-                        )?;
-                        for entry in request.sheet_order() {
-                            self.step(cancel)?;
-                            members.push(match entry {
-                                DomStyleSheetPlacement::Existing(id) => {
-                                    CssomSheetListTarget::Existing(id)
-                                }
-                                DomStyleSheetPlacement::ThisStyle => {
-                                    CssomSheetListTarget::Created(construction.ticket())
-                                }
-                            });
-                        }
-                        batch.set_sheet_list_membership(&list, &members)?;
-                        Some((construction, imports))
-                    } else {
-                        batch.remove_sheet(
-                            request.sheet().ok_or(DomStyleRuntimeError::Protocol)?.id(),
-                        )?;
-                        None
-                    };
-                    let staged = StagedPublication {
-                        request,
-                        root,
-                        owner: self.roots[index].store.clone(),
-                        batch: Some(batch),
-                        serial: created.as_ref().map(|_| self.roots[index].serial + 1),
-                        created,
-                        attributes: None,
-                    };
-                    self.admit_staged(&staged, cancel)?;
-                    self.staged = Some(staged);
-                    self.commit_staged()?;
-                    self.acknowledge(lease)?;
-                }
-                DomStyleAction::SetDisabled(disabled) => {
-                    let root = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
-                    let Some(index) = self.roots.iter().position(|entry| entry.node == root) else {
-                        return Ok(DomStyleDriveProgress::Pending {
-                            request,
-                            reason: DomStyleUnavailable::RootList,
-                        });
-                    };
-                    lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
-                    let snapshot = self.roots[index].store.snapshot()?;
-                    let request = lease.qualify_cssom(&request, root, &snapshot)?;
-                    let sheet = request.sheet().ok_or(DomStyleRuntimeError::Protocol)?;
-                    let mut batch = self.roots[index]
-                        .store
-                        .batch(CssomEditGuard::from_snapshot(&snapshot))?;
-                    batch.set_disabled(sheet.id(), disabled)?;
-                    let staged = StagedPublication {
-                        request,
-                        root,
-                        owner: self.roots[index].store.clone(),
-                        batch: Some(batch),
-                        serial: None,
-                        created: None,
-                        attributes: None,
-                    };
-                    self.admit_staged(&staged, cancel)?;
-                    self.staged = Some(staged);
-                    self.commit_staged()?;
-                    self.acknowledge(lease)?;
-                }
-                DomStyleAction::OwnerAttributes => {
-                    let root_id = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
-                    let Some(index) = self.roots.iter().position(|r| r.node == root_id) else {
-                        return Ok(DomStyleDriveProgress::Pending {
-                            request,
-                            reason: DomStyleUnavailable::RootList,
-                        });
-                    };
-                    self.reserve_reports(size_of::<DomStyleProcessedSheet>(), cancel)?;
-                    lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
+                };
+                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
+                let snapshot = self.roots[index].store.snapshot()?;
+                let request = lease.qualify_cssom(&request, root, &snapshot)?;
+                let mut batch = self.roots[index]
+                    .store
+                    .batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                let created = if request.action()
+                    == DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
+                {
+                    self.reserve_output(cancel)?;
                     let root = &self.roots[index];
-                    let snapshot = root.store.snapshot()?;
-                    let request = lease.qualify_cssom(&request, root_id, &snapshot)?;
-                    let sheet_id = request
-                        .sheet()
-                        .ok_or(DomStyleRuntimeError::Protocol)?
-                        .id()
-                        .clone();
-                    let sheet = snapshot.sheet(&sheet_id)?;
-                    let owner = sheet
-                        .inputs()
-                        .owner
-                        .as_ref()
-                        .ok_or(DomStyleRuntimeError::Binding)?
-                        .clone();
-                    let mut version = sheet.inputs().version.clone();
-                    version.revision = version
-                        .revision
+                    let serial = root
+                        .serial
                         .checked_add(1)
                         .ok_or(DomStyleRuntimeError::Admission)?;
+                    let mut label = String::new();
+                    label
+                        .try_reserve_exact(
+                            root.label
+                                .len()
+                                .checked_add(21)
+                                .ok_or(DomStyleRuntimeError::Admission)?,
+                        )
+                        .map_err(|_| DomStyleRuntimeError::Admission)?;
+                    for character in root.label.chars() {
+                        self.step(cancel)?;
+                        label.push(character);
+                    }
+                    label.push(':');
+                    use std::fmt::Write;
+                    write!(&mut label, "{serial}").map_err(|_| DomStyleRuntimeError::Admission)?;
+                    let version = CssomInputVersion {
+                        role: CssomInputRole::Owner,
+                        identity: label.clone(),
+                        revision: serial,
+                    };
                     lease.bind_cssom_owner(
                         &request,
-                        DomStyleCssomOwnerBinding::new(&request, version.clone(), owner.clone())?,
+                        DomStyleCssomOwnerBinding::new(&request, version.clone(), label.clone())?,
                         cancel,
                     )?;
-                    let mut batch = root.store.batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                    let poll = || {
+                        if cancel.load(Ordering::Relaxed) {
+                            Err(DomError::Cancelled)
+                        } else {
+                            Ok(())
+                        }
+                    };
                     let context = self.source_parser_context(
                         &snapshot,
                         request.source(),
@@ -1327,6 +1148,20 @@ impl StyleState {
                         cancel,
                     )?;
                     let report = context
+                        .parse_sheet_utf16_with_limits(
+                            request.source().text().clone(),
+                            self.limits.css_input,
+                            poll,
+                        )
+                        .map_err(DomStyleRuntimeError::Css)?;
+                    // HTML's critical CSS subresources are imported sheets;
+                    // no @import means no transitive import graph exists.
+                    let imports = report
+                        .syntax()
+                        .rules()
+                        .iter()
+                        .any(|r| matches!(r, CssRule::Import(_)));
+                    let media = context
                         .parse_media_query_list_utf16_with_limits(
                             request
                                 .source()
@@ -1334,49 +1169,196 @@ impl StyleState {
                                 .map(|value| value.shared_code_units().clone())
                                 .unwrap_or_default(),
                             self.limits.css_input,
-                            || {
-                                if cancel.load(Ordering::Relaxed) {
-                                    Err(DomError::Cancelled)
-                                } else {
-                                    Ok(())
-                                }
-                            },
+                            poll,
                         )
                         .map_err(DomStyleRuntimeError::Css)?;
-                    let title = (request.source().root_kind()
-                        == surgeist_dom::DomStyleRootKind::Document)
-                        .then(|| request.source().title().map_or(&[][..], |s| s.code_units()));
-                    let edit = batch.update_sheet_owner_attributes(
-                        &sheet_id,
-                        CssomSheetOwnerAttributes {
-                            owner: &owner,
-                            version,
-                            title,
-                            media: CssomOwnerMediaInput::Parsed(report),
-                        },
+                    let mut inputs = CssomSheetInputs::external(version, true);
+                    inputs.owner = Some(label);
+                    if matches!(
+                        request.source().root_kind(),
+                        surgeist_dom::DomStyleRootKind::Document
+                    ) && let Some(title) = request.source().title()
+                    {
+                        inputs.title = title.shared_code_units().clone();
+                    }
+                    let construction =
+                        batch.create_parsed_sheet_with_media_reports(report, media, inputs)?;
+
+                    let list = snapshot.sheet_list().clone();
+                    let bytes = request
+                        .sheet_order()
+                        .len()
+                        .checked_mul(size_of::<CssomSheetListTarget<'_>>())
+                        .ok_or(DomStyleRuntimeError::Admission)?;
+                    self.admit(bytes, cancel)?;
+                    let mut members = Vec::new();
+                    members
+                        .try_reserve_exact(request.sheet_order().len())
+                        .map_err(|_| DomStyleRuntimeError::Admission)?;
+                    self.admit(
+                        members
+                            .capacity()
+                            .checked_mul(size_of::<CssomSheetListTarget<'_>>())
+                            .ok_or(DomStyleRuntimeError::Admission)?,
+                        cancel,
                     )?;
-                    let staged = StagedPublication {
+                    for entry in request.sheet_order() {
+                        self.step(cancel)?;
+                        members.push(match entry {
+                            DomStyleSheetPlacement::Existing(id) => {
+                                CssomSheetListTarget::Existing(id)
+                            }
+                            DomStyleSheetPlacement::ThisStyle => {
+                                CssomSheetListTarget::Created(construction.ticket())
+                            }
+                        });
+                    }
+                    batch.set_sheet_list_membership(&list, &members)?;
+                    Some((construction, imports))
+                } else {
+                    batch.remove_sheet(
+                        request.sheet().ok_or(DomStyleRuntimeError::Protocol)?.id(),
+                    )?;
+                    None
+                };
+                let staged = StagedPublication {
+                    request,
+                    root,
+                    owner: self.roots[index].store.clone(),
+                    batch: Some(batch),
+                    serial: created.as_ref().map(|_| self.roots[index].serial + 1),
+                    created,
+                    attributes: None,
+                };
+                self.admit_staged(&staged, cancel)?;
+                self.staged = Some(staged);
+                self.commit_staged()?;
+                self.acknowledge(lease)?;
+            }
+            DomStyleAction::SetDisabled(disabled) => {
+                let root = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
+                let Some(index) = self.roots.iter().position(|entry| entry.node == root) else {
+                    return Ok(DomStyleServiceProgress::Pending {
                         request,
-                        root: root_id,
-                        owner: root.store.clone(),
-                        batch: Some(batch),
-                        serial: None,
-                        created: None,
-                        attributes: Some((sheet_id, edit)),
-                    };
-                    self.admit_staged(&staged, cancel)?;
-                    self.staged = Some(staged);
-                    self.commit_staged()?;
-                    self.acknowledge(lease)?;
-                }
-                _ => {
-                    return Ok(DomStyleDriveProgress::Pending {
-                        request,
-                        reason: DomStyleUnavailable::Environment,
+                        reason: DomStyleUnavailable::RootList,
                     });
-                }
+                };
+                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
+                let snapshot = self.roots[index].store.snapshot()?;
+                let request = lease.qualify_cssom(&request, root, &snapshot)?;
+                let sheet = request.sheet().ok_or(DomStyleRuntimeError::Protocol)?;
+                let mut batch = self.roots[index]
+                    .store
+                    .batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                batch.set_disabled(sheet.id(), disabled)?;
+                let staged = StagedPublication {
+                    request,
+                    root,
+                    owner: self.roots[index].store.clone(),
+                    batch: Some(batch),
+                    serial: None,
+                    created: None,
+                    attributes: None,
+                };
+                self.admit_staged(&staged, cancel)?;
+                self.staged = Some(staged);
+                self.commit_staged()?;
+                self.acknowledge(lease)?;
+            }
+            DomStyleAction::OwnerAttributes => {
+                let root_id = request.cssom_root().ok_or(DomStyleRuntimeError::Protocol)?;
+                let Some(index) = self.roots.iter().position(|r| r.node == root_id) else {
+                    return Ok(DomStyleServiceProgress::Pending {
+                        request,
+                        reason: DomStyleUnavailable::RootList,
+                    });
+                };
+                self.reserve_reports(size_of::<DomStyleProcessedSheet>(), cancel)?;
+                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
+                let root = &self.roots[index];
+                let snapshot = root.store.snapshot()?;
+                let request = lease.qualify_cssom(&request, root_id, &snapshot)?;
+                let sheet_id = request
+                    .sheet()
+                    .ok_or(DomStyleRuntimeError::Protocol)?
+                    .id()
+                    .clone();
+                let sheet = snapshot.sheet(&sheet_id)?;
+                let owner = sheet
+                    .inputs()
+                    .owner
+                    .as_ref()
+                    .ok_or(DomStyleRuntimeError::Binding)?
+                    .clone();
+                let mut version = sheet.inputs().version.clone();
+                version.revision = version
+                    .revision
+                    .checked_add(1)
+                    .ok_or(DomStyleRuntimeError::Admission)?;
+                lease.bind_cssom_owner(
+                    &request,
+                    DomStyleCssomOwnerBinding::new(&request, version.clone(), owner.clone())?,
+                    cancel,
+                )?;
+                let mut batch = root.store.batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                let context = self.source_parser_context(
+                    &snapshot,
+                    request.source(),
+                    &root.label,
+                    &mut batch,
+                    cancel,
+                )?;
+                let report = context
+                    .parse_media_query_list_utf16_with_limits(
+                        request
+                            .source()
+                            .media()
+                            .map(|value| value.shared_code_units().clone())
+                            .unwrap_or_default(),
+                        self.limits.css_input,
+                        || {
+                            if cancel.load(Ordering::Relaxed) {
+                                Err(DomError::Cancelled)
+                            } else {
+                                Ok(())
+                            }
+                        },
+                    )
+                    .map_err(DomStyleRuntimeError::Css)?;
+                let title = (request.source().root_kind()
+                    == surgeist_dom::DomStyleRootKind::Document)
+                    .then(|| request.source().title().map_or(&[][..], |s| s.code_units()));
+                let edit = batch.update_sheet_owner_attributes(
+                    &sheet_id,
+                    CssomSheetOwnerAttributes {
+                        owner: &owner,
+                        version,
+                        title,
+                        media: CssomOwnerMediaInput::Parsed(report),
+                    },
+                )?;
+                let staged = StagedPublication {
+                    request,
+                    root: root_id,
+                    owner: root.store.clone(),
+                    batch: Some(batch),
+                    serial: None,
+                    created: None,
+                    attributes: Some((sheet_id, edit)),
+                };
+                self.admit_staged(&staged, cancel)?;
+                self.staged = Some(staged);
+                self.commit_staged()?;
+                self.acknowledge(lease)?;
+            }
+            _ => {
+                return Ok(DomStyleServiceProgress::Pending {
+                    request,
+                    reason: DomStyleUnavailable::Environment,
+                });
             }
         }
+        Ok(DomStyleServiceProgress::Serviced)
     }
 }
 
@@ -1474,7 +1456,7 @@ pub enum DomShutdownReason {
     /// An actual queued/running Details task has not completed or been canceled.
     DetailsTask(crate::dom_details::DomDetailsTaskId),
     /// Canonical hooks are not complete.
-    SourceTail(DomStyleOperationId),
+    SourceTail(DomSourceOperationId),
     /// A canonical root still retains its actual mutable resource.
     LiveResources,
     /// An actual queued/running task remains.
@@ -1517,7 +1499,7 @@ impl DomSession {
     pub fn new(mut dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
         let reject = if dom.has_style_cssom_roots() {
             Some(DomStyleRuntimeError::PreboundSession)
-        } else if let Some(status) = dom.pending_style_edit() {
+        } else if let Some(status) = dom.pending_source_edit() {
             Some(DomStyleRuntimeError::SourcePending(status.operation()))
         } else if std::mem::size_of::<std::cell::RefCell<StyleState>>() > limits.style.storage_bytes
         {
@@ -1591,6 +1573,14 @@ impl DomSession {
     pub fn hosted_execution(&self) -> crate::dom_lifecycle::HostedRuntime {
         self.hosted.execution()
     }
+    /// Permission to execute one source operation through the original family owners.
+    pub fn source_execution(&self) -> crate::dom_source::DomSourceRuntime {
+        crate::dom_source::DomSourceRuntime::new(
+            self.style_execution(),
+            self.details_execution(),
+            self.hosted_execution(),
+        )
+    }
     /// Controlled canonical access. No bound mutable owner can be extracted.
     pub fn dom(&mut self) -> DomEventDom<'_> {
         DomEventDom::borrow(&mut self.dom)
@@ -1615,7 +1605,7 @@ impl DomSession {
             Err(crate::dom_details::DomDetailsRuntimeError::Busy) => Some(DomShutdownReason::Busy),
             Err(_) => Some(DomShutdownReason::Admission),
         };
-        let reason = if let Some(pending) = self.dom.pending_style_edit() {
+        let reason = if let Some(pending) = self.dom.pending_source_edit() {
             Some(DomShutdownReason::SourceTail(pending.operation()))
         } else if self.dom.pending_details_toggle_intentions() != 0 {
             Some(DomShutdownReason::DetailsIntentions)
@@ -1678,6 +1668,36 @@ impl DomSession {
             },
             None => DomShutdownOutcome::Complete,
         }
+    }
+}
+
+pub(crate) struct StyleSourceGuard {
+    state: std::rc::Rc<std::cell::RefCell<StyleState>>,
+}
+impl StyleSourceGuard {
+    pub(crate) fn flush(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomStyleRuntimeError> {
+        self.state
+            .try_borrow_mut()
+            .map_err(|_| DomStyleRuntimeError::Binding)?
+            .flush_source(lease, cancel)
+    }
+    pub(crate) fn service(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        request: DomStyleRequest,
+        cancel: &AtomicBool,
+    ) -> Result<DomStyleServiceProgress, DomStyleRuntimeError> {
+        self.state
+            .try_borrow_mut()
+            .map_err(|_| DomStyleRuntimeError::Binding)?
+            .service_source_request(lease, request, cancel)
+    }
+    pub(crate) fn finish(self, snapshot: &DomSnapshot) {
+        DomStyleRuntime::release_retired_roots(&self.state, snapshot);
     }
 }
 
@@ -1845,48 +1865,6 @@ impl DomStyleRuntime {
         }
         Ok(state)
     }
-    /// Begin and drive an actual canonical batch. The source lease and all
-    /// notification tokens stay inside the original session's private driver.
-    pub fn apply(
-        &mut self,
-        dom: &mut DomEventDom<'_>,
-        batch: DomBatch,
-        limits: DomStyleEditLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
-        cancel: &AtomicBool,
-    ) -> Result<DomStyleDriveProgress, DomStyleRuntimeError> {
-        let state = self.qualified(dom)?;
-        Self::reserve_root_cleanup(&state, cancel)?;
-        let progress = {
-            let mut lease = dom.begin_style_batch(batch, limits, cancel)?;
-            Self::drive_lease(&state, &mut lease, policy, cancel)?
-        };
-        if matches!(progress, DomStyleDriveProgress::Complete(_)) {
-            Self::release_retired_roots(&state, &dom.snapshot());
-        }
-        Ok(progress)
-    }
-    /// Resume this session's exact parked canonical operation, without rebuilding
-    /// acknowledged CSSOM work or extracting its source permission.
-    pub fn resume(
-        &mut self,
-        dom: &mut DomEventDom<'_>,
-        operation: DomStyleOperationId,
-        limits: DomStyleEditLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
-        cancel: &AtomicBool,
-    ) -> Result<DomStyleDriveProgress, DomStyleRuntimeError> {
-        let state = self.qualified(dom)?;
-        Self::reserve_root_cleanup(&state, cancel)?;
-        let progress = {
-            let mut lease = dom.resume_style_edit(operation, limits, cancel)?;
-            Self::drive_lease(&state, &mut lease, policy, cancel)?
-        };
-        if matches!(progress, DomStyleDriveProgress::Complete(_)) {
-            Self::release_retired_roots(&state, &dom.snapshot());
-        }
-        Ok(progress)
-    }
     fn reserve_root_cleanup(
         state: &std::rc::Rc<std::cell::RefCell<StyleState>>,
         cancel: &AtomicBool,
@@ -1915,34 +1893,14 @@ impl DomStyleRuntime {
             .roots
             .retain(|root| !matches!(snapshot.node(root.node), Err(DomError::StaleNode)));
     }
-    fn drive_lease(
-        state: &std::rc::Rc<std::cell::RefCell<StyleState>>,
-        lease: &mut DomStyleEditLease<'_>,
-        mut policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+    pub(crate) fn prepare_source(
+        &self,
+        dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomStyleDriveProgress, DomStyleRuntimeError> {
-        loop {
-            let progress = state
-                .try_borrow_mut()
-                .map_err(|_| DomStyleRuntimeError::Binding)?
-                .drive(lease, cancel)?;
-            if let DomStyleDriveProgress::Pending {
-                request,
-                reason: DomStyleUnavailable::InlinePolicy,
-            } = progress
-            {
-                // No RefCell or CSSOM guard crosses this actual caller callback.
-                let Some(observation) = policy(request.source()) else {
-                    return Ok(DomStyleDriveProgress::Pending {
-                        request,
-                        reason: DomStyleUnavailable::InlinePolicy,
-                    });
-                };
-                lease.accept_inline_csp(&request, &observation, cancel)?;
-            } else {
-                return Ok(progress);
-            }
-        }
+    ) -> Result<StyleSourceGuard, DomStyleRuntimeError> {
+        let state = self.qualified(dom)?;
+        Self::reserve_root_cleanup(&state, cancel)?;
+        Ok(StyleSourceGuard { state })
     }
     /// Execute the actual networking FIFO head. The actual task never leaves
     /// its session bank; all owner borrows end before entering caller work.
@@ -2213,6 +2171,12 @@ impl Drop for StyleTaskRunning {
 }
 
 #[cfg(test)]
+use crate::{
+    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceUnavailable,
+};
+#[cfg(test)]
+use surgeist_dom::DomStyleInlineCspObservation;
+#[cfg(test)]
 mod tests {
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
@@ -2240,9 +2204,12 @@ mod tests {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomBatch, DomLimits, DomStyleEditLimits, Namespace};
+    use surgeist_dom::{
+        DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress, Namespace,
+    };
     struct Context {
         styles: DomStyleRuntime,
+        source: DomSourceRuntime,
         events: Vec<(NodeId, NodeId)>,
     }
     impl DomStyleEventContext for Context {
@@ -2260,8 +2227,8 @@ mod tests {
             css_input: CssUtf16InputLimits::default(),
         }
     }
-    fn source_limits() -> DomStyleEditLimits {
-        DomStyleEditLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
+    fn source_limits() -> DomSourceLimits {
+        DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
     }
     fn dispatch_limits() -> DomEventDispatchLimits {
         DomEventDispatchLimits {
@@ -2298,6 +2265,7 @@ mod tests {
         let shadow = commit.created(&shadow).unwrap().unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         let mut dom = session.dom();
         for (root, label) in [(document, "document"), (shadow, "shadow")] {
             styles
@@ -2322,19 +2290,47 @@ mod tests {
         batch.insert_before(&later_text, &later, None);
         batch.insert_before(&earlier_text, &earlier, None);
         batch.insert_before(&isolated_text, &isolated, None);
-        batch.insert_before(&later, container, None);
-        batch.insert_before(&earlier, container, Some((&later).into()));
-        batch.insert_before(&isolated, shadow, None);
-        let progress = styles
-            .apply(&mut dom, batch, source_limits(), policy, &cancel)
-            .unwrap();
-        let DomStyleDriveProgress::Complete(done) = progress else {
-            panic!("actual ordered creation");
-        };
-        let later = done.published_creation(&later).unwrap().unwrap();
-        let earlier = done.published_creation(&earlier).unwrap().unwrap();
-        let isolated = done.published_creation(&isolated).unwrap().unwrap();
-        let earlier_text = done.published_creation(&earlier_text).unwrap().unwrap();
+        let setup = dom.apply(batch, &cancel).unwrap();
+        let later = setup.created(&later).unwrap().unwrap();
+        let earlier = setup.created(&earlier).unwrap().unwrap();
+        let isolated = setup.created(&isolated).unwrap().unwrap();
+        let earlier_text = setup.created(&earlier_text).unwrap().unwrap();
+        assert!(matches!(
+            source
+                .apply(
+                    &mut dom,
+                    DomSourceEdit::insert_before(later, container, None),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        assert!(matches!(
+            source
+                .apply(
+                    &mut dom,
+                    DomSourceEdit::insert_before(earlier, container, Some(later)),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        assert!(matches!(
+            source
+                .apply(
+                    &mut dom,
+                    DomSourceEdit::insert_before(isolated, shadow, None),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
 
         let snapshot = dom.snapshot();
         let sheet = |node| {
@@ -2360,12 +2356,11 @@ mod tests {
             styles.snapshot(shadow).unwrap().unwrap().sheets(),
             std::slice::from_ref(&isolated_id)
         );
-        let mut batch = DomBatch::new();
-        batch.insert_before(later, container, Some(earlier.into()));
-        let progress = styles
-            .apply(&mut dom, batch, source_limits(), policy, &cancel)
+        let edit = DomSourceEdit::insert_before(later, container, Some(earlier));
+        let progress = source
+            .apply(&mut dom, edit, source_limits(), policy, &cancel)
             .unwrap();
-        assert!(matches!(progress, DomStyleDriveProgress::Complete(_)));
+        assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
         let moved = styles.snapshot(document).unwrap().unwrap();
         let moved_id = dom
@@ -2382,12 +2377,11 @@ mod tests {
         assert_ne!(moved_id, later_id);
         assert!(moved.sheet(&later_id).unwrap().inputs().owner.is_none());
         assert_eq!(moved.sheets(), &[moved_id.clone(), earlier_id.clone()]);
-        let mut batch = DomBatch::new();
-        batch.insert_before(earlier_text, earlier, None);
-        let progress = styles
-            .apply(&mut dom, batch, source_limits(), policy, &cancel)
+        let edit = DomSourceEdit::insert_before(earlier_text, earlier, None);
+        let progress = source
+            .apply(&mut dom, edit, source_limits(), policy, &cancel)
             .unwrap();
-        assert!(matches!(progress, DomStyleDriveProgress::Complete(_)));
+        assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
         let during = styles.processed_sheet(4).unwrap().unwrap();
         let final_report = styles.processed_sheet(5).unwrap().unwrap();
@@ -2440,6 +2434,7 @@ mod tests {
         let document = commit.created(&document).unwrap().unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         let mut dom = session.dom();
         styles
             .bind_root(
@@ -2456,14 +2451,15 @@ mod tests {
         let style = batch.create_element_ns(document, Namespace::html(), "style");
         let text = batch.create_text(document, "a { color: red }");
         batch.insert_before(&text, &style, None);
-        batch.insert_before(&style, document, None);
-        let progress = styles
-            .apply(&mut dom, batch, source_limits(), policy, &cancel)
+        let setup = dom.apply(batch, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, document, None);
+        let progress = source
+            .apply(&mut dom, edit, source_limits(), policy, &cancel)
             .unwrap();
-        let DomStyleDriveProgress::Complete(done) = progress else {
+        let DomSourceDriveProgress::Complete(_) = progress else {
             panic!("initial sheet");
         };
-        let style = done.published_creation(&style).unwrap().unwrap();
 
         let before = styles.snapshot(document).unwrap().unwrap();
         let id = before.sheets()[0].clone();
@@ -2487,13 +2483,23 @@ mod tests {
             DomError::StyleOwnerAttributesCompositionRequired
         );
         assert_eq!(dom.snapshot().stamp(), atomic_before.stamp());
-        let mut batch = DomBatch::new();
-        batch.set_attribute(style, "title", title.clone());
-        batch.set_attribute(style, "media", "screen and (min-width: 2px)");
-        let progress = styles
-            .apply(&mut dom, batch, source_limits(), policy, &cancel)
+        assert!(matches!(
+            source
+                .apply(
+                    &mut dom,
+                    DomSourceEdit::set_attribute(style, "title", title.clone()),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        let edit = DomSourceEdit::set_attribute(style, "media", "screen and (min-width: 2px)");
+        let progress = source
+            .apply(&mut dom, edit, source_limits(), policy, &cancel)
             .unwrap();
-        assert!(matches!(progress, DomStyleDriveProgress::Complete(_)));
+        assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
         let after = styles.snapshot(document).unwrap().unwrap();
         assert_eq!(after.sheets(), std::slice::from_ref(&id));
@@ -2533,9 +2539,11 @@ mod tests {
         let document = c.created(&document).unwrap().unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let permission = session.style_execution();
+        let source = session.source_execution();
         let mut dom = session.dom();
         let mut context = Context {
             styles: permission,
+            source,
             events: Vec::new(),
         };
         context
@@ -2554,15 +2562,16 @@ mod tests {
         let style = b.create_element_ns(document, Namespace::html(), "style");
         let text = b.create_text(document, "@unknown x; a { color: red }");
         b.insert_before(&text, &style, None);
-        b.insert_before(&style, document, None);
+        let setup = dom.apply(b, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, document, None);
         let progress = context
-            .styles
-            .apply(&mut dom, b, source_limits(), policy, &cancel)
+            .source
+            .apply(&mut dom, edit, source_limits(), policy, &cancel)
             .unwrap();
-        let DomStyleDriveProgress::Complete(done) = progress else {
+        let DomSourceDriveProgress::Complete(_) = progress else {
             panic!("real no-import processing completes")
         };
-        let style = done.published_creation(&style).unwrap().unwrap();
 
         let snapshot = context.styles.snapshot(document).unwrap().unwrap();
         let sheet = snapshot.sheets()[0].clone();
@@ -2594,13 +2603,12 @@ mod tests {
                         event.target().unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
-                    let mut b = DomBatch::new();
-                    b.detach(style);
+                    let edit = DomSourceEdit::detach(style);
                     let progress = context
-                        .styles
-                        .apply(dom, b, source_limits(), policy, &cancel)
+                        .source
+                        .apply(dom, edit, source_limits(), policy, &cancel)
                         .unwrap();
-                    assert!(matches!(progress, DomStyleDriveProgress::Complete(_)));
+                    assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
                     Ok(())
                 }),
                 DomEventListenerOptions {
@@ -2665,27 +2673,28 @@ mod tests {
         (session, document)
     }
     fn append_style(session: &mut DomSession, document: NodeId, media: Option<&str>) -> NodeId {
-        let mut permission = session.style_execution();
+        let mut source = session.source_execution();
         let mut batch = DomBatch::new();
         let style = batch.create_element_ns(document, Namespace::html(), "style");
         if let Some(media) = media {
             batch.set_attribute(&style, "media", media);
         }
+        let setup = session.dom().apply(batch, &AtomicBool::new(false)).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
         let container = session.snapshot().node(document).unwrap().children()[0];
-        batch.insert_before(&style, container, None);
-        let DomStyleDriveProgress::Complete(done) = permission
-            .apply(
-                &mut session.dom(),
-                batch,
-                source_limits(),
-                policy,
-                &AtomicBool::new(false),
-            )
-            .unwrap()
-        else {
-            panic!("actual source completion")
-        };
-        done.published_creation(&style).unwrap().unwrap()
+        assert!(matches!(
+            source
+                .apply(
+                    &mut session.dom(),
+                    DomSourceEdit::insert_before(style, container, None),
+                    source_limits(),
+                    policy,
+                    &AtomicBool::new(false)
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        style
     }
     #[test]
     fn current_disabled_join_survives_other_sheet_revisions_and_external_flags_without_certifying_readiness()
@@ -2720,14 +2729,14 @@ mod tests {
         root.commit(&mut Some(batch)).unwrap();
         assert!(permission.disabled(&session.dom(), a).unwrap().disabled());
         assert!(!permission.disabled(&session.dom(), b).unwrap().disabled());
-        let mut batch = DomBatch::new();
-        batch.set_style_disabled(a, false);
-        let mut permission = session.style_execution();
+        let edit = DomSourceEdit::set_style_disabled(a, false);
+        let permission = session.style_execution();
+        let mut source = session.source_execution();
         assert!(matches!(
-            permission
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         assert!(!permission.disabled(&session.dom(), a).unwrap().disabled());
         assert_eq!(
@@ -2741,19 +2750,17 @@ mod tests {
             permission.pending_sheet(2).unwrap().is_none(),
             "disabled changes create no extra task"
         );
-        let mut batch = DomBatch::new();
-        batch.detach(a);
-        permission
-            .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+        let edit = DomSourceEdit::detach(a);
+        source
+            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
             .unwrap();
         let detached = permission.disabled(&session.dom(), a).unwrap();
         assert!(!detached.disabled());
         assert_eq!(detached.association(), None);
         assert_eq!(detached.cssom_revision(), None);
-        let mut batch = DomBatch::new();
-        batch.destroy(a);
-        permission
-            .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+        let edit = DomSourceEdit::destroy(a);
+        source
+            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
             .unwrap();
         assert!(matches!(
             permission.disabled(&session.dom(), a),
@@ -2780,6 +2787,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
         let mut permission = session.style_execution();
+        let mut source = session.source_execution();
         let original_root = permission.snapshot(document).unwrap().unwrap();
         let mut low = limits();
         low.storage_bytes = 20_000;
@@ -2789,12 +2797,16 @@ mod tests {
         let media = format!("screen and ({}", "x".repeat(50_000));
         batch.set_attribute(&style, "media", media);
         let container = session.snapshot().node(document).unwrap().children()[0];
-        batch.insert_before(&style, container, None);
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, container, None);
         assert!(matches!(
-            permission.apply(&mut session.dom(), batch, source_limits(), policy, &cancel),
-            Err(DomStyleRuntimeError::Admission)
+            source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+            Err(DomSourceRuntimeError::Style(
+                DomStyleRuntimeError::Admission
+            ))
         ));
-        let operation = session.dom().pending_style_edit().unwrap().operation();
+        let operation = session.dom().pending_source_edit().unwrap().operation();
         assert_eq!(
             permission.snapshot(document).unwrap().unwrap().revision(),
             original_root.revision(),
@@ -2823,7 +2835,7 @@ mod tests {
             .set_limits(&session.dom(), raised, &cancel)
             .unwrap();
         assert!(matches!(
-            permission
+            source
                 .resume(
                     &mut session.dom(),
                     operation,
@@ -2832,7 +2844,7 @@ mod tests {
                     &cancel
                 )
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         assert!(permission.pending_sheet(0).unwrap().is_some());
         assert!(permission.pending_sheet(1).unwrap().is_none());
@@ -2862,38 +2874,45 @@ mod tests {
             let root_revision = root.snapshot().unwrap().revision().clone();
             let mut batch = DomBatch::new();
             let style = batch.create_element_ns(document, Namespace::html(), "style");
-            batch.insert_before(&style, document, None);
+            let setup = owner.apply(batch, &cancel).unwrap();
+            let style = setup.created(&style).unwrap().unwrap();
             let mut lease = owner
-                .begin_style_batch(batch, source_limits(), &cancel)
+                .begin_source_edit(
+                    DomSourceEdit::insert_before(style, document, None),
+                    source_limits(),
+                    &cancel,
+                )
                 .unwrap();
             let operation = lease.operation();
             let mut bound_request = None;
             loop {
                 match lease.advance(&cancel).unwrap() {
-                    DomStyleProgress::Request(request) => match request.action() {
-                        DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
-                            if !bind {
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) => {
+                        match request.action() {
+                            DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
+                                if !bind {
+                                    break;
+                                }
+                                lease
+                                    .accept_inline_csp(
+                                        &request,
+                                        &DomStyleInlineCspObservation::complete_empty(
+                                            request.source(),
+                                            1,
+                                        ),
+                                        &cancel,
+                                    )
+                                    .unwrap();
+                            }
+                            DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet) => {
+                                lease.bind_cssom_root(&request, &root, &cancel).unwrap();
+                                bound_request = Some(request);
                                 break;
                             }
-                            lease
-                                .accept_inline_csp(
-                                    &request,
-                                    &DomStyleInlineCspObservation::complete_empty(
-                                        request.source(),
-                                        1,
-                                    ),
-                                    &cancel,
-                                )
-                                .unwrap();
+                            action => panic!("unexpected actual source request {action:?}"),
                         }
-                        DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet) => {
-                            lease.bind_cssom_root(&request, &root, &cancel).unwrap();
-                            bound_request = Some(request);
-                            break;
-                        }
-                        action => panic!("unexpected actual source request {action:?}"),
-                    },
-                    DomStyleProgress::Complete(_) => panic!("real pending source was expected"),
+                    }
+                    DomSourceProgress::Complete(_) => panic!("real pending source was expected"),
                 }
             }
             drop(lease);
@@ -2912,10 +2931,10 @@ mod tests {
             let mut owner = rejected.into_dom();
             assert_eq!(owner.owner(), identity);
             assert_eq!(owner.snapshot().stamp(), before);
-            assert_eq!(owner.pending_style_edit().unwrap().operation(), operation);
+            assert_eq!(owner.pending_source_edit().unwrap().operation(), operation);
             if let Some(request) = bound_request {
                 let lease = owner
-                    .resume_style_edit(operation, source_limits(), &cancel)
+                    .resume_source_edit(operation, source_limits(), &cancel)
                     .unwrap();
                 assert_eq!(
                     lease
@@ -2990,13 +3009,13 @@ mod tests {
         let first = append_style(&mut session, document, Some("screen and"));
         append_style(&mut session, document, Some("print and"));
         let mut permission = session.style_execution();
-        let mut batch = DomBatch::new();
-        batch.set_attribute(first, "title", "changed");
+        let mut source = session.source_execution();
+        let edit = DomSourceEdit::set_attribute(first, "title", "changed");
         assert!(matches!(
-            permission
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let first_result = permission.processed_sheet(0).unwrap().unwrap();
         let attribute_result = permission.processed_sheet(2).unwrap().unwrap();
@@ -3085,6 +3104,7 @@ mod tests {
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
+            source: session.source_execution(),
             events: Vec::new(),
         };
         let original = context.styles.original().unwrap();
@@ -3159,16 +3179,19 @@ mod tests {
      {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
-        let mut styles = session.style_execution();
+        let styles = session.style_execution();
+        let mut source = session.source_execution();
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
-        batch.insert_before(&target, parent, None);
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let target = setup.created(&target).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(target, parent, None);
         let mut observed = None;
-        let DomStyleDriveProgress::Complete(done) = styles
+        let DomSourceDriveProgress::Complete(_) = source
             .apply(
                 &mut session.dom(),
-                batch,
+                edit,
                 source_limits(),
                 |source| {
                     observed = Some((
@@ -3183,7 +3206,6 @@ mod tests {
         else {
             panic!("actual ordinary Style completes");
         };
-        let target = done.published_creation(&target).unwrap().unwrap();
         assert_eq!(
             observed,
             Some(("about:blank".into(), "about:blank".into())),
@@ -3280,6 +3302,7 @@ mod tests {
         let original_profile = profile.clone();
         let (mut session, document) = bound_session_with_context(profile);
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         let mut raised = limits();
         raised.storage_bytes = 8_000_000;
         styles.set_limits(&session.dom(), raised, &cancel).unwrap();
@@ -3289,14 +3312,15 @@ mod tests {
         let target = batch.create_element_ns(document, Namespace::html(), "style");
         let text = batch.create_text(document, ".a{width:1}");
         batch.insert_before(&text, &target, None);
-        batch.insert_before(&target, parent, None);
-        let DomStyleDriveProgress::Complete(done) = styles
-            .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let target = setup.created(&target).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(target, parent, None);
+        let DomSourceDriveProgress::Complete(_) = source
+            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
             .unwrap()
         else {
             panic!("actual source completes");
         };
-        let target = done.published_creation(&target).unwrap().unwrap();
         let body_snapshot = styles.snapshot(document).unwrap().unwrap();
         let sheet = body_snapshot.sheets()[0].clone();
         let association = session
@@ -3356,13 +3380,12 @@ mod tests {
             stamp,
             "actual external configuration edit changes no DOM state"
         );
-        let mut batch = DomBatch::new();
-        batch.set_attribute(target, "media", "screen and");
+        let edit = DomSourceEdit::set_attribute(target, "media", "screen and");
         assert!(matches!(
-            styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let media_snapshot = styles.snapshot(document).unwrap().unwrap();
         assert_eq!(media_snapshot.sheets(), std::slice::from_ref(&sheet));
@@ -3431,13 +3454,12 @@ mod tests {
                 .media_diagnostics()
                 .is_empty()
         );
-        let mut batch = DomBatch::new();
-        batch.set_attribute(target, "title", "same-mode");
+        let edit = DomSourceEdit::set_attribute(target, "title", "same-mode");
         assert!(matches!(
-            styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let after = styles.snapshot(document).unwrap().unwrap();
         assert_eq!(
@@ -3453,22 +3475,19 @@ mod tests {
         let (mut session, document) = bound_session_with_context(mode_profile(
             CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical(),
         ));
-        let mut styles = session.style_execution();
+        let styles = session.style_execution();
+        let mut source = session.source_execution();
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
-        batch.insert_before(&target, parent, None);
-        let DomStyleDriveProgress::Pending {
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let target = setup.created(&target).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(target, parent, None);
+        let DomSourceDriveProgress::Pending {
             request,
-            reason: DomStyleUnavailable::InlinePolicy,
-        } = styles
-            .apply(
-                &mut session.dom(),
-                batch,
-                source_limits(),
-                |_| None,
-                &cancel,
-            )
+            reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+        } = source
+            .apply(&mut session.dom(), edit, source_limits(), |_| None, &cancel)
             .unwrap()
         else {
             panic!("real canonical pending source request");
@@ -3476,6 +3495,7 @@ mod tests {
         let original = styles.original().unwrap();
         let cap = original.borrow().roots[0].store.clone();
         let dom_stamp = session.snapshot().stamp();
+        let surgeist_dom::DomSourceRequest::Style(request) = request;
         let source_stamp = request.source().stamp();
         let before = cap.snapshot().unwrap();
         let mut batch = cap.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
@@ -3567,6 +3587,7 @@ mod tests {
         };
         let (mut session, document) = bound_session_with_context(profile);
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         let initial = styles.snapshot(document).unwrap().unwrap();
         let original = styles.original().unwrap();
         let mut low = limits();
@@ -3575,12 +3596,16 @@ mod tests {
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
-        batch.insert_before(&target, parent, None);
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let target = setup.created(&target).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(target, parent, None);
         assert!(matches!(
-            styles.apply(&mut session.dom(), batch, source_limits(), policy, &cancel),
-            Err(DomStyleRuntimeError::Admission)
+            source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+            Err(DomSourceRuntimeError::Style(
+                DomStyleRuntimeError::Admission
+            ))
         ));
-        let pending = session.dom().pending_style_edit().unwrap().operation();
+        let pending = session.dom().pending_source_edit().unwrap().operation();
         let refused = styles.snapshot(document).unwrap().unwrap();
         assert_eq!(refused.revision(), initial.revision());
         assert_eq!(refused.context(), initial.context());
@@ -3592,7 +3617,7 @@ mod tests {
         styles.set_limits(&session.dom(), raised, &cancel).unwrap();
         assert!(original.borrow().work.get() >= spent);
         assert!(matches!(
-            styles
+            source
                 .resume(
                     &mut session.dom(),
                     pending,
@@ -3601,7 +3626,7 @@ mod tests {
                     &cancel
                 )
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let current = styles.snapshot(document).unwrap().unwrap();
         assert_eq!(current.owner(), initial.owner());
@@ -3771,6 +3796,7 @@ mod tests {
         runtime_limits.storage_bytes = 8_000_000;
         let mut session = DomSession::new(owner, session_limits(runtime_limits)).unwrap();
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         styles
             .bind_root(
                 &session.dom(),
@@ -3783,14 +3809,12 @@ mod tests {
             )
             .unwrap();
         let original = styles.snapshot(shadow).unwrap().unwrap();
-        let mut batch = DomBatch::new();
-        batch.adopt(host, destination);
-        batch.insert_before(host, parent, None);
+        let edit = DomSourceEdit::insert_before(host, parent, None);
         assert!(matches!(
-            styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         assert_eq!(
             session
@@ -3805,12 +3829,14 @@ mod tests {
         let style = batch.create_element_ns(destination, Namespace::html(), "style");
         let text = batch.create_text(destination, ".a{width:1}");
         batch.insert_before(&text, &style, None);
-        batch.insert_before(&style, shadow, None);
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, shadow, None);
         assert!(matches!(
-            styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let current = styles.snapshot(shadow).unwrap().unwrap();
         assert_eq!(
@@ -3860,6 +3886,7 @@ mod tests {
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
+            source: session.source_execution(),
             events: Vec::new(),
         };
         let original = context.styles.original().unwrap();
@@ -3943,6 +3970,7 @@ mod tests {
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
+            source: session.source_execution(),
             events: Vec::new(),
         };
         let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -3981,15 +4009,26 @@ mod tests {
             ))
         ));
         assert!(context.events.is_empty());
-        let mut batch = DomBatch::new();
-        batch.detach(target);
-        batch.destroy(target);
         assert!(matches!(
             context
-                .styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+                .source
+                .apply(
+                    &mut session.dom(),
+                    DomSourceEdit::detach(target),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
+        ));
+        let edit = DomSourceEdit::destroy(target);
+        assert!(matches!(
+            context
+                .source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
         ));
         let next = DomStyleRuntime::run_networking(
             &mut session.dom(),
@@ -4010,6 +4049,7 @@ mod tests {
     {
         struct NestedContext {
             styles: DomStyleRuntime,
+            source: DomSourceRuntime,
             observer: DomStyleRuntime,
             root: NodeId,
             parent: NodeId,
@@ -4029,6 +4069,7 @@ mod tests {
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut context = NestedContext {
             styles: session.style_execution(),
+            source: session.source_execution(),
             observer: session.style_execution(),
             root: document,
             parent,
@@ -4062,15 +4103,17 @@ mod tests {
                     context.safe_adjusted = context.styles.set_limits(dom, raised, &cancel).is_ok();
                     let mut batch = DomBatch::new();
                     let nested = batch.create_element_ns(context.root, Namespace::html(), "style");
-                    batch.insert_before(&nested, context.parent, None);
+                    let setup = dom.apply(batch, &cancel).unwrap();
+                    let nested = setup.created(&nested).unwrap().unwrap();
+                    let edit = DomSourceEdit::insert_before(nested, context.parent, None);
                     let observer = &context.observer;
                     let seen = &mut context.policy_observed;
                     let root = context.root;
-                    if let DomStyleDriveProgress::Complete(done) = context
-                        .styles
+                    if let DomSourceDriveProgress::Complete(_) = context
+                        .source
                         .apply(
                             dom,
-                            batch,
+                            edit,
                             source_limits(),
                             |source| {
                                 *seen = observer.snapshot(root).is_ok_and(|value| value.is_some());
@@ -4080,7 +4123,7 @@ mod tests {
                         )
                         .unwrap()
                     {
-                        context.nested = done.published_creation(&nested).unwrap();
+                        context.nested = Some(nested);
                     }
                     Ok(())
                 }),
@@ -4145,6 +4188,7 @@ mod tests {
         let shadow = done.created(&shadow).unwrap().unwrap();
         let mut session = DomSession::new(owner, session_limits(limits())).unwrap();
         let mut styles = session.style_execution();
+        let mut source = session.source_execution();
         styles
             .bind_root(
                 &session.dom(),
@@ -4158,30 +4202,42 @@ mod tests {
             .unwrap();
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
-        batch.insert_before(&target, shadow, None);
-        let DomStyleDriveProgress::Complete(done) = styles
-            .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+        let setup = session.dom().apply(batch, &cancel).unwrap();
+        let target = setup.created(&target).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(target, shadow, None);
+        let DomSourceDriveProgress::Complete(_) = source
+            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
             .unwrap()
         else {
             panic!("actual creation completes");
         };
-        let target = done.published_creation(&target).unwrap().unwrap();
         let historical_dom = session.snapshot();
         let historical_cssom = styles.snapshot(shadow).unwrap().unwrap();
         let sheet = historical_cssom.sheets()[0].clone();
-        let mut batch = DomBatch::new();
-        batch.detach(host);
-        batch.destroy(host);
         assert!(matches!(
-            styles
-                .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
+            source
+                .apply(
+                    &mut session.dom(),
+                    DomSourceEdit::detach(host),
+                    source_limits(),
+                    policy,
+                    &cancel
+                )
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
+        ));
+        let edit = DomSourceEdit::destroy(host);
+        assert!(matches!(
+            source
+                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
         ));
         assert!(styles.snapshot(shadow).unwrap().is_none());
         assert!(styles.pending_sheet(0).unwrap().is_some());
         let mut context = Context {
             styles,
+            source,
             events: Vec::new(),
         };
         let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -4416,6 +4472,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
         let mut permission = session.style_execution();
+        let mut source = session.source_execution();
         let original = permission.original().unwrap();
         let before = permission.snapshot(document).unwrap().unwrap();
         let (current, capacity, task) = {
@@ -4433,16 +4490,17 @@ mod tests {
             + size_of::<DomStyleProcessedSheet>()
             - 1;
         permission.set_limits(&session.dom(), low, &cancel).unwrap();
-        let mut batch = DomBatch::new();
-        batch.set_attribute(target, "title", "changed");
+        let edit = DomSourceEdit::set_attribute(target, "title", "changed");
         assert!(
             matches!(
-                permission.apply(&mut session.dom(), batch, source_limits(), policy, &cancel),
-                Err(DomStyleRuntimeError::Admission)
+                source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+                Err(DomSourceRuntimeError::Style(
+                    DomStyleRuntimeError::Admission
+                ))
             ),
             "report replacement must be admitted before actual CSSOM owner edit"
         );
-        let operation = session.dom().pending_style_edit().unwrap().operation();
+        let operation = session.dom().pending_source_edit().unwrap().operation();
         assert_eq!(
             permission.snapshot(document).unwrap().unwrap().revision(),
             before.revision()
@@ -4460,7 +4518,7 @@ mod tests {
             .set_limits(&session.dom(), exact, &cancel)
             .unwrap();
         assert!(matches!(
-            permission
+            source
                 .resume(
                     &mut session.dom(),
                     operation,
@@ -4469,7 +4527,7 @@ mod tests {
                     &cancel
                 )
                 .unwrap(),
-            DomStyleDriveProgress::Complete(_)
+            DomSourceDriveProgress::Complete(_)
         ));
         let after = permission.snapshot(document).unwrap().unwrap();
         assert_eq!(after.owner(), before.owner());
@@ -4533,9 +4591,10 @@ mod replacement_test {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomBatch, DomLimits, DomStyleEditLimits, Namespace};
+    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, Namespace};
     struct Context {
         styles: DomStyleRuntime,
+        source: DomSourceRuntime,
         calls: usize,
         replacement: Option<DomStyleRuntime>,
     }
@@ -4567,9 +4626,11 @@ mod replacement_test {
         let other_session = DomSession::new(other_dom, session_limits(limits())).unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let permission = session.style_execution();
+        let source = session.source_execution();
         let mut dom = session.dom();
         let mut context = Context {
             styles: permission,
+            source,
             calls: 0,
             replacement: Some(other_session.style_execution()),
         };
@@ -4587,13 +4648,15 @@ mod replacement_test {
             .unwrap();
         let mut b = DomBatch::new();
         let style = b.create_element_ns(document, Namespace::html(), "style");
-        b.insert_before(&style, document, None);
-        let DomStyleDriveProgress::Complete(done) = context
-            .styles
+        let setup = dom.apply(b, &cancel).unwrap();
+        let style = setup.created(&style).unwrap().unwrap();
+        let edit = DomSourceEdit::insert_before(style, document, None);
+        let DomSourceDriveProgress::Complete(_) = context
+            .source
             .apply(
                 &mut dom,
-                b,
-                DomStyleEditLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096),
+                edit,
+                DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096),
                 |source| Some(DomStyleInlineCspObservation::complete_empty(source, 1)),
                 &cancel,
             )
@@ -4601,7 +4664,6 @@ mod replacement_test {
         else {
             panic!("processed")
         };
-        let style = done.published_creation(&style).unwrap().unwrap();
 
         let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
             registrations: 8,

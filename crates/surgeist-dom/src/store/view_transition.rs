@@ -43,8 +43,8 @@ impl DraftTransitions {
     pub(super) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<style::storage::Payload, DomError> {
-        let mut payload = style::storage::Payload::default();
+    ) -> Result<source::storage::Payload, DomError> {
+        let mut payload = source::storage::Payload::default();
         for transition in &self.transitions {
             for record in &transition.records {
                 step()?;
@@ -56,7 +56,7 @@ impl DraftTransitions {
     }
     pub(super) fn checkpoint(
         &self,
-        a: &mut style::checkpoint::Admission<'_>,
+        a: &mut source::checkpoint::Admission<'_>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         let mut documents = Vec::new();
@@ -209,26 +209,26 @@ impl DraftTransitions {
     }
     pub(super) fn new_formed(
         value: &ViewTransitions,
-        initial: Option<&style::initial::Initial>,
+        initial: Option<&source::initial::Initial>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         let mut documents = Vec::new();
-        style::initial::reserve(&mut documents, value.documents.len(), initial, cancel)?;
+        source::initial::reserve(&mut documents, value.documents.len(), initial, cancel)?;
         for d in &value.documents {
-            style::initial::step(initial, cancel)?;
+            source::initial::step(initial, cancel)?;
             documents.push(DraftDocument {
                 value: d.clone(),
                 active: d.active.map(TransitionKey::Existing),
             });
         }
         let mut transitions = Vec::new();
-        style::initial::reserve(&mut transitions, value.transitions.len(), initial, cancel)?;
+        source::initial::reserve(&mut transitions, value.transitions.len(), initial, cancel)?;
         for t in &value.transitions {
-            style::initial::step(initial, cancel)?;
+            source::initial::step(initial, cancel)?;
             let mut records = Vec::new();
-            style::initial::reserve(&mut records, t.records.len(), initial, cancel)?;
+            source::initial::reserve(&mut records, t.records.len(), initial, cancel)?;
             for r in &t.records {
-                style::initial::step(initial, cancel)?;
+                source::initial::step(initial, cancel)?;
                 records.push(DraftRecord {
                     key: RecordKey::Existing(r.id),
                     name: r.name.clone(),
@@ -337,17 +337,17 @@ impl DraftTransitions {
     pub(super) fn finish(
         &self,
         owner: DomOwnerId,
-        budget: Option<&style::formation::Formation>,
+        budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FinishedTransitions, DomError> {
         let mut transitions = Vec::new();
         let mut transition_ids = Vec::new();
         let mut record_ids = Vec::new();
-        style::formation::reserve(&mut transitions, self.transitions.len(), budget, cancel)?;
-        style::formation::reserve(&mut transition_ids, self.transition_tickets, budget, cancel)?;
+        source::formation::reserve(&mut transitions, self.transitions.len(), budget, cancel)?;
+        source::formation::reserve(&mut transition_ids, self.transition_tickets, budget, cancel)?;
         transition_ids.extend(self.published_transitions.iter().copied());
         transition_ids.resize(self.transition_tickets, None);
-        style::formation::reserve(&mut record_ids, self.record_tickets, budget, cancel)?;
+        source::formation::reserve(&mut record_ids, self.record_tickets, budget, cancel)?;
         record_ids.extend(self.published_records.iter().copied());
         record_ids.resize(self.record_tickets, None);
         let mut next_transition = self.next_transition;
@@ -368,11 +368,11 @@ impl DraftTransitions {
                 }
             };
             let mut records = Vec::new();
-            style::formation::reserve(&mut records, t.records.len(), budget, cancel)?;
+            source::formation::reserve(&mut records, t.records.len(), budget, cancel)?;
             let mut next_record = t.next_record;
             for r in &t.records {
                 if let Some(budget) = budget {
-                    let mut payload = style::storage::Payload::default();
+                    let mut payload = source::storage::Payload::default();
                     payload.add_bytes(size_of::<surgeist_css::CssViewTransitionIdent>())?;
                     payload.add_bytes(r.name.retained_buffer_bytes())?;
                     budget.retain_payload(payload, cancel)?;
@@ -413,7 +413,7 @@ impl DraftTransitions {
             });
         }
         let mut documents = Vec::new();
-        style::formation::reserve(&mut documents, self.documents.len(), budget, cancel)?;
+        source::formation::reserve(&mut documents, self.documents.len(), budget, cancel)?;
         for d in &self.documents {
             let mut value = d.value.clone();
             value.active = match d.active {
@@ -493,7 +493,7 @@ impl Draft {
                 1,
                 cancelled,
             )?;
-            style::reserve_bank(&mut self.view_transitions.documents, 1, admitted)?;
+            source::reserve_bank(&mut self.view_transitions.documents, 1, admitted)?;
             self.source_admit(0, cancelled)?;
             self.view_transitions.documents.push(DraftDocument {
                 value: DomDocumentViewTransitions {
@@ -539,7 +539,7 @@ impl Draft {
                     1,
                     cancelled,
                 )?;
-                style::reserve_bank(&mut self.view_transitions.transitions, 1, admitted)?;
+                source::reserve_bank(&mut self.view_transitions.transitions, 1, admitted)?;
                 self.source_admit(0, cancelled)?;
                 let key = TransitionKey::Created(*ticket);
                 self.view_transitions.transitions.push(DraftTransition {
@@ -592,7 +592,7 @@ impl Draft {
                 let incoming_bytes = size_of::<surgeist_css::CssViewTransitionIdent>()
                     .checked_add(name.retained_buffer_bytes())
                     .ok_or(DomError::RepresentationExhausted)?;
-                let incoming = style::formation::Formation::new(self, cancelled)?;
+                let incoming = source::formation::Formation::new(self, cancelled)?;
                 if let Some(incoming) = &incoming {
                     incoming.retain_bytes(incoming_bytes, cancelled)?;
                 }
@@ -606,7 +606,7 @@ impl Draft {
                     1,
                     cancelled,
                 )?;
-                style::reserve_bank(
+                source::reserve_bank(
                     &mut self.view_transitions.transitions[t].records,
                     1,
                     admitted,
@@ -923,12 +923,12 @@ impl ViewTransitions {
         &self,
         old: &Self,
         changes: &mut Vec<DomChange>,
-        budget: Option<&style::formation::Formation>,
+        budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         for d in &self.documents {
             if old.documents.iter().find(|o| o.document == d.document) != Some(d) {
-                style::formation::reserve(changes, 1, budget, cancel)?;
+                source::formation::reserve(changes, 1, budget, cancel)?;
                 changes.push(DomChange::ViewTransitionDocument(d.document));
             }
         }
@@ -941,7 +941,7 @@ impl ViewTransitions {
             if changes.contains(&DomChange::ViewTransition(t.id)) {
                 continue;
             }
-            style::formation::reserve(changes, 1, budget, cancel)?;
+            source::formation::reserve(changes, 1, budget, cancel)?;
             changes.push(DomChange::ViewTransition(t.id));
             for r in before
                 .into_iter()
@@ -952,13 +952,13 @@ impl ViewTransitions {
                 let new_record = after.and_then(|t| t.records.iter().find(|new| new.id == r.id));
                 let change = DomChange::ViewTransitionRecord(r.id);
                 if old_record != new_record && !changes.contains(&change) {
-                    style::formation::reserve(changes, 1, budget, cancel)?;
+                    source::formation::reserve(changes, 1, budget, cancel)?;
                     changes.push(change);
                 }
             }
             if let (Some(before), Some(after)) = (before, after) {
                 if before.root_captured != after.root_captured {
-                    style::formation::reserve(changes, 1, budget, cancel)?;
+                    source::formation::reserve(changes, 1, budget, cancel)?;
                     changes.push(DomChange::ViewTransitionCaptured(
                         DomViewTransitionSubject::Pseudo(pseudo_id(
                             t.id,
@@ -976,7 +976,7 @@ impl ViewTransitions {
                             DomViewTransitionPseudoKind::New,
                         ] {
                             if r.captured[flag_index(kind)] != old.captured[flag_index(kind)] {
-                                style::formation::reserve(changes, 1, budget, cancel)?;
+                                source::formation::reserve(changes, 1, budget, cancel)?;
                                 changes.push(DomChange::ViewTransitionCaptured(
                                     DomViewTransitionSubject::Pseudo(pseudo_id(
                                         t.id,
@@ -1129,8 +1129,8 @@ mod tests {
             .unwrap();
         (dom, document, transition)
     }
-    fn source_append_limits(bytes: usize) -> crate::DomStyleEditLimits {
-        crate::DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
+    fn source_append_limits(bytes: usize) -> crate::DomSourceLimits {
+        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
     }
     fn long_append_batch(
         dom: &Dom,
@@ -1174,9 +1174,9 @@ mod tests {
         append_observation::start();
         let completed = {
             let mut lease = dom
-                .begin_style_batch(batch, source_append_limits(4_000_000), &cancel)
+                .begin_source_commands(batch, source_append_limits(4_000_000), &cancel)
                 .unwrap();
-            let crate::DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            let crate::DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
                 panic!("scalar VT source completes without Style service");
             };
             done
@@ -1211,7 +1211,7 @@ mod tests {
         append_observation::start();
         let refused = {
             let mut lease = dom
-                .begin_style_batch(batch, source_append_limits(observed.required - 1), &cancel)
+                .begin_source_commands(batch, source_append_limits(observed.required - 1), &cancel)
                 .unwrap();
             lease.advance(&cancel)
         };
@@ -1220,7 +1220,7 @@ mod tests {
             matches!(
                 refused,
                 Err(DomError::ResourceLimit {
-                    resource: DomResource::StyleRetainedBytes,
+                    resource: DomResource::SourceRetainedBytes,
                     ..
                 })
             ),
@@ -1237,7 +1237,7 @@ mod tests {
         );
         assert_eq!(*dom.state, *before.state);
         assert_eq!(dom.usage(), usage);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
     }
 
     #[test]
@@ -1269,7 +1269,7 @@ mod tests {
                 matches!(
                     result,
                     Err(DomError::ResourceLimit {
-                        resource: DomResource::StyleRetainedBytes,
+                        resource: DomResource::SourceRetainedBytes,
                         ..
                     })
                 ),
@@ -1354,7 +1354,7 @@ mod tests {
             let spent = draft.source_work.load(Ordering::Relaxed);
             let limit = spent + incoming.as_str().len() as u64;
             if stop == 0 {
-                draft.source_limits = Some(crate::DomStyleEditLimits::new(
+                draft.source_limits = Some(crate::DomSourceLimits::new(
                     4_000_000, 1_000_000, limit, 64, 4096, 4096,
                 ));
             }
@@ -1371,7 +1371,7 @@ mod tests {
             cancel.store(false, Ordering::Release);
             match stop {
                 0 => {
-                    assert_eq!(result, Err(DomError::StyleWorkLimit { limit }));
+                    assert_eq!(result, Err(DomError::SourceWorkLimit { limit }));
                     assert_eq!(draft.source_work.load(Ordering::Relaxed), limit);
                 }
                 1 => assert_eq!(result, Err(DomError::Cancelled)),
@@ -1394,11 +1394,11 @@ mod tests {
         clear.clear_view_transition_state(stamp, transition);
         clear.release_view_transition(stamp, transition);
         let mut lease = dom
-            .begin_style_batch(clear, source_append_limits(4_000_000), &cancel)
+            .begin_source_commands(clear, source_append_limits(4_000_000), &cancel)
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            crate::DomStyleProgress::Complete(_)
+            crate::DomSourceProgress::Complete(_)
         ));
         drop(lease);
         assert_eq!(dom.usage().string_code_units(), before_units);

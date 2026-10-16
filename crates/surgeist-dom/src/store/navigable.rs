@@ -15,16 +15,14 @@ impl Draft {
         let DomNodeKind::Element(element) = &node.kind else {
             return Ok(());
         };
-        let frame = element.frame_null_content();
-        let iframe = element.iframe_native_state();
-        if frame.is_none() && iframe.is_none() {
+        if element.child_navigable().is_none() {
             return Ok(());
         }
         let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
             unreachable!("canonical navigable-container node document")
         };
         let context = document.document_environment().browsing_context();
-        let returned = if frame.is_some() {
+        let returned = if element.iframe_initial_state().is_none() {
             matches!(
                 surgeist_html::frame_post_connection(context),
                 HtmlFramePostConnectionDecision::Return
@@ -52,13 +50,9 @@ impl Draft {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Ok(());
         };
-        let destroy = if let Some(state) = element.frame_null_content() {
-            state.removal_requires_child_destruction()
-        } else if let Some(state) = element.iframe_native_state() {
-            state.removal_requires_child_destruction()
-        } else {
-            false
-        };
+        let destroy = element.child_navigable_presence().is_some_and(
+            surgeist_html::HtmlChildNavigablePresence::removal_requires_child_destruction,
+        );
         if destroy {
             return Err(DomError::HostedSourceUnavailable);
         }

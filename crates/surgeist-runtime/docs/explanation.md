@@ -72,8 +72,9 @@ acknowledgement errors.
 
 `DomSession` owns the original canonical `Dom`, CSSOM resources, Details task
 state and native hosted lifecycle. Its explicit `DomSessionLimits` admits each
-domain's actual storage and work. `style_execution()`, `details_execution()` and
-`hosted_execution()` return weak permissions into that same session. Dropping or
+domain's actual storage and work. `source_execution()`, `style_execution()`,
+`details_execution()` and `hosted_execution()` return weak permissions into
+that same session. Dropping or
 reacquiring a permission preserves the original resources, queues and spent work.
 The scoped `DomEventDom` view permits canonical edits without exposing a
 replaceable mutable owner or its source issuer. Session construction refuses
@@ -81,7 +82,8 @@ prebound Style custody and prior nonempty standalone Details transfers whose
 external task custody it cannot recover.
 
 DOM owns each source operation's identity and published continuation. Runtime
-drives its requests through the CSS and CSSOM owners, retains acknowledged
+drives one edit or named feature operation through that same canonical engine.
+The Source driver routes Style requests through the CSS and CSSOM owners, retains acknowledged
 publications and queues the actual notification tasks. A later cancellation or
 refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
@@ -99,7 +101,13 @@ session when obligations remain.
 the canonical DOM source protocol. The resulting Document, browsing context,
 history entry and Global have distinct checked identities. Settings read the
 actual associated Document; a captured settings value remains historical after
-later edits. Creation uses a shared monotonic clock domain and fallible OS
+later edits. The original Settings retain the constructor's actual creation and
+top-level creation URL records before native execution is sealed. For this
+no-opener top-level constructor, both refer to the same issued record. Their
+readbacks borrow `HtmlBaseUrlRecord`; use `serialization()` when the spelling is
+needed. Current base selection still follows the associated Document. Storage
+refusal preserves the original operation and its records for a bounded retry.
+Creation uses a shared monotonic clock domain and fallible OS
 entropy for the two history UUIDs. Unsupported clock or entropy providers return
 typed errors. Neither UUID generation nor cancellation promises to interrupt an
 OS entropy call.

@@ -1,7 +1,7 @@
 //! Original OptionValue capture/query under the current synchronous envelope.
 use super::*;
-use style::checkpoint::Charge;
-use style::storage::Payload;
+use source::checkpoint::Charge;
+use source::storage::Payload;
 use surgeist_html_semantics::*;
 
 /// The actual returned occurrence drops before its accounting permission.
@@ -24,8 +24,8 @@ impl Producer {
     ) -> Result<Self, DomError> {
         // Do not retain Formation's snapshot across mapping growth. Only its
         // empty movable charge survives; each allowance is derived anew.
-        let charge = style::formation::Formation::new(draft, cancel)?
-            .map(style::formation::Formation::into_charge);
+        let charge = source::formation::Formation::new(draft, cancel)?
+            .map(source::formation::Formation::into_charge);
         let envelope = draft.option_value_envelope(Default::default(), cancel)?;
         let result = HtmlControlledOptionValueCapture::new(
             limits,
@@ -112,17 +112,17 @@ impl Draft {
         admit(
             bytes,
             limits.retained_bytes,
-            DomResource::StyleRetainedBytes,
+            DomResource::SourceRetainedBytes,
         )?;
         admit(
             units,
             limits.retained_units,
-            DomResource::StyleRetainedUnits,
+            DomResource::SourceRetainedUnits,
         )?;
         let work = limits
             .work
             .checked_sub(self.source_work.load(Ordering::Relaxed))
-            .ok_or(DomError::StyleWorkLimit { limit: limits.work })?;
+            .ok_or(DomError::SourceWorkLimit { limit: limits.work })?;
         Ok(HtmlOptionValueEnvelope::new(
             limits.retained_bytes - bytes,
             limits.retained_units - units,
@@ -192,26 +192,26 @@ impl Draft {
                     .expect("only a bounded Source allowance can be exceeded");
                 match resource {
                     HtmlOptionValueResource::LiveBytes => DomError::ResourceLimit {
-                        resource: DomResource::StyleRetainedBytes,
+                        resource: DomResource::SourceRetainedBytes,
                         limit: limits.retained_bytes,
                     },
                     HtmlOptionValueResource::LiveUtf16 => DomError::ResourceLimit {
-                        resource: DomResource::StyleRetainedUnits,
+                        resource: DomResource::SourceRetainedUnits,
                         limit: limits.retained_units,
                     },
                     HtmlOptionValueResource::Work => {
-                        DomError::StyleWorkLimit { limit: limits.work }
+                        DomError::SourceWorkLimit { limit: limits.work }
                     }
                 }
             }
         }
     }
     fn option_value_header<T>(&self, cancel: &AtomicBool) -> Result<Option<Charge>, DomError> {
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(formation) = &formation {
             formation.retain_bytes(size_of::<ScratchVec<T>>(), cancel)?;
         }
-        Ok(formation.map(style::formation::Formation::into_charge))
+        Ok(formation.map(source::formation::Formation::into_charge))
     }
     pub(super) fn controlled_option_value(
         &self,
@@ -358,7 +358,7 @@ impl Draft {
         match report.results()[0].fact() {
             HtmlSemanticFact::OptionValue(HtmlSemanticValue::Known(readback)) => {
                 let (value, payload) =
-                    style::formation::shared_string(self, readback.value(), cancel)?;
+                    source::formation::shared_string(self, readback.value(), cancel)?;
                 Ok(Value { value, payload })
             }
             _ => Err(DomError::SelectProtocol),
@@ -449,8 +449,8 @@ mod tests {
             capacity,
         )
     }
-    fn limits(bytes: usize) -> crate::DomStyleEditLimits {
-        crate::DomStyleEditLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096)
+    fn limits(bytes: usize) -> crate::DomSourceLimits {
+        crate::DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096)
     }
     fn source_value(bytes: usize) -> (Option<observation::Boundary>, Result<(), DomError>) {
         let (mut dom, select, _, _) = fixture();
@@ -458,13 +458,13 @@ mod tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_select_value(select, "chosen");
-        let mut lease = match dom.begin_style_batch(batch, limits(bytes), &cancel) {
+        let mut lease = match dom.begin_source_commands(batch, limits(bytes), &cancel) {
             Ok(lease) => lease,
             Err(error) => return (None, Err(error)),
         };
         observation::start();
         let result = lease.advance(&cancel).map(|progress| {
-            assert!(matches!(progress, crate::DomStyleProgress::Complete(_)));
+            assert!(matches!(progress, crate::DomSourceProgress::Complete(_)));
         });
         let boundary = observation::finish();
         if result.is_err() {
@@ -496,7 +496,7 @@ mod tests {
                     matches!(
                         result,
                         Err(DomError::ResourceLimit {
-                            resource: DomResource::StyleRetainedBytes,
+                            resource: DomResource::SourceRetainedBytes,
                             ..
                         })
                     ),
@@ -560,7 +560,7 @@ mod tests {
         // Empty-Draft footprint observations contain no per-node work here.
         let bytes = baseline + size_of::<HtmlControlledOptionValueCapture>() - 1;
         let before = draft.source_work.load(Ordering::Relaxed);
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             bytes,
             0,
             before + 3,
@@ -575,7 +575,7 @@ mod tests {
             assert_eq!(
                 error,
                 DomError::ResourceLimit {
-                    resource: DomResource::StyleRetainedBytes,
+                    resource: DomResource::SourceRetainedBytes,
                     limit: bytes
                 }
             );
@@ -589,7 +589,7 @@ mod tests {
         }
         assert_eq!(
             Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel).err(),
-            Some(DomError::StyleWorkLimit { limit: before + 3 })
+            Some(DomError::SourceWorkLimit { limit: before + 3 })
         );
         assert_eq!(draft.source_work.load(Ordering::Relaxed), before + 3);
         assert_eq!(draft.select_semantic_work.get(), 0);
@@ -741,10 +741,12 @@ mod tests {
         commands.insert_before(style, document.node(), None);
         commands.set_select_value(select, "chosen");
         let mut lease = dom
-            .begin_style_batch(commands, limits(16_000_000), &cancel)
+            .begin_source_commands(commands, limits(16_000_000), &cancel)
             .unwrap();
         let operation = lease.operation();
-        let crate::DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+        let crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual inline policy")
         };
         lease
@@ -754,10 +756,12 @@ mod tests {
                 &cancel,
             )
             .unwrap();
-        let crate::DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual sheet creation")
         };
-        let root = crate::store::style::operation::accounting_tests::commit_actual_empty_sheet(
+        let root = crate::store::source::operation::accounting_tests::commit_actual_empty_sheet(
             &mut lease, &create, &cancel,
         );
         let cssom_revision = root.snapshot().unwrap().revision().clone();
@@ -780,22 +784,22 @@ mod tests {
         let parked = lease.snapshot().stamp();
         drop(lease);
         assert_eq!(
-            dom.pending_style_edit().unwrap().spent_work(),
+            dom.pending_source_edit().unwrap().spent_work(),
             first_status.spent_work()
         );
         cancel.store(true, Ordering::Relaxed);
         assert_eq!(
-            dom.resume_style_edit(operation, limits(16_000_000), &cancel)
+            dom.resume_source_edit(operation, limits(16_000_000), &cancel)
                 .err(),
             Some(DomError::Cancelled)
         );
         assert_eq!(
-            dom.pending_style_edit().unwrap().spent_work(),
+            dom.pending_source_edit().unwrap().spent_work(),
             first_status.spent_work()
         );
         cancel.store(false, Ordering::Relaxed);
         let mut lease = dom
-            .resume_style_edit(operation, limits(16_000_000), &cancel)
+            .resume_source_edit(operation, limits(16_000_000), &cancel)
             .unwrap();
         let DomError::SelectSemantic(second) = lease.advance(&cancel).unwrap_err() else {
             panic!("spent work must remain spent")
@@ -822,7 +826,7 @@ mod tests {
         dom.set_limits(query_policy(&dom, 1_000_000, record, 128))
             .unwrap();
         let mut lease = dom
-            .resume_style_edit(operation, limits(16_000_000), &cancel)
+            .resume_source_edit(operation, limits(16_000_000), &cancel)
             .unwrap();
         let DomError::SelectSemantic(third) = lease.advance(&cancel).unwrap_err() else {
             panic!("spent allocation must remain spent")
@@ -845,7 +849,7 @@ mod tests {
         dom.set_limits(query_policy(&dom, 1_000_000, 2 * record, 128))
             .unwrap();
         let mut lease = dom
-            .resume_style_edit(operation, limits(16_000_000), &cancel)
+            .resume_source_edit(operation, limits(16_000_000), &cancel)
             .unwrap();
         // Current-command headroom runs this same original query once. Its
         // successful scan spends record2; actual execution sees no remaining
@@ -877,14 +881,14 @@ mod tests {
         dom.set_limits(query_policy(&dom, 1_000_000, 3 * record, 128))
             .unwrap();
         let mut lease = dom
-            .resume_style_edit(operation, limits(16_000_000), &cancel)
+            .resume_source_edit(operation, limits(16_000_000), &cancel)
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            crate::DomStyleProgress::Complete(_)
+            crate::DomSourceProgress::Complete(_)
         ));
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert_eq!(root.snapshot().unwrap().revision(), &cssom_revision);
         assert_eq!(root.snapshot().unwrap().sheets().len(), 1);
         assert!(
@@ -919,10 +923,12 @@ mod tests {
         commands.insert_before(style, document.node(), None);
         commands.set_select_value(select, "chosen");
         let mut lease = dom
-            .begin_style_batch(commands, limits(16_000_000), &cancel)
+            .begin_source_commands(commands, limits(16_000_000), &cancel)
             .unwrap();
         let operation = lease.operation();
-        let crate::DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+        let crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual inline policy")
         };
         lease
@@ -932,10 +938,12 @@ mod tests {
                 &cancel,
             )
             .unwrap();
-        let crate::DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+        let crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
             panic!("actual sheet creation")
         };
-        let root = crate::store::style::operation::accounting_tests::commit_actual_empty_sheet(
+        let root = crate::store::source::operation::accounting_tests::commit_actual_empty_sheet(
             &mut lease, &create, &cancel,
         );
         let cssom_revision = root.snapshot().unwrap().revision().clone();
@@ -963,14 +971,14 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .semantic_usage_for_test();
-            (work, bytes, dom.pending_style_edit().unwrap().spent_work())
+            (work, bytes, dom.pending_source_edit().unwrap().spent_work())
         };
-        let custody = |dom: &Dom| dom.pending_style_edit().unwrap();
+        let custody = |dom: &Dom| dom.pending_source_edit().unwrap();
         let original_usage = usage(&dom);
         let original_custody = custody(&dom);
         assert_eq!(original_usage.0, 1);
         assert_eq!(original_usage.1, record);
-        assert!(dom.pending_style_edit().unwrap().has_published());
+        assert!(dom.pending_source_edit().unwrap().has_published());
         let previous = dom.limits();
         let lowered = if work {
             query_policy(&dom, 0, 2 * record, 128)
@@ -1012,7 +1020,7 @@ mod tests {
         assert_eq!(custody(&dom), original_custody);
         cancel.store(true, Ordering::Relaxed);
         assert!(matches!(
-            dom.resume_style_edit(operation, limits(16_000_000), &cancel),
+            dom.resume_source_edit(operation, limits(16_000_000), &cancel),
             Err(DomError::Cancelled)
         ));
         assert_eq!(usage(&dom), original_usage);
@@ -1021,16 +1029,16 @@ mod tests {
         dom.set_limits(query_policy(&dom, 1_000_000, 3 * record, 128))
             .unwrap();
         let mut lease = dom
-            .resume_style_edit(operation, limits(16_000_000), &cancel)
+            .resume_source_edit(operation, limits(16_000_000), &cancel)
             .unwrap();
         assert_eq!(lease.operation(), operation);
         assert!(lease.status().spent_work() >= first_status.spent_work());
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            crate::DomStyleProgress::Complete(_)
+            crate::DomSourceProgress::Complete(_)
         ));
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert_eq!(root.snapshot().unwrap().revision(), &cssom_revision);
         assert_eq!(root.snapshot().unwrap().sheets().len(), 1);
         assert!(

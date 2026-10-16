@@ -134,7 +134,7 @@ impl Scan {
                 .checked_add(remaining_phases)
                 .ok_or(DomError::RepresentationExhausted)?;
             if required > limits.phases {
-                return Err(DomError::StylePublicationLimit);
+                return Err(DomError::SourcePublicationLimit);
             }
             dom.revision
                 .0
@@ -355,8 +355,8 @@ mod tests {
         select: NodeId,
         details: [NodeId; 2],
     }
-    fn limits(bytes: usize) -> crate::DomStyleEditLimits {
-        crate::DomStyleEditLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
+    fn limits(bytes: usize) -> crate::DomSourceLimits {
+        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
     }
     fn fixture() -> Fixture {
         let mut dom = Dom::new(
@@ -496,7 +496,7 @@ mod tests {
         assert!(matches!(
             draft.headroom_style(key, Kind::Update, &cancel),
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             })
         ));
@@ -541,7 +541,7 @@ mod tests {
         ));
         draft.source_invocation = 0;
         let policy = draft.source_limits.unwrap();
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             policy.retained_bytes,
             policy.retained_units,
             policy.work,
@@ -551,7 +551,7 @@ mod tests {
         ));
         assert!(matches!(
             scan.qualify(&draft, &f.dom, 0, &cancel),
-            Err(DomError::StylePublicationLimit)
+            Err(DomError::SourcePublicationLimit)
         ));
         draft.source_limits = Some(limits(16_000_000));
         draft.source_headroom = Some(scan);

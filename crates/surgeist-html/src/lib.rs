@@ -38,6 +38,7 @@ mod native_initialization;
 mod newlines;
 mod nonce;
 mod numeric;
+mod opener_policy;
 mod pi_pseudo_attributes;
 mod reflected_element;
 mod rel;
@@ -57,6 +58,10 @@ mod vocabulary;
 
 pub use attributes::*;
 pub use canvas::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState};
+pub use child_navigable::{
+    HtmlChildNavigableAccessDecision, HtmlChildNavigableLoadDelayDecision,
+    HtmlChildNavigablePresence,
+};
 pub use color::*;
 pub use construction::*;
 pub use control_values::*;
@@ -70,10 +75,12 @@ pub use fragment_initialization::{
     HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode,
     fragment_insertion_mode, fragment_tokenizer_state,
 };
-pub use frame::{HtmlFrameNullContent, HtmlFramePostConnectionDecision, frame_post_connection};
+pub use frame::{
+    HtmlFramePostConnectionDecision, frame_post_connection, frame_potentially_delays_load,
+};
 pub use hyperlink::*;
 pub use iframe::{
-    HtmlIframeNativeState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
+    HtmlIframeInitialState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
     iframe_post_connection,
 };
 pub use image::*;
@@ -102,6 +109,7 @@ pub use numeric::{
     HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericRangeError,
     HtmlRationalError, HtmlSignedDecimal,
 };
+pub use opener_policy::{HtmlOpenerPolicy, HtmlOpenerPolicyValue};
 pub use reflected_element::{
     HtmlReflectedElementSetter, HtmlReflectedElementSetterEffect,
     reflected_element_attribute_change,

@@ -224,20 +224,20 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::BaseFacts,
+            source::formation::mutation_observation::Site::BaseFacts,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = formation.as_ref() {
-            let mut payload = style::storage::Payload::default();
+            let mut payload = source::storage::Payload::default();
             payload.producer(facts.retained_storage_usage())?;
             budget.retain_payload(payload, cancel)?;
         }
         let facts = facts.clone();
         #[cfg(test)]
-        style::formation::mutation_observation::grew_payload(
+        source::formation::mutation_observation::grew_payload(
             growth,
             facts.retained_storage_usage().retained_bytes(),
             facts.retained_storage_usage().utf16_extent(),
@@ -420,9 +420,9 @@ impl Draft {
             .checked_add(value.serialization().len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = formation.as_ref() {
-            let mut payload = style::storage::Payload::default();
+            let mut payload = source::storage::Payload::default();
             payload.producer(value.retained_storage_usage())?;
             budget.retain_payload(payload, cancel)?;
         }
@@ -603,13 +603,13 @@ mod tests {
         dom.apply(b, &cancel).unwrap();
         (dom, doc, base)
     }
-    fn source_base_alias(bytes: usize) -> Option<style::formation::mutation_observation::Growth> {
+    fn source_base_alias(bytes: usize) -> Option<source::formation::mutation_observation::Growth> {
         source_base_alias_limits(bytes, 10_000_000)
     }
     fn source_base_alias_limits(
         bytes: usize,
         units: usize,
-    ) -> Option<style::formation::mutation_observation::Growth> {
+    ) -> Option<source::formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
         let domain = DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 100_000)
             .unwrap()
@@ -658,35 +658,35 @@ mod tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.bind_base_facts(before.document(document).unwrap().stamp(), &facts);
-        let mut lease = match dom.begin_style_batch(
+        let mut lease = match dom.begin_source_commands(
             batch,
-            crate::DomStyleEditLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
+            crate::DomSourceLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
             &cancel,
         ) {
             Ok(lease) => lease,
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => return None,
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedUnits,
+                resource: DomResource::SourceRetainedUnits,
                 ..
             }) if units < 10_000_000 => return None,
             Err(error) => panic!("actual Source setup admission: {error:?}"),
         };
-        style::formation::mutation_observation::start(
-            style::formation::mutation_observation::Site::BaseFacts,
+        source::formation::mutation_observation::start(
+            source::formation::mutation_observation::Site::BaseFacts,
         );
         let result = lease.advance(&cancel);
-        let actual = style::formation::mutation_observation::finish();
+        let actual = source::formation::mutation_observation::finish();
         match result {
-            Ok(crate::DomStyleProgress::Complete(_)) => {}
+            Ok(crate::DomSourceProgress::Complete(_)) => {}
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => assert_eq!(lease.snapshot().stamp(), before.stamp()),
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedUnits,
+                resource: DomResource::SourceRetainedUnits,
                 ..
             }) if units < 10_000_000 => assert_eq!(lease.snapshot().stamp(), before.stamp()),
             other => panic!("actual Source Base result: {other:?}"),

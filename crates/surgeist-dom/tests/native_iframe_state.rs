@@ -1,7 +1,7 @@
 //! Actual native never-BC Iframe state and canonical DOM lifecycle.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlIframeNativeState;
+use surgeist_html::HtmlIframeInitialState;
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {
@@ -10,23 +10,39 @@ fn dom() -> Dom {
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
-fn state(snapshot: &DomSnapshot, node: NodeId) -> HtmlIframeNativeState {
+fn state(snapshot: &DomSnapshot, node: NodeId) -> HtmlIframeInitialState {
     let state = snapshot
         .node(node)
         .unwrap()
         .as_element()
         .unwrap()
-        .iframe_native_state()
+        .iframe_initial_state()
         .unwrap();
-    assert!(state.content_navigable_is_null());
-    assert!(state.content_document_is_null());
-    assert!(state.content_window_is_null());
+    let content = snapshot
+        .node(node)
+        .unwrap()
+        .as_element()
+        .unwrap()
+        .child_navigable_presence()
+        .unwrap();
+    assert_eq!(content, surgeist_html::HtmlChildNavigablePresence::Null);
+    assert_eq!(
+        content.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        content.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
     assert!(!state.current_navigation_was_lazy_loaded());
     assert!(state.pending_resource_timing_start_time_is_null());
     assert!(state.pending_resource_timing_url_is_null());
     assert!(state.lazy_load_resumption_is_null());
     assert!(state.potentially_delays_load());
-    assert!(!state.delays_load());
+    assert_eq!(
+        content.load_delay(),
+        surgeist_html::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+    );
     state
 }
 fn setup(dom: &mut Dom) -> (DocumentId, NodeId) {
@@ -65,7 +81,7 @@ fn exact_family_dispatch_and_actual_html_document_case_rules() {
                 .unwrap()
                 .as_element()
                 .unwrap()
-                .iframe_native_state()
+                .iframe_initial_state()
                 .is_none()
         );
     }
@@ -281,9 +297,9 @@ fn mixed_navigable_containers_share_slot_clone_and_removal_lifecycle() {
             .unwrap()
             .as_element()
             .unwrap()
-            .frame_null_content()
+            .child_navigable()
             .unwrap()
-            .content_navigable_is_null()
+            .is_none()
     );
     state(&s, children[1]);
     let cloned_root = s.node(cloned).unwrap().hosted_shadow_root().unwrap();

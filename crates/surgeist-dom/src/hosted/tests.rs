@@ -424,9 +424,16 @@ fn advance_issuer(source: &DomHostedSource, request: &mut Request) {
 fn execution_request(fixture: &mut IssuerFixture) -> DomHostedExecutionRequest {
     let mut request = begin_request(fixture, 10);
     advance_issuer(&fixture.source, &mut request);
+    let inputs = crate::document::HostedDocumentInputs::form(
+        &fixture.source,
+        &request.work,
+        &cancellation(),
+    )
+    .unwrap();
     DomHostedExecutionRequest {
         request,
         origin: fixture.origin.clone(),
+        inputs,
     }
 }
 

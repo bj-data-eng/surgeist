@@ -1868,6 +1868,20 @@ pub surgeist_html::HtmlCanvasBitmapDimension::Parsed(&'a surgeist_html::HtmlNonN
 pub enum surgeist_html::HtmlCapturedNonce
 pub surgeist_html::HtmlCapturedNonce::Unavailable
 pub surgeist_html::HtmlCapturedNonce::Value(surgeist_html::DocumentString)
+pub enum surgeist_html::HtmlChildNavigableAccessDecision
+pub surgeist_html::HtmlChildNavigableAccessDecision::Continue
+pub surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+pub enum surgeist_html::HtmlChildNavigableLoadDelayDecision
+pub surgeist_html::HtmlChildNavigableLoadDelayDecision::Continue
+pub surgeist_html::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+pub enum surgeist_html::HtmlChildNavigablePresence
+pub surgeist_html::HtmlChildNavigablePresence::Null
+pub surgeist_html::HtmlChildNavigablePresence::Present
+impl surgeist_html::HtmlChildNavigablePresence
+pub const fn surgeist_html::HtmlChildNavigablePresence::attribute_change_requires_processing(self) -> bool
+pub const fn surgeist_html::HtmlChildNavigablePresence::content_access(self) -> surgeist_html::HtmlChildNavigableAccessDecision
+pub const fn surgeist_html::HtmlChildNavigablePresence::load_delay(self) -> surgeist_html::HtmlChildNavigableLoadDelayDecision
+pub const fn surgeist_html::HtmlChildNavigablePresence::removal_requires_child_destruction(self) -> bool
 pub enum surgeist_html::HtmlClosedBy
 pub surgeist_html::HtmlClosedBy::Any
 pub surgeist_html::HtmlClosedBy::CloseRequest
@@ -2869,6 +2883,14 @@ pub surgeist_html::HtmlOlType::UpperRoman
 impl surgeist_html::HtmlOlType
 pub fn surgeist_html::HtmlOlType::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlOlType::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlOpenerPolicyValue
+pub surgeist_html::HtmlOpenerPolicyValue::NoopenerAllowPopups
+pub surgeist_html::HtmlOpenerPolicyValue::SameOrigin
+pub surgeist_html::HtmlOpenerPolicyValue::SameOriginAllowPopups
+pub surgeist_html::HtmlOpenerPolicyValue::SameOriginPlusCoep
+pub surgeist_html::HtmlOpenerPolicyValue::UnsafeNone
+impl surgeist_html::HtmlOpenerPolicyValue
+pub const fn surgeist_html::HtmlOpenerPolicyValue::as_str(self) -> &'static str
 pub enum surgeist_html::HtmlOutputAction
 pub surgeist_html::HtmlOutputAction::ClearDefaultOverride
 pub surgeist_html::HtmlOutputAction::Complete
@@ -4341,16 +4363,6 @@ pub fn surgeist_html::HtmlFragmentBuilder::finish(self) -> surgeist_html::HtmlFr
 pub fn surgeist_html::HtmlFragmentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlFragmentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
-pub struct surgeist_html::HtmlFrameNullContent
-impl surgeist_html::HtmlFrameNullContent
-pub const fn surgeist_html::HtmlFrameNullContent::content_document_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::content_navigable_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::content_window_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::delays_load(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::fresh() -> Self
-pub const fn surgeist_html::HtmlFrameNullContent::potentially_delays_load(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::removal_requires_child_destruction(&self) -> bool
-pub const fn surgeist_html::HtmlFrameNullContent::src_change_requires_processing(&self) -> bool
 pub struct surgeist_html::HtmlGlobalDateTime
 impl surgeist_html::HtmlGlobalDateTime
 pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime
@@ -4399,23 +4411,14 @@ pub fn surgeist_html::HtmlIconSizesReport::input(&self) -> &surgeist_html::HtmlT
 pub fn surgeist_html::HtmlIconSizesReport::keywords(&self) -> core::option::Option<&[surgeist_html::HtmlIconSizeKeyword]>
 pub fn surgeist_html::HtmlIconSizesReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlIconSizesReport::resource_conformance(&self) -> surgeist_html::HtmlAttributeContextAuthorState
-pub struct surgeist_html::HtmlIframeNativeState
-impl surgeist_html::HtmlIframeNativeState
-pub const fn surgeist_html::HtmlIframeNativeState::content_document_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::content_navigable_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::content_window_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::current_navigation_was_lazy_loaded(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::delays_load(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::fresh() -> Self
-pub const fn surgeist_html::HtmlIframeNativeState::lazy_load_resumption_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::pending_resource_timing_start_time_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::pending_resource_timing_url_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::potentially_delays_load(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::removal_requires_child_destruction(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::sandbox_change_requires_processing(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::sandbox_removal_requires_clearing(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::src_change_requires_processing(&self) -> bool
-pub const fn surgeist_html::HtmlIframeNativeState::srcdoc_change_requires_processing(&self) -> bool
+pub struct surgeist_html::HtmlIframeInitialState
+impl surgeist_html::HtmlIframeInitialState
+pub const fn surgeist_html::HtmlIframeInitialState::current_navigation_was_lazy_loaded(&self) -> bool
+pub const fn surgeist_html::HtmlIframeInitialState::fresh() -> Self
+pub const fn surgeist_html::HtmlIframeInitialState::lazy_load_resumption_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeInitialState::pending_resource_timing_start_time_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeInitialState::pending_resource_timing_url_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlIframeInitialState::potentially_delays_load(&self) -> bool
 pub struct surgeist_html::HtmlImageTreeEffect
 impl surgeist_html::HtmlImageTreeEffect
 pub const fn surgeist_html::HtmlImageTreeEffect::check_media_parent_selection(self) -> bool
@@ -4979,6 +4982,13 @@ pub struct surgeist_html::HtmlNumericRangeError
 impl core::error::Error for surgeist_html::HtmlNumericRangeError
 impl core::fmt::Display for surgeist_html::HtmlNumericRangeError
 pub fn surgeist_html::HtmlNumericRangeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlOpenerPolicy
+impl surgeist_html::HtmlOpenerPolicy
+pub const fn surgeist_html::HtmlOpenerPolicy::initial() -> Self
+pub const fn surgeist_html::HtmlOpenerPolicy::report_only_reporting_endpoint(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub const fn surgeist_html::HtmlOpenerPolicy::report_only_value(&self) -> surgeist_html::HtmlOpenerPolicyValue
+pub const fn surgeist_html::HtmlOpenerPolicy::reporting_endpoint(&self) -> core::option::Option<&surgeist_html::DocumentString>
+pub const fn surgeist_html::HtmlOpenerPolicy::value(&self) -> surgeist_html::HtmlOpenerPolicyValue
 pub struct surgeist_html::HtmlOptionFlags
 impl surgeist_html::HtmlOptionFlags
 pub const fn surgeist_html::HtmlOptionFlags::dirtiness(&self) -> bool
@@ -5753,6 +5763,7 @@ pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInv
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
 pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedName, effective: surgeist_html::HtmlParserScriptingMode) -> surgeist_html::HtmlFragmentTokenizerState
 pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
+pub const fn surgeist_html::frame_potentially_delays_load() -> bool
 pub fn surgeist_html::hyperlink_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, values_equal: bool) -> surgeist_html::HtmlHyperlinkAttributeEffect
 pub const fn surgeist_html::hyperlink_tree_considers_speculative_loads(change: surgeist_html::HtmlHyperlinkTreeMutation) -> bool
 pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool

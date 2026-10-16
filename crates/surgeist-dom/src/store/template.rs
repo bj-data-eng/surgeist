@@ -70,11 +70,11 @@ impl Draft {
                 let DomNodeKind::Document(source) = &self.node(document)?.kind else {
                     unreachable!("Document role requires Document")
                 };
-                let formation = style::formation::Formation::new(self, cancel)?;
+                let formation = source::formation::Formation::new(self, cancel)?;
                 let metadata = DomDocumentMetadata::template_owner(
                     source.class(),
                     source.document_environment(),
-                    &mut |text| style::formation::string(text, formation.as_ref(), cancel),
+                    &mut |text| source::formation::string(text, formation.as_ref(), cancel),
                 )?;
                 let key = Key::Created(self.created.len());
                 let key = self.allocate(DomNodeKind::Document(metadata), key, limits, cancel)?;

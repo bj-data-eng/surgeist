@@ -4,6 +4,16 @@ Surgeist-authored code uses the repository [MIT License](../../LICENSE).
 
 The selected HTML algorithms and source adaptations retain the [WHATWG notice](../../licenses/whatwg/NOTICE.md).
 
+## Initial opener-policy record
+
+The five opener-policy values and four initial record fields adapt the selected
+HTML edition's [complete definitions](../../references/html-opener-policy-defaults--877d6146487f--d124556cde21.md).
+Reference prose retains CC BY 4.0 attribution; the Rust adaptation uses the
+WHATWG BSD 3-Clause code-incorporation provision with the complete
+[copyright, conditions and disclaimer](../../licenses/whatwg/LICENSE).
+This incorporation covers language values and immutable initial state, without
+header parsing, policy matching, reporting or browsing-context group changes.
+
 ## Intrinsic iframe sandbox directive
 
 The immutable sandbox value/report adapts the selected HTML edition's thirteen

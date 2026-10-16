@@ -83,7 +83,7 @@ pub surgeist_runtime::DomEventDispatchOutcome::RetainedForeignOwner
 pub surgeist_runtime::DomEventDispatchOutcome::RetainedForeignRegistry
 pub surgeist_runtime::DomEventDispatchOutcome::RetainedHostedAuthority(surgeist_dom::hosted::DomHostedError)
 pub surgeist_runtime::DomEventDispatchOutcome::RetainedHostedOperation(surgeist_dom::hosted::DomHostedOperationId)
-pub surgeist_runtime::DomEventDispatchOutcome::RetainedSourceOperation(surgeist_dom::style::DomStyleOperationId)
+pub surgeist_runtime::DomEventDispatchOutcome::RetainedSourceOperation(surgeist_dom::source::DomSourceOperationId)
 pub enum surgeist_runtime::DomEventListenerFailureKind
 pub surgeist_runtime::DomEventListenerFailureKind::Panicked
 pub surgeist_runtime::DomEventListenerFailureKind::Reported(surgeist_runtime::DomEventCallbackError)
@@ -168,12 +168,28 @@ pub surgeist_runtime::DomShutdownReason::HostedLifecycle
 pub surgeist_runtime::DomShutdownReason::LiveResources
 pub surgeist_runtime::DomShutdownReason::NetworkingTask(surgeist_runtime::DomStyleNetworkingTaskId)
 pub surgeist_runtime::DomShutdownReason::Poisoned
-pub surgeist_runtime::DomShutdownReason::SourceTail(surgeist_dom::style::DomStyleOperationId)
-pub enum surgeist_runtime::DomStyleDriveProgress
-pub surgeist_runtime::DomStyleDriveProgress::Complete(surgeist_dom::style::DomStyleEditCompletion)
-pub surgeist_runtime::DomStyleDriveProgress::Pending
-pub surgeist_runtime::DomStyleDriveProgress::Pending::reason: surgeist_runtime::DomStyleUnavailable
-pub surgeist_runtime::DomStyleDriveProgress::Pending::request: surgeist_dom::style::DomStyleRequest
+pub surgeist_runtime::DomShutdownReason::SourceTail(surgeist_dom::source::DomSourceOperationId)
+pub enum surgeist_runtime::DomSourceDriveProgress
+pub surgeist_runtime::DomSourceDriveProgress::Complete(surgeist_dom::source::DomSourceCompletion)
+pub surgeist_runtime::DomSourceDriveProgress::Pending
+pub surgeist_runtime::DomSourceDriveProgress::Pending::reason: surgeist_runtime::DomSourceUnavailable
+pub surgeist_runtime::DomSourceDriveProgress::Pending::request: surgeist_dom::source::DomSourceRequest
+pub enum surgeist_runtime::DomSourceRuntimeError
+pub surgeist_runtime::DomSourceRuntimeError::Details(surgeist_runtime::DomDetailsRuntimeError)
+pub surgeist_runtime::DomSourceRuntimeError::Dom(surgeist_dom::store::DomError)
+pub surgeist_runtime::DomSourceRuntimeError::Hosted(surgeist_runtime::DomHostedRuntimeError)
+pub surgeist_runtime::DomSourceRuntimeError::NativeInstallation(surgeist_dom::installation::DomNativeHtmlInstallError)
+pub surgeist_runtime::DomSourceRuntimeError::Style(surgeist_runtime::DomStyleRuntimeError)
+impl core::convert::From<surgeist_dom::store::DomError> for surgeist_runtime::DomSourceRuntimeError
+pub fn surgeist_runtime::DomSourceRuntimeError::from(error: surgeist_dom::store::DomError) -> Self
+impl core::convert::From<surgeist_runtime::DomStyleRuntimeError> for surgeist_runtime::DomSourceRuntimeError
+pub fn surgeist_runtime::DomSourceRuntimeError::from(error: surgeist_runtime::DomStyleRuntimeError) -> Self
+impl core::error::Error for surgeist_runtime::DomSourceRuntimeError
+pub fn surgeist_runtime::DomSourceRuntimeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::DomSourceRuntimeError
+pub fn surgeist_runtime::DomSourceRuntimeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_runtime::DomSourceUnavailable
+pub surgeist_runtime::DomSourceUnavailable::Style(surgeist_runtime::DomStyleUnavailable)
 pub enum surgeist_runtime::DomStyleNetworkingProgress
 pub surgeist_runtime::DomStyleNetworkingProgress::Complete
 pub surgeist_runtime::DomStyleNetworkingProgress::Complete::receipt: surgeist_runtime::DomEventDispatchReceipt
@@ -200,7 +216,7 @@ pub surgeist_runtime::DomStyleRuntimeError::PreboundSession
 pub surgeist_runtime::DomStyleRuntimeError::Protocol
 pub surgeist_runtime::DomStyleRuntimeError::Resource(surgeist_dom::style::cssom_root::DomStyleCssomRootError)
 pub surgeist_runtime::DomStyleRuntimeError::SessionUnavailable
-pub surgeist_runtime::DomStyleRuntimeError::SourcePending(surgeist_dom::style::DomStyleOperationId)
+pub surgeist_runtime::DomStyleRuntimeError::SourcePending(surgeist_dom::source::DomSourceOperationId)
 pub surgeist_runtime::DomStyleRuntimeError::WrongSession
 impl core::convert::From<surgeist_cssom::model::CssomError> for surgeist_runtime::DomStyleRuntimeError
 pub fn surgeist_runtime::DomStyleRuntimeError::from(e: surgeist_cssom::model::CssomError) -> Self
@@ -208,6 +224,8 @@ impl core::convert::From<surgeist_dom::store::DomError> for surgeist_runtime::Do
 pub fn surgeist_runtime::DomStyleRuntimeError::from(e: surgeist_dom::store::DomError) -> Self
 impl core::convert::From<surgeist_dom::style::cssom_root::DomStyleCssomRootError> for surgeist_runtime::DomStyleRuntimeError
 pub fn surgeist_runtime::DomStyleRuntimeError::from(error: surgeist_dom::style::cssom_root::DomStyleCssomRootError) -> Self
+impl core::convert::From<surgeist_runtime::DomStyleRuntimeError> for surgeist_runtime::DomSourceRuntimeError
+pub fn surgeist_runtime::DomSourceRuntimeError::from(error: surgeist_runtime::DomStyleRuntimeError) -> Self
 impl core::error::Error for surgeist_runtime::DomStyleRuntimeError
 pub fn surgeist_runtime::DomStyleRuntimeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_runtime::DomStyleRuntimeError
@@ -709,7 +727,7 @@ pub fn surgeist_runtime::DomEventDom<'a>::borrow(dom: &'a mut surgeist_dom::stor
 pub fn surgeist_runtime::DomEventDom<'a>::limits(&self) -> surgeist_dom::store::DomLimits
 pub fn surgeist_runtime::DomEventDom<'a>::owner(&self) -> surgeist_dom::identity::DomOwnerId
 pub fn surgeist_runtime::DomEventDom<'a>::pending_details_toggle_intentions(&self) -> usize
-pub fn surgeist_runtime::DomEventDom<'a>::pending_style_edit(&self) -> core::option::Option<surgeist_dom::style::DomStyleEditStatus>
+pub fn surgeist_runtime::DomEventDom<'a>::pending_source_edit(&self) -> core::option::Option<surgeist_dom::source::DomSourceStatus>
 pub fn surgeist_runtime::DomEventDom<'a>::snapshot(&self) -> surgeist_dom::snapshot::DomSnapshot
 pub fn surgeist_runtime::DomEventDom<'a>::style_cssom_root(&self, root: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::style::cssom_root::DomStyleCssomRoot>, surgeist_dom::store::DomError>
 pub fn surgeist_runtime::DomEventDom<'a>::usage(&self) -> surgeist_dom::store::DomUsage
@@ -742,7 +760,7 @@ pub surgeist_runtime::DomHostedRuntimeLimits::work: u64
 pub struct surgeist_runtime::DomHostedSettings
 impl surgeist_runtime::DomHostedSettings
 pub fn surgeist_runtime::DomHostedSettings::clock_source(&self) -> surgeist_dom::hosted::DomHostedSourceId
-pub const fn surgeist_runtime::DomHostedSettings::creation_url(&self) -> &'static str
+pub fn surgeist_runtime::DomHostedSettings::creation_url(&self) -> &surgeist_html_semantics::base::HtmlBaseUrlRecord
 pub const fn surgeist_runtime::DomHostedSettings::cross_origin_isolated(&self) -> bool
 pub const fn surgeist_runtime::DomHostedSettings::cross_site(&self) -> bool
 pub fn surgeist_runtime::DomHostedSettings::document(&self) -> surgeist_dom::snapshot::DomDocument<'_>
@@ -752,7 +770,7 @@ pub fn surgeist_runtime::DomHostedSettings::global(&self) -> surgeist_dom::hoste
 pub fn surgeist_runtime::DomHostedSettings::origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin
 pub fn surgeist_runtime::DomHostedSettings::permissions_policy(&self) -> core::option::Option<surgeist_dom::hosted::DomInitialPermissionsPolicy>
 pub fn surgeist_runtime::DomHostedSettings::time_origin_microseconds(&self) -> u64
-pub const fn surgeist_runtime::DomHostedSettings::top_level_creation_url(&self) -> &'static str
+pub fn surgeist_runtime::DomHostedSettings::top_level_creation_url(&self) -> &surgeist_html_semantics::base::HtmlBaseUrlRecord
 pub struct surgeist_runtime::DomHostedTopLevel
 impl surgeist_runtime::DomHostedTopLevel
 pub const fn surgeist_runtime::DomHostedTopLevel::browsing_context(self) -> surgeist_dom::hosted::DomHostedBrowsingContextId
@@ -768,6 +786,7 @@ pub fn surgeist_runtime::DomSession::dom(&mut self) -> surgeist_runtime::DomEven
 pub fn surgeist_runtime::DomSession::hosted_execution(&self) -> surgeist_runtime::HostedRuntime
 pub fn surgeist_runtime::DomSession::new(dom: surgeist_dom::store::Dom, limits: surgeist_runtime::DomSessionLimits) -> core::result::Result<Self, surgeist_runtime::DomSessionCreateError>
 pub fn surgeist_runtime::DomSession::snapshot(&self) -> surgeist_dom::snapshot::DomSnapshot
+pub fn surgeist_runtime::DomSession::source_execution(&self) -> surgeist_runtime::DomSourceRuntime
 pub fn surgeist_runtime::DomSession::style_execution(&self) -> surgeist_runtime::DomStyleRuntime
 pub fn surgeist_runtime::DomSession::try_shutdown(self) -> surgeist_runtime::DomShutdownOutcome
 impl core::fmt::Debug for surgeist_runtime::DomSession
@@ -786,6 +805,15 @@ pub struct surgeist_runtime::DomSessionLimits
 pub surgeist_runtime::DomSessionLimits::details: surgeist_runtime::DomDetailsRuntimeLimits
 pub surgeist_runtime::DomSessionLimits::hosted: surgeist_runtime::DomHostedRuntimeLimits
 pub surgeist_runtime::DomSessionLimits::style: surgeist_runtime::DomStyleRuntimeLimits
+pub struct surgeist_runtime::DomSourceRuntime
+impl surgeist_runtime::DomSourceRuntime
+pub fn surgeist_runtime::DomSourceRuntime::apply(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, edit: surgeist_dom::source::DomSourceEdit, limits: surgeist_dom::source::DomSourceLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceRuntimeError>
+pub fn surgeist_runtime::DomSourceRuntime::complete_select(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, task: &surgeist_dom::select::DomSelectTask, checkpoint: surgeist_dom::select::DomNativeCheckpointLimits, limits: surgeist_dom::source::DomSourceLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceRuntimeError>
+pub fn surgeist_runtime::DomSourceRuntime::install_native_html(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, target: surgeist_dom::installation::DomNativeHtmlInstallTarget, fragment: &surgeist_html::construction::HtmlFragment, budgets: surgeist_dom::source::DomSourceNativeHtmlInstallLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceRuntimeError>
+pub fn surgeist_runtime::DomSourceRuntime::resume(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, operation: surgeist_dom::source::DomSourceOperationId, limits: surgeist_dom::source::DomSourceLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceRuntimeError>
+pub fn surgeist_runtime::DomSourceRuntime::resume_select(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, operation: surgeist_dom::source::DomSourceOperationId, task: &surgeist_dom::select::DomSelectTask, limits: surgeist_dom::source::DomSourceLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceRuntimeError>
+impl core::fmt::Debug for surgeist_runtime::DomSourceRuntime
+pub fn surgeist_runtime::DomSourceRuntime::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::DomStyleDisabledObservation
 impl surgeist_runtime::DomStyleDisabledObservation
 pub fn surgeist_runtime::DomStyleDisabledObservation::association(&self) -> core::option::Option<surgeist_dom::style::DomStyleAssociationId>
@@ -801,12 +829,10 @@ pub fn surgeist_runtime::DomStyleProcessedSheet::root(&self) -> surgeist_dom::id
 pub fn surgeist_runtime::DomStyleProcessedSheet::sheet(&self) -> &surgeist_cssom::identity::CssomSheetId
 pub struct surgeist_runtime::DomStyleRuntime
 impl surgeist_runtime::DomStyleRuntime
-pub fn surgeist_runtime::DomStyleRuntime::apply(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, batch: surgeist_dom::batch::DomBatch, limits: surgeist_dom::style::DomStyleEditLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleDriveProgress, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::bind_root(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, label: alloc::string::String, input: &mut core::option::Option<surgeist_dom::style::cssom_root::DomStyleCssomRoot>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::disabled(&self, dom: &surgeist_runtime::DomEventDom<'_>, element: surgeist_dom::identity::NodeId) -> core::result::Result<surgeist_runtime::DomStyleDisabledObservation, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::pending_sheet(&self, index: usize) -> core::result::Result<core::option::Option<(surgeist_dom::identity::NodeId, surgeist_cssom::identity::CssomSheetId)>, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::processed_sheet(&self, index: usize) -> core::result::Result<core::option::Option<alloc::sync::Arc<surgeist_runtime::DomStyleProcessedSheet>>, surgeist_runtime::DomStyleRuntimeError>
-pub fn surgeist_runtime::DomStyleRuntime::resume(&mut self, dom: &mut surgeist_runtime::DomEventDom<'_>, operation: surgeist_dom::style::DomStyleOperationId, limits: surgeist_dom::style::DomStyleEditLimits, policy: impl core::ops::function::FnMut(&surgeist_dom::style::DomStyleSource) -> core::option::Option<surgeist_dom::style::DomStyleInlineCspObservation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleDriveProgress, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::run_networking<C: surgeist_runtime::DomStyleEventContext>(dom: &mut surgeist_runtime::DomEventDom<'_>, dispatcher: &mut surgeist_runtime::DomEventDispatcher<C>, context: &mut C, limits: surgeist_runtime::DomEventDispatchLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleNetworkingProgress, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::set_limits(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, limits: surgeist_runtime::DomStyleRuntimeLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::snapshot(&self, root: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_cssom::model::CssomSnapshot>, surgeist_runtime::DomStyleRuntimeError>

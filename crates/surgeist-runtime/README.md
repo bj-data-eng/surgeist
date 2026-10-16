@@ -15,8 +15,10 @@ publication revisions are independent of render invalidations and acknowledgemen
 
 `DomSession` keeps the original canonical DOM, CSSOM resources, Details tasks and
 native hosted lifecycle together. Supply explicit `DomSessionLimits`, edit
-through `dom()`, and obtain weak execution permissions with `style_execution()`,
-`details_execution()` and `hosted_execution()`. `try_shutdown` returns the whole
+through `dom()`, and obtain weak execution permissions with `source_execution()`,
+`style_execution()`, `details_execution()` and `hosted_execution()`. The Source
+driver executes one edit or named feature operation; the Style handle retains
+CSSOM resources, notifications and readback. `try_shutdown` returns the whole
 session while mandatory work remains. Dropping it abandons execution without
 delivering callbacks or claiming completion. The native dispatcher handles real
 Details toggle events, including Global capture for hosted Documents. See

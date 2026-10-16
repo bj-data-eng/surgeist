@@ -24,7 +24,7 @@ impl<K> Pending<K> {
 // The value drops before its non-Clone Source occurrence debit.
 struct DetailsValue {
     value: DocumentString,
-    _payload: Option<style::checkpoint::Charge>,
+    _payload: Option<source::checkpoint::Charge>,
 }
 pub(super) struct Finished {
     pub intentions: Vec<DomDetailsToggleIntention>,
@@ -33,7 +33,7 @@ pub(super) struct Finished {
 }
 pub(super) fn draft_formed(
     source: &[DomDetailsToggleIntention],
-    initial: Option<&style::initial::Initial>,
+    initial: Option<&source::initial::Initial>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Pending<Key>>, DomError> {
     let mut out = Vec::new();
@@ -44,7 +44,7 @@ pub(super) fn draft_formed(
             .map_err(|_| DomError::AllocationFailed)?;
     }
     for item in source {
-        style::initial::step(initial, cancel)?;
+        source::initial::step(initial, cancel)?;
         out.push(Pending {
             serial: Some(item.operation.serial),
             target: Key::Existing(item.target.slot),
@@ -104,7 +104,7 @@ impl Draft {
     ) -> Result<Option<DetailsValue>, DomError> {
         self.control_attribute(key, name, cancel)?
             .map(|value| {
-                let (value, payload) = style::formation::shared_string(self, value, cancel)?;
+                let (value, payload) = source::formation::shared_string(self, value, cancel)?;
                 Ok(DetailsValue {
                     value,
                     _payload: payload,
@@ -212,8 +212,8 @@ impl Draft {
                 };
                 // Re-enter the actual attribute owner. Its Open->Closed hook
                 // appends its own transition and requests no further closing.
-                let operand = style::formation::Formation::new(self, cancel)?;
-                let name = style::formation::string("open", operand.as_ref(), cancel)?;
+                let operand = source::formation::Formation::new(self, cancel)?;
+                let name = source::formation::string("open", operand.as_ref(), cancel)?;
                 return self.remove_attribute(close, None, &name, limits, cancel);
             }
             next = crate::slot::next_admitted(self, root, peer, &mut || self.source_step(cancel))?;
@@ -334,7 +334,7 @@ impl Draft {
         &self,
         dom: &Dom,
         id: &impl Fn(Key) -> NodeId,
-        budget: Option<&style::formation::Formation>,
+        budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Finished, DomError> {
         let mut next = dom.state.next_details_intention;
@@ -355,20 +355,20 @@ impl Draft {
         };
         let mut intentions = Vec::new();
         let mut cancellations = Vec::new();
-        style::formation::reserve(
+        source::formation::reserve(
             &mut intentions,
             self.details_intentions.len(),
             budget,
             cancel,
         )?;
-        style::formation::reserve(
+        source::formation::reserve(
             &mut cancellations,
             self.cancelled_details.len(),
             budget,
             cancel,
         )?;
         for item in &self.details_intentions {
-            style::formation::step(budget, cancel)?;
+            source::formation::step(budget, cancel)?;
             if self.is_private(item.target) {
                 continue;
             }
@@ -381,7 +381,7 @@ impl Draft {
             });
         }
         for item in &self.cancelled_details {
-            style::formation::step(budget, cancel)?;
+            source::formation::step(budget, cancel)?;
             cancellations.push(DomDetailsToggleIntention {
                 operation: serial(item.serial)?,
                 target: item.target,
@@ -567,8 +567,8 @@ mod tests {
         let before = dom.snapshot();
         let mut edit = DomBatch::new();
         edit.destroy(a);
-        let limits = crate::DomStyleEditLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(edit, limits, &cancel) else {
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
         source_observation::start();
@@ -594,7 +594,7 @@ mod tests {
     }
     fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
         let cancel = AtomicBool::new(false);
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             usize::MAX,
             usize::MAX,
             100_000_000,
@@ -604,7 +604,7 @@ mod tests {
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             base + bytes,
             base_units + units,
             100_000_000,
@@ -682,7 +682,7 @@ mod tests {
             assert!(matches!(
                 draft.details_attribute_value(key, KnownHtmlAttribute::Name, &cancel),
                 Err(DomError::ResourceLimit {
-                    resource: DomResource::StyleRetainedBytes | DomResource::StyleRetainedUnits,
+                    resource: DomResource::SourceRetainedBytes | DomResource::SourceRetainedUnits,
                     ..
                 })
             ));
@@ -714,7 +714,7 @@ mod tests {
                 &cancel
             ),
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             })
         ));
@@ -799,11 +799,10 @@ mod tests {
         let text = edit.create_text(doc, "a {}");
         edit.insert_before(&text, &style, None);
         edit.insert_before(&style, parent, None);
-        let limits =
-            crate::DomStyleEditLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
-        let mut lease = dom.begin_style_batch(edit, limits, &cancel).unwrap();
+        let limits = crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_source_commands(edit, limits, &cancel).unwrap();
         let request = match lease.advance(&cancel).unwrap() {
-            crate::DomStyleProgress::Request(request) => request,
+            crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(request)) => request,
             other => panic!("actual connected Style CSP boundary, got {other:?}"),
         };
         assert_eq!(
@@ -816,14 +815,14 @@ mod tests {
         drop(lease);
         cancel.store(true, Ordering::Release);
         assert!(matches!(
-            dom.resume_style_edit(operation, limits, &cancel),
+            dom.resume_source_edit(operation, limits, &cancel),
             Err(DomError::Cancelled)
         ));
         assert_eq!(dom.snapshot().stamp(), published);
         cancel.store(false, Ordering::Release);
-        let mut lease = dom.resume_style_edit(operation, limits, &cancel).unwrap();
+        let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
         let resumed = match lease.advance(&cancel).unwrap() {
-            crate::DomStyleProgress::Request(request) => request,
+            crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(request)) => request,
             other => panic!("same retained CSP request, got {other:?}"),
         };
         assert!(Arc::ptr_eq(&request.source, &resumed.source));
@@ -841,10 +840,10 @@ mod tests {
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
-            crate::DomStyleProgress::Complete(_)
+            crate::DomSourceProgress::Complete(_)
         ));
         drop(lease);
-        assert!(dom.pending_style_edit().is_none());
+        assert!(dom.pending_source_edit().is_none());
         assert!(
             before
                 .node(details)

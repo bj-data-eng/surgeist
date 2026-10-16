@@ -61,14 +61,16 @@ start/stop preserve the index. DOM clone/import creates fresh on/index0 instead
 of copying stopped state. Canvas copied attributes run their real hooks. Neither
 family installs pixels, contexts, animation or rendering increments. Keep native null browsing context/never-navigable
 proof independent of XML class. Nonce attributes, IDL slot edits, insertion and
-cloning consume HTML's rules. Frame retains actual null child-content; its
+cloning consume HTML's rules. Frame/Iframe retain canonical nullable child
+identity independently from HTML's intrinsic family values. Their
 post-connection guard reads the current node document after insertion/common
 steps and only when shadow-including connected. Exact src changes and removal
-consume the shared null-content decisions. Removal runs after detach, visits
+consume shared actual-presence decisions. Removal runs after detach, visits
 ordinary and owned shadow descendants and stays cancellable/atomic. Clone/import
 fresh-initializes Frame and applies actual copied attributes; adoption preserves
-the existing family value. Iframe retains the fresh never-BC unprocessed/null-child
-tuple, including false lazy-navigation and null timing/resumption. Its src/srcdoc/
+the existing family value. Iframe's source-initial intrinsic tuple retains false
+lazy-navigation and null timing/resumption without claiming null child content
+or a never-browsing-context Document. Its src/srcdoc/
 sandbox hooks return on actual null content; loading uses HTML's shared semantic
 states and eager-transition decision, then actual null resumption. Share the
 canonical Frame/Iframe traversal while preserving their distinct load rules.
@@ -77,6 +79,12 @@ or reset processed/imported history without an actual supported cause/state.
 Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
+The shared Source engine admits exactly one public `DomSourceEdit` or named
+native-install/Select completion root. Public operands are established canonical
+identities, not cross-operation batch tickets. Ordinary `Dom::apply(DomBatch)`
+remains atomic; source phases retain their original continuation, external
+receipts and mandatory hooks across refusal. Style owns its CSSOM semantics and
+resources, while Runtime's weak Source permission routes the composed operation.
 Output retains one nullable default override plus the existing native control
 and canonical Form relation. Preserve null versus established empty; derive
 current/default text through existing bounded semantic queries. Mutation-time

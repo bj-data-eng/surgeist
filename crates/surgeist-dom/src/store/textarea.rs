@@ -25,7 +25,7 @@ impl Draft {
         &mut self,
         key: Key,
         raw: DocumentString,
-        payload: Option<style::checkpoint::Charge>,
+        payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -54,7 +54,7 @@ impl Draft {
         key: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<(DocumentString, Option<style::checkpoint::Charge>), DomError> {
+    ) -> Result<(DocumentString, Option<source::checkpoint::Charge>), DomError> {
         let mut length = 0usize;
         for child in &self.node(key)?.children {
             self.source_step(cancel)?;
@@ -68,7 +68,7 @@ impl Draft {
             .checked_add(length)
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         let mut output = crate::textarea::output(length, limits.units, formation.as_ref(), cancel)?;
         for child in &self.node(key)?.children {
             self.source_step(cancel)?;
@@ -81,7 +81,7 @@ impl Draft {
         }
         Ok((
             DocumentString::from_utf16(output),
-            formation.map(style::formation::Formation::into_charge),
+            formation.map(source::formation::Formation::into_charge),
         ))
     }
     pub(super) fn textarea_children_changed(
@@ -115,12 +115,12 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::TextareaApi,
+            source::formation::mutation_observation::Site::TextareaApi,
             cancel,
         )?;
-        let old_api_formation = style::formation::Formation::new(self, cancel)?;
+        let old_api_formation = source::formation::Formation::new(self, cancel)?;
         let old_api = crate::textarea::normalized_value(
             previous.code_units(),
             previous.len(),
@@ -129,17 +129,17 @@ impl Draft {
             cancel,
         )?;
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             size_of::<Vec<u16>>() + old_api.shared_code_units().capacity() * size_of::<u16>(),
         );
-        let (raw, payload) = style::formation::shared_string(self, raw, cancel)?;
+        let (raw, payload) = source::formation::shared_string(self, raw, cancel)?;
         self.textarea_put_raw(key, raw, payload, limits, cancel)?;
         self.textarea_state_mut(key, cancel)?
             .flags
             .mark_dirty_value();
         let current = &self.textarea_state(key)?.raw;
-        let new_api_formation = style::formation::Formation::new(self, cancel)?;
+        let new_api_formation = source::formation::Formation::new(self, cancel)?;
         let new_api = crate::textarea::normalized_value(
             current.code_units(),
             current.len(),
@@ -184,7 +184,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.textarea_state(key)?;
-        let (raw, payload) = style::formation::shared_string(self, raw, cancel)?;
+        let (raw, payload) = source::formation::shared_string(self, raw, cancel)?;
         self.string_replace_all(key, raw, payload, limits, cancel)
     }
     pub(super) fn reset_textarea(
@@ -210,7 +210,7 @@ impl Draft {
             .checked_add(original.raw.len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let (raw, payload) = style::formation::shared_string(self, &original.raw, cancel)?;
+        let (raw, payload) = source::formation::shared_string(self, &original.raw, cancel)?;
         let state = self.textarea_state_mut(key, cancel)?;
         state.flags.clone_dirty_value_from(&original.flags);
         state.raw = raw;

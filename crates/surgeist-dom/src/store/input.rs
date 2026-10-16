@@ -40,15 +40,15 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<input_processing::InputValue, DomError> {
         self.source_step(cancel)?;
-        let (value, payload) = style::formation::shared_string(self, value, cancel)?;
+        let (value, payload) = source::formation::shared_string(self, value, cancel)?;
         Ok(input_processing::InputValue { value, payload })
     }
     fn input_empty(&self, cancel: &AtomicBool) -> Result<input_processing::InputValue, DomError> {
-        let formation = style::formation::Formation::new(self, cancel)?;
-        let value = style::formation::string("", formation.as_ref(), cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let value = source::formation::string("", formation.as_ref(), cancel)?;
         Ok(input_processing::InputValue {
             value,
-            payload: formation.map(style::formation::Formation::into_charge),
+            payload: formation.map(source::formation::Formation::into_charge),
         })
     }
     pub(super) fn initialize_input(
@@ -167,15 +167,15 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(total, limits.units, DomResource::StringCodeUnits)?;
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::InputString,
+            source::formation::mutation_observation::Site::InputString,
             cancel,
         )?;
-        let formation = style::formation::Formation::new(self, cancel)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
         let mut output = match &formation {
             Some(formation) => {
-                style::formation::utf16_buffer(count, limits.units, Some(formation), cancel)?
+                source::formation::utf16_buffer(count, limits.units, Some(formation), cancel)?
             }
             None => {
                 let mut output = Vec::new();
@@ -201,7 +201,7 @@ impl Draft {
         }
         let output = DocumentString::from_utf16(output);
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             size_of::<Vec<u16>>() + output.shared_code_units().capacity() * size_of::<u16>(),
         );
@@ -209,7 +209,7 @@ impl Draft {
             key,
             input_processing::InputValue {
                 value: output,
-                payload: formation.map(style::formation::Formation::into_charge),
+                payload: formation.map(source::formation::Formation::into_charge),
             },
             email_count,
             limits,
@@ -225,14 +225,14 @@ impl Draft {
         self.source_step(cancel)?;
         let input_type = self.input_state(key)?.input_type();
         #[cfg(test)]
-        let growth = style::formation::mutation_observation::before(
+        let growth = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::InputAlias,
+            source::formation::mutation_observation::Site::InputAlias,
             cancel,
         )?;
         let raw = self.input_shared(&self.input_state(key)?.current, cancel)?;
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             growth,
             size_of::<Vec<u16>>() + raw.value.shared_code_units().capacity() * size_of::<u16>(),
         );
@@ -247,7 +247,7 @@ impl Draft {
                 let default = self.input_raw(key, A::Value, cancel)?;
                 #[cfg(test)]
                 let _source_observation = input_processing::source_observation::bind(self, cancel)?;
-                let source = style::formation::Formation::new(self, cancel)?;
+                let source = source::formation::Formation::new(self, cancel)?;
                 let output = self.input_processing.range(
                     input_processing::RangeInput {
                         current: &raw.value,
@@ -285,7 +285,7 @@ impl Draft {
                 }
                 #[cfg(test)]
                 let _source_observation = input_processing::source_observation::bind(self, cancel)?;
-                let source = style::formation::Formation::new(self, cancel)?;
+                let source = source::formation::Formation::new(self, cancel)?;
                 let output = self.input_processing.color(
                     &raw.value,
                     alpha,
@@ -308,8 +308,8 @@ impl Draft {
         self.source_step(cancel)?;
         match self.input_state(key)?.flags.value_setter_begin() {
             HtmlInputValueSetterStart::SetContentValue => {
-                let operand = style::formation::Formation::new(self, cancel)?;
-                let name = style::formation::string("value", operand.as_ref(), cancel)?;
+                let operand = source::formation::Formation::new(self, cancel)?;
+                let name = source::formation::string("value", operand.as_ref(), cancel)?;
                 self.set_attribute(
                     key,
                     Some(&crate::Namespace::none()),
@@ -448,13 +448,13 @@ impl Draft {
             };
             match effect {
                 Effect::SetContentValueFromCurrent => {
-                    let operand = style::formation::Formation::new(self, cancel)?;
-                    let raw = style::formation::share(
+                    let operand = source::formation::Formation::new(self, cancel)?;
+                    let raw = source::formation::share(
                         &self.input_state(key)?.current,
                         operand.as_ref(),
                         cancel,
                     )?;
-                    let name = style::formation::string("value", operand.as_ref(), cancel)?;
+                    let name = source::formation::string("value", operand.as_ref(), cancel)?;
                     self.set_attribute(
                         key,
                         Some(&crate::Namespace::none()),
@@ -651,9 +651,9 @@ impl Draft {
             return Ok(());
         }
         #[cfg(test)]
-        let alias = style::formation::mutation_observation::before(
+        let alias = source::formation::mutation_observation::before(
             self,
-            style::formation::mutation_observation::Site::InputRadioName,
+            source::formation::mutation_observation::Site::InputRadioName,
             cancel,
         )?;
         let Some(name) = self
@@ -663,7 +663,7 @@ impl Draft {
             return Ok(());
         };
         #[cfg(test)]
-        style::formation::mutation_observation::grew(
+        source::formation::mutation_observation::grew(
             alias,
             size_of::<Vec<u16>>() + name.value.shared_code_units().capacity() * size_of::<u16>(),
         );
@@ -731,7 +731,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn source_radio_name(bytes: usize) -> Option<style::formation::mutation_observation::Growth> {
+    fn source_radio_name(bytes: usize) -> Option<source::formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(DomLimits::new(16, 1024, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut setup = DomBatch::new();
@@ -775,25 +775,25 @@ mod tests {
         );
         let mut batch = DomBatch::new();
         batch.set_input_checked(key, true);
-        let mut lease = match dom.begin_style_batch(
+        let mut lease = match dom.begin_source_commands(
             batch,
-            crate::DomStyleEditLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
+            crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
             &cancel,
         ) {
             Ok(lease) => lease,
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => return None,
             Err(error) => panic!("actual Radio Source admission: {error:?}"),
         };
-        style::formation::mutation_observation::start(
-            style::formation::mutation_observation::Site::InputRadioName,
+        source::formation::mutation_observation::start(
+            source::formation::mutation_observation::Site::InputRadioName,
         );
         let result = lease.advance(&cancel);
-        let actual = style::formation::mutation_observation::finish();
+        let actual = source::formation::mutation_observation::finish();
         match result {
-            Ok(crate::DomStyleProgress::Complete(_)) => {
+            Ok(crate::DomSourceProgress::Complete(_)) => {
                 assert!(
                     lease
                         .snapshot()
@@ -818,7 +818,7 @@ mod tests {
                 );
             }
             Err(DomError::ResourceLimit {
-                resource: DomResource::StyleRetainedBytes,
+                resource: DomResource::SourceRetainedBytes,
                 ..
             }) => {
                 assert_eq!(lease.snapshot().stamp(), before.stamp());

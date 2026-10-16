@@ -593,14 +593,14 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
         .metadata()
         .origin()
         .clone();
-    let mut b = DomBatch::new();
-    let document_ticket =
-        b.create_xml_document(associated, Namespace::html(), "style", Some(dt.into()));
-    let following = b.create_comment(&document_ticket, "once after finalization");
-    let bounds = DomStyleEditLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096);
-    let mut lease = dom.begin_style_batch(b, bounds, &cancel).unwrap();
+    let edit =
+        DomSourceEdit::create_xml_document(associated.node(), Namespace::html(), "style", Some(dt));
+    let bounds = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096);
+    let mut lease = dom.begin_source_edit(edit, bounds, &cancel).unwrap();
     let operation = lease.operation();
-    let DomStyleProgress::Request(policy) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("real inline policy request");
     };
     assert_eq!(
@@ -643,7 +643,9 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
             &cancel,
         )
         .unwrap();
-    let DomStyleProgress::Request(create) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+        lease.advance(&cancel).unwrap()
+    else {
         panic!("real sheet creation");
     };
     assert_eq!(
@@ -707,7 +709,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     cancel.store(true, Ordering::Relaxed);
     assert_eq!(lease.advance(&cancel).unwrap_err(), DomError::Cancelled);
     drop(lease);
-    assert!(dom.pending_style_edit().unwrap().has_published());
+    assert!(dom.pending_source_edit().unwrap().has_published());
     assert_eq!(
         dom.snapshot()
             .document(document)
@@ -726,19 +728,20 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     );
     drop(owner);
     cancel.store(false, Ordering::Relaxed);
-    let mut lease = dom.resume_style_edit(operation, bounds, &cancel).unwrap();
+    let mut lease = dom.resume_source_edit(operation, bounds, &cancel).unwrap();
     let owner = lease.cssom_root(&create).unwrap();
-    let DomStyleProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
         panic!("acknowledged creation cannot replay");
     };
     assert_eq!(done.operation(), operation);
-    assert_eq!(
-        done.published_creation(&document_ticket).unwrap(),
-        Some(document.node())
-    );
-    let following = done.published_creation(&following).unwrap().unwrap();
-    assert_ne!(following, style);
+    assert_eq!(done.published_node(), Some(document.node()));
+    assert_eq!(done.output(), Some(DomSourceOutput::Document(document)));
     drop(lease);
+    // The next requested operation uses the completed Document identity.
+    let mut next = DomBatch::new();
+    let following = next.create_comment(document, "once after finalization");
+    let following = apply(&mut dom, next).created(&following).unwrap().unwrap();
+    assert_ne!(following, style);
     let final_snapshot = dom.snapshot();
     xml_defaults(
         &final_snapshot,
@@ -773,7 +776,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     assert_eq!(dom.usage().managed_nodes(), old_nodes + 3);
     assert_eq!(owner.snapshot().unwrap().sheets().len(), 1);
     assert_eq!(owner.snapshot().unwrap().revision(), &revision);
-    assert!(dom.pending_style_edit().is_none());
+    assert!(dom.pending_source_edit().is_none());
     assert_eq!(before.node(dt).unwrap().owner_document(), Some(old_doc));
     assert_eq!(
         pending

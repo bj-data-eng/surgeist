@@ -174,10 +174,10 @@ impl<'a> DomTextarea<'a> {
 pub(crate) fn output(
     length: usize,
     limit: usize,
-    budget: Option<&crate::store::style::formation::Formation>,
+    budget: Option<&crate::store::source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<Vec<u16>, DomError> {
-    crate::store::style::formation::utf16_buffer(length, limit, budget, cancel)
+    crate::store::source::formation::utf16_buffer(length, limit, budget, cancel)
 }
 pub(crate) fn normalized_length(
     raw: &[u16],
@@ -199,7 +199,7 @@ pub(crate) fn normalized_value(
     raw: &[u16],
     limit: usize,
     step: &mut impl FnMut() -> Result<(), DomError>,
-    budget: Option<&crate::store::style::formation::Formation>,
+    budget: Option<&crate::store::source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<DocumentString, DomError> {
     let length = normalized_length(raw, step)?;

@@ -164,8 +164,8 @@ impl Draft {
                     .ok_or(DomError::RepresentationExhausted)?;
                 self.source_admit_units(range.len(), cancel)?;
                 self.source_admit(requested, cancel)?;
-                let formation = style::formation::Formation::new(self, cancel)?;
-                let mut token = style::formation::utf16_buffer(
+                let formation = source::formation::Formation::new(self, cancel)?;
+                let mut token = source::formation::utf16_buffer(
                     range.len(),
                     limits.units,
                     formation.as_ref(),
@@ -493,15 +493,15 @@ mod tests {
         let before = dom.snapshot();
         let mut edit = DomBatch::new();
         edit.insert_before(meta, root, None);
-        let limits = crate::DomStyleEditLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
-        let Ok(mut lease) = dom.begin_style_batch(edit, limits, &cancel) else {
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
         source_observation::start();
         let result = lease.advance(&cancel);
         let read = source_observation::finish();
         if require_complete {
-            assert!(matches!(result, Ok(crate::DomStyleProgress::Complete(_))));
+            assert!(matches!(result, Ok(crate::DomSourceProgress::Complete(_))));
             assert_eq!(
                 lease
                     .snapshot()
@@ -528,7 +528,7 @@ mod tests {
     }
     fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
         let cancel = AtomicBool::new(false);
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             usize::MAX,
             usize::MAX,
             100_000_000,
@@ -538,7 +538,7 @@ mod tests {
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
-        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+        draft.source_limits = Some(crate::DomSourceLimits::new(
             base + bytes,
             base_units + units,
             100_000_000,
@@ -619,8 +619,8 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let bytes = size_of::<Vec<u16>>() + 4 * size_of::<u16>();
         for (byte_extra, unit_extra, resource) in [
-            (bytes - 1, 4, DomResource::StyleRetainedBytes),
-            (bytes, 3, DomResource::StyleRetainedUnits),
+            (bytes - 1, 4, DomResource::SourceRetainedBytes),
+            (bytes, 3, DomResource::SourceRetainedUnits),
         ] {
             let (mut draft, meta, doc) = language_draft();
             source_budget(&mut draft, byte_extra, unit_extra);

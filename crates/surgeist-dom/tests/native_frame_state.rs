@@ -5,7 +5,7 @@ use surgeist_dom::{
     DomResource, DomSnapshot, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
     Namespace, NodeId,
 };
-use surgeist_html::{HtmlBrowsingContextPresence, HtmlFrameNullContent};
+use surgeist_html::{HtmlBrowsingContextPresence, HtmlChildNavigablePresence};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 
@@ -15,19 +15,28 @@ fn dom() -> Dom {
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
-fn content(snapshot: &DomSnapshot, node: NodeId) -> HtmlFrameNullContent {
+fn content(snapshot: &DomSnapshot, node: NodeId) -> HtmlChildNavigablePresence {
     let value = snapshot
         .node(node)
         .unwrap()
         .as_element()
         .unwrap()
-        .frame_null_content()
+        .child_navigable_presence()
         .unwrap();
-    assert!(value.content_navigable_is_null());
-    assert!(value.content_document_is_null());
-    assert!(value.content_window_is_null());
-    assert!(value.potentially_delays_load());
-    assert!(!value.delays_load());
+    assert_eq!(value, surgeist_html::HtmlChildNavigablePresence::Null);
+    assert_eq!(
+        value.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        value.content_access(),
+        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert!(surgeist_html::frame_potentially_delays_load());
+    assert_eq!(
+        value.load_delay(),
+        surgeist_html::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+    );
     value
 }
 fn setup(dom: &mut Dom) -> (DocumentId, NodeId) {
@@ -69,7 +78,12 @@ fn exact_frame_family_names_and_prefixes_preserve_native_null_content() {
         let node = snapshot
             .node(commit.created(&ticket).unwrap().unwrap())
             .unwrap();
-        assert!(node.as_element().unwrap().frame_null_content().is_none());
+        assert!(
+            node.as_element()
+                .unwrap()
+                .child_navigable_presence()
+                .is_none()
+        );
     }
 }
 

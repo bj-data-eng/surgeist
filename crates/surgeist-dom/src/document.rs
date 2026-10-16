@@ -97,6 +97,34 @@ pub struct DomDocumentMetadata {
     meta: Option<crate::DomMetaDocumentState>,
     policy: crate::DomDocumentPolicyContainer,
     meta_ui: NoAssociatedMetaThemeConsumer,
+    pub(crate) hosted_inputs: Option<HostedDocumentInputs>,
+}
+
+/// One constructor-owned graph, shared unchanged by the original request and
+/// the published Document. Equality observes that actual owner's identity.
+#[derive(Clone, Debug)]
+pub(crate) struct HostedDocumentInputs(pub(crate) Arc<HostedDocumentInputData>);
+#[derive(Debug)]
+pub(crate) struct HostedDocumentInputData {
+    pub(crate) facts: surgeist_html_semantics::HtmlBaseDocumentFacts,
+    pub(crate) opener: surgeist_html::HtmlOpenerPolicy,
+    pub(crate) _retained: crate::hosted::Retained,
+}
+impl PartialEq for HostedDocumentInputs {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for HostedDocumentInputs {}
+impl HostedDocumentInputs {
+    pub(crate) fn url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        self.0.facts.document_url().expect("constructor-owned URL")
+    }
+    pub(crate) fn payload_bytes(&self) -> Result<usize, DomError> {
+        size_of::<HostedDocumentInputData>()
+            .checked_add(self.url().retained_storage_usage().retained_bytes())
+            .ok_or(DomError::RepresentationExhausted)
+    }
 }
 
 /// Established by the controlled Document creators, independently of no BC or
@@ -215,6 +243,7 @@ impl DomDocumentMetadata {
         registry: crate::registry::DomRegistryId,
         association: Arc<crate::hosted::DocumentAssociation>,
         operation: crate::hosted::DomHostedOperationId,
+        inputs: HostedDocumentInputs,
         materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
     ) -> Result<Self, DomError> {
         let source = operation.source();
@@ -227,12 +256,19 @@ impl DomDocumentMetadata {
                 hosted: Some(association),
             },
             false,
-            materialize,
+            &mut |text| {
+                if text == URL {
+                    Ok(inputs.url().serialization().clone())
+                } else {
+                    materialize(text)
+                }
+            },
         )?;
         metadata.mode = HtmlDocumentMode::Quirks;
         metadata.allow_declarative_shadow_roots = true;
         metadata.registry = DomRegistryBinding::Registry(registry);
         metadata.cause = DomDocumentCreationCause::HostedInitialAboutBlank { source, operation };
+        metadata.hosted_inputs = Some(inputs);
         Ok(metadata)
     }
     pub(crate) fn native(
@@ -301,6 +337,7 @@ impl DomDocumentMetadata {
             meta: Some(crate::DomMetaDocumentState::native()),
             policy: crate::DomDocumentPolicyContainer::native(),
             meta_ui: NoAssociatedMetaThemeConsumer,
+            hosted_inputs: None,
         })
     }
     // Only the canonical createDocument tail calls these source-ordered writes.
@@ -497,6 +534,11 @@ impl DomDocumentMetadata {
                 .checked_add(url.retained_storage_usage().utf16_extent())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
+        if let Some(inputs) = &self.hosted_inputs {
+            units = units
+                .checked_add(inputs.url().retained_storage_usage().utf16_extent())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
         Ok(units)
     }
     pub(crate) fn retained_payload_bytes(&self) -> Result<usize, crate::DomError> {
@@ -523,6 +565,11 @@ impl DomDocumentMetadata {
             bytes = bytes
                 .checked_add(std::mem::size_of::<crate::hosted::DocumentAssociation>())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
+        }
+        if let Some(inputs) = &self.hosted_inputs {
+            bytes = bytes
+                .checked_add(inputs.payload_bytes()?)
+                .ok_or(DomError::RepresentationExhausted)?;
         }
         Ok(bytes)
     }
