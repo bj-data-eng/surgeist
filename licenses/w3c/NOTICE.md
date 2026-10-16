@@ -1431,6 +1431,14 @@ bounded selection, Markdown presentation, absolute links and provenance/scope
 notes. Source algorithms were not edited. The selection covers the delegated
 editable definition, not command execution or a complete editing API.
 
+The [nullable active-range reference](../../references/designmode-active-range--877d6146487f.md)
+also retains the complete active-range paragraph from the same pinned source,
+raw lines 1329–1335, under these original notices and licenses. Changes by
+Surgeist on 2026-10-16: bounded selection, manual Markdown conversion,
+whitespace/emphasis normalization, absolute links and provenance/scope notes.
+The unresolved range token and missing selection/getSelection targets remain
+disclosed. No editing-command implementation is incorporated.
+
 ## HTML-delegated SVG script processing
 
 Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document

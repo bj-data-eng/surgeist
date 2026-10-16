@@ -329,6 +329,23 @@ with Pandoc 3.1.11.1, retaining authored unresolved Bikeshed tokens and absolute
 source links. Source scripts were not executed. Scope selects HTML-delegated
 editability only; command execution and editing UI are outside it.
 
+## designMode nullable active-range sources — 2026-10-16
+
+The [bounded active-range reference](designmode-active-range--877d6146487f.md)
+adds manually converted paragraphs from the existing editing and DOM editions.
+The reference records exact immutable revisions, complete-source hashes and raw
+line ranges. Original raw paragraphs were compared with the Markdown: nullable
+active range, boundary-point bounds, range endpoints and live-update obligations
+are retained. Whitespace/emphasis and links are normalized; the editing draft's
+unresolved token and absent fragment targets remain disclosed. Existing HTML
+setter and focus captures are linked rather than reproduced.
+
+The WebKit section records inspected behavior and exact source identity without
+redistributing code. It is not evidence that HTML omits range reset or focusing.
+The explicit Surgeist null-range policy remains in the owning issue, separate
+from the source excerpts. No new source edition, full Selection API, editing
+command implementation or project-license change is selected.
+
 ## HTML autocomplete credential determination — 2026-10-11
 
 The [WebAuthn edge determination](html-autocomplete-webauthn--877d6146487f.md)

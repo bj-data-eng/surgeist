@@ -520,6 +520,14 @@ heading-offset traversal separately crosses a shadow root to its captured host.
 This source selection implements no editing command, selection mutation,
 spelling service or JavaScript runtime.
 
+For [#1124](https://github.com/bj-data-eng/surgeist/issues/1124), the
+[nullable active-range reference](designmode-active-range--877d6146487f.md)
+retains the delegated nullable definition and DOM boundary-point/live-range
+definitions from the existing pinned editions. Its WebKit witness is behavioral
+metadata only. The issue records the explicit Surgeist null-range policy
+separately from those source definitions; the source does not specify that
+branch. Non-null ranges retain their actual identity and live-update obligation.
+
 ### HTML autocomplete credential recovery
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the

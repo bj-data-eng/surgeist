@@ -492,6 +492,12 @@ The [attribution and modification notice](licenses/w3c/NOTICE.md#html-delegated-
 identifies the selected paragraphs and Markdown conversion. HTML retains its
 separate WHATWG behavioral authority; no editing-command runtime is incorporated.
 
+The [nullable active-range reference](references/designmode-active-range--877d6146487f.md)
+adds the delegated active-range paragraph under those same W3C notices, and DOM
+boundary-point/live-range definitions under the existing
+[WHATWG license and attribution](licenses/whatwg/NOTICE.md#designmode-range-definitions--2026-10-16).
+Its WebKit section contains behavioral metadata only.
+
 ## HTML-delegated SVG script material
 
 The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) supplies HTML-delegated script

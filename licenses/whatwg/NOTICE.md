@@ -316,3 +316,23 @@ implementation code ingestion or endorsement is implied.
 The existing exact [LICENSE](LICENSE) covers this specification prose under
 Creative Commons Attribution 4.0 International. Its BSD 3-Clause provision applies
 only to portions incorporated into code. The repository's own license is unchanged.
+
+## designMode range definitions — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [nullable active-range reference](../../references/designmode-active-range--877d6146487f.md)
+retains boundary-point, range and live-range definitions from DOM revision
+`3071e5f269448350fdea79bb284eedaf17bc431e`. The complete immutable snapshot's
+SHA-256 is `9221bf5c72d0399e11749f8c8d5c01b60a45fa045076b02935ac298119ea7be1`;
+original raw ranges are 12330–12337, 12402–12424 and 12586–12596.
+
+Surgeist's changes on 2026-10-16 are bounded selection, manual Markdown
+conversion, normalized whitespace/emphasis, absolute source links and
+provenance/scope notes. The live-update obligation is retained; complete range
+mutation algorithms are outside this excerpt. No endorsement is implied.
+
+The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for this specification prose. Its BSD 3-Clause provision
+applies only to portions incorporated into code. The separate editing paragraph
+and WebKit metadata are identified under their own source notices in the reference.
