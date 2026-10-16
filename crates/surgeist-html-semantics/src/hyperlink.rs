@@ -189,6 +189,12 @@ impl HtmlEncodingUrlParseFacts {
     /// Select actual A/Area history, retaining only the selected input/outcome.
     /// The original qualification, tariff and owner-computed footprint are
     /// preserved; this does not retain the observation Vec or create a URL.
+    /// After qualification and checked footprint calculation, `retain` receives
+    /// the exact selected snapshot payload, including Self and actual UTF-16
+    /// capacities. It runs once before any selected handle is cloned; its first
+    /// refusal propagates without retaining the snapshot. Earlier lookup or
+    /// footprint failures skip it. This adds no lookup work steps. The caller
+    /// supplies its retention/cancellation policy and owns resulting custody.
     pub fn resolve_hyperlink_with<E>(
         &self,
         raw: &DocumentString,
@@ -196,6 +202,7 @@ impl HtmlEncodingUrlParseFacts {
         encoding: &HtmlBaseEncoding,
         expected: &HtmlBaseFactsRevision,
         mut step: impl FnMut() -> Result<(), E>,
+        retain: impl FnOnce(HtmlBaseRetainedStorageUsage) -> Result<(), E>,
     ) -> Result<HtmlHyperlinkUrlSnapshot, HtmlEncodingUrlLookupError<E>> {
         let observation = self.find_with(raw.code_units(), base, encoding, expected, &mut step)?;
         let result_units = match &observation.outcome {
@@ -229,6 +236,7 @@ impl HtmlEncodingUrlParseFacts {
         })();
         footprint.map_err(|e| HtmlEncodingUrlLookupError::Facts(e.into()))?;
         debug_assert_eq!(retained.utf16_extent(), units);
+        retain(retained).map_err(HtmlEncodingUrlLookupError::Interrupted)?;
         Ok(HtmlHyperlinkUrlSnapshot {
             raw: observation.raw.clone(),
             base: self.base().clone(),

@@ -138,9 +138,14 @@ fn hyperlink_snapshot_footprint_keeps_only_selected_observation_and_is_not_seman
     let large = make(67, true);
     let resolve = |facts: &HtmlEncodingUrlParseFacts| {
         facts
-            .resolve_hyperlink_with(&"chosen".into(), &base, &encoding, &revision, || {
-                Ok::<_, ()>(())
-            })
+            .resolve_hyperlink_with(
+                &"chosen".into(),
+                &base,
+                &encoding,
+                &revision,
+                || Ok::<_, ()>(()),
+                |_| Ok(()),
+            )
             .unwrap()
     };
     let a = resolve(&small);

@@ -30,6 +30,13 @@ an exact UTF-16 input, including a Meta refresh substring, and returns the bank'
 observed outcome without copying the input or creating Element history.
 `resolve_hyperlink_with` establishes the genuine A/Area snapshot, retaining only
 its raw input, qualification and observed result, including explicit parse failure.
+Its mandatory final retention callback receives the checked selected snapshot
+footprint before cloning any selected handle: Self, actual observation raw
+capacity, Base and observed result. Earlier lookup or footprint failure skips
+this callback; its refusal propagates unchanged. No extra lookup work step is
+introduced. Callers provide their actual retention/cancellation policy and hold
+the admitted occurrence through its own transfer or drop. Ordinary unrestricted
+retention uses an explicit accepting callback.
 Both use the same qualified lookup. Missing observations remain unavailable
 evidence. Adapters bind
 these facts to actual Documents and encoding truth; this crate parses no URL.

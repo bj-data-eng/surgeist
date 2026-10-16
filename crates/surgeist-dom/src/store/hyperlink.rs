@@ -215,6 +215,7 @@ impl Draft {
                             &encoding,
                             &revision,
                             || self.encoding_url_step(cancel),
+                            |_| Ok(()),
                         )
                         .map_err(|e| match e {
                             HtmlEncodingUrlLookupError::Facts(e) => failure(Failure::Producer(e)),

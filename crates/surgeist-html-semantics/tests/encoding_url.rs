@@ -185,14 +185,20 @@ fn original_hyperlink_history_and_borrowed_lookup_have_the_same_admission_bounda
         }
         assert_eq!(used, allowance);
         let mut history_used = 0;
-        let history =
-            bank.resolve_hyperlink_with(&"https://[".into(), &base, &encoding, &revision, || {
+        let history = bank.resolve_hyperlink_with(
+            &"https://[".into(),
+            &base,
+            &encoding,
+            &revision,
+            || {
                 if history_used == allowance {
                     return Err("stop");
                 }
                 history_used += 1;
                 Ok(())
-            });
+            },
+            |_| Ok(()),
+        );
         if allowance < 12 {
             assert_eq!(
                 history.unwrap_err(),

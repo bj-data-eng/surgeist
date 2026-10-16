@@ -38,6 +38,7 @@ fn resolve(facts: &HtmlEncodingUrlParseFacts, raw: &DocumentString) -> HtmlHyper
             facts.encoding(),
             facts.revision(),
             || Ok::<_, ()>(()),
+            |_| Ok(()),
         )
         .unwrap()
 }
@@ -115,7 +116,8 @@ fn positive_and_failed_snapshots_keep_exact_qualified_history() {
             &base,
             &encoding,
             &revision,
-            || Ok::<_, ()>(())
+            || Ok::<_, ()>(()),
+            |_| Ok(())
         ),
         Err(HtmlEncodingUrlLookupError::Facts(
             HtmlEncodingUrlFactsError::MissingObservation
@@ -160,7 +162,8 @@ fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
             facts.base(),
             facts.encoding(),
             facts.revision(),
-            || Ok::<_, ()>(())
+            || Ok::<_, ()>(()),
+            |_| Ok(())
         ),
         Err(HtmlEncodingUrlLookupError::Facts(
             HtmlEncodingUrlFactsError::MissingObservation
@@ -295,6 +298,7 @@ fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
                     Ok(())
                 }
             },
+            |_| Ok(()),
         );
         assert_eq!(
             result,
@@ -316,6 +320,7 @@ fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
                 calls += 1;
                 Ok::<_, ()>(())
             },
+            |_| Ok(()),
         )
         .unwrap();
     assert_eq!(calls, 7);
@@ -625,4 +630,272 @@ fn snapshot_equality_uses_parse_content_and_identities_not_spare_backing_capacit
     let spare = make(80);
     assert!(small.retained_utf16_extent() < spare.retained_utf16_extent());
     assert_eq!(small, spare);
+}
+
+fn padded_snapshot_input(value: &str, capacity: usize) -> DocumentString {
+    let mut units = Vec::with_capacity(capacity);
+    units.extend(value.encode_utf16());
+    DocumentString::from_utf16(units)
+}
+
+#[test]
+fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
+    use std::{cell::Cell, sync::Arc};
+    let producer = HtmlBaseProducerId::fresh();
+    let historical = rev(&producer, 1);
+    let current = rev(&producer, 3);
+    let base = HtmlBaseUrlRecord::observed(
+        historical.clone(),
+        padded_snapshot_input("https://base.test/dir/", 73),
+        HtmlBaseUrlScheme::Other,
+        false,
+    )
+    .unwrap();
+    let parsed = HtmlBaseUrlRecord::observed(
+        current.clone(),
+        padded_snapshot_input("https://base.test/dir/x", 113),
+        HtmlBaseUrlScheme::Other,
+        false,
+    )
+    .unwrap();
+    let encoding = HtmlBaseEncoding::fresh();
+    for success in [false, true] {
+        let literal = if success { "x" } else { "http://[" };
+        let selected_raw = padded_snapshot_input(literal, 251);
+        let href: DocumentString = literal.into();
+        assert_ne!(
+            selected_raw.shared_code_units().capacity(),
+            href.shared_code_units().capacity()
+        );
+        let outcome = if success {
+            HtmlEncodingUrlParseOutcome::Parsed(parsed.clone())
+        } else {
+            HtmlEncodingUrlParseOutcome::Failure
+        };
+        let result_usage = success.then(|| parsed.retained_storage_usage());
+        let expected_units = selected_raw.shared_code_units().capacity()
+            + base.retained_storage_usage().utf16_extent()
+            + result_usage.map_or(0, |usage| usage.utf16_extent());
+        // The receipt documents Self plus the selected raw Vec header/backing
+        // and the two opaque URL owners' independently issued payload receipts.
+        let expected_bytes = size_of::<HtmlHyperlinkUrlSnapshot>()
+            + size_of::<Vec<u16>>()
+            + selected_raw.shared_code_units().capacity() * size_of::<u16>()
+            + base.retained_storage_usage().retained_bytes()
+            + result_usage.map_or(0, |usage| usage.retained_bytes());
+        for unrelated in [false, true] {
+            let mut rows = Vec::with_capacity(if unrelated { 19 } else { 1 });
+            rows.push(HtmlEncodingUrlParseObservation::new(
+                selected_raw.clone(),
+                outcome.clone(),
+            ));
+            if unrelated {
+                rows.push(HtmlEncodingUrlParseObservation::new(
+                    padded_snapshot_input("unused", 503),
+                    HtmlEncodingUrlParseOutcome::Failure,
+                ));
+            }
+            let bank = HtmlEncodingUrlParseFacts::new(
+                base.clone(),
+                encoding.clone(),
+                current.clone(),
+                rows,
+                limits(),
+            )
+            .unwrap();
+            // Exact, byte-one-short and UTF16-one-short use literal receipt
+            // derivation, not a previous call's observed admission measure.
+            for (bytes, units, expected_error) in [
+                (expected_bytes, expected_units, None),
+                (expected_bytes - 1, expected_units, Some("bytes")),
+                (expected_bytes, expected_units - 1, Some("utf16")),
+            ] {
+                let before = Arc::strong_count(selected_raw.shared_code_units());
+                let calls = Cell::new(0);
+                let result = bank.resolve_hyperlink_with(
+                    &href,
+                    &base,
+                    &encoding,
+                    &current,
+                    || Ok::<_, &'static str>(()),
+                    |usage| {
+                        calls.set(calls.get() + 1);
+                        assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+                        assert_eq!(usage.retained_bytes(), expected_bytes);
+                        assert_eq!(usage.utf16_extent(), expected_units);
+                        if usage.retained_bytes() > bytes {
+                            return Err("bytes");
+                        }
+                        if usage.utf16_extent() > units {
+                            return Err("utf16");
+                        }
+                        Ok(())
+                    },
+                );
+                assert_eq!(calls.get(), 1);
+                if let Some(error) = expected_error {
+                    assert_eq!(result, Err(HtmlEncodingUrlLookupError::Interrupted(error)));
+                    assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+                    continue;
+                }
+                let snapshot = result.unwrap();
+                assert_eq!(
+                    Arc::strong_count(selected_raw.shared_code_units()),
+                    before + 1
+                );
+                assert!(Arc::ptr_eq(
+                    snapshot.raw().shared_code_units(),
+                    selected_raw.shared_code_units()
+                ));
+                assert!(!Arc::ptr_eq(
+                    snapshot.raw().shared_code_units(),
+                    href.shared_code_units()
+                ));
+                assert_eq!(snapshot.base(), &base);
+                assert_eq!(snapshot.base().revision(), &historical);
+                assert_eq!(snapshot.encoding(), &encoding);
+                assert_eq!(snapshot.revision(), &current);
+                assert_eq!(snapshot.outcome(), &outcome);
+                assert_eq!(
+                    snapshot.retained_storage_usage().retained_bytes(),
+                    expected_bytes
+                );
+                assert_eq!(
+                    snapshot.retained_storage_usage().utf16_extent(),
+                    expected_units
+                );
+                drop(snapshot);
+                assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn snapshot_final_admission_cancellation_preserves_original_tariff_and_no_retained_raw() {
+    use std::{
+        cell::Cell,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+    let raw = padded_snapshot_input("abcd", 257);
+    let bank = facts(raw.clone(), HtmlEncodingUrlParseOutcome::Failure);
+    let href: DocumentString = "abcd".into();
+    let before = Arc::strong_count(raw.shared_code_units());
+    let cancelled = AtomicBool::new(false);
+    let steps = Cell::new(0);
+    let retained = Cell::new(0);
+    let result = bank.resolve_hyperlink_with(
+        &href,
+        bank.base(),
+        bank.encoding(),
+        bank.revision(),
+        || {
+            steps.set(steps.get() + 1);
+            // Original context+observation+four units+selected result = seven.
+            if steps.get() == 7 {
+                cancelled.store(true, Ordering::Relaxed);
+            }
+            Ok::<_, &'static str>(())
+        },
+        |_| {
+            retained.set(retained.get() + 1);
+            assert_eq!(Arc::strong_count(raw.shared_code_units()), before);
+            if cancelled.load(Ordering::Relaxed) {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        },
+    );
+    assert_eq!(
+        result,
+        Err(HtmlEncodingUrlLookupError::Interrupted("cancelled"))
+    );
+    assert_eq!(steps.get(), 7);
+    assert_eq!(retained.get(), 1);
+    assert_eq!(Arc::strong_count(raw.shared_code_units()), before);
+}
+
+#[test]
+fn earlier_lookup_refusal_never_invokes_snapshot_retention() {
+    let bank = facts("abcd".into(), HtmlEncodingUrlParseOutcome::Failure);
+    let stale = rev(bank.revision().producer(), 2);
+    let foreign = rev(&HtmlBaseProducerId::fresh(), 1);
+    let other_encoding = HtmlBaseEncoding::fresh();
+    let other_base = url(bank.revision(), "https://base/");
+    for (raw, base, encoding, expected, error) in [
+        (
+            "missing",
+            bank.base(),
+            bank.encoding(),
+            bank.revision(),
+            HtmlEncodingUrlFactsError::MissingObservation,
+        ),
+        (
+            "abcd",
+            bank.base(),
+            bank.encoding(),
+            &stale,
+            HtmlEncodingUrlFactsError::RevisionMismatch,
+        ),
+        (
+            "abcd",
+            bank.base(),
+            bank.encoding(),
+            &foreign,
+            HtmlEncodingUrlFactsError::ForeignProducer,
+        ),
+        (
+            "abcd",
+            &other_base,
+            bank.encoding(),
+            bank.revision(),
+            HtmlEncodingUrlFactsError::InputsMismatch,
+        ),
+        (
+            "abcd",
+            bank.base(),
+            &other_encoding,
+            bank.revision(),
+            HtmlEncodingUrlFactsError::InputsMismatch,
+        ),
+    ] {
+        let result = bank.resolve_hyperlink_with(
+            &raw.into(),
+            base,
+            encoding,
+            expected,
+            || Ok::<_, &'static str>(()),
+            |_| panic!("earlier qualified failure must win before retention"),
+        );
+        assert_eq!(result, Err(HtmlEncodingUrlLookupError::Facts(error)));
+    }
+    for stop in 1..=7 {
+        let mut steps = 0;
+        let result = bank.resolve_hyperlink_with(
+            &"abcd".into(),
+            bank.base(),
+            bank.encoding(),
+            bank.revision(),
+            || {
+                steps += 1;
+                if steps == stop {
+                    Err("original work stop")
+                } else {
+                    Ok(())
+                }
+            },
+            |_| panic!("earlier interruption must win before retention"),
+        );
+        assert_eq!(
+            result,
+            Err(HtmlEncodingUrlLookupError::Interrupted(
+                "original work stop"
+            ))
+        );
+        assert_eq!(steps, stop);
+    }
 }

@@ -496,6 +496,7 @@ impl SessionStorage {
             context.encoding,
             context.expected,
             || encoding_url_step(c),
+            |_| Ok(()),
         ) {
             Ok(value) => Ok(Ok(value)),
             Err(HtmlEncodingUrlLookupError::Facts(error)) => {

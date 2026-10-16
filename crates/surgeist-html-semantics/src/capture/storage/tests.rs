@@ -277,6 +277,7 @@ fn selected_hyperlink_adds_only_out_of_line_receipt_without_original_fact_bank()
             facts.encoding(),
             facts.revision(),
             || Ok::<_, Infallible>(()),
+            |_| Ok(()),
         )
         .unwrap();
     let build = |observed| {
