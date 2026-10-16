@@ -51,6 +51,15 @@ impl CssomSheetConstruction {
     pub(crate) fn into_parts(self) -> (CssomSheetTicket, Vec<CssRecoveryDiagnostic>) {
         (self.ticket, self.media_diagnostics)
     }
+    /// Actual non-source diagnostic backing, including the private Vec's spare
+    /// capacity. Excludes this result's inline layout and shared source payloads.
+    /// Admission precedes every reached observation; no cached clone extent is used.
+    pub fn retained_backing_bytes_with<E>(
+        &self,
+        admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, CssRetainedPayloadError<E>> {
+        processing_diagnostic_backing(&self.media_diagnostics, admit)
+    }
     pub fn ticket(&self) -> &CssomSheetTicket {
         &self.ticket
     }
@@ -91,12 +100,38 @@ pub struct CssomSheetAttributeEdit {
     diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomSheetAttributeEdit {
+    /// Actual non-source diagnostic backing, including the private Vec's spare
+    /// capacity. Excludes this result's inline layout and shared source payloads.
+    /// Admission precedes every reached observation; no allocation occurs.
+    pub fn retained_backing_bytes_with<E>(
+        &self,
+        admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, CssRetainedPayloadError<E>> {
+        processing_diagnostic_backing(&self.diagnostics, admit)
+    }
     pub const fn changed(&self) -> bool {
         self.changed
     }
     pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
         &self.diagnostics
     }
+}
+
+fn processing_diagnostic_backing<E>(
+    diagnostics: &Vec<CssRecoveryDiagnostic>,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<usize, CssRetainedPayloadError<E>> {
+    use CssRetainedPayloadError::{Admission, CapacityOverflow};
+    admit().map_err(Admission)?;
+    let mut bytes = diagnostics
+        .capacity()
+        .checked_mul(std::mem::size_of::<CssRecoveryDiagnostic>())
+        .ok_or(CapacityOverflow)?;
+    for diagnostic in diagnostics {
+        let backing = diagnostic.retained_backing_bytes_with(&mut admit)?;
+        bytes = bytes.checked_add(backing).ok_or(CapacityOverflow)?;
+    }
+    Ok(bytes)
 }
 
 impl CssomSnapshot {
@@ -502,3 +537,7 @@ impl crate::model::State {
         Ok((!title.is_empty()).then_some(title.as_slice()))
     }
 }
+
+#[cfg(test)]
+#[path = "processing_result_storage_tests.rs"]
+mod storage_tests;

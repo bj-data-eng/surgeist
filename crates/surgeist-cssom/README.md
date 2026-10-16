@@ -131,6 +131,16 @@ identity comparisons into one cumulative bank; `max_source_traversal_depth`
 (2048) bounds CSS representation walking independently of CSS nesting. These
 finite defaults are storage-admission policy, not CSS grammar limits.
 
+Retained construction and owner-attribute results expose
+`retained_backing_bytes_with`: actual private diagnostic Vec capacity plus each
+CSS-owned diagnostic's out-of-line backing, under caller admission. It excludes
+the result's inline Self and separately shared source graph. This observation is
+recomputed without allocation; diagnostics and source identity remain inspectable.
+A consuming owner counts its enclosing payload once and uses one
+`CssSourceRetention` domain across its retained results and pending publication.
+These result receipts do not add the CSSOM sheet graph or redefine its backing-only
+source quota; separate owner domains are not a unique process-memory total.
+
 Snapshots own checked current payloads, original occurrences, ordered membership,
 namespace facts and every independently revised supplied/linked input. They remain
 readable after edits and after dropping the store. Removal/replacement detaches

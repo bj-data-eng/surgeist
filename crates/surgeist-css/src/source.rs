@@ -473,6 +473,36 @@ impl CssSourceSnapshot {
         self.0.storage
     }
 
+    pub(crate) fn payload_bytes(&self, include_original: bool) -> Option<usize> {
+        let mut bytes = std::mem::size_of::<SourceSnapshotData>()
+            .checked_add(self.0.text.capacity())?
+            .checked_add(
+                self.0
+                    .checkpoints
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<CssSourcePosition>())?,
+            )?;
+        if let Some(input) = &self.0.utf16 {
+            bytes = bytes.checked_add(
+                input
+                    .map
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<(usize, usize)>())?,
+            )?;
+            if include_original {
+                bytes = bytes
+                    .checked_add(std::mem::size_of::<Vec<u16>>())?
+                    .checked_add(
+                        input
+                            .original
+                            .capacity()
+                            .checked_mul(std::mem::size_of::<u16>())?,
+                    )?;
+            }
+        }
+        Some(bytes)
+    }
+
     /// Original shared UTF16 input, when this source used UTF16 ingress.
     #[must_use]
     pub fn original_utf16(&self) -> Option<&Arc<Vec<u16>>> {
@@ -776,3 +806,7 @@ mod utf16_admission_tests {
         assert_eq!(Arc::strong_count(&original), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "source_payload_tests.rs"]
+mod payload_tests;

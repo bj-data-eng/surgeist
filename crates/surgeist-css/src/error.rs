@@ -1,5 +1,6 @@
 pub(crate) mod property;
 
+mod retained_backing;
 mod source_resolution;
 
 use std::fmt;

@@ -4626,9 +4626,11 @@ pub struct surgeist_cssom::CssomSheetAttributeEdit
 impl surgeist_cssom::CssomSheetAttributeEdit
 pub const fn surgeist_cssom::CssomSheetAttributeEdit::changed(&self) -> bool
 pub fn surgeist_cssom::CssomSheetAttributeEdit::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_cssom::CssomSheetAttributeEdit::retained_backing_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::source_retention::CssRetainedPayloadError<E>>
 pub struct surgeist_cssom::CssomSheetConstruction
 impl surgeist_cssom::CssomSheetConstruction
 pub fn surgeist_cssom::CssomSheetConstruction::media_diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_cssom::CssomSheetConstruction::retained_backing_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::source_retention::CssRetainedPayloadError<E>>
 pub fn surgeist_cssom::CssomSheetConstruction::ticket(&self) -> &surgeist_cssom::CssomSheetTicket
 pub struct surgeist_cssom::CssomSheetId
 impl surgeist_cssom::CssomSheetId

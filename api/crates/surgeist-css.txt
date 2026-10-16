@@ -5012,6 +5012,13 @@ pub fn surgeist_css::CssResize::serialize_specified_with_limits(&self, limits: s
 pub surgeist_css::CssResolutionUnit::Dpcm
 pub surgeist_css::CssResolutionUnit::Dpi
 pub surgeist_css::CssResolutionUnit::Dppx
+pub enum surgeist_css::CssRetainedPayloadError<E>
+pub surgeist_css::CssRetainedPayloadError::Admission(E)
+pub surgeist_css::CssRetainedPayloadError::CapacityOverflow
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_css::CssRetainedPayloadError<E>
+pub fn surgeist_css::CssRetainedPayloadError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_css::CssRetainedPayloadError<E>
+pub fn surgeist_css::CssRetainedPayloadError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssRotate
 pub surgeist_css::CssRotate::None
 pub surgeist_css::CssRotate::Value(surgeist_css::CssRotateValues)
@@ -11833,6 +11840,7 @@ pub struct surgeist_css::CssRecoveryDiagnostic
 impl surgeist_css::CssRecoveryDiagnostic
 pub const fn surgeist_css::CssRecoveryDiagnostic::action(&self) -> surgeist_css::CssRecoveryAction
 pub const fn surgeist_css::CssRecoveryDiagnostic::error(&self) -> &surgeist_css::Error
+pub fn surgeist_css::CssRecoveryDiagnostic::retained_backing_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::CssRetainedPayloadError<E>>
 pub const fn surgeist_css::CssRecoveryDiagnostic::source(&self) -> core::option::Option<&surgeist_css::CssSourceSnapshot>
 pub const fn surgeist_css::CssRecoveryDiagnostic::span(&self) -> surgeist_css::CssSourceSpan
 impl core::cmp::Eq for surgeist_css::CssRecoveryDiagnostic
@@ -12490,6 +12498,7 @@ pub struct surgeist_css::CssSourceRetention
 impl surgeist_css::CssSourceRetention
 pub fn surgeist_css::CssSourceRetention::at_depth<T>(&mut self, depth: usize, visit: impl core::ops::function::FnOnce(&mut Self) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>
 pub fn surgeist_css::CssSourceRetention::charge_step(&mut self) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub fn surgeist_css::CssSourceRetention::complete_payload_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::CssRetainedPayloadError<E>>
 pub const fn surgeist_css::CssSourceRetention::new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self
 pub fn surgeist_css::CssSourceRetention::source(&mut self, source: &surgeist_css::CssSourceSnapshot) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
 pub const fn surgeist_css::CssSourceRetention::steps(&self) -> usize

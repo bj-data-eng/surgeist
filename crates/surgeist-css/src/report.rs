@@ -165,6 +165,17 @@ impl PartialEq for CssRecoveryDiagnostic {
 }
 impl Eq for CssRecoveryDiagnostic {}
 impl CssRecoveryDiagnostic {
+    /// Actual diagnostic-owned out-of-line backing, excluding this diagnostic's
+    /// inline layout and its separately shared source graph. String/Vec spare
+    /// capacity and boxed payloads are included. Recomputed after clones.
+    /// Each reached observation is admitted before its operands are read.
+    pub fn retained_backing_bytes_with<E>(
+        &self,
+        mut admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
+        self.error.retained_backing_bytes_with(&mut admit)
+    }
+
     /// Actual immutable parser input, when established by the owning parser.
     #[must_use]
     pub const fn source(&self) -> Option<&crate::CssSourceSnapshot> {

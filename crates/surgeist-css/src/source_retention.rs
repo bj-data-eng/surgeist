@@ -8,6 +8,32 @@ pub enum CssSourceRetentionError {
     Allocation,
 }
 
+/// Refusal while observing CSS-owned retained payloads.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssRetainedPayloadError<E> {
+    /// The caller refused the next actual observation before its operands were read.
+    Admission(E),
+    /// The measured byte sum cannot be represented by usize.
+    CapacityOverflow,
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for CssRetainedPayloadError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Admission(error) => write!(f, "CSS retained payload admission: {error}"),
+            Self::CapacityOverflow => f.write_str("CSS retained payload capacity overflow"),
+        }
+    }
+}
+impl<E: std::error::Error + 'static> std::error::Error for CssRetainedPayloadError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Admission(error) => Some(error),
+            Self::CapacityOverflow => None,
+        }
+    }
+}
+
 /// CSS-owned source traversal. Implemented for retained CSS payload owners.
 pub trait CssRetainedSources {
     #[doc(hidden)]
@@ -99,6 +125,49 @@ impl CssSourceRetention {
         self.usage = usage;
         Ok(())
     }
+    /// Complete source payload in this retained snapshot-identity domain.
+    ///
+    /// Includes private source payload headers and backing, and each exact shared
+    /// original UTF16 Vec header/backing once, even across distinct snapshots.
+    /// Excludes this collector's own bank, opaque Arc control blocks and allocator
+    /// overhead. Existing backing-only usage/quota and visit tariffs are unchanged.
+    /// The caller admits each source observation and original-identity comparison
+    /// before operands are read. No allocation or source-text comparison occurs.
+    pub fn complete_payload_bytes_with<E>(
+        &self,
+        mut admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, CssRetainedPayloadError<E>> {
+        use CssRetainedPayloadError::{Admission, CapacityOverflow};
+        admit().map_err(Admission)?;
+        let mut total = 0usize;
+        for index in 0..self.sources.len() {
+            admit().map_err(Admission)?;
+            let source = &self.sources[index];
+            let mut include_original = true;
+            if let Some(original) = source.original_utf16() {
+                for earlier in 0..index {
+                    admit().map_err(Admission)?;
+                    if self.sources[earlier]
+                        .original_utf16()
+                        .is_some_and(|previous| std::sync::Arc::ptr_eq(previous, original))
+                    {
+                        include_original = false;
+                        break;
+                    }
+                }
+            }
+            admit().map_err(Admission)?;
+            total = total
+                .checked_add(
+                    source
+                        .payload_bytes(include_original)
+                        .ok_or(CapacityOverflow)?,
+                )
+                .ok_or(CapacityOverflow)?;
+        }
+        Ok(total)
+    }
+
     #[must_use]
     pub const fn usage(&self) -> CssSourceStorageUsage {
         self.usage

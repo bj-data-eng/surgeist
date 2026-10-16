@@ -64,6 +64,19 @@ provenance independently of formatting, resource execution or Arc strong counts.
 Source storage admission is separate from input parsing admission and caller-owned
 historical captures.
 
+Processing-result consumers can separately observe diagnostic-owned out-of-line
+backing with `CssRecoveryDiagnostic::retained_backing_bytes_with`. It includes
+actual String/Vec capacities and boxed payloads, excludes inline diagnostic
+layout and source handles, and recomputes after clones. Caller admission precedes
+each reached observation; errors distinguish admission refusal and byte overflow.
+`CssSourceRetention::complete_payload_bytes_with` observes the same retained source
+identity bank, adding actual source payload headers and original UTF16 Vec headers
+to backing. Exact original UTF16 Arc aliases count once across distinct snapshots;
+equal contents in different owners count separately. Existing backing-only source
+quotas and visit tariffs are unchanged. The complete observation excludes the
+collector's bank, opaque Arc control blocks and allocator overhead; it allocates
+nothing and admits each reached source observation and identity comparison.
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and

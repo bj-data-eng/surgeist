@@ -238,6 +238,10 @@ pub struct CssNamespacePrefix {
 }
 
 impl CssNamespacePrefix {
+    pub(crate) fn diagnostic_backing_bytes(&self) -> usize {
+        self.value.capacity()
+    }
+
     /// Constructs a prefix from a decoded CSS identifier, which may require escapes
     /// in its CSS spelling. Empty values and NUL cannot retain identifier identity.
     #[must_use]
@@ -3779,6 +3783,10 @@ pub struct CssCustomPropertyName {
 }
 
 impl CssCustomPropertyName {
+    pub(crate) fn diagnostic_backing_bytes(&self) -> usize {
+        self.name.capacity()
+    }
+
     /// Tokenizes and validates one complete authored custom-property name.
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
