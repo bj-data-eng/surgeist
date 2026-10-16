@@ -239,6 +239,7 @@ pub enum HtmlSemanticQuery {
     /// Actual cryptographic slot, independent of the current content attribute.
     Nonce,
     DocumentBaseUrl,
+    DocumentEncodingUrlContext,
     ElementTarget,
     FormSubmissionTarget,
     BaseHref,
@@ -402,7 +403,7 @@ impl HtmlSemanticQuery {
             Self::Nonce => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-noncedelement-nonce"
             }
-            Self::DocumentBaseUrl => {
+            Self::DocumentBaseUrl | Self::DocumentEncodingUrlContext => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#document-base-url"
             }
             Self::ElementTarget | Self::FormSubmissionTarget => {
@@ -914,6 +915,7 @@ pub enum HtmlSemanticFact {
     MicrodataDocumentAuthor(HtmlSemanticValue<HtmlMicrodataDocumentAuthor>),
     Nonce(HtmlSemanticValue<DocumentString>),
     DocumentBaseUrl(HtmlSemanticValue<HtmlDocumentBaseUrl>),
+    DocumentEncodingUrlContext(HtmlSemanticValue<HtmlDocumentEncodingUrlContext>),
     ElementTarget(HtmlSemanticValue<HtmlElementTarget>),
     FormSubmissionTarget(HtmlSemanticValue<HtmlElementTarget>),
     BaseHref(HtmlSemanticValue<HtmlBaseHref>),
@@ -2467,6 +2469,7 @@ impl<'a> HtmlSemanticSession<'a> {
                                 self.nonce_readback(&request.subject, element)?,
                             ),
                             HtmlSemanticQuery::DocumentBaseUrl
+                            | HtmlSemanticQuery::DocumentEncodingUrlContext
                             | HtmlSemanticQuery::ElementTarget
                             | HtmlSemanticQuery::FormSubmissionTarget
                             | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,
@@ -3045,6 +3048,7 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlSemanticFact::Nonce(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::DocumentBaseUrl
+                        | HtmlSemanticQuery::DocumentEncodingUrlContext
                         | HtmlSemanticQuery::ElementTarget
                         | HtmlSemanticQuery::FormSubmissionTarget
                         | HtmlSemanticQuery::BaseHref => self.base_fact(node, request)?,

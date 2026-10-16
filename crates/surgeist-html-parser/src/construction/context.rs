@@ -286,6 +286,7 @@ impl SessionStorage {
             unreachable!()
         };
         *inert = Some(node.index);
+        self.bind_template_base(c, node.index)?;
         Ok(DocumentRef::Owned(node.index))
     }
     fn validate_captured_document(

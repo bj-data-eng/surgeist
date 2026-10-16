@@ -79,6 +79,13 @@ impl<'source> FragmentEntry<'source> {
         session.initialize_standalone_document(c)?;
         session.initialize_parse_evidence(c, request.source())?;
         let bootstrap = session.initialize_fragment(c, request)?;
+        if let Some(inputs) = request.associated_inputs() {
+            session.install_associated_inputs(c, inputs)?;
+            if let Some(facts) = &inputs.parser_document {
+                session.install_document_base_facts(c, facts)?;
+            }
+        }
+
         let mut whitespace = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         whitespace.require_owner(c)?;
         let kernel = match LocationKernel::new(&mut self.session, c) {

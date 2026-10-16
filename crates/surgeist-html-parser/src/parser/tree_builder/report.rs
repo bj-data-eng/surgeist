@@ -96,8 +96,10 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
+        let mut storage = storage.commit();
+        storage.release_execution_inputs(c);
+        sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let storage = storage.commit();
         let sealed = input.take().expect("qualified original fragment seal");
         Ok(Self {
             context: ReportContext::Fragment(sealed.request),

@@ -1082,6 +1082,7 @@ pub surgeist_html_semantics::HtmlSemanticFact::DirtyCheckednessFlag(surgeist_htm
 pub surgeist_html_semantics::HtmlSemanticFact::DirtyValueFlag(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::Disabledness(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::DocumentBaseUrl(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlDocumentBaseUrl>)
+pub surgeist_html_semantics::HtmlSemanticFact::DocumentEncodingUrlContext(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlDocumentEncodingUrlContext>)
 pub surgeist_html_semantics::HtmlSemanticFact::DocumentFeeds(surgeist_html_semantics::HtmlSemanticValue<alloc::vec::Vec<surgeist_html_semantics::HtmlCaptureSubjectId>>)
 pub surgeist_html_semantics::HtmlSemanticFact::DocumentIcon(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlDocumentIconReadback>)
 pub surgeist_html_semantics::HtmlSemanticFact::DocumentTitle(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlDocumentTitle>)
@@ -1257,6 +1258,7 @@ pub surgeist_html_semantics::HtmlSemanticQuery::DirtyCheckednessFlag
 pub surgeist_html_semantics::HtmlSemanticQuery::DirtyValueFlag
 pub surgeist_html_semantics::HtmlSemanticQuery::Disabledness
 pub surgeist_html_semantics::HtmlSemanticQuery::DocumentBaseUrl
+pub surgeist_html_semantics::HtmlSemanticQuery::DocumentEncodingUrlContext
 pub surgeist_html_semantics::HtmlSemanticQuery::DocumentFeeds
 pub surgeist_html_semantics::HtmlSemanticQuery::DocumentIcon
 pub surgeist_html_semantics::HtmlSemanticQuery::DocumentTitle
@@ -1931,6 +1933,17 @@ impl surgeist_html_semantics::HtmlDocumentDesignModeFact
 pub fn surgeist_html_semantics::HtmlDocumentDesignModeFact::document(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlDocumentDesignModeFact::new(document: surgeist_html_semantics::HtmlCaptureSubjectId, state: surgeist_html_semantics::HtmlDesignMode) -> Self
 pub fn surgeist_html_semantics::HtmlDocumentDesignModeFact::state(&self) -> surgeist_html_semantics::HtmlDesignMode
+pub struct surgeist_html_semantics::HtmlDocumentEncodingUrlContext
+impl surgeist_html_semantics::HtmlDocumentEncodingUrlContext
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::base_url(&self) -> &surgeist_html_semantics::HtmlDocumentBaseUrl
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::document(&self) -> &surgeist_html_semantics::HtmlCaptureDocumentId
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::encoding(&self) -> &surgeist_html_semantics::HtmlBaseEncoding
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::revision(&self) -> &surgeist_html_semantics::HtmlBaseFactsRevision
+impl core::cmp::Eq for surgeist_html_semantics::HtmlDocumentEncodingUrlContext
+impl core::cmp::PartialEq for surgeist_html_semantics::HtmlDocumentEncodingUrlContext
+pub fn surgeist_html_semantics::HtmlDocumentEncodingUrlContext::eq(&self, other: &Self) -> bool
 pub struct surgeist_html_semantics::HtmlDocumentIconChoice
 impl surgeist_html_semantics::HtmlDocumentIconChoice
 pub fn surgeist_html_semantics::HtmlDocumentIconChoice::declaration(&self) -> &surgeist_html_semantics::HtmlIconDeclaration

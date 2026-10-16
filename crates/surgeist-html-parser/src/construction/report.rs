@@ -54,6 +54,13 @@ impl<'a> PreparedReportStorage<'a> {
                     if inputs.template.is_some() {
                         c.charge(WorkCategory::ProviderCall, 1)?;
                     }
+                    if inputs.parser_document.is_some() {
+                        c.charge(WorkCategory::ProviderCall, 1)?;
+                    }
+                    for _ in &inputs.captured {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(WorkCategory::ProviderCall, 1)?;
+                    }
                     for (resource, amount) in usage.resources() {
                         if c.usage().resource(resource).current < amount {
                             return Err(SessionError::AssociatedFacts);
@@ -140,8 +147,21 @@ impl<'a> PreparedReportStorage<'a> {
                     checked_document(storage, &DocumentRef::Owned(*node), c)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let mut inert = false;
+                    let mut auxiliary = false;
                     for p in &storage.payloads.values {
                         c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let RetainedPayload::AssociatedInputs { inputs, .. } = p {
+                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            if *node == 0
+                                && storage.fragment.is_some()
+                                && inputs
+                                    .parser_document
+                                    .as_ref()
+                                    .is_some_and(|original| facts.same_owner(original))
+                            {
+                                auxiliary = true;
+                            }
+                        }
                         if let RetainedPayload::AssociatedInputs { inputs, .. } = p
                             && inputs
                                 .template
@@ -161,6 +181,7 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                     if (*node != 0 || base_facts.is_none_or(|original| !facts.same_owner(original)))
                         && !inert
+                        && !auxiliary
                     {
                         return Err(SessionError::WrongToken);
                     }

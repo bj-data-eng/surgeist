@@ -36,6 +36,26 @@ impl Error for HtmlParseRequestError {
     }
 }
 
+fn validate_constructor_base_facts(
+    facts: &crate::HtmlParseBaseFacts,
+) -> Result<(), HtmlParseRequestError> {
+    let document = facts.document();
+    if document.iframe_srcdoc()
+        || document
+            .document_url()
+            .is_some_and(|url| !url.matches_about_blank())
+        || matches!(
+            document.about_base_url(),
+            crate::HtmlAboutBaseUrl::KnownRecord(_)
+        )
+    {
+        return Err(HtmlParseRequestError::Base(
+            crate::HtmlBaseFactsError::ContradictoryObservation,
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 enum DocumentContext {
     Offline,
@@ -176,20 +196,7 @@ impl HtmlDocumentParseRequest {
         mut self,
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
-        let document = facts.document();
-        if document.iframe_srcdoc()
-            || document
-                .document_url()
-                .is_some_and(|url| !url.matches_about_blank())
-            || matches!(
-                document.about_base_url(),
-                crate::HtmlAboutBaseUrl::KnownRecord(_)
-            )
-        {
-            return Err(HtmlParseRequestError::Base(
-                crate::HtmlBaseFactsError::ContradictoryObservation,
-            ));
-        }
+        validate_constructor_base_facts(&facts)?;
         self.associated_mut().template = Some(facts);
         Ok(self)
     }
@@ -307,6 +314,7 @@ pub struct HtmlFragmentParseRequest {
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
+    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
 }
 impl HtmlFragmentParseRequest {
     /// Capture/revision-qualified attestation for this entry Document's parser
@@ -344,6 +352,7 @@ impl HtmlFragmentParseRequest {
             effective: self.effective,
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
             base_facts: self.base_facts,
+            associated: self.associated,
         }
     }
     /// Selects Inert mode and disallows declarative shadow roots. A disabled
@@ -380,7 +389,56 @@ impl HtmlFragmentParseRequest {
             effective,
             allow_declarative_shadow_roots,
             base_facts: None,
+            associated: None,
         })
+    }
+    /// Execution-only observations, resolved against the actual reached Document.
+    pub fn with_encoding_url_facts(
+        mut self,
+        facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
+    ) -> Self {
+        self.associated_mut().encoding_urls = facts;
+        self
+    }
+    /// Sealed immutable semantic query results for independently qualified
+    /// captured Documents. Original execution admits scopes, duplicates and backing.
+    pub fn with_encoding_url_contexts(
+        mut self,
+        contexts: Vec<surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
+    ) -> Self {
+        self.associated_mut().captured = contexts;
+        self
+    }
+    /// Actual external observations for this operation's auxiliary §13.4
+    /// Document constructor. This does not create a URL/encoding identity.
+    pub fn with_parser_document_base_facts(
+        mut self,
+        facts: crate::HtmlParseBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        validate_constructor_base_facts(&facts)?;
+        self.associated_mut().parser_document = Some(facts);
+        Ok(self)
+    }
+    /// Actual observations for separately source-created inert template owners;
+    /// existing captured inert owners use their own selected semantic context.
+    pub fn with_template_base_facts(
+        mut self,
+        facts: crate::HtmlParseBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        validate_constructor_base_facts(&facts)?;
+        self.associated_mut().template = Some(facts);
+        Ok(self)
+    }
+    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
+        let inputs = self.associated.get_or_insert_with(|| {
+            std::sync::Arc::new(crate::construction::associated::Inputs::default())
+        });
+        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its inputs")
+    }
+    pub(crate) fn associated_inputs(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.associated.as_ref()
     }
     pub fn with_base_facts(
         mut self,
@@ -442,8 +500,18 @@ pub(crate) struct FragmentRequestParts {
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
+    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
 }
 impl FragmentRequestParts {
+    pub(crate) fn associated_inputs(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.associated.as_ref()
+    }
+    pub(crate) fn release_associated_inputs(&mut self) {
+        self.associated = None;
+    }
+
     pub(crate) fn base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
         self.base_facts.as_deref()
     }

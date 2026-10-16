@@ -631,7 +631,11 @@ pub fn surgeist_html_parser::HtmlFragmentParseRequest::parse(self) -> core::resu
 pub fn surgeist_html_parser::HtmlFragmentParseRequest::requested_scripting_mode(&self) -> surgeist_html::fragment_initialization::HtmlParserScriptingMode
 pub fn surgeist_html_parser::HtmlFragmentParseRequest::source(&self) -> &surgeist_html_parser::HtmlSource
 pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_base_facts(self, facts: surgeist_html_semantics::base::HtmlCapturedBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
+pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_encoding_url_contexts(self, contexts: alloc::vec::Vec<surgeist_html_semantics::semantics::base::HtmlDocumentEncodingUrlContext>) -> Self
+pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_encoding_url_facts(self, facts: alloc::vec::Vec<surgeist_html_semantics::hyperlink::HtmlEncodingUrlParseFacts>) -> Self
 pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_options(source: surgeist_html_parser::HtmlSource, context: surgeist_html_semantics::capture::HtmlFragmentContext, limits: surgeist_html_parser::HtmlParseLimits, requested: surgeist_html::fragment_initialization::HtmlParserScriptingMode, allow_declarative_shadow_roots: bool) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
+pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_parser_document_base_facts(self, facts: surgeist_html_semantics::base::HtmlParseBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
+pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_template_base_facts(self, facts: surgeist_html_semantics::base::HtmlParseBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
 pub struct surgeist_html_parser::HtmlParseAssociation<'a>
 impl<'a> surgeist_html_parser::HtmlParseAssociation<'a>
 pub fn surgeist_html_parser::HtmlParseAssociation<'a>::cause(&self) -> surgeist_html_parser::HtmlParseCause<'a>
@@ -753,6 +757,8 @@ pub fn surgeist_html_parser::HtmlParseFailure::context(&self) -> core::option::O
 pub fn surgeist_html_parser::HtmlParseFailure::diagnostics(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDiagnostics<'_>>
 pub fn surgeist_html_parser::HtmlParseFailure::document(&self) -> core::option::Option<&surgeist_html_semantics::capture::HtmlCaptureDocumentId>
 pub fn surgeist_html_parser::HtmlParseFailure::document_base_facts(&self) -> core::option::Option<&surgeist_html_semantics::base::HtmlParseBaseFacts>
+pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_context_capacity(&self) -> core::option::Option<usize>
+pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_contexts(&self) -> core::option::Option<&[surgeist_html_semantics::semantics::base::HtmlDocumentEncodingUrlContext]>
 pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_fact_capacity(&self) -> core::option::Option<usize>
 pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_facts(&self) -> core::option::Option<&[surgeist_html_semantics::hyperlink::HtmlEncodingUrlParseFacts]>
 pub fn surgeist_html_parser::HtmlParseFailure::first_stop(&self) -> core::option::Option<surgeist_html_parser::HtmlParseStop>

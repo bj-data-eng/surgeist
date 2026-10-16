@@ -20,6 +20,54 @@ impl HtmlDocumentBaseUrl {
     }
 }
 
+/// Prepared exact captured-Document inputs for encoding-parsing a URL.
+/// Issued only by the real semantic query; cloning keeps the selected opaque
+/// identities without retaining the context or its whole Base-fact bank.
+#[derive(Clone, Debug)]
+pub struct HtmlDocumentEncodingUrlContext {
+    document: crate::HtmlCaptureDocumentId,
+    host_revision: HtmlHostFactsRevision,
+    base_url: HtmlDocumentBaseUrl,
+    encoding: crate::HtmlBaseEncoding,
+    revision: HtmlBaseFactsRevision,
+    retained: crate::HtmlBaseRetainedStorageUsage,
+}
+impl PartialEq for HtmlDocumentEncodingUrlContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.document == other.document
+            && self.host_revision == other.host_revision
+            && self.base_url == other.base_url
+            && self.encoding == other.encoding
+            && self.revision == other.revision
+    }
+}
+impl Eq for HtmlDocumentEncodingUrlContext {}
+impl HtmlDocumentEncodingUrlContext {
+    pub fn document(&self) -> &crate::HtmlCaptureDocumentId {
+        &self.document
+    }
+    pub fn host_revision(&self) -> &HtmlHostFactsRevision {
+        &self.host_revision
+    }
+    pub fn base_url(&self) -> &HtmlDocumentBaseUrl {
+        &self.base_url
+    }
+    pub fn encoding(&self) -> &crate::HtmlBaseEncoding {
+        &self.encoding
+    }
+    /// Expected current Document revision, independent of a URL-bank candidate
+    /// and of an older first frozen Base's producing revision.
+    pub fn revision(&self) -> &HtmlBaseFactsRevision {
+        &self.revision
+    }
+    /// Complete outer value header plus selected URL payload, conservatively
+    /// per occurrence. Excludes opaque Arc bookkeeping; includes spare UTF-16
+    /// capacity and no unselected Base/URL observations or whole capture bank.
+    pub fn retained_storage_usage(&self) -> crate::HtmlBaseRetainedStorageUsage {
+        self.retained
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlTargetOrigin {
     ExplicitOverride,
@@ -73,6 +121,15 @@ impl<'a> HtmlSemanticSession<'a> {
         request: &HtmlSemanticRequest,
     ) -> Result<HtmlSemanticFact, HtmlSemanticFailure> {
         match request.query() {
+            HtmlSemanticQuery::DocumentEncodingUrlContext => {
+                Ok(HtmlSemanticFact::DocumentEncodingUrlContext(
+                    if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
+                        self.document_encoding_url_context(node)?
+                    } else {
+                        HtmlSemanticValue::Inapplicable
+                    },
+                ))
+            }
             HtmlSemanticQuery::DocumentBaseUrl => Ok(HtmlSemanticFact::DocumentBaseUrl(
                 if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
                     self.document_base(node)?
@@ -226,6 +283,51 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Err(missing) => self.base_missing(document.id(), missing),
         }
+    }
+
+    fn document_encoding_url_context(
+        &mut self,
+        document: HtmlCapturedNode<'a>,
+    ) -> Result<HtmlSemanticValue<HtmlDocumentEncodingUrlContext>, HtmlSemanticFailure> {
+        let base_url = match self.document_base(document)? {
+            HtmlSemanticValue::Known(value) => value,
+            HtmlSemanticValue::Missing(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+            HtmlSemanticValue::Unsupported(reason) => {
+                return Ok(HtmlSemanticValue::Unsupported(reason));
+            }
+            HtmlSemanticValue::Inapplicable => return Ok(HtmlSemanticValue::Inapplicable),
+        };
+        self.charge(1)?;
+        let document_id = document.node_document();
+        let Some(facts) = self.base_environment(&document_id)? else {
+            return self.base_missing(document.id(), HtmlBaseMissing::DocumentFacts);
+        };
+        self.charge(1)?;
+        let Some(encoding) = facts.document().encoding() else {
+            return self.base_missing(document.id(), HtmlBaseMissing::CharacterEncoding);
+        };
+        self.charge(1)?;
+        let Some(expected) = self.context.base_revision.as_ref() else {
+            return self.base_missing(document.id(), HtmlBaseMissing::DocumentFacts);
+        };
+        // Context formation independently checked this revision against every
+        // actual Document row. Never obtain expected identity from a URL bank.
+        self.charge(7)?;
+        let selected = base_url.value().retained_storage_usage();
+        let bytes = size_of::<HtmlDocumentEncodingUrlContext>()
+            .checked_add(selected.retained_bytes())
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        Ok(HtmlSemanticValue::Known(HtmlDocumentEncodingUrlContext {
+            document: document_id,
+            host_revision: self.context.host_revision.clone(),
+            base_url,
+            encoding: encoding.clone(),
+            revision: expected.clone(),
+            retained: crate::HtmlBaseRetainedStorageUsage {
+                bytes,
+                units: selected.utf16_extent(),
+            },
+        }))
     }
 
     fn parse_base_value(

@@ -46,6 +46,23 @@ revision at each reached operation; later Base elements cannot rewrite earlier
 cached URLs. Template-owner facts bind only the actual separately created inert
 Document and must agree with its known default context.
 
+Contextual requests accept those same execution-only EncodingUrl banks plus
+sealed `DocumentEncodingUrlContext` semantic query results for captured
+Documents. Selection uses the node's actual Document when each href update runs:
+a root A/Area can still belong to the auxiliary parser Document before adoption;
+a nested element can already belong to the captured target; template contents
+use their actual owned or captured inert Document. Separate constructor-qualified
+facts supply real auxiliary/inert URL and encoding observations. Adoption does
+not replay href parsing. Each selected context is checked against the original
+capture/host/Document; URL lookup checks its independently expected full revision,
+base and encoding identities. The closed fragment effects do not change captured
+Document policy or ordinary Base order; owned reached CSP gaps still refuse
+before lookup. No immutable selection certifies a later policy transition.
+Successful terminal publication releases these selected contexts and URL execution
+banks while retaining only actual snapshots and needed Document history. Failure
+returns the original input vectors, capacities and first stop. Separately supplied
+whole captured Base banks retain their existing report lifetime and receipt.
+
 Standalone Img records retain the actual fresh request, dimension source and
 latest inactive update wait with its generation and flags. Source/Picture hooks
 and real clones use the original source effect owner. Disabled image support

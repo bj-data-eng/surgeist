@@ -79,6 +79,8 @@ impl AssociatedStorageUsage {
 #[derive(Debug, Default)]
 pub(crate) struct Inputs {
     pub(crate) template: Option<crate::HtmlParseBaseFacts>,
+    pub(crate) parser_document: Option<crate::HtmlParseBaseFacts>,
+    pub(crate) captured: Vec<surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     pub(crate) encoding_urls: Vec<HtmlEncodingUrlParseFacts>,
 }
 impl Inputs {
@@ -90,13 +92,32 @@ impl Inputs {
             .encoding_urls
             .capacity()
             .checked_mul(mem::size_of::<HtmlEncodingUrlParseFacts>())
+            .and_then(|v| {
+                self.captured
+                    .capacity()
+                    .checked_mul(mem::size_of::<
+                        surgeist_html_semantics::HtmlDocumentEncodingUrlContext,
+                    >())
+                    .and_then(|n| v.checked_add(n))
+            })
             .and_then(|v| mem::size_of::<Self>().checked_add(v))
             .ok_or_else(|| {
                 c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
                     .unwrap_err()
             })?;
-        usage.add(header, 0, self.encoding_urls.capacity(), c)?;
-        if let Some(facts) = &self.template {
+        usage.add(
+            header,
+            0,
+            self.encoding_urls
+                .capacity()
+                .checked_add(self.captured.capacity())
+                .ok_or(SessionError::AssociatedFacts)?,
+            c,
+        )?;
+        for facts in [&self.template, &self.parser_document]
+            .into_iter()
+            .flatten()
+        {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let retained = facts.retained_storage_usage();
             usage.add(
@@ -105,6 +126,17 @@ impl Inputs {
                 facts.formation_usage().record_capacity(),
                 c,
             )?;
+        }
+        for context in &self.captured {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let retained = context.retained_storage_usage();
+            let backing = retained
+                .retained_bytes()
+                .checked_sub(mem::size_of::<
+                    surgeist_html_semantics::HtmlDocumentEncodingUrlContext,
+                >())
+                .ok_or(SessionError::AssociatedFacts)?;
+            usage.add(backing, retained.utf16_extent(), 0, c)?;
         }
         for (i, facts) in self.encoding_urls.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -178,6 +210,26 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         storage.require(c)?;
+        for (index, context) in inputs.captured.iter().enumerate() {
+            c.charge(WorkCategory::RecordVisit, 3)?;
+            let Some(fragment) = &storage.fragment else {
+                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+            };
+            let capture = fragment.context.capture();
+            if context.host_revision() != capture.host_facts_revision() {
+                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+            }
+            c.charge(WorkCategory::ProviderCall, 1)?;
+            if capture.document_id(context.document().subject()).is_err() {
+                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+            }
+            for previous in &inputs.captured[..index] {
+                c.charge(WorkCategory::RecordVisit, 1)?;
+                if previous.document() == context.document() {
+                    return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                }
+            }
+        }
         let usage = inputs.usage(c)?;
         storage.prepare_payload_slot_owned(c)?;
         payload_write::<Arc<Inputs>>(c, 1)?;
@@ -459,7 +511,9 @@ impl SessionStorage {
     ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
         let document = match self.node_document_ref(c, node)? {
             DocumentRef::Owned(d) => d,
-            DocumentRef::Captured(_) => return Ok(Err(HyperlinkUnavailable::DocumentEnvironment)),
+            DocumentRef::Captured(document) => {
+                return self.captured_encoding_url_context(c, &document);
+            }
         };
         if self.meta_policy_missing(c, document)?.is_some() {
             return Ok(Err(HyperlinkUnavailable::PolicyHistory));
@@ -513,6 +567,53 @@ impl SessionStorage {
             Err(e) => return Ok(Err(HyperlinkUnavailable::Base(e))),
         };
         let expected = facts.document().revision();
+        self.encoding_url_bank(c, base, encoding, expected)
+    }
+    fn captured_encoding_url_context<'a>(
+        &'a self,
+        c: &mut ParseControl,
+        document: &crate::HtmlCaptureDocumentId,
+    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
+        // This source-created fragment has only these exact captured effects.
+        // None changes captured Document policy or its ordinary Base tree. This
+        // exhaustive inventory must be revised before admitting any such new
+        // producer: it must retain the actual captured gap and refuse here.
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let fragment = self
+            .fragment
+            .as_ref()
+            .ok_or(SessionError::ContextUnavailable)?;
+        for effect in fragment.effects.as_slice() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            match effect {
+                context::ContextEffect::TemplateCache { .. }
+                | context::ContextEffect::AttachShadow { .. } => {}
+            }
+        }
+        let Some(inputs) = self.associated_inputs(c)? else {
+            return Ok(Err(HyperlinkUnavailable::DocumentEnvironment));
+        };
+        for value in &inputs.captured {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if value.document() == document {
+                c.charge(WorkCategory::RecordVisit, 3)?;
+                return self.encoding_url_bank(
+                    c,
+                    value.base_url().value(),
+                    value.encoding(),
+                    value.revision(),
+                );
+            }
+        }
+        Ok(Err(HyperlinkUnavailable::DocumentEnvironment))
+    }
+    fn encoding_url_bank<'a>(
+        &'a self,
+        c: &mut ParseControl,
+        base: &'a crate::HtmlBaseUrlRecord,
+        encoding: &'a crate::HtmlBaseEncoding,
+        expected: &'a crate::HtmlBaseFactsRevision,
+    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
         let Some(inputs) = self.associated_inputs(c)? else {
             return Ok(Err(HyperlinkUnavailable::Observation(
                 HtmlEncodingUrlFactsError::MissingObservation,
@@ -904,6 +1005,109 @@ mod tests {
         let failure = request.parse().unwrap_err();
         assert_eq!(failure.first_stop(), Some(crate::HtmlParseStop::Cancelled));
         assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&fact));
+        assert_eq!(failure.cleanup_error(), None);
+        for resource in [
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::BufferedUtf16Units,
+        ] {
+            assert_eq!(
+                failure
+                    .after_cleanup()
+                    .unwrap()
+                    .resource(resource)
+                    .current(),
+                0,
+                "{resource:?}"
+            );
+        }
+        CANCEL_AFTER_SELECTED.with(|hook| assert!(hook.borrow().is_none()));
+    }
+
+    #[test]
+    fn fragment_cancel_after_selected_admission_keeps_original_bank_and_reclaims_prefix() {
+        use surgeist_html_semantics::*;
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(20, 100, 10, 1000, 10, 0, 0),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                surgeist_html::HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let div = builder
+            .add_element(
+                &document,
+                surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "div"),
+                surgeist_html::OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_no_shadow_root(&div).unwrap();
+        builder
+            .establish_children(&document, std::slice::from_ref(&div))
+            .unwrap();
+        builder.establish_children(&div, &[]).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
+        let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+        let base = HtmlBaseUrlRecord::observed(
+            revision.clone(),
+            "about:blank".into(),
+            HtmlBaseUrlScheme::Other,
+            true,
+        )
+        .unwrap();
+        let encoding = HtmlBaseEncoding::fresh();
+        let environment = HtmlParseBaseFacts::new(
+            HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(base.clone()),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                Some(encoding.clone()),
+            )
+            .unwrap(),
+            vec![],
+            HtmlBaseFactsLimits::new(10, 1000, 10000),
+        )
+        .unwrap();
+        let fact = HtmlEncodingUrlParseFacts::new(
+            base,
+            encoding,
+            revision,
+            vec![HtmlEncodingUrlParseObservation::new(
+                "x".into(),
+                HtmlEncodingUrlParseOutcome::Failure,
+            )],
+            HtmlBaseFactsLimits::new(10, 1000, 10000),
+        )
+        .unwrap();
+        let mut facts = Vec::with_capacity(7);
+        facts.push(fact.clone());
+        let request = crate::HtmlFragmentParseRequest::new(
+            crate::HtmlSource::utf8("<a href=x>"),
+            context,
+            crate::construction::tests::limits(),
+        )
+        .unwrap()
+        .with_parser_document_base_facts(environment)
+        .unwrap()
+        .with_encoding_url_facts(facts);
+        CANCEL_AFTER_SELECTED
+            .with(|hook| *hook.borrow_mut() = Some(request.cancellation().clone()));
+        let failure = request.parse().unwrap_err();
+        assert_eq!(failure.first_stop(), Some(crate::HtmlParseStop::Cancelled));
+        assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&fact));
+        assert_eq!(failure.encoding_url_fact_capacity(), Some(7));
         assert_eq!(failure.cleanup_error(), None);
         for resource in [
             HtmlParseResource::ManagedCapacityBytes,

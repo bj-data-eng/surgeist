@@ -64,8 +64,29 @@ impl HtmlParseFailure {
             FailureStorage::OrdinaryFrozen(owner) => {
                 owner.request.associated_inputs().map(AsRef::as_ref)
             }
-            _ => None,
+            FailureStorage::FragmentInitialization(owner) => owner
+                .original_request()?
+                .associated_inputs()
+                .map(AsRef::as_ref),
+            FailureStorage::Fragment(owner) => owner
+                .original_request()
+                .associated_inputs()
+                .map(AsRef::as_ref),
+            FailureStorage::FragmentFrozen(owner) => {
+                owner.request.associated_inputs().map(AsRef::as_ref)
+            }
         }
+    }
+    /// Original selected contexts, including unused entries, on every failure.
+    pub fn encoding_url_contexts(
+        &self,
+    ) -> Option<&[surgeist_html_semantics::HtmlDocumentEncodingUrlContext]> {
+        self.associated_inputs()
+            .map(|inputs| inputs.captured.as_slice())
+    }
+    pub fn encoding_url_context_capacity(&self) -> Option<usize> {
+        self.associated_inputs()
+            .map(|inputs| inputs.captured.capacity())
     }
     /// Actual original supplied observation bank, including unused entries.
     /// Failure does not replace it with a selected or reconstructed collection.

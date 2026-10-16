@@ -34,6 +34,20 @@ Both use the same qualified lookup. Missing observations remain unavailable
 evidence. Adapters bind
 these facts to actual Documents and encoding truth; this crate parses no URL.
 
+`HtmlSemanticQuery::DocumentEncodingUrlContext` uses the same bounded session's
+first-Base, Document-base and environment selection. A known result is a sealed
+owned `HtmlDocumentEncodingUrlContext`: exact captured Document/host, selected
+`HtmlDocumentBaseUrl`, opaque encoding and independently expected current full
+revision. The first frozen Base may retain an older producing revision. Missing
+topology, frozen state, environment or encoding stays missing; non-Documents are
+inapplicable. Results clone only selected immutable handles, without retaining
+the semantic context or whole Base bank. Session work, scratch and result-vector
+allocation remain under the ordinary controls. The value's checked
+`retained_storage_usage()` counts its complete outer header and selected URL
+payload, including actual UTF-16 capacity; it excludes unselected banks and
+opaque Arc bookkeeping. A consumer storing that same header inline subtracts
+exactly the public value's size before adding the receipt's backing.
+
 Capture builders can establish A/Area URL cache history with the actual historical
 parsing Document, independently of current node-Document membership after adoption.
 Fresh/cleared null, observed parse failure and unavailable history remain distinct.
