@@ -276,66 +276,75 @@ impl HtmlCapture {
     /// See `HtmlCaptureRetainedStorageUsage` for the explicit alias domain.
     pub fn retained_storage_usage_with<E>(
         &self,
-        mut step: impl FnMut() -> Result<(), E>,
+        step: impl FnMut() -> Result<(), E>,
     ) -> Result<HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError<E>> {
-        step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        let CaptureData {
-            identity: _,
-            host_revision: _,
-            records,
-            registries,
-            usage: _,
-        } = &*self.0;
-        let mut usage = HtmlCaptureRetainedStorageUsage {
-            bytes: size_of::<CaptureData>(),
-            units: 0,
-        };
-        step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        usage.bank::<Record, E>(records.capacity())?;
-        step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        usage.bank::<RegistryRecord, E>(registries.capacity())?;
-        for record in records {
-            step().map_err(HtmlCaptureStorageError::Interrupted)?;
-            let Record {
-                kind,
-                document: _,
-                parent: _,
-                children,
-                dependents,
-                depth: _,
-            } = record;
-            step().map_err(HtmlCaptureStorageError::Interrupted)?;
-            if let Some(children) = children {
-                usage.bank::<usize, E>(children.capacity())?;
-            }
-            step().map_err(HtmlCaptureStorageError::Interrupted)?;
-            usage.bank::<usize, E>(dependents.capacity())?;
-            usage.kind(kind, &mut step)?;
-        }
-        for registry in registries {
-            step().map_err(HtmlCaptureStorageError::Interrupted)?;
-            let RegistryRecord {
-                definitions,
-                complete: _,
-                scope: _,
-                scope_established: _,
-            } = registry;
-            step().map_err(HtmlCaptureStorageError::Interrupted)?;
-            usage.bank::<HtmlCustomElementDefinition, E>(definitions.capacity())?;
-            for definition in definitions {
-                step().map_err(HtmlCaptureStorageError::Interrupted)?;
-                let HtmlCustomElementDefinition {
-                    name,
-                    local_name,
-                    form_associated: _,
-                    disable_shadow: _,
-                } = definition;
-                usage.string(name, &mut step)?;
-                usage.string(local_name, &mut step)?;
-            }
-        }
-        Ok(usage)
+        retained_storage_usage_with(&self.0, step)
     }
+}
+
+// Same observer before publication: no temporary capture/Arc is needed to price
+// the actual original builder data. Public observation keeps its exact tariff.
+pub(super) fn retained_storage_usage_with<E>(
+    data: &CaptureData,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError<E>> {
+    step().map_err(HtmlCaptureStorageError::Interrupted)?;
+    let CaptureData {
+        identity: _,
+        host_revision: _,
+        records,
+        registries,
+        usage: _,
+    } = data;
+    let mut usage = HtmlCaptureRetainedStorageUsage {
+        bytes: size_of::<CaptureData>(),
+        units: 0,
+    };
+    step().map_err(HtmlCaptureStorageError::Interrupted)?;
+    usage.bank::<Record, E>(records.capacity())?;
+    step().map_err(HtmlCaptureStorageError::Interrupted)?;
+    usage.bank::<RegistryRecord, E>(registries.capacity())?;
+    for record in records {
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        let Record {
+            kind,
+            document: _,
+            parent: _,
+            children,
+            dependents,
+            depth: _,
+        } = record;
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        if let Some(children) = children {
+            usage.bank::<usize, E>(children.capacity())?;
+        }
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        usage.bank::<usize, E>(dependents.capacity())?;
+        usage.kind(kind, &mut step)?;
+    }
+    for registry in registries {
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        let RegistryRecord {
+            definitions,
+            complete: _,
+            scope: _,
+            scope_established: _,
+        } = registry;
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        usage.bank::<HtmlCustomElementDefinition, E>(definitions.capacity())?;
+        for definition in definitions {
+            step().map_err(HtmlCaptureStorageError::Interrupted)?;
+            let HtmlCustomElementDefinition {
+                name,
+                local_name,
+                form_associated: _,
+                disable_shadow: _,
+            } = definition;
+            usage.string(name, &mut step)?;
+            usage.string(local_name, &mut step)?;
+        }
+    }
+    Ok(usage)
 }
 
 #[cfg(test)]

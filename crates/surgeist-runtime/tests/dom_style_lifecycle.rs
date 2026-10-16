@@ -9,14 +9,33 @@ use surgeist_runtime::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn limits() -> DomStyleRuntimeLimits {
-    DomStyleRuntimeLimits {
-        roots: 4,
-        completions: 32,
-        reports: 32,
-        storage_bytes: 16_000_000,
-        work: 1_000_000,
-        css_input: CssUtf16InputLimits::default(),
+fn limits() -> DomSessionLimits {
+    DomSessionLimits {
+        style: DomStyleRuntimeLimits {
+            roots: 4,
+            completions: 32,
+            reports: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+            css_input: CssUtf16InputLimits::default(),
+        },
+        details: DomDetailsRuntimeLimits {
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        hosted: DomHostedRuntimeLimits {
+            canonical: DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                16_000_000,
+                16_000_000,
+                1_000_000,
+            ),
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            scratch_bytes: 16_000_000,
+            work: 1_000_000,
+        },
     }
 }
 fn source_limits() -> DomStyleEditLimits {
@@ -42,14 +61,7 @@ impl DomStyleEventContext for Context {
         &mut self.styles
     }
 }
-fn fixture() -> (
-    DomStyleSession,
-    Context,
-    DocumentId,
-    NodeId,
-    DocumentId,
-    NodeId,
-) {
+fn fixture() -> (DomSession, Context, DocumentId, NodeId, DocumentId, NodeId) {
     let mut dom =
         Dom::new(DomLimits::new(256, 200_000, 1024, 1024, 1024, 32, 2_000_000).unwrap()).unwrap();
     let mut batch = DomBatch::new();
@@ -64,9 +76,9 @@ fn fixture() -> (
     let r1 = commit.created(&r1).unwrap().unwrap();
     let d2 = commit.document(&d2).unwrap();
     let r2 = commit.created(&r2).unwrap().unwrap();
-    let mut session = DomStyleSession::new(dom, limits()).unwrap();
+    let mut session = DomSession::new(dom, limits()).unwrap();
     let mut context = Context {
-        styles: session.execution(),
+        styles: session.style_execution(),
         events: Vec::new(),
         observations: Vec::new(),
         replacement: None,
@@ -467,7 +479,7 @@ fn callback_replacing_execution_access_recovers_exact_session_without_replaying_
     let (style, _) = detached(&mut dom, document, "p { color: red }");
     connect(&mut dom, &mut context, style, parent);
     let (replacement_session, _, _, _, _, _) = fixture();
-    context.replacement = Some(replacement_session.execution());
+    context.replacement = Some(replacement_session.style_execution());
     let pending = context.styles.pending_sheet(0).unwrap().unwrap();
     let mut dispatcher = registry();
     dispatcher
@@ -540,7 +552,10 @@ fn reacquired_execution_reads_the_same_current_cssom_owner_after_external_flag_e
     };
     // Execution permission is ephemeral; its replacement does not replace the
     // durable session or the exact canonical CSSOM owner.
-    drop(std::mem::replace(&mut context.styles, session.execution()));
+    drop(std::mem::replace(
+        &mut context.styles,
+        session.style_execution(),
+    ));
     let dom = session.dom();
     let observed = context.styles.disabled(&dom, style).unwrap();
     assert!(observed.disabled());
@@ -606,11 +621,11 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
         (style, old_dom, sheet, old_cssom, task)
     };
     let session = match session.try_shutdown() {
-        DomStyleShutdownOutcome::Pending { session, reason } => {
-            assert_eq!(reason, DomStyleShutdownReason::NetworkingTask(task));
+        DomShutdownOutcome::Pending { session, reason } => {
+            assert_eq!(reason, DomShutdownReason::NetworkingTask(task));
             session
         }
-        DomStyleShutdownOutcome::Complete => {
+        DomShutdownOutcome::Complete => {
             panic!("pending actual dispatch cannot complete shutdown")
         }
     };

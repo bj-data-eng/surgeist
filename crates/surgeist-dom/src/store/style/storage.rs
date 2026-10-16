@@ -272,6 +272,12 @@ fn state_usage(
         payload.bank::<NodeId>(state.signal_slots.capacity())?;
         payload.bank::<select::Task<NodeId>>(state.native_tasks.capacity())?;
         payload.bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())?;
+        if let Some(index) = &state.hosted_globals {
+            payload.add_bytes(index.retained_payload_bytes()?)?;
+        }
+        if let Some(registries) = &state.registries {
+            payload.add_bytes(registries.retained_payload_bytes(&mut step)?)?;
+        }
     }
     for node in state.slots.iter().filter_map(|slot| slot.node.as_ref()) {
         step()?;

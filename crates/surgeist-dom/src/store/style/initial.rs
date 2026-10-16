@@ -7,7 +7,25 @@ pub(in crate::store) struct Initial {
     limits: crate::DomStyleEditLimits,
     bytes: Cell<usize>,
     units: Cell<usize>,
-    work: Cell<u64>,
+    work: Work,
+}
+enum Work {
+    Local(Cell<u64>),
+    Shared(Arc<AtomicU64>),
+}
+impl Work {
+    fn get(&self) -> u64 {
+        match self {
+            Self::Local(work) => work.get(),
+            Self::Shared(work) => work.load(Ordering::Relaxed),
+        }
+    }
+    fn set(&self, value: u64) {
+        match self {
+            Self::Local(work) => work.set(value),
+            Self::Shared(work) => work.store(value, Ordering::Relaxed),
+        }
+    }
 }
 impl Initial {
     pub(in crate::store) fn new(limits: crate::DomStyleEditLimits) -> Self {
@@ -15,7 +33,18 @@ impl Initial {
             limits,
             bytes: Cell::new(0),
             units: Cell::new(0),
-            work: Cell::new(0),
+            work: Work::Local(Cell::new(0)),
+        }
+    }
+    pub(in crate::store) fn with_work(
+        limits: crate::DomStyleEditLimits,
+        work: Arc<AtomicU64>,
+    ) -> Self {
+        Self {
+            limits,
+            bytes: Cell::new(0),
+            units: Cell::new(0),
+            work: Work::Shared(work),
         }
     }
     pub(in crate::store) fn limits(&self) -> crate::DomStyleEditLimits {
@@ -179,6 +208,40 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload, Payload), DomError> {
         let initial = Initial::new(limits);
+        Self::new_source_initial(
+            dom,
+            owner,
+            commands,
+            initial,
+            size_of::<super::operation::Operation>()
+                .checked_sub(size_of::<Draft>())
+                .ok_or(DomError::RepresentationExhausted)?,
+            cancel,
+        )
+    }
+    pub(in crate::store) fn new_hosted_source(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        limits: crate::DomStyleEditLimits,
+        work: Arc<AtomicU64>,
+        operation: crate::hosted::DomHostedOperationId,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let initial = Initial::with_work(limits, work.clone());
+        let (mut draft, _, _) =
+            Self::new_source_initial(dom, owner, &Vec::new(), initial, 0, cancel)?;
+        draft.source_work = work;
+        draft.hosted_owner = Some(operation);
+        Ok(draft)
+    }
+    fn new_source_initial(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        commands: &Vec<Command>,
+        initial: Initial,
+        owner_bytes: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(Self, Payload, Payload), DomError> {
         // The source front retains the ordinary owner's whole-batch canonical
         // quota policy. Meter the actual scan before any Draft retention or ID
         // issuance; later execution cannot reduce raw duplicate input counts.
@@ -189,11 +252,7 @@ impl Draft {
         retained.append(command_payload)?;
         retained.add_bytes(dom.history_bytes)?;
         retained.add_bytes(dom.style_cssom_custody_bytes()?)?;
-        retained.add_bytes(
-            size_of::<super::operation::Operation>()
-                .checked_sub(size_of::<Draft>())
-                .ok_or(DomError::RepresentationExhausted)?,
-        )?;
+        retained.add_bytes(owner_bytes)?;
         retained.bank::<Command>(commands.capacity())?;
         for command in commands {
             initial.step(cancel)?;

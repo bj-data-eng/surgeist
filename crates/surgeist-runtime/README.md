@@ -5,21 +5,23 @@ crate coordinates application state, surface lifecycle, invalidation, and queued
 inputs, and reports abstract effects for root-owned adapters to execute.
 
 The package is version `0.1.0`, and its runtime API is being designed. Concrete
-task execution, native event loops and rendering belong outside this crate.
+background task execution, OS window event loops and rendering belong outside
+this crate. Runtime owns the bounded native DOM task loop described below.
 Runtime owns its consumer adapters to lower-level contracts. Its canonical DOM
 host adapter associates generation-qualified surface elements with canonical DOM
 elements and publishes exact Runtime focus/hover selections. This does not claim
 complete HTML focus processing, native activity or pointer-device state. Host
 publication revisions are independent of render invalidations and acknowledgements.
 
-`DomStyleSession` keeps the original canonical DOM, its CSSOM resources and pending
-Style work together. Obtain an execution permission with `execution()` and edit
-through the controlled `dom()` view. Permissions and event observations do not
-own the session. `try_shutdown` returns the whole session when mandatory work is
-pending; dropping the session abandons it without delivering callbacks or claiming
-completion. Runtime's native event dispatcher also drives the bounded Details
-toggle operations. See [DOM orchestration](docs/explanation.md#dom-orchestration)
-for custody, continuation and capability limits.
+`DomSession` keeps the original canonical DOM, CSSOM resources, Details tasks and
+native hosted lifecycle together. Supply explicit `DomSessionLimits`, edit
+through `dom()`, and obtain weak execution permissions with `style_execution()`,
+`details_execution()` and `hosted_execution()`. `try_shutdown` returns the whole
+session while mandatory work remains. Dropping it abandons execution without
+delivering callbacks or claiming completion. The native dispatcher handles real
+Details toggle events, including Global capture for hosted Documents. See
+[DOM orchestration](docs/explanation.md#dom-orchestration) for creation, teardown,
+custody and capability limits.
 
 ## Start
 

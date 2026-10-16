@@ -94,13 +94,8 @@ impl Draft {
         if !valid && !custom {
             return Err(DomError::NotSupported);
         }
-        // The real admitted registry and definition bindings are known null.
-        // There is no registry object/definition lookup or custom execution
-        // capability to guess from a saved-is attribute or authored spelling.
-        debug_assert_eq!(
-            element.custom_element_registry(),
-            crate::DomRegistryBinding::Null
-        );
+        // The controlled complete-empty Global and Null domains both retain a
+        // genuine no-definition result; binding identity remains independent.
         debug_assert_eq!(
             element.custom_element_definition(),
             crate::DomElementDefinition::Null
@@ -115,12 +110,11 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         let document = node.document;
-        let root = self.allocate(
-            DomNodeKind::ShadowRoot(crate::DomShadowRootState::native(init)),
-            document,
-            limits,
-            cancelled,
-        )?;
+        self.document_environment(document)?;
+        let registry = element.custom_element_registry();
+        let mut state = crate::DomShadowRootState::native(init);
+        state.select_global_registry(registry);
+        let root = self.allocate(DomNodeKind::ShadowRoot(state), document, limits, cancelled)?;
         self.node_mut(root).host = Some(host);
         self.node_mut(host).shadow_root = Some(root);
         Ok(root)

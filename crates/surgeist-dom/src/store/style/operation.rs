@@ -106,8 +106,16 @@ impl Dom {
             })
             .ok_or(DomError::RepresentationExhausted)
     }
-    pub(in crate::store) fn require_source_idle(&self) -> Result<(), DomError> {
+    pub(in crate::store) fn require_style_source_idle(&self) -> Result<(), DomError> {
         if self.source_operation.is_some() {
+            Err(DomError::SourceOperationPending)
+        } else {
+            Ok(())
+        }
+    }
+    pub(in crate::store) fn require_source_idle(&self) -> Result<(), DomError> {
+        self.require_style_source_idle()?;
+        if self.state.incomplete_hosted.is_some() {
             Err(DomError::SourceOperationPending)
         } else {
             Ok(())

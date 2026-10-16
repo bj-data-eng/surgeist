@@ -20,8 +20,10 @@ use std::{
 
 mod construction;
 pub(crate) mod preflight;
+mod registry;
 pub(crate) mod storage;
 pub use construction::*;
+pub use registry::*;
 pub use storage::{HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError};
 
 macro_rules! identity {

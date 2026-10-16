@@ -16,11 +16,11 @@ pub enum DomDocumentClass {
     Html,
 }
 
-/// The registry binding supported by native document/element creation.
-/// No registry object admission or registration operation is exposed yet.
+/// The actual registry selected by controlled Document/Element creation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomRegistryBinding {
     Null,
+    Registry(crate::registry::DomRegistryId),
 }
 
 #[derive(Debug)]
@@ -70,6 +70,11 @@ pub enum DomDocumentCreationCause {
     ParsedTemplateOwner,
     /// The actual auxiliary Document created by the original fragment parser.
     ParsedFragmentParser,
+    /// The actual controlled initial no-opener browsing-context constructor.
+    HostedInitialAboutBlank {
+        source: crate::hosted::DomHostedSourceId,
+        operation: crate::hosted::DomHostedOperationId,
+    },
 }
 /// Canonical document metadata, captured together with its tree and revision.
 ///
@@ -104,9 +109,10 @@ struct NoAssociatedMetaThemeConsumer;
 /// Selected closed offline environment shared by native creation and completed
 /// offline installation. Creation provenance and URL/encoding identities remain
 /// independently recorded in DomDocumentCreationCause.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomDocumentEnvironment {
     input: DomNativeInputPlatform,
+    pub(crate) hosted: Option<Arc<crate::hosted::DocumentAssociation>>,
 }
 
 /// Native-owner qualification, independent of browsing-context or scripting
@@ -169,27 +175,66 @@ impl DomNativeInputPlatform {
 }
 impl DomDocumentEnvironment {
     pub(crate) const fn new(input: DomNativeInputPlatform) -> Self {
-        Self { input }
+        Self {
+            input,
+            hosted: None,
+        }
     }
-    pub const fn input_platform(self) -> DomNativeInputPlatform {
+    pub const fn input_platform(&self) -> DomNativeInputPlatform {
         self.input
     }
     /// Selected native creation policy, not an inference from missing resources.
-    pub const fn input_images(self) -> surgeist_html::HtmlInputImagesDisabled {
+    pub const fn input_images(&self) -> surgeist_html::HtmlInputImagesDisabled {
         surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
     }
-    pub const fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+    pub fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
+        match &self.hosted {
+            Some(association) if association.phase != crate::hosted::DocumentPhase::Retired => {
+                surgeist_html::HtmlBrowsingContextPresence::Present
+            }
+            _ => surgeist_html::HtmlBrowsingContextPresence::Absent,
+        }
     }
     pub const fn has_ever_had_navigable(&self) -> bool {
-        false
+        self.hosted.is_some()
     }
-    pub const fn is_fully_active(&self) -> bool {
-        false
+    /// The admitted native execution owner supplies no scripting engine. This
+    /// qualification is independent of the actual browsing-context association.
+    pub const fn scripting(&self) -> surgeist_html_semantics::HtmlScriptingStatus {
+        surgeist_html_semantics::HtmlScriptingStatus::Disabled
     }
 }
 
 impl DomDocumentMetadata {
+    pub(crate) fn fresh_opaque_origin() -> DomOpaqueOrigin {
+        DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity)))
+    }
+    pub(crate) fn hosted_initial(
+        input: DomNativeInputPlatform,
+        origin: DomOpaqueOrigin,
+        registry: crate::registry::DomRegistryId,
+        association: Arc<crate::hosted::DocumentAssociation>,
+        operation: crate::hosted::DomHostedOperationId,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let source = operation.source();
+        let mut metadata = Self::native_defaults(
+            DomDocumentClass::Html,
+            "text/html",
+            origin,
+            DomDocumentEnvironment {
+                input,
+                hosted: Some(association),
+            },
+            false,
+            materialize,
+        )?;
+        metadata.mode = HtmlDocumentMode::Quirks;
+        metadata.allow_declarative_shadow_roots = true;
+        metadata.registry = DomRegistryBinding::Registry(registry);
+        metadata.cause = DomDocumentCreationCause::HostedInitialAboutBlank { source, operation };
+        Ok(metadata)
+    }
     pub(crate) fn native(
         environment: DomDocumentEnvironment,
         materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
@@ -208,7 +253,10 @@ impl DomDocumentMetadata {
         environment: DomDocumentEnvironment,
         materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
     ) -> Result<Self, DomError> {
-        let mut metadata = Self::native(environment, materialize)?;
+        let mut metadata = Self::native(
+            DomDocumentEnvironment::new(environment.input_platform()),
+            materialize,
+        )?;
         metadata.class = class;
         Ok(metadata)
     }
@@ -223,7 +271,7 @@ impl DomDocumentMetadata {
             DomDocumentClass::Html,
             "text/html",
             origin,
-            environment,
+            DomDocumentEnvironment::new(environment.input_platform()),
             false,
             materialize,
         )
@@ -374,7 +422,19 @@ impl DomDocumentMetadata {
         self.registry
     }
     pub fn document_environment(&self) -> DomDocumentEnvironment {
+        self.environment.clone()
+    }
+    pub fn initial_permissions_policy(&self) -> Option<crate::hosted::DomInitialPermissionsPolicy> {
         self.environment
+            .hosted
+            .as_ref()
+            .map(|association| association.policy)
+    }
+    pub(crate) fn set_hosted_association(
+        &mut self,
+        association: Arc<crate::hosted::DocumentAssociation>,
+    ) {
+        self.environment.hosted = Some(association);
     }
     /// Actual processing history. `None` denotes unavailable imported
     /// history; current attributes never stand in for completed processing.
@@ -457,6 +517,11 @@ impl DomDocumentMetadata {
         if let DomDocumentCreationCause::ParsedOffline { url, .. } = &self.cause {
             bytes = bytes
                 .checked_add(url.retained_storage_usage().retained_bytes())
+                .ok_or(crate::DomError::RepresentationExhausted)?;
+        }
+        if self.environment.hosted.is_some() {
+            bytes = bytes
+                .checked_add(std::mem::size_of::<crate::hosted::DocumentAssociation>())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
         Ok(bytes)

@@ -223,6 +223,20 @@ impl DomElement {
             surgeist_html::bounded::native_element_initialization_with(&name, |_| {
                 formation::step(budget, cancelled)
             })?;
+        if environment.has_ever_had_navigable()
+            && matches!(
+                initialization.requirement(),
+                Requirement::KnownHtml(KnownHtmlElement::Iframe)
+                    | Requirement::HtmlFrame
+                    | Requirement::SvgScript
+            )
+        {
+            // Child creation and SVG execution/notification owners are not
+            // supplied by the admitted native Global/Details profile.
+            return Err(DomError::NativeInitializationRequired(
+                initialization.requirement(),
+            ));
+        }
         if let Some(budget) = budget {
             use std::mem::size_of;
             let string = size_of::<Vec<u16>>();
@@ -698,6 +712,9 @@ impl DomElement {
     }
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
         self.registry
+    }
+    pub(crate) fn establish_registry(&mut self, registry: DomRegistryBinding) {
+        self.registry = registry;
     }
     pub fn custom_element_definition(&self) -> DomElementDefinition {
         self.definition

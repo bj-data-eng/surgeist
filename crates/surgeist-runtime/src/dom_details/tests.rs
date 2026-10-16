@@ -4,7 +4,39 @@ use crate::dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventListenerOptions, DomEventPhase,
     DomEventRegistryLimits, DomEventResource, DomEventType,
 };
+use crate::dom_lifecycle::DomHostedRuntimeLimits;
+use crate::dom_style::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
 use surgeist_dom::{DocumentId, Dom, DomBatch, DomCommit, DomLimits, Namespace};
+
+fn session(dom: Dom) -> DomSession {
+    DomSession::new(
+        dom,
+        DomSessionLimits {
+            style: DomStyleRuntimeLimits {
+                roots: 32,
+                completions: 32,
+                reports: 32,
+                storage_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+                css_input: surgeist_css::CssUtf16InputLimits::default(),
+            },
+            details: limits(),
+            hosted: DomHostedRuntimeLimits {
+                canonical: surgeist_dom::DomHostedLimits::new(
+                    surgeist_dom::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                    16 * 1024 * 1024,
+                    16 * 1024 * 1024,
+                    1_000_000,
+                ),
+                tasks: 32,
+                storage_bytes: 16 * 1024 * 1024,
+                scratch_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+            },
+        },
+    )
+    .unwrap()
+}
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -25,10 +57,10 @@ fn dispatch_limits() -> DomEventDispatchLimits {
         work: 100_000,
     }
 }
-fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
-    dom.apply(batch, &cancel()).unwrap()
+fn apply(dom: &mut DomSession, batch: DomBatch) -> DomCommit {
+    dom.dom().apply(batch, &cancel()).unwrap()
 }
-fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
+fn fixture() -> (DomSession, DocumentId, NodeId, NodeId) {
     let mut dom = Dom::new(
         DomLimits::new(256, 65536, 1024, 1024, 512, 16, 1_000_000)
             .unwrap()
@@ -44,9 +76,9 @@ fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
     batch.insert_before(&a, &root, None);
     batch.insert_before(&b, &root, None);
     batch.insert_before(&root, &document, None);
-    let commit = apply(&mut dom, batch);
+    let commit = dom.apply(batch, &cancel()).unwrap();
     (
-        dom,
+        session(dom),
         commit.document(&document).unwrap(),
         commit.created(&a).unwrap().unwrap(),
         commit.created(&b).unwrap().unwrap(),
@@ -58,6 +90,7 @@ struct Context {
     reenter: bool,
     refused_limit_change: bool,
     panic_next_access: bool,
+    replacement_session: Option<DomSession>,
 }
 impl DomDetailsEventContext for Context {
     fn details(&mut self) -> &mut DomDetailsRuntime {
@@ -67,13 +100,14 @@ impl DomDetailsEventContext for Context {
         &mut self.details
     }
 }
-fn context(dom: &mut Dom) -> Context {
+fn context(dom: &mut DomSession) -> Context {
     Context {
-        details: DomDetailsRuntime::new(&DomEventDom::borrow(dom), limits()).unwrap(),
+        details: dom.details_execution(),
         log: Vec::new(),
         reenter: false,
         refused_limit_change: false,
         panic_next_access: false,
+        replacement_session: None,
     }
 }
 fn registry() -> DomEventDispatcher<Context> {
@@ -84,16 +118,15 @@ fn registry() -> DomEventDispatcher<Context> {
     })
     .unwrap()
 }
-fn ingest(dom: &mut Dom, context: &mut Context) {
-    let transfer = dom.take_details_toggle_intentions(128, &cancel()).unwrap();
-    context.details.ingest(transfer, &cancel()).unwrap();
+fn ingest(dom: &mut DomSession, context: &mut Context) {
+    context.details.ingest(&mut dom.dom(), &cancel()).unwrap();
 }
-fn open(dom: &mut Dom, target: NodeId) {
+fn open(dom: &mut DomSession, target: NodeId) {
     let mut batch = DomBatch::new();
     batch.set_attribute(target, "open", "");
     apply(dom, batch);
 }
-fn close(dom: &mut Dom, target: NodeId) {
+fn close(dom: &mut DomSession, target: NodeId) {
     let mut batch = DomBatch::new();
     batch.remove_attribute(target, "open");
     apply(dom, batch);
@@ -103,7 +136,7 @@ fn record() -> DomEventCallback<Context> {
         // Assertions of actual delivery remain outside callbacks: dispatcher
         // records callback unwinds instead of allowing them to hide test failures.
         context.log.push((
-            event.current_target().unwrap(),
+            event.current_target().unwrap().node().unwrap(),
             *event.toggle_event().unwrap(),
             event.phase(),
         ));
@@ -111,18 +144,12 @@ fn record() -> DomEventCallback<Context> {
     })
 }
 fn complete(
-    dom: &mut Dom,
+    dom: &mut DomSession,
     registry: &mut DomEventDispatcher<Context>,
     c: &mut Context,
 ) -> (DomDetailsTask, DomEventDispatchReceipt) {
-    match DomDetailsRuntime::run_next(
-        &mut DomEventDom::borrow(dom),
-        registry,
-        c,
-        dispatch_limits(),
-        &cancel(),
-    )
-    .unwrap()
+    match DomDetailsRuntime::run_next(&mut dom.dom(), registry, c, dispatch_limits(), &cancel())
+        .unwrap()
     {
         DomDetailsProgress::Complete { task, receipt, .. } => {
             assert!(
@@ -150,7 +177,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             document.node(),
             DomEventType::Toggle,
             record(),
@@ -163,7 +190,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     for target in [a, b] {
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut dom),
+                &dom.dom(),
                 target,
                 DomEventType::Toggle,
                 record(),
@@ -179,9 +206,9 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     batch.set_attribute(b, "open", "");
     apply(&mut dom, batch);
     ingest(&mut dom, &mut c);
-    assert_eq!(c.details.pending_tasks(), 2);
-    assert_eq!(c.details.pending_task(0).unwrap().id().target(), b);
-    assert_eq!(c.details.pending_task(1).unwrap().id().target(), a);
+    assert_eq!(c.details.pending_tasks().unwrap(), 2);
+    assert_eq!(c.details.pending_task(0).unwrap().unwrap().id().target(), b);
+    assert_eq!(c.details.pending_task(1).unwrap().unwrap().id().target(), a);
     let (first, r1) = complete(&mut dom, &mut registry, &mut c);
     let (second, r2) = complete(&mut dom, &mut registry, &mut c);
     assert_eq!(first.event().old_state(), HtmlDetailsState::Closed);
@@ -203,7 +230,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
             (a, DomEventPhase::AtTarget)
         ]
     );
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -214,12 +241,12 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     c.reenter = true;
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             a,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
                 c.log.push((
-                    event.current_target().unwrap(),
+                    event.current_target().unwrap().node().unwrap(),
                     *event.toggle_event().unwrap(),
                     event.phase(),
                 ));
@@ -232,8 +259,10 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
                             ..limits()
                         })
                         .is_err();
-                    close(dom.raw_mut(), a);
-                    ingest(dom.raw_mut(), c);
+                    let mut batch = DomBatch::new();
+                    batch.remove_attribute(a, "open");
+                    dom.apply(batch, &cancel()).unwrap();
+                    c.details.ingest(dom, &cancel()).unwrap();
                 }
                 Ok(())
             }),
@@ -245,16 +274,24 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     let (_, receipt) = complete(&mut dom, &mut registry, &mut c);
     assert!(receipt.failures().is_empty());
     assert!(c.refused_limit_change);
-    let replacement = c.details.pending_task(0).unwrap();
+    let replacement = c.details.pending_task(0).unwrap().unwrap();
     assert_eq!(replacement.event().old_state(), HtmlDetailsState::Closed);
     assert_eq!(replacement.event().new_state(), HtmlDetailsState::Closed);
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    assert_eq!(c.details.pending_tasks(), 2);
-    assert_eq!(c.details.pending_task(0).unwrap(), replacement);
-    assert_ne!(c.details.pending_task(1).unwrap().id(), replacement.id());
+    assert_eq!(c.details.pending_tasks().unwrap(), 2);
+    assert_eq!(c.details.pending_task(0).unwrap().unwrap(), replacement);
+    assert_ne!(
+        c.details.pending_task(1).unwrap().unwrap().id(),
+        replacement.id()
+    );
     assert_eq!(
-        c.details.pending_task(1).unwrap().event().old_state(),
+        c.details
+            .pending_task(1)
+            .unwrap()
+            .unwrap()
+            .event()
+            .old_state(),
         HtmlDetailsState::Closed
     );
     complete(&mut dom, &mut registry, &mut c);
@@ -279,7 +316,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     assert_eq!(fresh_close.event().new_state(), HtmlDetailsState::Closed);
     assert_eq!(c.log.len(), 4);
     assert_eq!(c.log[3].1, fresh_close.event());
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -290,7 +327,7 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     for target in [a, b] {
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut dom),
+                &dom.dom(),
                 target,
                 DomEventType::Toggle,
                 record(),
@@ -318,7 +355,7 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     let replacement = commit.created(&replacement).unwrap().unwrap();
     assert_ne!(replacement, b);
     match DomDetailsRuntime::run_next(
-        &mut DomEventDom::borrow(&mut dom),
+        &mut dom.dom(),
         &mut registry,
         &mut c,
         dispatch_limits(),
@@ -331,7 +368,7 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     }
     assert_eq!(c.log.len(), 1);
     assert_eq!(c.log[0].0, a);
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -341,7 +378,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             a,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
@@ -350,7 +387,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
                 let mut batch = DomBatch::new();
                 batch.detach(a);
                 batch.destroy(a);
-                apply(dom.raw_mut(), batch);
+                dom.apply(batch, &cancel()).unwrap();
                 Err(DomEventCallbackError { code: 77 })
             }),
             DomEventListenerOptions::default(),
@@ -358,7 +395,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
         .unwrap();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             a,
             DomEventType::Toggle,
             record(),
@@ -368,7 +405,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
     let (task, receipt) = match DomDetailsRuntime::run_next(
-        &mut DomEventDom::borrow(&mut dom),
+        &mut dom.dom(),
         &mut registry,
         &mut c,
         dispatch_limits(),
@@ -384,33 +421,34 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     assert_eq!(receipt.failures().len(), 1);
     assert_eq!(c.log.len(), 2);
     assert!(matches!(dom.snapshot().node(a), Err(DomError::StaleNode)));
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
 fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity() {
     let (mut dom, _, a, b) = fixture();
     let mut c = context(&mut dom);
-    c.details = DomDetailsRuntime::new(
-        &DomEventDom::borrow(&mut dom),
-        DomDetailsRuntimeLimits {
+    c.details
+        .set_limits(DomDetailsRuntimeLimits {
             tasks: 1,
             ..limits()
-        },
-    )
-    .unwrap();
+        })
+        .unwrap();
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    let first = c.details.pending_task(0).unwrap();
+    let first = c.details.pending_task(0).unwrap().unwrap();
     open(&mut dom, b);
     close(&mut dom, a);
-    let transfer = dom.take_details_toggle_intentions(128, &cancel()).unwrap();
+    let transfer = dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
     let ops = transfer
         .intentions()
         .iter()
         .map(|i| i.operation())
         .collect::<Vec<_>>();
-    let rejected = c.details.ingest(transfer, &cancel()).unwrap_err();
+    let rejected = c.details.ingest_transfer(transfer, &cancel()).unwrap_err();
     assert!(matches!(
         rejected.error(),
         DomDetailsRuntimeError::Admission
@@ -424,34 +462,47 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
             .collect::<Vec<_>>(),
         ops
     );
-    assert_eq!(c.details.pending_tasks(), 1);
-    assert_eq!(c.details.pending_task(0), Some(first));
+    assert_eq!(c.details.pending_tasks().unwrap(), 1);
+    assert_eq!(c.details.pending_task(0).unwrap(), Some(first));
     // Increase the same owner's finite bound: the original pending A tracker
     // still supplies the first closed state when the exact transfer is retried.
     c.details.set_limits(limits()).unwrap();
-    assert_eq!(c.details.ingest(transfer, &cancel()).unwrap(), 2);
-    assert_eq!(c.details.pending_task(0).unwrap().id().target(), b);
+    assert_eq!(c.details.ingest_transfer(transfer, &cancel()).unwrap(), 2);
+    assert_eq!(c.details.pending_task(0).unwrap().unwrap().id().target(), b);
     assert_eq!(
-        c.details.pending_task(1).unwrap().event().old_state(),
+        c.details
+            .pending_task(1)
+            .unwrap()
+            .unwrap()
+            .event()
+            .old_state(),
         HtmlDetailsState::Closed
     );
     assert_eq!(
-        c.details.pending_task(1).unwrap().event().new_state(),
+        c.details
+            .pending_task(1)
+            .unwrap()
+            .unwrap()
+            .event()
+            .new_state(),
         HtmlDetailsState::Closed
     );
     let mut batch = DomBatch::new();
     batch.set_attribute(a, "open", "");
     apply(&mut dom, batch);
-    let transfer = dom.take_details_toggle_intentions(128, &cancel()).unwrap();
+    let transfer = dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
     let stopped = AtomicBool::new(true);
-    let rejected = c.details.ingest(transfer, &stopped).unwrap_err();
+    let rejected = c.details.ingest_transfer(transfer, &stopped).unwrap_err();
     assert!(matches!(
         rejected.error(),
         DomDetailsRuntimeError::Dom(DomError::Cancelled)
     ));
-    assert_eq!(c.details.pending_tasks(), 2);
+    assert_eq!(c.details.pending_tasks().unwrap(), 2);
     c.details
-        .ingest(rejected.into_transfer(), &cancel())
+        .ingest_transfer(rejected.into_transfer(), &cancel())
         .unwrap();
 }
 
@@ -462,13 +513,15 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             a,
             DomEventType::Toggle,
-            DomEventCallback::new(move |dom, _, c: &mut Context, event| {
+            DomEventCallback::new(move |_dom, _, c: &mut Context, event| {
                 c.log
                     .push((a, *event.toggle_event().unwrap(), event.phase()));
-                let replacement = DomDetailsRuntime::new(dom, limits()).unwrap();
+                let (replacement_session, _, _, _) = fixture();
+                let replacement = replacement_session.details_execution();
+                c.replacement_session = Some(replacement_session);
                 drop(std::mem::replace(&mut c.details, replacement));
                 Ok(())
             }),
@@ -480,7 +533,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .unwrap();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             a,
             DomEventType::Toggle,
             record(),
@@ -489,9 +542,9 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .unwrap();
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    let original = c.details.pending_task(0).unwrap();
+    let original = c.details.pending_task(0).unwrap().unwrap();
     let mut progress = DomDetailsRuntime::run_next(
-        &mut DomEventDom::borrow(&mut dom),
+        &mut dom.dom(),
         &mut registry,
         &mut c,
         DomEventDispatchLimits {
@@ -509,7 +562,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         }
     ));
     assert_eq!(c.log.len(), 1);
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
     let original_owner = match &mut progress {
         DomDetailsProgress::Retained {
             displaced_owner, ..
@@ -518,104 +571,124 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
             .expect("original owner returned after callback dropped it"),
         other => panic!("{other:?}"),
     };
-    assert_eq!(original_owner.pending_task(0), Some(original));
+    assert_eq!(original_owner.pending_task(0).unwrap(), Some(original));
     c.details = original_owner;
     let (task, receipt) = complete(&mut dom, &mut registry, &mut c);
     assert_eq!(task, original);
     assert_eq!(receipt.callbacks(), 2);
     assert!(receipt.failures().is_empty());
     assert_eq!(c.log.len(), 2);
-    assert_eq!(c.details.pending_tasks(), 0);
+    assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
 fn real_transfer_qualification_and_finite_banks_fail_without_partial_intake() {
     let (mut dom, _, a, b) = fixture();
     open(&mut dom, a);
-    let older = dom.take_details_toggle_intentions(128, &cancel()).unwrap();
+    let older = dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
     open(&mut dom, b);
-    let newer = dom.take_details_toggle_intentions(128, &cancel()).unwrap();
-    let mut owner = DomDetailsRuntime::new(&DomEventDom::borrow(&mut dom), limits()).unwrap();
-    owner.ingest(newer, &cancel()).unwrap();
-    let kept = owner.pending_task(0).unwrap();
-    let rejected = owner.ingest(older, &cancel()).unwrap_err();
+    let newer = dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
+    let mut owner = dom.details_execution();
+    owner.ingest_transfer(newer, &cancel()).unwrap();
+    let kept = owner.pending_task(0).unwrap().unwrap();
+    let rejected = owner.ingest_transfer(older, &cancel()).unwrap_err();
     assert!(matches!(
         rejected.error(),
         DomDetailsRuntimeError::OutOfOrderTransfer
     ));
-    assert_eq!(owner.pending_task(0), Some(kept));
-    let transfer = rejected.into_transfer();
-    let (mut foreign, _, _, _) = fixture();
-    let mut foreign_owner =
-        DomDetailsRuntime::new(&DomEventDom::borrow(&mut foreign), limits()).unwrap();
-    let rejected = foreign_owner.ingest(transfer, &cancel()).unwrap_err();
+    assert_eq!(owner.pending_task(0).unwrap(), Some(kept));
+    let (foreign, _, _, _) = fixture();
+    let mut foreign_owner = foreign.details_execution();
+    let rejected = foreign_owner
+        .ingest_transfer(rejected.into_transfer(), &cancel())
+        .unwrap_err();
     assert!(matches!(rejected.error(), DomDetailsRuntimeError::Binding));
-    let mut no_storage = DomDetailsRuntime::new(
-        &DomEventDom::borrow(&mut dom),
-        DomDetailsRuntimeLimits {
-            storage_bytes: 0,
+    assert_eq!(foreign_owner.pending_tasks().unwrap(), 0);
+
+    // The actual same durable owner retains its transfer across resource refusal.
+    let (mut limited_dom, _, target, _) = fixture();
+    let mut limited = limited_dom.details_execution();
+    limited
+        .set_limits(DomDetailsRuntimeLimits {
+            storage_bytes: size_of::<RefCell<DetailsState>>(),
             ..limits()
-        },
-    )
-    .unwrap();
-    let rejected = no_storage
-        .ingest(rejected.into_transfer(), &cancel())
+        })
+        .unwrap();
+    open(&mut limited_dom, target);
+    let transfer = limited_dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
+    let rejected = limited.ingest_transfer(transfer, &cancel()).unwrap_err();
+    assert!(matches!(
+        rejected.error(),
+        DomDetailsRuntimeError::Admission
+    ));
+    assert_eq!(limited.pending_tasks().unwrap(), 0);
+    let spent = limited.work_used().unwrap();
+    limited
+        .set_limits(DomDetailsRuntimeLimits {
+            work: spent,
+            ..limits()
+        })
+        .unwrap();
+    let rejected = limited
+        .ingest_transfer(rejected.into_transfer(), &cancel())
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
         DomDetailsRuntimeError::Admission
     ));
-    assert_eq!(no_storage.pending_tasks(), 0);
-    let mut no_work = DomDetailsRuntime::new(
-        &DomEventDom::borrow(&mut dom),
-        DomDetailsRuntimeLimits {
-            work: 1,
-            ..limits()
-        },
-    )
-    .unwrap();
-    let rejected = no_work
-        .ingest(rejected.into_transfer(), &cancel())
-        .unwrap_err();
-    assert!(matches!(
-        rejected.error(),
-        DomDetailsRuntimeError::Admission
-    ));
-    assert_eq!(no_work.pending_tasks(), 0);
-    let mut exhausted = DomDetailsRuntime::new(&DomEventDom::borrow(&mut dom), limits()).unwrap();
-    exhausted.state.borrow_mut().next = u64::MAX;
-    let rejected = exhausted
-        .ingest(rejected.into_transfer(), &cancel())
-        .unwrap_err();
+    assert_eq!(limited.pending_tasks().unwrap(), 0);
+    assert_eq!(limited.work_used().unwrap(), spent);
+    limited.set_limits(limits()).unwrap();
+    limited
+        .ingest_transfer(rejected.into_transfer(), &cancel())
+        .unwrap();
+    assert_eq!(
+        limited.pending_task(0).unwrap().unwrap().id().target(),
+        target
+    );
+
+    // Exercise actual checked issuance on a separate original owner, without
+    // resetting a consumed serial or reconstructing the limited owner above.
+    let (mut exhausted_dom, _, exhausted_target, _) = fixture();
+    let mut exhausted = exhausted_dom.details_execution();
+    exhausted.state().unwrap().borrow_mut().next = u64::MAX;
+    open(&mut exhausted_dom, exhausted_target);
+    let transfer = exhausted_dom
+        .dom()
+        .take_details_toggle_intentions(128, &cancel())
+        .unwrap();
+    let rejected = exhausted.ingest_transfer(transfer, &cancel()).unwrap_err();
     assert!(matches!(
         rejected.error(),
         DomDetailsRuntimeError::IdentityExhausted
     ));
-    assert_eq!(exhausted.pending_tasks(), 0);
-    let mut admitted = DomDetailsRuntime::new(&DomEventDom::borrow(&mut dom), limits()).unwrap();
-    admitted
-        .ingest(rejected.into_transfer(), &cancel())
-        .unwrap();
-    assert_eq!(admitted.pending_task(0).unwrap().id().target(), a);
+    assert_eq!(exhausted.pending_tasks().unwrap(), 0);
 }
 
 #[test]
-fn empty_zero_bound_owner_needs_no_task_cleanup_admission() {
+fn empty_zero_task_and_work_bounds_need_no_task_cleanup_admission() {
     let (mut dom, _, _, _) = fixture();
     let mut c = context(&mut dom);
     let mut registry = registry();
-    c.details = DomDetailsRuntime::new(
-        &DomEventDom::borrow(&mut dom),
-        DomDetailsRuntimeLimits {
+    c.details
+        .set_limits(DomDetailsRuntimeLimits {
             tasks: 0,
-            storage_bytes: 0,
+            storage_bytes: size_of::<RefCell<DetailsState>>(),
             work: 0,
-        },
-    )
-    .unwrap();
+        })
+        .unwrap();
     assert!(matches!(
         DomDetailsRuntime::run_next(
-            &mut DomEventDom::borrow(&mut dom),
+            &mut dom.dom(),
             &mut registry,
             &mut c,
             dispatch_limits(),
@@ -624,7 +697,7 @@ fn empty_zero_bound_owner_needs_no_task_cleanup_admission() {
         .unwrap(),
         DomDetailsProgress::Empty
     ));
-    assert_eq!(c.details.work_used(), 0);
+    assert_eq!(c.details.work_used().unwrap(), 0);
 }
 
 #[test]
@@ -635,12 +708,12 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.log.push((
-                    event.current_target().unwrap(),
+                    event.current_target().unwrap().node().unwrap(),
                     *event.toggle_event().unwrap(),
                     event.phase(),
                 ));
@@ -652,10 +725,10 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
         .unwrap();
     open(&mut dom, target);
     ingest(&mut dom, &mut context);
-    let original = context.details.pending_task(0).unwrap();
+    let original = context.details.pending_task(0).unwrap().unwrap();
     let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         DomDetailsRuntime::run_next(
-            &mut DomEventDom::borrow(&mut dom),
+            &mut dom.dom(),
             &mut registry,
             &mut context,
             dispatch_limits(),
@@ -664,13 +737,13 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
     }));
     assert!(failed.is_err());
     assert_eq!(context.log.len(), 1);
-    assert_eq!(context.details.pending_task(0), Some(original));
+    assert_eq!(context.details.pending_task(0).unwrap(), Some(original));
     let (task, receipt) = complete(&mut dom, &mut registry, &mut context);
     assert_eq!(task, original);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());
     assert_eq!(context.log.len(), 1);
-    assert_eq!(context.details.pending_tasks(), 0);
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -680,7 +753,7 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut dom),
+            &dom.dom(),
             target,
             DomEventType::Toggle,
             record(),
@@ -689,17 +762,11 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
         .unwrap();
     open(&mut dom, target);
     ingest(&mut dom, &mut context);
-    let original = context.details.pending_task(0).unwrap();
+    let original = context.details.pending_task(0).unwrap().unwrap();
     let mut low = dispatch_limits();
     low.work = 0;
     assert!(matches!(
-        DomDetailsRuntime::run_next(
-            &mut DomEventDom::borrow(&mut dom),
-            &mut registry,
-            &mut context,
-            low,
-            &cancel()
-        ),
+        DomDetailsRuntime::run_next(&mut dom.dom(), &mut registry, &mut context, low, &cancel()),
         Err(DomDetailsRuntimeError::Dispatch(
             DomEventDispatchError::Admission(DomEventResource::Work)
         ))
@@ -709,7 +776,7 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     batch.destroy(target);
     apply(&mut dom, batch);
     let result = DomDetailsRuntime::run_next(
-        &mut DomEventDom::borrow(&mut dom),
+        &mut dom.dom(),
         &mut registry,
         &mut context,
         dispatch_limits(),
@@ -718,5 +785,93 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     .unwrap();
     assert!(matches!(result,DomDetailsProgress::SkippedTargetDestroyed(task) if task==original));
     assert!(context.log.is_empty());
-    assert_eq!(context.details.pending_tasks(), 0);
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+}
+
+#[test]
+fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_refused_take() {
+    for route in 0..3 {
+        let mut dom = Dom::new(
+            DomLimits::new(32, 4096, 128, 128, 128, 8, 100_000)
+                .unwrap()
+                .with_details_toggle_intentions(8)
+                .unwrap(),
+        )
+        .unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let details = batch.create_element_ns(&document, Namespace::html(), "details");
+        if route != 0 {
+            batch.set_attribute(&details, "open", "");
+        }
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        let transfer = if route == 1 {
+            assert!(dom.take_details_toggle_intentions(0, &cancel()).is_err());
+            None
+        } else {
+            Some(dom.take_details_toggle_intentions(8, &cancel()).unwrap())
+        };
+        let owner = dom.owner();
+        let stamp = dom.snapshot().stamp();
+        let pending = dom.pending_details_toggle_intentions();
+        let limits = DomSessionLimits {
+            style: DomStyleRuntimeLimits {
+                roots: 8,
+                completions: 8,
+                reports: 8,
+                storage_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+                css_input: surgeist_css::CssUtf16InputLimits::default(),
+            },
+            details: self::limits(),
+            hosted: DomHostedRuntimeLimits {
+                canonical: surgeist_dom::DomHostedLimits::new(
+                    surgeist_dom::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                    16 * 1024 * 1024,
+                    16 * 1024 * 1024,
+                    1_000_000,
+                ),
+                tasks: 8,
+                storage_bytes: 16 * 1024 * 1024,
+                scratch_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+            },
+        };
+        if route == 2 {
+            let transfer = transfer.expect("the genuine standalone transfer remains caller-owned");
+            assert_eq!(transfer.len(), 1);
+            assert_eq!(transfer.intentions()[0].target(), target);
+            let rejected = DomSession::new(dom, limits).unwrap_err();
+            assert!(matches!(
+                rejected.error(),
+                crate::dom_style::DomSessionCreateFailure::Details(
+                    DomDetailsRuntimeError::PretransferredSession
+                )
+            ));
+            let dom = rejected.into_dom();
+            assert_eq!(dom.owner(), owner);
+            assert_eq!(dom.snapshot().stamp(), stamp);
+            assert_eq!(dom.pending_details_toggle_intentions(), pending);
+            assert_eq!(transfer.intentions()[0].target(), target);
+        } else {
+            let session = DomSession::new(dom, limits).unwrap();
+            assert_eq!(session.snapshot().owner(), owner);
+            assert_eq!(session.snapshot().stamp(), stamp);
+            assert_eq!(
+                session
+                    .snapshot()
+                    .node(target)
+                    .unwrap()
+                    .as_details()
+                    .unwrap()
+                    .state(),
+                if route == 0 {
+                    HtmlDetailsState::Closed
+                } else {
+                    HtmlDetailsState::Open
+                }
+            );
+        }
+    }
 }

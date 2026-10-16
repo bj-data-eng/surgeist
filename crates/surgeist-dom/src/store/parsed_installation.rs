@@ -932,7 +932,7 @@ impl Dom {
                     &report
                         .fragment_parser_document()
                         .expect("selected descriptor"),
-                    self.document_environment,
+                    self.document_environment.clone(),
                     design_mode_enabled,
                 )
             } else {

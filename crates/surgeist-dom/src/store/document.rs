@@ -35,7 +35,26 @@ impl Draft {
         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        Ok(metadata.document_environment())
+        let environment = metadata.document_environment();
+        if let Some(association) = &environment.hosted {
+            association
+                .validate_current()
+                .map_err(|_| DomError::HostedSourceUnavailable)?;
+            if !matches!(
+                association.phase,
+                crate::hosted::DocumentPhase::InitialEntry { .. }
+            ) {
+                let crate::DomDocumentCreationCause::HostedInitialAboutBlank { operation, .. } =
+                    metadata.creation_cause()
+                else {
+                    return Err(DomError::HostedSourceUnavailable);
+                };
+                if self.hosted_owner != Some(*operation) {
+                    return Err(DomError::HostedSourceUnavailable);
+                }
+            }
+        }
+        Ok(environment)
     }
     pub(super) fn create_xml_document(
         &mut self,
@@ -267,7 +286,7 @@ impl Draft {
         self.pre_insert(body, html, None, limits, cancelled)?;
         Ok(document)
     }
-    fn html_skeleton_element(
+    pub(super) fn html_skeleton_element(
         &mut self,
         document: Key,
         local_name: &str,

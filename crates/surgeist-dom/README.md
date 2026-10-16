@@ -512,11 +512,12 @@ Exact null-namespace `nonce` attribute changes update it, removal clears it, and
 `set_nonce` changes only the slot. Case/namespace mismatches do not affect it.
 State-only edits report `ElementState`, separately from `Attributes`, and advance
 the same DOM revision. Clone/import appends actual attributes through their change
-steps, then copies the captured nonce slot. Native Document environment stores
+steps, then copies the captured nonce slot. Standalone native Document environment stores
 real null browsing-context and never-navigable proof independently of XML class.
 Insertion runs common steps over inserted shadow-including descendants; this native environment
-proves nonce content remains visible without inventing CSP facts. No API attaches
-a browsing context or advances the closed common tuple into interactive state.
+proves nonce content remains visible without inventing CSP facts. Hosted creation
+uses a separate controlled source protocol; it does not convert a closed Document
+or advance its common tuple into interactive state.
 
 Native standalone Img retains HTML's actual fresh request tuple: Unavailable,
 empty current URL, density1, null preferred dimensions/pending request/last source/
@@ -754,14 +755,20 @@ targets, with finite `TargetDestroyed` evidence carrying the target, operation
 identity and states. The transfer batch retains its historical source snapshot;
 consuming iteration yields records retaining their operation, target and states.
 A consumer must validate each exact target against a fresh current snapshot before
-execution. DOM does not coalesce tasks or fire ToggleEvents. Runtime's actual
-Details task tracker, coalescing and event dispatch remain unimplemented #1124
-work, independently of this immediate ownership handoff.
+execution. DOM does not coalesce tasks or fire ToggleEvents. Runtime's shared
+`DomSession` owns the bounded Details task tracker, coalescing and native event
+dispatch. Its controlled ingestion admits the actual pending bank before taking
+custody; a session-bound caller cannot bypass that handoff with a raw transfer.
+Tasks retain their original queued Document and hosted Global across adoption,
+while dispatch uses the current tree's parent path. Standalone DOM consumers can
+still use the raw transfer API; prior nonempty external transfers prevent later
+session bootstrap because that external custody cannot be recovered.
 
 This common contribution does not complete native HTML. Remaining exact producer
 requirements include other native form/control relations and values,
 resource-capable HTML preparation, resource-capable
-iframe navigables, link/style associations, dialog state, and resource/media
+iframe navigables, resource-capable link/style associations, modal dialog
+operations, and resource/media
 families. Their real initialization and applicable attribute/tree/adoption hooks
 must join before admission; a requirement error is not a permanent HTML dialect.
 
@@ -983,7 +990,7 @@ retain their original reference. Cloning reads the source contents' children int
 the copy's fresh owned fragment; it does not clone the referenced root as owned.
 Captures preserve the distinct shadow-reference relation. Native creation and
 for/shadow attributes do not fabricate that parser state or start patching. Declarative/retained
-HTML installation, registry objects and HTML callbacks still require their real
+HTML installation, nonempty/scoped registry objects and HTML callbacks still require their real
 adapters, as do #1124's remaining language/control/pseudo/host capabilities.
 
 `DomHostPublisher` captures complete fixed focus/hover or document-target Element
@@ -1003,6 +1010,32 @@ unavailability without publishing. This boundary
 does not implement HTML focus policy, pointer processing or canonical controls;
 Runtime owns its concrete surface-selection association and capture adapter.
 It rejects document-target bindings because it has no target-selection producer.
+
+Native hosted creation is a separate, retained source operation driven by
+Runtime's `HostedRuntime` through the same `DomSession`. The DOM source issues
+owner-qualified, generation-checked Host, browsing-context, Global, history-entry
+and navigable identities. Its controlled phases establish the initial Document,
+Permissions Policy, actual Global association, loaded time and initial entry.
+Operation and phase checks reject foreign, stale and replayed publications while
+preserving the valid continuation. Dropping a permission does not finish its
+operation. Explicit record, byte and work limits admit the actual state.
+
+The initial hosted Document has a real non-null, complete empty Global registry.
+Its canonical registry view consumes the original HTML-semantics lookup over the
+retained producer capture. A known definition miss is distinct from a null or
+unavailable registry. This bounded factory supplies no definition mutation or
+scoped registry implementation.
+
+`DomDocument::is_fully_active()` reads the actual captured hosted association;
+closed Documents return false. Snapshot `global_document` and `relevant_global`
+lookups also retain historical identity. The corresponding methods on the current
+`Dom` owner check the live issuer, identity and association before execution.
+Destruction retires hosted participation
+without deleting the managed Document or its tree. An older snapshot retains its
+captured activity state. Initial top-level creation and no-child destruction do
+not establish child navigation, replacement, resource loading, modal services or
+JavaScript execution. The [Runtime explanation](../surgeist-runtime/docs/explanation.md#dom-orchestration)
+describes native task custody and checkpoint limitations.
 
 Native `create_document()` establishes an XML document with `application/xml`
 content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative

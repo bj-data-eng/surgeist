@@ -6,8 +6,9 @@
 invalidation, frame scheduling, and provenance. A reducer describes state changes
 and work; runtime validates and records the orchestration result. Root `surgeist`
 owns the facade and adapters that connect those results to concrete Surgeist
-crates. The [public reexports](../src/lib.rs) expose runtime-owned contracts, and
-the [manifest](../Cargo.toml) declares no sibling dependencies.
+crates. Runtime consumes the lower-level contracts used by its own adapters
+directly. The [public reexports](../src/lib.rs) expose runtime-owned contracts,
+and the [manifest](../Cargo.toml) declares those dependencies.
 
 The task boundary is concrete: runtime emits abstract task intents and accepts
 task-originated app inputs. Concrete task execution, cancellation, lifecycle,
@@ -15,11 +16,11 @@ progress coalescing, and Tokio integration belong to `surgeist-task`. Root owns
 the adapter that lowers runtime task intents into task crate requests and maps
 task events back into runtime queues.
 
-Root also owns integration with template, CSS, style, retained, text, layout,
-render, and window crates. Parser, style-resolution, layout-algorithm,
-text-shaping, rendering-backend, retained-tree, and host implementation details
-remain outside this crate. `AppLoop` is a deterministic drain wrapper; it does
-not implement a native event loop. This separation lets the
+Root owns facade composition; each consuming subsystem owns its integration
+with the lower-level contracts it uses. Parsing, style resolution, layout
+algorithms, text shaping, rendering backends and OS window event loops remain
+outside this crate. `AppLoop` is a deterministic application drain wrapper;
+the bounded native DOM loop has its own lifecycle owner. This separation lets the
 [intent example](how-to.md#emit-work-for-root-adapters) exercise orchestration
 without those concrete systems.
 
@@ -69,12 +70,15 @@ acknowledgement errors.
 
 ## DOM orchestration
 
-`DomStyleSession` owns the original canonical `Dom` and the resources needed to
-finish admitted Style operations. A `DomStyleRuntime` is a weak execution
-permission for that session. Reacquiring a permission reaches the same owner and
-CSSOM stores; it does not reconstruct them from a snapshot. The scoped
-`DomEventDom` view permits canonical edits without exposing a replaceable mutable
-owner or a raw source lease.
+`DomSession` owns the original canonical `Dom`, CSSOM resources, Details task
+state and native hosted lifecycle. Its explicit `DomSessionLimits` admits each
+domain's actual storage and work. `style_execution()`, `details_execution()` and
+`hosted_execution()` return weak permissions into that same session. Dropping or
+reacquiring a permission preserves the original resources, queues and spent work.
+The scoped `DomEventDom` view permits canonical edits without exposing a
+replaceable mutable owner or its source issuer. Session construction refuses
+prebound Style custody and prior nonempty standalone Details transfers whose
+external task custody it cannot recover.
 
 DOM owns each source operation's identity and published continuation. Runtime
 drives its requests through the CSS and CSSOM owners, retains acknowledged
@@ -88,8 +92,45 @@ across suspension. Style and Details use this shared dispatcher while retaining
 their own task rules. Callbacks receive controlled canonical access. Public
 observations do not retain the dispatcher or session, and terminal disposal does
 not dispatch callbacks or manufacture a completion receipt. For graceful
-shutdown, `try_shutdown` returns `DomStyleShutdownOutcome::Pending` with the whole
+shutdown, `try_shutdown` returns `DomShutdownOutcome::Pending` with the whole
 session when obligations remain.
+
+`HostedRuntime` creates a native Host and an initial top-level navigable through
+the canonical DOM source protocol. The resulting Document, browsing context,
+history entry and Global have distinct checked identities. Settings read the
+actual associated Document; a captured settings value remains historical after
+later edits. Creation uses a shared monotonic clock domain and fallible OS
+entropy for the two history UUIDs. Unsupported clock or entropy providers return
+typed errors. Neither UUID generation nor cancellation promises to interrupt an
+OS entropy call.
+
+Top-level destruction first queues the original Global's navigation task and
+returns `Pending`, even when there are no children. Resumption performs the
+cleanup through that retained task. The Document and its tree remain canonical
+objects after destruction; current hosted authority becomes inactive while older
+snapshots retain their original observations. A Host can own several top-levels,
+so destroying one does not retire the shared Host. `destroy_host` retires an
+actually empty Host after its top-level, operation and task obligations are
+settled; graceful session shutdown still retains live hosted ownership.
+
+Details ingestion admits the actual canonical pending intentions before taking
+custody. Tasks preserve their original queued Document and Global across target
+adoption; dispatch builds its path from the current tree. At task completion,
+the native loop checks the canonical checkpoint state. Pending Slot work cannot
+be delivered by this bounded contribution: it retains the started task and its
+delivered-event progress with `CheckpointUnavailable`. An actually empty bank
+can complete the native checkpoint. This does not implement mutation observers,
+JavaScript jobs or Slot delivery.
+
+Hosted dispatch admission checks the current association before starting. Each
+listener then uses its current target's actual node Document: known inactive
+hosted Documents skip the listener; unavailable authority returns
+`RetainedHostedAuthority` with the same pending listener and cursor. Earlier
+callbacks are not replayed, and a pending once registration is not consumed by
+unavailable admission. Closed native Documents remain eligible. Their existing
+started-dispatch retirement policy preserves historical exact-target delivery;
+it never redirects an event to a replacement generation or establishes current
+Window authority from a missing node.
 
 These operations implement bounded native orchestration. A retained sheet or
 completed canonical edit does not establish fetched-resource completion,
@@ -97,6 +138,7 @@ nonempty-media evaluation, rendering readiness, browser event-loop integration
 or JavaScript execution. The [Style](../src/dom_style.rs),
 [event](../src/dom_event.rs) and [Details](../src/dom_details.rs) modules define
 their admitted operations and typed unavailable states; the
+[hosted lifecycle](../src/dom_lifecycle.rs) owns native creation and teardown. The
 [DOM owner](../../surgeist-dom/README.md) defines canonical source continuations.
 
 ## Queues and host wakeups

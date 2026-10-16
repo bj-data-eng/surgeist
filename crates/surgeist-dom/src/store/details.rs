@@ -14,6 +14,7 @@ pub(super) struct Pending<K> {
     target: K,
     old: HtmlDetailsState,
     new: HtmlDetailsState,
+    queue_association: Option<crate::details::DomDetailsQueueAssociation>,
 }
 impl<K> Pending<K> {
     pub(in crate::store) fn is_unissued(&self) -> bool {
@@ -49,11 +50,49 @@ pub(super) fn draft_formed(
             target: Key::Existing(item.target.slot),
             old: item.old,
             new: item.new,
+            queue_association: item.queue_association,
         });
     }
     Ok(out)
 }
 impl Draft {
+    fn details_queue_association(
+        &self,
+        target: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<crate::details::DomDetailsQueueAssociation>, DomError> {
+        let Some(global) = self.node(target)?.relevant_global else {
+            return Ok(None);
+        };
+        self.source_step(cancel)?;
+        let document = self
+            .hosted_globals
+            .as_ref()
+            .ok_or(DomError::HostedSourceUnavailable)?
+            .document(global)
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        self.source_step(cancel)?;
+        let DomNodeKind::Document(metadata) = &self.node(Key::Existing(document.node().slot))?.kind
+        else {
+            return Err(DomError::HostedSourceUnavailable);
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .ok_or(DomError::HostedSourceUnavailable)?;
+        if association.global != global {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        association
+            .validate_live()
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        Ok(Some(crate::details::DomDetailsQueueAssociation {
+            global,
+            document,
+        }))
+    }
+
     fn is_details(&self, key: Key) -> Result<bool, DomError> {
         Ok(matches!(&self.node(key)?.kind, DomNodeKind::Element(e) if e.is_details()))
     }
@@ -122,11 +161,13 @@ impl Draft {
             .map_err(|_| DomError::AllocationFailed)?;
         self.source_admit(0, cancel)?;
         self.headroom_details_issue(cancel)?;
+        let queue_association = self.details_queue_association(target, cancel)?;
         self.details_intentions.push(Pending {
             serial: None,
             target,
             old,
             new,
+            queue_association,
         });
         Ok(())
     }
@@ -259,6 +300,7 @@ impl Draft {
                         target: id,
                         old: item.old,
                         new: item.new,
+                        queue_association: item.queue_association,
                     });
                 }
             } else {
@@ -335,6 +377,7 @@ impl Draft {
                 target: id(item.target),
                 old: item.old,
                 new: item.new,
+                queue_association: item.queue_association,
             });
         }
         for item in &self.cancelled_details {
@@ -344,6 +387,7 @@ impl Draft {
                 target: item.target,
                 old: item.old,
                 new: item.new,
+                queue_association: item.queue_association,
             });
         }
         Ok(Finished {
@@ -354,6 +398,11 @@ impl Draft {
     }
 }
 impl Dom {
+    /// Actual prior standalone transfer; it makes an unknown external future-task
+    /// owner unsuitable for adoption by a fresh bound session.
+    pub fn has_transferred_details_toggle_intentions(&self) -> bool {
+        self.details_transferred
+    }
     pub fn pending_details_toggle_intentions(&self) -> usize {
         self.state.details_intentions.len()
     }
@@ -363,6 +412,31 @@ impl Dom {
         &mut self,
         max_output: usize,
         cancel: &AtomicBool,
+    ) -> Result<DomDetailsToggleTransfer, DomError> {
+        self.take_details_toggle_intentions_inner(max_output, cancel, true)
+    }
+    /// Bound intake uses the exact registered original source after complete
+    /// Runtime preadmission; no public skip flag can substitute for that owner.
+    pub fn take_hosted_details_toggle_intentions(
+        &mut self,
+        source: &crate::hosted::DomHostedSource,
+        max_output: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomDetailsToggleTransfer, DomError> {
+        if self.owner != source.id().owner || self.hosted_source.as_ref() != Some(&source.observe())
+        {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        source
+            .revision()
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        self.take_details_toggle_intentions_inner(max_output, cancel, false)
+    }
+    fn take_details_toggle_intentions_inner(
+        &mut self,
+        max_output: usize,
+        cancel: &AtomicBool,
+        standalone: bool,
     ) -> Result<DomDetailsToggleTransfer, DomError> {
         self.require_source_idle()?;
         check_cancel(cancel)?;
@@ -384,12 +458,16 @@ impl Dom {
                 target: item.target,
                 old: item.old,
                 new: item.new,
+                queue_association: item.queue_association,
             });
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         draft.details_intentions.clear();
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
+        if standalone && !out.is_empty() {
+            self.details_transferred = true;
+        }
         Ok(DomDetailsToggleTransfer {
             source: self.snapshot(),
             changes: commit.changes,

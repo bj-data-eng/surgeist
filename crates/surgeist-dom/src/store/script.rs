@@ -5,9 +5,7 @@ use surgeist_html::bounded::{
     HtmlScriptPreparationReply as Reply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
     HtmlScriptTypeWork,
 };
-use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlScriptKind, HtmlScriptResult, KnownHtmlAttribute,
-};
+use surgeist_html::{HtmlScriptKind, HtmlScriptResult, KnownHtmlAttribute};
 
 fn attribute_name_is(name: &crate::QualifiedName, selected: &str) -> bool {
     name.namespace().uri().is_none()
@@ -141,10 +139,12 @@ impl Draft {
                     let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
                         unreachable!("canonical Script node document")
                     };
-                    match metadata.document_environment().browsing_context() {
-                        HtmlBrowsingContextPresence::Absent => Reply::Disabled,
-                        HtmlBrowsingContextPresence::Present => Reply::Enabled,
-                        HtmlBrowsingContextPresence::Unavailable => Reply::Unavailable,
+                    match metadata.document_environment().scripting() {
+                        surgeist_html_semantics::HtmlScriptingStatus::Disabled => Reply::Disabled,
+                        surgeist_html_semantics::HtmlScriptingStatus::Enabled => Reply::Enabled,
+                        surgeist_html_semantics::HtmlScriptingStatus::Unavailable => {
+                            Reply::Unavailable
+                        }
                     }
                 }
                 Action::Complete(result) => return Ok(result),

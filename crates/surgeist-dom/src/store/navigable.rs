@@ -36,7 +36,7 @@ impl Draft {
             )
         };
         if !returned {
-            unreachable!("all admitted Documents retain native known-null browsing context")
+            return Err(DomError::HostedSourceUnavailable);
         }
         Ok(())
     }
@@ -60,7 +60,7 @@ impl Draft {
             false
         };
         if destroy {
-            unreachable!("stored native null content cannot destroy a child navigable")
+            return Err(DomError::HostedSourceUnavailable);
         }
         Ok(())
     }

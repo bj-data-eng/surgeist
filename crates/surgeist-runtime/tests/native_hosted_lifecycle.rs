@@ -1,0 +1,1823 @@
+//! Native initial-blank construction and queued lifecycle use the actual session.
+//! HTML877d's BC/Document creator, Details notification and destruction clauses
+//! supply the literal states and ordering below.
+#![cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+
+use std::sync::atomic::AtomicBool;
+use surgeist_css::CssUtf16InputLimits;
+use surgeist_dom::*;
+use surgeist_html::{HtmlDetailsState, HtmlDetailsToggleEvent, HtmlDocumentMode};
+use surgeist_runtime::*;
+
+fn cancel() -> AtomicBool {
+    AtomicBool::new(false)
+}
+fn limits() -> DomSessionLimits {
+    DomSessionLimits {
+        style: DomStyleRuntimeLimits {
+            roots: 4,
+            completions: 32,
+            reports: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+            css_input: CssUtf16InputLimits::default(),
+        },
+        details: DomDetailsRuntimeLimits {
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        hosted: DomHostedRuntimeLimits {
+            canonical: DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                16_000_000,
+                16_000_000,
+                1_000_000,
+            ),
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            scratch_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+    }
+}
+fn session() -> DomSession {
+    let dom = Dom::new(
+        DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000)
+            .unwrap()
+            .with_details_toggle_intentions(32)
+            .unwrap(),
+    )
+    .unwrap();
+    DomSession::new(dom, limits()).unwrap()
+}
+fn create(session: &mut DomSession) -> DomHostedTopLevel {
+    let mut hosted = session.hosted_execution();
+    let mut dom = session.dom();
+    let host = hosted.create_host(&mut dom, &cancel()).unwrap();
+    match hosted.create_top_level(&mut dom, host, &cancel()).unwrap() {
+        DomHostedProgress::Created(top) => {
+            assert_eq!(top.host(), host);
+            top
+        }
+        other => panic!("ample admission must complete initial construction: {other:?}"),
+    }
+}
+fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
+    let root = snapshot.node(document.node()).unwrap().children()[0];
+    let children = snapshot.node(root).unwrap().children();
+    assert_eq!(children.len(), 2);
+    children[1]
+}
+fn event_limits() -> DomEventDispatchLimits {
+    DomEventDispatchLimits {
+        path_items: 128,
+        snapshot_listeners: 128,
+        failure_records: 32,
+        callbacks: 128,
+        work: 100_000,
+    }
+}
+#[derive(Debug, Eq, PartialEq)]
+struct Observation {
+    label: &'static str,
+    current: Option<DomEventTarget>,
+    target: Option<NodeId>,
+    phase: DomEventPhase,
+    payload: Option<HtmlDetailsToggleEvent>,
+    bubbles: bool,
+}
+struct Context {
+    details: DomDetailsRuntime,
+    seen: Vec<Observation>,
+}
+impl DomDetailsEventContext for Context {
+    fn details(&mut self) -> &mut DomDetailsRuntime {
+        &mut self.details
+    }
+}
+fn registry() -> DomEventDispatcher<Context> {
+    DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 32,
+        pending_events: 8,
+        nested_dispatches: 8,
+    })
+    .unwrap()
+}
+fn listen(
+    registry: &mut DomEventDispatcher<Context>,
+    dom: &DomEventDom<'_>,
+    target: DomEventTarget,
+    label: &'static str,
+    capture: bool,
+) {
+    registry
+        .add_listener(
+            dom,
+            target,
+            DomEventType::Toggle,
+            DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                context.seen.push(Observation {
+                    label,
+                    current: event.current_target(),
+                    target: event.target(),
+                    phase: event.phase(),
+                    payload: event.toggle_event().copied(),
+                    bubbles: event.bubbles(),
+                });
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture,
+                once: false,
+            },
+        )
+        .unwrap();
+}
+fn run_details(
+    session: &mut DomSession,
+    registry: &mut DomEventDispatcher<Context>,
+    context: &mut Context,
+) {
+    let mut dom = session.dom();
+    match DomDetailsRuntime::run_next(&mut dom, registry, context, event_limits(), &cancel())
+        .unwrap()
+    {
+        DomDetailsProgress::Complete { receipt, .. } => assert!(receipt.failures().is_empty()),
+        other => panic!("actual Toggle task must dispatch: {other:?}"),
+    }
+}
+
+#[test]
+fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
+    let mut session = session();
+    let top = create(&mut session);
+    let snapshot = session.snapshot();
+    let document = snapshot.document(top.document()).unwrap();
+    let metadata = document.metadata();
+    assert_eq!(metadata.class(), DomDocumentClass::Html);
+    assert!(matches!(metadata.creation_cause(),
+        DomDocumentCreationCause::HostedInitialAboutBlank { source, .. }
+            if *source == top.host().source()));
+    assert_eq!(metadata.content_type(), &DocumentString::from("text/html"));
+    assert_eq!(metadata.encoding(), &DocumentString::from("UTF-8"));
+    assert_eq!(metadata.url(), &DocumentString::from("about:blank"));
+    assert_eq!(metadata.mode(), HtmlDocumentMode::Quirks);
+    assert!(metadata.allow_declarative_shadow_roots());
+    assert!(document.is_fully_active().unwrap());
+    assert_eq!(
+        snapshot.global_document(top.global()).unwrap(),
+        top.document()
+    );
+    let children = snapshot.node(top.document().node()).unwrap().children();
+    assert_eq!(children.len(), 1);
+    let html = snapshot.node(children[0]).unwrap();
+    assert_eq!(
+        html.as_element().unwrap().name().local_name(),
+        &"html".into()
+    );
+    assert_eq!(
+        html.as_element().unwrap().name().namespace(),
+        &Namespace::html()
+    );
+    assert_eq!(html.children().len(), 2);
+    for (node, local) in html.children().iter().zip(["head", "body"]) {
+        let node = snapshot.node(*node).unwrap();
+        assert_eq!(
+            node.as_element().unwrap().name().local_name(),
+            &local.into()
+        );
+        assert_eq!(
+            node.as_element().unwrap().name().namespace(),
+            &Namespace::html()
+        );
+        assert!(node.children().is_empty());
+    }
+    let DomRegistryBinding::Registry(registry) = metadata.custom_element_registry() else {
+        panic!("initial Global must supply its actual nonnull registry")
+    };
+    let registry = snapshot.registry(registry).unwrap();
+    assert_eq!(registry.definition_count(), 0);
+    assert_eq!(
+        registry.scope(),
+        surgeist_html_semantics::HtmlRegistryScope::Global
+    );
+    assert!(
+        registry
+            .lookup_definition(&Namespace::html(), &"x-native".into(), None)
+            .unwrap()
+            .is_none()
+    );
+    assert!(!registry.is_scoped());
+    assert!(!registry.definition_is_running());
+    assert_eq!(registry.scoped_document_count(), 0);
+    assert_eq!(registry.when_defined_count(), 0);
+    let canonical_registry = registry.id();
+    let captured = snapshot
+        .html_capture(
+            top.document(),
+            None,
+            surgeist_html_semantics::HtmlCaptureLimits::new(128, 512, 512, 100_000, 128, 32, 32),
+            DomHtmlCaptureLimits::new(128, 1_000_000),
+            &cancel(),
+        )
+        .unwrap();
+    let producer = captured.capture();
+    assert_eq!(producer.usage().registries(), 1);
+    assert_eq!(producer.usage().definitions(), 0);
+    let document_subject = captured.subject(top.document().node()).unwrap();
+    assert_eq!(
+        captured.node(&document_subject).unwrap(),
+        top.document().node()
+    );
+    let captured_document = producer.node(&document_subject).unwrap();
+    let surgeist_html_semantics::HtmlCapturedNodeKind::Document(facts) = captured_document.kind()
+    else {
+        panic!("checked canonical Document must capture as Document")
+    };
+    assert_eq!(
+        facts.scripting(),
+        surgeist_html_semantics::HtmlScriptingStatus::Disabled
+    );
+    assert_eq!(
+        facts.nonce_environment().browsing_context(),
+        surgeist_html::HtmlBrowsingContextPresence::Present
+    );
+    let captured_registry = captured_document.lookup_registry();
+    let surgeist_html_semantics::HtmlCapturedRegistry::Registry(id) = &captured_registry else {
+        panic!("actual Global registry remains non-null in producer capture")
+    };
+    assert_eq!(
+        producer.registry_scope(id).unwrap(),
+        surgeist_html_semantics::HtmlRegistryScope::Global
+    );
+    let surgeist_html_semantics::HtmlCapturedDefinitions::Complete(definitions) =
+        producer.definitions(id).unwrap()
+    else {
+        panic!("the actual empty Global registry is complete")
+    };
+    assert!(definitions.is_empty());
+    assert!(
+        producer
+            .lookup_definition(
+                &captured_registry,
+                &Namespace::html(),
+                &"x-native".into(),
+                None
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        captured
+            .source()
+            .document(top.document())
+            .unwrap()
+            .metadata()
+            .custom_element_registry(),
+        DomRegistryBinding::Registry(canonical_registry)
+    );
+    for node in std::iter::once(html.id()).chain(html.children().iter().copied()) {
+        let subject = captured.subject(node).unwrap();
+        assert_eq!(captured.node(&subject).unwrap(), node);
+        assert_eq!(
+            captured
+                .source()
+                .node(node)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .custom_element_registry(),
+            DomRegistryBinding::Registry(canonical_registry)
+        );
+        let captured_element = producer.node(&subject).unwrap();
+        assert!(matches!(
+            captured_element.kind(),
+            surgeist_html_semantics::HtmlCapturedNodeKind::Element(_)
+        ));
+        assert_eq!(captured_element.lookup_registry(), captured_registry);
+    }
+    let hosted = session.hosted_execution();
+    let dom = session.dom();
+    assert_eq!(
+        hosted.top_level(&dom, top.navigable(), &cancel()).unwrap(),
+        top
+    );
+    let settings = hosted.settings(&dom, top.global(), &cancel()).unwrap();
+    assert_eq!(settings.global(), top.global());
+    assert_eq!(settings.document().id(), top.document());
+    assert_eq!(settings.document().metadata().origin(), metadata.origin());
+    assert!(settings.environment_ready());
+    assert_eq!(settings.clock_source(), top.host().source());
+    assert_eq!(settings.time_origin_microseconds() % 100, 0);
+    assert_eq!(settings.creation_url(), "about:blank");
+    assert_eq!(settings.top_level_creation_url(), "about:blank");
+    assert!(!settings.cross_origin_isolated());
+    assert!(!settings.cross_site());
+    let entry = hosted.history_entry(&dom, top.entry(), &cancel()).unwrap();
+    assert_eq!(entry.entry(), top.entry());
+    assert_eq!(entry.document(), top.document());
+    assert_eq!(entry.origin(), metadata.origin());
+    assert_eq!(entry.step(), 0);
+    for value in [entry.key(), entry.id()] {
+        assert_eq!(value.len(), 36);
+        for (index, unit) in value.iter().copied().enumerate() {
+            if [8, 13, 18, 23].contains(&index) {
+                assert_eq!(unit, u16::from(b'-'));
+            } else {
+                assert!(matches!(unit, 0x30..=0x39 | 0x61..=0x66));
+            }
+        }
+        assert_eq!(value[14], u16::from(b'4'));
+        assert!(matches!(value[19], 0x38 | 0x39 | 0x61 | 0x62));
+    }
+    let again = hosted.history_entry(&dom, top.entry(), &cancel()).unwrap();
+    assert_eq!(again.entry(), entry.entry());
+    assert_eq!(again.document(), entry.document());
+    assert_eq!(again.origin(), entry.origin());
+    assert_eq!(again.step(), entry.step());
+    assert_eq!(again.key(), entry.key());
+    assert_eq!(again.id(), entry.id());
+}
+
+#[test]
+fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    let target = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(top.document(), Namespace::html(), "details");
+        batch.insert_before(&details, parent, None);
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        for (recipient, label, capture) in [
+            (DomEventTarget::Global(top.global()), "global", true),
+            (
+                DomEventTarget::Node(top.document().node()),
+                "document",
+                true,
+            ),
+            (DomEventTarget::Node(parent), "ancestor", true),
+            (DomEventTarget::Node(target), "target-capture", true),
+            (DomEventTarget::Node(target), "target", false),
+            (DomEventTarget::Global(top.global()), "global-bubble", false),
+        ] {
+            listen(&mut registry, &dom, recipient, label, capture);
+        }
+        let mut batch = DomBatch::new();
+        batch.set_attribute(target, "open", "");
+        dom.apply(batch, &cancel()).unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        target
+    };
+    run_details(&mut session, &mut registry, &mut context);
+    assert_eq!(
+        context.seen.iter().map(|o| o.label).collect::<Vec<_>>(),
+        ["global", "document", "ancestor", "target-capture", "target"]
+    );
+    assert_eq!(
+        context.seen[0].current,
+        Some(DomEventTarget::Global(top.global()))
+    );
+    assert_eq!(
+        context.seen[1].current,
+        Some(DomEventTarget::Node(top.document().node()))
+    );
+    assert_eq!(
+        context.seen.iter().map(|o| o.phase).collect::<Vec<_>>(),
+        [
+            DomEventPhase::Capturing,
+            DomEventPhase::Capturing,
+            DomEventPhase::Capturing,
+            DomEventPhase::AtTarget,
+            DomEventPhase::AtTarget,
+        ]
+    );
+    for observation in &context.seen {
+        assert_eq!(observation.target, Some(target));
+        assert!(!observation.bubbles);
+        let payload = observation.payload.unwrap();
+        assert_eq!(payload.old_state(), HtmlDetailsState::Closed);
+        assert_eq!(payload.new_state(), HtmlDetailsState::Open);
+    }
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+}
+
+#[test]
+fn zero_child_destruction_still_queues_and_survives_permission_drop_and_shutdown() {
+    let mut session = session();
+    let top = create(&mut session);
+    let historical = session.snapshot();
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(
+            matches!(hosted.destroy_top_level(&mut dom, top.navigable(), &cancel()).unwrap(),
+            DomHostedProgress::Pending { host } if host == top.host())
+        );
+    }
+    assert!(
+        session
+            .snapshot()
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    drop(hosted);
+    session = match session.try_shutdown() {
+        DomShutdownOutcome::Pending { session, .. } => session,
+        DomShutdownOutcome::Complete => panic!("queued parent-Global task retains custody"),
+    };
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
+            DomHostedProgress::Destroyed { navigable } if navigable == top.navigable()));
+    }
+    let current = session.snapshot();
+    assert!(current.node(top.document().node()).is_ok());
+    assert!(
+        !current
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        historical
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let dom = session.dom();
+    assert!(hosted.top_level(&dom, top.navigable(), &cancel()).is_err());
+    assert!(hosted.settings(&dom, top.global(), &cancel()).is_err());
+    assert_eq!(
+        historical.global_document(top.global()).unwrap(),
+        top.document()
+    );
+}
+
+#[test]
+fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_path() {
+    let mut session = session();
+    let first = create(&mut session);
+    let second = create(&mut session);
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    let (target, queued) = {
+        let mut dom = session.dom();
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Global(first.global()),
+            "original-global",
+            true,
+        );
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Global(second.global()),
+            "current-global",
+            true,
+        );
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Node(second.document().node()),
+            "current-document",
+            true,
+        );
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(first.document(), Namespace::html(), "details");
+        batch.insert_before(&details, first_body, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = context.details.pending_task(0).unwrap().unwrap();
+        let association = queued.queue_association().unwrap();
+        assert_eq!(association.global(), first.global());
+        assert_eq!(association.document(), first.document());
+        let mut batch = DomBatch::new();
+        batch.adopt(target, second.document());
+        batch.insert_before(target, second_body, None);
+        dom.apply(batch, &cancel()).unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
+        assert_eq!(
+            context.details.pending_task(0).unwrap().unwrap().id(),
+            queued.id()
+        );
+        assert_eq!(
+            context
+                .details
+                .pending_task(0)
+                .unwrap()
+                .unwrap()
+                .queue_association(),
+            Some(association)
+        );
+        (target, queued)
+    };
+    assert_eq!(
+        session.snapshot().node(target).unwrap().owner_document(),
+        Some(second.document())
+    );
+    run_details(&mut session, &mut registry, &mut context);
+    assert_eq!(
+        context.seen.iter().map(|o| o.label).collect::<Vec<_>>(),
+        ["current-global", "current-document"]
+    );
+    assert_eq!(queued.id().target(), target);
+    assert_eq!(
+        context.seen[0].current,
+        Some(DomEventTarget::Global(second.global()))
+    );
+    assert_eq!(
+        context.seen[1].current,
+        Some(DomEventTarget::Node(second.document().node()))
+    );
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    let hosted = session.hosted_execution();
+    let dom = session.dom();
+    assert_eq!(
+        hosted
+            .settings(&dom, first.global(), &cancel())
+            .unwrap()
+            .document()
+            .id(),
+        first.document()
+    );
+    assert_eq!(
+        hosted
+            .settings(&dom, second.global(), &cancel())
+            .unwrap()
+            .document()
+            .id(),
+        second.document()
+    );
+}
+
+#[test]
+fn cancelled_and_foreign_host_permission_does_not_publish_a_document_then_same_owner_recovers() {
+    let mut session = session();
+    let mut hosted = session.hosted_execution();
+    let before = session.snapshot();
+    {
+        let mut dom = session.dom();
+        assert!(matches!(
+            hosted.create_host(&mut dom, &AtomicBool::new(true)),
+            Err(DomHostedRuntimeError::Cancelled)
+        ));
+    }
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    let mut foreign = self::session();
+    {
+        let mut dom = foreign.dom();
+        assert!(matches!(
+            hosted.create_host(&mut dom, &cancel()),
+            Err(DomHostedRuntimeError::Binding)
+        ));
+    }
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(foreign.snapshot().nodes().count(), 0);
+    let top = create(&mut session);
+    assert!(
+        session
+            .snapshot()
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let dom = session.dom();
+    assert_eq!(
+        hosted.top_level(&dom, top.navigable(), &cancel()).unwrap(),
+        top
+    );
+}
+
+#[test]
+fn zero_host_admission_refuses_before_any_document_or_global_is_published() {
+    let dom = Dom::new(DomLimits::new(128, 20_000, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let mut policy = limits();
+    policy.hosted.canonical = DomHostedLimits::new(
+        DomHostedRecordLimits::new(0, 32, 32, 32, 32, 32, 32),
+        16_000_000,
+        16_000_000,
+        1_000_000,
+    );
+    let mut session = DomSession::new(dom, policy).unwrap();
+    let before = session.snapshot();
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(matches!(
+            hosted.create_host(&mut dom, &cancel()),
+            Err(DomHostedRuntimeError::Admission)
+        ));
+    }
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(session.snapshot().nodes().count(), 0);
+}
+
+#[test]
+fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
+    let mut session = session();
+    let first = create(&mut session);
+    let second = create(&mut session);
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    let target = {
+        let mut dom = session.dom();
+        for (recipient, label) in [
+            (DomEventTarget::Global(first.global()), "original-global"),
+            (DomEventTarget::Global(second.global()), "current-global"),
+            (
+                DomEventTarget::Node(second.document().node()),
+                "current-document",
+            ),
+        ] {
+            listen(&mut registry, &dom, recipient, label, true);
+        }
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(first.document(), Namespace::html(), "details");
+        batch.insert_before(&details, first_body, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Node(target),
+            "target",
+            false,
+        );
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = context.details.pending_task(0).unwrap().unwrap();
+        let association = queued.queue_association().unwrap();
+        assert_eq!(association.global(), first.global());
+        assert_eq!(association.document(), first.document());
+        let mut batch = DomBatch::new();
+        batch.adopt(target, second.document());
+        batch.insert_before(target, second_body, None);
+        dom.apply(batch, &cancel()).unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
+        let after = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(after.id(), queued.id());
+        assert_eq!(after.queue_association(), Some(association));
+        target
+    };
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(
+            matches!(hosted.destroy_top_level(&mut dom, first.navigable(), &cancel()).unwrap(),
+            DomHostedProgress::Pending { host } if host == first.host())
+        );
+        assert_eq!(context.details.pending_tasks().unwrap(), 1);
+        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
+            DomHostedProgress::Destroyed { navigable } if navigable == first.navigable()));
+        assert!(matches!(
+            DomDetailsRuntime::run_next(
+                &mut dom,
+                &mut registry,
+                &mut context,
+                event_limits(),
+                &cancel()
+            )
+            .unwrap(),
+            DomDetailsProgress::Empty
+        ));
+    }
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert!(context.seen.is_empty());
+    let snapshot = session.snapshot();
+    assert!(
+        !snapshot
+            .document(first.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        snapshot
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let current = snapshot.node(target).unwrap();
+    assert_eq!(current.owner_document(), Some(second.document()));
+    assert_eq!(current.parent(), Some(second_body));
+    assert!(current.is_connected());
+    assert!(
+        current
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+}
+
+#[test]
+fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
+    let mut session = session();
+    let mut hosted = session.hosted_execution();
+    let (first, second) = {
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel()).unwrap();
+        let DomHostedProgress::Created(first) =
+            hosted.create_top_level(&mut dom, host, &cancel()).unwrap()
+        else {
+            panic!("first initial top-level must complete")
+        };
+        let DomHostedProgress::Created(second) =
+            hosted.create_top_level(&mut dom, host, &cancel()).unwrap()
+        else {
+            panic!("same Host must admit another initial top-level")
+        };
+        assert_eq!(first.host(), host);
+        assert_eq!(second.host(), host);
+        assert_ne!(first.browsing_context(), second.browsing_context());
+        assert_ne!(first.navigable(), second.navigable());
+        assert_ne!(first.document(), second.document());
+        assert!(
+            matches!(hosted.destroy_top_level(&mut dom, first.navigable(), &cancel()).unwrap(),
+            DomHostedProgress::Pending { host: pending } if pending == host)
+        );
+        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
+            DomHostedProgress::Destroyed { navigable } if navigable == first.navigable()));
+        assert_eq!(
+            hosted
+                .top_level(&dom, second.navigable(), &cancel())
+                .unwrap(),
+            second
+        );
+        assert_eq!(
+            hosted
+                .settings(&dom, second.global(), &cancel())
+                .unwrap()
+                .document()
+                .id(),
+            second.document()
+        );
+        (first, second)
+    };
+    let snapshot = session.snapshot();
+    assert!(
+        !snapshot
+            .document(first.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        snapshot
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let parent = body(&snapshot, second.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    {
+        let mut dom = session.dom();
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Global(second.global()),
+            "surviving-global",
+            true,
+        );
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(second.document(), Namespace::html(), "details");
+        batch.insert_before(&details, parent, None);
+        batch.set_attribute(&details, "open", "");
+        dom.apply(batch, &cancel()).unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+    }
+    run_details(&mut session, &mut registry, &mut context);
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(context.seen[0].label, "surviving-global");
+    assert_eq!(
+        context.seen[0].current,
+        Some(DomEventTarget::Global(second.global()))
+    );
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+}
+
+#[test]
+fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    let (slot, target, queued) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let host = batch.create_element_ns(top.document(), Namespace::html(), "div");
+        batch.insert_before(&host, parent, None);
+        let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+        let slot = batch.create_element_ns(top.document(), Namespace::html(), "slot");
+        batch.insert_before(&slot, &shadow, None);
+        let light = batch.create_text(top.document(), "assigned");
+        batch.insert_before(&light, &host, None);
+        let details = batch.create_element_ns(top.document(), Namespace::html(), "details");
+        batch.insert_before(&details, parent, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let slot = commit.created(&slot).unwrap().unwrap();
+        let light = commit.created(&light).unwrap().unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        let snapshot = dom.snapshot();
+        assert_eq!(snapshot.slot(slot).unwrap().assigned_nodes(), &[light]);
+        assert_eq!(snapshot.pending_slot_signals(), &[slot]);
+        listen(
+            &mut registry,
+            &dom,
+            DomEventTarget::Node(target),
+            "target",
+            false,
+        );
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(queued.queue_association().unwrap().global(), top.global());
+        (slot, target, queued)
+    };
+    for _ in 0..2 {
+        let mut dom = session.dom();
+        assert!(matches!(
+            DomDetailsRuntime::run_next(
+                &mut dom,
+                &mut registry,
+                &mut context,
+                event_limits(),
+                &cancel()
+            ),
+            Err(DomDetailsRuntimeError::Hosted(
+                DomHostedRuntimeError::CheckpointUnavailable
+            ))
+        ));
+        assert_eq!(context.seen.len(), 1);
+        assert_eq!(context.seen[0].target, Some(target));
+        assert_eq!(
+            context.seen[0].payload.unwrap().new_state(),
+            HtmlDetailsState::Open
+        );
+        let retained = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(retained.id(), queued.id());
+        assert_eq!(retained.queue_association(), queued.queue_association());
+        assert_eq!(dom.snapshot().pending_slot_signals(), &[slot]);
+    }
+    let session = match session.try_shutdown() {
+        DomShutdownOutcome::Pending { session, reason } => {
+            assert_eq!(reason, DomShutdownReason::DetailsTask(queued.id()));
+            session
+        }
+        DomShutdownOutcome::Complete => {
+            panic!("undelivered Slot checkpoint retains the original task")
+        }
+    };
+    assert_eq!(context.details.pending_tasks().unwrap(), 1);
+    assert_eq!(context.seen.len(), 1);
+    assert!(
+        session
+            .snapshot()
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(session.snapshot().pending_slot_signals(), &[slot]);
+}
+
+#[test]
+fn retired_document_refuses_environment_dependent_creation_but_keeps_intrinsic_text_edits() {
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let text = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let text = batch.create_text(top.document(), "before retirement");
+        batch.insert_before(&text, parent, None);
+        dom.apply(batch, &cancel())
+            .unwrap()
+            .created(&text)
+            .unwrap()
+            .unwrap()
+    };
+    let historical = session.snapshot();
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(
+            matches!(hosted.destroy_top_level(&mut dom, top.navigable(), &cancel()).unwrap(),
+            DomHostedProgress::Pending { host } if host == top.host())
+        );
+        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
+            DomHostedProgress::Destroyed { navigable } if navigable == top.navigable()));
+    }
+    let retired = session.snapshot();
+    assert!(
+        historical
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        !retired
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        retired.node(text).unwrap().data(),
+        Some(&"before retirement".into())
+    );
+    {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        batch.create_element_ns(top.document(), Namespace::html(), "span");
+        assert!(matches!(
+            dom.apply(batch, &cancel()),
+            Err(DomError::HostedSourceUnavailable)
+        ));
+        assert_eq!(dom.snapshot().stamp(), retired.stamp());
+        let mut batch = DomBatch::new();
+        batch.replace_data(text, 0, usize::MAX, "after retirement");
+        dom.apply(batch, &cancel()).unwrap();
+    }
+    let current = session.snapshot();
+    assert_eq!(
+        current.node(text).unwrap().data(),
+        Some(&"after retirement".into())
+    );
+    assert_eq!(
+        current.node(text).unwrap().owner_document(),
+        Some(top.document())
+    );
+    assert!(
+        !current
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        historical.node(text).unwrap().data(),
+        Some(&"before retirement".into())
+    );
+    assert!(
+        historical
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+}
+
+#[test]
+fn associated_html_creator_and_template_owner_do_not_copy_live_hosted_association() {
+    let mut session = session();
+    let top = create(&mut session);
+    let source = session.snapshot();
+    let source_metadata = source.document(top.document()).unwrap().metadata();
+    let (copy, template) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let copy = batch.create_html_document(top.document(), None);
+        let template = batch.create_element_ns(top.document(), Namespace::html(), "template");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        (
+            commit.document(&copy).unwrap(),
+            commit.created(&template).unwrap().unwrap(),
+        )
+    };
+    let snapshot = session.snapshot();
+    let copied = snapshot.document(copy).unwrap();
+    assert_eq!(copied.metadata().origin(), source_metadata.origin());
+    assert_eq!(
+        copied.metadata().document_environment().input_platform(),
+        source_metadata.document_environment().input_platform()
+    );
+    assert_eq!(
+        copied.metadata().document_environment().browsing_context(),
+        surgeist_html::HtmlBrowsingContextPresence::Absent
+    );
+    assert!(
+        !copied
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable()
+    );
+    assert_eq!(
+        copied.metadata().custom_element_registry(),
+        DomRegistryBinding::Null
+    );
+    assert!(!copied.is_fully_active().unwrap());
+    let contents = snapshot
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let inert = snapshot.node(contents).unwrap().owner_document().unwrap();
+    assert_ne!(inert, top.document());
+    assert_ne!(inert, copy);
+    let inert_document = snapshot.document(inert).unwrap();
+    assert_eq!(
+        inert_document.template_role(),
+        DomTemplateDocumentRole::InertTemplate
+    );
+    assert_eq!(
+        inert_document
+            .metadata()
+            .document_environment()
+            .input_platform(),
+        source_metadata.document_environment().input_platform()
+    );
+    assert_eq!(
+        inert_document
+            .metadata()
+            .document_environment()
+            .browsing_context(),
+        surgeist_html::HtmlBrowsingContextPresence::Absent
+    );
+    assert!(
+        !inert_document
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable()
+    );
+    assert_eq!(
+        inert_document.metadata().custom_element_registry(),
+        DomRegistryBinding::Null
+    );
+    assert!(!inert_document.is_fully_active().unwrap());
+    assert!(
+        snapshot
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        snapshot.global_document(top.global()).unwrap(),
+        top.document()
+    );
+}
+
+#[test]
+fn owned_shadow_retains_the_real_global_registry_and_capture_deduplicates_it() {
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let (host, shadow, child) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let host = batch.create_element_ns(top.document(), Namespace::html(), "div");
+        batch.insert_before(&host, parent, None);
+        let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+        let child = batch.create_element_ns(top.document(), Namespace::html(), "span");
+        batch.insert_before(&child, &shadow, None);
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        (
+            commit.created(&host).unwrap().unwrap(),
+            commit.created(&shadow).unwrap().unwrap(),
+            commit.created(&child).unwrap().unwrap(),
+        )
+    };
+    let snapshot = session.snapshot();
+    let canonical = snapshot
+        .document(top.document())
+        .unwrap()
+        .metadata()
+        .custom_element_registry();
+    assert!(matches!(canonical, DomRegistryBinding::Registry(_)));
+    assert_eq!(
+        snapshot
+            .shadow_root(shadow)
+            .unwrap()
+            .state()
+            .custom_element_registry(),
+        canonical
+    );
+    assert_eq!(
+        snapshot
+            .node(child)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_registry(),
+        canonical
+    );
+    let capture = snapshot
+        .html_capture(
+            top.document(),
+            None,
+            surgeist_html_semantics::HtmlCaptureLimits::new(128, 512, 512, 100_000, 128, 32, 32),
+            DomHtmlCaptureLimits::new(128, 1_000_000),
+            &cancel(),
+        )
+        .unwrap();
+    assert_eq!(capture.capture().usage().registries(), 1);
+    let document_subject = capture.subject(top.document().node()).unwrap();
+    let registry = capture
+        .capture()
+        .node(&document_subject)
+        .unwrap()
+        .lookup_registry();
+    assert!(matches!(
+        registry,
+        surgeist_html_semantics::HtmlCapturedRegistry::Registry(_)
+    ));
+    for node in [host, shadow, child] {
+        let subject = capture.subject(node).unwrap();
+        assert_eq!(capture.node(&subject).unwrap(), node);
+        assert_eq!(
+            capture.capture().node(&subject).unwrap().lookup_registry(),
+            registry
+        );
+    }
+    let shadow_subject = capture.subject(shadow).unwrap();
+    let captured_shadow = capture.capture().node(&shadow_subject).unwrap();
+    let Some(surgeist_html_semantics::HtmlCapturedHost::Element(actual_host)) =
+        captured_shadow.host()
+    else {
+        panic!("actual owned shadow must retain its reciprocal host")
+    };
+    assert_eq!(capture.node(actual_host.subject()).unwrap(), host);
+}
+
+#[test]
+fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_atomically() {
+    use surgeist_html::{HtmlElementClass, KnownHtmlElement};
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let closed = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let closed = batch.create_html_document(top.document(), None);
+        dom.apply(batch, &cancel())
+            .unwrap()
+            .document(&closed)
+            .unwrap()
+    };
+    assert!(
+        !session
+            .snapshot()
+            .document(closed)
+            .unwrap()
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable()
+    );
+    for (namespace, local, requirement, expected_connection) in [
+        (
+            Namespace::html(),
+            "frame",
+            HtmlElementClass::HtmlFrame,
+            DomError::HostedSourceUnavailable,
+        ),
+        (
+            Namespace::html(),
+            "iframe",
+            HtmlElementClass::KnownHtml(KnownHtmlElement::Iframe),
+            DomError::HostedSourceUnavailable,
+        ),
+        (
+            Namespace::svg(),
+            "script",
+            HtmlElementClass::SvgScript,
+            DomError::SvgScriptProcessingUnavailable,
+        ),
+    ] {
+        // The selected native hosted profile refuses direct initialization; it
+        // does not manufacture closed-environment family evidence in this Doc.
+        let before = session.snapshot();
+        {
+            let mut dom = session.dom();
+            let usage = dom.usage();
+            let mut batch = DomBatch::new();
+            batch.set_attribute(parent, "data-unpublished", "prefix");
+            batch.create_element_ns(top.document(), namespace.clone(), local);
+            assert_eq!(
+                dom.apply(batch, &cancel()).unwrap_err(),
+                DomError::NativeInitializationRequired(requirement)
+            );
+            assert_eq!(dom.snapshot().stamp(), before.stamp());
+            assert_eq!(dom.usage(), usage);
+        }
+        // A genuine closed creator can initialize the native node. Adoption
+        // retains that state, but connection must qualify its CURRENT Doc.
+        let node = {
+            let mut dom = session.dom();
+            let mut batch = DomBatch::new();
+            let node = batch.create_element_ns(closed, namespace, local);
+            dom.apply(batch, &cancel())
+                .unwrap()
+                .created(&node)
+                .unwrap()
+                .unwrap()
+        };
+        let before = session.snapshot();
+        let mut dom = session.dom();
+        let usage = dom.usage();
+        let mut batch = DomBatch::new();
+        batch.set_attribute(parent, "data-unpublished", "prefix");
+        batch.adopt(node, top.document());
+        batch.insert_before(node, parent, None);
+        assert_eq!(
+            dom.apply(batch, &cancel()).unwrap_err(),
+            expected_connection
+        );
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(dom.usage(), usage);
+        assert_eq!(dom.snapshot().node(node).unwrap().parent(), None);
+        assert_eq!(
+            dom.snapshot().node(node).unwrap().owner_document(),
+            Some(closed)
+        );
+        assert!(
+            dom.snapshot()
+                .node(parent)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .attribute(&"data-unpublished".into())
+                .is_none()
+        );
+        if local == "script" {
+            assert!(
+                !dom.snapshot()
+                    .node(node)
+                    .unwrap()
+                    .as_svg_script()
+                    .unwrap()
+                    .flags()
+                    .already_processed()
+            );
+        }
+    }
+}
+
+#[test]
+fn html_script_in_present_native_context_stops_at_explicit_disabled_scripting() {
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let script = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let script = batch.create_element_ns(top.document(), Namespace::html(), "script");
+        let text = batch.create_text(top.document(), "void 0;");
+        batch.insert_before(&text, &script, None);
+        batch.insert_before(&script, parent, None);
+        dom.apply(batch, &cancel())
+            .unwrap()
+            .created(&script)
+            .unwrap()
+            .unwrap()
+    };
+    let snapshot = session.snapshot();
+    let environment = snapshot
+        .document(top.document())
+        .unwrap()
+        .metadata()
+        .document_environment();
+    assert_eq!(
+        environment.browsing_context(),
+        surgeist_html::HtmlBrowsingContextPresence::Present
+    );
+    assert_eq!(
+        environment.scripting(),
+        surgeist_html_semantics::HtmlScriptingStatus::Disabled
+    );
+    // HTML877d prepare-the-script steps9,15,16 precede the explicit step18
+    // disabled-scripting return; an actual BC does not bypass those writes.
+    let state = snapshot.node(script).unwrap().as_html_script().unwrap();
+    assert_eq!(
+        state.script_type(),
+        Some(surgeist_html::HtmlScriptKind::Classic)
+    );
+    assert!(state.flags().already_started());
+    assert!(state.flags().force_async());
+    assert!(!state.flags().external_file());
+    assert!(!state.flags().ready_to_be_parser_executed());
+    assert!(!state.flags().delaying_load());
+    assert_eq!(state.parser_document(), None);
+    assert_eq!(state.preparation_document(), Some(top.document()));
+    assert_eq!(
+        state.result(),
+        surgeist_html::HtmlScriptResult::Uninitialized
+    );
+    assert_eq!(state.steps_when_result_ready(), None);
+}
+
+#[test]
+fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() {
+    let mut session = session();
+    let first = create(&mut session);
+    let second = create(&mut session);
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let mut context = Context {
+        details: session.details_execution(),
+        seen: Vec::new(),
+    };
+    let mut registry = registry();
+    let (target, queued) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(first.document(), Namespace::html(), "details");
+        batch.insert_before(&details, first_body, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = context.details.pending_task(0).unwrap().unwrap();
+        let association = queued.queue_association().unwrap();
+        assert_eq!(association.document(), first.document());
+        assert_eq!(association.global(), first.global());
+        let mut batch = DomBatch::new();
+        batch.adopt(target, second.document());
+        batch.insert_before(target, second_body, None);
+        dom.apply(batch, &cancel()).unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
+        for (recipient, label, capture) in [
+            (
+                DomEventTarget::Global(first.global()),
+                "original-global",
+                true,
+            ),
+            (
+                DomEventTarget::Global(second.global()),
+                "destination-global",
+                true,
+            ),
+            (
+                DomEventTarget::Node(second.document().node()),
+                "destination-document",
+                true,
+            ),
+            (DomEventTarget::Node(target), "target", false),
+        ] {
+            listen(&mut registry, &dom, recipient, label, capture);
+        }
+        (target, queued)
+    };
+    let mut hosted = session.hosted_execution();
+    {
+        let mut dom = session.dom();
+        assert!(
+            matches!(hosted.destroy_top_level(&mut dom, second.navigable(), &cancel()).unwrap(),
+            DomHostedProgress::Pending { host } if host == second.host())
+        );
+        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
+            DomHostedProgress::Destroyed { navigable } if navigable == second.navigable()));
+    }
+    let before = session.snapshot();
+    assert!(
+        before
+            .document(first.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        !before
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        before.node(target).unwrap().owner_document(),
+        Some(second.document())
+    );
+    assert!(before.node(target).unwrap().is_connected());
+    assert_eq!(context.details.pending_tasks().unwrap(), 1);
+    let retained = context.details.pending_task(0).unwrap().unwrap();
+    assert_eq!(retained.id(), queued.id());
+    assert_eq!(retained.queue_association(), queued.queue_association());
+    // DOM's null-BC parent branch cannot supply fresh closed-native authority:
+    // this current node Document has an actual retired Global. The bounded
+    // native path must qualify it before invoking Rust callbacks (innerinvoke).
+    {
+        let mut dom = session.dom();
+        assert!(matches!(
+            DomDetailsRuntime::run_next(
+                &mut dom,
+                &mut registry,
+                &mut context,
+                event_limits(),
+                &cancel()
+            ),
+            Err(DomDetailsRuntimeError::Dispatch(
+                DomEventDispatchError::Hosted(DomHostedError::StaleIdentity)
+            ))
+        ));
+    }
+    assert!(context.seen.is_empty());
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(context.details.pending_tasks().unwrap(), 1);
+    assert_eq!(
+        context.details.pending_task(0).unwrap().unwrap().id(),
+        queued.id()
+    );
+    assert_eq!(
+        context
+            .details
+            .pending_task(0)
+            .unwrap()
+            .unwrap()
+            .queue_association(),
+        queued.queue_association()
+    );
+}
+
+#[test]
+fn destination_retired_in_global_capture_prevents_later_callbacks_without_replaying_capture() {
+    struct RetireContext {
+        details: DomDetailsRuntime,
+        hosted: HostedRuntime,
+        destination: DomHostedTopLevel,
+        seen: Vec<&'static str>,
+        observed: Vec<NativeDomEvent>,
+        destruction: Vec<Result<DomHostedProgress, DomHostedRuntimeError>>,
+    }
+    impl DomDetailsEventContext for RetireContext {
+        fn details(&mut self) -> &mut DomDetailsRuntime {
+            &mut self.details
+        }
+    }
+    let mut session = session();
+    let first = create(&mut session);
+    let second = create(&mut session);
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let mut context = RetireContext {
+        details: session.details_execution(),
+        hosted: session.hosted_execution(),
+        destination: second,
+        seen: Vec::new(),
+        observed: Vec::new(),
+        destruction: Vec::new(),
+    };
+    let mut registry = DomEventDispatcher::<RetireContext>::new(DomEventRegistryLimits {
+        registrations: 32,
+        pending_events: 8,
+        nested_dispatches: 8,
+    })
+    .unwrap();
+    let (target, queued) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(first.document(), Namespace::html(), "details");
+        batch.insert_before(&details, first_body, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&details).unwrap().unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            queued.queue_association().unwrap().document(),
+            first.document()
+        );
+        let mut batch = DomBatch::new();
+        batch.adopt(target, second.document());
+        batch.insert_before(target, second_body, None);
+        dom.apply(batch, &cancel()).unwrap();
+        registry
+            .add_listener(
+                &dom,
+                DomEventTarget::Global(second.global()),
+                DomEventType::Toggle,
+                DomEventCallback::new(|dom, _, context: &mut RetireContext, event| {
+                    context.seen.push("destination-global");
+                    context.observed.push(event.clone());
+                    let first = context.hosted.destroy_top_level(
+                        dom,
+                        context.destination.navigable(),
+                        &cancel(),
+                    );
+                    let queued = matches!(first, Ok(DomHostedProgress::Pending { .. }));
+                    context.destruction.push(first);
+                    if queued {
+                        context
+                            .destruction
+                            .push(context.hosted.resume(dom, &cancel()));
+                    }
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: true,
+                    once: false,
+                },
+            )
+            .unwrap();
+        for (recipient, label, capture) in [
+            (
+                DomEventTarget::Node(second.document().node()),
+                "destination-document",
+                true,
+            ),
+            (DomEventTarget::Node(target), "target", false),
+        ] {
+            registry
+                .add_listener(
+                    &dom,
+                    recipient,
+                    DomEventType::Toggle,
+                    DomEventCallback::new(move |_, _, context: &mut RetireContext, _| {
+                        context.seen.push(label);
+                        Ok(())
+                    }),
+                    DomEventListenerOptions {
+                        capture,
+                        once: false,
+                    },
+                )
+                .unwrap();
+        }
+        (target, queued)
+    };
+    let result = {
+        let mut dom = session.dom();
+        DomDetailsRuntime::run_next(
+            &mut dom,
+            &mut registry,
+            &mut context,
+            event_limits(),
+            &cancel(),
+        )
+    };
+    // Check the real nested operation OUTSIDE callbacks: panic capture cannot
+    // hide an unsuccessful teardown or make the no-delivery oracle pass.
+    assert_eq!(context.destruction.len(), 2);
+    assert!(
+        matches!(&context.destruction[0], Ok(DomHostedProgress::Pending { host }) if *host == second.host())
+    );
+    assert!(
+        matches!(&context.destruction[1], Ok(DomHostedProgress::Destroyed { navigable }) if *navigable == second.navigable())
+    );
+    let snapshot = session.snapshot();
+    assert!(
+        snapshot
+            .document(first.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        !snapshot
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        snapshot.node(target).unwrap().owner_document(),
+        Some(second.document())
+    );
+    assert_eq!(context.seen, ["destination-global"]);
+    assert_eq!(context.observed.len(), 1);
+    assert_eq!(context.observed[0].target(), Some(target));
+    assert_eq!(
+        context.observed[0].toggle_event().unwrap().new_state(),
+        HtmlDetailsState::Open
+    );
+    if let Ok(DomDetailsProgress::Complete { receipt, .. }) = &result {
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.failures().is_empty());
+    }
+    // Completion after skipping inactive recipients, or retention at a current
+    // authority boundary, must preserve the delivered capture. Retry cannot
+    // invoke that capture again or reach later ineligible recipients.
+    {
+        let mut dom = session.dom();
+        let _retry = DomDetailsRuntime::run_next(
+            &mut dom,
+            &mut registry,
+            &mut context,
+            event_limits(),
+            &cancel(),
+        );
+    }
+    assert_eq!(context.seen, ["destination-global"]);
+    assert_eq!(context.observed.len(), 1);
+    if let Some(retained) = context.details.pending_task(0).unwrap() {
+        assert_eq!(retained.id(), queued.id());
+        assert_eq!(retained.queue_association(), queued.queue_association());
+    }
+}
+
+#[test]
+fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
+    struct DestroyTargetContext {
+        details: DomDetailsRuntime,
+        target: NodeId,
+        seen: Vec<&'static str>,
+        applied: Vec<Result<DomCommit, DomError>>,
+    }
+    impl DomDetailsEventContext for DestroyTargetContext {
+        fn details(&mut self) -> &mut DomDetailsRuntime {
+            &mut self.details
+        }
+    }
+    let mut session = session();
+    let first = create(&mut session);
+    let second = create(&mut session);
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let mut details = session.details_execution();
+    let (target, queued) = {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let target = batch.create_element_ns(first.document(), Namespace::html(), "details");
+        batch.insert_before(&target, first_body, None);
+        batch.set_attribute(&target, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let target = commit.created(&target).unwrap().unwrap();
+        assert_eq!(details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let queued = details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            queued.queue_association().unwrap().document(),
+            first.document()
+        );
+        assert_eq!(queued.queue_association().unwrap().global(), first.global());
+        let mut batch = DomBatch::new();
+        batch.adopt(target, second.document());
+        batch.insert_before(target, second_body, None);
+        dom.apply(batch, &cancel()).unwrap();
+        (target, queued)
+    };
+    let mut context = DestroyTargetContext {
+        details,
+        target,
+        seen: Vec::new(),
+        applied: Vec::new(),
+    };
+    let mut registry = DomEventDispatcher::<DestroyTargetContext>::new(DomEventRegistryLimits {
+        registrations: 32,
+        pending_events: 8,
+        nested_dispatches: 8,
+    })
+    .unwrap();
+    let target_once = {
+        let dom = session.dom();
+        registry
+            .add_listener(
+                &dom,
+                DomEventTarget::Global(second.global()),
+                DomEventType::Toggle,
+                DomEventCallback::new(|dom, _, context: &mut DestroyTargetContext, _| {
+                    context.seen.push("destination-global");
+                    let mut batch = DomBatch::new();
+                    batch.detach(context.target);
+                    batch.destroy(context.target);
+                    context.applied.push(dom.apply(batch, &cancel()));
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: true,
+                    once: true,
+                },
+            )
+            .unwrap();
+        registry
+            .add_listener(
+                &dom,
+                DomEventTarget::Node(target),
+                DomEventType::Toggle,
+                DomEventCallback::new(|_, _, context: &mut DestroyTargetContext, _| {
+                    context.seen.push("destroyed-target");
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: false,
+                    once: true,
+                },
+            )
+            .unwrap()
+    };
+    for _ in 0..2 {
+        let progress = {
+            let mut dom = session.dom();
+            DomDetailsRuntime::run_next(
+                &mut dom,
+                &mut registry,
+                &mut context,
+                event_limits(),
+                &cancel(),
+            )
+            .unwrap()
+        };
+        match progress {
+            DomDetailsProgress::Retained {
+                task,
+                dispatch:
+                    DomEventDispatchOutcome::RetainedHostedAuthority(DomHostedError::Dom(
+                        DomError::StaleNode,
+                    )),
+                displaced_owner: None,
+            } => {
+                assert_eq!(task.id(), queued.id());
+                assert_eq!(task.queue_association(), queued.queue_association());
+            }
+            other => {
+                panic!("the missing current target must retain its exact invocation: {other:?}")
+            }
+        }
+        // Actual edit and callback effects are inspected outside the callback.
+        assert_eq!(context.applied.len(), 1);
+        assert!(context.applied[0].is_ok());
+        assert_eq!(context.seen, ["destination-global"]);
+        assert!(matches!(
+            session.snapshot().node(target),
+            Err(DomError::StaleNode)
+        ));
+        assert!(
+            session
+                .snapshot()
+                .document(second.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap()
+        );
+        assert_eq!(context.details.pending_tasks().unwrap(), 1);
+        assert_eq!(
+            context.details.pending_task(0).unwrap().unwrap().id(),
+            queued.id()
+        );
+    }
+    // Unavailable authority is checked before consuming the pending once
+    // listener. Explicit real removal changes the condition preventing progress.
+    assert!(registry.remove_listener(target_once));
+    assert!(!registry.remove_listener(target_once));
+    let progress = {
+        let mut dom = session.dom();
+        DomDetailsRuntime::run_next(
+            &mut dom,
+            &mut registry,
+            &mut context,
+            event_limits(),
+            &cancel(),
+        )
+        .unwrap()
+    };
+    match progress {
+        DomDetailsProgress::Complete {
+            task,
+            receipt,
+            displaced_owner: None,
+        } => {
+            assert_eq!(task.id(), queued.id());
+            assert_eq!(receipt.callbacks(), 1);
+            assert!(receipt.failures().is_empty());
+        }
+        other => panic!("removing the actual blocked listener must permit completion: {other:?}"),
+    }
+    assert_eq!(context.seen, ["destination-global"]);
+    assert_eq!(context.applied.len(), 1);
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+}

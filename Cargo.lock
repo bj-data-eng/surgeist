@@ -3941,6 +3941,7 @@ dependencies = [
 name = "surgeist-runtime"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-dom",

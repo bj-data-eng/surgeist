@@ -139,6 +139,7 @@ impl Scan {
             dom.revision
                 .0
                 .checked_add(remaining_phases)
+                .and_then(|revision| revision.checked_add(dom.hosted_revisions))
                 .ok_or(DomError::RevisionExhausted)?;
         }
         Ok(Reservation { remaining_phases })

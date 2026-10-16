@@ -42,6 +42,11 @@ pub struct DomShadowRootState {
     keep_custom_element_registry_null: bool,
 }
 impl DomShadowRootState {
+    pub(crate) fn select_global_registry(&mut self, registry: DomRegistryBinding) {
+        if !self.keep_custom_element_registry_null {
+            self.registry = registry;
+        }
+    }
     /// Retains the actual source effect's already-qualified null-registry state;
     /// this does not run native attach checks or create a different root.
     pub(crate) fn from_parsed(

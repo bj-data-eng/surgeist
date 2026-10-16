@@ -340,6 +340,13 @@ impl Draft {
             )?;
         }
         let original = self.source_kind(source)?;
+        if let Source::Published(snapshot, _) = source
+            && snapshot.owner() != self.store
+            && matches!(&original, DomNodeKind::Element(element)
+                if !matches!(element.custom_element_registry(), crate::DomRegistryBinding::Null))
+        {
+            return Err(DomError::NotSupported);
+        }
         let script = match source {
             Source::Published(s, id) => s.node(*id)?.node.script.map(|v| v.flags),
             Source::Staged(k) => self.node(*k)?.script.map(|v| v.flags),

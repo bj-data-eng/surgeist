@@ -21,6 +21,7 @@ mod details;
 mod dialog;
 mod document;
 mod form;
+mod hosted;
 mod hyperlink;
 mod image;
 mod import;
@@ -32,6 +33,7 @@ mod navigable;
 mod output;
 pub(crate) mod parsed_installation;
 mod reflected;
+pub(crate) mod registry;
 mod script;
 mod select;
 mod shadow;
@@ -79,6 +81,8 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// A reached operation needs a current live hosted owner association.
+    HostedSourceUnavailable,
     ForeignOwner,
     StaleNode,
     ForeignBatch,
@@ -530,6 +534,10 @@ impl DomUsage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
     SourceOperation,
+    HostedOperationState {
+        operation: crate::hosted::DomHostedOperationId,
+        complete: bool,
+    },
     ImageUpdateCancelled {
         update: crate::DomImageUpdateId,
         flags: surgeist_html::HtmlImageUpdateFlags,
@@ -680,6 +688,7 @@ impl DomCommit {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Node {
     pub(crate) document: DocumentId,
+    pub(crate) relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     pub(crate) kind: DomNodeKind,
     pub(crate) parent: Option<NodeId>,
     pub(crate) children: Vec<NodeId>,
@@ -715,7 +724,10 @@ pub(crate) struct Slot {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct State {
     pub(crate) incomplete_source: Option<crate::DomStyleOperationId>,
+    pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
     pub(crate) slots: Vec<Slot>,
+    pub(crate) registries: Option<Arc<registry::Bank>>,
+    pub(crate) hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
     pub(crate) view_transitions: ViewTransitions,
     pub(crate) signal_slots: Vec<NodeId>,
     pub(crate) notification_queued: bool,
@@ -768,6 +780,11 @@ pub struct Dom {
     source_operation: Option<Box<style::operation::Operation>>,
     next_source_operation: u64,
     style_cssom_roots: Vec<crate::style::DomStyleCssomRoot>,
+    hosted_source: Option<crate::hosted::SourceObservation>,
+    next_hosted_source: u64,
+    details_transferred: bool,
+    hosted_operation: Option<Box<hosted::Operation>>,
+    hosted_revisions: u64,
 }
 impl Drop for Dom {
     fn drop(&mut self) {
@@ -790,7 +807,10 @@ impl Dom {
             limits,
             state: Arc::new(State {
                 incomplete_source: None,
+                incomplete_hosted: None,
                 slots: Vec::new(),
+                registries: None,
+                hosted_globals: None,
                 view_transitions: ViewTransitions::new(),
                 signal_slots: Vec::new(),
                 notification_queued: false,
@@ -805,6 +825,11 @@ impl Dom {
             source_operation: None,
             next_source_operation: 0,
             style_cssom_roots: Vec::new(),
+            hosted_source: None,
+            next_hosted_source: 0,
+            details_transferred: false,
+            hosted_operation: None,
+            hosted_revisions: 0,
             history: None,
             history_entries: 0,
             history_bytes: 0,
@@ -985,6 +1010,11 @@ impl Dom {
         let changed = state != *self.state;
         state.units = candidate_units;
         let revision = if changed {
+            self.revision
+                .0
+                .checked_add(1)
+                .and_then(|next| next.checked_add(self.hosted_revisions))
+                .ok_or(DomError::RevisionExhausted)?;
             DomRevision(
                 self.revision
                     .0
@@ -1175,6 +1205,7 @@ pub(crate) enum Key {
     Created(usize),
 }
 struct DraftNode {
+    relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     document: Key,
     kind: DomNodeKind,
     parent: Option<Key>,
@@ -1205,6 +1236,9 @@ struct DraftNode {
 struct Draft {
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
+    registries: Option<Arc<registry::Bank>>,
+    hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
+    hosted_owner: Option<crate::hosted::DomHostedOperationId>,
     basis: DomStamp,
     source_limits: Option<crate::DomStyleEditLimits>,
     // These ledgers are shared only by private temporaries of this exclusive
@@ -1277,6 +1311,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.select_element_registry(key, cancel)?;
         self.initialize_template_contents(key, limits, cancel)?;
         if self.node(key)?.hyperlink.is_some() {
             self.set_hyperlink_url(key, None, limits, cancel)?;
@@ -1317,6 +1352,7 @@ impl Draft {
                     children.push(Key::Existing(id.slot));
                 }
                 Some(DraftNode {
+                    relevant_global: node.relevant_global,
                     document: Key::Existing(node.document.0.slot),
                     kind: node.kind.clone(),
                     base: node
@@ -1418,12 +1454,15 @@ impl Draft {
             svg_processing_trace: None,
             #[cfg(test)]
             insertion_trace: None,
-            document_environment: dom.document_environment,
+            document_environment: dom.document_environment.clone(),
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,
                 dom.limits.input_work,
             ),
             store: dom.owner,
+            registries: dom.state.registries.clone(),
+            hosted_globals: dom.state.hosted_globals.clone(),
+            hosted_owner: None,
             basis: DomStamp {
                 owner: dom.owner,
                 revision: dom.revision,
@@ -1598,6 +1637,7 @@ impl Draft {
                 if matches!(
                     metadata.creation_cause(),
                     crate::DomDocumentCreationCause::Native
+                        | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
                 ) {
                     crate::dialog::DocumentInteractiveState::native_closed()
                 } else {
@@ -1658,7 +1698,20 @@ impl Draft {
             map.ids.push(None);
             map.private.push(false);
         }
+        let relevant_global = match &kind {
+            DomNodeKind::Document(metadata) => metadata
+                .document_environment()
+                .hosted
+                .as_ref()
+                .map(|association| association.global),
+            _ => self
+                .document_environment(document)?
+                .hosted
+                .as_ref()
+                .map(|association| association.global),
+        };
         self.created.push(Some(DraftNode {
+            relevant_global,
             document,
             kind,
             base,
@@ -1873,7 +1926,7 @@ impl Draft {
                 let metadata_formation = style::formation::Formation::new(self, cancelled)?;
                 let kind = match kind {
                     Creation::Document => DomNodeKind::Document(DomDocumentMetadata::native(
-                        self.document_environment,
+                        self.document_environment.clone(),
                         &mut |text| {
                             style::formation::string(text, metadata_formation.as_ref(), cancelled)
                         },
@@ -2258,6 +2311,7 @@ impl Draft {
             style::formation::reserve(&mut children, source.children.len(), budget, cancelled)?;
             children.extend(source.children.iter().copied().map(id));
             slots[slot].node = Some(Node {
+                relevant_global: source.relevant_global,
                 document: DocumentId(id(source.document)),
                 kind: source.kind.clone(),
                 script: source.script.map(|value| value.map(id)),
@@ -2341,7 +2395,10 @@ impl Draft {
         let finished = self.view_transitions.finish(dom.owner, budget, cancelled)?;
         let state = State {
             incomplete_source: None,
+            incomplete_hosted: dom.state.incomplete_hosted,
             slots,
+            registries: self.registries.clone(),
+            hosted_globals: self.hosted_globals.clone(),
             view_transitions: finished.value,
             signal_slots: self.map_public_ids(&self.signal_slots, &id, budget, cancelled)?,
             notification_queued: self.notification_queued,

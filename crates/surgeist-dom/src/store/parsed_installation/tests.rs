@@ -247,7 +247,7 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
     ));
     let first = DomDocumentMetadata::from_fragment_parser(
         &descriptor,
-        current,
+        current.clone(),
         descriptor
             .document()
             .document_design_mode_enabled()
@@ -255,7 +255,7 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
     );
     let repeated = DomDocumentMetadata::from_fragment_parser(
         &descriptor,
-        current,
+        current.clone(),
         descriptor
             .document()
             .document_design_mode_enabled()

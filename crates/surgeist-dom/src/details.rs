@@ -35,8 +35,27 @@ pub struct DomDetailsToggleIntention {
     pub(crate) target: NodeId,
     pub(crate) old: HtmlDetailsState,
     pub(crate) new: HtmlDetailsState,
+    pub(crate) queue_association: Option<DomDetailsQueueAssociation>,
+}
+/// The actual relevant Global and its associated Document at queueing time.
+/// Adoption and later execution never rebind these task inputs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDetailsQueueAssociation {
+    pub(crate) global: crate::hosted::DomHostedGlobalId,
+    pub(crate) document: crate::DocumentId,
+}
+impl DomDetailsQueueAssociation {
+    pub const fn global(self) -> crate::hosted::DomHostedGlobalId {
+        self.global
+    }
+    pub const fn document(self) -> crate::DocumentId {
+        self.document
+    }
 }
 impl DomDetailsToggleIntention {
+    pub fn queue_association(&self) -> Option<DomDetailsQueueAssociation> {
+        self.queue_association
+    }
     pub fn operation(&self) -> DomDetailsToggleIntentionId {
         self.operation
     }
@@ -48,6 +67,16 @@ impl DomDetailsToggleIntention {
     }
     pub fn new_state(&self) -> HtmlDetailsState {
         self.new
+    }
+}
+impl DomSnapshot {
+    /// Exact borrowed current rows for bound task preadmission. Taking ownership
+    /// remains a separate exclusive operation after that admission succeeds.
+    pub fn details_toggle_intentions(
+        &self,
+    ) -> Result<&[DomDetailsToggleIntention], crate::DomError> {
+        self.require_complete_source()?;
+        Ok(&self.state.details_intentions)
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

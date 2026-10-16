@@ -65,10 +65,13 @@ struct Observation {
 fn observer() -> DomEventCallback<Vec<Observation>> {
     DomEventCallback::new(|_, _, log: &mut Vec<Observation>, event| {
         log.push(Observation {
-            current: event.current_target().unwrap(),
+            current: event.current_target().unwrap().node().unwrap(),
             target: event.target().unwrap(),
             phase: event.phase(),
-            path: event.composed_path().collect(),
+            path: event
+                .composed_path()
+                .map(|target| target.node().unwrap())
+                .collect(),
         });
         assert!(!event.bubbles() && !event.cancelable() && !event.composed());
         event.prevent_default();
@@ -510,7 +513,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                 node,
                 DomEventType::Load,
                 DomEventCallback::new(move |_, _, c: &mut Vec<NodeId>, event| {
-                    c.push(event.current_target().unwrap());
+                    c.push(event.current_target().unwrap().node().unwrap());
                     if stop {
                         event.stop_propagation();
                     }
@@ -558,7 +561,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
             f.document.node(),
             DomEventType::Load,
             DomEventCallback::new(move |dom, listeners, c: &mut Edits, event| {
-                c.log.push(event.current_target().unwrap());
+                c.log.push(event.current_target().unwrap().node().unwrap());
                 let mut b = DomBatch::new();
                 b.adopt(target, other);
                 b.set_attribute(target, "observed", "actual callback edit");
@@ -591,9 +594,10 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, c: &mut Edits, event| {
                     if c.nested {
-                        c.nested_log.push(event.current_target().unwrap());
+                        c.nested_log
+                            .push(event.current_target().unwrap().node().unwrap());
                     } else {
-                        c.log.push(event.current_target().unwrap());
+                        c.log.push(event.current_target().unwrap().node().unwrap());
                     }
                     Ok(())
                 }),
@@ -886,7 +890,11 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
             DomEventType::Load,
             DomEventCallback::new(|dom, _, _: &mut (), event| {
                 let mut b = DomBatch::new();
-                b.set_attribute(event.current_target().unwrap(), "before-failure", "kept");
+                b.set_attribute(
+                    event.current_target().unwrap().node().unwrap(),
+                    "before-failure",
+                    "kept",
+                );
                 apply(dom.raw_mut(), b);
                 Err(DomEventCallbackError { code: 7 })
             }),
@@ -909,7 +917,11 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
             DomEventType::Load,
             DomEventCallback::new(|dom, _, _, event| {
                 let mut b = DomBatch::new();
-                b.set_attribute(event.current_target().unwrap(), "delivered", "yes");
+                b.set_attribute(
+                    event.current_target().unwrap().node().unwrap(),
+                    "delivered",
+                    "yes",
+                );
                 apply(dom.raw_mut(), b);
                 Ok(())
             }),
@@ -1283,7 +1295,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
             target,
             DomEventType::Load,
             DomEventCallback::new(move |dom, _, c: &mut Vec<NodeId>, event| {
-                assert_eq!(event.current_target(), Some(target));
+                assert_eq!(event.current_target(), Some(target.into()));
                 assert_eq!(event.target(), Some(target));
                 c.push(target);
                 let mut b = DomBatch::new();

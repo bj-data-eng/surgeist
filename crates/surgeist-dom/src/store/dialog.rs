@@ -159,10 +159,9 @@ impl Draft {
                         .is_some(),
                 ),
                 Action::ReadModal => Reply::Modal(self.dialog_state(key)?.is_modal()),
-                Action::ReadFullyActive => Reply::FullyActive(
-                    self.document_environment(self.node(key)?.document)?
-                        .is_fully_active(),
-                ),
+                Action::ReadFullyActive => {
+                    Reply::FullyActive(self.document_fully_active(self.node(key)?.document)?)
+                }
                 Action::ReadConnected => Reply::Connected(self.shadow_connected(key, cancel)?),
                 Action::ReadWatcherPresent => {
                     Reply::WatcherPresent(self.dialog_state(key)?.has_close_watcher())

@@ -121,6 +121,7 @@ mod element;
 mod fieldset;
 mod form;
 mod host;
+mod hosted;
 mod hyperlink;
 mod identity;
 mod image;
@@ -132,6 +133,7 @@ mod node_values;
 mod output;
 mod parsed_installation;
 mod reflected;
+mod registry;
 mod script;
 mod select;
 mod semantic;
@@ -148,8 +150,8 @@ mod view_transition;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use details::{
-    DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
-    DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
+    DomDetails, DomDetailsQueueAssociation, DomDetailsToggleCancellationReason,
+    DomDetailsToggleIntention, DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
 };
 pub use dialog::DomDialog;
 pub use document::DomNativeInputPlatform;
@@ -162,6 +164,18 @@ pub use host::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
+};
+pub use hosted::{
+    DomFullscreenInherited, DomHostedBrowsingContextId, DomHostedCreation, DomHostedCreationLease,
+    DomHostedCreationPublication, DomHostedCreationStep, DomHostedDestructionLease,
+    DomHostedDestructionPublication, DomHostedDestructionRequest, DomHostedDestructionStep,
+    DomHostedEntryId, DomHostedEntryRequest, DomHostedError, DomHostedExecutionRequest,
+    DomHostedFinishLoadingRequest, DomHostedGlobalId, DomHostedHostId, DomHostedLimits,
+    DomHostedMakeActiveRequest, DomHostedMoment, DomHostedNavigableId, DomHostedOperationId,
+    DomHostedPolicyPublication, DomHostedPolicyRequest, DomHostedPreparedTopLevel,
+    DomHostedRecordLimits, DomHostedResource, DomHostedSource, DomHostedSourceId,
+    DomHostedSourceRevision, DomHostedTopLevelPreparation, DomInitialPermissionsPolicy,
+    DomInitialPermissionsPolicyProfile,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
@@ -179,6 +193,7 @@ pub use parsed_installation::{
     DomParsedHtmlCapturedBinding, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
     DomParsedHtmlInstallResource, DomParsedHtmlInstallation,
 };
+pub use registry::{DomRegistry, DomRegistryId};
 pub use script::DomHtmlScript;
 pub use select::{
     DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,

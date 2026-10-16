@@ -169,6 +169,7 @@ mod diagnostic;
 mod dom_details;
 mod dom_event;
 mod dom_host;
+mod dom_lifecycle;
 mod dom_style;
 mod effect;
 mod event;
@@ -207,23 +208,28 @@ pub use diagnostic::{
 };
 pub use dom_details::{
     DomDetailsEventContext, DomDetailsProgress, DomDetailsRuntime, DomDetailsRuntimeError,
-    DomDetailsRuntimeLimits, DomDetailsTask, DomDetailsTaskId, DomDetailsTransferError,
+    DomDetailsRuntimeLimits, DomDetailsTask, DomDetailsTaskId,
 };
 pub use dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventDispatchError,
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
     DomEventDom, DomEventListenerFailure, DomEventListenerFailureKind, DomEventListenerOptions,
-    DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource, DomEventType,
-    NativeDomEvent,
+    DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource,
+    DomEventTarget, DomEventType, NativeDomEvent,
 };
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
 };
+pub use dom_lifecycle::{
+    DomHostedHistoryEntry, DomHostedProgress, DomHostedRuntimeError, DomHostedRuntimeLimits,
+    DomHostedSettings, DomHostedTopLevel, HostedRuntime,
+};
 pub use dom_style::{
-    DomStyleDisabledObservation, DomStyleDriveProgress, DomStyleEventContext,
-    DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
-    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSession, DomStyleSessionCreateError,
-    DomStyleShutdownOutcome, DomStyleShutdownReason, DomStyleUnavailable,
+    DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,
+    DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleDriveProgress,
+    DomStyleEventContext, DomStyleNetworkingProgress, DomStyleNetworkingTaskId,
+    DomStyleProcessedSheet, DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits,
+    DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

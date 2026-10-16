@@ -1,6 +1,7 @@
 //! HTML Details' actual DOM-manipulation task owner and shared event delivery.
 //!
-//! A raw DOM transfer is admitted as a whole before ownership is consumed.
+//! Canonical pending transitions are admitted as a whole before ownership moves.
+//! Intake refusal leaves the actual intentions in the original bound DOM.
 //! The task bank and source tracker are distinct: post-dispatch cleanup can
 //! leave a reentrantly queued task untracked. Dropping this owner abandons its
 //! remaining tasks; it never reports those tasks as delivered.
@@ -11,9 +12,12 @@ use crate::dom_event::{
 use std::cell::RefCell;
 use std::fmt;
 use std::mem::size_of;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use surgeist_dom::{DomDetailsToggleTransfer, DomError, DomOwnerId, DomRevision, NodeId};
+use surgeist_dom::{
+    DomDetailsToggleIntention, DomDetailsToggleTransfer, DomError, DomOwnerId, DomRevision,
+    DomSnapshot, NodeId,
+};
 use surgeist_html::{HtmlDetailsState, HtmlDetailsToggleEvent};
 
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
@@ -23,7 +27,7 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 pub struct DomDetailsRuntimeLimits {
     /// All queued, retained and executing tasks, including untracked tasks.
     pub tasks: usize,
-    /// Actual task/tracker Vec capacities, including atomic intake scratch banks.
+    /// Actual owner header and task/tracker Vec capacities, including intake scratch.
     pub storage_bytes: usize,
     /// Monotone work admission, including failed attempts and reserved cleanup.
     pub work: u64,
@@ -46,6 +50,7 @@ impl DomDetailsTaskId {
 pub struct DomDetailsTask {
     id: DomDetailsTaskId,
     event: HtmlDetailsToggleEvent,
+    association: Option<surgeist_dom::DomDetailsQueueAssociation>,
 }
 impl DomDetailsTask {
     /// Exact execution identity.
@@ -56,12 +61,23 @@ impl DomDetailsTask {
     pub fn event(self) -> HtmlDetailsToggleEvent {
         self.event
     }
+    /// Original task Document/Global captured when the source queued the event.
+    /// Adoption changes the dispatch path, not this execution association.
+    pub fn queue_association(self) -> Option<surgeist_dom::DomDetailsQueueAssociation> {
+        self.association
+    }
 }
 /// A refused owner operation. Pending task/tracker state is preserved.
 #[derive(Debug)]
 pub enum DomDetailsRuntimeError {
+    /// Standalone intake already transferred unknown external task obligations.
+    PretransferredSession,
     /// A foreign canonical owner, replaced task owner or invalid target kind.
     Binding,
+    /// The original durable session has released this permission's owner.
+    OwnerDisposed,
+    /// The original task state is temporarily borrowed by another operation.
+    Busy,
     /// A transfer predates another already consumed transfer from this DOM.
     OutOfOrderTransfer,
     /// Canonical source/liveness validation failed.
@@ -72,6 +88,8 @@ pub enum DomDetailsRuntimeError {
     IdentityExhausted,
     /// Shared dispatch refused before starting or resuming this task.
     Dispatch(DomEventDispatchError),
+    /// The actual original native Global/loop owner refused task admission.
+    Hosted(crate::dom_lifecycle::DomHostedRuntimeError),
 }
 impl fmt::Display for DomDetailsRuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,16 +101,19 @@ impl std::error::Error for DomDetailsRuntimeError {
         match self {
             Self::Dom(error) => Some(error),
             Self::Dispatch(error) => Some(error),
+            Self::Hosted(error) => Some(error),
             _ => None,
         }
     }
 }
 /// Refused intake retains the exact unconsumed, non-Clone DOM transfer.
+#[cfg(test)]
 #[derive(Debug)]
-pub struct DomDetailsTransferError {
+struct DomDetailsTransferError {
     error: DomDetailsRuntimeError,
     transfer: DomDetailsToggleTransfer,
 }
+#[cfg(test)]
 impl DomDetailsTransferError {
     /// Reason intake refused without changing tasks/trackers.
     pub fn error(&self) -> &DomDetailsRuntimeError {
@@ -103,11 +124,13 @@ impl DomDetailsTransferError {
         self.transfer
     }
 }
+#[cfg(test)]
 impl fmt::Display for DomDetailsTransferError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.error.fmt(f)
     }
 }
+#[cfg(test)]
 impl std::error::Error for DomDetailsTransferError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.error)
@@ -181,10 +204,57 @@ struct Intake {
     output: Vec<Task>,
     next: u64,
 }
-/// Owns Details FIFO tasks and source tracker associations for one actual DOM.
-/// Dispatcher registration/path/nesting budgets remain with their shared owner.
+/// Weak execution permission for the original session's Details task owner.
+/// Dropping or replacing this value cannot release its tasks or source trackers.
+#[derive(Clone)]
 pub struct DomDetailsRuntime {
+    state: Weak<RefCell<DetailsState>>,
+}
+pub(crate) struct DetailsOwner {
     state: Rc<RefCell<DetailsState>>,
+}
+impl DetailsOwner {
+    pub(crate) fn new(
+        dom: DomOwnerId,
+        limits: DomDetailsRuntimeLimits,
+    ) -> Result<Self, DomDetailsRuntimeError> {
+        if size_of::<RefCell<DetailsState>>() > limits.storage_bytes {
+            return Err(DomDetailsRuntimeError::Admission);
+        }
+        let owner = NEXT_OWNER
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .map_err(|_| DomDetailsRuntimeError::IdentityExhausted)?;
+        Ok(Self {
+            state: Rc::new(RefCell::new(DetailsState {
+                owner,
+                dom,
+                limits,
+                tasks: Vec::new(),
+                trackers: Vec::new(),
+                next: 1,
+                work: 0,
+                last_transfer: None,
+                hosted: None,
+            })),
+        })
+    }
+    pub(crate) fn bind_hosted(&self, hosted: crate::dom_lifecycle::HostedRuntime) {
+        // Constructor-only join after both actual original owners exist. No
+        // callback or externally retained bank borrow can run during binding.
+        self.state.borrow_mut().hosted = Some(hosted);
+    }
+    pub(crate) fn execution(&self) -> DomDetailsRuntime {
+        DomDetailsRuntime {
+            state: Rc::downgrade(&self.state),
+        }
+    }
+    pub(crate) fn pending(&self) -> Result<Option<DomDetailsTaskId>, DomDetailsRuntimeError> {
+        let state = self
+            .state
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        Ok(state.tasks.first().map(|task| task.value.id))
+    }
 }
 impl fmt::Debug for DomDetailsRuntime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -200,40 +270,32 @@ struct DetailsState {
     next: u64,
     work: u64,
     last_transfer: Option<DomRevision>,
+    hosted: Option<crate::dom_lifecycle::HostedRuntime>,
 }
 impl DomDetailsRuntime {
-    /// Bind an empty finite task owner to the actual canonical DOM store.
-    pub fn new(
-        dom: &DomEventDom<'_>,
-        limits: DomDetailsRuntimeLimits,
-    ) -> Result<Self, DomDetailsRuntimeError> {
-        let owner = NEXT_OWNER
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-            .map_err(|_| DomDetailsRuntimeError::IdentityExhausted)?;
-        Ok(Self {
-            state: Rc::new(RefCell::new(DetailsState {
-                owner,
-                dom: dom.owner(),
-                limits,
-                tasks: Vec::new(),
-                trackers: Vec::new(),
-                next: 1,
-                work: 0,
-                last_transfer: None,
-            })),
-        })
+    fn state(&self) -> Result<Rc<RefCell<DetailsState>>, DomDetailsRuntimeError> {
+        self.state
+            .upgrade()
+            .ok_or(DomDetailsRuntimeError::OwnerDisposed)
     }
     /// Number of queued, retained and executing tasks, including untracked tasks.
-    pub fn pending_tasks(&self) -> usize {
-        self.state.borrow().tasks.len()
+    pub fn pending_tasks(&self) -> Result<usize, DomDetailsRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        Ok(state.tasks.len())
     }
     /// One immutable pending task in actual FIFO order.
-    pub fn pending_task(&self, index: usize) -> Option<DomDetailsTask> {
-        self.state
-            .borrow()
-            .tasks
-            .get(index)
-            .map(|entry| entry.plan().value)
+    pub fn pending_task(
+        &self,
+        index: usize,
+    ) -> Result<Option<DomDetailsTask>, DomDetailsRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        Ok(state.tasks.get(index).map(|entry| entry.plan().value))
     }
     /// Change finite admission for later work without resetting identity/work.
     /// Existing task count and actual retained bank capacity must still fit.
@@ -243,7 +305,10 @@ impl DomDetailsRuntime {
         &mut self,
         limits: DomDetailsRuntimeLimits,
     ) -> Result<(), DomDetailsRuntimeError> {
-        let mut state = self.state.borrow_mut();
+        let state = self.state()?;
+        let mut state = state
+            .try_borrow_mut()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
         if state.tasks.first().is_some_and(|entry| entry.running)
             || state.tasks.len() > limits.tasks
             || state.work > limits.work
@@ -259,21 +324,82 @@ impl DomDetailsRuntime {
         Ok(())
     }
     /// Actual monotone work charged, including refused attempts.
-    pub fn work_used(&self) -> u64 {
-        self.state.borrow().work
+    pub fn work_used(&self) -> Result<u64, DomDetailsRuntimeError> {
+        let state = self.state()?;
+        let state = state
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        Ok(state.work)
     }
-    /// Consume actual raw transitions only after a complete atomic intake plan.
-    /// Refusal retains task identities/order and returns unchanged ownership.
+    /// Admit actual pending canonical transitions before consuming ownership.
+    /// On refusal, the original DOM retains every intention in source order.
+    pub fn ingest(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomDetailsRuntimeError> {
+        let owner = self.state()?;
+        let hosted = owner
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?
+            .hosted
+            .clone()
+            .ok_or(DomDetailsRuntimeError::Binding)?;
+        hosted.ingest_details(self, dom, cancel)
+    }
+    pub(crate) fn ingest_source(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        issuer: &surgeist_dom::DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomDetailsRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        let source = dom.snapshot();
+        let intentions = source
+            .details_toggle_intentions()
+            .map_err(DomDetailsRuntimeError::Dom)?;
+        let plan = state.plan(&source, intentions, cancel)?;
+        state.spend(1, cancel)?;
+        if dom.snapshot().stamp() != source.stamp() {
+            return Err(DomDetailsRuntimeError::Binding);
+        }
+        let transfer = dom
+            .raw_mut()
+            .take_hosted_details_toggle_intentions(issuer, intentions.len(), cancel)
+            .map_err(DomDetailsRuntimeError::Dom)?;
+        Ok(state.publish_intake(transfer, plan))
+    }
+
+    #[cfg(test)]
     #[expect(
         clippy::result_large_err,
-        reason = "Return the exact unconsumed non-Clone DOM transfer without allocating on admission failure"
+        reason = "Private raw-transfer oracle retains the actual non-Clone input on refusal without allocating"
     )]
-    pub fn ingest(
+    fn ingest_transfer(
         &mut self,
         transfer: DomDetailsToggleTransfer,
         cancel: &AtomicBool,
     ) -> Result<usize, DomDetailsTransferError> {
-        self.state.borrow_mut().ingest(transfer, cancel)
+        let state = match self.state() {
+            Ok(state) => state,
+            Err(error) => return Err(DomDetailsTransferError { error, transfer }),
+        };
+        let mut state = match state.try_borrow_mut() {
+            Ok(state) => state,
+            Err(_) => {
+                return Err(DomDetailsTransferError {
+                    error: DomDetailsRuntimeError::Busy,
+                    transfer,
+                });
+            }
+        };
+        match state.plan(transfer.source(), transfer.intentions(), cancel) {
+            Err(error) => Err(DomDetailsTransferError { error, transfer }),
+            Ok(plan) => Ok(state.publish_intake(transfer, plan)),
+        }
     }
 }
 impl DetailsState {
@@ -307,7 +433,7 @@ impl DetailsState {
         ];
         let total = banks
             .into_iter()
-            .try_fold(0usize, |sum, (count, size)| {
+            .try_fold(size_of::<RefCell<Self>>(), |sum, (count, size)| {
                 count.checked_mul(size).and_then(|n| sum.checked_add(n))
             })
             .ok_or(DomDetailsRuntimeError::IdentityExhausted)?;
@@ -316,67 +442,51 @@ impl DetailsState {
         }
         Ok(())
     }
-    /// Consume actual raw transitions only after a complete atomic intake plan.
-    /// Refusal retains task identities/order and returns unchanged ownership.
-    #[expect(
-        clippy::result_large_err,
-        reason = "Return the exact unconsumed non-Clone DOM transfer without allocating on admission failure"
-    )]
-    pub fn ingest(
-        &mut self,
-        transfer: DomDetailsToggleTransfer,
-        cancel: &AtomicBool,
-    ) -> Result<usize, DomDetailsTransferError> {
-        match self.plan(&transfer, cancel) {
-            Err(error) => Err(DomDetailsTransferError { error, transfer }),
-            Ok(Intake {
-                plan,
-                trackers,
-                mut output,
-                next,
-            }) => {
-                let count = transfer.len();
-                // All comparisons, storage and serials were preadmitted. No
-                // cancellation/fallible publication occurs after ownership moves.
-                for item in plan {
-                    if let Some(index) = self
-                        .tasks
-                        .iter()
-                        .position(|e| e.plan().value.id == item.value.id)
-                    {
-                        output.push(self.tasks.swap_remove(index));
-                    } else {
-                        output.push(Task {
-                            value: item.value,
-                            event: None,
-                            receipt: None,
-                            started: false,
-                            running: false,
-                        });
-                    }
-                }
-                self.tasks = output;
-                self.trackers = trackers;
-                self.next = next;
-                self.last_transfer = Some(transfer.source().revision());
-                drop(transfer);
-                Ok(count)
+    fn publish_intake(&mut self, transfer: DomDetailsToggleTransfer, intake: Intake) -> usize {
+        let Intake {
+            plan,
+            trackers,
+            mut output,
+            next,
+        } = intake;
+        let count = transfer.len();
+        // Complete storage, serial, comparison and move work was admitted before
+        // canonical take. Publication has no cancellation or fallible tail.
+        for item in plan {
+            if let Some(index) = self
+                .tasks
+                .iter()
+                .position(|e| e.plan().value.id == item.value.id)
+            {
+                output.push(self.tasks.swap_remove(index));
+            } else {
+                output.push(Task {
+                    value: item.value,
+                    event: None,
+                    receipt: None,
+                    started: false,
+                    running: false,
+                });
             }
         }
+        self.tasks = output;
+        self.trackers = trackers;
+        self.next = next;
+        self.last_transfer = Some(transfer.source().revision());
+        drop(transfer);
+        count
     }
     fn plan(
         &mut self,
-        transfer: &DomDetailsToggleTransfer,
+        source: &DomSnapshot,
+        intentions: &[DomDetailsToggleIntention],
         cancel: &AtomicBool,
     ) -> Result<Intake, DomDetailsRuntimeError> {
         self.spend(1, cancel)?;
-        if transfer.source().owner() != self.dom {
+        if source.owner() != self.dom {
             return Err(DomDetailsRuntimeError::Binding);
         }
-        if self
-            .last_transfer
-            .is_some_and(|r| transfer.source().revision() < r)
-        {
+        if self.last_transfer.is_some_and(|r| source.revision() < r) {
             return Err(DomDetailsRuntimeError::OutOfOrderTransfer);
         }
         // Each raw record appends at most one task/tracker. Admit the whole
@@ -386,13 +496,13 @@ impl DetailsState {
         let plan_capacity = self
             .tasks
             .len()
-            .checked_add(transfer.len())
+            .checked_add(intentions.len())
             .ok_or(DomDetailsRuntimeError::IdentityExhausted)?
             .min(self.limits.tasks);
         let tracker_capacity = self
             .trackers
             .len()
-            .checked_add(transfer.len())
+            .checked_add(intentions.len())
             .ok_or(DomDetailsRuntimeError::IdentityExhausted)?
             .min(self.limits.tasks);
         let mut plan = Vec::new();
@@ -414,7 +524,7 @@ impl DetailsState {
             trackers.push(self.trackers[index]);
         }
         let mut next = self.next;
-        for intention in transfer.intentions() {
+        for intention in intentions {
             self.spend(1, cancel)?;
             let mut tracked = None;
             for (index, tracker) in trackers.iter().enumerate() {
@@ -457,6 +567,7 @@ impl DetailsState {
                     serial: next,
                     target: intention.target(),
                 },
+                association: intention.queue_association(),
                 event: HtmlDetailsToggleEvent::queued(
                     intention.old_state(),
                     intention.new_state(),
@@ -512,7 +623,7 @@ impl DomDetailsRuntime {
         limits: DomEventDispatchLimits,
         cancel: &AtomicBool,
     ) -> Result<DomDetailsProgress, DomDetailsRuntimeError> {
-        let state = context.details().state.clone();
+        let state = context.details().state()?;
         let value = {
             let mut owner = state.borrow_mut();
             if owner.dom != dom.owner() {
@@ -545,6 +656,31 @@ impl DomDetailsRuntime {
         let _running = DetailsTaskRunning {
             state: state.clone(),
             id: value.id,
+        };
+        let mut native_task = if let Some(association) = value.association {
+            let (hosted, started) = {
+                let owner = state.borrow();
+                let head = owner.tasks.first().ok_or(DomDetailsRuntimeError::Binding)?;
+                (
+                    owner
+                        .hosted
+                        .clone()
+                        .ok_or(DomDetailsRuntimeError::Binding)?,
+                    head.started,
+                )
+            };
+            let retired_target = !started
+                && matches!(
+                    dom.snapshot().node(value.id.target),
+                    Err(DomError::StaleNode)
+                );
+            Some(
+                hosted
+                    .enter_details(dom, association, value.id, retired_target, cancel)
+                    .map_err(DomDetailsRuntimeError::Hosted)?,
+            )
+        } else {
+            None
         };
         let result = (|| {
             let event = {
@@ -595,9 +731,14 @@ impl DomDetailsRuntime {
         })();
         // This is arbitrary caller code too. The bank already owns a completed
         // receipt if it unwinds, so subsequent execution cannot replay dispatch.
-        let displaced = !Rc::ptr_eq(&state, &context.details().state);
+        let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &context.details().state);
         match result? {
             DetailsStep::Complete | DetailsStep::Destroyed => {
+                if let Some(native_task) = &mut native_task {
+                    native_task
+                        .checkpoint(dom, cancel)
+                        .map_err(DomDetailsRuntimeError::Hosted)?;
+                }
                 let mut owner = state.borrow_mut();
                 let index = owner
                     .tasks
@@ -612,12 +753,15 @@ impl DomDetailsRuntime {
                 {
                     owner.trackers.remove(index);
                 }
+                if let Some(native_task) = &mut native_task {
+                    native_task.complete();
+                }
                 if let Some(receipt) = task.receipt.take() {
                     Ok(DomDetailsProgress::Complete {
                         task: value,
                         receipt,
                         displaced_owner: displaced.then(|| Self {
-                            state: state.clone(),
+                            state: Rc::downgrade(&state),
                         }),
                     })
                 } else {
@@ -628,7 +772,7 @@ impl DomDetailsRuntime {
                 task: value,
                 dispatch,
                 displaced_owner: displaced.then(|| Self {
-                    state: state.clone(),
+                    state: Rc::downgrade(&state),
                 }),
             }),
         }
@@ -655,6 +799,85 @@ impl Drop for DetailsTaskRunning {
         {
             entry.running = false;
         }
+    }
+}
+
+impl DomDetailsRuntime {
+    // Destroy-document removes only this original Document's not-started task
+    // bodies. An adopted target's current Document is intentionally irrelevant.
+    pub(crate) fn cancel_document(
+        &self,
+        dom: &DomEventDom<'_>,
+        document: surgeist_dom::DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomDetailsRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        if state.dom != dom.owner() {
+            return Err(DomDetailsRuntimeError::Binding);
+        }
+        let count = state.tasks.len();
+        // Every source association read, removal move and tracker comparison is
+        // admitted before any task is removed. Failure preserves the whole bank.
+        let upper = count
+            .checked_mul(
+                state
+                    .trackers
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|trackers| count.checked_add(trackers))
+                    .and_then(|n| n.checked_add(3))
+                    .ok_or(DomDetailsRuntimeError::IdentityExhausted)?,
+            )
+            .ok_or(DomDetailsRuntimeError::IdentityExhausted)?;
+        state.spend(
+            u64::try_from(upper).map_err(|_| DomDetailsRuntimeError::IdentityExhausted)?,
+            cancel,
+        )?;
+        let mut retained_started = false;
+        let mut index = 0;
+        while index < state.tasks.len() {
+            let task = &state.tasks[index];
+            if task
+                .value
+                .association
+                .is_none_or(|association| association.document() != document)
+            {
+                index += 1;
+                continue;
+            }
+            let started = task.running
+                || task.started
+                || task.event.as_ref().is_some_and(|event| event.has_started());
+            if started {
+                retained_started = true;
+                index += 1;
+                continue;
+            }
+            let removed = state.tasks.remove(index);
+            if let Some(index) = state
+                .trackers
+                .iter()
+                .position(|tracker| tracker.task == removed.value.id)
+            {
+                state.trackers.remove(index);
+            }
+            // The private event owner can abandon an unstarted path, never
+            // manufacture a completion receipt or dispatch a cancellation event.
+            drop(removed);
+        }
+        Ok(retained_started)
+    }
+    pub(crate) fn has_task(&self, task: DomDetailsTaskId) -> Result<bool, DomDetailsRuntimeError> {
+        let owner = self.state()?;
+        let state = owner
+            .try_borrow()
+            .map_err(|_| DomDetailsRuntimeError::Busy)?;
+        // This scalar query is used only after the destruction caller prepaid
+        // its complete task-source cleanup scan; it invokes no user code.
+        Ok(state.tasks.iter().any(|entry| entry.value.id == task))
     }
 }
 

@@ -26,11 +26,14 @@ pub struct DomSnapshot {
 }
 
 impl DomSnapshot {
+    pub fn incomplete_hosted_operation(&self) -> Option<crate::hosted::DomHostedOperationId> {
+        self.state.incomplete_hosted
+    }
     pub fn incomplete_source_operation(&self) -> Option<crate::DomStyleOperationId> {
         self.state.incomplete_source
     }
     pub(crate) fn require_complete_source(&self) -> Result<(), DomError> {
-        if self.state.incomplete_source.is_some() {
+        if self.state.incomplete_source.is_some() || self.state.incomplete_hosted.is_some() {
             Err(DomError::IncompleteSourceOperation)
         } else {
             Ok(())
@@ -91,6 +94,15 @@ pub struct DomDocument<'a> {
 impl<'a> DomDocument<'a> {
     pub fn id(self) -> DocumentId {
         self.id
+    }
+    /// Activity derived from this immutable snapshot's actual published
+    /// association. Later issuer retirement never changes this historical read.
+    pub fn is_fully_active(self) -> Result<bool, crate::hosted::DomHostedError> {
+        self.snapshot.require_complete_source()?;
+        match &self.metadata().document_environment().hosted {
+            Some(association) => association.historical_fully_active(),
+            None => Ok(false),
+        }
     }
     /// Canonical metadata belonging to this exact captured document revision.
     pub fn metadata(self) -> &'a DomDocumentMetadata {

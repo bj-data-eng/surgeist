@@ -107,7 +107,7 @@ fn complete_skeleton_defaults_and_real_origin_are_published_with_one_document_ti
         surgeist_html::HtmlBrowsingContextPresence::Absent
     );
     assert!(!environment.has_ever_had_navigable());
-    assert!(!environment.is_fully_active());
+    assert!(!snapshot.document(html).unwrap().is_fully_active().unwrap());
     assert_eq!(
         snapshot
             .node(commit.created(&next).unwrap().unwrap())

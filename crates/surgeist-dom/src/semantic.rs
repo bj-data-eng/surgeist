@@ -12,22 +12,23 @@ use std::{
 };
 
 use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlDoctype, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
-    HtmlValueInterpreter,
+    HtmlDoctype, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlValueInterpreter,
 };
+#[cfg(test)]
+use surgeist_html_semantics::HtmlScriptingStatus;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureDefinitionInput,
-    HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
-    HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
-    HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderRegistry, HtmlCaptureBuilderSubject,
+    HtmlCaptureDefinitionInput, HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState,
+    HtmlCapturedDefinitions, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentClass,
+    HtmlHostFactsRevision, HtmlRegistryScope, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
 };
 
 use crate::{
     DocumentId, DomDocumentClass, DomDocumentStamp, DomElementDefinition, DomError, DomHostCapture,
-    DomHostError, DomNodeKind, DomRegistryBinding, DomSnapshot, NodeId,
+    DomHostError, DomNodeKind, DomRegistryBinding, DomRegistryId, DomSnapshot, NodeId,
 };
 
 /// Adapter-owned construction storage/work, separate from producer capture retention limits.
@@ -168,6 +169,10 @@ struct Entry {
 struct StagedEntry {
     node: NodeId,
     subject: HtmlCaptureBuilderSubject,
+}
+struct StagedRegistry {
+    canonical: DomRegistryId,
+    captured: HtmlCaptureBuilderRegistry,
 }
 #[derive(Clone, Copy)]
 struct PlannedEntry {
@@ -352,26 +357,86 @@ fn add_document(
     builder: &mut HtmlCaptureBuilder,
     snapshot: &DomSnapshot,
     document: DocumentId,
+    registries: &mut Vec<StagedRegistry>,
+    control: &mut Control<'_>,
 ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
     let metadata = snapshot.document(document)?.metadata();
-    let environment = metadata.document_environment().browsing_context();
-    // HTML877d #concept-n-noscript: null browsing context independently
-    // disables scripting for Nodes. Present alone would not prove Enabled.
-    let scripting = match environment {
-        HtmlBrowsingContextPresence::Absent => HtmlScriptingStatus::Disabled,
-        HtmlBrowsingContextPresence::Present | HtmlBrowsingContextPresence::Unavailable => {
-            HtmlScriptingStatus::Unavailable
-        }
-    };
-    let registry = match metadata.custom_element_registry() {
-        DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
-    };
-    let subject = builder.add_document(metadata.mode(), scripting, registry)?;
+    let environment = metadata.document_environment();
+    let registry = registry_input(
+        builder,
+        snapshot,
+        metadata.custom_element_registry(),
+        registries,
+        control,
+    )?;
+    let subject = builder.add_document(metadata.mode(), environment.scripting(), registry)?;
     builder.establish_document_nonce_environment(
         &subject,
-        HtmlNonceDocumentEnvironment::new(environment, HtmlHeaderDeliveredCsp::Unavailable),
+        HtmlNonceDocumentEnvironment::new(
+            environment.browsing_context(),
+            HtmlHeaderDeliveredCsp::Unavailable,
+        ),
     )?;
     Ok(subject)
+}
+
+fn registry_input(
+    builder: &mut HtmlCaptureBuilder,
+    snapshot: &DomSnapshot,
+    binding: DomRegistryBinding,
+    registries: &mut Vec<StagedRegistry>,
+    control: &mut Control<'_>,
+) -> Result<HtmlCaptureRegistryInput, DomHtmlCaptureError> {
+    let DomRegistryBinding::Registry(canonical) = binding else {
+        return Ok(HtmlCaptureRegistryInput::Null);
+    };
+    for entry in registries.iter() {
+        control.charge(1)?;
+        if entry.canonical == canonical {
+            return Ok(HtmlCaptureRegistryInput::Registry(entry.captured.clone()));
+        }
+    }
+    control.charge(1)?;
+    let record = snapshot
+        .state
+        .registries
+        .as_ref()
+        .ok_or(DomError::StaleNode)?
+        .get(canonical)?;
+    control.charge(1)?;
+    let definitions = record.capture.definitions(&record.local)?;
+    // The canonical owner currently issues only the actual complete-empty
+    // Global profile. Preserve unavailable/unsupported evidence as a refusal;
+    // neither can become a null or guessed empty registry.
+    match definitions {
+        HtmlCapturedDefinitions::Complete([]) => {}
+        HtmlCapturedDefinitions::Complete(_) => return Err(DomError::NotSupported.into()),
+        HtmlCapturedDefinitions::Unavailable => {
+            return Err(HtmlCaptureError::UnavailableDefinitions(record.local.clone()).into());
+        }
+    }
+    control.charge(1)?;
+    let scope = record.capture.registry_scope(&record.local)?;
+    match scope {
+        HtmlRegistryScope::Global => {}
+        HtmlRegistryScope::Scoped => return Err(DomError::NotSupported.into()),
+        HtmlRegistryScope::Unavailable => {
+            return Err(HtmlCaptureError::MissingFact {
+                subject: None,
+                fact: surgeist_html_semantics::HtmlCaptureFact::Registry,
+            }
+            .into());
+        }
+    }
+    control.reserve(registries, 1)?;
+    let captured = builder.add_registry(Some(Vec::new()))?;
+    control.charge(1)?;
+    builder.establish_registry_scope(&captured, scope)?;
+    registries.push(StagedRegistry {
+        canonical,
+        captured: captured.clone(),
+    });
+    Ok(HtmlCaptureRegistryInput::Registry(captured))
 }
 
 impl DomSnapshot {
@@ -400,6 +465,7 @@ impl DomSnapshot {
         }
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(capture_limits, revision.clone());
+        let mut registries = Vec::new();
         let mut planned = Vec::new();
         // Charge every arena slot, including destroyed/retired entries which
         // the public live-node iterator skips. Sparse snapshots still require
@@ -505,7 +571,13 @@ impl DomSnapshot {
                 control.reserve(&mut staged, 1)?;
                 staged.push(StagedEntry {
                     node: entry.node,
-                    subject: add_document(&mut builder, self, DocumentId(entry.node))?,
+                    subject: add_document(
+                        &mut builder,
+                        self,
+                        DocumentId(entry.node),
+                        &mut registries,
+                        &mut control,
+                    )?,
                 });
             }
         }
@@ -568,9 +640,13 @@ impl DomSnapshot {
                         Some(value) => HtmlCapturedIsValue::Value(value.clone()),
                         None => HtmlCapturedIsValue::Absent,
                     };
-                    let registry = match element.custom_element_registry() {
-                        DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
-                    };
+                    let registry = registry_input(
+                        &mut builder,
+                        self,
+                        element.custom_element_registry(),
+                        &mut registries,
+                        &mut control,
+                    )?;
                     let subject = builder.add_element(
                         &root,
                         element.name().clone(),
@@ -662,9 +738,13 @@ impl DomSnapshot {
             if let DomNodeKind::ShadowRoot(state) = node.kind() {
                 let document = control.subject(&staged, node.node.document.node())?;
                 let host = control.subject(&staged, self.shadow_root(entry.node)?.host())?;
-                let registry = match state.custom_element_registry() {
-                    DomRegistryBinding::Null => HtmlCaptureRegistryInput::Null,
-                };
+                let registry = registry_input(
+                    &mut builder,
+                    self,
+                    state.custom_element_registry(),
+                    &mut registries,
+                    &mut control,
+                )?;
                 control.reserve(&mut staged, 1)?;
                 let subject = builder.add_shadow_root(
                     &document,
@@ -749,6 +829,9 @@ impl DomSnapshot {
         }
         control.charge(1)?;
         let capture = builder.finish()?;
+        // Only the checked source snapshot/node map is retained. These local
+        // registry handles exist solely to deduplicate this capture's formation.
+        drop(registries);
         let mut entries = Vec::new();
         control.reserve(&mut entries, staged.len())?;
         for entry in staged {

@@ -1,0 +1,1405 @@
+//! Original native hosted-lifecycle ownership within the durable DOM session.
+//!
+//! Native global and clock records describe the selected Rust execution domain;
+//! they do not acknowledge ECMAScript realm construction or JS execution.
+mod clock;
+mod destruction;
+mod records;
+mod uuid;
+
+use crate::dom_event::DomEventDom;
+use std::cell::RefCell;
+use std::fmt;
+use std::mem::size_of;
+use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use surgeist_dom::{
+    Dom, DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
+    DomHostedEntryId, DomHostedError, DomHostedGlobalId, DomHostedHostId, DomHostedLimits,
+    DomHostedNavigableId, DomHostedPolicyPublication, DomHostedPreparedTopLevel, DomHostedSource,
+    DomHostedTopLevelPreparation, DomOwnerId,
+};
+
+/// Finite native orchestration bounds, separate from canonical DOM admission.
+#[derive(Clone, Copy, Debug)]
+pub struct DomHostedRuntimeLimits {
+    /// Canonical role, registry, operation and source-work admission.
+    pub canonical: DomHostedLimits,
+    /// Actual lifecycle/navigation task rows, including retained running work.
+    /// Details owns its own DOM-manipulation task-source bank and count bound.
+    pub tasks: usize,
+    /// Actual native owner/record/task/output backing, including spare capacity.
+    pub storage_bytes: usize,
+    /// Simultaneously owned preparation/copy scratch and replacement-bank overlap.
+    pub scratch_bytes: usize,
+    /// Monotone native reads, comparisons, preparation and publication work.
+    pub work: u64,
+}
+
+/// A refused native operation preserves its original owner and obligations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum DomHostedRuntimeError {
+    /// The canonical source or operation could not be qualified.
+    Dom(DomHostedError),
+    /// This execution permission's original session was disposed.
+    OwnerDisposed,
+    /// The original owner is temporarily borrowed by another operation.
+    Busy,
+    /// The permission and canonical view belong to different original owners.
+    Binding,
+    /// Actual retained/scratch/count/work admission refused the operation.
+    Admission,
+    /// This target has no selected native monotonic clock provider.
+    ClockUnavailable,
+    /// The native monotonic clock regressed; no time observation was issued.
+    ClockRegressed,
+    /// The actual coarsened native time is not representable.
+    ClockOverflow,
+    /// Native entropy is unavailable on this target.
+    EntropyUnavailable,
+    /// The actual native entropy operation failed; no UUID was published.
+    EntropyFailed,
+    /// Cancellation preserves the original lifecycle phase.
+    Cancelled,
+    /// Another retained operation must be resumed first.
+    OperationPending,
+    /// The exact live native host/global/navigable was not found.
+    TargetNotFound,
+    /// A retained phase disagrees with the actual canonical request.
+    Protocol,
+    /// The queued original Document is not presently runnable.
+    Inactive,
+    /// Actual native checkpoint work remains unsupported or source-pending.
+    CheckpointUnavailable,
+}
+impl fmt::Display for DomHostedRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "native hosted lifecycle refused: {self:?}")
+    }
+}
+impl std::error::Error for DomHostedRuntimeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Dom(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+/// Immutable identities of an actually initialized no-opener top-level.
+/// This observation carries no creation, task or teardown authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomHostedTopLevel {
+    host: DomHostedHostId,
+    context: surgeist_dom::DomHostedBrowsingContextId,
+    navigable: DomHostedNavigableId,
+    entry: DomHostedEntryId,
+    global: DomHostedGlobalId,
+    document: surgeist_dom::DocumentId,
+}
+impl DomHostedTopLevel {
+    /// Original native host membership.
+    pub const fn host(self) -> DomHostedHostId {
+        self.host
+    }
+    /// Actual browsing-context indirection.
+    pub const fn browsing_context(self) -> surgeist_dom::DomHostedBrowsingContextId {
+        self.context
+    }
+    /// Actual active/current-entry navigable.
+    pub const fn navigable(self) -> DomHostedNavigableId {
+        self.navigable
+    }
+    /// The initial current and active session-history entry.
+    pub const fn entry(self) -> DomHostedEntryId {
+        self.entry
+    }
+    /// The actual native Global EventTarget.
+    pub const fn global(self) -> DomHostedGlobalId {
+        self.global
+    }
+    /// Actual canonically created initial about:blank Document.
+    pub const fn document(self) -> surgeist_dom::DocumentId {
+        self.document
+    }
+}
+/// A phase outcome from the original retained lifecycle operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomHostedProgress {
+    /// The exact original host/operation remains owned by the session.
+    Pending {
+        /// Host whose original lifecycle operation remains retained.
+        host: DomHostedHostId,
+    },
+    /// All initial top-level phases completed.
+    Created(DomHostedTopLevel),
+    /// Actual queued parent-global destruction and final cleanup completed.
+    Destroyed {
+        /// Exact navigable retired by the completed cleanup.
+        navigable: DomHostedNavigableId,
+    },
+}
+
+/// Current associated-Document capture of the actual native settings object.
+/// Later edits do not alter this historical observation or retain the issuer.
+#[derive(Clone, Debug)]
+pub struct DomHostedSettings {
+    snapshot: surgeist_dom::DomSnapshot,
+    global: DomHostedGlobalId,
+    document: surgeist_dom::DocumentId,
+    ready: bool,
+    time_origin: clock::CoarsenedSample,
+}
+impl DomHostedSettings {
+    /// Native Global whose actual settings were read.
+    pub fn global(&self) -> DomHostedGlobalId {
+        self.global
+    }
+    /// Associated current Document at this exact captured canonical revision.
+    /// Current base/URL/encoding queries consume this Document's ordinary
+    /// qualified semantic facts; creation URL is not a current-base substitute.
+    pub fn document(&self) -> surgeist_dom::DomDocument<'_> {
+        self.snapshot
+            .document(self.document)
+            .expect("captured associated Document")
+    }
+    /// Current associated Document's actual origin at this captured revision.
+    pub fn origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+        self.document().metadata().origin()
+    }
+    /// Current effective base chosen by the original bounded Base owner.
+    /// Missing/unfrozen source facts refuse rather than guessing from URL text.
+    pub fn document_base_url(
+        &self,
+    ) -> Result<&surgeist_html::DocumentString, surgeist_dom::DomError> {
+        self.document().document_base_url()
+    }
+    /// Canonical supported initial Permissions Policy from that current Document.
+    pub fn permissions_policy(&self) -> Option<surgeist_dom::DomInitialPermissionsPolicy> {
+        self.document().metadata().initial_permissions_policy()
+    }
+    /// Actual make-active readiness; never inferred from an ID or native proof.
+    pub fn environment_ready(&self) -> bool {
+        self.ready
+    }
+    /// Original native clock domain, shared across this session's Globals.
+    pub fn clock_source(&self) -> surgeist_dom::DomHostedSourceId {
+        self.time_origin.source
+    }
+    /// Actual navigation-start sample, floored to 100µs in that domain.
+    pub fn time_origin_microseconds(&self) -> u64 {
+        self.time_origin.microseconds
+    }
+    /// Intrinsic creation URL for the admitted no-opener initial blank creator.
+    pub const fn creation_url(&self) -> &'static str {
+        "about:blank"
+    }
+    /// No-opener top-level creation URL.
+    pub const fn top_level_creation_url(&self) -> &'static str {
+        "about:blank"
+    }
+    /// Group mode none does not provide cross-origin isolation.
+    pub const fn cross_origin_isolated(&self) -> bool {
+        false
+    }
+    /// This actual no-parent top-level context is not a cross-site descendant.
+    pub const fn cross_site(&self) -> bool {
+        false
+    }
+}
+
+/// Immutable observation of the actual current initial session-history entry.
+/// Its copied strings/identities confer no task or lifecycle authority.
+#[derive(Clone, Debug)]
+pub struct DomHostedHistoryEntry {
+    entry: DomHostedEntryId,
+    document: surgeist_dom::DocumentId,
+    origin: surgeist_dom::DomOpaqueOrigin,
+    key: [u16; 36],
+    id: [u16; 36],
+}
+impl DomHostedHistoryEntry {
+    /// Exact canonical history-entry identity.
+    pub const fn entry(&self) -> DomHostedEntryId {
+        self.entry
+    }
+    /// Actual associated initial Document.
+    pub const fn document(&self) -> surgeist_dom::DocumentId {
+        self.document
+    }
+    /// Actual source-created opaque origin retained by the document state.
+    pub fn origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+        &self.origin
+    }
+    /// Exact independently generated navigation API key, in UTF-16 code units.
+    pub fn key(&self) -> &[u16; 36] {
+        &self.key
+    }
+    /// Exact independently generated navigation API ID, in UTF-16 code units.
+    pub fn id(&self) -> &[u16; 36] {
+        &self.id
+    }
+    /// Initialization assigned this actual top-level entry's step to zero.
+    pub const fn step(&self) -> u64 {
+        0
+    }
+}
+
+pub(crate) struct HostedOwner {
+    state: Rc<RefCell<HostedState>>,
+}
+struct HostedState {
+    dom: DomOwnerId,
+    source: DomHostedSource,
+    clock: clock::Clock,
+    limits: DomHostedRuntimeLimits,
+    hosts: Vec<records::Host>,
+    work: u64,
+    creation: Option<Creation>,
+    destruction: Option<destruction::Destruction>,
+    details: Option<crate::dom_details::DomDetailsRuntime>,
+}
+impl HostedOwner {
+    pub(crate) fn admit_initial_headers(
+        limits: DomHostedRuntimeLimits,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let bytes = std::mem::size_of::<RefCell<HostedState>>();
+        if bytes > limits.storage_bytes {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        Ok(())
+    }
+    pub(crate) fn new(
+        dom: &mut Dom,
+        limits: DomHostedRuntimeLimits,
+    ) -> Result<Self, DomHostedRuntimeError> {
+        Self::admit_initial_headers(limits)?;
+        let source = dom
+            .register_hosted_source(limits.canonical, &AtomicBool::new(false))
+            .map_err(DomHostedRuntimeError::Dom)?;
+        let clock = clock::Clock::new(source.id());
+        Ok(Self {
+            state: Rc::new(RefCell::new(HostedState {
+                dom: dom.owner(),
+                source,
+                clock,
+                limits,
+                hosts: Vec::new(),
+                work: 0,
+                creation: None,
+                destruction: None,
+                details: None,
+            })),
+        })
+    }
+    pub(crate) fn execution(&self) -> HostedRuntime {
+        HostedRuntime {
+            state: Rc::downgrade(&self.state),
+        }
+    }
+}
+
+/// Weak execution permission for the original session's native lifecycle owner.
+/// It cannot extract the canonical DOM, source issuer, loop or resource custody.
+#[derive(Clone)]
+pub struct HostedRuntime {
+    state: Weak<RefCell<HostedState>>,
+}
+impl fmt::Debug for HostedRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HostedRuntime").finish_non_exhaustive()
+    }
+}
+
+// These are original partially established values, not a second phase machine:
+// the canonical lease alone selects the next source phase. Every successful
+// external operation is retained here before any subsequent fallible step.
+struct Creation {
+    host: DomHostedHostId,
+    composition: usize,
+    preparation: Option<DomHostedTopLevelPreparation>,
+    prepared: Option<DomHostedPreparedTopLevel>,
+    sample: Option<clock::Sample>,
+    lease: Option<DomHostedCreationLease>,
+    policy: Option<DomHostedPolicyPublication>,
+    publication: Option<DomHostedCreationPublication>,
+    global: Option<DomHostedGlobalId>,
+    entry: Option<DomHostedEntryId>,
+    navigable: Option<DomHostedNavigableId>,
+    uuids: Option<uuid::HistoryUuids>,
+    finished_sample: Option<clock::CoarsenedSample>,
+}
+impl Creation {
+    fn new(host: DomHostedHostId, composition: usize) -> Self {
+        Self {
+            host,
+            composition,
+            preparation: None,
+            prepared: None,
+            sample: None,
+            lease: None,
+            policy: None,
+            publication: None,
+            global: None,
+            entry: None,
+            navigable: None,
+            uuids: None,
+            finished_sample: None,
+        }
+    }
+}
+
+impl HostedState {
+    fn step(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
+        spend(&mut self.work, self.limits.work, cancel)
+    }
+    fn qualify(&self, dom: &DomEventDom<'_>) -> Result<(), DomHostedRuntimeError> {
+        if self.dom != dom.owner() {
+            return Err(DomHostedRuntimeError::Binding);
+        }
+        Ok(())
+    }
+    fn retained_bytes(&mut self, cancel: &AtomicBool) -> Result<usize, DomHostedRuntimeError> {
+        native_retained_bytes(&self.hosts, &mut self.work, self.limits.work, cancel)
+    }
+    fn reserve_host(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
+        self.step(cancel)?;
+        if self.hosts.len() >= self.limits.canonical.records().hosts() {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        if self.hosts.len() < self.hosts.capacity() {
+            return Ok(());
+        }
+        let count = self
+            .hosts
+            .len()
+            .checked_add(1)
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        let old = self.retained_bytes(cancel)?;
+        let requested = count
+            .checked_mul(size_of::<records::Host>())
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        if requested > self.limits.scratch_bytes
+            || old
+                .checked_add(requested)
+                .is_none_or(|bytes| bytes > self.limits.storage_bytes)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        // Prepay every actual move before replacement publication.
+        for _ in 0..self.hosts.len() {
+            self.step(cancel)?;
+        }
+        let mut replacement = Vec::new();
+        replacement
+            .try_reserve_exact(count)
+            .map_err(|_| DomHostedRuntimeError::Admission)?;
+        let actual = replacement
+            .capacity()
+            .checked_mul(size_of::<records::Host>())
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        if actual > self.limits.scratch_bytes
+            || old
+                .checked_add(actual)
+                .is_none_or(|bytes| bytes > self.limits.storage_bytes)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        replacement.append(&mut self.hosts);
+        self.hosts = replacement;
+        Ok(())
+    }
+}
+impl HostedState {
+    fn reserve_composition(
+        &mut self,
+        index: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        self.step(cancel)?;
+        let bank = &self.hosts[index].top_levels;
+        if bank.len() < bank.capacity() {
+            return Ok(());
+        }
+        let required = bank
+            .len()
+            .checked_add(1)
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        let old = self.retained_bytes(cancel)?;
+        let requested = required
+            .checked_mul(size_of::<records::Composition>())
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        if requested > self.limits.scratch_bytes
+            || old
+                .checked_add(requested)
+                .is_none_or(|n| n > self.limits.storage_bytes)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        for _ in 0..required {
+            self.step(cancel)?;
+        }
+        let mut replacement = Vec::new();
+        replacement
+            .try_reserve_exact(required)
+            .map_err(|_| DomHostedRuntimeError::Admission)?;
+        let actual = replacement
+            .capacity()
+            .checked_mul(size_of::<records::Composition>())
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        if actual > self.limits.scratch_bytes
+            || old
+                .checked_add(actual)
+                .is_none_or(|n| n > self.limits.storage_bytes)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        replacement.append(&mut self.hosts[index].top_levels);
+        self.hosts[index].top_levels = replacement;
+        Ok(())
+    }
+}
+impl HostedRuntime {
+    fn state(&self) -> Result<Rc<RefCell<HostedState>>, DomHostedRuntimeError> {
+        self.state
+            .upgrade()
+            .ok_or(DomHostedRuntimeError::OwnerDisposed)
+    }
+    /// Create the actual native host record before top-level construction.
+    /// The canonical issuer is retained only in the original durable session.
+    pub fn create_host(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHostId, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        if state.creation.is_some() || state.destruction.is_some() {
+            return Err(DomHostedRuntimeError::OperationPending);
+        }
+        state.reserve_host(cancel)?;
+        let id = state
+            .source
+            .issue_host(cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        // Header/capacity/move work was admitted before actual identity issuance.
+        state.hosts.push(records::Host {
+            id,
+            top_levels: Vec::new(),
+        });
+        Ok(id)
+    }
+}
+
+impl HostedRuntime {
+    /// Read actual settings joined to the current canonical Document.
+    pub fn settings(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedSettings, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let snapshot = dom.snapshot();
+        let document = dom
+            .raw()
+            .global_document(global)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        for h in 0..state.hosts.len() {
+            state.step(cancel)?;
+            for t in 0..state.hosts[h].top_levels.len() {
+                state.step(cancel)?;
+                let Some(native) = state.hosts[h].top_levels[t]
+                    .group
+                    .as_ref()
+                    .and_then(|g| g.cluster.as_ref())
+                    .and_then(|c| c.agent.global.as_ref())
+                else {
+                    continue;
+                };
+                if native.id != global {
+                    continue;
+                }
+                if native.settings.document != Some(document) {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                return Ok(DomHostedSettings {
+                    snapshot,
+                    global,
+                    document,
+                    ready: native.settings.ready,
+                    time_origin: native.settings.navigation_start,
+                });
+            }
+        }
+        Err(DomHostedRuntimeError::TargetNotFound)
+    }
+    /// Read the live original active/current-entry relation.
+    pub fn top_level(
+        &self,
+        dom: &DomEventDom<'_>,
+        navigable: DomHostedNavigableId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        for h in 0..state.hosts.len() {
+            state.step(cancel)?;
+            for t in 0..state.hosts[h].top_levels.len() {
+                state.step(cancel)?;
+                let host = &state.hosts[h];
+                let record = &host.top_levels[t];
+                let Some(top) = &record.top else { continue };
+                if top.id != navigable {
+                    continue;
+                }
+                let group = record
+                    .group
+                    .as_ref()
+                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                let native = group
+                    .cluster
+                    .as_ref()
+                    .and_then(|c| c.agent.global.as_ref())
+                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                let document = dom
+                    .raw()
+                    .global_document(native.id)
+                    .map_err(DomHostedRuntimeError::Dom)?;
+                if document != top.entry.document {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                return Ok(DomHostedTopLevel {
+                    host: host.id,
+                    context: group.context,
+                    navigable,
+                    entry: top.entry.id,
+                    global: native.id,
+                    document,
+                });
+            }
+        }
+        Err(DomHostedRuntimeError::TargetNotFound)
+    }
+}
+fn native_retained_bytes(
+    hosts: &Vec<records::Host>,
+    work: &mut u64,
+    limit: u64,
+    cancel: &AtomicBool,
+) -> Result<usize, DomHostedRuntimeError> {
+    let mut bytes = size_of::<RefCell<HostedState>>()
+        .checked_add(
+            hosts
+                .capacity()
+                .checked_mul(size_of::<records::Host>())
+                .ok_or(DomHostedRuntimeError::Admission)?,
+        )
+        .ok_or(DomHostedRuntimeError::Admission)?;
+    for host in hosts {
+        spend(work, limit, cancel)?;
+        bytes = bytes
+            .checked_add(
+                host.top_levels
+                    .capacity()
+                    .checked_mul(size_of::<records::Composition>())
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+            )
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        for record in &host.top_levels {
+            spend(work, limit, cancel)?;
+            if let Some(cluster) = record.group.as_ref().and_then(|g| g.cluster.as_ref()) {
+                let event_loop = cluster
+                    .agent
+                    .event_loop
+                    .try_borrow()
+                    .map_err(|_| DomHostedRuntimeError::Busy)?;
+                bytes = bytes
+                    .checked_add(size_of::<RefCell<records::WindowLoop>>())
+                    .and_then(|n| {
+                        n.checked_add(
+                            event_loop
+                                .navigation
+                                .capacity()
+                                .checked_mul(size_of::<records::DestroyTask>())?,
+                        )
+                    })
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+                for task in &event_loop.navigation {
+                    spend(work, limit, cancel)?;
+                    bytes = bytes
+                        .checked_add(
+                            task.captured_children
+                                .capacity()
+                                .checked_mul(size_of::<DomHostedNavigableId>())
+                                .ok_or(DomHostedRuntimeError::Admission)?,
+                        )
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                }
+            }
+        }
+    }
+    Ok(bytes)
+}
+
+fn spend(work: &mut u64, limit: u64, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(DomHostedRuntimeError::Cancelled);
+    }
+    let next = work
+        .checked_add(1)
+        .ok_or(DomHostedRuntimeError::Admission)?;
+    if next > limit {
+        return Err(DomHostedRuntimeError::Admission);
+    }
+    *work = next;
+    Ok(())
+}
+fn clock_error(error: clock::Error) -> DomHostedRuntimeError {
+    match error {
+        clock::Error::Unavailable => DomHostedRuntimeError::ClockUnavailable,
+        clock::Error::Regressed => DomHostedRuntimeError::ClockRegressed,
+        clock::Error::Overflow => DomHostedRuntimeError::ClockOverflow,
+    }
+}
+
+// No owner is detached while driving. On every error (including unwinding),
+// already established values stay in the original in-place Creation/Host.
+struct CreationInput<'a> {
+    source: &'a mut DomHostedSource,
+    clock: &'a mut clock::Clock,
+    hosts: &'a mut [records::Host],
+    work: &'a mut u64,
+    limits: DomHostedRuntimeLimits,
+    retained_before: usize,
+}
+fn drive_creation(
+    input: CreationInput<'_>,
+    creation: &mut Creation,
+    dom: &mut DomEventDom<'_>,
+    cancel: &AtomicBool,
+) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
+    let CreationInput {
+        source,
+        clock,
+        hosts,
+        work,
+        limits,
+        retained_before,
+    } = input;
+    let limit = limits.work;
+    let storage_limit = limits.storage_bytes;
+    let mut index = None;
+    for (candidate, host) in hosts.iter().enumerate() {
+        spend(work, limit, cancel)?;
+        if host.id == creation.host {
+            index = Some(candidate);
+            break;
+        }
+    }
+    let host = &mut hosts[index.ok_or(DomHostedRuntimeError::TargetNotFound)?];
+    let host_id = host.id;
+    let host = host
+        .top_levels
+        .get_mut(creation.composition)
+        .ok_or(DomHostedRuntimeError::Protocol)?;
+    if creation.lease.is_none() {
+        if creation.preparation.is_none() && creation.prepared.is_none() {
+            spend(work, limit, cancel)?;
+            let preparation = source
+                .prepare_top_level(host_id, cancel)
+                .map_err(DomHostedRuntimeError::Dom)?;
+            // This is the actual no-opener group and BC construction. Their
+            // inline owner storage was admitted before host identity issuance.
+            host.group = Some(records::Group {
+                context: preparation.browsing_context(),
+                cluster: None,
+            });
+            creation.preparation = Some(preparation);
+        }
+        if creation.sample.is_none() {
+            spend(work, limit, cancel)?;
+            creation.sample = Some(clock.sample().map_err(clock_error)?);
+        }
+        if creation.prepared.is_none() {
+            creation.prepared = Some(
+                source
+                    .seal_top_level(&mut creation.preparation, cancel)
+                    .map_err(DomHostedRuntimeError::Dom)?,
+            );
+        }
+        let lease = dom
+            .raw_mut()
+            .begin_hosted_top_level(source, &mut creation.prepared, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        creation.lease = Some(lease);
+    }
+    loop {
+        spend(work, limit, cancel)?;
+        let lease = creation
+            .lease
+            .as_mut()
+            .expect("retained original creation lease");
+        let policy_phase;
+        match lease
+            .step(dom.raw_mut())
+            .map_err(DomHostedRuntimeError::Dom)?
+        {
+            DomHostedCreationStep::PermissionsPolicy(request) => {
+                policy_phase = true;
+                if creation.policy.is_none() {
+                    // Null container reaches PP's first source branch: enabled.
+                    // No parent, declared map or URL parser is consulted here.
+                    if request.parent_document().is_some() || request.embedder().is_some() {
+                        return Err(DomHostedRuntimeError::Protocol);
+                    }
+                    creation.policy = Some(
+                        source
+                            .seal_permissions_policy(
+                                request,
+                                surgeist_dom::DomFullscreenInherited::Enabled,
+                                cancel,
+                            )
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+            }
+            DomHostedCreationStep::NativeExecution(request) => {
+                policy_phase = false;
+                let group = host.group.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
+                if group.context != request.browsing_context() {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                spend(work, limit, cancel)?;
+                if let Some(cluster) = &group.cluster {
+                    if cluster.origin != *request.origin() {
+                        return Err(DomHostedRuntimeError::Protocol);
+                    }
+                } else {
+                    if retained_before
+                        .checked_add(size_of::<RefCell<records::WindowLoop>>())
+                        .is_none_or(|n| n > storage_limit)
+                    {
+                        return Err(DomHostedRuntimeError::Admission);
+                    }
+                    group.cluster = Some(records::OriginCluster {
+                        origin: request.origin().clone(),
+                        agent: records::NativeAgent {
+                            event_loop: Rc::new(RefCell::new(records::WindowLoop::new())),
+                            global: None,
+                        },
+                    });
+                }
+                let sample = creation
+                    .sample
+                    .as_ref()
+                    .ok_or(DomHostedRuntimeError::Protocol)?
+                    .coarsen()
+                    .map_err(clock_error)?;
+                if sample.source != source.id() {
+                    return Err(DomHostedRuntimeError::Binding);
+                }
+                if creation.global.is_none() {
+                    creation.global = Some(
+                        source
+                            .issue_global(request, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+                let global = creation.global.expect("original issued Global");
+                let agent = &mut group
+                    .cluster
+                    .as_mut()
+                    .expect("actual opaque-key cluster")
+                    .agent;
+                if agent.global.is_none() {
+                    agent.global = Some(records::Global {
+                        id: global,
+                        settings: records::Settings {
+                            navigation_start: sample,
+                            document: None,
+                            ready: false,
+                        },
+                    });
+                }
+                if creation.publication.is_none() {
+                    creation.publication = Some(
+                        source
+                            .seal_native_execution(request, global, sample.microseconds, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+            }
+            DomHostedCreationStep::MakeActive(request) => {
+                policy_phase = false;
+                let native = host
+                    .group
+                    .as_mut()
+                    .and_then(|group| group.cluster.as_mut())
+                    .and_then(|cluster| cluster.agent.global.as_mut())
+                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                if native.id != request.global() {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                // Actual settings/BC indirection now select this Document;
+                // readiness is set only after canonical Document creation.
+                native.settings.document = Some(request.document());
+                native.settings.ready = true;
+                if creation.publication.is_none() {
+                    creation.publication = Some(
+                        source
+                            .seal_make_active(request, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+            }
+            DomHostedCreationStep::FinishLoading(request) => {
+                policy_phase = false;
+                let native = host
+                    .group
+                    .as_ref()
+                    .and_then(|group| group.cluster.as_ref())
+                    .and_then(|cluster| cluster.agent.global.as_ref())
+                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                let original = native.settings.navigation_start;
+                if native.id != request.global()
+                    || native.settings.document != Some(request.document())
+                    || original.source != request.navigation_start().source()
+                    || original.microseconds != request.navigation_start().microseconds()
+                {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                if creation.finished_sample.is_none() {
+                    creation.finished_sample = Some(
+                        clock
+                            .sample()
+                            .map_err(clock_error)?
+                            .coarsen()
+                            .map_err(clock_error)?,
+                    );
+                }
+                let sample = creation
+                    .finished_sample
+                    .expect("original completion sample");
+                if sample.source != source.id() {
+                    return Err(DomHostedRuntimeError::Binding);
+                }
+                if creation.publication.is_none() {
+                    creation.publication = Some(
+                        source
+                            .seal_finish_loading(request, sample.microseconds, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+            }
+            DomHostedCreationStep::InitialEntry(request) => {
+                policy_phase = false;
+                if creation.uuids.is_none() && host.top.is_none() {
+                    spend(work, limit, cancel)?;
+                    uuid::HistoryUuids::sample(&mut creation.uuids, cancel)?;
+                }
+                if creation.entry.is_none() {
+                    creation.entry = Some(
+                        source
+                            .issue_entry(request, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+                if creation.navigable.is_none() {
+                    creation.navigable = Some(
+                        source
+                            .issue_navigable(request, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+                let entry = creation.entry.expect("original issued entry");
+                let navigable = creation.navigable.expect("original issued navigable");
+                if host.top.is_none() {
+                    let origin = host
+                        .group
+                        .as_ref()
+                        .and_then(|group| group.cluster.as_ref())
+                        .ok_or(DomHostedRuntimeError::Protocol)?
+                        .origin
+                        .clone();
+                    host.top = Some(records::Top {
+                        id: navigable,
+                        closing: false,
+                        entry: records::Entry {
+                            id: entry,
+                            document: request.document(),
+                            origin,
+                            uuids: creation
+                                .uuids
+                                .take()
+                                .ok_or(DomHostedRuntimeError::Protocol)?,
+                        },
+                    });
+                }
+                if creation.publication.is_none() {
+                    creation.publication = Some(
+                        source
+                            .seal_initial_entry(request, entry, navigable, cancel)
+                            .map_err(DomHostedRuntimeError::Dom)?,
+                    );
+                }
+            }
+            DomHostedCreationStep::Complete(document) => {
+                let top = host.top.as_ref().ok_or(DomHostedRuntimeError::Protocol)?;
+                if top.entry.document != document {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
+                let complete = lease
+                    .finish(dom.raw_mut(), source, cancel)
+                    .map_err(DomHostedRuntimeError::Dom)?;
+                return Ok(DomHostedTopLevel {
+                    host: complete.host(),
+                    context: complete.browsing_context(),
+                    navigable: complete.navigable(),
+                    entry: complete.entry(),
+                    global: complete.global(),
+                    document: complete.document(),
+                });
+            }
+        }
+        if policy_phase {
+            lease
+                .accept_permissions_policy(dom.raw_mut(), source, &mut creation.policy, cancel)
+                .map_err(DomHostedRuntimeError::Dom)?;
+        } else {
+            lease
+                .accept_publication(dom.raw_mut(), source, &mut creation.publication, cancel)
+                .map_err(DomHostedRuntimeError::Dom)?;
+        }
+    }
+}
+
+impl HostedRuntime {
+    /// Construct the real no-opener initial about:blank top-level for this host.
+    /// Every reached phase and established input remains in the original session
+    /// on refusal; resume retries the same operation without resampling.
+    pub fn create_top_level(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        host: DomHostedHostId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        if state.creation.is_some() || state.destruction.is_some() {
+            return Err(DomHostedRuntimeError::OperationPending);
+        }
+        let mut found = None;
+        for index in 0..state.hosts.len() {
+            state.step(cancel)?;
+            if state.hosts[index].id == host {
+                found = Some(index);
+                break;
+            }
+        }
+        let index = found.ok_or(DomHostedRuntimeError::TargetNotFound)?;
+        state.reserve_composition(index, cancel)?;
+        let composition = state.hosts[index].top_levels.len();
+        state.hosts[index].top_levels.push(records::Composition {
+            group: None,
+            top: None,
+        });
+        state.creation = Some(Creation::new(host, composition));
+        state.resume_creation(dom, cancel)
+    }
+    /// Resume the original retained lifecycle operation. No permission owns or
+    /// extracts its phase cursor, actual objects, issuer or canonical DOM.
+    pub fn resume(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        if state.creation.is_some() {
+            state.resume_creation(dom, cancel)
+        } else {
+            state.resume_destruction(dom, cancel)
+        }
+    }
+}
+impl HostedState {
+    fn resume_creation(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+        let retained_before = self.retained_bytes(cancel)?;
+        let Self {
+            source,
+            clock,
+            hosts,
+            work,
+            limits,
+            creation,
+            ..
+        } = self;
+        let top = drive_creation(
+            CreationInput {
+                source,
+                clock,
+                hosts,
+                work,
+                limits: *limits,
+                retained_before,
+            },
+            creation
+                .as_mut()
+                .ok_or(DomHostedRuntimeError::TargetNotFound)?,
+            dom,
+            cancel,
+        )?;
+        // Only actual canonical finish closes the operation. Public identity
+        // observations cannot steal this cursor or acknowledge its phases.
+        *creation = None;
+        Ok(DomHostedProgress::Created(top))
+    }
+}
+impl HostedOwner {
+    pub(crate) fn pending(&self) -> Result<bool, DomHostedRuntimeError> {
+        let state = self
+            .state
+            .try_borrow()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        Ok(state.creation.is_some() || state.destruction.is_some() || !state.hosts.is_empty())
+    }
+}
+
+impl HostedRuntime {
+    pub(crate) fn ingest_details(
+        &self,
+        details: &crate::dom_details::DomDetailsRuntime,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<usize, crate::dom_details::DomDetailsRuntimeError> {
+        let owner = self
+            .state()
+            .map_err(crate::dom_details::DomDetailsRuntimeError::Hosted)?;
+        let state = owner
+            .try_borrow()
+            .map_err(|_| crate::dom_details::DomDetailsRuntimeError::Busy)?;
+        state
+            .qualify(dom)
+            .map_err(crate::dom_details::DomDetailsRuntimeError::Hosted)?;
+        details.ingest_source(dom, &state.source, cancel)
+    }
+}
+
+// The actual loop has stable private custody; public event observations cannot
+// retain this guard or pin a loop after terminal session disposal.
+pub(crate) struct NativeTaskRunning {
+    state: Weak<RefCell<HostedState>>,
+    event_loop: Rc<RefCell<records::WindowLoop>>,
+    complete: bool,
+}
+impl NativeTaskRunning {
+    pub(crate) fn checkpoint(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let owner = self
+            .state
+            .upgrade()
+            .ok_or(DomHostedRuntimeError::OwnerDisposed)?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        let snapshot = dom.snapshot();
+        if snapshot.incomplete_source_operation().is_some()
+            || snapshot.incomplete_hosted_operation().is_some()
+            || !snapshot.pending_slot_signals().is_empty()
+        {
+            return Err(DomHostedRuntimeError::CheckpointUnavailable);
+        }
+        Ok(())
+    }
+    pub(crate) fn complete(&mut self) {
+        self.complete = true;
+    }
+}
+impl Drop for NativeTaskRunning {
+    fn drop(&mut self) {
+        // No loop borrow crosses user code, and no public API lends Ref/RefMut.
+        // Cleanup is constant-sized and infallible, independent of bank growth.
+        let mut event_loop = self.event_loop.borrow_mut();
+        event_loop.executing = false;
+        if self.complete {
+            event_loop.current = None;
+            event_loop.checkpoints = event_loop.next_checkpoint;
+        }
+    }
+}
+impl HostedRuntime {
+    pub(crate) fn enter_details(
+        &self,
+        dom: &DomEventDom<'_>,
+        association: surgeist_dom::DomDetailsQueueAssociation,
+        task: crate::dom_details::DomDetailsTaskId,
+        retired_target: bool,
+        cancel: &AtomicBool,
+    ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let document = association.document();
+        for h in 0..state.hosts.len() {
+            state.step(cancel)?;
+            for t in 0..state.hosts[h].top_levels.len() {
+                state.step(cancel)?;
+                let Some(cluster) = state.hosts[h].top_levels[t]
+                    .group
+                    .as_ref()
+                    .and_then(|g| g.cluster.as_ref())
+                else {
+                    continue;
+                };
+                let Some(global) = &cluster.agent.global else {
+                    continue;
+                };
+                if global.id != association.global() {
+                    continue;
+                }
+                if global.settings.document != Some(document) || !global.settings.ready {
+                    return Err(DomHostedRuntimeError::Inactive);
+                }
+                let loop_owner = cluster.agent.event_loop.clone();
+                let mut event_loop = loop_owner
+                    .try_borrow_mut()
+                    .map_err(|_| DomHostedRuntimeError::Busy)?;
+                let current = records::CurrentTask::Details { task, document };
+                if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
+                    return Err(DomHostedRuntimeError::Busy);
+                }
+                let fresh = event_loop.current.is_none();
+                if fresh && !retired_target {
+                    let snapshot = dom.snapshot();
+                    if dom
+                        .raw()
+                        .global_document(association.global())
+                        .map_err(DomHostedRuntimeError::Dom)?
+                        != document
+                    {
+                        return Err(DomHostedRuntimeError::Binding);
+                    }
+                    if !snapshot
+                        .document(document)
+                        .map_err(|e| DomHostedRuntimeError::Dom(e.into()))?
+                        .is_fully_active()
+                        .map_err(DomHostedRuntimeError::Dom)?
+                    {
+                        return Err(DomHostedRuntimeError::Inactive);
+                    }
+                }
+                if fresh {
+                    state.step(cancel)?;
+                    event_loop.next_checkpoint = event_loop
+                        .checkpoints
+                        .checked_add(1)
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                    event_loop.current = Some(current);
+                }
+                event_loop.executing = true;
+                drop(event_loop);
+                return Ok(NativeTaskRunning {
+                    state: Rc::downgrade(&owner),
+                    event_loop: loop_owner,
+                    complete: false,
+                });
+            }
+        }
+        Err(DomHostedRuntimeError::TargetNotFound)
+    }
+}
+
+impl HostedRuntime {
+    /// Adjust finite admission on the same source/session, preserving all actual
+    /// records, original samples, phase packets and cumulative spent work.
+    pub fn set_limits(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        limits: DomHostedRuntimeLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let state = &mut *state;
+        let retained = native_retained_bytes(&state.hosts, &mut state.work, limits.work, cancel)?;
+        let mut tasks = 0usize;
+        for h in 0..state.hosts.len() {
+            spend(&mut state.work, limits.work, cancel)?;
+            for t in 0..state.hosts[h].top_levels.len() {
+                spend(&mut state.work, limits.work, cancel)?;
+                if let Some(cluster) = state.hosts[h].top_levels[t]
+                    .group
+                    .as_ref()
+                    .and_then(|g| g.cluster.as_ref())
+                {
+                    tasks = tasks
+                        .checked_add(
+                            cluster
+                                .agent
+                                .event_loop
+                                .try_borrow()
+                                .map_err(|_| DomHostedRuntimeError::Busy)?
+                                .navigation
+                                .len(),
+                        )
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                }
+            }
+        }
+        spend(&mut state.work, limits.work, cancel)?;
+        if retained > limits.storage_bytes || tasks > limits.tasks || state.work > limits.work {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        state
+            .source
+            .set_limits(limits.canonical, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        // No fallible work after canonical policy acceptance. Existing active
+        // cleanup work was charged, and its maximum bank size was preserved.
+        state.limits = limits;
+        Ok(())
+    }
+}
+
+impl HostedOwner {
+    pub(crate) fn bind_details(&self, details: crate::dom_details::DomDetailsRuntime) {
+        self.state.borrow_mut().details = Some(details);
+    }
+}
+
+impl HostedRuntime {
+    /// Retire this actual Host only after its ordered top-level set and every
+    /// pending lifecycle closure are empty. Other Hosts remain untouched.
+    pub fn destroy_host(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        host: DomHostedHostId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        if state.creation.is_some() || state.destruction.is_some() {
+            return Err(DomHostedRuntimeError::OperationPending);
+        }
+        let mut found = None;
+        for h in 0..state.hosts.len() {
+            state.step(cancel)?;
+            if state.hosts[h].id == host {
+                found = Some(h);
+                break;
+            }
+        }
+        let index = found.ok_or(DomHostedRuntimeError::TargetNotFound)?;
+        if !state.hosts[index].top_levels.is_empty() {
+            return Err(DomHostedRuntimeError::OperationPending);
+        }
+        for _ in index..state.hosts.len() {
+            state.step(cancel)?;
+        }
+        state
+            .source
+            .retire_host(host, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        state.hosts.remove(index);
+        Ok(())
+    }
+}
+
+impl HostedRuntime {
+    /// Read the actual current initial entry, with finite copying admission.
+    pub fn history_entry(
+        &self,
+        dom: &DomEventDom<'_>,
+        entry: DomHostedEntryId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHistoryEntry, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let retained = state.retained_bytes(cancel)?;
+        let copy = size_of::<DomHostedHistoryEntry>();
+        if copy > state.limits.scratch_bytes
+            || retained
+                .checked_add(copy)
+                .is_none_or(|n| n > state.limits.storage_bytes)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        for h in 0..state.hosts.len() {
+            state.step(cancel)?;
+            for t in 0..state.hosts[h].top_levels.len() {
+                state.step(cancel)?;
+                let Some(top) = &state.hosts[h].top_levels[t].top else {
+                    continue;
+                };
+                if top.entry.id != entry {
+                    continue;
+                }
+                for _ in 0..72 {
+                    state.step(cancel)?;
+                }
+                let record = &state.hosts[h].top_levels[t];
+                let top = record.top.as_ref().expect("matched real entry");
+                let global = record
+                    .group
+                    .as_ref()
+                    .and_then(|g| g.cluster.as_ref())
+                    .and_then(|c| c.agent.global.as_ref())
+                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                if dom
+                    .raw()
+                    .global_document(global.id)
+                    .map_err(DomHostedRuntimeError::Dom)?
+                    != top.entry.document
+                {
+                    return Err(DomHostedRuntimeError::Binding);
+                }
+                return Ok(DomHostedHistoryEntry {
+                    entry,
+                    document: top.entry.document,
+                    origin: top.entry.origin.clone(),
+                    key: top.entry.uuids.key,
+                    id: top.entry.uuids.id,
+                });
+            }
+        }
+        Err(DomHostedRuntimeError::TargetNotFound)
+    }
+}

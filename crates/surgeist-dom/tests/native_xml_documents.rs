@@ -41,7 +41,7 @@ fn xml_defaults(snapshot: &DomSnapshot, doc: DocumentId, associated: DocumentId,
         surgeist_html::HtmlBrowsingContextPresence::Absent
     );
     assert!(!environment.has_ever_had_navigable());
-    assert!(!environment.is_fully_active());
+    assert!(!snapshot.document(doc).unwrap().is_fully_active().unwrap());
 }
 
 #[test]

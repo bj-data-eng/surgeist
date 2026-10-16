@@ -52,7 +52,13 @@ fn exact_expanded_names_select_common_state_without_parser_folding() {
         HtmlBrowsingContextPresence::Absent
     );
     assert!(!environment.has_ever_had_navigable());
-    assert!(!environment.is_fully_active());
+    assert!(
+        !capture
+            .document(commit.document(&document).unwrap())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
     for ((ns, name, html, nonce), ticket) in cases.iter().zip(&tickets) {
         let node = capture
             .node(commit.created(ticket).unwrap().unwrap())

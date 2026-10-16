@@ -4,8 +4,9 @@
 //! ordinary nonbubbling, noncancelable, noncomposed Style load/error and Details
 //! toggle events. Details retains its queued HTML-owned payload and null source.
 //! Registration supports capture and once; JS, AbortSignal, passive listeners,
-//! arbitrary event construction, activation and hosted Window parents are not
-//! offered by this native Rust boundary. Family owners validate their actual
+//! arbitrary event construction and activation are not offered. A hosted
+//! Document's non-load parent is its actual native Global; this is no JS Window
+//! or ECMAScript realm implementation. Family owners validate their actual
 //! queued operation before creating an event and advance only after a receipt.
 //! Event creation/execution is crate-private: the public callback view cannot
 //! consume a feature task's continuation or completion receipt out of its owner.
@@ -16,6 +17,9 @@
 //! A retained source task owns the next invocation/listener, failures and
 //! admission reservation. Dropping that private owner abandons dispatch without
 //! claiming completion; public observation clones cannot retain its reservation.
+//! Native listeners have no JavaScript callback realm. Their current target's
+//! hosted Document activity is checked per listener; unavailable native authority
+//! pauses before once removal. This does not implement listener-realm checks.
 //! Replacing either mutable owner during a callback retains the dispatch; a
 //! replacement registry cannot run its listeners on the original owner's path.
 //! Unwinding callbacks are reported alongside ordinary callback failures and
@@ -25,7 +29,10 @@ use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use surgeist_dom::{Dom, DomError, DomNodeKind, DomSnapshot, HtmlShadowRootMode, NodeId};
+use surgeist_dom::{
+    Dom, DomError, DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot, HtmlShadowRootMode,
+    NodeId,
+};
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
@@ -67,7 +74,8 @@ impl<'a> DomEventDom<'a> {
         self.dom.pending_details_toggle_intentions()
     }
     /// Transfers actual Details intentions to their task owner.
-    pub fn take_details_toggle_intentions(
+    #[cfg(test)]
+    pub(crate) fn take_details_toggle_intentions(
         &mut self,
         max_output: usize,
         cancel: &std::sync::atomic::AtomicBool,
@@ -90,6 +98,9 @@ impl<'a> DomEventDom<'a> {
     pub(crate) fn raw_mut(&mut self) -> &mut Dom {
         self.dom
     }
+    pub(crate) fn raw(&self) -> &Dom {
+        self.dom
+    }
     pub(crate) fn begin_style_batch(
         &mut self,
         batch: surgeist_dom::DomBatch,
@@ -109,6 +120,41 @@ impl<'a> DomEventDom<'a> {
 }
 
 static NEXT_REGISTRY: AtomicU64 = AtomicU64::new(1);
+
+/// One actual native event endpoint. A Global identity is never a tree node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomEventTarget {
+    /// An exact canonical node, including a Document.
+    Node(NodeId),
+    /// The canonical identity of a real native hosted global endpoint.
+    Global(DomHostedGlobalId),
+}
+impl DomEventTarget {
+    /// Returns the canonical node when this endpoint is a node.
+    pub const fn node(self) -> Option<NodeId> {
+        match self {
+            Self::Node(node) => Some(node),
+            Self::Global(_) => None,
+        }
+    }
+    /// Returns the real global identity when this endpoint is a global.
+    pub const fn global(self) -> Option<DomHostedGlobalId> {
+        match self {
+            Self::Global(global) => Some(global),
+            Self::Node(_) => None,
+        }
+    }
+}
+impl From<NodeId> for DomEventTarget {
+    fn from(node: NodeId) -> Self {
+        Self::Node(node)
+    }
+}
+impl From<DomHostedGlobalId> for DomEventTarget {
+    fn from(global: DomHostedGlobalId) -> Self {
+        Self::Global(global)
+    }
+}
 
 /// Native event types currently admitted by the source-qualified producers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -202,7 +248,7 @@ pub struct DomEventListenerFailure {
     /// Exact registration that ran.
     pub registration: DomEventRegistrationId,
     /// Exact invocation target on the fixed path.
-    pub current_target: NodeId,
+    pub current_target: DomEventTarget,
     /// Failure independently of the event's noncancelable result.
     pub kind: DomEventListenerFailureKind,
 }
@@ -234,6 +280,8 @@ pub enum DomEventResource {
 pub enum DomEventDispatchError {
     /// Canonical identity or source-coherence validation failed before the next step.
     Dom(DomError),
+    /// Actual hosted source or global association could not be qualified.
+    Hosted(DomHostedError),
     /// Finite admission refused work; no callback ran for a new event.
     Admission(DomEventResource),
     /// This same event is already executing or retained.
@@ -255,6 +303,7 @@ impl std::fmt::Display for DomEventDispatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Dom(error) => write!(f, "native DOM event dispatch: {error}"),
+            Self::Hosted(error) => write!(f, "native DOM event hosted endpoint: {error}"),
             Self::Admission(resource) => write!(
                 f,
                 "native DOM event dispatch admission refused {resource:?}"
@@ -279,6 +328,7 @@ impl std::error::Error for DomEventDispatchError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Dom(error) => Some(error),
+            Self::Hosted(error) => Some(error),
             _ => None,
         }
     }
@@ -326,6 +376,12 @@ pub enum DomEventDispatchOutcome {
     /// A callback published an unfinished canonical source hook tail. Finish
     /// that exact DOM operation before resuming; no listener is replayed.
     RetainedSourceOperation(surgeist_dom::DomStyleOperationId),
+    /// A published native creator tail must complete before later invocations.
+    /// Coherent queued destruction does not trigger this state.
+    RetainedHostedOperation(surgeist_dom::DomHostedOperationId),
+    /// The next listener's current hosted authority is unavailable. Its exact
+    /// cursor remains retained; previously entered callbacks are not replayed.
+    RetainedHostedAuthority(DomHostedError),
     /// The caller replaced the actual canonical owner during a callback. Restore
     /// the original owner before resuming this exact path.
     RetainedForeignOwner,
@@ -366,7 +422,7 @@ impl<C> DomEventCallback<C> {
     }
 }
 struct Registration<C> {
-    target: NodeId,
+    target: DomEventTarget,
     event_type: DomEventType,
     options: DomEventListenerOptions,
     callback: DomEventCallback<C>,
@@ -424,14 +480,24 @@ impl<C> DomEventDispatcher<C> {
     pub fn add_listener(
         &mut self,
         dom: &DomEventDom<'_>,
-        target: NodeId,
+        target: impl Into<DomEventTarget>,
         event_type: DomEventType,
         callback: DomEventCallback<C>,
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DomEventDispatchError> {
-        dom.snapshot()
-            .node(target)
-            .map_err(DomEventDispatchError::Dom)?;
+        let target = target.into();
+        match target {
+            DomEventTarget::Node(node) => {
+                dom.snapshot()
+                    .node(node)
+                    .map_err(DomEventDispatchError::Dom)?;
+            }
+            DomEventTarget::Global(global) => {
+                dom.raw()
+                    .global_document(global)
+                    .map_err(DomEventDispatchError::Hosted)?;
+            }
+        }
         for (slot, entry) in self.slots.iter().enumerate() {
             if let Some(r) = &entry.registration
                 && r.target == target
@@ -543,7 +609,13 @@ impl<C> DomEventDispatcher<C> {
                 DomError::IncompleteSourceOperation,
             ));
         }
+        if snapshot.incomplete_hosted_operation().is_some() {
+            return Err(DomEventDispatchError::Hosted(
+                DomHostedError::IncompleteOperation,
+            ));
+        }
         let path = build_path(
+            dom,
             &snapshot,
             event.0.original,
             event.0.event_type(),
@@ -667,6 +739,12 @@ impl<C> DomEventDispatcher<C> {
                     Ok(Err(RunStop::SourceOperation(operation))) => {
                         DomEventDispatchOutcome::RetainedSourceOperation(operation)
                     }
+                    Ok(Err(RunStop::HostedOperation(operation))) => {
+                        DomEventDispatchOutcome::RetainedHostedOperation(operation)
+                    }
+                    Ok(Err(RunStop::HostedAuthority(error))) => {
+                        DomEventDispatchOutcome::RetainedHostedAuthority(error)
+                    }
                     Ok(Err(RunStop::ForeignOwner)) => DomEventDispatchOutcome::RetainedForeignOwner,
                     Ok(Err(RunStop::ForeignRegistry)) => {
                         DomEventDispatchOutcome::RetainedForeignRegistry
@@ -772,6 +850,17 @@ impl<C> DomEventDispatcher<C> {
                     dispatch.listener += 1;
                     continue;
                 }
+                // Native authority admission can refuse before source's
+                // irreversible once removal. A known inactive target instead
+                // follows inner invoke's skip, including its once removal.
+                if !listener_target_active(dom, item, budget)? {
+                    let once = r.options.once;
+                    dispatch.listener += 1;
+                    if once {
+                        self.remove_listener(id);
+                    }
+                    continue;
+                }
                 if budget.callbacks >= budget.limits.callbacks {
                     return Err(DomEventResource::Callbacks.into());
                 }
@@ -844,7 +933,7 @@ struct Event {
     data: EventData,
     status: Cell<Status>,
     target: Cell<Option<NodeId>>,
-    current: Cell<Option<NodeId>>,
+    current: Cell<Option<DomEventTarget>>,
     phase: Cell<DomEventPhase>,
     stop: Cell<bool>,
     immediate: Cell<bool>,
@@ -1006,7 +1095,7 @@ impl NativeDomEvent {
         self.0.target.get()
     }
     /// Current invocation target, cleared between dispatch calls and at completion.
-    pub fn current_target(&self) -> Option<NodeId> {
+    pub fn current_target(&self) -> Option<DomEventTarget> {
         self.0.current.get()
     }
     /// Current source phase.
@@ -1065,7 +1154,7 @@ pub struct DomEventComposedPath {
     next: usize,
 }
 impl Iterator for DomEventComposedPath {
-    type Item = NodeId;
+    type Item = DomEventTarget;
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.path.as_ref()?;
         let current = self.current_index?;
@@ -1127,11 +1216,14 @@ fn visible(path: &[PathItem], current: usize, desired: usize) -> bool {
 }
 #[derive(Clone, Copy)]
 struct PathItem {
-    invocation: NodeId,
+    invocation: DomEventTarget,
     target: NodeId,
     at_target: bool,
     closed_root: bool,
     closed_slot: bool,
+    // Actual never-hosted provenance at path admission supports the existing
+    // native historical-retirement DELIVERY policy, not current Window absence.
+    closed_native_retirement: bool,
 }
 struct Dispatch {
     _reservation: PendingReservation,
@@ -1154,6 +1246,8 @@ enum RunStop {
     Abandoned,
     Resource(DomEventResource),
     SourceOperation(surgeist_dom::DomStyleOperationId),
+    HostedOperation(surgeist_dom::DomHostedOperationId),
+    HostedAuthority(DomHostedError),
     ForeignOwner,
     ForeignRegistry,
 }
@@ -1161,6 +1255,60 @@ impl From<DomEventResource> for RunStop {
     fn from(resource: DomEventResource) -> Self {
         Self::Resource(resource)
     }
+}
+fn listener_target_active(dom: &Dom, item: PathItem, budget: &mut Budget) -> Result<bool, RunStop> {
+    budget.tick()?;
+    let snapshot = dom.snapshot();
+    let document = match item.invocation {
+        DomEventTarget::Node(node) => {
+            let node = match snapshot.node(node) {
+                Ok(node) => node,
+                Err(DomError::StaleNode) if item.closed_native_retirement => return Ok(true),
+                Err(error) => return Err(RunStop::HostedAuthority(error.into())),
+            };
+            node.as_document()
+                .map(|document| document.id())
+                .or_else(|| node.owner_document())
+                .expect("canonical node document")
+        }
+        DomEventTarget::Global(global) => snapshot
+            .global_document(global)
+            .map_err(RunStop::HostedAuthority)?,
+    };
+    budget.tick()?;
+    let document = snapshot
+        .document(document)
+        .map_err(|error| RunStop::HostedAuthority(error.into()))?;
+    if !document
+        .metadata()
+        .document_environment()
+        .has_ever_had_navigable()
+    {
+        return Ok(true);
+    }
+    // This current capture supplies negative activity evidence only. Positive
+    // eligibility additionally requires the actual issuer-qualified owner.
+    if !document
+        .is_fully_active()
+        .map_err(RunStop::HostedAuthority)?
+    {
+        return Ok(false);
+    }
+    budget.tick()?;
+    let global = match item.invocation {
+        DomEventTarget::Node(_) => dom
+            .relevant_global(document.id().node())
+            .map_err(RunStop::HostedAuthority)?
+            .ok_or(RunStop::HostedAuthority(DomHostedError::StaleIdentity))?,
+        DomEventTarget::Global(global) => global,
+    };
+    let current = dom
+        .global_document(global)
+        .map_err(RunStop::HostedAuthority)?;
+    if current != document.id() {
+        return Err(RunStop::HostedAuthority(DomHostedError::StaleIdentity));
+    }
+    Ok(true)
 }
 fn dispatch_ready(
     registry: &Rc<RegistryOwner>,
@@ -1179,6 +1327,9 @@ fn dispatch_ready(
     }
     if let Some(operation) = dom.snapshot().incomplete_source_operation() {
         return Err(RunStop::SourceOperation(operation));
+    }
+    if let Some(operation) = dom.snapshot().incomplete_hosted_operation() {
+        return Err(RunStop::HostedOperation(operation));
     }
     Ok(())
 }
@@ -1254,6 +1405,7 @@ fn assigned(snapshot: &DomSnapshot, node: NodeId) -> Result<Option<NodeId>, DomE
     }
 }
 fn build_path(
+    dom: &Dom,
     snapshot: &DomSnapshot,
     original: NodeId,
     event_type: DomEventType,
@@ -1277,11 +1429,23 @@ fn build_path(
         }
         for item in &path {
             source_tick(budget)?;
-            if item.invocation == node {
+            if item.invocation == DomEventTarget::Node(node) {
                 return Err(DomEventDispatchError::CyclicPath);
             }
         }
         let view = snapshot.node(node).map_err(DomEventDispatchError::Dom)?;
+        source_tick(budget)?;
+        let document = view
+            .as_document()
+            .map(|document| document.id())
+            .or_else(|| view.owner_document())
+            .expect("canonical node document");
+        let closed_native_retirement = !snapshot
+            .document(document)
+            .map_err(DomEventDispatchError::Dom)?
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable();
         let closed_root = view
             .as_shadow_root()
             .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
@@ -1293,11 +1457,12 @@ fn build_path(
             ));
         }
         path.push(PathItem {
-            invocation: node,
+            invocation: DomEventTarget::Node(node),
             target,
             at_target,
             closed_root,
             closed_slot,
+            closed_native_retirement,
         });
         let assigned = assigned(snapshot, node)?;
         let parent = if let Some(shadow) = view.as_shadow_root() {
@@ -1309,6 +1474,23 @@ fn build_path(
                 Some(shadow.host())
             }
         } else if let Some(document) = view.as_document() {
+            // Selected native prestart admission: retired hosted provenance
+            // cannot become a fresh closed proof when BC state clears. This is
+            // not an extra requirement of Document's source parent algorithm.
+            let global = if document
+                .metadata()
+                .document_environment()
+                .has_ever_had_navigable()
+            {
+                source_tick(budget)?;
+                Some(
+                    dom.relevant_global(node)
+                        .map_err(DomEventDispatchError::Hosted)?
+                        .ok_or(DomEventDispatchError::UnsupportedDocumentParent)?,
+                )
+            } else {
+                None
+            };
             if event_type != DomEventType::Load
                 && document
                     .metadata()
@@ -1316,10 +1498,31 @@ fn build_path(
                     .browsing_context()
                     != surgeist_html::HtmlBrowsingContextPresence::Absent
             {
-                return Err(DomEventDispatchError::UnsupportedDocumentParent);
+                let global = global.ok_or(DomEventDispatchError::UnsupportedDocumentParent)?;
+                source_tick(budget)?;
+                if path.len() >= budget.limits.path_items {
+                    return Err(DomEventDispatchError::Admission(
+                        DomEventResource::PathItems,
+                    ));
+                }
+                path.try_reserve_exact(1)
+                    .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+                if path.capacity() > budget.limits.path_items {
+                    return Err(DomEventDispatchError::Admission(
+                        DomEventResource::PathItems,
+                    ));
+                }
+                path.push(PathItem {
+                    invocation: DomEventTarget::Global(global),
+                    target,
+                    at_target: false,
+                    closed_root: false,
+                    closed_slot: false,
+                    closed_native_retirement: false,
+                });
             }
-            // load always stops; other current native events stop on the actual
-            // no-browsing-context environment, never an invented Window.
+            // Load stops at Document. A non-load hosted Document adds its
+            // actual relevant Global, whose default EventTarget parent is null.
             None
         } else {
             assigned.or(view.parent())

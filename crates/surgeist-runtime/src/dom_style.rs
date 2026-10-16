@@ -63,6 +63,8 @@ pub enum DomStyleUnavailable {
     Environment,
     /// Imports exist; this owner has not obtained their critical-resource outcomes.
     CriticalResources,
+    /// A native hosted object, operation, loop or task remains live.
+    HostedLifecycle,
     /// A networking task is already executing at the FIFO head.
     RunningNetworkingTask,
 }
@@ -1378,28 +1380,68 @@ impl StyleState {
     }
 }
 
-/// Durable ownership of the original canonical DOM and every Style obligation.
+/// Finite admission for each actual owner in the same durable composition.
+#[derive(Clone, Copy, Debug)]
+pub struct DomSessionLimits {
+    /// Style source/resource/task orchestration admission.
+    pub style: DomStyleRuntimeLimits,
+    /// Details task/tracker admission.
+    pub details: crate::dom_details::DomDetailsRuntimeLimits,
+    /// Native hosted lifecycle and its canonical source admission.
+    pub hosted: crate::dom_lifecycle::DomHostedRuntimeLimits,
+}
+/// The owner which refused construction, with the original DOM still returned.
+#[derive(Debug)]
+pub enum DomSessionCreateFailure {
+    /// Existing Style source/resource custody prevents adoption or admission.
+    Style(DomStyleRuntimeError),
+    /// The actual Details task owner could not be admitted.
+    Details(crate::dom_details::DomDetailsRuntimeError),
+    /// The actual hosted source/domain owner could not be admitted.
+    Hosted(crate::dom_lifecycle::DomHostedRuntimeError),
+}
+impl std::fmt::Display for DomSessionCreateFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Style(error) => std::fmt::Display::fmt(error, f),
+            Self::Details(error) => std::fmt::Display::fmt(error, f),
+            Self::Hosted(error) => std::fmt::Display::fmt(error, f),
+        }
+    }
+}
+impl std::error::Error for DomSessionCreateFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Style(error) => Some(error),
+            Self::Details(error) => Some(error),
+            Self::Hosted(error) => Some(error),
+        }
+    }
+}
+/// Durable ownership of the original canonical DOM and its composed obligations.
 /// Moving this non-Clone value transfers the whole composition. Execution
 /// permissions never own or release its resources.
-pub struct DomStyleSession {
+pub struct DomSession {
     dom: Dom,
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
+    details: crate::dom_details::DetailsOwner,
+    hosted: crate::dom_lifecycle::HostedOwner,
 }
-impl std::fmt::Debug for DomStyleSession {
+impl std::fmt::Debug for DomSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DomStyleSession")
+        f.debug_struct("DomSession")
             .field("dom", &self.dom.owner())
             .finish_non_exhaustive()
     }
 }
 /// Rejected session creation preserves the actual unchanged input owner.
-pub struct DomStyleSessionCreateError {
+pub struct DomSessionCreateError {
     dom: Dom,
-    error: DomStyleRuntimeError,
+    error: DomSessionCreateFailure,
 }
-impl DomStyleSessionCreateError {
+impl DomSessionCreateError {
     /// Actual rejection reason.
-    pub fn error(&self) -> &DomStyleRuntimeError {
+    pub fn error(&self) -> &DomSessionCreateFailure {
         &self.error
     }
     /// Return the rejected input; established sessions expose no such extraction.
@@ -1407,26 +1449,30 @@ impl DomStyleSessionCreateError {
         self.dom
     }
 }
-impl std::fmt::Debug for DomStyleSessionCreateError {
+impl std::fmt::Debug for DomSessionCreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DomStyleSessionCreateError")
+        f.debug_struct("DomSessionCreateError")
             .field("error", &self.error)
             .finish_non_exhaustive()
     }
 }
-impl std::fmt::Display for DomStyleSessionCreateError {
+impl std::fmt::Display for DomSessionCreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.error, f)
     }
 }
-impl std::error::Error for DomStyleSessionCreateError {
+impl std::error::Error for DomSessionCreateError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.error)
     }
 }
 /// Exact unresolved Style obligation during graceful shutdown.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomStyleShutdownReason {
+pub enum DomShutdownReason {
+    /// An actual Details source intention has not reached its task owner.
+    DetailsIntentions,
+    /// An actual queued/running Details task has not completed or been canceled.
+    DetailsTask(crate::dom_details::DomDetailsTaskId),
     /// Canonical hooks are not complete.
     SourceTail(DomStyleOperationId),
     /// A canonical root still retains its actual mutable resource.
@@ -1435,6 +1481,8 @@ pub enum DomStyleShutdownReason {
     NetworkingTask(DomStyleNetworkingTaskId),
     /// Critical imported resources have no real outcome yet.
     CriticalResources,
+    /// A native hosted object, operation, loop or task remains live.
+    HostedLifecycle,
     /// An owner is currently borrowed.
     Busy,
     /// An actual resource is poisoned; no successful cleanup is guessed.
@@ -1448,51 +1496,100 @@ pub enum DomStyleShutdownReason {
     reason = "Pending returns the exact whole session without allocating or adding a failure at mandatory custody return"
 )]
 #[derive(Debug)]
-pub enum DomStyleShutdownOutcome {
-    /// All Style source/resource/task obligations were actually settled.
+pub enum DomShutdownOutcome {
+    /// All admitted source/resource/task/lifecycle obligations were actually settled.
     Complete,
     /// Ownership is retained for real servicing or whole-session transfer.
     Pending {
         /// The whole same composition, transferable and serviceable for retry.
-        session: DomStyleSession,
+        session: DomSession,
         /// Actual unresolved source, task, resource or admission boundary.
-        reason: DomStyleShutdownReason,
+        reason: DomShutdownReason,
     },
 }
-impl DomStyleSession {
+impl DomSession {
     /// Adopt an unbound original DOM. Prebound/source-pending input is rejected
     /// intact because an empty task bank cannot reconstruct prior obligations.
     #[expect(
         clippy::result_large_err,
         reason = "Creation refusal returns the actual unchanged input Dom without another allocation or resource-loss failure"
     )]
-    pub fn new(
-        dom: Dom,
-        limits: DomStyleRuntimeLimits,
-    ) -> Result<Self, DomStyleSessionCreateError> {
+    pub fn new(mut dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
         let reject = if dom.has_style_cssom_roots() {
             Some(DomStyleRuntimeError::PreboundSession)
         } else if let Some(status) = dom.pending_style_edit() {
             Some(DomStyleRuntimeError::SourcePending(status.operation()))
-        } else if std::mem::size_of::<std::cell::RefCell<StyleState>>() > limits.storage_bytes {
+        } else if std::mem::size_of::<std::cell::RefCell<StyleState>>() > limits.style.storage_bytes
+        {
             Some(DomStyleRuntimeError::Admission)
         } else {
             None
         };
         if let Some(error) = reject {
-            return Err(DomStyleSessionCreateError { dom, error });
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::Style(error),
+            });
+        }
+        if dom.has_transferred_details_toggle_intentions() {
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::Details(
+                    crate::dom_details::DomDetailsRuntimeError::PretransferredSession,
+                ),
+            });
+        }
+        if let Err(error) = crate::dom_lifecycle::HostedOwner::admit_initial_headers(limits.hosted)
+        {
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::Hosted(error),
+            });
         }
         let owner = dom.owner();
+        let details = match crate::dom_details::DetailsOwner::new(owner, limits.details) {
+            Ok(details) => details,
+            Err(error) => {
+                return Err(DomSessionCreateError {
+                    dom,
+                    error: DomSessionCreateFailure::Details(error),
+                });
+            }
+        };
+        let hosted = match crate::dom_lifecycle::HostedOwner::new(&mut dom, limits.hosted) {
+            Ok(hosted) => hosted,
+            Err(error) => {
+                return Err(DomSessionCreateError {
+                    dom,
+                    error: DomSessionCreateFailure::Hosted(error),
+                });
+            }
+        };
+        details.bind_hosted(hosted.execution());
+        hosted.bind_details(details.execution());
         Ok(Self {
             dom,
-            state: std::rc::Rc::new(std::cell::RefCell::new(StyleState::new(owner, limits))),
+            state: std::rc::Rc::new(std::cell::RefCell::new(StyleState::new(
+                owner,
+                limits.style,
+            ))),
+            details,
+            hosted,
         })
     }
     /// Non-owning execution permission for this exact original session.
-    pub fn execution(&self) -> DomStyleRuntime {
+    pub fn style_execution(&self) -> DomStyleRuntime {
         DomStyleRuntime {
             state: std::rc::Rc::downgrade(&self.state),
         }
+    }
+    /// Weak permission for this exact session's original Details task owner.
+    pub fn details_execution(&self) -> crate::dom_details::DomDetailsRuntime {
+        self.details.execution()
+    }
+    /// Weak permission for this exact session's original native lifecycle owner.
+    pub fn hosted_execution(&self) -> crate::dom_lifecycle::HostedRuntime {
+        self.hosted.execution()
     }
     /// Controlled canonical access. No bound mutable owner can be extracted.
     pub fn dom(&mut self) -> DomEventDom<'_> {
@@ -1502,44 +1599,62 @@ impl DomStyleSession {
     pub fn snapshot(&self) -> DomSnapshot {
         self.dom.snapshot()
     }
-    /// Finish only when actual Style obligations are settled. Terminal ordinary
+    /// Finish only when actual composed obligations are settled. Terminal ordinary
     /// Drop releases all session/DOM/task-owned custody without callbacks or
     /// completion; independent public root capabilities may retain their Store.
-    pub fn try_shutdown(self) -> DomStyleShutdownOutcome {
+    pub fn try_shutdown(self) -> DomShutdownOutcome {
+        let hosted = match self.hosted.pending() {
+            Ok(false) => None,
+            Ok(true) => Some(DomShutdownReason::HostedLifecycle),
+            Err(crate::dom_lifecycle::DomHostedRuntimeError::Busy) => Some(DomShutdownReason::Busy),
+            Err(_) => Some(DomShutdownReason::Admission),
+        };
+        let details = match self.details.pending() {
+            Ok(Some(task)) => Some(DomShutdownReason::DetailsTask(task)),
+            Ok(None) => None,
+            Err(crate::dom_details::DomDetailsRuntimeError::Busy) => Some(DomShutdownReason::Busy),
+            Err(_) => Some(DomShutdownReason::Admission),
+        };
         let reason = if let Some(pending) = self.dom.pending_style_edit() {
-            Some(DomStyleShutdownReason::SourceTail(pending.operation()))
+            Some(DomShutdownReason::SourceTail(pending.operation()))
+        } else if self.dom.pending_details_toggle_intentions() != 0 {
+            Some(DomShutdownReason::DetailsIntentions)
+        } else if details.is_some() {
+            details
+        } else if hosted.is_some() {
+            hosted
         } else {
             match self.state.try_borrow_mut() {
-                Err(_) => Some(DomStyleShutdownReason::Busy),
+                Err(_) => Some(DomShutdownReason::Busy),
                 Ok(mut state) => {
                     if state
                         .prune_retired_roots(&self.dom.snapshot(), &AtomicBool::new(false))
                         .is_err()
                     {
-                        Some(DomStyleShutdownReason::Admission)
+                        Some(DomShutdownReason::Admission)
                     } else if let Some(task) =
                         state.completions.iter().find_map(|entry| match entry {
                             Completion::Waiting(_) => None,
                             Completion::Queued(task) => Some(task.id()),
                         })
                     {
-                        Some(DomStyleShutdownReason::NetworkingTask(task))
+                        Some(DomShutdownReason::NetworkingTask(task))
                     } else if state.waiting_resources() != 0 {
-                        Some(DomStyleShutdownReason::CriticalResources)
+                        Some(DomShutdownReason::CriticalResources)
                     } else {
                         let mut access = None;
                         for root in &state.roots {
                             match root.store.snapshot() {
                                 Err(DomStyleCssomRootError::Busy) => {
-                                    access = Some(DomStyleShutdownReason::Busy);
+                                    access = Some(DomShutdownReason::Busy);
                                     break;
                                 }
                                 Err(DomStyleCssomRootError::Poisoned) => {
-                                    access = Some(DomStyleShutdownReason::Poisoned);
+                                    access = Some(DomShutdownReason::Poisoned);
                                     break;
                                 }
                                 Err(_) => {
-                                    access = Some(DomStyleShutdownReason::LiveResources);
+                                    access = Some(DomShutdownReason::LiveResources);
                                     break;
                                 }
                                 Ok(_) => {}
@@ -1550,18 +1665,18 @@ impl DomStyleSession {
                                 || state.publication.is_some()
                                 || state.staged.is_some()
                                 || self.dom.has_style_cssom_roots())
-                            .then_some(DomStyleShutdownReason::LiveResources)
+                            .then_some(DomShutdownReason::LiveResources)
                         })
                     }
                 }
             }
         };
         match reason {
-            Some(reason) => DomStyleShutdownOutcome::Pending {
+            Some(reason) => DomShutdownOutcome::Pending {
                 session: self,
                 reason,
             },
-            None => DomStyleShutdownOutcome::Complete,
+            None => DomShutdownOutcome::Complete,
         }
     }
 }
@@ -2099,6 +2214,29 @@ impl Drop for StyleTaskRunning {
 
 #[cfg(test)]
 mod tests {
+    pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
+        super::DomSessionLimits {
+            style,
+            details: crate::dom_details::DomDetailsRuntimeLimits {
+                tasks: 32,
+                storage_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+            },
+            hosted: crate::dom_lifecycle::DomHostedRuntimeLimits {
+                canonical: surgeist_dom::DomHostedLimits::new(
+                    surgeist_dom::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                    16 * 1024 * 1024,
+                    16 * 1024 * 1024,
+                    1_000_000,
+                ),
+                tasks: 32,
+                storage_bytes: 16 * 1024 * 1024,
+                scratch_bytes: 16 * 1024 * 1024,
+                work: 1_000_000,
+            },
+        }
+    }
+
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
@@ -2158,8 +2296,8 @@ mod tests {
         let document = commit.created(&document).unwrap().unwrap();
         let container = commit.created(&container).unwrap().unwrap();
         let shadow = commit.created(&shadow).unwrap().unwrap();
-        let mut session = DomStyleSession::new(dom, limits()).unwrap();
-        let mut styles = session.execution();
+        let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
+        let mut styles = session.style_execution();
         let mut dom = session.dom();
         for (root, label) in [(document, "document"), (shadow, "shadow")] {
             styles
@@ -2300,8 +2438,8 @@ mod tests {
         let document = batch.create_document();
         let commit = dom.apply(batch, &cancel).unwrap();
         let document = commit.created(&document).unwrap().unwrap();
-        let mut session = DomStyleSession::new(dom, limits()).unwrap();
-        let mut styles = session.execution();
+        let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
+        let mut styles = session.style_execution();
         let mut dom = session.dom();
         styles
             .bind_root(
@@ -2393,8 +2531,8 @@ mod tests {
         let document = b.create_document();
         let c = dom.apply(b, &cancel).unwrap();
         let document = c.created(&document).unwrap().unwrap();
-        let mut session = DomStyleSession::new(dom, limits()).unwrap();
-        let permission = session.execution();
+        let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
+        let permission = session.style_execution();
         let mut dom = session.dom();
         let mut context = Context {
             styles: permission,
@@ -2452,9 +2590,10 @@ mod tests {
                 document,
                 DomEventType::Load,
                 DomEventCallback::new(move |dom, _dispatcher, context: &mut Context, event| {
-                    context
-                        .events
-                        .push((event.target().unwrap(), event.current_target().unwrap()));
+                    context.events.push((
+                        event.target().unwrap(),
+                        event.current_target().unwrap().node().unwrap(),
+                    ));
                     let mut b = DomBatch::new();
                     b.detach(style);
                     let progress = context
@@ -2499,10 +2638,10 @@ mod tests {
             DomStyleNetworkingProgress::Empty
         ));
     }
-    fn bound_session() -> (DomStyleSession, NodeId) {
+    fn bound_session() -> (DomSession, NodeId) {
         bound_session_with_context(CssomContext::default())
     }
-    fn bound_session_with_context(context: CssomContext) -> (DomStyleSession, NodeId) {
+    fn bound_session_with_context(context: CssomContext) -> (DomSession, NodeId) {
         let mut owner = dom();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
@@ -2510,9 +2649,9 @@ mod tests {
         batch.insert_before(&container, &document, None);
         let commit = owner.apply(batch, &AtomicBool::new(false)).unwrap();
         let document = commit.created(&document).unwrap().unwrap();
-        let mut session = DomStyleSession::new(owner, limits()).unwrap();
+        let mut session = DomSession::new(owner, session_limits(limits())).unwrap();
         session
-            .execution()
+            .style_execution()
             .bind_root(
                 &session.dom(),
                 "current-root".into(),
@@ -2525,12 +2664,8 @@ mod tests {
             .unwrap();
         (session, document)
     }
-    fn append_style(
-        session: &mut DomStyleSession,
-        document: NodeId,
-        media: Option<&str>,
-    ) -> NodeId {
-        let mut permission = session.execution();
+    fn append_style(session: &mut DomSession, document: NodeId, media: Option<&str>) -> NodeId {
+        let mut permission = session.style_execution();
         let mut batch = DomBatch::new();
         let style = batch.create_element_ns(document, Namespace::html(), "style");
         if let Some(media) = media {
@@ -2558,7 +2693,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
         let a = append_style(&mut session, document, None);
-        let permission = session.execution();
+        let permission = session.style_execution();
         let original = session.snapshot();
         let receipt = original
             .node(a)
@@ -2587,7 +2722,7 @@ mod tests {
         assert!(!permission.disabled(&session.dom(), b).unwrap().disabled());
         let mut batch = DomBatch::new();
         batch.set_style_disabled(a, false);
-        let mut permission = session.execution();
+        let mut permission = session.style_execution();
         assert!(matches!(
             permission
                 .apply(&mut session.dom(), batch, source_limits(), policy, &cancel)
@@ -2644,7 +2779,7 @@ mod tests {
      {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
-        let mut permission = session.execution();
+        let mut permission = session.style_execution();
         let original_root = permission.snapshot(document).unwrap().unwrap();
         let mut low = limits();
         low.storage_bytes = 20_000;
@@ -2763,15 +2898,15 @@ mod tests {
             }
             drop(lease);
             let before = owner.snapshot().stamp();
-            let rejected = DomStyleSession::new(owner, limits()).unwrap_err();
+            let rejected = DomSession::new(owner, session_limits(limits())).unwrap_err();
             if bind {
                 assert!(matches!(
                     rejected.error(),
-                    DomStyleRuntimeError::PreboundSession
+                    DomSessionCreateFailure::Style(DomStyleRuntimeError::PreboundSession)
                 ));
             } else {
                 assert!(
-                    matches!(rejected.error(),DomStyleRuntimeError::SourcePending(id) if *id==operation)
+                    matches!(rejected.error(),DomSessionCreateFailure::Style(DomStyleRuntimeError::SourcePending(id)) if *id==operation)
                 );
             }
             let mut owner = rejected.into_dom();
@@ -2806,8 +2941,8 @@ mod tests {
         let second = commit.created(&second).unwrap().unwrap();
         let mut initial = limits();
         initial.work = 1000;
-        let mut session = DomStyleSession::new(owner, initial).unwrap();
-        let mut permission = session.execution();
+        let mut session = DomSession::new(owner, session_limits(initial)).unwrap();
+        let mut permission = session.style_execution();
         let label = format!("{}a", "x".repeat(1024));
         permission
             .bind_root(
@@ -2854,7 +2989,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let first = append_style(&mut session, document, Some("screen and"));
         append_style(&mut session, document, Some("print and"));
-        let mut permission = session.execution();
+        let mut permission = session.style_execution();
         let mut batch = DomBatch::new();
         batch.set_attribute(first, "title", "changed");
         assert!(matches!(
@@ -2949,7 +3084,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
         let mut context = Context {
-            styles: session.execution(),
+            styles: session.style_execution(),
             events: Vec::new(),
         };
         let original = context.styles.original().unwrap();
@@ -2973,9 +3108,10 @@ mod tests {
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
-                    context
-                        .events
-                        .push((event.target().unwrap(), event.current_target().unwrap()));
+                    context.events.push((
+                        event.target().unwrap(),
+                        event.current_target().unwrap().node().unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -3023,7 +3159,7 @@ mod tests {
      {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
-        let mut styles = session.execution();
+        let mut styles = session.style_execution();
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
@@ -3143,7 +3279,7 @@ mod tests {
         });
         let original_profile = profile.clone();
         let (mut session, document) = bound_session_with_context(profile);
-        let mut styles = session.execution();
+        let mut styles = session.style_execution();
         let mut raised = limits();
         raised.storage_bytes = 8_000_000;
         styles.set_limits(&session.dom(), raised, &cancel).unwrap();
@@ -3317,7 +3453,7 @@ mod tests {
         let (mut session, document) = bound_session_with_context(mode_profile(
             CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical(),
         ));
-        let mut styles = session.execution();
+        let mut styles = session.style_execution();
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut batch = DomBatch::new();
         let target = batch.create_element_ns(document, Namespace::html(), "style");
@@ -3413,8 +3549,8 @@ mod tests {
         assert!(
             matches!(
                 session.try_shutdown(),
-                DomStyleShutdownOutcome::Pending {
-                    reason: DomStyleShutdownReason::SourceTail(_),
+                DomShutdownOutcome::Pending {
+                    reason: DomShutdownReason::SourceTail(_),
                     ..
                 }
             ),
@@ -3430,7 +3566,7 @@ mod tests {
             ordinal: 3,
         };
         let (mut session, document) = bound_session_with_context(profile);
-        let mut styles = session.execution();
+        let mut styles = session.style_execution();
         let initial = styles.snapshot(document).unwrap().unwrap();
         let original = styles.original().unwrap();
         let mut low = limits();
@@ -3633,8 +3769,8 @@ mod tests {
         };
         let mut runtime_limits = limits();
         runtime_limits.storage_bytes = 8_000_000;
-        let mut session = DomStyleSession::new(owner, runtime_limits).unwrap();
-        let mut styles = session.execution();
+        let mut session = DomSession::new(owner, session_limits(runtime_limits)).unwrap();
+        let mut styles = session.style_execution();
         styles
             .bind_root(
                 &session.dom(),
@@ -3723,7 +3859,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
         let mut context = Context {
-            styles: session.execution(),
+            styles: session.style_execution(),
             events: Vec::new(),
         };
         let original = context.styles.original().unwrap();
@@ -3750,9 +3886,10 @@ mod tests {
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
-                    context
-                        .events
-                        .push((event.target().unwrap(), event.current_target().unwrap()));
+                    context.events.push((
+                        event.target().unwrap(),
+                        event.current_target().unwrap().node().unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -3805,7 +3942,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
         let mut context = Context {
-            styles: session.execution(),
+            styles: session.style_execution(),
             events: Vec::new(),
         };
         let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -3820,9 +3957,10 @@ mod tests {
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
-                    context
-                        .events
-                        .push((event.target().unwrap(), event.current_target().unwrap()));
+                    context.events.push((
+                        event.target().unwrap(),
+                        event.current_target().unwrap().node().unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -3890,8 +4028,8 @@ mod tests {
         let target = append_style(&mut session, document, None);
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut context = NestedContext {
-            styles: session.execution(),
-            observer: session.execution(),
+            styles: session.style_execution(),
+            observer: session.style_execution(),
             root: document,
             parent,
             refused: false,
@@ -4005,8 +4143,8 @@ mod tests {
         let document = done.created(&document).unwrap().unwrap();
         let host = done.created(&host).unwrap().unwrap();
         let shadow = done.created(&shadow).unwrap().unwrap();
-        let mut session = DomStyleSession::new(owner, limits()).unwrap();
-        let mut styles = session.execution();
+        let mut session = DomSession::new(owner, session_limits(limits())).unwrap();
+        let mut styles = session.style_execution();
         styles
             .bind_root(
                 &session.dom(),
@@ -4060,7 +4198,7 @@ mod tests {
         assert!(context.styles.pending_sheet(0).unwrap().is_none());
         assert!(matches!(
             session.try_shutdown(),
-            DomStyleShutdownOutcome::Complete
+            DomShutdownOutcome::Complete
         ));
         assert!(
             historical_dom
@@ -4098,7 +4236,7 @@ mod tests {
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
         let mut context = PanicContext {
-            styles: session.execution(),
+            styles: session.style_execution(),
             calls: 0,
             panic_next: false,
         };
@@ -4155,8 +4293,8 @@ mod tests {
         let documents = [0; 3].map(|_| batch.create_document());
         let done = owner.apply(batch, &cancel).unwrap();
         let documents = documents.map(|ticket| done.created(&ticket).unwrap().unwrap());
-        let mut session = DomStyleSession::new(owner, limits()).unwrap();
-        let mut permission = session.execution();
+        let mut session = DomSession::new(owner, session_limits(limits())).unwrap();
+        let mut permission = session.style_execution();
         for (document, label) in documents[..2].iter().zip(["a", "b"]) {
             permission
                 .bind_root(
@@ -4227,7 +4365,7 @@ mod tests {
         let (mut session, document) = bound_session();
         append_style(&mut session, document, None);
         append_style(&mut session, document, None);
-        let original = session.execution().original().unwrap();
+        let original = session.style_execution().original().unwrap();
         let mut state = original.borrow_mut();
         assert_eq!(state.completions.len(), state.completions.capacity());
         assert_eq!(state.reports.len(), state.reports.capacity());
@@ -4277,7 +4415,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let (mut session, document) = bound_session();
         let target = append_style(&mut session, document, None);
-        let mut permission = session.execution();
+        let mut permission = session.style_execution();
         let original = permission.original().unwrap();
         let before = permission.snapshot(document).unwrap().unwrap();
         let (current, capacity, task) = {
@@ -4355,8 +4493,8 @@ mod tests {
             if !cancelled {
                 policy.work = 0;
             }
-            let mut session = DomStyleSession::new(owner, policy).unwrap();
-            let mut permission = session.execution();
+            let mut session = DomSession::new(owner, session_limits(policy)).unwrap();
+            let mut permission = session.style_execution();
             let mut input = Some(DomStyleCssomRoot::new(
                 document,
                 CssomStore::new(Default::default(), Default::default()).unwrap(),
@@ -4391,6 +4529,7 @@ mod tests {
 
 #[cfg(test)]
 mod replacement_test {
+    use super::tests::session_limits;
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
@@ -4425,14 +4564,14 @@ mod replacement_test {
         let document = c.created(&document).unwrap().unwrap();
         let other_dom =
             Dom::new(DomLimits::new(64, 10000, 256, 0, 0, 16, 100000).unwrap()).unwrap();
-        let other_session = DomStyleSession::new(other_dom, limits()).unwrap();
-        let mut session = DomStyleSession::new(dom, limits()).unwrap();
-        let permission = session.execution();
+        let other_session = DomSession::new(other_dom, session_limits(limits())).unwrap();
+        let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
+        let permission = session.style_execution();
         let mut dom = session.dom();
         let mut context = Context {
             styles: permission,
             calls: 0,
-            replacement: Some(other_session.execution()),
+            replacement: Some(other_session.style_execution()),
         };
         context
             .styles

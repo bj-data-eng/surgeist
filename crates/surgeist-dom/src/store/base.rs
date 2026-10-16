@@ -29,6 +29,7 @@ pub(super) fn parsed_document_inputs_match(
             Ok(facts.document_url() == Some(url) && facts.encoding() == Some(encoding))
         }
         crate::DomDocumentCreationCause::Native
+        | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
         | crate::DomDocumentCreationCause::ParsedFragmentParser => {
             Err(HtmlBaseMissing::DocumentFacts)
         }

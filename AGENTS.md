@@ -170,6 +170,19 @@ checked bidirectional identity maps, and invokes producer queries with explicit
 availability and finite capture limits. Host association and node-document
 membership are independent; supplemental association closure does not certify
 unrelated tree completeness.
+Runtime's `DomSession` owns the canonical DOM, Style resources, Details tasks and
+native hosted lifecycle through weak execution permissions. Its bounded hosted
+surface creates initial no-opener top-levels with real Global/settings/agent
+state and drives no-child destruction through the original queued task. DOM
+owns controlled associations and the actual complete-empty Global registry;
+Semantics owns registry formation and lookup. Snapshot Global/Document identity
+and activity observations remain historical; current DOM-owner fronts validate
+live issuer and role identities for execution. Native checkpoints retain pending
+Slot work without replay or fabricated delivery. Child/replacement lifecycle,
+Slot delivery and broader modal/resource services remain contribution work; the
+[DOM README](crates/surgeist-dom/README.md) and
+[Runtime explanation](crates/surgeist-runtime/docs/explanation.md#dom-orchestration)
+record the admitted surface and limits.
 DOM's immutable external focus/hover captures use exact canonical document
 stamps and a separate host source/revision. Runtime directly consumes DOM and
 owns the adapter from its actual surface selections and checked associations.

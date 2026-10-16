@@ -217,6 +217,46 @@ impl<'a> DomNode<'a> {
     }
 }
 impl<'a> crate::DomDocument<'a> {
+    /// Current base selection through the maintained first-Base index (O(1));
+    /// this never scans descendants or substitutes URL parsing for an observation.
+    pub fn document_base_url(self) -> Result<&'a crate::DocumentString, crate::DomError> {
+        self.snapshot.require_complete_source()?;
+        let metadata = self.metadata();
+        if metadata.document_environment().has_ever_had_navigable()
+            && !matches!(
+                metadata.creation_cause(),
+                crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+            )
+        {
+            return Err(crate::DomError::NotSupported);
+        }
+        if metadata.url().code_units() != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107] {
+            return Err(crate::DomError::NotSupported);
+        }
+        let node = self
+            .snapshot
+            .state
+            .node(self.snapshot.owner, self.id.node())?;
+        let first = match node
+            .base_document
+            .as_ref()
+            .ok_or(crate::DomError::WrongDocument)?
+            .first
+        {
+            None => surgeist_html_semantics::HtmlDocumentFirstBase::Absent,
+            Some(base) => surgeist_html_semantics::HtmlDocumentFirstBase::Present(
+                self.snapshot
+                    .state
+                    .node(self.snapshot.owner, base)?
+                    .base
+                    .as_ref()
+                    .and_then(|state| state.frozen.as_ref())
+                    .map(|frozen| &frozen.value),
+            ),
+        };
+        surgeist_html_semantics::select_document_base_serialization(metadata.url(), first)
+            .map_err(|missing| crate::DomError::BaseFacts(DomBaseFactsError::Missing(missing)))
+    }
     pub fn base_facts(self) -> Option<&'a HtmlParseBaseFacts> {
         self.snapshot
             .node(self.id.node())

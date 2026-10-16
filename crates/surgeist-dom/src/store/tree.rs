@@ -283,6 +283,14 @@ impl Draft {
                 pending.push((root, document));
             }
             self.node_mut(node).document = document;
+            self.select_element_registry(node, cancelled)?;
+            let binding = match &self.node(document)?.kind {
+                DomNodeKind::Document(metadata) => metadata.custom_element_registry(),
+                _ => return Err(DomError::WrongDocument),
+            };
+            if let DomNodeKind::ShadowRoot(state) = &mut self.node_mut(node).kind {
+                state.select_global_registry(binding);
+            }
             if self.node(node)?.image.is_some() {
                 self.start_image_update(
                     node,
