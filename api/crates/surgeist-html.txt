@@ -2071,6 +2071,94 @@ pub surgeist_html::HtmlDetailsState::Closed
 pub surgeist_html::HtmlDetailsState::Open
 impl surgeist_html::HtmlDetailsState
 pub const fn surgeist_html::HtmlDetailsState::as_str(self) -> &'static str
+pub enum surgeist_html::HtmlDialogAction
+pub surgeist_html::HtmlDialogAction::AddOpen
+pub surgeist_html::HtmlDialogAction::AddOpenDialog
+pub surgeist_html::HtmlDialogAction::CaptureNodeDocument
+pub surgeist_html::HtmlDialogAction::ClearCloseWatcher
+pub surgeist_html::HtmlDialogAction::ClearModal
+pub surgeist_html::HtmlDialogAction::ClearPreviouslyFocusedElement
+pub surgeist_html::HtmlDialogAction::ClearRequestCloseReturnValue
+pub surgeist_html::HtmlDialogAction::ClearRequestCloseSource
+pub surgeist_html::HtmlDialogAction::Complete(surgeist_html::HtmlDialogOutcome)
+pub surgeist_html::HtmlDialogAction::DestroyCloseWatcher
+pub surgeist_html::HtmlDialogAction::EstablishCloseWatcher
+pub surgeist_html::HtmlDialogAction::FindTopmostPopoverAncestor
+pub surgeist_html::HtmlDialogAction::FireBeforeToggle
+pub surgeist_html::HtmlDialogAction::FireBeforeToggle::cancelable: bool
+pub surgeist_html::HtmlDialogAction::FireBeforeToggle::new: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogAction::FireBeforeToggle::old: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogAction::FireBeforeToggle::source: surgeist_html::HtmlDialogEventSource
+pub surgeist_html::HtmlDialogAction::HidePopoversUntil
+pub surgeist_html::HtmlDialogAction::HidePopoversUntil::fire_events: bool
+pub surgeist_html::HtmlDialogAction::HidePopoversUntil::focus_previous_element: bool
+pub surgeist_html::HtmlDialogAction::QueueClose
+pub surgeist_html::HtmlDialogAction::QueueToggle
+pub surgeist_html::HtmlDialogAction::QueueToggle::new: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogAction::QueueToggle::old: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogAction::QueueToggle::source: surgeist_html::HtmlDialogEventSource
+pub surgeist_html::HtmlDialogAction::ReadConnected
+pub surgeist_html::HtmlDialogAction::ReadFocusedAnchorInside
+pub surgeist_html::HtmlDialogAction::ReadFullyActive
+pub surgeist_html::HtmlDialogAction::ReadModal
+pub surgeist_html::HtmlDialogAction::ReadOpen
+pub surgeist_html::HtmlDialogAction::ReadPreviousFocusPresent
+pub surgeist_html::HtmlDialogAction::ReadTopLayerContains
+pub surgeist_html::HtmlDialogAction::ReadWatcherPresent
+pub surgeist_html::HtmlDialogAction::RememberFocusedElement
+pub surgeist_html::HtmlDialogAction::RemoveOpen
+pub surgeist_html::HtmlDialogAction::RemoveOpenDialog
+pub surgeist_html::HtmlDialogAction::RemoveTopLayerImmediately
+pub surgeist_html::HtmlDialogAction::RequestTopLayerRemoval
+pub surgeist_html::HtmlDialogAction::RestorePreviousFocusWithoutScrolling
+pub surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
+pub surgeist_html::HtmlDialogAction::WriteReturnValue
+pub enum surgeist_html::HtmlDialogCursorError
+pub surgeist_html::HtmlDialogCursorError::Terminal
+pub surgeist_html::HtmlDialogCursorError::WrongReply
+impl core::error::Error for surgeist_html::HtmlDialogCursorError
+impl core::fmt::Display for surgeist_html::HtmlDialogCursorError
+pub fn surgeist_html::HtmlDialogCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlDialogEventSource
+pub surgeist_html::HtmlDialogEventSource::Null
+pub surgeist_html::HtmlDialogEventSource::OperationSource
+pub enum surgeist_html::HtmlDialogOperation
+pub surgeist_html::HtmlDialogOperation::Close
+pub surgeist_html::HtmlDialogOperation::Close::result_present: bool
+pub surgeist_html::HtmlDialogOperation::Inserted
+pub surgeist_html::HtmlDialogOperation::OpenChanged(surgeist_html::HtmlDialogOpenChange)
+pub surgeist_html::HtmlDialogOperation::Removed
+pub surgeist_html::HtmlDialogOperation::Show
+pub enum surgeist_html::HtmlDialogOutcome
+pub surgeist_html::HtmlDialogOutcome::Completed
+pub surgeist_html::HtmlDialogOutcome::InvalidState
+pub enum surgeist_html::HtmlDialogReply
+pub surgeist_html::HtmlDialogReply::Applied
+pub surgeist_html::HtmlDialogReply::Connected(bool)
+pub surgeist_html::HtmlDialogReply::EventCanceled(bool)
+pub surgeist_html::HtmlDialogReply::FocusedAnchorInside(bool)
+pub surgeist_html::HtmlDialogReply::FullyActive(bool)
+pub surgeist_html::HtmlDialogReply::Modal(bool)
+pub surgeist_html::HtmlDialogReply::Open(bool)
+pub surgeist_html::HtmlDialogReply::PreviousFocusPresent(bool)
+pub surgeist_html::HtmlDialogReply::TopLayerContains(bool)
+pub surgeist_html::HtmlDialogReply::WatcherPresent(bool)
+pub enum surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogState::Closed
+pub surgeist_html::HtmlDialogState::Open
+impl surgeist_html::HtmlDialogState
+pub const fn surgeist_html::HtmlDialogState::as_str(self) -> &'static str
+pub enum surgeist_html::HtmlDialogToggleEffect
+pub surgeist_html::HtmlDialogToggleEffect::ClearTracker
+pub surgeist_html::HtmlDialogToggleEffect::FireQueuedEvent
+pub surgeist_html::HtmlDialogToggleEffect::FireQueuedEvent::new: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogToggleEffect::FireQueuedEvent::old: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogToggleEffect::QueueEventFromLatestSource
+pub surgeist_html::HtmlDialogToggleEffect::QueueEventFromLatestSource::new: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogToggleEffect::QueueEventFromLatestSource::old: surgeist_html::HtmlDialogState
+pub surgeist_html::HtmlDialogToggleEffect::RemoveTrackedTask
+pub surgeist_html::HtmlDialogToggleEffect::StoreTracker
+pub surgeist_html::HtmlDialogToggleEffect::StoreTracker::old: surgeist_html::HtmlDialogState
 pub enum surgeist_html::HtmlDimension
 pub surgeist_html::HtmlDimension::Absolute(surgeist_html::HtmlNonNegativeDecimal)
 pub surgeist_html::HtmlDimension::Percentage(surgeist_html::HtmlNonNegativeDecimal)
@@ -4104,6 +4192,32 @@ impl surgeist_html::HtmlDetailsToggleEvent
 pub const fn surgeist_html::HtmlDetailsToggleEvent::new_state(self) -> surgeist_html::HtmlDetailsState
 pub const fn surgeist_html::HtmlDetailsToggleEvent::old_state(self) -> surgeist_html::HtmlDetailsState
 pub const fn surgeist_html::HtmlDetailsToggleEvent::queued(old: surgeist_html::HtmlDetailsState, new: surgeist_html::HtmlDetailsState, tracked_old: core::option::Option<surgeist_html::HtmlDetailsState>) -> Self
+pub struct surgeist_html::HtmlDialogCursor
+impl surgeist_html::HtmlDialogCursor
+pub const fn surgeist_html::HtmlDialogCursor::action(&self) -> surgeist_html::HtmlDialogAction
+pub const fn surgeist_html::HtmlDialogCursor::new(operation: surgeist_html::HtmlDialogOperation) -> Self
+pub fn surgeist_html::HtmlDialogCursor::reply(&mut self, reply: surgeist_html::HtmlDialogReply) -> core::result::Result<(), surgeist_html::HtmlDialogCursorError>
+pub struct surgeist_html::HtmlDialogFreshState
+impl surgeist_html::HtmlDialogFreshState
+pub const fn surgeist_html::HtmlDialogFreshState::force_close_watcher_enabled(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::fresh() -> Self
+pub const fn surgeist_html::HtmlDialogFreshState::has_close_watcher(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::has_request_close_return_value(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::has_request_close_source(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::has_toggle_task_tracker(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::is_modal(&self) -> bool
+pub const fn surgeist_html::HtmlDialogFreshState::return_value(&self) -> &'static str
+pub struct surgeist_html::HtmlDialogOpenChange
+impl surgeist_html::HtmlDialogOpenChange
+pub const fn surgeist_html::HtmlDialogOpenChange::new_present(self) -> bool
+pub const fn surgeist_html::HtmlDialogOpenChange::old_present(self) -> bool
+pub struct surgeist_html::HtmlDialogToggleDecision
+impl surgeist_html::HtmlDialogToggleDecision
+pub const fn surgeist_html::HtmlDialogToggleDecision::dispatch_effects(self) -> [surgeist_html::HtmlDialogToggleEffect; 2]
+pub const fn surgeist_html::HtmlDialogToggleDecision::new(old: surgeist_html::HtmlDialogState, new: surgeist_html::HtmlDialogState, tracked_old: core::option::Option<surgeist_html::HtmlDialogState>) -> Self
+pub const fn surgeist_html::HtmlDialogToggleDecision::new_state(self) -> surgeist_html::HtmlDialogState
+pub const fn surgeist_html::HtmlDialogToggleDecision::old_state(self) -> surgeist_html::HtmlDialogState
+pub fn surgeist_html::HtmlDialogToggleDecision::queue_effects(self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_html::HtmlDialogToggleEffect>
 pub struct surgeist_html::HtmlDimensionList
 impl surgeist_html::HtmlDimensionList
 pub fn surgeist_html::HtmlDimensionList::as_document_string(&self) -> surgeist_html::DocumentString
@@ -5626,9 +5740,12 @@ pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
 pub fn surgeist_html::blocking_tokens_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlBlockingTokens, E>
+pub const fn surgeist_html::computed_dialog_closed_by(state: surgeist_html::HtmlClosedByState, modal: bool) -> surgeist_html::HtmlClosedBy
 pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState
 pub const fn surgeist_html::default_document_referrer_policy() -> surgeist_html::HtmlReferrerPolicy
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
+pub fn surgeist_html::dialog_attribute_operation(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, old_present: bool, new_present: bool) -> core::option::Option<surgeist_html::HtmlDialogOperation>
+pub fn surgeist_html::dialog_close_watcher_enabled(force: bool, state: surgeist_html::HtmlClosedByState, modal: bool) -> bool
 pub const fn surgeist_html::document_allows_render_blocking(content_type_is_html: bool, body_present: bool) -> bool
 pub fn surgeist_html::document_body_role_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlDocumentBodyRole, E>
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]

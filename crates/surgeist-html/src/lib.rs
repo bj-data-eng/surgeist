@@ -17,6 +17,7 @@ mod control_values;
 mod custom_element_state;
 mod custom_names;
 mod details_rules;
+mod dialog;
 mod form_association;
 mod form_native;
 mod form_owner;
@@ -62,6 +63,7 @@ pub use control_values::*;
 pub use custom_element_state::{HtmlCustomElementState, custom_element_state_without_definition};
 pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
+pub use dialog::*;
 pub use form_association::HtmlNativeFormAssociationKind;
 pub use form_native::HtmlFormNativeState;
 pub use fragment_initialization::{
