@@ -753,3 +753,15 @@ The [conversion report](CONVERSION-REPORT.md#intrinsic-html-supplements--2026-10
 records bounded extraction and fidelity checks. Specification prose remains
 CC BY 4.0 under the [WHATWG notice](../licenses/whatwg/NOTICE.md#intrinsic-html-source-supplements--2026-10-13),
 independently of BSD terms for source-code incorporation.
+
+## Document policy-container initial state
+
+The [bounded initial-state reference](html-policy-container-initial-state--877d6146487f.md)
+retains the selected HTML877d Document default and complete policy-container
+item/default list. It supplies source evidence for native Meta policy history
+under [#1124](https://github.com/bj-data-eng/surgeist/issues/1124), alongside the
+existing [Referrer Policy vocabulary](referrer-policy-vocabulary--cc435b05ca4a.md).
+It does not establish fetched/parsed history, CSP enforcement or other policy
+runtimes. The complete source hash and conversion limits are recorded in the
+[conversion report](CONVERSION-REPORT.md#document-policy-container-initial-state--2026-10-16).
+No new edition is selected.

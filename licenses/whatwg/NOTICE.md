@@ -276,3 +276,21 @@ as an alternative license for these Markdown references. The
 [conversion report](../../references/CONVERSION-REPORT.md#native-event-dispatch-sources--2026-10-15)
 records exact bounds and checks. No new original source identity, source edition,
 software acquisition or project-license change is introduced.
+
+## Document policy-container initial state — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded initial-state reference](../../references/html-policy-container-initial-state--877d6146487f.md)
+reuses HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete
+original SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The original Document initial-state paragraph at raw lines 7076–7078 and
+policy-container introduction/items at 65813–65829 are retained with manual
+Markdown conversion, normalized whitespace, explicit links and editorial scope
+notes. No endorsement or new standard edition is implied.
+
+The exact existing [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for specification prose; its BSD 3-Clause provision applies
+only to portions incorporated into source code. The
+[conversion record](../../references/CONVERSION-REPORT.md#document-policy-container-initial-state--2026-10-16)
+records the bounded fidelity checks. No policy runtime is incorporated.

@@ -548,3 +548,11 @@ They retain original headers and intellectual-property notices with disclosed
 Markdown conversion changes. Specification prose uses CC BY 4.0; BSD 3-Clause
 applies only to portions incorporated into code. No project license, dependency
 or JavaScript-runtime change follows from these reference additions.
+
+## HTML Document policy-container initial state
+
+The bounded [initial-state reference](references/html-policy-container-initial-state--877d6146487f.md)
+reuses the selected HTML snapshot under the existing
+[WHATWG notice and complete license](licenses/whatwg/NOTICE.md#document-policy-container-initial-state--2026-10-16).
+It preserves Document and policy-container defaults needed by native Meta work.
+The disclosed Markdown conversion adds no implementation or dependency.

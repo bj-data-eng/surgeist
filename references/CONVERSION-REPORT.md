@@ -790,3 +790,21 @@ The [existing WHATWG license and supplemental notice](../licenses/whatwg/NOTICE.
 retain copyright, CC BY 4.0 prose terms, the source-code-only BSD distinction and
 modification disclosure. These checks establish bounded source fidelity and
 navigation, not native event delivery or browser conformance.
+
+## Document policy-container initial state — 2026-10-16
+
+The [initial-state reference](html-policy-container-initial-state--877d6146487f.md)
+is an offline manual Markdown conversion of HTML877d raw lines 7076–7078 and
+65813–65829, inclusive. Complete original SHA-256:
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Markdown SHA-256:
+`c511aa4627d6661768b6304ca4b608509e82046d983d5a3cda23824524b7e44e`.
+
+The Document paragraph, policy-container introduction and all five item/default
+clauses were compared with the exact retained source. Whitespace/list formatting
+is normalized; same-edition source links and editorial provenance/scope notes
+were added. Surrounding policy-cloning/response algorithms are excluded.
+UTF-8/LF, local paths/fragments and scoped whitespace checks passed. The
+[WHATWG notice](../licenses/whatwg/NOTICE.md#document-policy-container-initial-state--2026-10-16)
+retains copyright, exact local license and modification disclosure. These checks
+establish bounded reference fidelity, not implementation acceptance.

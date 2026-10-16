@@ -74,6 +74,10 @@ The [additional edition mapping](SOURCE-EDITIONS.md#additional-source-question-d
 
 ## Pinned HTML language sources
 
+The [Document policy-container initial-state excerpt](html-policy-container-initial-state--877d6146487f.md)
+retains the same pinned HTML edition’s Document and policy-container defaults
+needed by native Meta history. It supplies no CSP or other policy runtime.
+
 The [popover-target interface witness](webkit-popover-target--73aa6c89e2cb-metadata.md)
 retains pinned WebKit source identity without code excerpts. Its
 [bounded determination](SOURCE-EDITIONS.md#foreign-popover-target-interface-guard)

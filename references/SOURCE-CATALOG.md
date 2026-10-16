@@ -626,3 +626,12 @@ hashes below identify the complete source, not extraction or Markdown bytes.
 | --- | --- | --- | --- |
 | [DOM native event clauses](dom-native-events--3071e5f26944--332564d9519c.md) | [DOM3071 retained living capture](https://dom.spec.whatwg.org/) | 034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1 | Complete Event, constructing/defining events, EventTarget, observing listeners, dispatching/firing events, ShadowRoot and intellectual-property sections; complete Node/Document event-parent paragraphs |
 | [HTML ToggleEvent](html-toggle-event--877d6146487f--eeb465762458.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | Complete ToggleEvent interface, initialization/getters, toggle tracker and intellectual-property sections |
+
+## Document policy-container initial state — 2026-10-16
+
+The [bounded initial-state reference](html-policy-container-initial-state--877d6146487f.md)
+reuses the existing HTML877d complete source identity, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Its partial coverage is the complete Document initial-policy paragraph and
+policy-container item/default list. No new identity is added; the collection
+remains 372 identities (260 full, 98 partial, 14 metadata-only).
