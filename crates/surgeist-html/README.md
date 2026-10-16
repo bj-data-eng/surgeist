@@ -52,6 +52,14 @@ accessible Document/Window nor a load delay. `frame_post_connection` and
 guard, including unavailable facts. The live owner retains child identities and
 executes navigation, access checks and mutation hooks.
 
+`iframe_attribute_branch` selects srcdoc by actual attribute presence, including
+an empty value. The bounded shared Frame/Iframe helpers select about:blank for
+absent or empty src, lend a nonempty src for the consuming owner's URL parser,
+and preserve the ancestor-guard return before later URL/history decisions.
+The consumer supplies actual ancestor URL equality; these helpers perform no
+URL parsing, comparison or history mutation. Permissions Policy's separate
+declared-origin algorithm can require parsing a present-empty src.
+
 `HtmlIframeInitialState` holds the source-initial intrinsic tuple: false
 current-navigation-lazy and null timing/resumption values. It is independent of
 child presence; creating a child alone does not change those fields. The owner
@@ -60,6 +68,14 @@ reset processed/imported history from null content. Loading changes use shared
 semantic loading states; sandbox parsing preserves absent, present-empty and
 token-valued attributes. Local directive flags do not establish live policy.
 Clone-as-new initializes fresh fields, while adoption preserves actual state.
+
+`HtmlSandboxFlags::parse_with` produces restrictions directly from one present
+value without allocating a report or token strings. Its admission callback
+covers reached token and keyword reads and can return cancellation unchanged.
+An absent contribution uses `empty`; a present empty value imposes all sandbox
+restrictions. `union` combines actual restriction sets without relaxing either
+contribution. The live owner selects the actual element and parent Document
+contributions before establishing a child policy.
 
 `HtmlOpenerPolicyValue` supplies the five pinned language values, and
 `HtmlOpenerPolicy::initial` creates the actual four-field default record. Both

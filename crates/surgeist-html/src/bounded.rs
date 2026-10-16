@@ -18,6 +18,8 @@ pub use numeric::*;
 pub use rel::*;
 pub use time_element::*;
 
+pub use crate::child_navigable::{frame_iframe_after_ancestors_with, frame_iframe_src_with};
+
 pub use crate::fragment_initialization::{
     HtmlFragmentNameTest, fragment_initial_modes, stack_reset_insertion_mode,
 };

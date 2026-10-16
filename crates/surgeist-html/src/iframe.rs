@@ -4,6 +4,25 @@
 
 use crate::{HtmlBrowsingContextPresence, HtmlLoading};
 
+/// Source-first branch of processing iframe attributes, after child creation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlIframeAttributeBranch {
+    /// Present srcdoc, including empty, precedes shared src processing.
+    /// Continue the actual intrinsic/lazy/srcdoc-navigation steps.
+    Srcdoc,
+    Shared,
+}
+
+/// Selects only the srcdoc-presence branch. The actual owner reads that
+/// presence before reading src; this function performs no attribute lookup.
+pub const fn iframe_attribute_branch(srcdoc_present: bool) -> HtmlIframeAttributeBranch {
+    if srcdoc_present {
+        HtmlIframeAttributeBranch::Srcdoc
+    } else {
+        HtmlIframeAttributeBranch::Shared
+    }
+}
+
 /// The first guard of iframe's HTML element post-connection steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlIframePostConnectionDecision {

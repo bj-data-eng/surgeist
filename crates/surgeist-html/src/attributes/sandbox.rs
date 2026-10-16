@@ -56,6 +56,55 @@ pub struct HtmlSandboxFlags {
 }
 
 impl HtmlSandboxFlags {
+    /// A genuinely empty restriction set, such as an absent element directive.
+    /// This is distinct from parsing a present empty sandbox attribute.
+    pub const fn empty() -> Self {
+        Self { bits: 0 }
+    }
+    /// Combines actual restriction sets without removing either contribution.
+    /// This does not attest a Document policy, attribute presence or enforcement.
+    pub const fn union(self, other: Self) -> Self {
+        Self {
+            bits: self.bits | other.bits,
+        }
+    }
+    /// Parses one present sandbox directive through the same ASCII token,
+    /// keyword and flag projection owners as `iframe_sandbox`.
+    ///
+    /// A present empty value imposes all source-defined restrictions. Absence
+    /// is a separate caller observation and must not be supplied as empty text.
+    /// Unknown and repeated tokens do not prevent recognized processing; this
+    /// flags-only path creates no token strings, reports or author diagnostics.
+    ///
+    /// `admit` runs before the raw header, each bounded shared token-cursor
+    /// step, each emitted token slice, each keyword header and each actual raw
+    /// unit/ASCII-keyword-byte comparison, then the fixed final projection.
+    /// Refusal or cancellation is returned unchanged before the reached action;
+    /// the caller retains its cumulative work and cancellation state.
+    pub fn parse_with<E>(
+        raw: &DocumentString,
+        mut admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        admit()?;
+        let units = raw.code_units();
+        let mut cursor = crate::tokens::SpaceTokenCursor::new(units);
+        let mut keywords = 0;
+        loop {
+            admit()?;
+            match cursor.step() {
+                crate::tokens::SpaceTokenStep::Continue => {}
+                crate::tokens::SpaceTokenStep::Token { start, end } => {
+                    admit()?;
+                    if let Some(keyword) = keyword_with(&units[start..end], &mut admit)? {
+                        keywords |= keyword.bit();
+                    }
+                }
+                crate::tokens::SpaceTokenStep::Done => break,
+            }
+        }
+        admit()?;
+        Ok(project_flags(keywords))
+    }
     pub fn contains(&self, flag: HtmlSandboxFlag) -> bool {
         self.bits & flag.bit() != 0
     }
@@ -109,8 +158,10 @@ macro_rules! sandbox_keywords {
             /// Recognizes only an entire token by the source's ASCII comparison.
             /// The token's spelling, including non-scalar units, is not changed.
             pub fn from_token(token: &HtmlSpaceToken) -> Option<Self> {
-                KEYWORDS.iter().find(|entry| ascii_keyword(token.value(), entry.spelling))
-                    .map(|entry| entry.keyword)
+                match keyword_with(token.value().code_units(), &mut || Ok::<_, std::convert::Infallible>(())) {
+                    Ok(keyword) => keyword,
+                    Err(never) => match never {},
+                }
             }
             fn token(self) -> HtmlSpaceToken {
                 HtmlSpaceToken::new(self.keyword()).expect("sandbox keyword is one nonempty ASCII token")
@@ -133,6 +184,38 @@ sandbox_keywords! {
     AllowTopNavigation => "allow-top-navigation" [TopNavigationWithoutUserActivation, TopNavigationWithUserActivation, CustomProtocolsNavigation],
     AllowTopNavigationByUserActivation => "allow-top-navigation-by-user-activation" [TopNavigationWithUserActivation],
     AllowTopNavigationToCustomProtocols => "allow-top-navigation-to-custom-protocols" [CustomProtocolsNavigation],
+}
+
+/// One keyword inventory and ASCII comparison kernel serves ordinary reports,
+/// author token recognition and bounded flags-only processing.
+fn keyword_with<E>(
+    units: &[u16],
+    admit: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<HtmlSandboxKeyword>, E> {
+    let mut entries = KEYWORDS.iter();
+    loop {
+        admit()?;
+        let Some(entry) = entries.next() else {
+            return Ok(None);
+        };
+        let length = units.len();
+        if length != entry.spelling.len() {
+            continue;
+        }
+        let mut matches = true;
+        let mut index = 0;
+        while index < length {
+            admit()?;
+            if !ascii_keyword_unit(units[index], entry.spelling.as_bytes()[index]) {
+                matches = false;
+                break;
+            }
+            index += 1;
+        }
+        if matches {
+            return Ok(Some(entry.keyword));
+        }
+    }
 }
 
 /// An author-only redundancy; recognized processing remains unchanged.

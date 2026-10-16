@@ -1460,6 +1460,8 @@ pub fn surgeist_html::bounded::fold_rel_ascii(unit: u16) -> u16
 pub const fn surgeist_html::bounded::form_owner_lookup(explicit_listed_form_attribute: bool, connected: bool) -> surgeist_html::bounded::HtmlFormOwnerLookup
 pub const fn surgeist_html::bounded::form_owner_reset_trigger(trigger: surgeist_html::bounded::HtmlFormOwnerResetTrigger) -> surgeist_html::bounded::HtmlFormOwnerResetDecision
 pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
+pub fn surgeist_html::bounded::frame_iframe_after_ancestors_with<E>(matches_ancestor: bool, initial_insertion: bool, read_matches_blank: impl core::ops::function::FnOnce() -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::HtmlFrameIframeAfterAncestors, E>
+pub fn surgeist_html::bounded::frame_iframe_src_with<E>(raw: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlFrameIframeSrcDecision<'_>, E>
 pub fn surgeist_html::bounded::html_integration_point_encoding_attribute<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, value: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<bool>, E>
 pub fn surgeist_html::bounded::html_integration_point_rule<E>(namespace: core::option::Option<&surgeist_html::DocumentString>, local: &surgeist_html::DocumentString, compare: impl core::ops::function::FnMut(&surgeist_html::DocumentString, &'static str, surgeist_html::bounded::HtmlIntegrationPointComparison) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::HtmlIntegrationPointRule, E>
 pub fn surgeist_html::bounded::input_readonly_applies(state: surgeist_html::HtmlInputType) -> bool
@@ -2284,6 +2286,13 @@ pub surgeist_html::HtmlFragmentTokenizerState::Plaintext
 pub surgeist_html::HtmlFragmentTokenizerState::Rawtext
 pub surgeist_html::HtmlFragmentTokenizerState::Rcdata
 pub surgeist_html::HtmlFragmentTokenizerState::ScriptData
+pub enum surgeist_html::HtmlFrameIframeAfterAncestors
+pub surgeist_html::HtmlFrameIframeAfterAncestors::ReturnNull
+pub surgeist_html::HtmlFrameIframeAfterAncestors::ReturnUrl
+pub surgeist_html::HtmlFrameIframeAfterAncestors::UpdateUrlAndHistory
+pub enum surgeist_html::HtmlFrameIframeSrcDecision<'a>
+pub surgeist_html::HtmlFrameIframeSrcDecision::AboutBlank
+pub surgeist_html::HtmlFrameIframeSrcDecision::ParseSrc(&'a surgeist_html::DocumentString)
 pub enum surgeist_html::HtmlFramePostConnectionDecision
 pub surgeist_html::HtmlFramePostConnectionDecision::Continue
 pub surgeist_html::HtmlFramePostConnectionDecision::NeedsBrowsingContext
@@ -2344,6 +2353,9 @@ pub surgeist_html::HtmlIconSizeError::ZeroDimension
 impl core::error::Error for surgeist_html::HtmlIconSizeError
 impl core::fmt::Display for surgeist_html::HtmlIconSizeError
 pub fn surgeist_html::HtmlIconSizeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlIframeAttributeBranch
+pub surgeist_html::HtmlIframeAttributeBranch::Shared
+pub surgeist_html::HtmlIframeAttributeBranch::Srcdoc
 pub enum surgeist_html::HtmlIframePostConnectionDecision
 pub surgeist_html::HtmlIframePostConnectionDecision::Continue
 pub surgeist_html::HtmlIframePostConnectionDecision::NeedsBrowsingContext
@@ -5137,9 +5149,12 @@ pub fn surgeist_html::HtmlSandboxAuthorDiagnostics::unknown_tokens(&self) -> &[s
 pub struct surgeist_html::HtmlSandboxFlags
 impl surgeist_html::HtmlSandboxFlags
 pub fn surgeist_html::HtmlSandboxFlags::contains(&self, flag: surgeist_html::HtmlSandboxFlag) -> bool
+pub const fn surgeist_html::HtmlSandboxFlags::empty() -> Self
 pub fn surgeist_html::HtmlSandboxFlags::is_empty(&self) -> bool
 pub fn surgeist_html::HtmlSandboxFlags::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_html::HtmlSandboxFlag> + '_
 pub fn surgeist_html::HtmlSandboxFlags::len(&self) -> usize
+pub fn surgeist_html::HtmlSandboxFlags::parse_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
+pub const fn surgeist_html::HtmlSandboxFlags::union(self, other: Self) -> Self
 pub struct surgeist_html::HtmlSandboxReport
 impl surgeist_html::HtmlSandboxReport
 pub fn surgeist_html::HtmlSandboxReport::applicability(&self) -> surgeist_html::HtmlAttributeApplicability
@@ -5766,6 +5781,7 @@ pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_htm
 pub const fn surgeist_html::frame_potentially_delays_load() -> bool
 pub fn surgeist_html::hyperlink_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, values_equal: bool) -> surgeist_html::HtmlHyperlinkAttributeEffect
 pub const fn surgeist_html::hyperlink_tree_considers_speculative_loads(change: surgeist_html::HtmlHyperlinkTreeMutation) -> bool
+pub const fn surgeist_html::iframe_attribute_branch(srcdoc_present: bool) -> surgeist_html::HtmlIframeAttributeBranch
 pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool
 pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlIframePostConnectionDecision
 pub fn surgeist_html::image_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, change: surgeist_html::HtmlImageAttributeChange) -> surgeist_html::HtmlImageAttributeEffect

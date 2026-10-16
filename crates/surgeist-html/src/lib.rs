@@ -60,7 +60,7 @@ pub use attributes::*;
 pub use canvas::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState};
 pub use child_navigable::{
     HtmlChildNavigableAccessDecision, HtmlChildNavigableLoadDelayDecision,
-    HtmlChildNavigablePresence,
+    HtmlChildNavigablePresence, HtmlFrameIframeAfterAncestors, HtmlFrameIframeSrcDecision,
 };
 pub use color::*;
 pub use construction::*;
@@ -80,8 +80,8 @@ pub use frame::{
 };
 pub use hyperlink::*;
 pub use iframe::{
-    HtmlIframeInitialState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
-    iframe_post_connection,
+    HtmlIframeAttributeBranch, HtmlIframeInitialState, HtmlIframePostConnectionDecision,
+    iframe_attribute_branch, iframe_loading_became_eager, iframe_post_connection,
 };
 pub use image::*;
 pub use input::*;
