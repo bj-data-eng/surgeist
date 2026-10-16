@@ -68,6 +68,8 @@ pub(super) fn with_native_state(
         let Some(_) = node
             .as_element()
             .and_then(crate::DomElement::native_control)
+            .map(|_| ())
+            .or_else(|| node.as_img().map(|_| ()))
         else {
             continue;
         };

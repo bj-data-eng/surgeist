@@ -119,6 +119,7 @@ mod fieldset;
 mod form;
 mod host;
 mod identity;
+mod image;
 mod input;
 mod installation;
 mod names;
@@ -155,6 +156,7 @@ pub use host::{
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
+pub use image::{DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg};
 pub use input::{DomInput, DomInputState};
 pub use installation::{
     DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,

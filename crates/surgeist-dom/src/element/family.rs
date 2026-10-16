@@ -17,6 +17,9 @@ pub(super) enum NativeFamily {
     Details,
     Base,
     Link,
+    Img,
+    Picture,
+    Source,
     Template(surgeist_html::HtmlTemplateFreshInsertionState),
     Form(surgeist_html::HtmlFormNativeState),
     Fieldset(crate::DomFieldsetState),
@@ -58,6 +61,9 @@ impl NativeFamily {
             | Self::Details
             | Self::Base
             | Self::Link
+            | Self::Img
+            | Self::Picture
+            | Self::Source
             | Self::Template(_)
             | Self::Option(_)
             | Self::Optgroup

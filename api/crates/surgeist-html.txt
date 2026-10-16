@@ -2193,16 +2193,30 @@ pub surgeist_html::HtmlImageAttributeAuthorState::Missing
 pub surgeist_html::HtmlImageAttributeAuthorState::Nonconforming(surgeist_html::HtmlImageAttributeConformanceError)
 pub surgeist_html::HtmlImageAttributeAuthorState::Unapplied
 pub surgeist_html::HtmlImageAttributeAuthorState::Unchecked
+pub enum surgeist_html::HtmlImageAttributeChange
+pub surgeist_html::HtmlImageAttributeChange::Removed
+pub surgeist_html::HtmlImageAttributeChange::Set
+pub surgeist_html::HtmlImageAttributeChange::Set::same_value: bool
 pub enum surgeist_html::HtmlImageAttributeConformanceError
 pub surgeist_html::HtmlImageAttributeConformanceError::CommonValue(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptyAlt
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptySource
 pub surgeist_html::HtmlImageAttributeConformanceError::RequiredAttributeMissing
+pub enum surgeist_html::HtmlImageAttributeEffect
+pub surgeist_html::HtmlImageAttributeEffect::CompareCrossOrigin
+pub surgeist_html::HtmlImageAttributeEffect::CompareLoading
+pub surgeist_html::HtmlImageAttributeEffect::CompareReferrerPolicy
+pub surgeist_html::HtmlImageAttributeEffect::None
+pub surgeist_html::HtmlImageAttributeEffect::Update(surgeist_html::HtmlImageUpdateFlags)
 pub enum surgeist_html::HtmlImageControlsAttributeContext
 pub surgeist_html::HtmlImageControlsAttributeContext::AltEmpty
 pub surgeist_html::HtmlImageControlsAttributeContext::AltMissing
 pub surgeist_html::HtmlImageControlsAttributeContext::AltNonempty
 pub surgeist_html::HtmlImageControlsAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageDocumentActivity
+pub surgeist_html::HtmlImageDocumentActivity::FullyActive
+pub surgeist_html::HtmlImageDocumentActivity::NotFullyActive
+pub surgeist_html::HtmlImageDocumentActivity::Unavailable
 pub enum surgeist_html::HtmlImageExternalConformance
 pub surgeist_html::HtmlImageExternalConformance::NotRequired
 pub surgeist_html::HtmlImageExternalConformance::Unapplied
@@ -2211,10 +2225,25 @@ pub enum surgeist_html::HtmlImageMapAttributeContext
 pub surgeist_html::HtmlImageMapAttributeContext::AncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::NoAncestorAnchorWithHref
 pub surgeist_html::HtmlImageMapAttributeContext::Unavailable
+pub enum surgeist_html::HtmlImageMutationTargets
+pub surgeist_html::HtmlImageMutationTargets::None
+pub surgeist_html::HtmlImageMutationTargets::OldParentPictureImages
+pub surgeist_html::HtmlImageMutationTargets::ParentPictureImages
+pub surgeist_html::HtmlImageMutationTargets::ThisImage
 pub enum surgeist_html::HtmlImageSourceParent
 pub surgeist_html::HtmlImageSourceParent::NoParent
 pub surgeist_html::HtmlImageSourceParent::Parent(surgeist_html::QualifiedName)
 pub surgeist_html::HtmlImageSourceParent::Unavailable
+pub enum surgeist_html::HtmlImageTreeChange
+pub surgeist_html::HtmlImageTreeChange::Inserted
+pub surgeist_html::HtmlImageTreeChange::Moved
+pub surgeist_html::HtmlImageTreeChange::Removed
+pub enum surgeist_html::HtmlImageUpdateStartDecision
+pub surgeist_html::HtmlImageUpdateStartDecision::CheckImageSupport
+pub surgeist_html::HtmlImageUpdateStartDecision::NeedsFullyActiveFact
+pub surgeist_html::HtmlImageUpdateStartDecision::WaitForFullyActive
+pub enum surgeist_html::HtmlImgNativeRequestState
+pub surgeist_html::HtmlImgNativeRequestState::Unavailable
 pub enum surgeist_html::HtmlInputCheckedAttributeChange
 pub surgeist_html::HtmlInputCheckedAttributeChange::Added
 pub surgeist_html::HtmlInputCheckedAttributeChange::Removed
@@ -4142,6 +4171,40 @@ pub const fn surgeist_html::HtmlIframeNativeState::sandbox_change_requires_proce
 pub const fn surgeist_html::HtmlIframeNativeState::sandbox_removal_requires_clearing(&self) -> bool
 pub const fn surgeist_html::HtmlIframeNativeState::src_change_requires_processing(&self) -> bool
 pub const fn surgeist_html::HtmlIframeNativeState::srcdoc_change_requires_processing(&self) -> bool
+pub struct surgeist_html::HtmlImageTreeEffect
+impl surgeist_html::HtmlImageTreeEffect
+pub const fn surgeist_html::HtmlImageTreeEffect::check_media_parent_selection(self) -> bool
+pub const fn surgeist_html::HtmlImageTreeEffect::clear_auto_sizes_width(self) -> bool
+pub const fn surgeist_html::HtmlImageTreeEffect::targets(self) -> surgeist_html::HtmlImageMutationTargets
+pub struct surgeist_html::HtmlImageTreeInapplicable
+impl core::error::Error for surgeist_html::HtmlImageTreeInapplicable
+impl core::fmt::Display for surgeist_html::HtmlImageTreeInapplicable
+pub fn surgeist_html::HtmlImageTreeInapplicable::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlImageUpdateFlags
+impl surgeist_html::HtmlImageUpdateFlags
+pub const fn surgeist_html::HtmlImageUpdateFlags::maybe_omit_events(self) -> bool
+pub const fn surgeist_html::HtmlImageUpdateFlags::new(restart_animation: bool, maybe_omit_events: bool) -> Self
+pub const fn surgeist_html::HtmlImageUpdateFlags::restart_animation(self) -> bool
+pub struct surgeist_html::HtmlImageUpdateOrderError
+impl core::error::Error for surgeist_html::HtmlImageUpdateOrderError
+impl core::fmt::Display for surgeist_html::HtmlImageUpdateOrderError
+pub fn surgeist_html::HtmlImageUpdateOrderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlImgNativeState
+impl surgeist_html::HtmlImgNativeState
+pub fn surgeist_html::HtmlImgNativeState::current_request(&self) -> &surgeist_html::HtmlImgUnavailableRequest
+pub const fn surgeist_html::HtmlImgNativeState::dimension_attribute_source_is_self(&self) -> bool
+pub fn surgeist_html::HtmlImgNativeState::fresh() -> Self
+pub const fn surgeist_html::HtmlImgNativeState::last_auto_sizes_width_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgNativeState::last_selected_source_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgNativeState::lazy_load_resumption_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgNativeState::pending_request_is_null(&self) -> bool
+pub struct surgeist_html::HtmlImgUnavailableRequest
+impl surgeist_html::HtmlImgUnavailableRequest
+pub const fn surgeist_html::HtmlImgUnavailableRequest::current_pixel_density(&self) -> u32
+pub fn surgeist_html::HtmlImgUnavailableRequest::current_url(&self) -> &surgeist_html::DocumentString
+pub const fn surgeist_html::HtmlImgUnavailableRequest::image_data_is_available(&self) -> bool
+pub const fn surgeist_html::HtmlImgUnavailableRequest::preferred_dimensions_are_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgUnavailableRequest::state(&self) -> surgeist_html::HtmlImgNativeRequestState
 pub struct surgeist_html::HtmlInputColorSerialization
 impl surgeist_html::HtmlInputColorSerialization
 pub fn surgeist_html::HtmlInputColorSerialization::html_compatible(&self) -> bool
@@ -5426,6 +5489,14 @@ pub fn surgeist_html::fragment_tokenizer_state(name: &surgeist_html::QualifiedNa
 pub const fn surgeist_html::frame_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlFramePostConnectionDecision
 pub const fn surgeist_html::iframe_loading_became_eager(previous: surgeist_html::HtmlLoading, current: surgeist_html::HtmlLoading) -> bool
 pub const fn surgeist_html::iframe_post_connection(browsing_context: surgeist_html::HtmlBrowsingContextPresence) -> surgeist_html::HtmlIframePostConnectionDecision
+pub fn surgeist_html::image_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, change: surgeist_html::HtmlImageAttributeChange) -> surgeist_html::HtmlImageAttributeEffect
+pub fn surgeist_html::image_crossorigin_changed(old: surgeist_html::HtmlCrossOriginState, new: surgeist_html::HtmlCrossOriginState) -> bool
+pub const fn surgeist_html::image_loading_became_eager(old: surgeist_html::HtmlLoading, new: surgeist_html::HtmlLoading) -> bool
+pub fn surgeist_html::image_referrerpolicy_changed(old: surgeist_html::HtmlReferrerPolicy, new: surgeist_html::HtmlReferrerPolicy) -> bool
+pub fn surgeist_html::image_source_attribute_affects_following(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute) -> bool
+pub fn surgeist_html::image_tree_effect(element: surgeist_html::KnownHtmlElement, change: surgeist_html::HtmlImageTreeChange, parent: core::option::Option<surgeist_html::KnownHtmlElement>, old_parent: core::option::Option<surgeist_html::KnownHtmlElement>, is_subtree_root: bool) -> core::result::Result<surgeist_html::HtmlImageTreeEffect, surgeist_html::HtmlImageTreeInapplicable>
+pub const fn surgeist_html::image_update_is_superseded(invocation_compared_to_latest_started: core::cmp::Ordering) -> core::result::Result<bool, surgeist_html::HtmlImageUpdateOrderError>
+pub const fn surgeist_html::image_update_start(activity: surgeist_html::HtmlImageDocumentActivity) -> surgeist_html::HtmlImageUpdateStartDecision
 pub const fn surgeist_html::input_color_standard_failure_fallback() -> surgeist_html::HtmlLegacyColor
 pub const fn surgeist_html::input_color_value_source(dirty_value: bool) -> surgeist_html::HtmlInputColorValueSource
 pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::HtmlInputFileSelection, surgeist_html::HtmlInputFilenameInvalidState>

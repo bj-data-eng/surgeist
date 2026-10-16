@@ -17,6 +17,21 @@ fn state(
         _ => None,
     }
 }
+// Association is wider than constraint-validation/custom-error control state.
+// Standalone Img is nonlisted and has a real parser flag/form owner, but cannot
+// acquire a custom validity message through this join.
+fn association(node: &DraftNode) -> Option<(bool, surgeist_html::HtmlNativeFormAssociationKind)> {
+    state(&node.kind)
+        .map(|(control, kind)| (control.parser_inserted, kind))
+        .or_else(|| {
+            node.image.as_ref().map(|image| {
+                (
+                    image.parser_inserted,
+                    surgeist_html::HtmlNativeFormAssociationKind::Image,
+                )
+            })
+        })
+}
 impl Draft {
     fn control_mut(&mut self, key: Key) -> &mut crate::control::NativeControlState {
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
@@ -149,7 +164,8 @@ impl Draft {
         use surgeist_html::bounded::{
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
-        let (_, kind) = state(&self.node(key)?.kind).expect("actual native control");
+        let (_, kind) =
+            association(self.node(key)?).expect("actual native form-associated element");
         let owner = self.node(key)?.control_owner;
         let mut former_owner = None;
         let mut found = None;
@@ -158,7 +174,11 @@ impl Draft {
             check_cancel(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
-                    self.control_mut(key).parser_inserted = false;
+                    if let Some(image) = self.node_mut(key).image.as_mut() {
+                        image.parser_inserted = false;
+                    } else {
+                        self.control_mut(key).parser_inserted = false;
+                    }
                     R::Applied
                 }
                 A::ReadFormAttributePresence => R::FormAttributePresent(
@@ -196,7 +216,8 @@ impl Draft {
                         | surgeist_html::HtmlNativeFormAssociationKind::Fieldset
                         | surgeist_html::HtmlNativeFormAssociationKind::Textarea
                         | surgeist_html::HtmlNativeFormAssociationKind::Output
-                        | surgeist_html::HtmlNativeFormAssociationKind::Select => {}
+                        | surgeist_html::HtmlNativeFormAssociationKind::Select
+                        | surgeist_html::HtmlNativeFormAssociationKind::Image => {}
                         surgeist_html::HtmlNativeFormAssociationKind::Input => self
                             .input_radio_normalize(
                                 key,
@@ -261,7 +282,7 @@ impl Draft {
                 Key::Created(index - self.existing.len())
             };
             let Ok(node) = self.node(key) else { continue };
-            let Some((_, kind)) = state(&node.kind) else {
+            let Some((_, kind)) = association(node) else {
                 continue;
             };
             if node.document == document
@@ -285,14 +306,8 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some((current, _)) = state(&self.node(key)?.kind) {
-            self.reset_control_for(
-                key,
-                Trigger::Insertion {
-                    parser_inserted: current.parser_inserted,
-                },
-                cancel,
-            )?;
+        if let Some((parser_inserted, _)) = association(self.node(key)?) {
+            self.reset_control_for(key, Trigger::Insertion { parser_inserted }, cancel)?;
             if self.control_connected(key, cancel)? {
                 self.input_radio_normalize(
                     key,
@@ -317,7 +332,7 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if state(&self.node(key)?.kind).is_some() {
+        if association(self.node(key)?).is_some() {
             self.reset_control_for(
                 key,
                 Trigger::RemovingOrMoving {
@@ -357,7 +372,7 @@ impl Draft {
                 .eq(name.local_name().encode_utf16())
         };
         if is(KnownHtmlAttribute::Form)
-            && let Some((_, kind)) = state(&self.node(key)?.kind)
+            && let Some((_, kind)) = association(self.node(key)?)
         {
             self.reset_control_for(
                 key,

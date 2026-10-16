@@ -23,6 +23,7 @@ mod form_owner;
 mod fragment_initialization;
 mod frame;
 mod iframe;
+mod image;
 mod input;
 mod input_color;
 mod input_image;
@@ -71,6 +72,7 @@ pub use iframe::{
     HtmlIframeNativeState, HtmlIframePostConnectionDecision, iframe_loading_became_eager,
     iframe_post_connection,
 };
+pub use image::*;
 pub use input::*;
 pub use input_color::{
     HtmlInputColorValueSource, input_color_standard_failure_fallback, input_color_value_source,

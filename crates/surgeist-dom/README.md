@@ -86,7 +86,8 @@ A later `is` attribute does not rewrite saved creation state.
 native initialization from the actual expanded name through HTML's shared producer.
 It admits generic XML namespaces, source-proved common HTML/SVG/MathML profiles,
 and actual native HTML Canvas/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/
-Textarea/Output/Template/Script and SVG Script families,
+Textarea/Output/Select/Option/Optgroup/Selectedcontent/Details/Base/Link/Img/Picture/
+Source/Template/Script and SVG Script families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
@@ -512,6 +513,73 @@ real null browsing-context and never-navigable proof independently of XML class.
 Insertion runs common steps over inserted shadow-including descendants; this native environment
 proves nonce content remains visible without inventing CSP facts. No API attaches
 a browsing context or advances the closed common tuple into interactive state.
+
+Native standalone Img retains HTML's actual fresh request tuple: Unavailable,
+empty current URL, density1, null preferred dimensions/pending request/last source/
+last auto-sizes width/lazy resumption, and no acquired image data. The canonical
+dimension-attribute source is the Img's own exact identity. `DomNode::as_img`
+reads that tuple, its nullable Form owner and parser flag independently of
+constraint-validation controls. Img is nonlisted; its `form` attribute does not
+select a listed-control owner, and `set_custom_validity` remains inapplicable.
+The existing shared reset cursor operates on its actual nearest Form/tree state.
+Both initial and Slot semantic captures include the real established-current
+association, without inventing loaded resources or external geometry.
+
+Creation and every relevant mutation synchronously start HTML's update-image-data
+algorithm. Its first step waits for the actual node Document to become fully
+active. All admitted native Documents have never been active in a navigable, so
+the wait occurs before the later images-disabled abort/reset. The current request
+stays unchanged; no load/error event, request reset, promise or continuation task
+is reported as completed. Native activation and resource-history installation are
+unadmitted phases, with `ImageProcessingUnavailable` at a reached unsupported
+processing boundary.
+
+`DomImg::suspended_update` reads the latest owned wholly inactive invocation.
+Its opaque `DomImageUpdateId` contains the exact target generation and checked
+nonwrapping invocation order; the readback transfers no execution authority or
+work ownership. Every admitted start advances the high-water mark. A later start
+precludes an older wait's post-activation continuation even when the later one
+has already aborted. Under this native prefix, superseded waits have no resource,
+callback, promise, queued continuation or independent task identity, so the owner
+retains only the latest wait and its exact flags. Flags are replaced per start,
+never ORed. Equal-value src sets request restart-animation; other admitted causes
+use their actual shared decisions. Semantic crossorigin/referrerpolicy states
+are compared through HTML's interpreter. Eager loading checks the actual null
+resumption without manufacturing work.
+
+Source srcset/sizes/media/type/width/height changes update only following direct
+Img siblings of an actual Picture. Source insertion and root removal visit all
+actual direct Img children of the current/old Picture in source order. Img
+insertion into Picture and root removal from Picture start their own updates;
+removal then clears the already-null auto-sizes width. Descendant hooks preserve
+the subtree-root distinction. No temporary fanout list or resource selection is
+fabricated. Audio/Video remain unadmitted native owners; future Source media
+processing requires actual src/network state and a real selection operation.
+
+Adoption into a different Document preserves the image request state and starts
+a new update against that Document. Its actual removal and Form owner reset
+hooks can change the Form association. Detachment preserves waiting ownership, while
+executing any real removal mutation. Clone/import-as-clone and native immutable
+installation start fresh requests/self dimension sources and run their actual
+creation, copied-attribute and tree hooks. Parser history cannot enter through
+that native cause. Old snapshots retain exact prior waits and associations.
+
+The latest wait and high-water are fixed per-node storage admitted by existing
+canonical node capacity; constructors require no new default-zero quota. Ordered
+scans and comparisons use finite canonical node/string/command bounds and poll
+cancellation per step. When nested in Select effects they consume that actual
+work ledger too. Explicit destruction performs removal hooks first, then cancels
+the latest still-owned exact-generation wait. `ImageUpdateCancelled` evidence
+includes its operation, exact flags and `TargetDestroyed` reason, even if the
+latest invocation started earlier in the same batch. Its fallible evidence bank
+is bounded by managed-node capacity and joins the live Select scratch ledger;
+all change output is built before atomic publication. Entirely private
+create/destroy closures fabricate no public target or cancellation identity.
+Detach/adopt do not cancel, pin or rebind old generations. No handoff or scheduler
+API is introduced. Any future real handoff must validate target/invocation
+liveness against its actual owner. ElementState, NodeDocument and ordinary tree/
+attribute changes retain their distinct coverage; rejection restores all state,
+waits, revision and history together.
 
 Native HTML Base retains a nullable historical frozen URL record, its actual
 freezing Document, full external influencing revision and response disposition.

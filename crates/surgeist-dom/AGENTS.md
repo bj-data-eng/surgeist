@@ -42,7 +42,7 @@ fragment children only; explicit adoption and replacement include the supplied
 fragment root. Direct insertion uses an empty hierarchy exclusion list;
 replacement excludes exactly its child. Namespace-aware creation consumes HTML's
 actual-name native requirement/common initializer; never copy its family inventory.
-Common profiles plus actual native Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
+Common profiles plus actual native Img/Picture/Source/Base/Link/Details/Canvas-none/Marquee/Frame/Iframe/Slot/Form/Fieldset/Button/Input/Textarea/Output/Select/Option/Optgroup/Selectedcontent/Template/HTML-Script/SVG-Script families are admitted;
 other special families require their real state/hooks. Canvas consumes shared
 bounded integer recovery and HTML-owned defaults/none-mode transitions. Count
 retained non-default canonical digit strings independently of attributes, and
@@ -350,3 +350,26 @@ false or resource-service implementation. Reject resource-bearing state explicit
 VT CSSOM bindings are no Link sheet installation. Anchor name processing remains
 conditional on actual Anchor admission. Future parsed/resources ingress has a
 separate cause and cannot copy native closed proof or erase retained history.
+
+Standalone Img consumes the shared closed fresh request tuple, with an actual
+self dimension-source identity and association-only Form/parser state. Never
+grant it control-only custom validity or listed form-attribute behavior. Creation
+and real attribute/tree/adoption hooks start source-ordered updates; the actual
+native not-fully-active guard waits before disabled-image reset. Keep latest
+exact invocation flags and checked nonwrapping high-water separately; wholly
+inactive superseded waits can compact only under the selected absence of
+resources/callbacks/promises/continuations/task identity. Later aborted starts
+still supersede older work. Do not OR flags, fabricate activation or complete a
+load. Semantic crossorigin/referrerpolicy/loading decisions stay in HTML.
+Source attribute fanout is following direct Picture Imgs; insertion/root removal
+fanout is all actual current/old direct Imgs. Preserve source order, subtree-root
+distinctions and update-before-auto-width-clear. No media selection state is
+inferred; Audio/Video need their actual owner. Adoption preserves state then
+starts its new actual-document update; clone/native install initialize freshly.
+Fixed latest storage uses canonical node capacity, with per-step cancellation
+and actual scoped Select work. Retirement captures the actual latest wait after
+cleanup, admitting finite exact-generation TargetDestroyed evidence before
+publication; its temporary bank joins the existing live scratch ledger. Private
+create/destroy closures get no fabricated public IDs. Detach/adopt do not cancel,
+pin or rebind. No unused handoff/scheduler API or resource/geometry default is
+added; future transferred work requires its owner's exact liveness policy.

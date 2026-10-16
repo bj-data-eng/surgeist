@@ -171,6 +171,11 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
             Requirement::KnownHtml(KnownHtmlElement::Base) => NativeFamily::Base,
             Requirement::KnownHtml(KnownHtmlElement::Link) => NativeFamily::Link,
+            Requirement::NativeForm(surgeist_html::HtmlNativeFormAssociationKind::Image) => {
+                NativeFamily::Img
+            }
+            Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
+            Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
             Requirement::KnownHtml(KnownHtmlElement::Selectedcontent) => {
                 NativeFamily::Selectedcontent(false)
@@ -269,6 +274,18 @@ impl DomElement {
     }
     pub(crate) fn is_base(&self) -> bool {
         matches!(self.family, NativeFamily::Base)
+    }
+    pub(crate) fn is_img(&self) -> bool {
+        matches!(self.family, NativeFamily::Img)
+    }
+    pub(crate) fn image_tree_element(&self) -> Option<KnownHtmlElement> {
+        match self.family {
+            NativeFamily::Img => Some(KnownHtmlElement::Img),
+            NativeFamily::Picture => Some(KnownHtmlElement::Picture),
+            NativeFamily::Source => Some(KnownHtmlElement::Source),
+            _ => KnownHtmlElement::from_name(self.name())
+                .filter(|tag| matches!(tag, KnownHtmlElement::Audio | KnownHtmlElement::Video)),
+        }
     }
     pub(crate) fn is_link(&self) -> bool {
         matches!(self.family, NativeFamily::Link)

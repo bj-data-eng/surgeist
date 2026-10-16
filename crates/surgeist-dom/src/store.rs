@@ -20,6 +20,7 @@ mod control;
 mod details;
 mod document;
 mod form;
+mod image;
 mod import;
 mod input;
 mod input_processing;
@@ -60,6 +61,7 @@ pub enum DomResource {
     DetailsToggleIntentions,
     DetailsToggleOutput,
     BaseObservations,
+    ImageUpdateCancellations,
 }
 
 /// Typed rejection; no rejected batch publishes any state or identity.
@@ -109,6 +111,8 @@ pub enum DomError {
     SelectCapture(surgeist_html_semantics::HtmlCaptureError),
     SelectSemantic(surgeist_html_semantics::HtmlSemanticFailure),
     LinkProcessingUnavailable,
+    ImageProcessingUnavailable,
+    ImageUpdateExhausted,
     BaseFacts(crate::DomBaseFactsError),
     BaseWorkLimit {
         limit: u64,
@@ -439,6 +443,11 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    ImageUpdateCancelled {
+        update: crate::DomImageUpdateId,
+        flags: surgeist_html::HtmlImageUpdateFlags,
+        reason: crate::DomImageUpdateCancellationReason,
+    },
     /// Template contents ownership or a Document's appropriate-owner cache changed.
     TemplateRelations,
     /// Recompute Document-scoped URL/base-dependent facts and consumers.
@@ -599,6 +608,7 @@ pub(crate) struct Node {
     pub(crate) base: Option<crate::base::BaseState<NodeId>>,
     pub(crate) base_document: Option<crate::base::BaseDocument<NodeId>>,
     pub(crate) link: Option<crate::base::LinkState<NodeId>>,
+    pub(crate) image: Option<crate::image::ImageState<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -1021,6 +1031,7 @@ struct DraftNode {
     base: Option<crate::base::BaseState<Key>>,
     base_document: Option<crate::base::BaseDocument<Key>>,
     link: Option<crate::base::LinkState<Key>>,
+    image: Option<crate::image::ImageState<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -1036,6 +1047,7 @@ struct Draft {
     cancelled_selects: Vec<(Option<u64>, NodeId)>,
     details_intentions: Vec<details::Pending<Key>>,
     cancelled_details: Vec<details::Pending<NodeId>>,
+    cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
     effects: Vec<select::EffectFrame>,
     effects_running: bool,
     effect_bytes: usize,
@@ -1077,6 +1089,13 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.initialize_template_contents(key, limits, cancel)?;
+        if self.node(key)?.image.is_some() {
+            self.start_image_update(
+                key,
+                surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                cancel,
+            )?;
+        }
         if matches!(&self.node(key)?.kind,DomNodeKind::Element(element) if element.input_state().is_some())
         {
             self.initialize_input(key, limits, cancel)?;
@@ -1108,6 +1127,10 @@ impl Draft {
                         .transpose()?,
                     link: node
                         .link
+                        .as_ref()
+                        .map(|b| b.map(|id| Key::Existing(id.slot))),
+                    image: node
+                        .image
                         .as_ref()
                         .map(|b| b.map(|id| Key::Existing(id.slot))),
                     script: node
@@ -1166,6 +1189,7 @@ impl Draft {
             cancelled_selects: Vec::new(),
             details_intentions: details::draft(&dom.state.details_intentions, cancelled)?,
             cancelled_details: Vec::new(),
+            cancelled_images: None,
             effects: Vec::new(),
             effects_running: false,
             effect_bytes: 0,
@@ -1239,7 +1263,7 @@ impl Draft {
             self.slot_removal(node, parent, limits, cancelled)?;
             // HTML removing steps observe the already detached subtree. Its
             // ordinary and shadow descendants retain their old node documents.
-            self.native_removing_steps(node, limits, cancelled)?;
+            self.native_removing_steps(node, parent, limits, cancelled)?;
             self.children_changed(parent, limits, cancelled)?;
         }
         Ok(())
@@ -1282,6 +1306,8 @@ impl Draft {
             .then(crate::base::BaseState::fresh);
         let link = matches!(&kind,DomNodeKind::Element(e) if e.is_link())
             .then(crate::base::LinkState::fresh);
+        let image = matches!(&kind,DomNodeKind::Element(e) if e.is_img())
+            .then(|| crate::image::ImageState::fresh(key));
         let base_document =
             matches!(&kind, DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
         self.created.push(Some(DraftNode {
@@ -1289,6 +1315,7 @@ impl Draft {
             kind,
             base,
             link,
+            image,
             base_document,
             parent: None,
             children: Vec::new(),
@@ -1571,6 +1598,7 @@ impl Draft {
                 for &key in &closure {
                     self.cancel_select_tasks(key, cancelled)?;
                     self.cancel_details_intentions(key, cancelled)?;
+                    self.cancel_image_update(key, limits, cancelled)?;
                 }
                 for key in closure {
                     check_cancel(cancelled)?;
@@ -1793,6 +1821,7 @@ impl Draft {
                     .map(|b| b.map(id))
                     .transpose()?,
                 link: source.link.as_ref().map(|b| b.map(id)),
+                image: source.image.as_ref().map(|b| b.map(id)),
                 form_past_names: source
                     .form_past_names
                     .as_ref()
@@ -1824,6 +1853,17 @@ impl Draft {
             units: self.units,
         };
         let mut changes = difference(dom.owner, &dom.state, &state)?;
+        if let Some(cancelled_images) = &self.cancelled_images {
+            for item in cancelled_images.iter() {
+                check_cancel(cancelled)?;
+                reserve(&mut changes, 1)?;
+                changes.push(DomChange::ImageUpdateCancelled {
+                    update: item.update,
+                    flags: item.flags,
+                    reason: crate::DomImageUpdateCancellationReason::TargetDestroyed,
+                });
+            }
+        }
 
         for (operation, select) in cancellations {
             reserve(&mut changes, 1)?;
@@ -1959,6 +1999,7 @@ fn difference(owner: DomOwnerId, old: &State, new: &State) -> Result<Vec<DomChan
                         || node.form_past_names != current.form_past_names
                         || node.base != current.base
                         || node.link != current.link
+                        || node.image != current.image
                         || node.script != current.script
                         || node.option_select != current.option_select)
                 {

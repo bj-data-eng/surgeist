@@ -53,6 +53,15 @@ unit at a time, preserving all other units. Keep its state across chunks of one
 string; a trailing CR emits LF immediately and needs no finish step. Consumers
 own per-unit admission, cancellation and output storage.
 
+`HtmlImgNativeState` retains the closed fresh standalone image request tuple;
+it is independent of Input Image Button history. Shared image decisions preserve
+the inactive-Document wait before image-support checks, exact per-invocation
+flags, latest-started supersession even after a later abort, semantic attribute
+changes and Img/Source Picture mutation fanout. Consumers retain canonical
+dimension-source/form identities, checked invocation order, waiting work,
+retirement, finite admission and atomic publication. These values do not execute
+resources, complete a suspended update or replace retained image history.
+
 `reflected_element_attribute_change` owns the exact name/namespace clear rule
 for caller-established nullable Element reflected properties, including redundant
 attribute sets. `HtmlReflectedElementSetter` supplies the asymmetric null/non-null

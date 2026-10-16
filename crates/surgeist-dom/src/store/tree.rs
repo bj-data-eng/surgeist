@@ -112,6 +112,13 @@ impl Draft {
                 pending.push((root, document));
             }
             self.node_mut(node).document = document;
+            if self.node(node)?.image.is_some() {
+                self.start_image_update(
+                    node,
+                    surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                    cancelled,
+                )?;
+            }
             if let Some(contents) =
                 self.template_adoption_target(node, document, limits, cancelled)?
             {
@@ -326,6 +333,7 @@ impl Draft {
     pub(super) fn native_removing_steps(
         &mut self,
         root: Key,
+        old_parent: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -344,6 +352,13 @@ impl Draft {
             self.navigable_removing_node(key, &mut || check_cancel(cancel))?;
             self.script_removing_node(key, cancel)?;
             self.select_removal(key, limits, cancel)?;
+            self.image_tree_change(
+                key,
+                surgeist_html::HtmlImageTreeChange::Removed,
+                root,
+                Some(old_parent),
+                cancel,
+            )?;
             self.control_removing_node(key, cancel)?;
             self.base_tree_change(key, limits, cancel)?;
         }
@@ -416,6 +431,13 @@ impl Draft {
                 }
             }
             self.control_insertion_node(key, cancel)?;
+            self.image_tree_change(
+                key,
+                surgeist_html::HtmlImageTreeChange::Inserted,
+                root,
+                None,
+                cancel,
+            )?;
             self.base_tree_change(key, limits, cancel)?;
             self.select_insertion(key, limits, cancel)?;
             self.details_exclusivity(
