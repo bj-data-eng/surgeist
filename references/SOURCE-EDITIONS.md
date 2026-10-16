@@ -528,6 +528,21 @@ metadata only. The issue records the explicit Surgeist null-range policy
 separately from those source definitions; the source does not specify that
 branch. Non-null ranges retain their actual identity and live-update obligation.
 
+### Initial hosted Permissions Policy creation
+
+For [#1218](https://github.com/bj-data-eng/surgeist/issues/1218), select
+Permissions Policy at W3C commit
+`29398046f1e0cb45c091adda853df74925dc740a` (22 September 2026), complete
+`index.bs` SHA-256
+`51a87c5f4008510e501b5a4fe553baf8271e0e3af6ce6e8feece987639794c9a`.
+The [bounded creation reference](permissions-policy-native-creation--29398046f1e0.md)
+retains policy records, allowlist matching, declared origin, iframe attributes
+and initial inheritance algorithms, plus opaque-origin equality from the
+existing HTML edition. The selected native feature roster and opaque-origin
+projection are recorded separately in #1218. This does not select response
+policies, reporting, arbitrary-origin introspection or general navigation.
+The existing pinned Fullscreen definition supplies its feature and default.
+
 ### HTML autocomplete credential recovery
 
 For [#1133](https://github.com/bj-data-eng/surgeist/issues/1133), the

@@ -346,6 +346,25 @@ The explicit Surgeist null-range policy remains in the owning issue, separate
 from the source excerpts. No new source edition, full Selection API, editing
 command implementation or project-license change is selected.
 
+## Initial Permissions Policy creation — 2026-10-16
+
+The [bounded creation reference](permissions-policy-native-creation--29398046f1e0.md)
+manually converts selected definitions and complete initial-creation algorithms
+from W3C Permissions Policy commit `29398046f1e0cb45c091adda853df74925dc740a`.
+It records the exact original hash and line spans, normalizes Bikeshed markup
+and whitespace, and preserves branch and algorithm order. Definition lists
+become paragraphs; the selected material has no complex tables or diagrams.
+External URL/CSP expression matching is named but not reproduced. Editorial
+scope notes distinguish the selected opaque-target projection from a complete
+stored container policy. The complete declared-origin algorithm remains present.
+
+HTML opaque-origin identity and comparison definitions are manually converted
+from the existing pinned complete HTML snapshot, with exact source ranges and
+attribution. Fullscreen's feature/default definition links the existing capture.
+W3C and WHATWG licenses and modification notices accompany their respective
+material. The owning issue records native product choices separately; no
+response-header/reporting engine or repository-license change is selected.
+
 ## HTML autocomplete credential determination — 2026-10-11
 
 The [WebAuthn edge determination](html-autocomplete-webauthn--877d6146487f.md)

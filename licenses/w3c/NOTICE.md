@@ -1439,6 +1439,27 @@ whitespace/emphasis normalization, absolute links and provenance/scope notes.
 The unresolved range token and missing selection/getSelection targets remain
 disclosed. No editing-command implementation is incorporated.
 
+## Initial Permissions Policy creation
+
+Copyright © 2026 W3C® (MIT, ERCIM, Keio, Beihang). This software or document
+includes material copied from or derived from
+[Permissions Policy](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/index.bs).
+
+The [bounded source reference](../../references/permissions-policy-native-creation--29398046f1e0.md)
+retains exact source provenance for initial policy records, allowlist matching,
+declared origin, iframe policy attributes and inheritance/creation algorithms.
+Changes by Surgeist on 2026-10-16: bounded selection, manual Markdown conversion,
+markup and whitespace normalization, resolved links and explicit editorial scope
+notes. The selected algorithms retain their order and conditions. External
+expression matching, response-policy processing and reporting are not reproduced.
+
+The [upstream license declaration at the selected pin](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/LICENSE.md)
+licenses reports under the complete local
+[W3C Software and Document License, 2015](software-license-2015.txt) and identifies
+the W3C CLA for specification contributions. The full license and warranty
+disclaimer accompany this material. No endorsement is implied; the repository's
+own license is unchanged.
+
 ## HTML-delegated SVG script processing
 
 Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document

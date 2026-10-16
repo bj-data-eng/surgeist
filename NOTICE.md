@@ -498,6 +498,17 @@ boundary-point/live-range definitions under the existing
 [WHATWG license and attribution](licenses/whatwg/NOTICE.md#designmode-range-definitions--2026-10-16).
 Its WebKit section contains behavioral metadata only.
 
+## Initial native Permissions Policy source
+
+The [bounded Permissions Policy creation reference](references/permissions-policy-native-creation--29398046f1e0.md)
+contains material derived from W3C Permissions Policy commit
+`29398046f1e0cb45c091adda853df74925dc740a`, with the original source identity,
+copyright and [W3C attribution and modification notice](licenses/w3c/NOTICE.md#initial-permissions-policy-creation).
+The existing complete [W3C Software and Document License, 2015](licenses/w3c/software-license-2015.txt)
+accompanies that material. HTML opaque-origin definitions retain their separate
+[WHATWG license and attribution](licenses/whatwg/NOTICE.md#permissions-policy-opaque-origin-definitions--2026-10-16).
+This is implementation-support source material, not a complete policy engine.
+
 ## HTML-delegated SVG script material
 
 The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) supplies HTML-delegated script

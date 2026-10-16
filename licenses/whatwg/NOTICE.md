@@ -336,3 +336,20 @@ The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
 International terms for this specification prose. Its BSD 3-Clause provision
 applies only to portions incorporated into code. The separate editing paragraph
 and WebKit metadata are identified under their own source notices in the reference.
+
+## Permissions Policy opaque-origin definitions — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded Permissions Policy reference](../../references/permissions-policy-native-creation--29398046f1e0.md)
+retains opaque-origin, same-origin and same-origin-domain definitions from the
+existing HTML revision `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete
+snapshot SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`,
+raw lines 64314–64328 and 64370–64397. Changes by Surgeist on 2026-10-16:
+bounded selection, manual Markdown conversion, normalized markup/whitespace,
+links and explicit editorial consequences. No endorsement is implied.
+
+The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for this specification prose. Its BSD 3-Clause provision
+applies only to portions incorporated into code. W3C policy material is identified
+separately under its own notice and license in the reference.
