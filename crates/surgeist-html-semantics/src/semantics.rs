@@ -197,6 +197,16 @@ pub struct HtmlSemanticUsage {
     nested_output_records: usize,
 }
 impl HtmlSemanticUsage {
+    pub(crate) fn controlled_snapshot(words: [usize; 6]) -> Self {
+        Self {
+            work: words[0],
+            output_records: words[1],
+            scratch_records: words[2],
+            allocated_bytes: words[3],
+            peak_scratch_records: words[4],
+            nested_output_records: words[5],
+        }
+    }
     pub fn work(self) -> usize {
         self.work
     }
@@ -1162,6 +1172,14 @@ pub struct HtmlSemanticReport {
     results: Vec<HtmlSemanticResult>,
 }
 impl HtmlSemanticReport {
+    pub(crate) fn results_capacity_bytes(
+        &self,
+    ) -> Result<usize, crate::HtmlOptionValueControlError> {
+        self.results
+            .capacity()
+            .checked_mul(std::mem::size_of::<HtmlSemanticResult>())
+            .ok_or(crate::HtmlOptionValueControlError::RepresentationExhausted)
+    }
     pub fn qualification(&self) -> &HtmlSemanticQualification {
         &self.qualification
     }
@@ -1219,6 +1237,8 @@ pub enum HtmlSemanticFailureKind {
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),
     IntrinsicUnavailable,
+    /// The enclosing controlled OptionValue execution stopped before an action.
+    ControlledOptionValue(crate::HtmlOptionValueControlError),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticFailure {
@@ -1260,6 +1280,7 @@ pub struct HtmlSemanticSession<'a> {
     qualification: Arc<HtmlSemanticQualification>,
     usage: HtmlSemanticUsage,
     failure: Option<HtmlSemanticFailure>,
+    option_control: Option<crate::controlled_option_value::QueryControl<'a>>,
     #[cfg(test)]
     template_cancellation: Option<(template::CancellationPoint, HtmlSemanticCancellation)>,
 }
@@ -1316,12 +1337,19 @@ impl<'a> HtmlSemanticSession<'a> {
             }),
             usage: HtmlSemanticUsage::default(),
             failure: None,
+            option_control: None,
             #[cfg(test)]
             template_cancellation: None,
         })
     }
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.usage
+    }
+    pub(crate) fn control_option_value(
+        &mut self,
+        control: crate::controlled_option_value::QueryControl<'a>,
+    ) {
+        self.option_control = Some(control);
     }
     pub fn failure(&self) -> Option<&HtmlSemanticFailure> {
         self.failure.as_ref()
@@ -1429,6 +1457,11 @@ impl<'a> HtmlSemanticSession<'a> {
         if let Some(failure) = &self.failure {
             return Err(failure.clone());
         }
+        if let Some(control) = self.option_control {
+            control
+                .poll()
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
         if self.cancellation.is_cancelled() {
             return Err(self.stop(HtmlSemanticFailureKind::Cancelled));
         }
@@ -1445,6 +1478,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 limit: self.limits.work,
                 required,
             }));
+        }
+        if let Some(control) = self.option_control {
+            control
+                .step(work)
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
         }
         self.usage.work = required;
         Ok(())
@@ -1887,8 +1925,16 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let before = capacity;
         self.charge(1)?;
+        if let Some(control) = self.option_control {
+            control
+                .before_growth(capacity, needed, record_size, resource)
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
         let actual_capacity =
             reserve().map_err(|_| self.stop(HtmlSemanticFailureKind::AllocationFailed))?;
+        let parent_result = self
+            .option_control
+            .map(|control| control.after_growth(capacity, actual_capacity, record_size, resource));
         let actual_growth = actual_capacity - before;
         let actual = retained
             .checked_add(actual_growth)
@@ -1920,6 +1966,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 required: bytes,
             }));
         }
+        if let Some(result) = parent_result {
+            result.map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
         self.poll()
     }
     fn reserve_scratch<T>(
@@ -1944,6 +1993,26 @@ impl<'a> HtmlSemanticSession<'a> {
         // Only capacities previously recorded by reserve_scratch are released.
         // Cleanup is unconditional, including after a sticky terminal stop.
         self.usage.scratch_records -= capacity;
+        if let Some(control) = self.option_control {
+            control.release_scratch();
+        }
+    }
+
+    fn option_string_copy(&mut self, value: &DocumentString) -> Result<(), HtmlSemanticFailure> {
+        if let Some(control) = self.option_control {
+            control
+                .string_copy(value)
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
+        Ok(())
+    }
+    fn option_string_header(&mut self) -> Result<(), HtmlSemanticFailure> {
+        if let Some(control) = self.option_control {
+            control
+                .string_header()
+                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
+        Ok(())
     }
     fn numeric_budget(&mut self, digits: usize) -> Result<usize, HtmlSemanticFailure> {
         // One bounded atomic numeric operation: scan, canonical write, and

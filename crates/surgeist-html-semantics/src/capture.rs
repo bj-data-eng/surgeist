@@ -19,8 +19,8 @@ use std::{
 };
 
 mod construction;
-mod preflight;
-mod storage;
+pub(crate) mod preflight;
+pub(crate) mod storage;
 pub use construction::*;
 pub use storage::{HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError};
 
@@ -682,6 +682,9 @@ pub struct HtmlCapturedProcessingInstruction {
     data: DocumentString,
 }
 impl HtmlCapturedProcessingInstruction {
+    pub(crate) fn controlled(target: DocumentString, data: DocumentString) -> Self {
+        Self { target, data }
+    }
     pub fn target(&self) -> &DocumentString {
         &self.target
     }
@@ -772,6 +775,7 @@ pub struct HtmlCapture(Arc<CaptureData>);
 pub struct HtmlCaptureBuilder {
     data: CaptureData,
     limits: HtmlCaptureLimits,
+    controlled: bool,
 }
 
 fn reserve<T>(v: &mut Vec<T>, additional: usize) -> Result<(), HtmlCaptureError> {
@@ -911,7 +915,20 @@ impl HtmlCaptureBuilder {
                 usage: HtmlCaptureUsage::default(),
             },
             limits,
+            controlled: false,
         }
+    }
+    pub(crate) fn enable_controlled_storage(&mut self) {
+        self.controlled = true;
+    }
+    pub(crate) fn controlled_data_header_bytes() -> usize {
+        std::mem::size_of::<CaptureData>()
+    }
+    pub(crate) fn validate_controlled_document(
+        &self,
+        subject: &HtmlCaptureBuilderSubject,
+    ) -> Result<(), HtmlCaptureError> {
+        self.require(self.index(subject)?, HtmlCaptureSubjectKind::Document)
     }
     pub fn usage(&self) -> HtmlCaptureUsage {
         self.data.usage
@@ -1023,7 +1040,18 @@ impl HtmlCaptureBuilder {
         parent: Parent,
         usage: HtmlCaptureUsage,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
-        reserve(&mut self.data.records, 1)?;
+        self.push_controlled(kind, document, parent, usage, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn push_controlled<E>(
+        &mut self,
+        kind: HtmlCapturedNodeKind,
+        document: usize,
+        parent: Parent,
+        usage: HtmlCaptureUsage,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
+        preflight::reserve_storage(&mut self.data.records, 1, true, self.controlled, admit)?;
         let index = self.data.records.len();
         let container = matches!(
             kind,
@@ -1052,6 +1080,17 @@ impl HtmlCaptureBuilder {
         scripting: HtmlScriptingStatus,
         registry: HtmlCaptureRegistryInput,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
+        self.add_document_controlled(mode, scripting, registry, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    pub(crate) fn add_document_controlled<E>(
+        &mut self,
+        mode: HtmlDocumentMode,
+        scripting: HtmlScriptingStatus,
+        registry: HtmlCaptureRegistryInput,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         let registry = self.registry(registry)?;
         let usage = self.admit(
             1,
@@ -1061,7 +1100,7 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
-        self.push(
+        self.push_controlled(
             HtmlCapturedNodeKind::Document(HtmlCapturedDocument {
                 mode,
                 scripting,
@@ -1081,6 +1120,7 @@ impl HtmlCaptureBuilder {
             self.data.records.len(),
             Parent::Root,
             usage,
+            admit,
         )
     }
     /// Establishes a target-only policy observation associated with this
@@ -1231,6 +1271,26 @@ impl HtmlCaptureBuilder {
         is_value: HtmlCapturedIsValue,
         registry: HtmlCaptureRegistryInput,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
+        self.add_element_controlled(
+            document,
+            name,
+            attributes,
+            is_value,
+            registry,
+            &mut preflight::ordinary,
+        )
+        .map_err(preflight::ordinary_error)
+    }
+    pub(crate) fn add_element_controlled<E>(
+        &mut self,
+        document: &HtmlCaptureBuilderSubject,
+        name: QualifiedName,
+        attributes: OrderedAttributes,
+        is_value: HtmlCapturedIsValue,
+        registry: HtmlCaptureRegistryInput,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         let document = self.index(document)?;
         self.require(document, HtmlCaptureSubjectKind::Document)?;
         let registry = self.registry(registry)?;
@@ -1242,8 +1302,10 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
+        preflight::work(admit, 5)?;
         let mut units = name_units(&name)?;
         for a in attributes.iter() {
+            preflight::work(admit, 7)?;
             units = add(units, add(name_units(a.name())?, a.value().len())?)?;
         }
         if let HtmlCapturedIsValue::Value(v) = &is_value {
@@ -1257,12 +1319,13 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
+        preflight::work(admit, add(name_units(&name)?, 16)?)?;
         let template = if html(&name, "template") {
             TemplateAssociation::Unavailable
         } else {
             TemplateAssociation::Absent
         };
-        self.push(
+        self.push_controlled(
             HtmlCapturedNodeKind::Element(HtmlCapturedElement {
                 name,
                 attributes,
@@ -1278,6 +1341,7 @@ impl HtmlCaptureBuilder {
             document,
             Parent::Unavailable,
             usage,
+            admit,
         )
     }
     /// Adds a plain fragment with explicit document and an unavailable host.
@@ -1305,10 +1369,21 @@ impl HtmlCaptureBuilder {
         kind: HtmlCapturedNodeKind,
         units: usize,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
+        self.add_leaf_controlled(document, kind, units, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    pub(crate) fn add_leaf_controlled<E>(
+        &mut self,
+        document: &HtmlCaptureBuilderSubject,
+        kind: HtmlCapturedNodeKind,
+        units: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
+        preflight::work(admit, 7)?;
         let document = self.index(document)?;
         self.require(document, HtmlCaptureSubjectKind::Document)?;
         let usage = self.admit(1, 1, 0, units, 0, 0)?;
-        self.push(kind, document, Parent::Unavailable, usage)
+        self.push_controlled(kind, document, Parent::Unavailable, usage, admit)
     }
     pub fn add_text(
         &mut self,
@@ -1680,7 +1755,7 @@ impl HtmlCaptureBuilder {
         self.establish_children_controlled(parent, children, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)
     }
-    fn establish_children_controlled<E>(
+    pub(crate) fn establish_children_controlled<E>(
         &mut self,
         parent: &HtmlCaptureBuilderSubject,
         children: &[HtmlCaptureBuilderSubject],
@@ -1700,17 +1775,19 @@ impl HtmlCaptureBuilder {
         }
         self.admit(0, children.len(), 0, 0, 0, 0)?;
         let mut indices = Vec::new();
-        preflight::reserve(&mut indices, children.len(), admit)?;
+        preflight::reserve_storage(&mut indices, children.len(), false, self.controlled, admit)?;
         let mut edges = Vec::new();
-        preflight::reserve(&mut edges, children.len(), admit)?;
-        let mut seen = HashSet::new();
+        preflight::reserve_storage(&mut edges, children.len(), false, self.controlled, admit)?;
+        let mut seen = (!self.controlled).then(HashSet::new);
         admit(preflight::Action::Reserve {
             entries: children.len(),
             record_bytes: std::mem::size_of::<usize>(),
         })
         .map_err(preflight::Failure::Admission)?;
-        seen.try_reserve(children.len())
-            .map_err(|_| preflight::Failure::AllocationFailed)?;
+        if let Some(seen) = &mut seen {
+            seen.try_reserve(children.len())
+                .map_err(|_| preflight::Failure::AllocationFailed)?;
+        }
         preflight::work(admit, 0)?;
         preflight::work(
             admit,
@@ -1722,7 +1799,11 @@ impl HtmlCaptureBuilder {
         for child in children {
             preflight::work(admit, 6)?;
             let child = self.index(child)?;
-            if !seen.insert(child) {
+            let duplicate = match &mut seen {
+                Some(seen) => !seen.insert(child),
+                None => indices.contains(&child),
+            };
+            if duplicate {
                 return Err(preflight::Failure::Capture(
                     HtmlCaptureError::DuplicateChild,
                 ));
@@ -1749,7 +1830,10 @@ impl HtmlCaptureBuilder {
         )?;
         if self.data.records[parent].dependents.iter().any(|i| {
             matches!(self.data.records[*i].parent, Parent::Index(p) if p == parent)
-                && !seen.contains(i)
+                && !match &seen {
+                    Some(seen) => seen.contains(i),
+                    None => indices.contains(i),
+                }
         }) {
             return Err(preflight::Failure::Capture(
                 HtmlCaptureError::ParentChildConflict,
@@ -1767,7 +1851,17 @@ impl HtmlCaptureBuilder {
         preflight::depths(self, &edges, &mut scratch, admit)?;
         let depths = scratch.into_depths();
         preflight::work(admit, add(self.data.records.len(), edges.len())?)?;
-        reserve(&mut self.data.records[parent].dependents, edges.len())?;
+        preflight::reserve_storage(
+            &mut self.data.records[parent].dependents,
+            edges.len(),
+            true,
+            self.controlled,
+            admit,
+        )?;
+        admit(preflight::Action::StorageTransfer {
+            bytes: indices.capacity() * std::mem::size_of::<usize>(),
+        })
+        .map_err(preflight::Failure::Admission)?;
         for (child, _) in edges {
             self.data.records[child].parent = Parent::Index(parent);
             self.data.records[parent].dependents.push(child);
@@ -2006,13 +2100,13 @@ impl HtmlCaptureBuilder {
         Ok(self.publish())
     }
 
-    fn publish(self) -> HtmlCapture {
+    pub(crate) fn publish(self) -> HtmlCapture {
         HtmlCapture(Arc::new(self.data))
     }
 
     /// Validates borrowed data before the caller moves it into the immutable wrapper.
     /// Admission failure retains this exact builder and the caller's actual scratch.
-    fn preflight_finish<E>(
+    pub(crate) fn preflight_finish<E>(
         &self,
         scratch: &mut preflight::DepthScratch,
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,

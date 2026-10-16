@@ -48,6 +48,45 @@ payload, including actual UTF-16 capacity; it excludes unselected banks and
 opaque Arc bookkeeping. A consumer storing that same header inline subtracts
 exactly the public value's size before adding the receipt's backing.
 
+`HtmlControlledOptionValueCapture` is a narrow ordinary-tree capture and one
+OptionValue query under an additional caller envelope. Borrowed add operations
+admit retained names, attributes and strings before cloning. The same capture
+validation and OptionValue interpreter remain authoritative. Documents use the
+existing query-local Disabled scripting and Null registry profile; this does not
+certify parser construction or a live Document environment. The controlled
+children validator uses admitted indices for membership checks under its existing
+quadratic work bound; ordinary builders retain their HashSet representation.
+
+Each `HtmlOptionValueEnvelope` supplies the **total** producer live byte/UTF16
+allowance after the caller excludes the producer's current graph once from its
+other storage, and the remaining work for that call. Between calls, callers add
+the cached O(1) `storage_usage()` to their own mapping/storage admission. The
+receipt includes the fixed owner header once, actual backing capacities and
+shared string/attribute payloads per retained occurrence. Context and session
+borrow the capture; their identities and report qualification do not own another
+capture graph. Empty-language Vec headers, cancellation payload and qualification
+payloads are admitted independently of the original child allocation tariff.
+
+Growth admits the complete requested replacement bank while its old bank is
+live, then uses `try_reserve_exact`. Actual reported capacity is recorded and
+checked immediately. This is a representation-capacity strategy, not a promise
+about allocator metadata, rounding, physical RSS or recoverable Arc allocation.
+Temporary reservation peaks can conservatively retain scratch admission through
+the bounded call; cached storage between calls describes the actual retained
+graph. Fixed setup work, capture reads/copies and original query work remain
+monotone; refused calls return usage and preserve actual retained capacity.
+Original child limits and first typed failures remain independent. Allocation
+attempt failure stays distinct from representation exhaustion in this front.
+
+Finish validates before replacing the builder. Query uses a local original
+context/session and retains the original report. Its first terminal failure is
+sticky, including a late parent stop after child completion; an owner never
+starts a replacement query session to refund that usage. A Source retry creates
+a new owner using the caller's preserved remaining parent/child allowances.
+Callers record work/child usage on every outcome, including constructor refusal.
+They admit a new occurrence of the borrowed report value while this owner/report
+is still live, then drop the owner after transferring their output custody.
+
 Capture builders can establish A/Area URL cache history with the actual historical
 parsing Document, independently of current node-Document membership after adoption.
 Fresh/cleared null, observed parse failure and unavailable history remain distinct.

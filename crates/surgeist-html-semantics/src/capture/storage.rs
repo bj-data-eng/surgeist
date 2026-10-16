@@ -205,6 +205,38 @@ impl HtmlCaptureRetainedStorageUsage {
     }
 }
 
+pub(crate) fn option_value_string<E>(
+    value: &DocumentString,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError<E>> {
+    let mut usage = HtmlCaptureRetainedStorageUsage { bytes: 0, units: 0 };
+    usage.string(value, step)?;
+    Ok(usage)
+}
+
+pub(crate) fn option_value_element<E>(
+    name: &QualifiedName,
+    attributes: &OrderedAttributes,
+    saved_is: Option<&DocumentString>,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError<E>> {
+    let mut usage = HtmlCaptureRetainedStorageUsage { bytes: 0, units: 0 };
+    usage.name(name, step)?;
+    step().map_err(HtmlCaptureStorageError::Interrupted)?;
+    let values = attributes.shared_attributes();
+    usage.add_bytes(size_of::<Vec<surgeist_html::Attribute>>())?;
+    usage.bank::<surgeist_html::Attribute, E>(values.capacity())?;
+    for attribute in values.iter() {
+        step().map_err(HtmlCaptureStorageError::Interrupted)?;
+        usage.name(attribute.name(), step)?;
+        usage.string(attribute.value(), step)?;
+    }
+    if let Some(value) = saved_is {
+        usage.string(value, step)?;
+    }
+    Ok(usage)
+}
+
 /// Checked arithmetic failure or the caller's unchanged first interruption.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureStorageError<E> {

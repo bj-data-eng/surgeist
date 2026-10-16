@@ -6,13 +6,27 @@ use std::convert::Infallible;
 
 /// Actual finite work and logical scratch reservation observations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum Action {
+pub(crate) enum Action {
     Work(usize),
-    Reserve { entries: usize, record_bytes: usize },
+    Reserve {
+        entries: usize,
+        record_bytes: usize,
+    },
+    StorageBefore {
+        requested: usize,
+    },
+    StorageAfter {
+        old: usize,
+        actual: usize,
+        retained: bool,
+    },
+    StorageTransfer {
+        bytes: usize,
+    },
 }
 
 #[derive(Debug)]
-pub(super) enum Failure<E> {
+pub(crate) enum Failure<E> {
     Admission(E),
     Capture(HtmlCaptureError),
     AllocationFailed,
@@ -33,6 +47,9 @@ pub(super) fn ordinary(action: Action) -> Result<(), Infallible> {
             entries: _entries,
             record_bytes: _record_bytes,
         } => {}
+        Action::StorageBefore { .. }
+        | Action::StorageAfter { .. }
+        | Action::StorageTransfer { .. } => {}
     }
     Ok(())
 }
@@ -47,7 +64,7 @@ pub(super) fn ordinary_error(error: Failure<Infallible>) -> HtmlCaptureError {
 }
 
 /// Caller-owned actual temporary allocations survive a refused borrowed pass.
-pub(super) struct DepthScratch {
+pub(crate) struct DepthScratch {
     incoming: Vec<Option<usize>>,
     state: Vec<u8>,
     depths: Vec<usize>,
@@ -55,7 +72,7 @@ pub(super) struct DepthScratch {
 }
 
 impl DepthScratch {
-    pub(super) const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             incoming: Vec::new(),
             state: Vec::new(),
@@ -81,15 +98,56 @@ pub(super) fn reserve<T, E>(
     entries: usize,
     admit: &mut impl FnMut(Action) -> Result<(), E>,
 ) -> Result<(), Failure<E>> {
+    reserve_storage(values, entries, false, false, admit)
+}
+
+pub(super) fn reserve_storage<T, E>(
+    values: &mut Vec<T>,
+    entries: usize,
+    retained: bool,
+    controlled: bool,
+    admit: &mut impl FnMut(Action) -> Result<(), E>,
+) -> Result<(), Failure<E>> {
     admit(Action::Reserve {
         entries,
         record_bytes: std::mem::size_of::<T>(),
     })
     .map_err(Failure::Admission)?;
     work(admit, values.len())?;
-    values
-        .try_reserve(entries)
-        .map_err(|_| Failure::AllocationFailed)?;
+    let old = values
+        .capacity()
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
+    let needed = values
+        .len()
+        .checked_add(entries)
+        .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
+    if needed > values.capacity() {
+        let requested = needed
+            .checked_mul(std::mem::size_of::<T>())
+            .filter(|n| *n <= isize::MAX as usize)
+            .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
+        admit(Action::StorageBefore { requested }).map_err(Failure::Admission)?;
+        if controlled {
+            values
+                .try_reserve_exact(entries)
+                .map_err(|_| Failure::AllocationFailed)?;
+        } else {
+            values
+                .try_reserve(entries)
+                .map_err(|_| Failure::AllocationFailed)?;
+        }
+        let actual = values
+            .capacity()
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
+        admit(Action::StorageAfter {
+            old,
+            actual,
+            retained,
+        })
+        .map_err(Failure::Admission)?;
+    }
     work(admit, 0)
 }
 
@@ -134,7 +192,7 @@ pub(super) fn depths<E>(
     scratch.state.clear();
     scratch.depths.clear();
     scratch.path.clear();
-    reserve(&mut scratch.incoming, n, admit)?;
+    reserve_storage(&mut scratch.incoming, n, false, builder.controlled, admit)?;
     for record in &builder.data.records {
         work(admit, 4)?;
         scratch.incoming.push(record.incoming());
@@ -143,17 +201,17 @@ pub(super) fn depths<E>(
         work(admit, 3)?;
         scratch.incoming[child] = Some(parent);
     }
-    reserve(&mut scratch.state, n, admit)?;
+    reserve_storage(&mut scratch.state, n, false, builder.controlled, admit)?;
     for _ in 0..n {
         work(admit, 1)?;
         scratch.state.push(0);
     }
-    reserve(&mut scratch.depths, n, admit)?;
+    reserve_storage(&mut scratch.depths, n, false, builder.controlled, admit)?;
     for _ in 0..n {
         work(admit, 1)?;
         scratch.depths.push(0);
     }
-    reserve(&mut scratch.path, n, admit)?;
+    reserve_storage(&mut scratch.path, n, false, builder.controlled, admit)?;
     for start in 0..n {
         work(admit, 2)?;
         if scratch.state[start] != 0 {
@@ -194,6 +252,53 @@ pub(super) fn depths<E>(
 mod tests {
     use super::*;
     use crate::*;
+
+    #[test]
+    fn controlled_record_growth_joins_external_mapping_and_the_full_old_bank() {
+        use std::sync::atomic::AtomicBool;
+        let cancel = AtomicBool::new(false);
+        let generous = HtmlOptionValueEnvelope::new(1_000_000, 0, 100_000);
+        let mut owner = HtmlControlledOptionValueCapture::new(
+            HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0),
+            HtmlHostFactsRevision::fresh(),
+            generous,
+            &cancel,
+        )
+        .unwrap();
+        let doc = owner
+            .add_document(HtmlDocumentMode::NoQuirks, generous, &cancel)
+            .unwrap();
+        let before = owner.storage_usage().retained_bytes();
+        let mut external_mapping = Vec::with_capacity(32);
+        external_mapping.push(doc);
+        let external_bytes =
+            external_mapping.capacity() * std::mem::size_of::<HtmlCaptureBuilderSubject>();
+        // First reserve_exact formed one Record. The second needs a complete
+        // two-Record new bank while the old one and caller mapping still live.
+        let new_bank = 2 * std::mem::size_of::<super::super::Record>();
+        let total = external_bytes + before + new_bank;
+        let error = owner
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlOptionValueEnvelope::new(total - external_bytes - 1, 0, 100_000),
+                &cancel,
+            )
+            .unwrap_err();
+        assert!(
+            matches!(error.kind(), HtmlControlledOptionValueError::Control(HtmlOptionValueControlError::LimitExceeded {
+            resource: HtmlOptionValueResource::LiveBytes, required, .. }) if *required == u64::try_from(before + new_bank).unwrap())
+        );
+        assert_eq!(owner.storage_usage().retained_bytes(), before);
+        owner
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlOptionValueEnvelope::new(total - external_bytes, 0, 100_000),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(owner.capture_usage().subjects(), 2);
+        assert_eq!(external_mapping.len(), 1);
+    }
 
     #[test]
     fn every_borrowed_finish_refusal_retains_original_builder_and_facts() {

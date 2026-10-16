@@ -280,6 +280,16 @@ pub enum surgeist_html_semantics::HtmlControlTextOrigin
 pub surgeist_html_semantics::HtmlControlTextOrigin::ChildText
 pub surgeist_html_semantics::HtmlControlTextOrigin::DescendantText
 pub surgeist_html_semantics::HtmlControlTextOrigin::OutputDefaultOverride
+pub enum surgeist_html_semantics::HtmlControlledOptionValueError
+pub surgeist_html_semantics::HtmlControlledOptionValueError::AllocationFailed
+pub surgeist_html_semantics::HtmlControlledOptionValueError::Capture(surgeist_html_semantics::HtmlCaptureError)
+pub surgeist_html_semantics::HtmlControlledOptionValueError::Context(surgeist_html_semantics::HtmlSemanticContextError)
+pub surgeist_html_semantics::HtmlControlledOptionValueError::Control(surgeist_html_semantics::HtmlOptionValueControlError)
+pub surgeist_html_semantics::HtmlControlledOptionValueError::InvalidPhase
+pub surgeist_html_semantics::HtmlControlledOptionValueError::Semantic(surgeist_html_semantics::HtmlSemanticFailure)
+impl core::error::Error for surgeist_html_semantics::HtmlControlledOptionValueError
+impl core::fmt::Display for surgeist_html_semantics::HtmlControlledOptionValueError
+pub fn surgeist_html_semantics::HtmlControlledOptionValueError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlDefaultFeedApplicability
 pub surgeist_html_semantics::HtmlDefaultFeedApplicability::Applicable
 pub surgeist_html_semantics::HtmlDefaultFeedApplicability::Inapplicable
@@ -887,6 +897,20 @@ pub enum surgeist_html_semantics::HtmlOptionReadbackOrigin
 pub surgeist_html_semantics::HtmlOptionReadbackOrigin::DescendantText
 pub surgeist_html_semantics::HtmlOptionReadbackOrigin::LabelAttribute
 pub surgeist_html_semantics::HtmlOptionReadbackOrigin::ValueAttribute
+pub enum surgeist_html_semantics::HtmlOptionValueControlError
+pub surgeist_html_semantics::HtmlOptionValueControlError::Cancelled
+pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded
+pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::limit: u64
+pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::required: u64
+pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::resource: surgeist_html_semantics::HtmlOptionValueResource
+pub surgeist_html_semantics::HtmlOptionValueControlError::RepresentationExhausted
+impl core::error::Error for surgeist_html_semantics::HtmlOptionValueControlError
+impl core::fmt::Display for surgeist_html_semantics::HtmlOptionValueControlError
+pub fn surgeist_html_semantics::HtmlOptionValueControlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html_semantics::HtmlOptionValueResource
+pub surgeist_html_semantics::HtmlOptionValueResource::LiveBytes
+pub surgeist_html_semantics::HtmlOptionValueResource::LiveUtf16
+pub surgeist_html_semantics::HtmlOptionValueResource::Work
 pub enum surgeist_html_semantics::HtmlOutputDefaultError
 pub surgeist_html_semantics::HtmlOutputDefaultError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlOutputDefaultError::CodeUnits
@@ -1186,6 +1210,7 @@ pub surgeist_html_semantics::HtmlSemanticFailureKind::Attribute(surgeist_html::i
 pub surgeist_html_semantics::HtmlSemanticFailureKind::Cancelled
 pub surgeist_html_semantics::HtmlSemanticFailureKind::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlSemanticFailureKind::ContextCaptureMismatch
+pub surgeist_html_semantics::HtmlSemanticFailureKind::ControlledOptionValue(surgeist_html_semantics::HtmlOptionValueControlError)
 pub surgeist_html_semantics::HtmlSemanticFailureKind::IntrinsicUnavailable
 pub surgeist_html_semantics::HtmlSemanticFailureKind::LimitExceeded
 pub surgeist_html_semantics::HtmlSemanticFailureKind::LimitExceeded::limit: usize
@@ -1865,6 +1890,36 @@ pub struct surgeist_html_semantics::HtmlControlTextReadback
 impl surgeist_html_semantics::HtmlControlTextReadback
 pub fn surgeist_html_semantics::HtmlControlTextReadback::origin(&self) -> surgeist_html_semantics::HtmlControlTextOrigin
 pub fn surgeist_html_semantics::HtmlControlTextReadback::value(&self) -> &surgeist_html::values::DocumentString
+pub struct surgeist_html_semantics::HtmlControlledOptionValueCapture
+impl surgeist_html_semantics::HtmlControlledOptionValueCapture
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_comment(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, text: &surgeist_html::values::DocumentString, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_doctype(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, name: &surgeist_html::values::DocumentString, public_id: core::option::Option<&surgeist_html::values::DocumentString>, system_id: core::option::Option<&surgeist_html::values::DocumentString>, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_document(&mut self, mode: surgeist_html::construction::HtmlDocumentMode, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_element(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, name: &surgeist_html::values::QualifiedName, attributes: &surgeist_html::values::OrderedAttributes, saved_is: core::option::Option<&surgeist_html::values::DocumentString>, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_processing_instruction(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, target: &surgeist_html::values::DocumentString, data: &surgeist_html::values::DocumentString, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::add_text(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, text: &surgeist_html::values::DocumentString, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::capture_usage(&self) -> surgeist_html_semantics::HtmlCaptureUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::establish_children(&mut self, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, children: &[surgeist_html_semantics::HtmlCaptureBuilderSubject], envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::finish(&mut self, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::new(limits: surgeist_html_semantics::HtmlCaptureLimits, host: surgeist_html_semantics::HtmlHostFactsRevision, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::query_option_value(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, interpreter: surgeist_html::interpretation::HtmlValueInterpreter, limits: surgeist_html_semantics::HtmlSemanticLimits, envelope: surgeist_html_semantics::HtmlOptionValueEnvelope, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<&surgeist_html_semantics::HtmlSemanticReport, surgeist_html_semantics::HtmlControlledOptionValueFailure>
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::storage_usage(&self) -> surgeist_html_semantics::HtmlOptionValueStorageUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage
+pub struct surgeist_html_semantics::HtmlControlledOptionValueFailure
+impl surgeist_html_semantics::HtmlControlledOptionValueFailure
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::into_error(self) -> surgeist_html_semantics::HtmlControlledOptionValueError
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::kind(&self) -> &surgeist_html_semantics::HtmlControlledOptionValueError
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage
+impl core::error::Error for surgeist_html_semantics::HtmlControlledOptionValueFailure
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html_semantics::HtmlControlledOptionValueFailure
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html_semantics::HtmlControlledOptionValueUsage
+impl surgeist_html_semantics::HtmlControlledOptionValueUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueUsage::peak_storage(self) -> surgeist_html_semantics::HtmlOptionValueStorageUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueUsage::semantic(self) -> surgeist_html_semantics::HtmlSemanticUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueUsage::storage(self) -> surgeist_html_semantics::HtmlOptionValueStorageUsage
+pub fn surgeist_html_semantics::HtmlControlledOptionValueUsage::work(self) -> u64
 pub struct surgeist_html_semantics::HtmlCustomControlClassification
 impl surgeist_html_semantics::HtmlCustomControlClassification
 pub fn surgeist_html_semantics::HtmlCustomControlClassification::form_associated(&self) -> bool
@@ -2623,6 +2678,13 @@ pub struct surgeist_html_semantics::HtmlOptionReadback
 impl surgeist_html_semantics::HtmlOptionReadback
 pub fn surgeist_html_semantics::HtmlOptionReadback::origin(&self) -> surgeist_html_semantics::HtmlOptionReadbackOrigin
 pub fn surgeist_html_semantics::HtmlOptionReadback::value(&self) -> &surgeist_html::values::DocumentString
+pub struct surgeist_html_semantics::HtmlOptionValueEnvelope
+impl surgeist_html_semantics::HtmlOptionValueEnvelope
+pub const fn surgeist_html_semantics::HtmlOptionValueEnvelope::new(live_bytes: usize, live_utf16: usize, remaining_work: u64) -> Self
+pub struct surgeist_html_semantics::HtmlOptionValueStorageUsage
+impl surgeist_html_semantics::HtmlOptionValueStorageUsage
+pub fn surgeist_html_semantics::HtmlOptionValueStorageUsage::retained_bytes(self) -> usize
+pub fn surgeist_html_semantics::HtmlOptionValueStorageUsage::utf16_extent(self) -> usize
 pub struct surgeist_html_semantics::HtmlOutputDefaultFact
 impl surgeist_html_semantics::HtmlOutputDefaultFact
 pub fn surgeist_html_semantics::HtmlOutputDefaultFact::default_value_override(&self) -> &surgeist_html_semantics::HtmlOutputDefaultValueOverride

@@ -272,6 +272,9 @@ impl Control {
         match action {
             preflight::Action::Work(work) => self.work(work),
             preflight::Action::Reserve { entries, .. } => self.scratch(entries),
+            preflight::Action::StorageBefore { .. }
+            | preflight::Action::StorageAfter { .. }
+            | preflight::Action::StorageTransfer { .. } => Ok(()),
         }
     }
     fn reserve<T>(

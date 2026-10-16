@@ -76,6 +76,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .admit_attribute_raw(Some(attribute.value()))
                 .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
             self.charge(1)?;
+            self.option_string_copy(attribute.value())?;
             return Ok(HtmlSemanticValue::Known(HtmlOptionReadback {
                 value: attribute.value().clone(),
                 origin: requested,
@@ -198,10 +199,12 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(1)?;
         Ok(HtmlSemanticValue::Known(if units.is_empty() {
+            self.option_string_copy(self.context.empty_language())?;
             self.context.empty_language().clone()
         } else {
             // The admitted Vec is moved; only the fixed immutable Arc wrapper
             // is created here. No second variable UTF-16 buffer is allocated.
+            self.option_string_header()?;
             DocumentString::from_utf16(units)
         }))
     }
