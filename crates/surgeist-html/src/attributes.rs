@@ -2423,6 +2423,10 @@ mod encoding_label;
 pub use encoding_label::*;
 mod meta_pragma;
 pub use meta_pragma::*;
+pub(crate) mod meta_processing;
+pub use meta_processing::{
+    HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget, default_document_referrer_policy,
+};
 
 mod table_header_scope;
 pub use table_header_scope::*;

@@ -87,6 +87,14 @@ push/pop operations update the stack flag while preserving creation history.
 The parser separately owns its creating Document relation. These values certify
 neither an associated stylesheet nor completed CSSOM processing.
 
+The bounded Meta kernels share exact pragma classification, language-token and
+refresh framing, plus Meta-specific referrer vocabulary and legacy aliases.
+Refresh returns original UTF-16 ranges and admits delay materialization before
+processing the suffix; it does not truncate a delay or parse a URL. Consumers own
+Document history, URL facts, CSS/CSSOM, policy enforcement and affected UI.
+`default_document_referrer_policy` supplies the selected initial Document policy,
+which is separate from a fetching attribute's empty fallback.
+
 `HtmlHyperlinkSetUrlCursor` orders A/Area cache clearing, href presence,
 encoding-parse and successful storage. Shared attribute and tree decisions
 preserve the namespace/equality and connection guards. Consumers retain actual

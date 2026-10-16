@@ -395,6 +395,12 @@ pub enum surgeist_html::bounded::HtmlMediaNameSupply<'raw>
 pub surgeist_html::bounded::HtmlMediaNameSupply::NotSupplied
 pub surgeist_html::bounded::HtmlMediaNameSupply::Present(&'raw surgeist_html::Attribute)
 pub surgeist_html::bounded::HtmlMediaNameSupply::SuppliedAbsent
+pub enum surgeist_html::bounded::HtmlMetaRefreshAction
+pub surgeist_html::bounded::HtmlMetaRefreshAction::DelayDigits(core::ops::range::Range<usize>)
+pub surgeist_html::bounded::HtmlMetaRefreshAction::Step
+pub enum surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget
+pub surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget::DocumentUrl
+pub surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget::UrlString(core::ops::range::Range<usize>)
 pub enum surgeist_html::bounded::HtmlMicrodataTokenActionError<E>
 pub surgeist_html::bounded::HtmlMicrodataTokenActionError::Admission(E)
 pub surgeist_html::bounded::HtmlMicrodataTokenActionError::Protocol(surgeist_html::bounded::HtmlMicrodataTokenInterpretationError)
@@ -1465,6 +1471,10 @@ pub fn surgeist_html::bounded::is_xml_name_start_code_point(cp: u32) -> bool
 pub fn surgeist_html::bounded::match_media_field<'raw, E>(attribute: &'raw surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlMediaFieldMatch<'raw>>, E>
 pub fn surgeist_html::bounded::mathml_text_integration_point<E>(compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlMathmlTextPointTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::bounded::media_field_matches(attribute: &surgeist_html::Attribute, field: surgeist_html::bounded::HtmlMediaField) -> bool
+pub fn surgeist_html::bounded::meta_language_token_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<core::ops::range::Range<usize>>, E>
+pub fn surgeist_html::bounded::meta_pragma_state_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlMetaPragmaState>, E>
+pub fn surgeist_html::bounded::meta_referrer_policy_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlReferrerPolicy>, E>
+pub fn surgeist_html::bounded::meta_refresh_syntax_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut(surgeist_html::HtmlMetaRefreshAction) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlMetaRefreshSyntaxTarget>, E>
 pub fn surgeist_html::bounded::native_element_initialization_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlNativeInitialization, E>
 pub fn surgeist_html::bounded::native_form_association_with<E>(compare: impl core::ops::function::FnMut(surgeist_html::KnownHtmlElement) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlNativeFormAssociationKind>, E>
 pub fn surgeist_html::bounded::option_disabled_ancestor(kind: core::option::Option<surgeist_html::KnownHtmlElement>) -> surgeist_html::bounded::HtmlOptionDisabledAncestor
@@ -2607,6 +2617,12 @@ pub surgeist_html::HtmlMetaPragmaState::EncodingDeclaration
 pub surgeist_html::HtmlMetaPragmaState::Refresh
 pub surgeist_html::HtmlMetaPragmaState::SetCookie
 pub surgeist_html::HtmlMetaPragmaState::XUaCompatible
+pub enum surgeist_html::HtmlMetaRefreshAction
+pub surgeist_html::HtmlMetaRefreshAction::DelayDigits(core::ops::range::Range<usize>)
+pub surgeist_html::HtmlMetaRefreshAction::Step
+pub enum surgeist_html::HtmlMetaRefreshSyntaxTarget
+pub surgeist_html::HtmlMetaRefreshSyntaxTarget::DocumentUrl
+pub surgeist_html::HtmlMetaRefreshSyntaxTarget::UrlString(core::ops::range::Range<usize>)
 pub enum surgeist_html::HtmlMeterAuthorRelation
 pub surgeist_html::HtmlMeterAuthorRelation::HighMaximum
 pub surgeist_html::HtmlMeterAuthorRelation::LowHigh
@@ -5606,6 +5622,7 @@ pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
 pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState
+pub const fn surgeist_html::default_document_referrer_policy() -> surgeist_html::HtmlReferrerPolicy
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]
 pub fn surgeist_html::fragment_insertion_mode(name: &surgeist_html::QualifiedName) -> surgeist_html::HtmlFragmentInsertionMode
@@ -5629,6 +5646,7 @@ pub fn surgeist_html::input_filename_setter(value: &[u16]) -> core::result::Resu
 pub fn surgeist_html::input_value_setter_finish(kind: surgeist_html::HtmlInputType, comparison: surgeist_html::HtmlInputValueComparison, post_clamp: surgeist_html::HtmlInputSelection) -> surgeist_html::HtmlTextControlValueSetterFinish
 pub fn surgeist_html::is_html_integration_point(name: &surgeist_html::QualifiedName, attributes: &surgeist_html::OrderedAttributes) -> bool
 pub fn surgeist_html::is_mathml_text_integration_point(name: &surgeist_html::QualifiedName) -> bool
+pub fn surgeist_html::meta_pragma_state_with<E>(raw: &surgeist_html::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlMetaPragmaState>, E>
 pub fn surgeist_html::nonce_attribute_change<'a>(element: &surgeist_html::QualifiedName, attribute: &surgeist_html::QualifiedName, new_value: core::option::Option<&'a surgeist_html::DocumentString>) -> surgeist_html::HtmlNonceAttributeEffect<'a>
 pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedName, content: core::option::Option<&surgeist_html::DocumentString>, connection: surgeist_html::HtmlNonceConnection, policy: surgeist_html::HtmlHeaderDeliveredCsp) -> surgeist_html::HtmlNonceInsertionEffect
 pub const fn surgeist_html::output_default_source(has_override: bool) -> surgeist_html::HtmlOutputDefaultSource

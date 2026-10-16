@@ -321,26 +321,12 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         raw: &DocumentString,
     ) -> Result<Option<HtmlMetaContentSlice>, HtmlSemanticFailure> {
-        let units = raw.code_units();
-        for pos in 0..units.len() {
-            if self.pragma_unit(units, pos)? == Some(44) {
-                return Ok(None);
-            }
-        }
-        let mut pos = 0;
-        self.pragma_space(units, &mut pos)?;
-        let start = pos;
-        while self
-            .pragma_unit(units, pos)?
-            .is_some_and(|u| !ascii_whitespace(u))
-        {
-            pos += 1;
-        }
-        if start == pos {
-            Ok(None)
-        } else {
-            self.pragma_slice(raw, start, pos).map(Some)
-        }
+        let range = surgeist_html::bounded::meta_language_token_with(raw, || self.charge(1))?;
+        Ok(range.map(|range| HtmlMetaContentSlice {
+            raw: raw.clone(),
+            start: range.start,
+            end: range.end,
+        }))
     }
     fn pragma_encoding_author(
         &mut self,
@@ -402,129 +388,49 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         raw: &DocumentString,
     ) -> Result<HtmlMetaRefreshLexical, HtmlSemanticFailure> {
-        let units = raw.code_units();
-        let mut pos = 0;
-        self.pragma_space(units, &mut pos)?;
-        let start = pos;
-        while self
-            .pragma_unit(units, pos)?
-            .is_some_and(|u| (48..=57).contains(&u))
-        {
-            pos += 1;
-        }
-        self.charge(1)?;
-        let delay = if start == pos {
-            if self.pragma_unit(units, pos)? != Some(46) {
-                return Ok(HtmlMetaRefreshLexical::Rejected);
-            }
-            self.integer_count(0)?
-        } else {
-            // Source has proved a digit-only initial quantity, with no sign.
-            // Existing recovery over the original admitted input yields that exact
-            // nonnegative prefix; no substring allocation or second integer grammar.
-            let remaining = self.numeric_budget(raw.len())?;
-            match try_parse_integer(raw, self.limits.integer_digits, remaining) {
-                Ok(result) => self.numeric_result(Ok(result))?,
-                Err(IntegerRecoveryError::Allocation(error)) => {
-                    return self
-                        .numeric_result(Err(error))
-                        .map(|_| HtmlMetaRefreshLexical::Rejected);
-                }
-                Err(IntegerRecoveryError::Syntax(_)) => {
-                    return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
-                }
-            }
-        };
-        while self
-            .pragma_unit(units, pos)?
-            .is_some_and(|u| (48..=57).contains(&u) || u == 46)
-        {
-            pos += 1;
-        }
-        self.charge(1)?;
-        let target = if pos == units.len() {
-            HtmlMetaRefreshTarget::DocumentUrl
-        } else {
-            if !self
-                .pragma_unit(units, pos)?
-                .is_some_and(|u| u == 59 || u == 44 || ascii_whitespace(u))
-            {
-                return Ok(HtmlMetaRefreshLexical::Rejected);
-            }
-            self.pragma_space(units, &mut pos)?;
-            if self
-                .pragma_unit(units, pos)?
-                .is_some_and(|u| u == 59 || u == 44)
-            {
-                pos += 1;
-            }
-            self.pragma_space(units, &mut pos)?;
-            self.charge(1)?;
-            if pos == units.len() {
-                HtmlMetaRefreshTarget::DocumentUrl
-            } else {
-                let original = pos;
-                let mut skip_quotes = true;
-                if self
-                    .pragma_unit(units, pos)?
-                    .is_some_and(|u| u == 85 || u == 117)
-                {
-                    pos += 1;
-                    if self
-                        .pragma_unit(units, pos)?
-                        .is_some_and(|u| u == 82 || u == 114)
-                    {
-                        pos += 1;
-                        if self
-                            .pragma_unit(units, pos)?
-                            .is_some_and(|u| u == 76 || u == 108)
-                        {
-                            pos += 1;
-                            self.pragma_space(units, &mut pos)?;
-                            if self.pragma_unit(units, pos)? == Some(61) {
-                                pos += 1;
-                                self.pragma_space(units, &mut pos)?;
-                            } else {
-                                skip_quotes = false;
-                            }
-                        } else {
-                            skip_quotes = false;
-                        }
+        use surgeist_html::bounded::{HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget};
+        let mut delay = None;
+        let target = surgeist_html::bounded::meta_refresh_syntax_with(raw, |action| {
+            match action {
+                HtmlMetaRefreshAction::Step => self.charge(1),
+                HtmlMetaRefreshAction::DelayDigits(range) => {
+                    delay = Some(if range.is_empty() {
+                        self.integer_count(0)?
                     } else {
-                        skip_quotes = false;
-                    }
-                }
-                if !skip_quotes {
-                    HtmlMetaRefreshTarget::UrlString(self.pragma_slice(
-                        raw,
-                        original,
-                        units.len(),
-                    )?)
-                } else {
-                    let quote = self
-                        .pragma_unit(units, pos)?
-                        .filter(|u| *u == 39 || *u == 34);
-                    if quote.is_some() {
-                        pos += 1;
-                    }
-                    let start = pos;
-                    let mut end = units.len();
-                    if let Some(quote) = quote {
-                        while let Some(unit) = self.pragma_unit(units, pos)? {
-                            if unit == quote {
-                                end = pos;
-                                break;
+                        // Preserve the original numeric owner's materialization
+                        // point and cumulative budget, before suffix processing.
+                        let remaining = self.numeric_budget(raw.len())?;
+                        match try_parse_integer(raw, self.limits.integer_digits, remaining) {
+                            Ok(result) => self.numeric_result(Ok(result))?,
+                            Err(IntegerRecoveryError::Allocation(error)) => {
+                                return self.numeric_result(Err(error)).map(|_| ());
                             }
-                            pos += 1;
+                            Err(IntegerRecoveryError::Syntax(_)) => {
+                                return Err(
+                                    self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                );
+                            }
                         }
-                    }
-                    HtmlMetaRefreshTarget::UrlString(self.pragma_slice(raw, start, end)?)
+                    });
+                    Ok(())
                 }
             }
+        })?;
+        let Some(target) = target else {
+            return Ok(HtmlMetaRefreshLexical::Rejected);
         };
-        self.charge(1)?;
+        let target = match target {
+            HtmlMetaRefreshSyntaxTarget::DocumentUrl => HtmlMetaRefreshTarget::DocumentUrl,
+            HtmlMetaRefreshSyntaxTarget::UrlString(range) => {
+                HtmlMetaRefreshTarget::UrlString(HtmlMetaContentSlice {
+                    raw: raw.clone(),
+                    start: range.start,
+                    end: range.end,
+                })
+            }
+        };
         Ok(HtmlMetaRefreshLexical::Parsed(HtmlMetaRefreshValue {
-            delay,
+            delay: delay.expect("shared syntax admits the delay before a target"),
             target,
         }))
     }

@@ -111,3 +111,12 @@ impl HtmlValueInterpreter {
         Ok(result)
     }
 }
+
+/// Intrinsic recognized pragma state without an invented Element context.
+/// Operands are already retained; the caller admits each keyword read.
+pub fn meta_pragma_state_with<E>(
+    raw: &DocumentString,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<Option<HtmlMetaPragmaState>, E> {
+    Ok(enum_value_selection_with(&HTTP_EQUIV, Some(raw), |_| admit())?.intrinsic)
+}

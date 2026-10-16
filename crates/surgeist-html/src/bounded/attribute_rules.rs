@@ -17,5 +17,10 @@ pub use crate::attributes::image_values::{
     EmbeddedDimensionApplicability, EmbeddedDimensionContext, EmbeddedDimensionEvidenceNeeded,
     EmbeddedDimensionParent, embedded_dimension_applicability,
 };
+pub use crate::attributes::meta_pragma_state_with;
+pub use crate::attributes::meta_processing::{
+    HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget, meta_language_token_with,
+    meta_referrer_policy_with, meta_refresh_syntax_with,
+};
 pub use crate::attributes::navigable_target::TargetRecovery;
 pub use crate::attributes::token_declarations::{IconSizeCursor, IconSizeShape};
