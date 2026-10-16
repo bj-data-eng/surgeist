@@ -441,7 +441,7 @@ impl Validation {
         Ok(true)
     }
 }
-/// Checked retained payload footprint of a complete parse-facts graph.
+/// Checked retained payload footprint of a complete Base-facts graph.
 /// Immutable backing shared by several occurrences is conservatively counted
 /// per occurrence. Allocator/Arc bookkeeping is outside this payload measure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -463,6 +463,18 @@ impl HtmlBaseRetainedStorageUsage {
             .bytes
             .checked_add(bytes)
             .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        Ok(())
+    }
+    fn graph(&mut self, usage: Self) -> Result<(), HtmlBaseFactsError> {
+        let bytes = self
+            .bytes
+            .checked_add(usage.bytes)
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        let units = self
+            .units
+            .checked_add(usage.units)
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        *self = Self { bytes, units };
         Ok(())
     }
     pub(crate) fn string(&mut self, value: &DocumentString) -> Result<(), HtmlBaseFactsError> {
@@ -629,6 +641,7 @@ pub struct HtmlCapturedBaseFacts {
     pub(crate) documents: Vec<HtmlCapturedBaseDocument>,
     pub(crate) frozen: Vec<HtmlCapturedFrozenBase>,
     usage: HtmlBaseFactsUsage,
+    retained: HtmlBaseRetainedStorageUsage,
 }
 impl HtmlCapturedBaseFacts {
     pub fn new(
@@ -650,6 +663,22 @@ impl HtmlCapturedBaseFacts {
         {
             return Err(HtmlBaseFactsError::RecordLimit);
         }
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<Self>(),
+            units: 0,
+        };
+        retained.add(
+            documents
+                .capacity()
+                .checked_mul(size_of::<HtmlCapturedBaseDocument>())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )?;
+        retained.add(
+            frozen
+                .capacity()
+                .checked_mul(size_of::<HtmlCapturedFrozenBase>())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )?;
         let mut v = Validation {
             limits,
             work: 0,
@@ -661,6 +690,8 @@ impl HtmlCapturedBaseFacts {
             if row.facts.document().revision() != &revision {
                 return Err(HtmlBaseFactsError::RevisionMismatch);
             }
+            // The row bank contains the Arc handle, not the ParseFacts payload.
+            retained.graph(row.facts.retained_storage_usage())?;
             for old in &documents[..i] {
                 v.step()?;
                 if old.document == row.document {
@@ -702,11 +733,13 @@ impl HtmlCapturedBaseFacts {
             if !v.equal(href.ok_or(HtmlBaseFactsError::WrongBase)?, &row.href)? {
                 return Err(HtmlBaseFactsError::WrongBase);
             }
+            retained.string(&row.href)?;
             v.string(&row.href)?;
             if let Some(value) = &row.value {
                 if value.revision() != &row.frozen_revision {
                     return Err(HtmlBaseFactsError::RevisionMismatch);
                 }
+                retained.graph(value.retained_storage_usage())?;
                 v.string(value.serialization())?;
             }
             for old in &frozen[..i] {
@@ -728,7 +761,19 @@ impl HtmlCapturedBaseFacts {
             documents,
             frozen,
             usage,
+            retained,
         })
+    }
+    /// Complete retained payload, cached in the existing bounded formation pass.
+    ///
+    /// Includes this value's inline header, both actual row capacities, every
+    /// nested parse-facts payload and frozen href/URL backing, even if unused.
+    /// Shared payloads count per occurrence. Row headers are counted once;
+    /// separately retained capture data, Arc control blocks and allocator
+    /// bookkeeping are excluded. This adds no observation scan or allocation
+    /// and does not change logical formation limits or qualification.
+    pub fn retained_storage_usage(&self) -> HtmlBaseRetainedStorageUsage {
+        self.retained
     }
     pub fn capture(&self) -> &HtmlCaptureId {
         &self.capture
@@ -820,6 +865,39 @@ pub fn select_frozen_base<'a>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retained_graph_checked_sums_do_not_accept_wrapped_totals() {
+        let mut receipt = super::HtmlBaseRetainedStorageUsage {
+            bytes: usize::MAX,
+            units: 7,
+        };
+        let before = receipt;
+        assert_eq!(
+            receipt.graph(super::HtmlBaseRetainedStorageUsage { bytes: 1, units: 0 }),
+            Err(super::HtmlBaseFactsError::RepresentationExhausted)
+        );
+        assert_eq!(receipt, before);
+        let mut receipt = super::HtmlBaseRetainedStorageUsage {
+            bytes: 7,
+            units: usize::MAX,
+        };
+        let before = receipt;
+        assert_eq!(
+            receipt.graph(super::HtmlBaseRetainedStorageUsage { bytes: 0, units: 1 }),
+            Err(super::HtmlBaseFactsError::RepresentationExhausted)
+        );
+        assert_eq!(receipt, before);
+        let mut receipt = super::HtmlBaseRetainedStorageUsage {
+            bytes: usize::MAX - 3,
+            units: usize::MAX - 5,
+        };
+        receipt
+            .graph(super::HtmlBaseRetainedStorageUsage { bytes: 3, units: 5 })
+            .unwrap();
+        assert_eq!(receipt.bytes, usize::MAX);
+        assert_eq!(receipt.units, usize::MAX);
+    }
+
     use super::*;
     fn revision() -> HtmlBaseFactsRevision {
         HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 1, 1)
