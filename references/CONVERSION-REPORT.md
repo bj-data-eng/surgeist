@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **390 source identities: 260 full documents/source witnesses, 101 partial witnesses and 29 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **391 source identities: 260 full documents/source witnesses, 102 partial witnesses and 29 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -1014,3 +1014,27 @@ and history/destruction bodies. Static witnesses distinguish live membership,
 historical records, cleanup custody and cancellation; they do not independently
 supply the missing HTML completion rule. Actual native qualifications belong to
 the linked owning issues, separately from literal retained source.
+
+## URL equality and serialization — 2026-10-16
+
+The [URL reference](url-equality-serialization--fde3f74f0633.md) retains five
+literal source fragments from URL Standard
+`fde3f74f063341a28d437216f75735b8b40128f5`. The complete original is 165,812 bytes,
+SHA-256 `7f45ea5b6167f08a098619167254a99a3c8b5fd6514fff4963ede4a7c8e05818`,
+Git blob `2aab6786dfb97f1b4ad168a4e35c7691b9b70d28`. The fragments cover
+inclusive raw lines 469–495, 807–812, 1952–1963, 3034–3069 and 3168–3271: 185 lines and
+8,159 bytes. Editorial grouping places the path-representation closure last;
+each fragment preserves its original internal order and bytes.
+
+All five fenced blocks were compared byte for byte with those original spans.
+Final Markdown is 13,083 bytes, SHA-256
+`eb89168b82509558fc5376f995e3f9f5135e91ba2ad73c799d464fbefcb9404a`.
+Markdown headings, attribution, immutable links and a separately marked reading
+guide are additions. No source renderer or script was executed, href rewritten,
+source whitespace normalized or passive asset added. The unchanged complete
+[WHATWG license](../licenses/whatwg/LICENSE) covers prose under CC BY 4.0 and
+source-code incorporation under the distinct BSD 3-Clause provision.
+
+This adds one partial source identity: 391 = 260 full + 102 partial + 29 metadata-only.
+Earlier totals remain historical. Extraction fidelity does not establish a URL
+parser, record truth, comparison correctness or child-lifecycle acceptance.

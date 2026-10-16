@@ -646,3 +646,14 @@ reuses the selected HTML snapshot under the existing
 [WHATWG notice and complete license](licenses/whatwg/NOTICE.md#document-policy-container-initial-state--2026-10-16).
 It preserves Document and policy-container defaults needed by native Meta work.
 The disclosed Markdown conversion adds no implementation or dependency.
+
+## URL equality and serialization source
+
+The [bounded URL reference](references/url-equality-serialization--fde3f74f0633.md)
+retains selected complete algorithms and supporting definitions from WHATWG URL
+Standard revision `fde3f74f063341a28d437216f75735b8b40128f5`. The
+[attribution and modification notice](licenses/whatwg/NOTICE.md#url-equality-and-serialization--2026-10-16)
+and unchanged complete local license cover this reference. Specification prose
+uses CC BY 4.0; BSD 3-Clause applies only to portions incorporated into code.
+This selection adds no URL parser, dependency, JavaScript runtime or change to
+Surgeist's own license.

@@ -457,3 +457,28 @@ contribution plus its actual parent Document's active flags; only Iframe
 contributes the iframe-owned slot. This is editorial native qualification,
 not modified HTML source, an upstream fix or an implementation-conformance claim.
 The COOP value/record excerpt above remains a separate HTML source selection.
+
+## URL equality and serialization — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded URL reference](../../references/url-equality-serialization--fde3f74f0633.md)
+selects snapshot `fde3f74f063341a28d437216f75735b8b40128f5`, complete original
+`url.bs` SHA-256
+`7f45ea5b6167f08a098619167254a99a3c8b5fd6514fff4963ede4a7c8e05818`.
+The [upstream LICENSE](https://github.com/whatwg/url/blob/fde3f74f063341a28d437216f75735b8b40128f5/LICENSE)
+is byte-identical to the retained complete [LICENSE](LICENSE), SHA-256
+`85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`.
+It supplies CC BY 4.0 terms for specification prose and the separate BSD 3-Clause
+provision for portions incorporated into source code.
+
+Changes by Surgeist on 16 October 2026: offline bounded selection, Markdown
+headings, attribution, immutable source links and a separately marked reading
+guide. Five literal source blocks retain complete selected encode-set, host,
+path, serializer and equality units byte for byte. Source text, whitespace,
+links and step order within each unit remain unchanged; no source script or
+renderer ran. The [conversion report](../../references/CONVERSION-REPORT.md#url-equality-and-serialization--2026-10-16)
+records the exact spans and fidelity bounds. Editorial implementation
+qualifications remain separate from literal source. No endorsement, replacement
+URL specification, parser or whole-browser conformance is implied. Surgeist's
+own license remains unchanged.

@@ -1,6 +1,6 @@
 # Exact source catalog
 
-390 retained source identities: 260 full documents/source witnesses, 101 partial witnesses, and 29 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments, the bounded WebKit Autofill.cpp witness and the nine WebKit Frame-sandbox files as corroborating URL/hash or Git-blob provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+391 retained source identities: 260 full documents/source witnesses, 102 partial witnesses, and 29 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments, the bounded WebKit Autofill.cpp witness and the nine WebKit Frame-sandbox files as corroborating URL/hash or Git-blob provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -732,3 +732,16 @@ The reference supplies no normative cancellation or cleanup policy.
 | [frame_tree.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree.cc) | `0db015a39a1cf3206f7cf17274a8decb63a43ff6` | metadata-only corroboration; inspected lines 578–585; no browser source excerpt |
 | [frame_tree_node.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree_node.cc) | `4e4b14ebc84ab4e570ad46bb4622e454a2fbf9d9` | metadata-only corroboration; inspected lines 195–257, 290–302; no browser source excerpt |
 | [navigation_controller_impl.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/navigation_controller_impl.cc) | `580d1a893d488d255329cddefc9aeaf4bcf8a67a` | metadata-only corroboration; inspected lines 5452–5466; no browser source excerpt |
+
+## URL equality and serialization — 2026-10-16
+
+The [bounded URL reference](url-equality-serialization--fde3f74f0633.md) adds one
+previously uncataloged partial identity: URL Standard revision
+`fde3f74f063341a28d437216f75735b8b40128f5`. Current totals are 391 identities:
+260 full, 102 partial and 29 metadata-only; preceding dated totals remain
+historical. The original source hash identifies the complete `url.bs`, rather
+than the selected excerpts or Markdown.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [URL equality and serialization](url-equality-serialization--fde3f74f0633.md) | [URL Standard url.bs at fde3f74f](https://github.com/whatwg/url/blob/fde3f74f063341a28d437216f75735b8b40128f5/url.bs) | 7f45ea5b6167f08a098619167254a99a3c8b5fd6514fff4963ede4a7c8e05818 | partial; literal complete selected units at 469–495, 807–812, 1952–1963, 3034–3069, 3168–3271: encode sets, forbidden host characters, path representation, opaque-path parsing, serializers and equality |

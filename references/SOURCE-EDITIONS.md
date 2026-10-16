@@ -958,3 +958,35 @@ It does not establish fetched/parsed history, CSP enforcement or other policy
 runtimes. The complete source hash and conversion limits are recorded in the
 [conversion report](CONVERSION-REPORT.md#document-policy-container-initial-state--2026-10-16).
 No new edition is selected.
+
+## URL equality and serialization
+
+The [bounded URL reference](url-equality-serialization--fde3f74f0633.md) selects
+URL Standard snapshot `fde3f74f063341a28d437216f75735b8b40128f5` (7 October 2026).
+Complete original `url.bs` SHA-256:
+`7f45ea5b6167f08a098619167254a99a3c8b5fd6514fff4963ede4a7c8e05818`.
+Its complete selected units supply the serializers and URL equality reached by
+HTML877d's ancestor-URL guard, plus the representation and encoding closure.
+No replacement HTML edition, URL parser or general URL engine is selected.
+
+URL equality compares actual serialized values with the requested fragment
+exclusion. Queries, empty query delimiters, percent spelling and path spaces
+remain significant. Record identity and HTML's matches-about:blank classification
+are distinct predicates. The record model also permits paths produced outside
+the URL parser, so the first literal number sign in a full serialization does
+not necessarily delimit a fragment.
+
+[#1124](https://github.com/bj-data-eng/surgeist/issues/1124) therefore requires
+HTML-Semantics to retain the original producer's actual fragment boundary and
+compare borrowed prefixes with finite admission and cancellation. A known-null
+fragment uses the full serialization; a present fragment supplies its actual
+UTF-16 delimiter offset. The producer attests that same-record boundary, while
+the constructor checks its range and designated number-sign unit. No comparison
+may infer the boundary, substitute identity, normalize text or turn unavailable
+work into inequality. The consumer still qualifies each source-selected record
+and revision independently. This selected implementation boundary is separate
+from the literal URL algorithms and does not certify implementation completion.
+
+The [conversion report](CONVERSION-REPORT.md#url-equality-and-serialization--2026-10-16)
+and [WHATWG attribution](../licenses/whatwg/NOTICE.md#url-equality-and-serialization--2026-10-16)
+record the bounded extraction and unchanged full license.
