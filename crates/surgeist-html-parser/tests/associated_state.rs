@@ -238,6 +238,79 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
     }
     assert_eq!(states, ["absent", "empty-parsed", "failed", "unavailable"]);
 }
+
+#[test]
+fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
+    // HTML877d11896–11903: only a direct-head, nonempty CSP pragma reaches
+    // parse/filter/enforce. Its resulting policy revision is not established by
+    // the independently supplied pre-policy URL context, even if URL spelling
+    // would happen to remain equal. Guarded-out pragmas do not change it.
+    let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+    let base = record(&revision, "https://example.test/", false);
+    let resolved = record(&revision, "https://example.test/x", false);
+    let encoding = HtmlBaseEncoding::fresh();
+    let facts = bank(
+        &base,
+        &encoding,
+        vec![HtmlHyperlinkParseObservation::new(
+            "x".into(),
+            HtmlHyperlinkParseOutcome::Parsed(resolved.clone()),
+        )],
+    );
+    for (source, policy_unavailable) in [
+        (
+            "<!doctype html><head><meta http-equiv=content-security-policy content=''></head><body><a href=x></a><area href=x>",
+            false,
+        ),
+        (
+            "<!doctype html><head></head><body><meta http-equiv=content-security-policy content=\"base-uri 'none'\"><a href=x></a><area href=x>",
+            false,
+        ),
+        (
+            "<!doctype html><head><meta http-equiv=content-security-policy content=\"base-uri 'none'\"></head><body><a href=x></a><area href=x>",
+            true,
+        ),
+    ] {
+        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+            .with_base_facts(environment(&base, &encoding))
+            .unwrap()
+            .with_hyperlink_facts(vec![facts.clone()])
+            .parse()
+            .expect("missing Meta execution facts preserve completed structural report");
+        let mut cursor = report.metadata();
+        let mut names = Vec::new();
+        loop {
+            match cursor.advance() {
+                HtmlParseMetadataStep::Record(row) => {
+                    let Some(link) = row.hyperlink() else {
+                        continue;
+                    };
+                    let HtmlNodeKind::Element(element) = row.node().kind() else {
+                        panic!("actual A/Area metadata subject");
+                    };
+                    names.push(element.name().local_name().to_utf8().unwrap());
+                    assert_eq!(link.raw(), Some(&DocumentString::from("x")));
+                    if policy_unavailable {
+                        assert!(
+                            matches!(link.state(), HtmlParseHyperlinkState::Unavailable(_)),
+                            "reached CSP leaves current policy qualification unavailable: {source}"
+                        );
+                    } else {
+                        let HtmlParseHyperlinkState::Observed(snapshot) = link.state() else {
+                            panic!("guarded-out CSP preserves the independently qualified context");
+                        };
+                        assert_eq!(snapshot.base(), &base);
+                        assert_eq!(snapshot.url(), Some(&resolved));
+                    }
+                }
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        assert_eq!(names, ["a", "area"]);
+    }
+}
+
 #[test]
 fn standalone_img_starts_before_disabled_guard_and_keeps_only_latest_inactive_wait() {
     let report = HtmlDocumentParseRequest::offline(
