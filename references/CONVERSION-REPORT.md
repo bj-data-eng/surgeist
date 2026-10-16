@@ -733,3 +733,60 @@ terms, BSD source-code distinction and disclosed changes are recorded in the
 [supplemental notice](../licenses/whatwg/NOTICE.md#hosted-document-activity-clauses--2026-10-15)
 and reference. These checks establish bounded source fidelity and navigation,
 not hosted lifecycle implementation or conformance.
+
+## Native event dispatch sources — 2026-10-15
+
+Two bounded representations reuse existing full source identities and leave the
+catalog's identity counts unchanged. DOM uses the retained living capture at
+revision `3071e5f269448350fdea79bb284eedaf17bc431e`, 3,179,611 bytes, original SHA-256
+`034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1`.
+HTML uses immutable snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`, 14,930,614 bytes,
+original SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Original source headers and intellectual-property notices are retained.
+
+The [DOM event reference](dom-native-events--3071e5f26944--332564d9519c.md)
+retains these complete sections/paragraphs. Ranges identify original LF-delimited
+lines, with an exclusive end:
+
+| Complete source boundary | Start | End |
+| --- | --- | --- |
+| Event interface and state | 1011 | 1561 |
+| Constructing events | 1636 | 1755 |
+| Defining event interfaces | 1755 | 1764 |
+| EventTarget and listener add/remove | 1764 | 2168 |
+| Observing event listeners | 2168 | 2216 |
+| Dispatching, invoke and inner-invoke | 2216 | 2802 |
+| Firing events | 2802 | 2869 |
+| ShadowRoot, retargeting and closed-tree clauses | 9265 | 9458 |
+| Intellectual-property notices | 15666 | 15686 |
+| Node event-parent paragraph | 6385 | 6389 |
+| Document event-parent paragraph | 7961 | 7966 |
+
+The [HTML ToggleEvent reference](html-toggle-event--877d6146487f--eeb465762458.md)
+retains the complete interface/defaults/getters/tracker section at 59490–59536
+and intellectual-property section 108296–108395, with the same exclusive-end
+convention. Neighboring browser-runtime chapters remain upstream.
+
+DOM's assembled extraction is 176,700 bytes, SHA-256
+`332564d9519cba84524b0c321d855c2c1e03e328d523c75ca6119603d3089b51`;
+HTML's is 22,550 bytes, SHA-256
+`eeb465762458707a47042dcd76b0d80702df840a698b6b648eaeae5a5c75a7c7`.
+These extraction hashes supply filenames, not new original source identities.
+Final Markdown SHA-256 values are
+`744146347a71b3e83c1c9e8d92fb7ec7a29eeb207fea53419d83cce6eb433971`
+and `a6ebc9c235eb18edb1e35f1e5230f79f599a33ed1c3c07e3c16ce256974c4ca1`.
+
+Existing Pandoc 3.1.11.1 and the repository's semantic preparation/verification
+tools performed conversion without acquisition or source-script execution.
+Scripts/styles were omitted; editorial provenance/locator headings and resolved
+source links were added. Parsed-GFM comparisons reported zero errors: DOM
+964 IDs, three literal blocks, one table and 765 source links; HTML 41 IDs,
+one literal block and 93 source links. Independent complete-boundary comparison
+matched all 13 original spans. The integrated normative bodies are byte-identical
+to those verified prepared bodies; only editorial introduction links/wording
+were corrected for the committed destination.
+
+The [existing WHATWG license and supplemental notice](../licenses/whatwg/NOTICE.md#native-event-dispatch-sources--2026-10-15)
+retain copyright, CC BY 4.0 prose terms, the source-code-only BSD distinction and
+modification disclosure. These checks establish bounded source fidelity and
+navigation, not native event delivery or browser conformance.

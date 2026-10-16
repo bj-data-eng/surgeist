@@ -153,6 +153,29 @@ The 2026-10-10/11 sources below select bounded clauses for unstarted DOM, select
 
 The Conditional 5 type/eligibility capture and page-length capture share full HTML hash `3b4a4b4ef336edeaca211cdb90481bfcf9cda1955c1cabce485b98e2fcb497e3`. The two Content 3 captures share `9c640ae017c7f848bb11171b96cca9d6b3b01f78f33faafc9bb094607c833945`. These are multiple representations of one source each. Blink css_properties.json5 retains its earlier complete witness and adds only a bounded speak-entry link. Displayed CSSWG revision `50337328484f7fcdd9ab6fe9ded6011815b1707e` is provenance; full captured HTML hashes remain the source identities. New browser witnesses use immutable source URLs and preserve exact file-specific legal headers.
 
+### Native Rust event dispatch
+
+For #840's Style load/error and #1124's Details toggle delivery, select the
+complete bounded [DOM event source](dom-native-events--3071e5f26944--332564d9519c.md)
+from the existing DOM3071 living capture and the
+[ToggleEvent interface](html-toggle-event--877d6146487f--eeb465762458.md)
+from the existing HTML877d snapshot. DOM original SHA-256 is
+`034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1`;
+HTML original SHA-256 is
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+These add representations of already cataloged identities, not newer editions.
+
+Runtime owns one typed listener/path dispatcher and feature task servicing;
+DOM owns canonical identities and stored tree/slot relations, and HTML owns
+payload and notification rules. Nonbubbling events still invoke ancestor capture
+listeners. Event paths use actual assigned-slot and ShadowRoot parent rules,
+with retargeting and closed-tree exposure. Listener snapshots are per invocation;
+real synchronous Rust callbacks may change the tree and registry. Closed native
+Documents have no Window event parent. The selected scope does not add JavaScript,
+full WebIDL exposure, arbitrary event construction or a generic event loop.
+The owning issues retain admission, retirement, reentry and actual delivery
+acceptance; these references do not establish implementation completion.
+
 ## Additional source-question determinations
 
 These bounded additions address #823, #629/#630, #602/#604/#605, #648, #378/#379, #681/#682 and the assigned media/preference/border questions. Existing authored grammar and unrelated completed domains keep their source selections. The issue determinations distinguish normative requirements from chosen Rust contracts, compatibility evidence and unresolved standards text. Source acquisition itself does not implement these features.

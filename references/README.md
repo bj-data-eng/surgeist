@@ -56,6 +56,14 @@ The [parser suitability assessment](../docs/html-parser-suitability.md) uses pin
 
 ## DOM, selectors and bounded style determinations
 
+The [native event source selection](SOURCE-EDITIONS.md#native-rust-event-dispatch)
+adds complete bounded [DOM event/listener/path clauses](dom-native-events--3071e5f26944--332564d9519c.md)
+and the [HTML ToggleEvent interface](html-toggle-event--877d6146487f--eeb465762458.md)
+from the existing editions. They support one Runtime-owned Rust dispatcher for
+Style and Details, including ancestor capture, actual slot relations and
+synchronous reentry. Reference retention does not certify delivery or add a
+JavaScript runtime.
+
 The [new operative edition mapping](SOURCE-EDITIONS.md#dom-selector-execution-and-bounded-style-determinations) identifies current DOM/HTML/Web IDL/Infra foundation clauses, selector and scope execution sources, and bounded style gap determinations. Native Rust identity, admission, atomicity and host contracts remain explicit product choices. Historical authored-CSS editions are retained; a current capture does not silently replace every consumer’s source selection.
 
 The [addition verification record](CONVERSION-REPORT.md#dom-selector-execution-and-bounded-style-source-additions--2026-10-1011) distinguishes complete documents, complete selected sections, exact browser excerpts and brief resolution quotations. Complex DOM tables preserve semantic HTML rather than flattening. Conditional 5 and Content 3 renderings share complete original source identities; the Blink speak entry shares its existing complete registry witness. Dated CSSWG minutes are an ordinary metadata-only corroborating record, separate from the two rights/coverage exceptions above.

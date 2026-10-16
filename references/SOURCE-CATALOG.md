@@ -614,3 +614,15 @@ records fidelity. Representation hashes are separate from the complete source ha
 | --- | --- | --- | --- |
 | [Nonce attributes](html-nonce--877d6146487f.md#nonce-attributes) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | partial; complete §2.5.6 attribute, slot, change, hiding/restoration and clone clauses |
 | [Microdata encoding](html-microdata--877d6146487f.md#encoding-microdata) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | partial; complete §5.2 model, items, property names/values, crawl, document obligations and namespace; §5.3 excluded |
+
+## Native event dispatch supplements — 2026-10-15
+
+Both representations reuse existing complete source identities. The collection
+remains 372 identities: 260 full, 98 partial and 14 metadata-only. These bounded
+conversions retain source headers and intellectual-property notices; original
+hashes below identify the complete source, not extraction or Markdown bytes.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [DOM native event clauses](dom-native-events--3071e5f26944--332564d9519c.md) | [DOM3071 retained living capture](https://dom.spec.whatwg.org/) | 034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1 | Complete Event, constructing/defining events, EventTarget, observing listeners, dispatching/firing events, ShadowRoot and intellectual-property sections; complete Node/Document event-parent paragraphs |
+| [HTML ToggleEvent](html-toggle-event--877d6146487f--eeb465762458.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | Complete ToggleEvent interface, initialization/getters, toggle tracker and intellectual-property sections |

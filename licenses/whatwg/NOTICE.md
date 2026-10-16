@@ -248,3 +248,31 @@ The [edition map](../../references/SOURCE-EDITIONS.md#pinned-html-language-basel
 and [conversion report](../../references/CONVERSION-REPORT.md#hosted-document-activity-source-retention--2026-10-15)
 record the bounded source use and fidelity; this adds no hosted/browser
 implementation or new original source identity.
+
+## Native event dispatch sources — 2026-10-15
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [DOM event clauses](../../references/dom-native-events--3071e5f26944--332564d9519c.md)
+reuse the retained DOM living capture at revision
+`3071e5f269448350fdea79bb284eedaf17bc431e`, complete original SHA-256
+`034b308db8482bddb37070849e9d4ab40bcb2d10e6494cffad14678a252a58b1`.
+The [ToggleEvent clauses](../../references/html-toggle-event--877d6146487f--eeb465762458.md)
+reuse HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original
+SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Both preserve original source headers and complete intellectual-property notices.
+
+Surgeist's changes on 2026-10-15 are offline bounded extraction, Markdown
+formatting, editorial provenance and Node/Document locator headings, omitted
+inert scripts/styles, and resolved source links. Normative/informative labels,
+text, algorithm order, code, definitions, tables and source IDs remain source
+material, with parsed-Markdown fidelity checks. No endorsement is implied.
+
+The existing exact [WHATWG LICENSE](LICENSE), SHA-256
+`85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`,
+provides Creative Commons Attribution 4.0 International terms for specification
+prose. BSD 3-Clause applies only to portions incorporated into source code, not
+as an alternative license for these Markdown references. The
+[conversion report](../../references/CONVERSION-REPORT.md#native-event-dispatch-sources--2026-10-15)
+records exact bounds and checks. No new original source identity, source edition,
+software acquisition or project-license change is introduced.

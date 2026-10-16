@@ -537,3 +537,14 @@ includes official Ecma International material under the
 Its [source and modification notice](licenses/ecma262/NOTICE.md) identifies
 the dated edition, copied portions and Markdown changes. No JavaScript runtime,
 dtoa code, dependency or product implementation is added by this reference.
+
+## Native DOM and HTML event references
+
+The bounded [DOM event reference](references/dom-native-events--3071e5f26944--332564d9519c.md)
+and [HTML ToggleEvent reference](references/html-toggle-event--877d6146487f--eeb465762458.md)
+reuse the existing WHATWG source editions and
+[complete license and attribution](licenses/whatwg/NOTICE.md#native-event-dispatch-sources--2026-10-15).
+They retain original headers and intellectual-property notices with disclosed
+Markdown conversion changes. Specification prose uses CC BY 4.0; BSD 3-Clause
+applies only to portions incorporated into code. No project license, dependency
+or JavaScript-runtime change follows from these reference additions.
