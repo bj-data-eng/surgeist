@@ -4,7 +4,6 @@ use crate::DomDocumentStamp;
 use crate::view_transition::*;
 use crate::{DocumentId, DocumentString, DomSnapshot, Namespace, NodeId};
 use surgeist_css::CssViewTransitionIdent;
-use surgeist_cssom::{CssomSheetId, CssomSnapshot};
 
 #[derive(Debug)]
 pub(crate) struct BatchIdentity;
@@ -41,7 +40,7 @@ impl From<&CreatedNode> for NodeOperand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Creation {
     Document,
     Fragment,
@@ -63,19 +62,23 @@ pub(crate) enum Creation {
     },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Command {
-    BindNativeEncodingUrlFacts {
+    BindEncodingUrlFacts {
         basis: DomDocumentStamp,
         facts: surgeist_html_semantics::HtmlEncodingUrlParseFacts,
     },
-    BindNativeBaseFacts {
+    BindBaseFacts {
         basis: DomDocumentStamp,
         facts: surgeist_html_semantics::HtmlParseBaseFacts,
     },
     Select {
         node: NodeOperand,
         edit: crate::select::Edit,
+    },
+    SetStyleDisabled {
+        node: NodeOperand,
+        disabled: bool,
     },
     Output {
         node: NodeOperand,
@@ -204,29 +207,30 @@ impl Default for DomBatch {
 }
 
 impl DomBatch {
-    /// Qualifies href parse observations against this exact native Document's
+    /// Qualifies encoding-URL observations against this exact Document's
     /// already-bound encoding, current Document base URL and full revision.
     /// This changes no existing hyperlink cache or Document metadata.
-    pub fn bind_native_encoding_url_facts(
+    pub fn bind_encoding_url_facts(
         &mut self,
         basis: DomDocumentStamp,
         facts: &surgeist_html_semantics::HtmlEncodingUrlParseFacts,
     ) {
-        self.commands.push(Command::BindNativeEncodingUrlFacts {
+        self.commands.push(Command::BindEncodingUrlFacts {
             basis,
             facts: facts.clone(),
         });
     }
-    /// Binds external observations to this exact native about:blank/UTF8
-    /// Document. The encoding token is explicitly bound to that actual
-    /// encoding; its identity is never interpreted as a charset label.
+    /// Binds external observations to the actual canonical Document environment.
+    /// Native creation supplies its about:blank/UTF8 attestation; parsed
+    /// installation supplies stored opaque URL/encoding identities. A spelling
+    /// alone never substitutes for the selected creation cause's qualification.
     /// This changes no URL/encoding metadata and does not itself refreeze Base.
-    pub fn bind_native_base_facts(
+    pub fn bind_base_facts(
         &mut self,
         basis: DomDocumentStamp,
         facts: &surgeist_html_semantics::HtmlParseBaseFacts,
     ) {
-        self.commands.push(Command::BindNativeBaseFacts {
+        self.commands.push(Command::BindBaseFacts {
             basis,
             facts: facts.clone(),
         });
@@ -246,15 +250,11 @@ impl DomBatch {
     pub fn initialize_view_transitions(
         &mut self,
         basis: DomDocumentStamp,
-        snapshot: &CssomSnapshot,
-        sheet: &CssomSheetId,
+        input: DomPreparedViewTransitionSheet,
     ) {
         self.commands.push(Command::ViewTransition {
             basis,
-            edit: Edit::Initialize {
-                snapshot: snapshot.clone(),
-                sheet: sheet.clone(),
-            },
+            edit: Edit::Initialize { input },
         });
     }
     /// Every VT operation requires this exact pre-batch published document basis.
@@ -287,7 +287,7 @@ impl DomBatch {
             basis,
             edit: Edit::Append {
                 transition: transition.into(),
-                name,
+                name: Arc::new(name),
                 ticket: ticket.index,
             },
         });
@@ -311,15 +311,13 @@ impl DomBatch {
         &mut self,
         basis: DomDocumentStamp,
         record: impl Into<ViewTransitionRecordOperand>,
-        snapshot: &CssomSnapshot,
-        rules: DomViewTransitionRuleAssociations,
+        input: DomPreparedViewTransitionRules,
     ) {
         self.commands.push(Command::ViewTransition {
             basis,
             edit: Edit::Rules {
                 record: record.into(),
-                snapshot: snapshot.clone(),
-                rules,
+                input,
             },
         });
     }
@@ -547,6 +545,15 @@ impl DomBatch {
     pub fn reset_input(&mut self, node: impl Into<NodeOperand>) {
         self.commands
             .push(Command::ResetInput { node: node.into() });
+    }
+    /// Sets only the actual associated CSS sheet's disabled flag. With no
+    /// associated sheet this does nothing, including before later insertion.
+    /// An associated sheet requires the composed Style source-operation owner.
+    pub fn set_style_disabled(&mut self, node: impl Into<NodeOperand>, disabled: bool) {
+        self.commands.push(Command::SetStyleDisabled {
+            node: node.into(),
+            disabled,
+        });
     }
     /// Freezes the current default, then replaces all children with exact text.
     pub fn set_output_value(

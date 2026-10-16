@@ -94,7 +94,8 @@ fn fresh_textarea_and_template_contents_use_both_independent_platform_facts() {
                     .unwrap()
                     .as_textarea()
                     .unwrap()
-                    .form_owner(),
+                    .form_owner()
+                    .unwrap(),
                 None
             );
             let mut b = DomBatch::new();
@@ -107,13 +108,14 @@ fn fresh_textarea_and_template_contents_use_both_independent_platform_facts() {
                 .unwrap()
                 .as_template()
                 .unwrap()
-                .contents();
+                .contents()
+                .unwrap();
             let inert = s.node(contents).unwrap().owner_document().unwrap();
             assert_eq!(
                 s.document(inert)
                     .unwrap()
                     .metadata()
-                    .native_environment()
+                    .document_environment()
                     .input_platform(),
                 platform
             );
@@ -363,7 +365,15 @@ fn shallow_and_deep_clones_copy_only_raw_and_dirty_while_adoption_preserves_stat
         assert!(!state(&s, n).parser_inserted());
         assert_eq!(state(&s, n).selection().cursor_position(), Some(0));
         assert_eq!(state(&s, n).selection().direction(), Direction::Forward);
-        assert_eq!(s.node(n).unwrap().as_textarea().unwrap().form_owner(), None);
+        assert_eq!(
+            s.node(n)
+                .unwrap()
+                .as_textarea()
+                .unwrap()
+                .form_owner()
+                .unwrap(),
+            None
+        );
     }
     assert!(s.node(sc).unwrap().children().is_empty());
     assert_eq!(default(&s, sc), "".into());
@@ -406,7 +416,8 @@ fn form_owner_first_id_and_weak_retirement_remain_canonical() {
             .unwrap()
             .as_textarea()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     let mut b = DomBatch::new();
@@ -422,7 +433,8 @@ fn form_owner_first_id_and_weak_retirement_remain_canonical() {
             .unwrap()
             .as_textarea()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     let mut b = DomBatch::new();
@@ -434,7 +446,8 @@ fn form_owner_first_id_and_weak_retirement_remain_canonical() {
             .unwrap()
             .as_textarea()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     let mut b = DomBatch::new();
@@ -448,7 +461,8 @@ fn form_owner_first_id_and_weak_retirement_remain_canonical() {
             .unwrap()
             .as_textarea()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     assert!(matches!(s.node(form), Err(DomError::StaleNode)));

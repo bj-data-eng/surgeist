@@ -65,7 +65,7 @@ fn fresh_state_and_template_environment_use_each_independent_selected_platform()
             let mut dom = Dom::with_native_input_platform(limits(), platform).unwrap();
             let (d, root, input) = setup(&mut dom);
             let s = dom.snapshot();
-            let environment = s.document(d).unwrap().metadata().native_environment();
+            let environment = s.document(d).unwrap().metadata().document_environment();
             assert_eq!(environment.input_platform(), platform);
             assert_eq!(
                 environment.input_images(),
@@ -83,7 +83,12 @@ fn fresh_state_and_template_environment_use_each_independent_selected_platform()
             assert!(input_state.custom_validity_message().is_empty());
             assert_eq!(value(&s, input), "".into());
             assert_eq!(
-                s.node(input).unwrap().as_input().unwrap().form_owner(),
+                s.node(input)
+                    .unwrap()
+                    .as_input()
+                    .unwrap()
+                    .form_owner()
+                    .unwrap(),
                 None
             );
             let selection = input_state.selection().unwrap();
@@ -109,13 +114,19 @@ fn fresh_state_and_template_environment_use_each_independent_selected_platform()
             let c = apply(&mut dom, b);
             let template = c.created(&template).unwrap().unwrap();
             let s = dom.snapshot();
-            let contents = s.node(template).unwrap().as_template().unwrap().contents();
+            let contents = s
+                .node(template)
+                .unwrap()
+                .as_template()
+                .unwrap()
+                .contents()
+                .unwrap();
             let inert = s.node(contents).unwrap().owner_document().unwrap();
             assert_eq!(
                 s.document(inert)
                     .unwrap()
                     .metadata()
-                    .native_environment()
+                    .document_environment()
                     .input_platform(),
                 platform
             );
@@ -529,7 +540,12 @@ fn owner_reset_normalizes_the_intermediate_null_group_but_nearest_retention_does
     assert!(state(&s, null_peer).flags().checkedness());
     assert!(state(&s, owned).flags().checkedness());
     assert_eq!(
-        s.node(owned).unwrap().as_input().unwrap().form_owner(),
+        s.node(owned)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     let mut b = DomBatch::new();
@@ -537,7 +553,12 @@ fn owner_reset_normalizes_the_intermediate_null_group_but_nearest_retention_does
     apply(&mut dom, b);
     let s = dom.snapshot();
     assert_eq!(
-        s.node(owned).unwrap().as_input().unwrap().form_owner(),
+        s.node(owned)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert!(!state(&s, null_peer).flags().checkedness());
@@ -548,7 +569,12 @@ fn owner_reset_normalizes_the_intermediate_null_group_but_nearest_retention_does
     apply(&mut dom, b);
     let s = dom.snapshot();
     assert_eq!(
-        s.node(owned).unwrap().as_input().unwrap().form_owner(),
+        s.node(owned)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert!(state(&s, null_peer).flags().checkedness());
@@ -562,7 +588,12 @@ fn owner_reset_normalizes_the_intermediate_null_group_but_nearest_retention_does
     let collision = c.created(&collision).unwrap().unwrap();
     let s = dom.snapshot();
     assert_eq!(
-        s.node(owned).unwrap().as_input().unwrap().form_owner(),
+        s.node(owned)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         None
     );
     assert!(!state(&s, null_peer).flags().checkedness());
@@ -710,7 +741,15 @@ fn clone_copies_only_input_overlay_while_adoption_preserves_live_state() {
             .explicit_popover_target(),
         None
     );
-    assert_eq!(s.node(copy).unwrap().as_input().unwrap().form_owner(), None);
+    assert_eq!(
+        s.node(copy)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
+        None
+    );
     let mut b = DomBatch::new();
     let new_doc = b.create_document();
     b.adopt(input, &new_doc);

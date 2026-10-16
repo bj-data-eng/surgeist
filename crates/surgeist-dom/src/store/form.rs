@@ -2,13 +2,14 @@
 use super::*;
 use crate::form::{FormPastName, FormPastNames};
 
-pub(super) fn map_names<A: Copy, B>(
+pub(super) fn map_names_formed<A: Copy, B>(
     source: &FormPastNames<A>,
     mut map: impl FnMut(A) -> B,
+    budget: Option<&style::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<FormPastNames<B>, DomError> {
     let mut entries = Vec::new();
-    reserve(&mut entries, source.entries.len())?;
+    style::formation::reserve(&mut entries, source.entries.len(), budget, cancel)?;
     for entry in source.entries.iter() {
         check_cancel(cancel)?;
         entries.push(FormPastName {
@@ -170,7 +171,12 @@ mod tests {
         let c = dom.apply(b, &AtomicBool::new(false)).unwrap();
         let s = dom.snapshot();
         assert_eq!(
-            s.node(button).unwrap().as_button().unwrap().form_owner(),
+            s.node(button)
+                .unwrap()
+                .as_button()
+                .unwrap()
+                .form_owner()
+                .unwrap(),
             Some(form)
         );
         let entries: Vec<_> = s
@@ -274,7 +280,12 @@ mod tests {
         dom.apply(b, &AtomicBool::new(false)).unwrap();
         let s = dom.snapshot();
         assert_eq!(
-            s.node(button).unwrap().as_button().unwrap().form_owner(),
+            s.node(button)
+                .unwrap()
+                .as_button()
+                .unwrap()
+                .form_owner()
+                .unwrap(),
             None
         );
         assert_eq!(
@@ -328,7 +339,8 @@ mod tests {
                 .unwrap()
                 .as_fieldset()
                 .unwrap()
-                .form_owner(),
+                .form_owner()
+                .unwrap(),
             Some(form)
         );
     }

@@ -42,6 +42,22 @@ pub struct DomShadowRootState {
     keep_custom_element_registry_null: bool,
 }
 impl DomShadowRootState {
+    /// Retains the actual source effect's already-qualified null-registry state;
+    /// this does not run native attach checks or create a different root.
+    pub(crate) fn from_parsed(
+        properties: HtmlShadowRootProperties,
+        keep_registry_null: bool,
+        declarative: bool,
+        available_to_internals: bool,
+    ) -> Self {
+        Self {
+            properties,
+            keep_custom_element_registry_null: keep_registry_null,
+            declarative,
+            available_to_element_internals: available_to_internals,
+            registry: DomRegistryBinding::Null,
+        }
+    }
     pub(crate) fn native(init: DomShadowRootInit) -> Self {
         Self {
             properties: init.properties,

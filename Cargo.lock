@@ -3834,6 +3834,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-html",
+ "surgeist-html-parser",
  "surgeist-html-semantics",
 ]
 
@@ -3940,7 +3941,12 @@ dependencies = [
 name = "surgeist-runtime"
 version = "0.1.0"
 dependencies = [
+ "surgeist-css",
+ "surgeist-cssom",
  "surgeist-dom",
+ "surgeist-html",
+ "surgeist-html-parser",
+ "surgeist-html-semantics",
 ]
 
 [[package]]

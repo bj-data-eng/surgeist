@@ -1,6 +1,45 @@
 use super::*;
 
 impl Draft {
+    /// Transfers a qualified retained attachment rather than replaying native
+    /// creation or descendant insertion. The populated tree's slot relation is
+    /// recomputed against the actual host's current children at this join.
+    pub(super) fn attach_parsed_shadow(
+        &mut self,
+        host: Key,
+        root: Key,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancelled)?;
+        let host_node = self.node(host)?;
+        if !matches!(host_node.kind, DomNodeKind::Element(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        if host_node.shadow_root.is_some() {
+            return Err(DomError::NotSupported);
+        }
+        let root_node = self.node(root)?;
+        if !matches!(root_node.kind, DomNodeKind::ShadowRoot(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        if root_node.parent.is_some() || root_node.host.is_some() {
+            return Err(DomError::HierarchyRequest);
+        }
+        let mut current = Some(host);
+        while let Some(key) = current {
+            self.source_step(cancelled)?;
+            if key == root {
+                return Err(DomError::HierarchyRequest);
+            }
+            current = self.host_including_parent(key)?;
+        }
+        self.node_mut(root).host = Some(host);
+        self.node_mut(host).shadow_root = Some(root);
+        // Attachment is not an ordinary insertion: no Style/Details/control
+        // insertion hooks or adoption run for the retained descendant state.
+        self.assign_tree(root, limits, cancelled)
+    }
     pub(super) fn attach_shadow(
         &mut self,
         host: Key,
@@ -80,6 +119,7 @@ impl Draft {
             DomNodeKind::ShadowRoot(crate::DomShadowRootState::native(init)),
             document,
             limits,
+            cancelled,
         )?;
         self.node_mut(root).host = Some(host);
         self.node_mut(host).shadow_root = Some(root);

@@ -284,7 +284,12 @@ fn template_owned_contents_and_script_fresh_preparation_use_real_native_document
     let template = report.node_for(&ids[0]).unwrap();
     let contents = report.node_for(&contents).unwrap();
     assert_eq!(
-        s.node(template).unwrap().as_template().unwrap().contents(),
+        s.node(template)
+            .unwrap()
+            .as_template()
+            .unwrap()
+            .contents()
+            .unwrap(),
         contents
     );
     let inert = s.node(contents).unwrap().owner_document().unwrap();
@@ -349,7 +354,13 @@ fn destination_template_contents_is_qualified_by_its_actual_inert_document() {
     let c = apply(&mut dom, batch);
     let template = c.created(&template).unwrap().unwrap();
     let s = dom.snapshot();
-    let contents = s.node(template).unwrap().as_template().unwrap().contents();
+    let contents = s
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     let inert = s.node(contents).unwrap().owner_document().unwrap();
     let source = fragment_with_element(
         name(Namespace::html(), "script"),
@@ -700,7 +711,12 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
     let button = report.node_for(&controls[0]).unwrap();
     let fieldset = report.node_for(&controls[1]).unwrap();
     assert_eq!(
-        s.node(button).unwrap().as_button().unwrap().form_owner(),
+        s.node(button)
+            .unwrap()
+            .as_button()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert_eq!(
@@ -708,7 +724,8 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
             .unwrap()
             .as_fieldset()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert_eq!(

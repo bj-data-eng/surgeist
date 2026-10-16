@@ -12,6 +12,15 @@ elements and publishes exact Runtime focus/hover selections. This does not claim
 complete HTML focus processing, native activity or pointer-device state. Host
 publication revisions are independent of render invalidations and acknowledgements.
 
+`DomStyleSession` keeps the original canonical DOM, its CSSOM resources and pending
+Style work together. Obtain an execution permission with `execution()` and edit
+through the controlled `dom()` view. Permissions and event observations do not
+own the session. `try_shutdown` returns the whole session when mandatory work is
+pending; dropping the session abandons it without delivering callbacks or claiming
+completion. Runtime's native event dispatcher also drives the bounded Details
+toggle operations. See [DOM orchestration](docs/explanation.md#dom-orchestration)
+for custody, continuation and capability limits.
+
 ## Start
 
 From this checkout, prove that a reducer's task request becomes a runtime intent:

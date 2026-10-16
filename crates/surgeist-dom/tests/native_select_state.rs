@@ -100,7 +100,12 @@ fn fresh_flags_cache_and_form_owner_are_real_and_single() {
     assert!(selected(&s, f.a));
     assert!(!selected(&s, f.b));
     assert_eq!(
-        s.node(f.a).unwrap().as_option().unwrap().cached_select(),
+        s.node(f.a)
+            .unwrap()
+            .as_option()
+            .unwrap()
+            .cached_select()
+            .unwrap(),
         Some(f.select)
     );
     assert!(
@@ -130,7 +135,8 @@ fn fresh_flags_cache_and_form_owner_are_real_and_single() {
             .unwrap()
             .as_select()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         c.created(&form).unwrap()
     );
 }
@@ -649,7 +655,8 @@ fn selectedcontent_deep_clone_runs_real_control_template_and_shadow_hooks() {
         .unwrap()
         .as_template()
         .unwrap()
-        .contents();
+        .contents()
+        .unwrap();
     let mut b = DomBatch::new();
     let template_text = b.create_text(f.doc, "template text");
     b.insert_before(&template_text, contents, None);
@@ -699,7 +706,13 @@ fn selectedcontent_deep_clone_runs_real_control_template_and_shadow_hooks() {
         None
     );
     assert_eq!(text(&s, copies[3]), "output text".into());
-    let template_contents = s.node(copies[4]).unwrap().as_template().unwrap().contents();
+    let template_contents = s
+        .node(copies[4])
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     assert_ne!(template_contents, contents);
     assert_eq!(text(&s, template_contents), "template text".into());
     let shadow = s.node(copies[5]).unwrap().hosted_shadow_root().unwrap();

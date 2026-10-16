@@ -93,7 +93,7 @@ fn environment(
 }
 fn bind_base(dom: &mut Dom, document: DocumentId, base: NodeId, environment: &Environment) {
     let mut batch = DomBatch::new();
-    batch.bind_native_base_facts(
+    batch.bind_base_facts(
         dom.snapshot().document(document).unwrap().stamp(),
         &environment.base_facts,
     );
@@ -102,7 +102,7 @@ fn bind_base(dom: &mut Dom, document: DocumentId, base: NodeId, environment: &En
 }
 fn bind_hyperlinks(dom: &mut Dom, document: DocumentId, environment: &Environment) {
     let mut batch = DomBatch::new();
-    batch.bind_native_encoding_url_facts(
+    batch.bind_encoding_url_facts(
         dom.snapshot().document(document).unwrap().stamp(),
         &environment.encoding_url_facts,
     );

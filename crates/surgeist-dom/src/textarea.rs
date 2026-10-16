@@ -95,8 +95,9 @@ impl<'a> DomTextarea<'a> {
             .textarea_state()
             .expect("checked Textarea")
     }
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
     /// API value, with Infra newlines normalized; no submitted hard wrapping.
     pub fn value(
@@ -110,9 +111,13 @@ impl<'a> DomTextarea<'a> {
             limit: limits.work,
             cancel,
         };
-        normalized_value(self.state().raw.code_units(), limits.units, &mut || {
-            read.step()
-        })
+        normalized_value(
+            self.state().raw.code_units(),
+            limits.units,
+            &mut || read.step(),
+            None,
+            cancel,
+        )
     }
     pub fn text_length(
         self,
@@ -152,7 +157,7 @@ impl<'a> DomTextarea<'a> {
             }
         }
         read.step()?;
-        let mut output = output(length, limits.units)?;
+        let mut output = output(length, limits.units, None, cancel)?;
         for &child in self.node.children() {
             read.step()?;
             if let DomNodeKind::Text(text) = self.node.snapshot.node(child)?.kind() {
@@ -166,20 +171,13 @@ impl<'a> DomTextarea<'a> {
     }
 }
 
-fn output(length: usize, limit: usize) -> Result<Vec<u16>, DomError> {
-    crate::store::admit(length, limit, DomResource::StringCodeUnits)?;
-    length
-        .checked_mul(std::mem::size_of::<u16>())
-        .filter(|n| *n <= isize::MAX as usize)
-        .ok_or(DomError::RepresentationExhausted)?;
-    let mut output = Vec::new();
-    output
-        .try_reserve_exact(length)
-        .map_err(|_| DomError::AllocationFailed)?;
-    // Exact growth is requested; reject any actual excess over the admitted
-    // unit extent rather than silently retaining an unbounded capacity.
-    crate::store::admit(output.capacity(), limit, DomResource::StringCodeUnits)?;
-    Ok(output)
+pub(crate) fn output(
+    length: usize,
+    limit: usize,
+    budget: Option<&crate::store::style::formation::Formation>,
+    cancel: &AtomicBool,
+) -> Result<Vec<u16>, DomError> {
+    crate::store::style::formation::utf16_buffer(length, limit, budget, cancel)
 }
 pub(crate) fn normalized_length(
     raw: &[u16],
@@ -187,9 +185,9 @@ pub(crate) fn normalized_length(
 ) -> Result<usize, DomError> {
     let mut normalizer = HtmlNewlineNormalizer::new();
     let mut length = 0usize;
-    for &unit in raw {
+    for unit in raw {
         step()?;
-        if normalizer.push(unit).is_some() {
+        if normalizer.push(*unit).is_some() {
             length = length
                 .checked_add(1)
                 .ok_or(DomError::RepresentationExhausted)?;
@@ -201,14 +199,16 @@ pub(crate) fn normalized_value(
     raw: &[u16],
     limit: usize,
     step: &mut impl FnMut() -> Result<(), DomError>,
+    budget: Option<&crate::store::style::formation::Formation>,
+    cancel: &AtomicBool,
 ) -> Result<DocumentString, DomError> {
     let length = normalized_length(raw, step)?;
     step()?;
-    let mut output = output(length, limit)?;
+    let mut output = output(length, limit, budget, cancel)?;
     let mut normalizer = HtmlNewlineNormalizer::new();
-    for &unit in raw {
+    for unit in raw {
         step()?;
-        if let Some(unit) = normalizer.push(unit) {
+        if let Some(unit) = normalizer.push(*unit) {
             step()?;
             output.push(unit);
         }

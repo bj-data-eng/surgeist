@@ -3,6 +3,50 @@ use super::*;
 use crate::template::TemplateDocument;
 
 impl Draft {
+    pub(super) fn owned_template_contents(
+        &self,
+        template: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Key>, DomError> {
+        self.source_step(cancel)?;
+        let Some(contents) = self.node(template)?.template_contents else {
+            return Ok(None);
+        };
+        let target = self.node(contents)?;
+        Ok(
+            (matches!(target.kind, DomNodeKind::DocumentFragment) && target.host == Some(template))
+                .then_some(contents),
+        )
+    }
+    pub(super) fn retire_template_contents_target(
+        &mut self,
+        retired: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !matches!(self.node(retired)?.kind, DomNodeKind::ShadowRoot(_)) {
+            return Ok(());
+        }
+        let extent = self
+            .existing
+            .len()
+            .checked_add(self.created.len())
+            .ok_or(DomError::RepresentationExhausted)?;
+        for index in 0..extent {
+            self.source_step(cancel)?;
+            let key = if index < self.existing.len() {
+                Key::Existing(index)
+            } else {
+                Key::Created(index - self.existing.len())
+            };
+            if self
+                .node(key)
+                .is_ok_and(|node| node.template_contents == Some(retired))
+            {
+                self.node_mut(key).template_contents = None;
+            }
+        }
+        Ok(())
+    }
     fn appropriate_template_document(
         &mut self,
         document: Key,
@@ -26,12 +70,15 @@ impl Draft {
                 let DomNodeKind::Document(source) = &self.node(document)?.kind else {
                     unreachable!("Document role requires Document")
                 };
+                let formation = style::formation::Formation::new(self, cancel)?;
                 let metadata = DomDocumentMetadata::template_owner(
                     source.class(),
-                    source.native_environment(),
-                );
+                    source.document_environment(),
+                    &mut |text| style::formation::string(text, formation.as_ref(), cancel),
+                )?;
                 let key = Key::Created(self.created.len());
-                let key = self.allocate(DomNodeKind::Document(metadata), key, limits)?;
+                let key = self.allocate(DomNodeKind::Document(metadata), key, limits, cancel)?;
+                drop(formation);
                 self.node_mut(key).template_document = Some(TemplateDocument::InertTemplate);
                 self.node_mut(document).template_document =
                     Some(TemplateDocument::Ordinary { inert: Some(key) });
@@ -47,15 +94,16 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if !matches!(&self.node(node)?.kind, DomNodeKind::Element(element)
-            if element.template_insertion_state().is_some())
+            if element.is_template())
         {
             return Ok(());
         }
         let document =
             self.appropriate_template_document(self.node(node)?.document, limits, cancel)?;
-        let contents = self.allocate(DomNodeKind::DocumentFragment, document, limits)?;
+        let contents = self.allocate(DomNodeKind::DocumentFragment, document, limits, cancel)?;
         self.node_mut(contents).host = Some(node);
         self.node_mut(node).template_contents = Some(contents);
+        self.node_mut(node).template_patch = Some(crate::template::TemplatePatch::fresh());
         check_cancel(cancel)
     }
     pub(super) fn template_adoption_target(
@@ -65,11 +113,47 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Option<(Key, Key)>, DomError> {
-        let Some(contents) = self.node(node)?.template_contents else {
+        let Some(contents) = self.owned_template_contents(node, cancel)? else {
             return Ok(None);
         };
         let target = self.appropriate_template_document(document, limits, cancel)?;
         Ok((self.node(contents)?.document != target).then_some((contents, target)))
+    }
+}
+
+impl Draft {
+    pub(super) fn retire_template_patch_target(
+        &mut self,
+        target: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        for i in 0..self.existing.len() + self.created.len() {
+            self.effect_step(cancel)?;
+            let key = if i < self.existing.len() {
+                Key::Existing(i)
+            } else {
+                Key::Created(i - self.existing.len())
+            };
+            let present = match key {
+                Key::Existing(i) => self.existing[i].is_some(),
+                Key::Created(i) => self.created[i].is_some(),
+            };
+            if !present {
+                continue;
+            }
+            if let Some(patch) = &mut self.node_mut(key).template_patch {
+                if patch.target == Some(target) {
+                    patch.target = None;
+                }
+                if patch.start == Some(target) {
+                    patch.start = None;
+                }
+                if patch.end == Some(target) {
+                    patch.end = None;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -95,7 +179,7 @@ mod tests {
         b.create_element_ns(d, crate::Namespace::html(), "template");
         let mut draft = Draft::new(&dom, b.owner.clone(), &cancel).unwrap();
         for command in b.commands {
-            draft.apply(command, limits(), &cancel).unwrap();
+            draft.apply(&command, limits(), &cancel).unwrap();
         }
         assert_eq!(draft.created.len(), 3); //Element, real inert Document, contents
         assert_eq!(draft.tickets.len(), 1); //no private allocation aliases
@@ -145,7 +229,8 @@ mod tests {
             .unwrap()
             .as_template()
             .unwrap()
-            .contents();
+            .contents()
+            .unwrap();
         let inert = dom
             .snapshot()
             .node(parent)
@@ -163,7 +248,8 @@ mod tests {
                 .unwrap()
                 .as_template()
                 .unwrap()
-                .contents();
+                .contents()
+                .unwrap();
         }
         let before = dom.snapshot();
         let usage = dom.usage();

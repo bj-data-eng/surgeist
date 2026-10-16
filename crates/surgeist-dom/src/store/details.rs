@@ -15,20 +15,35 @@ pub(super) struct Pending<K> {
     old: HtmlDetailsState,
     new: HtmlDetailsState,
 }
+impl<K> Pending<K> {
+    pub(in crate::store) fn is_unissued(&self) -> bool {
+        self.serial.is_none()
+    }
+}
+// The value drops before its non-Clone Source occurrence debit.
+struct DetailsValue {
+    value: DocumentString,
+    _payload: Option<style::checkpoint::Charge>,
+}
 pub(super) struct Finished {
     pub intentions: Vec<DomDetailsToggleIntention>,
     pub cancellations: Vec<DomDetailsToggleIntention>,
     pub next: u64,
 }
-pub(super) fn draft(
+pub(super) fn draft_formed(
     source: &[DomDetailsToggleIntention],
+    initial: Option<&style::initial::Initial>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Pending<Key>>, DomError> {
     let mut out = Vec::new();
-    out.try_reserve_exact(source.len())
-        .map_err(|_| DomError::AllocationFailed)?;
+    if let Some(initial) = initial {
+        initial.reserve(&mut out, source.len(), cancel)?;
+    } else {
+        out.try_reserve_exact(source.len())
+            .map_err(|_| DomError::AllocationFailed)?;
+    }
     for item in source {
-        check_cancel(cancel)?;
+        style::initial::step(initial, cancel)?;
         out.push(Pending {
             serial: Some(item.operation.serial),
             target: Key::Existing(item.target.slot),
@@ -47,39 +62,29 @@ impl Draft {
         key: Key,
         name: KnownHtmlAttribute,
         cancel: &AtomicBool,
-    ) -> Result<Option<DocumentString>, DomError> {
-        let DomNodeKind::Element(e) = &self.node(key)?.kind else {
-            return Ok(None);
-        };
-        for attr in e.attributes().iter() {
-            check_cancel(cancel)?;
-            if attr.name().namespace().uri().is_none() {
-                let mut expected = name.local_name().encode_utf16();
-                let mut matches = true;
-                for &unit in attr.name().local_name().code_units() {
-                    check_cancel(cancel)?;
-                    if Some(unit) != expected.next() {
-                        matches = false;
-                        break;
-                    }
-                }
-                if matches && expected.next().is_none() {
-                    return Ok(Some(attr.value().clone()));
-                }
-            }
-        }
-        Ok(None)
+    ) -> Result<Option<DetailsValue>, DomError> {
+        self.control_attribute(key, name, cancel)?
+            .map(|value| {
+                let (value, payload) = style::formation::shared_string(self, value, cancel)?;
+                Ok(DetailsValue {
+                    value,
+                    _payload: payload,
+                })
+            })
+            .transpose()
     }
     fn details_units_equal(
+        &self,
         a: &DocumentString,
         b: &DocumentString,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
         if a.len() != b.len() {
             return Ok(false);
         }
         for (a, b) in a.code_units().iter().zip(b.code_units()) {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if a != b {
                 return Ok(false);
             }
@@ -94,7 +99,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        check_cancel(cancel)?;
+        self.source_step(cancel)?;
         let count = self
             .details_intentions
             .len()
@@ -106,9 +111,17 @@ impl Draft {
             limits.details_intentions,
             DomResource::DetailsToggleIntentions,
         )?;
+        let additional = self.source_reserve_amount::<Pending<Key>>(
+            self.details_intentions.len(),
+            self.details_intentions.capacity(),
+            1,
+            cancel,
+        )?;
         self.details_intentions
-            .try_reserve_exact(1)
+            .try_reserve_exact(additional.unwrap_or(1))
             .map_err(|_| DomError::AllocationFailed)?;
+        self.source_admit(0, cancel)?;
+        self.headroom_details_issue(cancel)?;
         self.details_intentions.push(Pending {
             serial: None,
             target,
@@ -124,10 +137,10 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        check_cancel(cancel)?;
+        self.source_step(cancel)?;
         if !self.is_details(target)?
             || self
-                .details_attribute_value(target, KnownHtmlAttribute::Open, cancel)?
+                .control_attribute(target, KnownHtmlAttribute::Open, cancel)?
                 .is_none()
         {
             return Ok(());
@@ -136,20 +149,20 @@ impl Draft {
         else {
             return Ok(());
         };
-        if name.is_empty() {
+        if name.value.is_empty() {
             return Ok(());
         }
-        let root = crate::slot::root(self, target, cancel)?;
+        let root = crate::slot::root_admitted(self, target, &mut || self.source_step(cancel))?;
         let mut next = Some(root);
         while let Some(peer) = next {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if peer != target
                 && self.is_details(peer)?
                 && let Some(other) =
                     self.details_attribute_value(peer, KnownHtmlAttribute::Name, cancel)?
-                && Self::details_units_equal(&name, &other, cancel)?
+                && self.details_units_equal(&name.value, &other.value, cancel)?
                 && self
-                    .details_attribute_value(peer, KnownHtmlAttribute::Open, cancel)?
+                    .control_attribute(peer, KnownHtmlAttribute::Open, cancel)?
                     .is_some()
             {
                 let close = match request {
@@ -158,9 +171,11 @@ impl Draft {
                 };
                 // Re-enter the actual attribute owner. Its Open->Closed hook
                 // appends its own transition and requests no further closing.
-                return self.remove_attribute(close, None, "open".into(), limits, cancel);
+                let operand = style::formation::Formation::new(self, cancel)?;
+                let name = style::formation::string("open", operand.as_ref(), cancel)?;
+                return self.remove_attribute(close, None, &name, limits, cancel);
             }
-            next = crate::slot::next(self, root, peer, cancel)?;
+            next = crate::slot::next_admitted(self, root, peer, &mut || self.source_step(cancel))?;
         }
         Ok(())
     }
@@ -173,12 +188,13 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
         if !self.is_details(target)? {
             return Ok(());
         }
-        let attribute = if name.local_name().code_units() == [0x6e, 0x61, 0x6d, 0x65] {
+        let attribute = if self.source_ascii(name.local_name(), "name", cancel)? {
             HtmlDetailsAttribute::Name
-        } else if name.local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e] {
+        } else if self.source_ascii(name.local_name(), "open", cancel)? {
             HtmlDetailsAttribute::Open
         } else {
             HtmlDetailsAttribute::Other
@@ -213,20 +229,34 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut kept = 0;
         for i in 0..self.details_intentions.len() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let item = self.details_intentions[i];
             if item.target == target {
-                if let Key::Existing(slot) = target {
+                if let Some(id) = self.published_id(target) {
+                    #[cfg(test)]
+                    let growth = source_observation::before(
+                        self,
+                        self.cancelled_details.len() == self.cancelled_details.capacity(),
+                        cancel,
+                    )?;
+                    let additional = self.source_reserve_amount::<Pending<NodeId>>(
+                        self.cancelled_details.len(),
+                        self.cancelled_details.capacity(),
+                        1,
+                        cancel,
+                    )?;
                     self.cancelled_details
-                        .try_reserve_exact(1)
+                        .try_reserve_exact(additional.unwrap_or(1))
                         .map_err(|_| DomError::AllocationFailed)?;
+                    #[cfg(test)]
+                    source_observation::grew(
+                        growth,
+                        self.cancelled_details.capacity() * size_of::<Pending<NodeId>>(),
+                    );
+                    self.source_admit(0, cancel)?;
                     self.cancelled_details.push(Pending {
                         serial: item.serial,
-                        target: NodeId {
-                            owner: self.store,
-                            slot,
-                            generation: self.generations[slot],
-                        },
+                        target: id,
                         old: item.old,
                         new: item.new,
                     });
@@ -239,10 +269,30 @@ impl Draft {
         self.details_intentions.truncate(kept);
         Ok(())
     }
+    pub(super) fn acknowledge_details_publication(
+        &mut self,
+        published: &[DomDetailsToggleIntention],
+    ) {
+        let mut published = published.iter();
+        let private = self.phase_map.as_ref().map(|m| &m.private);
+        for pending in &mut self.details_intentions {
+            if matches!(pending.target,Key::Created(i) if private.is_some_and(|m|m[i])) {
+                continue;
+            }
+            pending.serial = Some(
+                published
+                    .next()
+                    .expect("visible intention")
+                    .operation
+                    .serial,
+            );
+        }
+    }
     pub(super) fn finish_details(
         &self,
         dom: &Dom,
         id: &impl Fn(Key) -> NodeId,
+        budget: Option<&style::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Finished, DomError> {
         let mut next = dom.state.next_details_intention;
@@ -263,14 +313,23 @@ impl Draft {
         };
         let mut intentions = Vec::new();
         let mut cancellations = Vec::new();
-        intentions
-            .try_reserve_exact(self.details_intentions.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-        cancellations
-            .try_reserve_exact(self.cancelled_details.len())
-            .map_err(|_| DomError::AllocationFailed)?;
+        style::formation::reserve(
+            &mut intentions,
+            self.details_intentions.len(),
+            budget,
+            cancel,
+        )?;
+        style::formation::reserve(
+            &mut cancellations,
+            self.cancelled_details.len(),
+            budget,
+            cancel,
+        )?;
         for item in &self.details_intentions {
-            check_cancel(cancel)?;
+            style::formation::step(budget, cancel)?;
+            if self.is_private(item.target) {
+                continue;
+            }
             intentions.push(DomDetailsToggleIntention {
                 operation: serial(item.serial)?,
                 target: id(item.target),
@@ -279,7 +338,7 @@ impl Draft {
             });
         }
         for item in &self.cancelled_details {
-            check_cancel(cancel)?;
+            style::formation::step(budget, cancel)?;
             cancellations.push(DomDetailsToggleIntention {
                 operation: serial(item.serial)?,
                 target: item.target,
@@ -305,6 +364,7 @@ impl Dom {
         max_output: usize,
         cancel: &AtomicBool,
     ) -> Result<DomDetailsToggleTransfer, DomError> {
+        self.require_source_idle()?;
         check_cancel(cancel)?;
         if max_output > isize::MAX as usize / size_of::<DomDetailsToggleIntention>() {
             return Err(DomError::InvalidLimit(DomResource::DetailsToggleOutput));
@@ -339,6 +399,57 @@ impl Dom {
 }
 
 #[cfg(test)]
+mod source_observation {
+    use super::*;
+    use std::{cell::Cell, sync::atomic::Ordering};
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct Growth {
+        pub required: usize,
+        pub limit: usize,
+    }
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static LAST: Cell<Option<Growth>> = const { Cell::new(None) };
+    }
+    pub(super) fn start() {
+        ACTIVE.set(true);
+        LAST.set(None);
+    }
+    pub(super) fn finish() -> Option<Growth> {
+        ACTIVE.set(false);
+        LAST.take()
+    }
+    pub(super) fn before(
+        draft: &Draft,
+        growing: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Growth>, DomError> {
+        if !ACTIVE.get() || !growing {
+            return Ok(None);
+        }
+        let Some(limits) = draft.source_limits else {
+            return Ok(None);
+        };
+        Ok(Some(Growth {
+            required: draft.source_storage_bytes(cancel)?
+                + draft.source_other_bytes
+                + draft.source_formation_bytes.load(Ordering::Relaxed),
+            limit: limits.retained_bytes,
+        }))
+    }
+    pub(super) fn grew(before: Option<Growth>, new: usize) {
+        if let Some(mut before) = before {
+            // Before includes the actual old bank. The fresh actual capacity
+            // coexists with it during replacement; add that new bank once.
+            before.required += new;
+            if LAST.get().is_none_or(|old| old.required < before.required) {
+                LAST.set(Some(before));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::Namespace;
@@ -361,6 +472,317 @@ mod tests {
             c.created(&a).unwrap().unwrap(),
             c.created(&z).unwrap().unwrap(),
         )
+    }
+    fn actual_source_retirement_growth(bytes: usize) -> Option<source_observation::Growth> {
+        let (mut dom, _, a, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        dom.set_limits(policy(1024)).unwrap();
+        for _ in 0..16 {
+            let mut setup = DomBatch::new();
+            for _ in 0..16 {
+                setup.set_attribute(a, "open", "");
+                setup.remove_attribute(a, "open");
+            }
+            dom.apply(setup, &cancel).unwrap();
+        }
+        assert_eq!(dom.pending_details_toggle_intentions(), 512);
+        let before = dom.snapshot();
+        let mut edit = DomBatch::new();
+        edit.destroy(a);
+        let limits = crate::DomStyleEditLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_style_batch(edit, limits, &cancel) else {
+            return None;
+        };
+        source_observation::start();
+        let result = lease.advance(&cancel);
+        let growth = source_observation::finish();
+        if result.is_err() {
+            assert_eq!(lease.snapshot().stamp(), before.stamp());
+        }
+        growth
+    }
+    #[test]
+    fn source_details_retirement_admits_actual_old_and_new_banks_before_allocation() {
+        let high =
+            actual_source_retirement_growth(16_000_000).expect("actual cancellation bank growth");
+        if let Some(actual) = actual_source_retirement_growth(high.required - 1) {
+            assert!(
+                actual.required <= actual.limit,
+                "Details cancellation banks retained {} bytes under {}",
+                actual.required,
+                actual.limit
+            );
+        }
+    }
+    fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
+        let cancel = AtomicBool::new(false);
+        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+            usize::MAX,
+            usize::MAX,
+            100_000_000,
+            64,
+            4096,
+            4096,
+        ));
+        let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+        let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
+        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+            base + bytes,
+            base_units + units,
+            100_000_000,
+            64,
+            4096,
+            4096,
+        ));
+    }
+    fn named_draft() -> (Draft, Key, usize) {
+        let (mut dom, _, a, _) = fixture();
+        dom.set_limits(DomLimits::new(32, 100_000, 64, 0, 0, 8, 65536).unwrap())
+            .unwrap();
+        let mut units = Vec::with_capacity(4096);
+        units.push(u16::from(b'g'));
+        let capacity = units.capacity();
+        let mut setup = DomBatch::new();
+        setup.set_attribute(a, "name", DocumentString::from_utf16(units));
+        dom.apply(setup, &AtomicBool::new(false)).unwrap();
+        (
+            Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap(),
+            Key::Existing(a.slot),
+            capacity,
+        )
+    }
+    #[test]
+    fn source_details_name_has_exact_capacity_custody_and_releases_on_first_stop() {
+        use std::sync::atomic::Ordering;
+        let cancel = AtomicBool::new(false);
+        let (mut draft, key, capacity) = named_draft();
+        let bytes = size_of::<Vec<u16>>() + capacity * size_of::<u16>();
+        source_budget(&mut draft, bytes * 2, capacity * 2);
+        let first = draft
+            .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.value.code_units(), [u16::from(b'g')]);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+        assert_eq!(
+            draft.source_temporary_units.load(Ordering::Relaxed),
+            capacity
+        );
+        let second = draft
+            .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            first.value.shared_code_units(),
+            second.value.shared_code_units()
+        ));
+        assert_eq!(
+            draft.source_formation_bytes.load(Ordering::Relaxed),
+            bytes * 2
+        );
+        cancel.store(true, Ordering::Release);
+        assert!(matches!(
+            draft.details_attribute_value(key, KnownHtmlAttribute::Name, &cancel),
+            Err(DomError::Cancelled)
+        ));
+        assert_eq!(
+            draft.source_formation_bytes.load(Ordering::Relaxed),
+            bytes * 2
+        );
+        drop(second);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+        drop(first);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        cancel.store(false, Ordering::Release);
+        for short_units in [false, true] {
+            source_budget(
+                &mut draft,
+                bytes - usize::from(!short_units),
+                capacity - usize::from(short_units),
+            );
+            assert!(matches!(
+                draft.details_attribute_value(key, KnownHtmlAttribute::Name, &cancel),
+                Err(DomError::ResourceLimit {
+                    resource: DomResource::StyleRetainedBytes | DomResource::StyleRetainedUnits,
+                    ..
+                })
+            ));
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        }
+        draft.source_limits = None;
+        let ordinary = draft
+            .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
+            .unwrap()
+            .unwrap();
+        assert!(ordinary._payload.is_none());
+        assert_eq!(ordinary.value.code_units(), [u16::from(b'g')]);
+    }
+    #[test]
+    fn source_details_append_checks_replacement_peak_and_preserves_raw_order() {
+        let (dom, _, a, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let key = Key::Existing(a.slot);
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        let bytes = size_of::<Pending<Key>>();
+        source_budget(&mut draft, bytes - 1, 0);
+        assert!(matches!(
+            draft.append_details_intention(
+                key,
+                HtmlDetailsState::Closed,
+                HtmlDetailsState::Open,
+                policy(8),
+                &cancel
+            ),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedBytes,
+                ..
+            })
+        ));
+        assert!(draft.details_intentions.is_empty());
+        source_budget(&mut draft, bytes, 0);
+        draft
+            .append_details_intention(
+                key,
+                HtmlDetailsState::Closed,
+                HtmlDetailsState::Open,
+                policy(8),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(draft.details_intentions.capacity(), 1);
+        source_budget(&mut draft, bytes * 2 - 1, 0);
+        assert!(
+            draft
+                .append_details_intention(
+                    key,
+                    HtmlDetailsState::Open,
+                    HtmlDetailsState::Closed,
+                    policy(8),
+                    &cancel
+                )
+                .is_err()
+        );
+        assert_eq!(draft.details_intentions.len(), 1);
+        source_budget(&mut draft, bytes * 2, 0);
+        draft
+            .append_details_intention(
+                key,
+                HtmlDetailsState::Open,
+                HtmlDetailsState::Closed,
+                policy(8),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(draft.details_intentions.len(), 2);
+        assert_eq!(
+            (
+                draft.details_intentions[0].old,
+                draft.details_intentions[0].new
+            ),
+            (HtmlDetailsState::Closed, HtmlDetailsState::Open)
+        );
+        assert_eq!(
+            (
+                draft.details_intentions[1].old,
+                draft.details_intentions[1].new
+            ),
+            (HtmlDetailsState::Open, HtmlDetailsState::Closed)
+        );
+        assert!(draft.details_intentions.iter().all(Pending::is_unissued));
+        cancel.store(true, std::sync::atomic::Ordering::Release);
+        assert!(matches!(
+            draft.cancel_details_intentions(key, &cancel),
+            Err(DomError::Cancelled)
+        ));
+        assert_eq!(draft.details_intentions.len(), 2);
+        assert!(draft.cancelled_details.is_empty());
+    }
+    #[test]
+    fn source_details_raw_intention_survives_actual_csp_parking_and_cancelled_reentry() {
+        use std::sync::atomic::Ordering;
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(policy(16)).unwrap();
+        let mut setup = DomBatch::new();
+        let doc = setup.create_document();
+        let parent = setup.create_element_ns(&doc, Namespace::html(), "div");
+        let details = setup.create_element_ns(&doc, Namespace::html(), "details");
+        setup.insert_before(&parent, &doc, None);
+        setup.insert_before(&details, &parent, None);
+        let created = dom.apply(setup, &cancel).unwrap();
+        let doc = created.document(&doc).unwrap();
+        let parent = created.created(&parent).unwrap().unwrap();
+        let details = created.created(&details).unwrap().unwrap();
+        let before = dom.snapshot();
+        let mut edit = DomBatch::new();
+        edit.set_attribute(details, "open", "");
+        let style = edit.create_element_ns(doc, Namespace::html(), "style");
+        let text = edit.create_text(doc, "a {}");
+        edit.insert_before(&text, &style, None);
+        edit.insert_before(&style, parent, None);
+        let limits =
+            crate::DomStyleEditLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_style_batch(edit, limits, &cancel).unwrap();
+        let request = match lease.advance(&cancel).unwrap() {
+            crate::DomStyleProgress::Request(request) => request,
+            other => panic!("actual connected Style CSP boundary, got {other:?}"),
+        };
+        assert_eq!(
+            request.action(),
+            crate::DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        );
+        assert!(lease.status().has_published());
+        let operation = lease.operation();
+        let published = lease.snapshot().stamp();
+        drop(lease);
+        cancel.store(true, Ordering::Release);
+        assert!(matches!(
+            dom.resume_style_edit(operation, limits, &cancel),
+            Err(DomError::Cancelled)
+        ));
+        assert_eq!(dom.snapshot().stamp(), published);
+        cancel.store(false, Ordering::Release);
+        let mut lease = dom.resume_style_edit(operation, limits, &cancel).unwrap();
+        let resumed = match lease.advance(&cancel).unwrap() {
+            crate::DomStyleProgress::Request(request) => request,
+            other => panic!("same retained CSP request, got {other:?}"),
+        };
+        assert!(Arc::ptr_eq(&request.source, &resumed.source));
+        lease
+            .accept_inline_csp(
+                &resumed,
+                &crate::DomStyleInlineCspObservation::evaluated(
+                    resumed.source(),
+                    Arc::new(Vec::new()),
+                    1,
+                    false,
+                ),
+                &cancel,
+            )
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            crate::DomStyleProgress::Complete(_)
+        ));
+        drop(lease);
+        assert!(dom.pending_style_edit().is_none());
+        assert!(
+            before
+                .node(details)
+                .unwrap()
+                .attribute(&DocumentString::from("open"))
+                .is_none()
+        );
+        let transferred = dom.take_details_toggle_intentions(16, &cancel).unwrap();
+        let records: Vec<_> = transferred.into_iter().collect();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].target(), details);
+        assert_eq!(
+            (records[0].old_state(), records[0].new_state()),
+            (HtmlDetailsState::Closed, HtmlDetailsState::Open)
+        );
+        assert_eq!(dom.pending_details_toggle_intentions(), 0);
     }
     #[test]
     fn late_publication_cancellation_preserves_primary_secondary_and_operation_counter() {

@@ -3,10 +3,14 @@
 use std::sync::Arc;
 
 use surgeist_css::CssViewTransitionIdent;
-use surgeist_cssom::{CssomRevision, CssomRuleId, CssomSheetId, CssomSnapshot};
+use surgeist_cssom::{CssomRevision, CssomRuleId, CssomSheetId};
 
 use crate::batch::BatchIdentity;
 use crate::{DocumentId, DomDocumentStamp, DomError, DomOwnerId, DomSnapshot, NodeId};
+mod capture;
+pub use capture::{
+    DomPreparedViewTransitionRules, DomPreparedViewTransitionSheet, DomViewTransitionCaptureLimits,
+};
 
 /// Owner-qualified, never-reissued transition generation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -210,7 +214,7 @@ pub enum DomViewTransitionCssomError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Record {
     pub id: DomViewTransitionRecordId,
-    pub name: CssViewTransitionIdent,
+    pub name: Arc<CssViewTransitionIdent>,
     pub branches: DomViewTransitionBranches,
     pub rules: Option<DomViewTransitionRules>,
     pub captured: [bool; 4],
@@ -394,7 +398,7 @@ impl<'a> DomViewTransitionPseudo<'a> {
         self.origin
     }
     pub fn name(self) -> Option<&'a CssViewTransitionIdent> {
-        self.record.map(|r| &r.name)
+        self.record.map(|r| r.name.as_ref())
     }
     pub fn parent(self) -> Option<DomViewTransitionPseudoId> {
         use DomViewTransitionPseudoKind::*;
@@ -462,18 +466,17 @@ impl Iterator for DomViewTransitionPseudoChildren<'_> {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Edit {
     Initialize {
-        snapshot: CssomSnapshot,
-        sheet: CssomSheetId,
+        input: DomPreparedViewTransitionSheet,
     },
     Begin {
         ticket: usize,
     },
     Append {
         transition: ViewTransitionOperand,
-        name: CssViewTransitionIdent,
+        name: Arc<CssViewTransitionIdent>,
         ticket: usize,
     },
     Branches {
@@ -482,8 +485,7 @@ pub(crate) enum Edit {
     },
     Rules {
         record: ViewTransitionRecordOperand,
-        snapshot: CssomSnapshot,
-        rules: DomViewTransitionRuleAssociations,
+        input: DomPreparedViewTransitionRules,
     },
     ClearRules(ViewTransitionRecordOperand),
     Captured {

@@ -48,11 +48,12 @@ impl<'a> DomOutput<'a> {
             .output_state()
             .expect("checked Output")
     }
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Edit {
     Value(DocumentString),
     DefaultValue(DocumentString),

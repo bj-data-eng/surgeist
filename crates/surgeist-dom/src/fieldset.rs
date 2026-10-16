@@ -46,7 +46,8 @@ impl<'a> DomFieldset<'a> {
             .expect("checked Fieldset")
     }
     /// Actual established relation, independently of current content attributes.
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
 }

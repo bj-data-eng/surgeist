@@ -50,8 +50,9 @@ impl<'a> DomSelect<'a> {
             .select_state()
             .expect("Select")
     }
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -69,8 +70,9 @@ impl DomOption<'_> {
             .option_state()
             .expect("Option")
     }
-    pub fn cached_select(self) -> Option<NodeId> {
-        self.node.node.option_select
+    pub fn cached_select(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.option_select)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -90,7 +92,7 @@ impl DomSelectedcontent<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Edit {
     Value(crate::DocumentString),
     Index(i64),

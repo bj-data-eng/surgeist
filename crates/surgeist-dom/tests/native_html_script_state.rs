@@ -418,7 +418,13 @@ fn template_contents_stay_disconnected_and_extracted_script_prepares_in_actual_d
     let c = apply(&mut dom, b);
     let template = c.created(&template).unwrap().unwrap();
     let s = dom.snapshot();
-    let contents = s.node(template).unwrap().as_template().unwrap().contents();
+    let contents = s
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     let inert = s.node(contents).unwrap().owner_document().unwrap();
     let mut b = DomBatch::new();
     let inner = b.create_element_ns(inert, Namespace::html(), "script");
@@ -440,7 +446,13 @@ fn template_contents_stay_disconnected_and_extracted_script_prepares_in_actual_d
     let c = apply(&mut dom, b);
     let cloned = c.created(&cloned).unwrap().unwrap();
     let s = dom.snapshot();
-    let cloned_contents = s.node(cloned).unwrap().as_template().unwrap().contents();
+    let cloned_contents = s
+        .node(cloned)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     let cloned_inner = s.node(cloned_contents).unwrap().children()[0];
     fresh(&s, cloned_inner);
     assert_eq!(s.node(cloned_inner).unwrap().owner_document(), Some(inert));
@@ -619,7 +631,12 @@ fn fragment_script_hooks_compose_with_real_slot_form_and_clonable_shadow_state()
     }
     assert_eq!(s.slot(slot).unwrap().assigned_nodes(), &[form]);
     assert_eq!(
-        s.node(button).unwrap().as_button().unwrap().form_owner(),
+        s.node(button)
+            .unwrap()
+            .as_button()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert_eq!(
@@ -649,7 +666,8 @@ fn fragment_script_hooks_compose_with_real_slot_form_and_clonable_shadow_state()
             .unwrap()
             .as_button()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(cloned_form)
     );
     assert_eq!(
@@ -684,7 +702,8 @@ fn fragment_script_hooks_compose_with_real_slot_form_and_clonable_shadow_state()
             .unwrap()
             .as_button()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
 }

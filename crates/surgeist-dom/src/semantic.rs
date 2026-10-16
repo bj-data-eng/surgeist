@@ -347,7 +347,7 @@ fn add_document(
     document: DocumentId,
 ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
     let metadata = snapshot.document(document)?.metadata();
-    let environment = metadata.native_environment().browsing_context();
+    let environment = metadata.document_environment().browsing_context();
     // HTML877d #concept-n-noscript: null browsing context independently
     // disables scripting for Nodes. Present alone would not prove Enabled.
     let scripting = match environment {
@@ -380,6 +380,7 @@ impl DomSnapshot {
         adapter_limits: DomHtmlCaptureLimits,
         cancellation: &AtomicBool,
     ) -> Result<DomHtmlCapture, DomHtmlCaptureError> {
+        self.require_complete_source()?;
         let mut control = Control {
             limits: adapter_limits,
             work: 0,
@@ -679,8 +680,13 @@ impl DomSnapshot {
             control.charge(1)?;
             if let Some(template) = self.node(entry.node)?.as_template() {
                 let host = control.subject(&staged, entry.node)?;
-                let contents = control.subject(&staged, template.contents())?;
-                builder.establish_template_contents(&host, &contents)?;
+                let contents_id = template.contents()?;
+                let contents = control.subject(&staged, contents_id)?;
+                if matches!(self.node(contents_id)?.kind(), DomNodeKind::ShadowRoot(_)) {
+                    builder.establish_template_shadow_reference(&host, &contents)?;
+                } else {
+                    builder.establish_template_contents(&host, &contents)?;
+                }
             }
         }
         let mut children = Vec::new();
@@ -745,10 +751,21 @@ impl DomSnapshot {
                 subject: capture.subject_id(&entry.subject)?,
             });
         }
+        let mut language_fallbacks = Vec::new();
+        for entry in &entries {
+            control.charge(1)?;
+            if let Some(document) = self.node(entry.node)?.as_document() {
+                control.reserve(&mut language_fallbacks, 1)?;
+                language_fallbacks.push(crate::meta::language_fallback(
+                    document.metadata(),
+                    entry.subject.clone(),
+                ));
+            }
+        }
         let language = surgeist_html_semantics::HtmlLanguageDirectionFacts::new(
             &capture,
             revision.clone(),
-            Vec::new(),
+            language_fallbacks,
             control::current_values(self, &entries, &mut control, capture_limits.utf16_units())?,
             Vec::new(),
             surgeist_html_semantics::HtmlLanguageDirectionLimits::new(

@@ -116,10 +116,21 @@ impl DomHtmlCapture {
             }
         }
         let revision = self.capture.host_facts_revision().clone();
+        let mut language_fallbacks = Vec::new();
+        for entry in &self.entries {
+            control.charge(1)?;
+            if let Some(document) = self.source.node(entry.node)?.as_document() {
+                control.reserve(&mut language_fallbacks, 1)?;
+                language_fallbacks.push(crate::meta::language_fallback(
+                    document.metadata(),
+                    entry.subject.clone(),
+                ));
+            }
+        }
         let language = HtmlLanguageDirectionFacts::new(
             &self.capture,
             revision.clone(),
-            Vec::new(),
+            language_fallbacks,
             super::control::current_values(
                 &self.source,
                 &self.entries,

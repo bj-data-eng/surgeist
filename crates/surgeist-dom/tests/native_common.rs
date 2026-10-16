@@ -46,7 +46,7 @@ fn exact_expanded_names_select_common_state_without_parser_folding() {
         .document(commit.document(&document).unwrap())
         .unwrap()
         .metadata()
-        .native_environment();
+        .document_environment();
     assert_eq!(
         environment.browsing_context(),
         HtmlBrowsingContextPresence::Absent

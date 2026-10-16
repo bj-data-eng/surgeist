@@ -16,9 +16,55 @@ struct Visit {
     owner: Option<HtmlNodeId>,
 }
 
-struct Row {
-    source: HtmlNodeId,
-    key: Key,
+pub(super) struct Row {
+    pub source: HtmlNodeId,
+    pub key: Key,
+}
+pub(super) struct NativeInstallation {
+    pub rows: Vec<Row>,
+    pub rows_payload: Option<style::checkpoint::Charge>,
+    pub bindings: Vec<DomNativeHtmlBinding>,
+    pub bindings_payload: Option<style::checkpoint::Charge>,
+    pub destination: DomDocumentStamp,
+    pub source_root: HtmlNodeId,
+    pub wrapper: Key,
+    pub parent: Key,
+    pub before: Option<Key>,
+    pub limits: DomNativeHtmlInstallLimits,
+    pub work: usize,
+    pub bytes: usize,
+}
+impl NativeInstallation {
+    /// The immutable native close budget and real output capacity must exist
+    /// before Source can publish any externally observable phase. The ordinary
+    /// installation path retains its original finish tariff below.
+    pub(super) fn prepare_source_closing(
+        &mut self,
+        draft: &Draft,
+        cancel: &AtomicBool,
+    ) -> Result<(), Error> {
+        let mut control = Control {
+            limits: self.limits,
+            work: self.work,
+            bytes: self.bytes,
+            cancel,
+            source_work: None,
+        };
+        control.charge(self.rows.len())?;
+        control.reserve_owned(
+            draft,
+            &mut self.bindings,
+            &mut self.bindings_payload,
+            self.rows.len(),
+        )?;
+        self.work = control.work;
+        self.bytes = control.bytes;
+        Ok(())
+    }
+}
+pub(super) struct StagedInstallation {
+    pub draft: Draft,
+    pub continuation: NativeInstallation,
 }
 struct PreparedInstallation {
     prepared: Prepared,
@@ -32,6 +78,8 @@ struct Control<'a> {
     work: usize,
     bytes: usize,
     cancel: &'a AtomicBool,
+    // Work only: storage admission always uses a fresh current-Draft Formation.
+    source_work: Option<style::formation::Formation>,
 }
 impl Control<'_> {
     fn check(&self) -> Result<(), Error> {
@@ -52,6 +100,9 @@ impl Control<'_> {
                 resource: Resource::Work,
                 limit: self.limits.work,
             });
+        }
+        if let Some(source) = &self.source_work {
+            source.step(self.cancel).map_err(Error::Target)?;
         }
         Ok(())
     }
@@ -95,7 +146,67 @@ impl Control<'_> {
         self.bytes -= values.capacity() * size_of::<T>();
         drop(values);
     }
-    fn map_row(&mut self, rows: &mut Vec<Row>, source: HtmlNodeId, key: Key) -> Result<(), Error> {
+    fn reserve_owned<T>(
+        &mut self,
+        draft: &Draft,
+        values: &mut Vec<T>,
+        payload: &mut Option<style::checkpoint::Charge>,
+        additional: usize,
+    ) -> Result<(), Error> {
+        if draft.source_limits.is_none() {
+            return self.reserve(values, additional);
+        }
+        self.check()?;
+        let desired = values
+            .len()
+            .checked_add(additional)
+            .ok_or(Error::RepresentationExhausted)?;
+        if desired <= values.capacity() {
+            draft.source_step(self.cancel).map_err(Error::Target)?;
+            return Ok(());
+        }
+        let old = values.capacity();
+        let net = (desired - old)
+            .checked_mul(size_of::<T>())
+            .ok_or(Error::RepresentationExhausted)?;
+        // Preserve the original native domain's first-stop priority and exact
+        // reservation policy. Source additionally admits the whole replacement.
+        self.retain(net)?;
+        let formation =
+            style::formation::Formation::new(draft, self.cancel).map_err(Error::Target)?;
+        let budget = formation.as_ref().expect("Source staging");
+        budget
+            .retain_bytes(
+                desired
+                    .checked_mul(size_of::<T>())
+                    .ok_or(Error::RepresentationExhausted)?,
+                self.cancel,
+            )
+            .map_err(Error::Target)?;
+        values
+            .try_reserve_exact(additional)
+            .map_err(|_| Error::AllocationFailed)?;
+        let extra = (values.capacity() - desired)
+            .checked_mul(size_of::<T>())
+            .ok_or(Error::RepresentationExhausted)?;
+        self.retain(extra)?;
+        budget
+            .retain_bytes(extra, self.cancel)
+            .map_err(Error::Target)?;
+        // The old allocation has now actually gone. Replace its singular debit
+        // with the new bank, without an unrepresented ownership interval.
+        let previous = payload.replace(formation.expect("Source staging").into_charge());
+        drop(previous);
+        Ok(())
+    }
+    fn map_row(
+        &mut self,
+        draft: &Draft,
+        rows: &mut Vec<Row>,
+        payload: &mut Option<style::checkpoint::Charge>,
+        source: HtmlNodeId,
+        key: Key,
+    ) -> Result<(), Error> {
         self.admit_node(rows.len())?;
         for row in rows.iter() {
             self.charge(1)?;
@@ -107,7 +218,7 @@ impl Control<'_> {
             }
         }
         self.charge(1)?;
-        self.reserve(rows, 1)?;
+        self.reserve_owned(draft, rows, payload, 1)?;
         rows.push(Row { source, key });
         Ok(())
     }
@@ -140,6 +251,10 @@ fn association(subject: &HtmlNodeId, kind: Association) -> Error {
     }
 }
 
+pub(super) struct Budgets {
+    pub native: DomNativeHtmlInstallLimits,
+    pub source: Option<crate::DomStyleEditLimits>,
+}
 impl Dom {
     /// Installs exact immutable fields using fresh native creation, then actual
     /// fragment transfer, in one canonical publication. Passing a bare parsed
@@ -158,25 +273,31 @@ impl Dom {
         limits: DomNativeHtmlInstallLimits,
         cancelled: &AtomicBool,
     ) -> Result<DomNativeHtmlInstallation, Error> {
+        self.require_source_idle().map_err(Error::Target)?;
         let prepared = self
             .prepare_native_html_installation(basis, parent, before, source, limits, cancelled)?;
         self.publish_native_html_installation(prepared, cancelled)
     }
 
-    fn prepare_native_html_installation(
+    pub(super) fn stage_native_html_installation(
         &self,
         basis: DomDocumentStamp,
         parent: NodeId,
         before: Option<NodeId>,
         source: &HtmlFragment,
-        limits: DomNativeHtmlInstallLimits,
+        budgets: Budgets,
         cancelled: &AtomicBool,
-    ) -> Result<PreparedInstallation, Error> {
+    ) -> Result<StagedInstallation, Error> {
+        let Budgets {
+            native: limits,
+            source: source_limits,
+        } = budgets;
         let mut control = Control {
             limits,
             work: 0,
             bytes: 0,
             cancel: cancelled,
+            source_work: None,
         };
         control.check()?;
         let current = self.snapshot();
@@ -200,8 +321,20 @@ impl Dom {
                 return Err(Error::Target(DomError::NotFound));
             }
         }
-        let mut draft =
-            Draft::new(self, Arc::new(BatchIdentity), cancelled).map_err(Error::Target)?;
+        let mut draft = match source_limits {
+            Some(limits) => Draft::new_source(
+                self,
+                Arc::new(BatchIdentity),
+                &Vec::new(),
+                limits,
+                cancelled,
+            )
+            .map(|(draft, _, _)| draft)
+            .map_err(Error::Target)?,
+            None => Draft::new(self, Arc::new(BatchIdentity), cancelled).map_err(Error::Target)?,
+        };
+        control.source_work =
+            style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
         let document = draft
             .resolve(basis.document().into())
             .map_err(Error::Target)?;
@@ -211,17 +344,37 @@ impl Dom {
             .transpose()
             .map_err(Error::Target)?;
         let wrapper = draft
-            .allocate(DomNodeKind::DocumentFragment, document, self.limits)
+            .allocate(
+                DomNodeKind::DocumentFragment,
+                document,
+                self.limits,
+                cancelled,
+            )
             .map_err(Error::Target)?;
         let source_root = source.root().id();
+        let pending_header =
+            style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
+        if let Some(budget) = &pending_header {
+            budget
+                .retain_bytes(size_of::<Vec<Visit>>(), cancelled)
+                .map_err(Error::Target)?;
+        }
+        let mut pending_payload = None;
         let mut pending = Vec::new();
-        control.reserve(&mut pending, 1)?;
+        #[cfg(test)]
+        let pending_growth =
+            staging_observation::before(&draft, &pending, pending_payload.is_some(), cancelled)
+                .map_err(Error::Target)?;
+        control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
+        #[cfg(test)]
+        staging_observation::grew(pending_growth, &pending);
         pending.push(Visit {
             source: source_root.clone(),
             parent: None,
             existing: Some(wrapper),
             owner: None,
         });
+        let mut rows_payload = None;
         let mut rows = Vec::new();
         while let Some(visit) = pending.pop() {
             control.charge(1)?;
@@ -268,25 +421,36 @@ impl Dom {
                     .parent
                     .expect("ordinary source child has a staged parent");
                 let document = draft.node(parent).map_err(Error::Target)?.document;
+                let formation =
+                    style::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
                 let kind = match original.kind() {
                     HtmlNodeKind::Element(element) => {
                         control.name(element.name())?;
                         DomNodeKind::Element(
                             DomElement::native_components(
-                                element.name().clone(),
-                                draft.native_environment(document).map_err(Error::Target)?,
+                                element.name(),
+                                draft
+                                    .document_environment(document)
+                                    .map_err(Error::Target)?,
                                 cancelled,
+                                formation.as_ref(),
                             )
                             .map_err(|error| source_error(&visit.source, error))?,
                         )
                     }
                     HtmlNodeKind::Text(value) => {
                         control.charge(value.len())?;
-                        DomNodeKind::Text(value.clone())
+                        DomNodeKind::Text(
+                            style::formation::share(value, formation.as_ref(), cancelled)
+                                .map_err(|error| source_error(&visit.source, error))?,
+                        )
                     }
                     HtmlNodeKind::Comment(value) => {
                         control.charge(value.len())?;
-                        DomNodeKind::Comment(value.clone())
+                        DomNodeKind::Comment(
+                            style::formation::share(value, formation.as_ref(), cancelled)
+                                .map_err(|error| source_error(&visit.source, error))?,
+                        )
                     }
                     HtmlNodeKind::ProcessingInstruction(value) => {
                         control.charge(
@@ -298,8 +462,9 @@ impl Dom {
                         )?;
                         DomNodeKind::ProcessingInstruction(
                             crate::DomProcessingInstruction::new(
-                                value.target().clone(),
-                                value.data().clone(),
+                                value.target(),
+                                value.data(),
+                                formation.as_ref(),
                                 cancelled,
                             )
                             .map_err(|error| source_error(&visit.source, error))?,
@@ -316,39 +481,75 @@ impl Dom {
                                 })
                                 .ok_or(Error::RepresentationExhausted)?,
                         )?;
-                        DomNodeKind::DocumentType(
-                            crate::DomDocumentType::new(
-                                value.name().clone(),
-                                value.public_id().cloned().unwrap_or_default(),
-                                value.system_id().cloned().unwrap_or_default(),
-                            )
-                            .map_err(|error| source_error(&visit.source, error))?,
+                        let public = value
+                            .public_id()
+                            .is_none()
+                            .then(|| style::formation::string("", formation.as_ref(), cancelled))
+                            .transpose()
+                            .map_err(Error::Target)?;
+                        let system = value
+                            .system_id()
+                            .is_none()
+                            .then(|| style::formation::string("", formation.as_ref(), cancelled))
+                            .transpose()
+                            .map_err(Error::Target)?;
+                        let kind = crate::DomDocumentType::new(
+                            value.name(),
+                            value
+                                .public_id()
+                                .or(public.as_ref())
+                                .expect("actual public ID"),
+                            value
+                                .system_id()
+                                .or(system.as_ref())
+                                .expect("actual system ID"),
+                            formation.as_ref(),
+                            cancelled,
                         )
+                        .map_err(|error| source_error(&visit.source, error))?;
+                        for temporary in [public, system].into_iter().flatten() {
+                            let mut payload = style::storage::Payload::default();
+                            payload.string(&temporary).map_err(Error::Target)?;
+                            drop(temporary);
+                            if let Some(budget) = &formation {
+                                budget.release_payload(payload);
+                            }
+                        }
+                        DomNodeKind::DocumentType(kind)
                     }
                     HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => {
                         return Err(source_error(&visit.source, DomError::HierarchyRequest));
                     }
                 };
                 let key = draft
-                    .allocate(kind, document, self.limits)
+                    .allocate(kind, document, self.limits, cancelled)
                     .map_err(|error| source_error(&visit.source, error))?;
+                drop(formation);
                 draft
                     .initialize_native_element(key, self.limits, cancelled)
                     .map_err(|error| source_error(&visit.source, error))?;
                 key
             };
-            control.map_row(&mut rows, visit.source.clone(), key)?;
+            control.map_row(
+                &draft,
+                &mut rows,
+                &mut rows_payload,
+                visit.source.clone(),
+                key,
+            )?;
             if let HtmlNodeKind::Element(element) = original.kind() {
                 for attribute in element.attributes().iter() {
                     control.charge(1)?;
                     control.name(attribute.name())?;
                     control.charge(attribute.value().len())?;
-                    crate::names::validate_attribute_components(attribute.name(), cancelled)
-                        .map_err(|error| source_error(&visit.source, error))?;
+                    crate::names::validate_attribute_components(attribute.name(), &mut || {
+                        draft.source_step(cancelled)
+                    })
+                    .map_err(|error| source_error(&visit.source, error))?;
                     draft
                         .append_attribute(
                             key,
-                            attribute.clone(),
+                            attribute,
                             attributes::AttributeCause::Change,
                             self.limits,
                             cancelled,
@@ -363,7 +564,17 @@ impl Dom {
             }
             for child in original.children().rev() {
                 control.charge(1)?;
-                control.reserve(&mut pending, 1)?;
+                #[cfg(test)]
+                let pending_growth = staging_observation::before(
+                    &draft,
+                    &pending,
+                    pending_payload.is_some(),
+                    cancelled,
+                )
+                .map_err(Error::Target)?;
+                control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
+                #[cfg(test)]
+                staging_observation::grew(pending_growth, &pending);
                 pending.push(Visit {
                     source: child,
                     parent: Some(key),
@@ -382,7 +593,17 @@ impl Dom {
                         .ok_or_else(|| {
                             association(&visit.source, Association::TemplateOwnership)
                         })?;
-                    control.reserve(&mut pending, 1)?;
+                    #[cfg(test)]
+                    let pending_growth = staging_observation::before(
+                        &draft,
+                        &pending,
+                        pending_payload.is_some(),
+                        cancelled,
+                    )
+                    .map_err(Error::Target)?;
+                    control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
+                    #[cfg(test)]
+                    staging_observation::grew(pending_growth, &pending);
                     pending.push(Visit {
                         source: contents,
                         parent: None,
@@ -394,6 +615,67 @@ impl Dom {
             }
         }
         control.release(pending);
+        drop(pending_payload);
+        drop(pending_header);
+        Ok(StagedInstallation {
+            draft,
+            continuation: NativeInstallation {
+                rows,
+                rows_payload,
+                bindings: Vec::new(),
+                bindings_payload: None,
+                destination: basis,
+                source_root,
+                wrapper,
+                parent,
+                before,
+                limits,
+                work: control.work,
+                bytes: control.bytes,
+            },
+        })
+    }
+
+    fn prepare_native_html_installation(
+        &self,
+        basis: DomDocumentStamp,
+        parent: NodeId,
+        before: Option<NodeId>,
+        source: &HtmlFragment,
+        limits: DomNativeHtmlInstallLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedInstallation, Error> {
+        let StagedInstallation {
+            mut draft,
+            continuation,
+        } = self.stage_native_html_installation(
+            basis,
+            parent,
+            before,
+            source,
+            Budgets {
+                native: limits,
+                source: None,
+            },
+            cancelled,
+        )?;
+        let NativeInstallation {
+            rows,
+            source_root,
+            wrapper,
+            parent,
+            before,
+            work,
+            bytes,
+            ..
+        } = continuation;
+        let mut control = Control {
+            limits,
+            work,
+            bytes,
+            cancel: cancelled,
+            source_work: None,
+        };
         draft
             .pre_insert(wrapper, parent, before, self.limits, cancelled)
             .map_err(Error::Target)?;
@@ -451,9 +733,70 @@ impl Dom {
             source_root: pending.source_root,
             root: pending.root,
             snapshot: self.snapshot(),
-            commit,
+            changes: commit.changes.clone(),
             bindings: pending.bindings,
         })
+    }
+}
+
+#[cfg(test)]
+mod staging_observation {
+    use super::*;
+    use std::cell::Cell;
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct Growth {
+        pub required: usize,
+        pub limit: usize,
+    }
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static LAST: Cell<Option<Growth>> = const { Cell::new(None) };
+    }
+    pub(super) fn start() {
+        ACTIVE.set(true);
+        LAST.set(None);
+    }
+    pub(super) fn finish() -> Option<Growth> {
+        ACTIVE.set(false);
+        LAST.take()
+    }
+    pub(super) fn before(
+        draft: &Draft,
+        pending: &Vec<Visit>,
+        registered: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Growth>, DomError> {
+        if !ACTIVE.get() || pending.len() < pending.capacity() {
+            return Ok(None);
+        }
+        let Some(limits) = draft.source_limits else {
+            return Ok(None);
+        };
+        let old = if registered {
+            0
+        } else {
+            pending.capacity() * size_of::<Visit>()
+        };
+        Ok(Some(Growth {
+            required: draft
+                .source_storage_bytes(cancel)?
+                .checked_add(draft.source_other_bytes)
+                .and_then(|n| n.checked_add(draft.source_formation_bytes.load(Ordering::Relaxed)))
+                .and_then(|n| n.checked_add(old))
+                .ok_or(DomError::RepresentationExhausted)?,
+            limit: limits.retained_bytes,
+        }))
+    }
+    pub(super) fn grew(before: Option<Growth>, pending: &Vec<Visit>) {
+        if let Some(mut before) = before {
+            before.required += pending.capacity() * size_of::<Visit>();
+            if LAST
+                .get()
+                .is_none_or(|previous| previous.required < before.required)
+            {
+                LAST.set(Some(before));
+            }
+        }
     }
 }
 
@@ -497,6 +840,62 @@ mod tests {
             builder.append_text(&script, "x").unwrap();
         }
         builder.finish()
+    }
+
+    fn actual_source_pending_growth(bytes: usize) -> Option<staging_observation::Growth> {
+        let cancel = AtomicBool::new(false);
+        let mut dom =
+            Dom::new(DomLimits::new(2048, 100_000, 4096, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        setup.insert_before(&parent, &document, None);
+        let created = dom.apply(setup, &cancel).unwrap();
+        let document = created.document(&document).unwrap();
+        let parent = created.created(&parent).unwrap().unwrap();
+        let mut builder = HtmlFragment::builder(surgeist_html::HtmlConstructionLimits::new(
+            2048, 2048, 2048, 4096, 16,
+        ))
+        .unwrap();
+        for _ in 0..1000 {
+            builder.append_text(&builder.root(), "x").unwrap();
+        }
+        let source = builder.finish();
+        let before = dom.snapshot();
+        staging_observation::start();
+        let result = dom.begin_style_native_installation(
+            before.document(document).unwrap().stamp(),
+            parent,
+            None,
+            &source,
+            crate::DomStyleNativeHtmlInstallLimits::new(
+                DomNativeHtmlInstallLimits::new(4096, 10_000_000, 10_000_000),
+                crate::DomStyleEditLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
+            ),
+            &cancel,
+        );
+        let actual = staging_observation::finish();
+        drop(result);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(*dom.state, *before.state);
+        assert!(dom.pending_style_edit().is_none());
+        actual
+    }
+
+    #[test]
+    fn source_native_staging_admits_actual_pending_replacement_before_allocation() {
+        let high = actual_source_pending_growth(16_000_000).expect("real pending visit growth");
+        let exact = actual_source_pending_growth(high.required)
+            .expect("exact allowance reaches actual pending bank overlap");
+        assert_eq!(exact.required, high.required);
+        if let Some(actual) = actual_source_pending_growth(high.required - 1) {
+            assert!(
+                actual.required <= actual.limit,
+                "native staging banks retained {} bytes under {}",
+                actual.required,
+                actual.limit
+            );
+        }
     }
 
     #[test]

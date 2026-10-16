@@ -10,6 +10,35 @@ fn limits() -> DomLimits {
         .with_view_transitions(8, 16, 80)
         .unwrap()
 }
+fn capture_limits() -> DomViewTransitionCaptureLimits {
+    DomViewTransitionCaptureLimits::new(16_384, 1_000_000)
+}
+fn captured_sheet(
+    snapshot: &CssomSnapshot,
+    sheet: &CssomSheetId,
+) -> DomPreparedViewTransitionSheet {
+    DomPreparedViewTransitionSheet::capture(
+        snapshot,
+        sheet,
+        capture_limits(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+}
+fn captured_rules(
+    snapshot: &CssomSnapshot,
+    sheet: &CssomSheetId,
+    rules: DomViewTransitionRuleAssociations,
+) -> DomPreparedViewTransitionRules {
+    DomPreparedViewTransitionRules::capture(
+        snapshot,
+        sheet,
+        rules,
+        capture_limits(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+}
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
@@ -78,7 +107,10 @@ fn fixture() -> Fixture {
 }
 fn initialize(f: &mut Fixture) {
     let mut b = DomBatch::new();
-    b.initialize_view_transitions(basis(&f.dom, f.document), &f.css.snapshot(), &f.sheet);
+    b.initialize_view_transitions(
+        basis(&f.dom, f.document),
+        captured_sheet(&f.css.snapshot(), &f.sheet),
+    );
     apply(&mut f.dom, b);
 }
 fn begin(
@@ -444,8 +476,11 @@ fn clear_retains_records_suppression_and_rules_and_cannot_clear_a_newer_capture(
     b.set_view_transition_rules(
         stamp,
         record,
-        &f.css.snapshot(),
-        DomViewTransitionRuleAssociations::default(),
+        captured_rules(
+            &f.css.snapshot(),
+            &f.sheet,
+            DomViewTransitionRuleAssociations::default(),
+        ),
     );
     apply(&mut f.dom, b);
     let before = f.dom.snapshot();
@@ -566,8 +601,7 @@ fn real_cssom_zero_one_two_rules_preserve_handles_revision_and_old_before_new_or
         b.set_view_transition_rules(
             basis(&f.dom, f.document),
             record,
-            &snapshot,
-            request.clone(),
+            captured_rules(&snapshot, &f.sheet, request.clone()),
         );
         apply(&mut f.dom, b);
         let captured = f.dom.snapshot();
@@ -664,10 +698,15 @@ fn cssom_identity_kind_membership_duplicates_order_and_revision_errors_preserve_
     ];
     for (request, expected) in requests {
         let stamp = f.dom.snapshot().stamp();
-        let mut b = DomBatch::new();
-        b.set_view_transition_rules(basis(&f.dom, f.document), record, &old, request);
         assert_eq!(
-            f.dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
+            DomPreparedViewTransitionRules::capture(
+                &old,
+                &f.sheet,
+                request,
+                capture_limits(),
+                &AtomicBool::new(false)
+            )
+            .unwrap_err(),
             DomError::ViewTransitionCssom(expected)
         );
         assert_eq!(f.dom.snapshot().stamp(), stamp);
@@ -677,43 +716,49 @@ fn cssom_identity_kind_membership_duplicates_order_and_revision_errors_preserve_
     f.css.commit(edit).unwrap();
     let current = f.css.snapshot();
     assert!(current.rule(&detached).is_ok());
-    let mut b = DomBatch::new();
-    b.set_view_transition_rules(
-        basis(&f.dom, f.document),
-        record,
-        &current,
-        DomViewTransitionRuleAssociations {
-            group_styles: Some(detached),
-            ..Default::default()
-        },
-    );
     assert_eq!(
-        f.dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
+        DomPreparedViewTransitionRules::capture(
+            &current,
+            &f.sheet,
+            DomViewTransitionRuleAssociations {
+                group_styles: Some(detached),
+                ..Default::default()
+            },
+            capture_limits(),
+            &AtomicBool::new(false)
+        )
+        .unwrap_err(),
         DomError::ViewTransitionCssom(DomViewTransitionCssomError::WrongSheet)
     );
     let mut b = DomBatch::new();
     b.set_view_transition_rules(
         basis(&f.dom, f.document),
         record,
-        &current,
-        DomViewTransitionRuleAssociations::default(),
+        captured_rules(
+            &current,
+            &f.sheet,
+            DomViewTransitionRuleAssociations::default(),
+        ),
     );
     apply(&mut f.dom, b);
     let mut b = DomBatch::new();
     b.set_view_transition_rules(
         basis(&f.dom, f.document),
         record,
-        &old,
-        DomViewTransitionRuleAssociations::default(),
+        captured_rules(&old, &f.sheet, DomViewTransitionRuleAssociations::default()),
     );
     assert_eq!(
         f.dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
         DomError::ViewTransitionCssom(DomViewTransitionCssomError::StaleRevision)
     );
-    let mut b = DomBatch::new();
-    b.initialize_view_transitions(basis(&f.dom, f.document), &current, &other_sheet);
     assert_eq!(
-        f.dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
+        DomPreparedViewTransitionSheet::capture(
+            &current,
+            &other_sheet,
+            capture_limits(),
+            &AtomicBool::new(false)
+        )
+        .unwrap_err(),
         DomError::ViewTransitionCssom(DomViewTransitionCssomError::ForeignOwner)
     );
 }
@@ -1180,5 +1225,136 @@ fn exact_document_basis_and_typed_transition_subjects_reject_foreign_stale_and_m
             .resolve_new_element()
             .unwrap()
             .is_none()
+    );
+}
+
+#[test]
+fn prepared_cssom_inputs_admit_fixed_output_and_actual_reads_before_capture() {
+    let (store, sheet, _) = css();
+    let snapshot = store.snapshot();
+    let width = std::mem::size_of::<DomPreparedViewTransitionSheet>();
+    let cancel = AtomicBool::new(false);
+    assert_eq!(
+        DomPreparedViewTransitionSheet::capture(
+            &snapshot,
+            &sheet,
+            DomViewTransitionCaptureLimits::new(width - 1, 100),
+            &cancel
+        )
+        .unwrap_err(),
+        DomError::ResourceLimit {
+            resource: DomResource::ViewTransitionCaptureBytes,
+            limit: width - 1
+        }
+    );
+    assert_eq!(
+        DomPreparedViewTransitionSheet::capture(
+            &snapshot,
+            &sheet,
+            DomViewTransitionCaptureLimits::new(width, 1),
+            &cancel
+        )
+        .unwrap_err(),
+        DomError::ViewTransitionCaptureWorkLimit { limit: 1 }
+    );
+    let captured = DomPreparedViewTransitionSheet::capture(
+        &snapshot,
+        &sheet,
+        DomViewTransitionCaptureLimits::new(width, 2),
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(captured.sheet(), &sheet);
+    assert_eq!(captured.revision(), snapshot.revision());
+    assert_eq!(
+        DomPreparedViewTransitionSheet::capture(
+            &snapshot,
+            &sheet,
+            DomViewTransitionCaptureLimits::new(width, 2),
+            &AtomicBool::new(true)
+        )
+        .unwrap_err(),
+        DomError::Cancelled
+    );
+}
+
+#[test]
+fn selected_rule_capture_work_cuts_and_one_short_output_keep_the_owning_dom_unchanged() {
+    let f = fixture();
+    let snapshot = f.css.snapshot();
+    let roots = snapshot
+        .rules(snapshot.sheet(&f.sheet).unwrap().rules())
+        .unwrap();
+    let rules = DomViewTransitionRuleAssociations {
+        group_keyframes: Some(roots[2].clone()),
+        image_animation: DomViewTransitionImageRules::OldThenNew {
+            old: roots[0].clone(),
+            new: roots[1].clone(),
+        },
+        ..Default::default()
+    };
+    let width = std::mem::size_of::<DomPreparedViewTransitionRules>();
+    let stamp = f.dom.snapshot().stamp();
+    let mut minimum = None;
+    for work in 0..1000 {
+        match DomPreparedViewTransitionRules::capture(
+            &snapshot,
+            &f.sheet,
+            rules.clone(),
+            DomViewTransitionCaptureLimits::new(width, work),
+            &AtomicBool::new(false),
+        ) {
+            Ok(value) => {
+                assert_eq!(value.associations(), &rules);
+                minimum = Some(work);
+                break;
+            }
+            Err(error) => assert_eq!(
+                error,
+                DomError::ViewTransitionCaptureWorkLimit { limit: work }
+            ),
+        }
+        assert_eq!(f.dom.snapshot().stamp(), stamp);
+        assert_eq!(f.css.snapshot().revision(), snapshot.revision());
+    }
+    let minimum = minimum.expect("finite six-rule projection");
+    assert_eq!(
+        DomPreparedViewTransitionRules::capture(
+            &snapshot,
+            &f.sheet,
+            rules,
+            DomViewTransitionCaptureLimits::new(width - 1, minimum),
+            &AtomicBool::new(false)
+        )
+        .unwrap_err(),
+        DomError::ResourceLimit {
+            resource: DomResource::ViewTransitionCaptureBytes,
+            limit: width - 1
+        }
+    );
+    assert_eq!(f.dom.snapshot().stamp(), stamp);
+}
+
+#[test]
+fn prepared_sheet_qualification_remains_historical_after_the_cssom_owner_is_dropped() {
+    let mut f = fixture();
+    let snapshot = f.css.snapshot();
+    let captured = captured_sheet(&snapshot, &f.sheet);
+    let revision = captured.revision().clone();
+    drop(snapshot);
+    drop(f.css);
+    let mut batch = DomBatch::new();
+    batch.initialize_view_transitions(basis(&f.dom, f.document), captured);
+    apply(&mut f.dom, batch);
+    assert_eq!(
+        f.dom
+            .snapshot()
+            .document(f.document)
+            .unwrap()
+            .view_transitions()
+            .unwrap()
+            .sheet()
+            .revision(),
+        &revision
     );
 }

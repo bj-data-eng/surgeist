@@ -1,6 +1,9 @@
 //! Storage/admission adapter for HTML's public finite Range protocols.
 
-use super::{DomError, InputProcessing, RangeInput, extent, sum};
+use super::{
+    BankKind, DomError, Formation, InputProcessing, InputValue, Payload, RangeInput, extent,
+    metadata, sum,
+};
 use crate::DocumentString;
 use std::{
     mem::{size_of, size_of_val},
@@ -10,9 +13,9 @@ use surgeist_html::bounded::{
     BestFiniteNumberCursor, FiniteDecimalIngressCursor, FloatingPointGrammarCursor,
     FloatingPointParseMode, HtmlInputRangeNumber, HtmlInputRangeSanitizationAction as Action,
     HtmlInputRangeSanitizationCursor, HtmlInputRangeSanitizationReply as Reply,
-    HtmlInputRangeValue, RangeBufferHeader, RangeLatticeCursor, RangeMidpointCursor,
-    RangeNumericError, RangeNumericHeaders, RangeNumericLayout, RangeNumericReply,
-    RangeNumericRequest,
+    HtmlInputRangeValue, RangeBufferHeader, RangeDecimalParts, RangeLatticeCursor,
+    RangeMidpointCursor, RangeNumericError, RangeNumericHeaders, RangeNumericLayout,
+    RangeNumericReply, RangeNumericRequest,
 };
 use surgeist_html::{HtmlFloatingPointNumber, HtmlInputNumericContent, HtmlInputNumericStep};
 
@@ -40,9 +43,14 @@ impl Storage {
         )
     }
 
-    fn clear(&mut self, meter: &mut InputProcessing, cancel: &AtomicBool) -> Result<(), DomError> {
+    fn clear(
+        &mut self,
+        meter: &mut InputProcessing,
+        source: Option<&Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         for bank in &mut self.banks {
-            meter.charge(sum(&[1, size_of::<usize>()])?, cancel)?;
+            meter.charge(sum(&[1, size_of::<usize>()])?, source, cancel)?;
             bank.clear();
         }
         Ok(())
@@ -51,9 +59,10 @@ impl Storage {
     fn service(
         &mut self,
         meter: &mut InputProcessing,
-        source: &[u16],
+        input: &[u16],
         request: RangeNumericRequest,
         layout: RangeNumericLayout,
+        source: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<RangeNumericReply, DomError> {
         meter.charge(
@@ -66,13 +75,14 @@ impl Storage {
                 request.read_bytes(),
                 request.write_bytes(),
             ])?,
+            source,
             cancel,
         )?;
         use RangeNumericReply as R;
         use RangeNumericRequest as Q;
         Ok(match request {
             Q::SourceUnit { index } => {
-                R::Unit(*source.get(index).ok_or(DomError::InputProcessingProtocol)?)
+                R::Unit(*input.get(index).ok_or(DomError::InputProcessingProtocol)?)
             }
             Q::ReadCells { cells } => {
                 let mut values = [None; 3];
@@ -89,7 +99,7 @@ impl Storage {
             }
             Q::Reserve { role, required_len } => {
                 let bank = &mut self.banks[role.index()];
-                meter.reserve(bank, required_len, cancel)?;
+                meter.reserve(bank, required_len, BankKind::Bytes, source, cancel)?;
                 R::Reserved {
                     actual_capacity: bank.capacity(),
                     actual_len: bank.len(),
@@ -122,7 +132,13 @@ impl Storage {
             }
             Q::ScalarStep => R::Ack,
             Q::ReserveOutput { required_len } => {
-                meter.reserve(&mut self.output, required_len, cancel)?;
+                meter.reserve(
+                    &mut self.output,
+                    required_len,
+                    BankKind::Utf16,
+                    source,
+                    cancel,
+                )?;
                 R::OutputReserved {
                     actual_capacity: self.output.capacity(),
                     actual_len: self.output.len(),
@@ -155,19 +171,27 @@ fn parse(
     storage: &mut Storage,
     raw: &DocumentString,
     mode: FloatingPointParseMode,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputRangeValue, DomError> {
+    #[cfg(test)]
+    let source_before = source.map(Formation::owned_payload);
     let grammar_bytes = size_of::<FloatingPointGrammarCursor<'_>>();
-    meter.fixed(grammar_bytes, cancel)?;
+    meter.fixed(grammar_bytes, grammar_bytes, source, cancel)?;
     let parsed = (|| {
         let mut grammar = FloatingPointGrammarCursor::new(raw.code_units(), mode);
-        while !grammar.is_finished() {
+        loop {
+            meter.inspect(source, cancel)?;
+            if grammar.is_finished() {
+                break;
+            }
             meter.charge(
                 sum(&[
                     1,
                     grammar_bytes,
                     if grammar.inspects_unit() { 2 } else { 0 },
                 ])?,
+                source,
                 cancel,
             )?;
             grammar.advance();
@@ -175,24 +199,46 @@ fn parse(
         if !grammar.is_valid() {
             return Ok(None);
         }
+        if let Some(source) = source {
+            source
+                .retain_bytes(size_of::<RangeDecimalParts>(), cancel)
+                .map_err(|error| meter.fail(error))?;
+        }
         grammar
             .range_decimal_parts()
             .map(Some)
             .map_err(|_| DomError::InputProcessingProtocol)
     })();
-    meter.release(grammar_bytes);
+    meter.release(grammar_bytes, metadata(grammar_bytes), source);
     let Some(parts) = parsed? else {
         return Ok(HtmlInputRangeValue::InvalidGrammar);
     };
-    storage.clear(meter, cancel)?;
+    #[cfg(test)]
+    if let Some((source, before)) = source.zip(source_before) {
+        // Grammar is gone but the returned actual parts owner remains live
+        // across the next fallible clear. Observe its independent public layout.
+        assert_eq!(
+            source.owned_payload().bytes,
+            before.bytes + size_of_val(&parts)
+        );
+        assert_eq!(source.owned_payload().units, before.units);
+    }
+    storage.clear(meter, source, cancel)?;
     let layout = FiniteDecimalIngressCursor::layout();
     let fixed = sum(&[frame(layout)?, size_of_val(&parts)])?;
-    meter.fixed(fixed, cancel)?;
+    // The actual parts record was already admitted while grammar was live and
+    // remains owned through clear. Only the new ingress frame is added here.
+    meter.fixed(fixed, frame(layout)?, source, cancel)?;
     let result = (|| {
         let mut cursor = FiniteDecimalIngressCursor::new(parts, raw.len(), storage.headers())
             .map_err(DomError::InputNumeric)?;
-        while let Some(request) = cursor.request() {
-            let reply = storage.service(meter, raw.code_units(), request, layout, cancel)?;
+        loop {
+            meter.inspect(source, cancel)?;
+            let Some(request) = cursor.request() else {
+                break;
+            };
+            let reply =
+                storage.service(meter, raw.code_units(), request, layout, source, cancel)?;
             cursor.reply(reply).map_err(DomError::InputNumeric)?;
         }
         if cursor.headers() != storage.headers() {
@@ -207,7 +253,7 @@ fn parse(
             Err(error) => Err(DomError::InputNumeric(error)),
         }
     })();
-    meter.release(fixed);
+    meter.release(fixed, metadata(fixed), source);
     result
 }
 
@@ -215,9 +261,10 @@ fn content(
     meter: &mut InputProcessing,
     storage: &mut Storage,
     raw: Option<&DocumentString>,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputNumericContent, DomError> {
-    meter.charge(sum(&[1, size_of_val(&raw)])?, cancel)?;
+    meter.charge(sum(&[1, size_of_val(&raw)])?, source, cancel)?;
     Ok(match raw {
         None => HtmlInputNumericContent::Absent,
         Some(raw) => match parse(
@@ -225,6 +272,7 @@ fn content(
             storage,
             raw,
             FloatingPointParseMode::Recovery,
+            source,
             cancel,
         )? {
             HtmlInputRangeValue::Finite(value) => HtmlInputNumericContent::Value(
@@ -240,16 +288,17 @@ fn step(
     meter: &mut InputProcessing,
     storage: &mut Storage,
     raw: Option<&DocumentString>,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputNumericStep, DomError> {
-    meter.charge(sum(&[1, size_of_val(&raw)])?, cancel)?;
+    meter.charge(sum(&[1, size_of_val(&raw)])?, source, cancel)?;
     let Some(raw) = raw else {
         return Ok(HtmlInputNumericStep::Absent);
     };
     let mut any = raw.len() == HtmlInputNumericStep::ANY_KEYWORD.len();
     if any {
         for index in 0..HtmlInputNumericStep::ANY_KEYWORD.len() {
-            meter.charge(3, cancel)?;
+            meter.charge(3, source, cancel)?;
             if !HtmlInputNumericStep::any_keyword_unit_matches(index, raw.code_units()[index]) {
                 any = false;
                 break;
@@ -259,7 +308,7 @@ fn step(
     if any {
         return Ok(HtmlInputNumericStep::Any);
     }
-    Ok(match content(meter, storage, Some(raw), cancel)? {
+    Ok(match content(meter, storage, Some(raw), source, cancel)? {
         HtmlInputNumericContent::Value(value) => HtmlInputNumericStep::Value(value),
         _ => HtmlInputNumericStep::Failed,
     })
@@ -270,16 +319,21 @@ fn midpoint(
     storage: &mut Storage,
     min: HtmlInputRangeNumber,
     max: HtmlInputRangeNumber,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputRangeNumber, DomError> {
     let layout = RangeMidpointCursor::layout();
     let fixed = frame(layout)?;
-    meter.fixed(fixed, cancel)?;
+    meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
         let mut cursor = RangeMidpointCursor::new(min.value().to_bits(), max.value().to_bits())
             .map_err(DomError::InputNumeric)?;
-        while let Some(request) = cursor.request() {
-            let reply = storage.service(meter, &[], request, layout, cancel)?;
+        loop {
+            meter.inspect(source, cancel)?;
+            let Some(request) = cursor.request() else {
+                break;
+            };
+            let reply = storage.service(meter, &[], request, layout, source, cancel)?;
             cursor.reply(reply).map_err(DomError::InputNumeric)?;
         }
         HtmlInputRangeNumber::try_from(f64::from_bits(
@@ -287,7 +341,7 @@ fn midpoint(
         ))
         .map_err(|_| DomError::InputProcessingProtocol)
     })();
-    meter.release(fixed);
+    meter.release(fixed, metadata(fixed), source);
     result
 }
 
@@ -295,28 +349,38 @@ fn best(
     meter: &mut InputProcessing,
     storage: &mut Storage,
     value: HtmlInputRangeNumber,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<Vec<u16>, DomError> {
     if !storage.output.is_empty() {
         return Err(DomError::InputProcessingProtocol);
     }
-    storage.clear(meter, cancel)?;
+    storage.clear(meter, source, cancel)?;
     let layout = BestFiniteNumberCursor::layout();
     let fixed = frame(layout)?;
-    meter.fixed(fixed, cancel)?;
+    meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
         let mut cursor = BestFiniteNumberCursor::new(value.value(), storage.headers())
             .map_err(DomError::InputNumeric)?;
-        while let Some(request) = cursor.request() {
-            let reply = storage.service(meter, &[], request, layout, cancel)?;
+        loop {
+            meter.inspect(source, cancel)?;
+            let Some(request) = cursor.request() else {
+                break;
+            };
+            let reply = storage.service(meter, &[], request, layout, source, cancel)?;
             cursor.reply(reply).map_err(DomError::InputNumeric)?;
         }
         if cursor.headers() != storage.headers() || cursor.result() != Some(storage.output.len()) {
             return Err(DomError::InputProcessingProtocol);
         }
+        if let Some(source) = source {
+            source
+                .retain_bytes(size_of::<Vec<u16>>(), cancel)
+                .map_err(|error| meter.fail(error))?;
+        }
         Ok(std::mem::take(&mut storage.output))
     })();
-    meter.release(fixed);
+    meter.release(fixed, metadata(fixed), source);
     result
 }
 
@@ -332,11 +396,12 @@ fn lattice(
     meter: &mut InputProcessing,
     storage: &mut Storage,
     input: LatticeInput,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<HtmlInputRangeNumber>, DomError> {
     let layout = RangeLatticeCursor::layout();
     let fixed = sum(&[frame(layout)?, size_of::<LatticeInput>()])?;
-    meter.fixed(fixed, cancel)?;
+    meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
         let mut cursor = RangeLatticeCursor::new(
             input.current.value().to_bits(),
@@ -346,8 +411,12 @@ fn lattice(
             input.step.value().to_bits(),
         )
         .map_err(DomError::InputNumeric)?;
-        while let Some(request) = cursor.request() {
-            let reply = storage.service(meter, &[], request, layout, cancel)?;
+        loop {
+            meter.inspect(source, cancel)?;
+            let Some(request) = cursor.request() else {
+                break;
+            };
+            let reply = storage.service(meter, &[], request, layout, source, cancel)?;
             cursor.reply(reply).map_err(DomError::InputNumeric)?;
         }
         cursor
@@ -359,15 +428,16 @@ fn lattice(
             })
             .transpose()
     })();
-    meter.release(fixed);
+    meter.release(fixed, metadata(fixed), source);
     result
 }
 
 pub(super) fn run(
     meter: &mut InputProcessing,
     input: RangeInput<'_>,
+    source: Option<&Formation>,
     cancel: &AtomicBool,
-) -> Result<DocumentString, DomError> {
+) -> Result<InputValue, DomError> {
     meter.fixed(
         sum(&[
             size_of::<InputProcessing>(),
@@ -378,6 +448,18 @@ pub(super) fn run(
             size_of::<HtmlInputRangeValue>(),
             2 * size_of::<HtmlInputNumericContent>(),
         ])?,
+        (sum(&[
+            size_of::<InputProcessing>(),
+            size_of::<RangeInput<'_>>(),
+            size_of::<Storage>(),
+            size_of::<Option<Vec<u16>>>(),
+            size_of::<DocumentString>(),
+            size_of::<HtmlInputRangeValue>(),
+            2 * size_of::<HtmlInputNumericContent>(),
+        ])?)
+        .checked_sub(size_of::<InputProcessing>())
+        .expect("original inline ledger"),
+        source,
         cancel,
     )?;
     let mut storage = Storage::new();
@@ -387,16 +469,23 @@ pub(super) fn run(
         &mut storage,
         input.current,
         FloatingPointParseMode::Author,
+        source,
         cancel,
     )?;
-    let min = content(meter, &mut storage, input.min, cancel)?;
-    let max = content(meter, &mut storage, input.max, cancel)?;
+    let min = content(meter, &mut storage, input.min, source, cancel)?;
+    let max = content(meter, &mut storage, input.max, source, cancel)?;
     meter.fixed(
         sum(&[
             size_of::<HtmlInputRangeSanitizationCursor>(),
             size_of::<Action>(),
             size_of::<Reply>(),
         ])?,
+        sum(&[
+            size_of::<HtmlInputRangeSanitizationCursor>(),
+            size_of::<Action>(),
+            size_of::<Reply>(),
+        ])?,
+        source,
         cancel,
     )?;
     let mut policy = HtmlInputRangeSanitizationCursor::new(current_value, min, max);
@@ -408,25 +497,49 @@ pub(super) fn run(
                 size_of::<Action>(),
                 size_of::<Reply>(),
             ])?,
+            source,
             cancel,
         )?;
         let reply = match policy.action() {
-            Action::Midpoint { minimum, maximum } => {
-                Reply::Midpoint(midpoint(meter, &mut storage, minimum, maximum, cancel)?)
-            }
+            Action::Midpoint { minimum, maximum } => Reply::Midpoint(midpoint(
+                meter,
+                &mut storage,
+                minimum,
+                maximum,
+                source,
+                cancel,
+            )?),
             Action::Replace { value, .. } => {
-                let replacement = best(meter, &mut storage, value, cancel)?;
+                let replacement = best(meter, &mut storage, value, source, cancel)?;
                 if let Some(previous) = output.replace(replacement) {
-                    let bytes = extent(previous.capacity(), size_of::<u16>())?;
+                    let capacity = previous.capacity();
+                    let extent = extent(capacity, size_of::<u16>())?;
                     drop(previous);
-                    meter.release(bytes);
+                    meter.release(
+                        extent,
+                        Payload {
+                            bytes: extent,
+                            units: capacity,
+                        },
+                        source,
+                    );
+                }
+                // The returned temporary Vec header has moved into the
+                // already admitted outer Option slot. Any previous Vec owner
+                // was dropped first; its body credit ended above.
+                if let Some(source) = source {
+                    source.release_payload(metadata(size_of::<Vec<u16>>()));
                 }
                 Reply::Applied
             }
-            Action::ReadStep => Reply::Step(step(meter, &mut storage, input.step, cancel)?),
-            Action::ReadValueContent => {
-                Reply::ValueContent(content(meter, &mut storage, input.default_value, cancel)?)
-            }
+            Action::ReadStep => Reply::Step(step(meter, &mut storage, input.step, source, cancel)?),
+            Action::ReadValueContent => Reply::ValueContent(content(
+                meter,
+                &mut storage,
+                input.default_value,
+                source,
+                cancel,
+            )?),
             Action::Lattice {
                 current,
                 minimum,
@@ -443,6 +556,7 @@ pub(super) fn run(
                     base,
                     step,
                 },
+                source,
                 cancel,
             )?),
             Action::Complete => break,
@@ -452,11 +566,8 @@ pub(super) fn run(
             .map_err(|_| DomError::InputProcessingProtocol)?;
     }
     match output {
-        Some(units) => meter.output(units, cancel),
-        None => {
-            meter.charge(sum(&[1, size_of::<DocumentString>()])?, cancel)?;
-            Ok(input.current.clone())
-        }
+        Some(units) => meter.output(units, None, source, cancel),
+        None => meter.shared_output(input.current, source, cancel),
     }
 }
 
@@ -492,8 +603,10 @@ mod tests {
                         step: step.as_ref(),
                         default_value: None,
                     },
+                    None,
                     &cancel,
                 )
+                .map(|output| output.value)
                 .unwrap();
             assert_eq!(actual, DocumentString::from(expected), "raw={raw}");
             assert_eq!(meter.live, 0);
@@ -517,8 +630,10 @@ mod tests {
                         step: Some(&DocumentString::from("2")),
                         default_value: Some(&DocumentString::from("1")),
                     },
-                    &cancel,
+                    None,
+                    &cancel
                 )
+                .map(|output| output.value)
                 .unwrap(),
             DocumentString::from("5")
         );

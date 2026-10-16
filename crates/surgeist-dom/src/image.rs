@@ -92,8 +92,9 @@ impl<'a> DomImg<'a> {
             .expect("checked Img")
             .dimension_source
     }
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
     pub fn parser_inserted(self) -> bool {
         self.node
@@ -103,16 +104,22 @@ impl<'a> DomImg<'a> {
             .expect("checked Img")
             .parser_inserted
     }
-    pub fn suspended_update(self) -> Option<DomImageUpdate> {
-        let waiting = self.node.node.image.as_ref()?.waiting?;
-        Some(DomImageUpdate {
+    pub fn suspended_update(self) -> Result<Option<DomImageUpdate>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        let waiting = self
+            .node
+            .node
+            .image
+            .as_ref()
+            .and_then(|state| state.waiting);
+        Ok(waiting.map(|waiting| DomImageUpdate {
             id: DomImageUpdateId {
                 target: self.id(),
                 invocation: waiting.invocation,
             },
             document: self.node.node.document,
             flags: waiting.flags,
-        })
+        }))
     }
 }
 impl<'a> DomNode<'a> {

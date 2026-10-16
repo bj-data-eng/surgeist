@@ -1,5 +1,146 @@
 use super::*;
 
+pub(super) struct Insertion {
+    moving: select::ScratchVec<Key>,
+    fragment: bool,
+    parent: Key,
+    before: Option<Key>,
+    index: usize,
+    stage: u8,
+    #[cfg(test)]
+    _observation: scratch_observation::Moving,
+}
+pub(super) enum Frame {
+    Destroy {
+        closure: select::ScratchVec<Key>,
+        index: usize,
+        stage: u8,
+    },
+    Insert(Insertion),
+    ReleaseMoving(Insertion),
+    RemovedParent(Key),
+    Walk {
+        root: Key,
+        old_parent: Option<Key>,
+        pending: select::ScratchVec<Key>,
+    },
+    Node {
+        key: Key,
+        root: Key,
+        old_parent: Option<Key>,
+        stage: u8,
+    },
+    AdoptAfterRemoval {
+        node: Key,
+        document: Key,
+    },
+    Replace {
+        node: Key,
+        parent: Key,
+        child: Key,
+        before: Option<Key>,
+        stage: u8,
+    },
+    ReplaceAll {
+        key: Key,
+        replacement: Option<Key>,
+        inserted: bool,
+    },
+}
+
+impl Frame {
+    pub(super) fn checkpoint(
+        &self,
+        a: &mut style::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(match self {
+            Self::Destroy {
+                closure,
+                index,
+                stage,
+            } => Self::Destroy {
+                closure: closure.checkpoint(a, cancel)?,
+                index: *index,
+                stage: *stage,
+            },
+            Self::Insert(frame) => Self::Insert(frame.checkpoint(a, cancel)?),
+            Self::ReleaseMoving(frame) => Self::ReleaseMoving(frame.checkpoint(a, cancel)?),
+            Self::RemovedParent(key) => Self::RemovedParent(*key),
+            Self::Walk {
+                root,
+                old_parent,
+                pending,
+            } => Self::Walk {
+                root: *root,
+                old_parent: *old_parent,
+                pending: pending.checkpoint(a, cancel)?,
+            },
+            Self::Node {
+                key,
+                root,
+                old_parent,
+                stage,
+            } => Self::Node {
+                key: *key,
+                root: *root,
+                old_parent: *old_parent,
+                stage: *stage,
+            },
+            Self::AdoptAfterRemoval { node, document } => Self::AdoptAfterRemoval {
+                node: *node,
+                document: *document,
+            },
+            Self::Replace {
+                node,
+                parent,
+                child,
+                before,
+                stage,
+            } => Self::Replace {
+                node: *node,
+                parent: *parent,
+                child: *child,
+                before: *before,
+                stage: *stage,
+            },
+            Self::ReplaceAll {
+                key,
+                replacement,
+                inserted,
+            } => Self::ReplaceAll {
+                key: *key,
+                replacement: *replacement,
+                inserted: *inserted,
+            },
+        })
+    }
+}
+impl Insertion {
+    fn checkpoint(
+        &self,
+        a: &mut style::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let moving = self.moving.checkpoint(a, cancel)?;
+        #[cfg(test)]
+        let observation = scratch_observation::Moving::new(
+            moving.capacity() * size_of::<Key>(),
+            moving.capacity() * size_of::<Key>(),
+        );
+        Ok(Self {
+            moving,
+            fragment: self.fragment,
+            parent: self.parent,
+            before: self.before,
+            index: self.index,
+            stage: self.stage,
+            #[cfg(test)]
+            _observation: observation,
+        })
+    }
+}
+
 pub(super) fn parent_can_have_children(kind: &DomNodeKind) -> bool {
     matches!(
         kind,
@@ -15,24 +156,33 @@ impl Draft {
         &mut self,
         key: Key,
         raw: DocumentString,
+        payload: Option<style::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        // DOM string-replace-all creates its Text before removing children.
-        // Removed children remain real detached managed nodes, not retired IDs.
         let replacement = if raw.is_empty() {
+            drop(raw);
             None
         } else {
-            Some(self.allocate(DomNodeKind::Text(raw), self.node(key)?.document, limits)?)
+            Some(self.allocate(
+                DomNodeKind::Text(raw),
+                self.node(key)?.document,
+                limits,
+                cancel,
+            )?)
         };
-        while let Some(&child) = self.node(key)?.children.first() {
-            self.effect_step(cancel)?;
-            self.remove(child, limits, cancel)?;
-        }
-        if let Some(text) = replacement {
-            self.pre_insert(text, key, None, limits, cancel)?;
-        }
-        Ok(())
+        // The replacement Text owns the operand before any nested hook can allocate.
+        drop(payload);
+        self.push_effect(
+            select::Effect::Tree(Frame::ReplaceAll {
+                key,
+                replacement,
+                inserted: false,
+            }),
+            self.effect_scoped,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
     }
 
     pub(super) fn shadow_connected(
@@ -60,21 +210,33 @@ impl Draft {
         // auxiliaries, not shadow-including descendants of their host.
         let mut list = self.effect_vec();
         let mut pending = self.effect_vec();
-        self.select_reserve(&mut pending, roots.len())?;
-        pending.extend(roots.iter().rev().copied());
-        while let Some(key) = pending.pop() {
+        self.select_reserve(&mut pending, roots.len(), cancel)?;
+        for key in roots.iter().rev() {
+            self.source_step(cancel)?;
+            pending.push(*key);
+        }
+        while !pending.is_empty() {
+            self.source_step(cancel)?;
+            let key = pending.pop().expect("admitted pending node");
             self.effect_step(cancel)?;
-            self.select_reserve(&mut list, 1)?;
+            self.select_reserve(&mut list, 1, cancel)?;
             list.push(key);
             let node = self.node(key)?;
-            self.select_reserve(&mut pending, node.children.len())?;
-            pending.extend(node.children.iter().rev().copied());
+            self.select_reserve(&mut pending, node.children.len(), cancel)?;
+            for child in node.children.iter().rev() {
+                self.source_step(cancel)?;
+                pending.push(*child);
+            }
             if let Some(root) = node.shadow_root {
-                self.select_reserve(&mut pending, 1)?;
+                self.select_reserve(&mut pending, 1, cancel)?;
                 pending.push(root);
             }
         }
-        self.push_effect(select::Effect::Post { list, index: 0 }, self.effect_scoped)?;
+        self.push_effect(
+            select::Effect::Post { list, index: 0 },
+            self.effect_scoped,
+            cancel,
+        )?;
         self.run_effects(limits, cancel)
     }
 
@@ -85,30 +247,39 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        // Removal precedes the document test, including same-document adoption.
-        // Admitted nonce/common/family state and manual intent survive adoption;
-        // removal runs actual stored-assignment effects. Native null child-content
-        // is preserved: adoption does not create a new element or reset its family.
+        self.push_effect(
+            select::Effect::Tree(Frame::AdoptAfterRemoval { node, document }),
+            self.effect_scoped,
+            cancelled,
+        )?;
         self.remove(node, limits, cancelled)?;
+        self.run_effects(limits, cancelled)
+    }
+    fn adopt_document(
+        &mut self,
+        node: Key,
+        document: Key,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         if self.node(node)?.document == document {
             return Ok(());
         }
         let mut pending = self.effect_vec();
-        self.select_reserve(&mut pending, 1)?;
+        self.select_reserve(&mut pending, 1, cancelled)?;
         pending.push((node, document));
-        while let Some((node, document)) = pending.pop() {
+        while !pending.is_empty() {
+            self.source_step(cancelled)?;
+            let (node, document) = pending.pop().expect("admitted pending adoption");
             self.effect_step(cancelled)?;
             let children = &self.node(node)?.children;
-            self.select_reserve(&mut pending, children.len())?;
-            pending.extend(
-                children
-                    .iter()
-                    .rev()
-                    .copied()
-                    .map(|child| (child, document)),
-            );
+            self.select_reserve(&mut pending, children.len(), cancelled)?;
+            for child in children.iter().rev() {
+                self.source_step(cancelled)?;
+                pending.push((*child, document));
+            }
             if let Some(root) = self.node(node)?.shadow_root {
-                self.select_reserve(&mut pending, 1)?;
+                self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push((root, document));
             }
             self.node_mut(node).document = document;
@@ -122,7 +293,7 @@ impl Draft {
             if let Some(contents) =
                 self.template_adoption_target(node, document, limits, cancelled)?
             {
-                self.select_reserve(&mut pending, 1)?;
+                self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push(contents);
             }
             // Attributes are value records owned by this Element, not Attr
@@ -257,11 +428,18 @@ impl Draft {
         if before == Some(node) {
             before = self.next_sibling(node);
         }
-        // Unlike insert's per-child adoption, replace explicitly adopts its
-        // supplied node first, including a DocumentFragment and its subtree.
-        self.adopt(node, self.node(parent)?.document, limits, cancelled)?;
-        self.remove(child, limits, cancelled)?;
-        self.insert_validated(node, parent, before, limits, cancelled)
+        self.push_effect(
+            select::Effect::Tree(Frame::Replace {
+                node,
+                parent,
+                child,
+                before,
+                stage: 0,
+            }),
+            self.effect_scoped,
+            cancelled,
+        )?;
+        self.run_effects(limits, cancelled)
     }
 
     fn insert_validated(
@@ -277,57 +455,64 @@ impl Draft {
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_)
         );
         #[cfg(test)]
-        let ledger_before_moving = self.select_temporary_bytes.get();
+        let ledger_before_moving = self.select_temporary_bytes.load(Ordering::Relaxed);
         let mut moving = self.effect_vec();
         if fragment {
             let children = &self.node(node)?.children;
-            self.select_reserve(&mut moving, children.len())?;
+            self.select_reserve(&mut moving, children.len(), cancelled)?;
             moving.extend(children.iter().copied());
         } else {
-            self.select_reserve(&mut moving, 1)?;
+            self.select_reserve(&mut moving, 1, cancelled)?;
             moving.push(node);
         }
         #[cfg(test)]
         let _moving_observation = scratch_observation::Moving::new(
             moving.capacity() * size_of::<Key>(),
-            self.select_temporary_bytes.get() - ledger_before_moving,
+            self.select_temporary_bytes.load(Ordering::Relaxed) - ledger_before_moving,
         );
-        if moving.is_empty() {
-            self.children_changed(parent, limits, cancelled)?;
-            return Ok(());
+        if !moving.is_empty() {
+            let children = &self.node(parent)?.children;
+            let admitted = self.source_reserve_amount::<Key>(
+                children.len(),
+                children.capacity(),
+                moving.len(),
+                cancelled,
+            )?;
+            #[cfg(test)]
+            let growth = if self.node(parent)?.children.len() + moving.len()
+                > self.node(parent)?.children.capacity()
+            {
+                style::formation::mutation_observation::before(
+                    self,
+                    style::formation::mutation_observation::Site::Children,
+                    cancelled,
+                )?
+            } else {
+                None
+            };
+            style::reserve_bank(&mut self.node_mut(parent).children, moving.len(), admitted)?;
+            #[cfg(test)]
+            style::formation::mutation_observation::grew(
+                growth,
+                self.node(parent)?.children.capacity() * size_of::<Key>(),
+            );
+            self.source_admit(0, cancelled)?;
         }
-        reserve(&mut self.node_mut(parent).children, moving.len())?;
-        // Fragment removal, including source Slot effects, completes before
-        // any insertion. Each actual inserted child then runs Slot and
-        // applicable shadow-inclusive native insertion steps below.
-        if fragment {
-            for child in moving.iter() {
-                self.effect_step(cancelled)?;
-                self.remove(*child, limits, cancelled)?;
-            }
-        }
-        let document = self.node(parent)?.document;
-        for &child in moving.iter() {
-            self.effect_step(cancelled)?;
-            self.adopt(child, document, limits, cancelled)?;
-            let target = self.node_mut(parent);
-            let index = before.map_or(target.children.len(), |reference| {
-                target
-                    .children
-                    .iter()
-                    .position(|child| *child == reference)
-                    .expect("retained reference")
-            });
-            target.children.insert(index, child);
-            self.node_mut(child).parent = Some(parent);
-            self.slot_insertion(child, parent, limits, cancelled)?;
-            self.common_insertion_steps(child, limits, cancelled, &mut || check_cancel(cancelled))?;
-        }
-        // Parent children-changed observes the completed atomic insertion before
-        // any descendant post-connection work, including nested Scripts.
-        self.children_changed(parent, limits, cancelled)?;
-        self.native_post_connection_steps(&moving, limits, cancelled)?;
-        Ok(())
+        self.push_effect(
+            select::Effect::Tree(Frame::Insert(Insertion {
+                moving,
+                fragment,
+                parent,
+                before,
+                index: 0,
+                stage: 0,
+                #[cfg(test)]
+                _observation: _moving_observation,
+            })),
+            self.effect_scoped,
+            cancelled,
+        )?;
+        self.run_effects(limits, cancelled)
     }
 
     pub(super) fn native_removing_steps(
@@ -338,122 +523,478 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let mut pending = self.effect_vec();
-        self.select_reserve(&mut pending, 1)?;
+        self.select_reserve(&mut pending, 1, cancel)?;
         pending.push(root);
-        while let Some(key) = pending.pop() {
-            self.effect_step(cancel)?;
-            let node = self.node(key)?;
-            self.select_reserve(&mut pending, node.children.len())?;
-            pending.extend(node.children.iter().rev().copied());
-            if let Some(root) = node.shadow_root {
-                self.select_reserve(&mut pending, 1)?;
-                pending.push(root);
-            }
-            self.navigable_removing_node(key, &mut || check_cancel(cancel))?;
-            self.script_removing_node(key, cancel)?;
-            self.select_removal(key, limits, cancel)?;
-            self.image_tree_change(
-                key,
-                surgeist_html::HtmlImageTreeChange::Removed,
+        self.push_effect(
+            select::Effect::Tree(Frame::Walk {
                 root,
-                Some(old_parent),
-                cancel,
-            )?;
-            self.control_removing_node(key, cancel)?;
-            self.base_tree_change(key, limits, cancel)?;
-            self.hyperlink_tree_change(key, Some(old_parent), cancel)?;
+                old_parent: Some(old_parent),
+                pending,
+            }),
+            self.effect_scoped,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
+    }
+
+    pub(super) fn tree_effect(
+        &mut self,
+        frame: Frame,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match frame {
+            Frame::Destroy {
+                closure,
+                index,
+                stage,
+            } => {
+                if let Some(&key) = closure.get(index) {
+                    if stage == 0 {
+                        // Every real child removal finishes its source hooks
+                        // before the next child or retirement cancellation.
+                        if let Some(&child) = self.node(key)?.children.first() {
+                            self.push_effect(
+                                select::Effect::Tree(Frame::Destroy {
+                                    closure,
+                                    index,
+                                    stage,
+                                }),
+                                self.effect_scoped,
+                                cancel,
+                            )?;
+                            self.remove(child, limits, cancel)?;
+                        } else {
+                            self.push_effect(
+                                select::Effect::Tree(Frame::Destroy {
+                                    closure,
+                                    index: index + 1,
+                                    stage,
+                                }),
+                                self.effect_scoped,
+                                cancel,
+                            )?;
+                        }
+                    } else if stage == 1 {
+                        self.cancel_select_tasks(key, cancel)?;
+                        self.cancel_details_intentions(key, cancel)?;
+                        self.cancel_image_update(key, limits, cancel)?;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Destroy {
+                                closure,
+                                index: index + 1,
+                                stage,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    } else {
+                        check_cancel(cancel)?;
+                        self.retire_template_contents_target(key, cancel)?;
+                        let node = match key {
+                            Key::Existing(i) => self.existing[i].take(),
+                            Key::Created(i) => self.created[i].take(),
+                        }
+                        .expect("owned closure");
+                        self.nodes -= 1;
+                        self.units -= kind_units(&node.kind)?;
+                        self.units -= node.base.as_ref().map_or(0, crate::base::BaseState::units);
+                        self.units -= node
+                            .hyperlink
+                            .as_ref()
+                            .map_or(0, crate::hyperlink::HyperlinkState::units);
+                        self.units -= node
+                            .encoding_url_document
+                            .as_ref()
+                            .map_or(0, crate::hyperlink::EncodingUrlDocument::units);
+                        self.units -= node
+                            .base_document
+                            .as_ref()
+                            .map_or(0, crate::base::BaseDocument::units);
+                        self.units -= form::name_units(node.form_past_names.as_ref(), cancel)?;
+                        self.retire_form_relations(key, cancel)?;
+                        self.slot_retirement(key, limits, cancel)?;
+                        self.retire_reflected_target(key, cancel)?;
+                        self.retire_template_patch_target(key, cancel)?;
+                        if matches!(&node.kind, DomNodeKind::Element(element) if element.style_state().is_some())
+                        {
+                            self.retire_style_render_blocking(key, cancel)?;
+                        }
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Destroy {
+                                closure,
+                                index: index + 1,
+                                stage,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                } else if stage < 2 {
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Destroy {
+                            closure,
+                            index: 0,
+                            stage: stage + 1,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                }
+            }
+
+            Frame::RemovedParent(parent) => self.children_changed(parent, limits, cancel)?,
+            Frame::AdoptAfterRemoval { node, document } => {
+                self.adopt_document(node, document, limits, cancel)?
+            }
+            Frame::Replace {
+                node,
+                parent,
+                child,
+                before,
+                stage,
+            } => {
+                if stage == 0 {
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Replace {
+                            node,
+                            parent,
+                            child,
+                            before,
+                            stage: 1,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.adopt(node, self.node(parent)?.document, limits, cancel)?;
+                } else if stage == 1 {
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Replace {
+                            node,
+                            parent,
+                            child,
+                            before,
+                            stage: 2,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.remove(child, limits, cancel)?;
+                } else {
+                    self.insert_validated(node, parent, before, limits, cancel)?;
+                }
+            }
+            Frame::ReplaceAll {
+                key,
+                replacement,
+                inserted,
+            } => {
+                if let Some(&child) = self.node(key)?.children.first().filter(|_| !inserted) {
+                    self.push_effect(
+                        select::Effect::Tree(Frame::ReplaceAll {
+                            key,
+                            replacement,
+                            inserted,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.remove(child, limits, cancel)?;
+                } else if !inserted && let Some(text) = replacement {
+                    self.pre_insert(text, key, None, limits, cancel)?;
+                }
+            }
+            Frame::Walk {
+                root,
+                old_parent,
+                mut pending,
+            } => {
+                if let Some(key) = pending.pop() {
+                    #[cfg(test)]
+                    if old_parent.is_none()
+                        && let Some(trace) = &mut self.insertion_trace
+                    {
+                        trace.visited += 1;
+                        if trace.visited == trace.cancel_after {
+                            cancel.store(true, Ordering::Release);
+                        }
+                    }
+                    self.effect_step(cancel)?;
+                    let node = self.node(key)?;
+                    self.select_reserve(&mut pending, node.children.len(), cancel)?;
+                    pending.extend(node.children.iter().rev().copied());
+                    if let Some(shadow) = node.shadow_root {
+                        self.select_reserve(&mut pending, 1, cancel)?;
+                        pending.push(shadow);
+                    }
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Walk {
+                            root,
+                            old_parent,
+                            pending,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Node {
+                            key,
+                            root,
+                            old_parent,
+                            stage: 0,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                }
+            }
+            Frame::Node {
+                key,
+                root,
+                old_parent,
+                stage,
+            } => {
+                if let Some(parent) = old_parent {
+                    if stage < 8 {
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Node {
+                                key,
+                                root,
+                                old_parent,
+                                stage: stage + 1,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                    match stage {
+                        0 => self.navigable_removing_node(key, &mut || check_cancel(cancel))?,
+                        1 => self.script_removing_node(key, cancel)?,
+                        2 => self.select_removal(key, limits, cancel)?,
+                        3 => self.image_tree_change(
+                            key,
+                            surgeist_html::HtmlImageTreeChange::Removed,
+                            root,
+                            Some(parent),
+                            cancel,
+                        )?,
+                        4 => self.control_removing_node(key, cancel)?,
+                        5 => self.base_tree_change(key, limits, cancel)?,
+                        6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
+                        7 => self.style_tree_change(key, old_parent, limits, cancel)?,
+                        8 => {
+                            if matches!(&self.node(key)?.kind, DomNodeKind::Element(element) if element.is_meta())
+                            {
+                                // The shadow-inclusive removal walk also visits
+                                // hosted trees. Only a Meta whose ORDINARY root
+                                // was the removed root belonged to the former
+                                // ordinary Document tree.
+                                let old_document =
+                                    if crate::slot::root_admitted(self, key, &mut || {
+                                        self.meta_step(cancel)
+                                    })? == root
+                                    {
+                                        let former_root =
+                                            crate::slot::root_admitted(self, parent, &mut || {
+                                                self.meta_step(cancel)
+                                            })?;
+                                        matches!(
+                                            self.node(former_root)?.kind,
+                                            DomNodeKind::Document(_)
+                                        )
+                                        .then_some(former_root)
+                                    } else {
+                                        None
+                                    };
+                                self.meta_removed(key, old_document, limits, cancel)?;
+                            }
+                        }
+                        _ => (),
+                    }
+                } else {
+                    if stage < 8 {
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Node {
+                                key,
+                                root,
+                                old_parent,
+                                stage: stage + 1,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                    match stage {
+                        0 => self.insertion_nonce(key, cancel)?,
+                        1 => self.control_insertion_node(key, cancel)?,
+                        2 => self.image_tree_change(
+                            key,
+                            surgeist_html::HtmlImageTreeChange::Inserted,
+                            root,
+                            None,
+                            cancel,
+                        )?,
+                        3 => self.base_tree_change(key, limits, cancel)?,
+                        4 => self.hyperlink_tree_change(key, None, cancel)?,
+                        5 => self.select_insertion(key, limits, cancel)?,
+                        6 => self.details_exclusivity(
+                            key,
+                            surgeist_html::HtmlDetailsExclusivity::CloseGiven,
+                            limits,
+                            cancel,
+                        )?,
+                        7 => self.style_tree_change(key, None, limits, cancel)?,
+                        8 => self.meta_inserted(key, limits, cancel)?,
+                        _ => (),
+                    }
+                }
+            }
+            Frame::Insert(mut frame) => {
+                if frame.stage == 0 {
+                    if frame.fragment
+                        && let Some(&child) = frame.moving.get(frame.index)
+                    {
+                        frame.index += 1;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Insert(frame)),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                        self.remove(child, limits, cancel)?;
+                    } else {
+                        frame.stage = 1;
+                        frame.index = 0;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Insert(frame)),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                } else if let Some(&child) = frame.moving.get(frame.index) {
+                    if frame.stage == 1 {
+                        frame.stage = 2;
+                        let document = self.node(frame.parent)?.document;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Insert(frame)),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                        self.adopt(child, document, limits, cancel)?;
+                    } else {
+                        let target = self.node_mut(frame.parent);
+                        let index = frame.before.map_or(target.children.len(), |reference| {
+                            target
+                                .children
+                                .iter()
+                                .position(|key| *key == reference)
+                                .expect("retained reference")
+                        });
+                        target.children.insert(index, child);
+                        self.node_mut(child).parent = Some(frame.parent);
+                        if !self.is_private(frame.parent) {
+                            self.expose_source_subtree(child, cancel)?;
+                        }
+                        self.slot_insertion(child, frame.parent, limits, cancel)?;
+                        frame.index += 1;
+                        frame.stage = 1;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Insert(frame)),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                        let mut pending = self.effect_vec();
+                        self.select_reserve(&mut pending, 1, cancel)?;
+                        pending.push(child);
+                        self.push_effect(
+                            select::Effect::Tree(Frame::Walk {
+                                root: child,
+                                old_parent: None,
+                                pending,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                } else if frame.stage != 3 {
+                    frame.stage = 3;
+                    let parent = frame.parent;
+                    self.push_effect(
+                        select::Effect::Tree(Frame::Insert(frame)),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.children_changed(parent, limits, cancel)?;
+                } else if !frame.moving.is_empty() {
+                    let mut roots = self.effect_vec();
+                    self.select_reserve(&mut roots, frame.moving.len(), cancel)?;
+                    roots.extend(frame.moving.iter().copied());
+                    self.push_effect(
+                        select::Effect::Tree(Frame::ReleaseMoving(frame)),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.native_post_connection_steps(&roots, limits, cancel)?;
+                }
+            }
+            Frame::ReleaseMoving(frame) => {
+                drop(frame);
+            }
         }
         Ok(())
     }
-
-    fn common_insertion_steps(
-        &mut self,
-        root: Key,
-        limits: DomLimits,
-        cancel: &AtomicBool,
-        admit_step: &mut impl FnMut() -> Result<(), DomError>,
-    ) -> Result<(), DomError> {
+    fn insertion_nonce(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         use surgeist_html::{
             HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceConnection,
             HtmlNonceInsertionEffect,
         };
-        let mut pending = self.effect_vec();
-        self.select_reserve(&mut pending, 1)?;
-        pending.push(root);
-        while let Some(key) = pending.pop() {
+        let node = self.node(key)?;
+        let DomNodeKind::Element(element) = &node.kind else {
+            return Ok(());
+        };
+        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
+            unreachable!("canonical node document")
+        };
+        // This is an established native environment fact, independent of
+        // class or connectedness. No CSP observation is invented.
+        let connection = match document.document_environment().browsing_context() {
+            HtmlBrowsingContextPresence::Absent => HtmlNonceConnection::NotBrowsingContextConnected,
+            HtmlBrowsingContextPresence::Unavailable | HtmlBrowsingContextPresence::Present => {
+                HtmlNonceConnection::Unavailable
+            }
+        };
+        let mut content = None;
+        for attribute in element.attributes().iter() {
             self.effect_step(cancel)?;
-            admit_step()?;
-            let node = self.node(key)?;
-            self.select_reserve(&mut pending, node.children.len())?;
-            pending.extend(node.children.iter().rev().copied());
-            if let Some(root) = node.shadow_root {
-                self.select_reserve(&mut pending, 1)?;
-                pending.push(root);
+            if attribute.name().namespace().uri().is_none()
+                && attribute.name().local_name().code_units() == [0x6e, 0x6f, 0x6e, 0x63, 0x65]
+            {
+                content = Some(attribute.value());
+                break;
             }
-            let DomNodeKind::Element(element) = &node.kind else {
-                continue;
-            };
-            let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
-                unreachable!("canonical node document")
-            };
-            // This is an established native environment fact, independent of
-            // class or connectedness. No CSP observation is invented.
-            let connection = match document.native_environment().browsing_context() {
-                HtmlBrowsingContextPresence::Absent => {
-                    HtmlNonceConnection::NotBrowsingContextConnected
-                }
-                HtmlBrowsingContextPresence::Unavailable | HtmlBrowsingContextPresence::Present => {
-                    HtmlNonceConnection::Unavailable
-                }
-            };
-            let mut content = None;
-            for attribute in element.attributes().iter() {
-                self.effect_step(cancel)?;
-                admit_step()?;
-                if attribute.name().namespace().uri().is_none()
-                    && attribute.name().local_name().code_units() == [0x6e, 0x6f, 0x6e, 0x63, 0x65]
-                {
-                    content = Some(attribute.value());
-                    break;
-                }
+        }
+        match surgeist_html::nonce_insertion_effect(
+            element.name(),
+            content,
+            connection,
+            HtmlHeaderDeliveredCsp::Unavailable,
+        ) {
+            HtmlNonceInsertionEffect::KeepContent => {}
+            HtmlNonceInsertionEffect::Unavailable(missing) => {
+                return Err(DomError::NonceEnvironmentUnavailable(missing));
             }
-            match surgeist_html::nonce_insertion_effect(
-                element.name(),
-                content,
-                connection,
-                HtmlHeaderDeliveredCsp::Unavailable,
-            ) {
-                HtmlNonceInsertionEffect::KeepContent => {}
-                HtmlNonceInsertionEffect::Unavailable(missing) => {
-                    return Err(DomError::NonceEnvironmentUnavailable(missing));
-                }
-                HtmlNonceInsertionEffect::HideContentPreservingSlot => {
-                    unreachable!("native null browsing context cannot hide nonce content")
-                }
+            HtmlNonceInsertionEffect::HideContentPreservingSlot => {
+                unreachable!("native null browsing context cannot hide nonce content")
             }
-            self.control_insertion_node(key, cancel)?;
-            self.image_tree_change(
-                key,
-                surgeist_html::HtmlImageTreeChange::Inserted,
-                root,
-                None,
-                cancel,
-            )?;
-            self.base_tree_change(key, limits, cancel)?;
-            self.hyperlink_tree_change(key, None, cancel)?;
-            self.select_insertion(key, limits, cancel)?;
-            self.details_exclusivity(
-                key,
-                surgeist_html::HtmlDetailsExclusivity::CloseGiven,
-                limits,
-                cancel,
-            )?;
-            // Closed HTML popovers are hidden, so their removal/attribute hide
-            // steps return without changing state. Never-navigable documents
-            // are not fully active, discharging the autofocus insertion guard.
         }
         Ok(())
     }
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(super) struct InsertionTrace {
+    pub visited: usize,
+    pub cancel_after: usize,
 }
 
 #[cfg(test)]
@@ -485,20 +1026,18 @@ mod tests {
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap();
         let key = draft.resolve(parent.into()).unwrap();
         draft
-            .set_nonce(key, "unpublished".into(), dom.limits(), &cancel)
+            .set_nonce(key, &"unpublished".into(), dom.limits(), &cancel)
             .unwrap();
-        let mut visited = 0;
+        draft.insertion_trace = Some(InsertionTrace {
+            visited: 0,
+            cancel_after: 2,
+        });
+        let document = draft.node(key).unwrap().document;
         assert_eq!(
-            draft.common_insertion_steps(key, dom.limits(), &cancel, &mut || {
-                visited += 1;
-                if visited == 2 {
-                    cancel.store(true, Ordering::Release);
-                }
-                check_cancel(&cancel)
-            }),
+            draft.pre_insert(key, document, None, dom.limits(), &cancel),
             Err(DomError::Cancelled)
         );
-        assert_eq!(visited, 2);
+        assert_eq!(draft.insertion_trace.as_ref().unwrap().visited, 2);
         drop(draft);
         assert_eq!(*dom.state, *before.state);
         assert_eq!(dom.usage(), usage);

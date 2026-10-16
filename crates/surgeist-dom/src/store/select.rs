@@ -1,5 +1,6 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
+mod value;
 use surgeist_html::bounded::*;
 use surgeist_html::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag, *};
 
@@ -8,7 +9,7 @@ use surgeist_html::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag, *};
 /// its own admitted capacity. Producer-owned capture/session banks stay separate.
 pub(super) struct ScratchVec<T> {
     values: Vec<T>,
-    live: std::rc::Rc<std::cell::Cell<usize>>,
+    live: Arc<AtomicUsize>,
     admit: bool,
 }
 impl<T> std::ops::Deref for ScratchVec<T> {
@@ -22,10 +23,64 @@ impl<T> std::ops::DerefMut for ScratchVec<T> {
         &mut self.values
     }
 }
+impl<T> ScratchVec<T> {
+    /// Transfer the bank directly into a canonical Draft field. No fallible
+    /// work may intervene between releasing temporary custody and installing it.
+    pub(super) fn into_values(mut self) -> Vec<T> {
+        self.live.store(
+            self.live.load(Ordering::Relaxed) - self.values.capacity() * size_of::<T>(),
+            Ordering::Relaxed,
+        );
+        std::mem::take(&mut self.values)
+    }
+}
 impl<T> Drop for ScratchVec<T> {
     fn drop(&mut self) {
-        self.live
-            .set(self.live.get() - self.values.capacity() * size_of::<T>());
+        self.live.store(
+            self.live.load(Ordering::Relaxed) - self.values.capacity() * size_of::<T>(),
+            Ordering::Relaxed,
+        );
+    }
+}
+
+impl<T: Clone> ScratchVec<T> {
+    pub(super) fn checkpoint(
+        &self,
+        admission: &mut style::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let bytes = self
+            .len()
+            .checked_mul(size_of::<T>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        admission.before(bytes)?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(self.len())
+            .map_err(|_| DomError::AllocationFailed)?;
+        let actual = values
+            .capacity()
+            .checked_mul(size_of::<T>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        admission.scratch_allocated(actual)?;
+        self.live.store(
+            self.live
+                .load(Ordering::Relaxed)
+                .checked_add(actual)
+                .ok_or(DomError::RepresentationExhausted)?,
+            Ordering::Relaxed,
+        );
+        let mut copy = Self {
+            values,
+            live: self.live.clone(),
+            admit: self.admit,
+        };
+        for value in &self.values {
+            check_cancel(cancel)?;
+            admission.step()?;
+            copy.values.push(value.clone());
+        }
+        Ok(copy)
     }
 }
 
@@ -39,14 +94,15 @@ pub(super) enum Pending {
     Update { serial: Option<u64>, target: Key },
     Slots,
 }
-pub(super) fn draft_tasks(
+pub(super) fn draft_tasks_formed(
     tasks: &[Task<NodeId>],
+    initial: Option<&style::initial::Initial>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Pending>, DomError> {
     let mut out = Vec::new();
-    reserve(&mut out, tasks.len())?;
+    style::initial::reserve(&mut out, tasks.len(), initial, cancel)?;
     for task in tasks {
-        check_cancel(cancel)?;
+        style::initial::step(initial, cancel)?;
         out.push(match *task {
             Task::Slots => Pending::Slots,
             Task::Update { serial, target } => Pending::Update {
@@ -61,6 +117,15 @@ pub(super) struct FinishedTasks {
     pub tasks: Vec<Task<NodeId>>,
     pub next: u64,
     pub cancellations: Vec<(u64, NodeId)>,
+}
+struct SelectContinuation {
+    after: SelectAfter,
+    acknowledge: bool,
+}
+struct SetterContinuation {
+    edit: crate::select::Edit,
+    acknowledge: bool,
+    payload: Option<style::checkpoint::Charge>,
 }
 impl Draft {
     fn queue_select(
@@ -80,16 +145,51 @@ impl Draft {
             }
         }
         admit(count, limits.select_tasks, DomResource::SelectTasks)?;
-        reserve(&mut self.native_tasks, 1)?;
+        let admitted = self.source_reserve_amount::<Pending>(
+            self.native_tasks.len(),
+            self.native_tasks.capacity(),
+            1,
+            cancel,
+        )?;
+        #[cfg(test)]
+        let growth = if self.native_tasks.len() == self.native_tasks.capacity() {
+            style::formation::mutation_observation::before(
+                self,
+                style::formation::mutation_observation::Site::SelectTasks,
+                cancel,
+            )?
+        } else {
+            None
+        };
+        style::reserve_bank(&mut self.native_tasks, 1, admitted)?;
+        #[cfg(test)]
+        style::formation::mutation_observation::grew(
+            growth,
+            self.native_tasks.capacity() * size_of::<Pending>(),
+        );
+        self.source_admit(0, cancel)?;
+        self.headroom_select_issue(cancel)?;
         self.native_tasks.push(Pending::Update {
             serial: None,
             target,
         });
         Ok(())
     }
-    pub(super) fn queue_slot_marker(&mut self) -> Result<(), DomError> {
+    pub(super) fn queue_slot_marker(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         if !self.notification_queued {
-            reserve(&mut self.native_tasks, 1)?;
+            if let Some(additional) = self.source_reserve_amount::<Pending>(
+                self.native_tasks.len(),
+                self.native_tasks.capacity(),
+                1,
+                cancel,
+            )? {
+                self.native_tasks
+                    .try_reserve_exact(additional)
+                    .map_err(|_| DomError::AllocationFailed)?;
+            } else {
+                reserve(&mut self.native_tasks, 1)?;
+            }
+            self.source_admit(0, cancel)?;
             self.native_tasks.push(Pending::Slots);
             self.notification_queued = true;
         }
@@ -102,7 +202,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut kept = 0;
         for i in 0..self.native_tasks.len() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let task = self.native_tasks[i];
             if matches!(task, Pending::Update { .. }) {
                 self.select_step(cancel)?;
@@ -110,16 +210,16 @@ impl Draft {
             if let Pending::Update { serial, target } = task
                 && target == key
             {
-                if let Key::Existing(slot) = key {
-                    reserve(&mut self.cancelled_selects, 1)?;
-                    self.cancelled_selects.push((
-                        serial,
-                        NodeId {
-                            owner: self.store,
-                            slot,
-                            generation: self.generations[slot],
-                        },
-                    ));
+                if let Some(id) = self.published_id(key) {
+                    let admitted = self.source_reserve_amount::<(Option<u64>, NodeId)>(
+                        self.cancelled_selects.len(),
+                        self.cancelled_selects.capacity(),
+                        1,
+                        cancel,
+                    )?;
+                    style::reserve_bank(&mut self.cancelled_selects, 1, admitted)?;
+                    self.source_admit(0, cancel)?;
+                    self.cancelled_selects.push((serial, id));
                 }
             } else {
                 self.native_tasks[kept] = task;
@@ -133,13 +233,14 @@ impl Draft {
         &self,
         dom: &Dom,
         id: &impl Fn(Key) -> NodeId,
+        budget: Option<&style::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FinishedTasks, DomError> {
         let mut next = dom.state.next_task;
         let mut out = Vec::new();
         let mut cancelled = Vec::new();
-        reserve(&mut out, self.native_tasks.len())?;
-        reserve(&mut cancelled, self.cancelled_selects.len())?;
+        style::formation::reserve(&mut out, self.native_tasks.len(), budget, cancel)?;
+        style::formation::reserve(&mut cancelled, self.cancelled_selects.len(), budget, cancel)?;
         let mut serial = |old: Option<u64>| -> Result<u64, DomError> {
             if let Some(id) = old {
                 Ok(id)
@@ -152,7 +253,10 @@ impl Draft {
             }
         };
         for task in &self.native_tasks {
-            check_cancel(cancel)?;
+            style::formation::step(budget, cancel)?;
+            if matches!(task, Pending::Update {target,..} if self.is_private(*target)) {
+                continue;
+            }
             out.push(match *task {
                 Pending::Slots => Task::Slots,
                 Pending::Update {
@@ -164,8 +268,9 @@ impl Draft {
                 },
             });
         }
-        for &(old, target) in &self.cancelled_selects {
-            check_cancel(cancel)?;
+        for entry in &self.cancelled_selects {
+            style::formation::step(budget, cancel)?;
+            let (old, target) = *entry;
             cancelled.push((serial(old)?, target));
         }
         Ok(FinishedTasks {
@@ -184,6 +289,13 @@ impl Dom {
         limits: crate::DomNativeCheckpointLimits,
         cancel: &AtomicBool,
     ) -> Result<crate::DomNativeCheckpoint, DomError> {
+        if let Some(op) = &self.source_operation {
+            match self.state.native_tasks.first() {
+                Some(Task::Update { serial, target })
+                    if op.allows_select_checkpoint(*serial, *target) => {}
+                _ => return Err(DomError::SourceOperationPending),
+            }
+        }
         check_cancel(cancel)?;
         match self.state.native_tasks.first().copied() {
             None => Ok(crate::DomNativeCheckpoint::Idle),
@@ -235,6 +347,7 @@ impl Dom {
         limits: crate::DomNativeCheckpointLimits,
         cancel: &AtomicBool,
     ) -> Result<crate::DomSelectTaskCompletion, DomError> {
+        self.require_source_idle()?;
         check_cancel(cancel)?;
         let auth = &task.authorization;
         if auth.id.owner != self.owner {
@@ -289,13 +402,45 @@ impl Dom {
     }
 }
 impl Draft {
-    fn element(&self, key: Key) -> Result<&DomElement, DomError> {
+    pub(super) fn element(&self, key: Key) -> Result<&DomElement, DomError> {
         match &self.node(key)?.kind {
             DomNodeKind::Element(e) => Ok(e),
             _ => Err(DomError::WrongNodeKind),
         }
     }
-    fn element_mut(&mut self, key: Key) -> &mut DomElement {
+    /// The original family owner admits its actual shared immutable payload
+    /// before copy-on-write. Custody transfers directly into the Draft family;
+    /// subsequent mutable access is unique and performs no second allocation.
+    pub(super) fn prepare_family_mutation(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.source_limits.is_none() {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let payload = self
+            .element(key)?
+            .shared_family_payload(|| self.source_step(cancel))?;
+        let Some(payload) = payload else {
+            return Ok(());
+        };
+        #[cfg(test)]
+        let before = style::formation::mutation_observation::before(
+            self,
+            style::formation::mutation_observation::Site::Family,
+            cancel,
+        )?;
+        let formation = style::formation::Formation::new(self, cancel)?.expect("source context");
+        formation.retain_payload(payload, cancel)?;
+        self.element_mut(key).make_family_unique();
+        #[cfg(test)]
+        style::formation::mutation_observation::grew(before, payload.bytes);
+        drop(formation);
+        Ok(())
+    }
+    pub(super) fn element_mut(&mut self, key: Key) -> &mut DomElement {
         match &mut self.node_mut(key).kind {
             DomNodeKind::Element(e) => e,
             _ => unreachable!("checked Element"),
@@ -308,7 +453,7 @@ impl Draft {
         })
     }
     fn select_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
-        check_cancel(cancel)?;
+        self.source_step(cancel)?;
         let next = self
             .select_work
             .get()
@@ -330,13 +475,13 @@ impl Draft {
         if self.effect_scoped {
             self.select_step(cancel)
         } else {
-            check_cancel(cancel)
+            self.source_step(cancel)
         }
     }
-    fn select_scratch(&self, bytes: usize) -> Result<(), DomError> {
+    pub(super) fn select_scratch(&self, bytes: usize) -> Result<(), DomError> {
         let total = self
             .effect_bytes
-            .checked_add(self.select_temporary_bytes.get())
+            .checked_add(self.select_temporary_bytes.load(Ordering::Relaxed))
             .and_then(|n| n.checked_add(bytes))
             .ok_or(DomError::RepresentationExhausted)?;
         #[cfg(test)]
@@ -361,6 +506,7 @@ impl Draft {
         &self,
         v: &mut ScratchVec<T>,
         n: usize,
+        cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         // Register every actual effect bank for its full lifetime, including
         // an ordinary insertion whose later postconnection first reaches Select.
@@ -379,6 +525,7 @@ impl Draft {
                 .checked_mul(size_of::<T>())
                 .ok_or(DomError::RepresentationExhausted)?;
             // New allocation overlaps the old allocation until reserve returns.
+            self.source_admit(bytes, cancel)?;
             if enforce {
                 self.select_scratch(bytes)?;
             }
@@ -389,13 +536,15 @@ impl Draft {
                 .capacity()
                 .checked_mul(size_of::<T>())
                 .ok_or(DomError::RepresentationExhausted)?;
-            self.select_temporary_bytes.set(
+            self.select_temporary_bytes.store(
                 self.select_temporary_bytes
-                    .get()
+                    .load(Ordering::Relaxed)
                     .checked_add(actual - old)
                     .ok_or(DomError::RepresentationExhausted)?,
+                Ordering::Relaxed,
             );
         }
+        self.source_admit(0, cancel)?;
         if enforce {
             self.select_scratch(0)
         } else {
@@ -427,26 +576,28 @@ impl Draft {
     fn options(&self, key: Key, cancel: &AtomicBool) -> Result<ScratchVec<Key>, DomError> {
         let mut result = self.select_vec();
         let mut pending = self.select_vec();
-        self.select_reserve(&mut pending, self.node(key)?.children.len())?;
-        pending.extend(self.node(key)?.children.iter().rev().map(|&k| (k, false)));
-        while let Some((key, group)) = pending.pop() {
+        self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
+        for child in self.node(key)?.children.iter().rev() {
+            self.source_step(cancel)?;
+            pending.push((*child, false));
+        }
+        while !pending.is_empty() {
+            self.source_step(cancel)?;
+            let (key, group) = pending.pop().expect("admitted pending option");
             self.select_step(cancel)?;
             let tag = self.tag(key)?;
             match select_option_rule(tag, group) {
                 HtmlSelectOptionRule::IncludeAndPrune => {
-                    self.select_reserve(&mut result, 1)?;
+                    self.select_reserve(&mut result, 1, cancel)?;
                     result.push(key);
                 }
                 HtmlSelectOptionRule::Prune => (),
                 HtmlSelectOptionRule::Descend => {
-                    self.select_reserve(&mut pending, self.node(key)?.children.len())?;
-                    pending.extend(
-                        self.node(key)?
-                            .children
-                            .iter()
-                            .rev()
-                            .map(|&k| (k, group || tag == Some(Tag::Optgroup))),
-                    );
+                    self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
+                    for child in self.node(key)?.children.iter().rev() {
+                        self.source_step(cancel)?;
+                        pending.push((*child, group || tag == Some(Tag::Optgroup)));
+                    }
                 }
             }
         }
@@ -472,103 +623,169 @@ impl Draft {
     }
     fn display_size(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         self.select_step(cancel)?;
-        let element = self.element(key)?;
-        let raw = element.attributes().iter().find(|a| {
-            a.name().namespace().uri().is_none()
-                && a.name()
-                    .local_name()
-                    .code_units()
-                    .iter()
-                    .copied()
-                    .eq("size".encode_utf16())
-        });
-        let multiple = element.attributes().iter().find(|a| {
-            a.name().namespace().uri().is_none()
-                && a.name()
-                    .local_name()
-                    .code_units()
-                    .iter()
-                    .copied()
-                    .eq("multiple".encode_utf16())
-        });
-        for a in [raw, multiple].into_iter().flatten() {
-            for _ in a.value().code_units() {
+        if self.element(key)?.select_state().is_none() {
+            return Ok(false);
+        }
+        let raw = self.control_attribute(key, Attr::Size, cancel)?;
+        let multiple = self.control_attribute(key, Attr::Multiple, cancel)?;
+        // Preserve the existing independent Select raw-input tariff. The
+        // enclosing Source owner additionally admits the original borrowed
+        // grammar/projection reads; no owning scalar report is materialized.
+        for value in [raw, multiple].into_iter().flatten() {
+            for _ in value.code_units() {
                 self.select_step(cancel)?;
             }
         }
-        let report = HtmlValueInterpreter::new(
-            raw.map_or(0, |a| a.value().len())
-                .max(multiple.map_or(0, |a| a.value().len())),
-        )
-        .select_size(element.name(), raw, multiple)
-        .map_err(|_| DomError::SelectProtocol)?;
-        Ok(
-            matches!(report.display_size(),HtmlSelectDisplaySize::Value{value,..} if value.decimal_digits()=="1"),
-        )
+        let recovered = if let Some(raw) = raw {
+            let mut scanner = IntegerPrefixScanner::new(true);
+            for unit in raw.code_units() {
+                self.source_step(cancel)?;
+                if !scanner.feed(*unit) {
+                    break;
+                }
+            }
+            self.source_step(cancel)?;
+            if let Ok(prefix) = scanner.finish() {
+                // The producer contract bounds this borrowed sign/digit check
+                // by two visits per actual prefix unit plus fixed range work.
+                let visits = prefix
+                    .end()
+                    .checked_sub(prefix.start())
+                    .and_then(|n| n.checked_mul(2))
+                    .and_then(|n| n.checked_add(2))
+                    .ok_or(DomError::RepresentationExhausted)?;
+                for _ in 0..visits {
+                    self.source_step(cancel)?;
+                }
+                prefix.try_nonnegative_digits(raw.code_units()).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(digits) = recovered {
+            let mut nonzero = false;
+            let mut one = false;
+            for unit in digits {
+                self.source_step(cancel)?;
+                if nonzero {
+                    one = false;
+                } else if *unit != b'0' as u16 {
+                    nonzero = true;
+                    one = *unit == b'1' as u16;
+                }
+            }
+            Ok(one)
+        } else {
+            self.source_step(cancel)?;
+            Ok(select_display_size_default(multiple.is_some()) == 1)
+        }
     }
     pub(super) fn select_operation(
         &mut self,
         key: Key,
-        op: HtmlSelectOperation,
+        operation: HtmlSelectOperation,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<bool, DomError> {
-        self.element(key)?
-            .select_state()
-            .ok_or(DomError::SelectInapplicable)?;
-        let multiple = self.multiple(key, cancel)?;
-        // Preserve the shared multiple fast path without walking an irrelevant list.
-        let options = if multiple && op == HtmlSelectOperation::Normalize {
-            self.select_vec()
-        } else {
-            self.options(key, cancel)?
-        };
-        let mut cursor = HtmlSelectCursor::new(op, multiple, options.len())
-            .map_err(|_| DomError::SelectProtocol)?;
-        loop {
-            self.select_step(cancel)?;
-            let reply = match cursor.action() {
-                HtmlSelectAction::ResetSelectFlags => {
-                    self.element_mut(key)
-                        .select_state_mut()
-                        .expect("Select")
-                        .flags
-                        .reset();
-                    HtmlSelectReply::Applied
-                }
-                HtmlSelectAction::ResetOption { ordinal } => {
-                    let k = options[ordinal];
-                    let selected = self.has(k, Attr::Selected, cancel)?;
-                    self.element_mut(k)
-                        .option_state_mut()
-                        .expect("Option")
-                        .flags
-                        .reset(selected);
-                    HtmlSelectReply::Applied
-                }
-                HtmlSelectAction::ReadSelectedness { ordinal } => {
-                    HtmlSelectReply::Selectedness(self.selected(options[ordinal])?)
-                }
-                HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
-                    self.write_selected(options[ordinal], selected);
-                    HtmlSelectReply::Applied
-                }
-                HtmlSelectAction::ReadDisabled { ordinal } => {
-                    HtmlSelectReply::Disabled(self.option_disabled(options[ordinal], cancel)?)
-                }
-                HtmlSelectAction::ReadDisplaySize => {
-                    HtmlSelectReply::DisplaySizeIsOne(self.display_size(key, cancel)?)
-                }
-                HtmlSelectAction::UpdateSelectedcontent => {
-                    self.schedule_selectedcontent(key, limits, cancel)?;
-                    HtmlSelectReply::Applied
-                }
-                HtmlSelectAction::Complete {
-                    normalization_changed,
-                } => return Ok(normalization_changed),
-            };
-            cursor.reply(reply).map_err(|_| DomError::SelectProtocol)?;
+    ) -> Result<(), DomError> {
+        self.push_effect(
+            Effect::SelectStart {
+                key,
+                operation,
+                after: SelectAfter::None,
+            },
+            true,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
+    }
+    fn select_cursor_step(
+        &mut self,
+        key: Key,
+        options: ScratchVec<Key>,
+        mut cursor: HtmlSelectCursor,
+        continuation: SelectContinuation,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let SelectContinuation { after, acknowledge } = continuation;
+        if acknowledge {
+            cursor
+                .reply(HtmlSelectReply::Applied)
+                .map_err(|_| DomError::SelectProtocol)?;
         }
+        let reply = match cursor.action() {
+            HtmlSelectAction::ResetSelectFlags => {
+                self.prepare_family_mutation(key, cancel)?;
+                self.element_mut(key)
+                    .select_state_mut()
+                    .expect("Select")
+                    .flags
+                    .reset();
+                HtmlSelectReply::Applied
+            }
+            HtmlSelectAction::ResetOption { ordinal } => {
+                let option = options[ordinal];
+                let selected = self.has(option, Attr::Selected, cancel)?;
+                self.element_mut(option)
+                    .option_state_mut()
+                    .expect("Option")
+                    .flags
+                    .reset(selected);
+                HtmlSelectReply::Applied
+            }
+            HtmlSelectAction::ReadSelectedness { ordinal } => {
+                HtmlSelectReply::Selectedness(self.selected(options[ordinal])?)
+            }
+            HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
+                self.write_selected(options[ordinal], selected);
+                HtmlSelectReply::Applied
+            }
+            HtmlSelectAction::ReadDisabled { ordinal } => {
+                HtmlSelectReply::Disabled(self.option_disabled(options[ordinal], cancel)?)
+            }
+            HtmlSelectAction::ReadDisplaySize => {
+                HtmlSelectReply::DisplaySizeIsOne(self.display_size(key, cancel)?)
+            }
+            HtmlSelectAction::UpdateSelectedcontent => {
+                self.push_effect(
+                    Effect::SelectCursor {
+                        key,
+                        options,
+                        cursor,
+                        after,
+                        acknowledge: true,
+                    },
+                    true,
+                    cancel,
+                )?;
+                return self.schedule_selectedcontent(key, limits, cancel);
+            }
+            HtmlSelectAction::Complete {
+                normalization_changed,
+            } => {
+                if let SelectAfter::OptionCache { option, removing } = after
+                    && removing
+                    && (self.selected(option)? || normalization_changed)
+                {
+                    self.queue_select(key, limits, cancel)?;
+                }
+                return Ok(());
+            }
+        };
+        cursor.reply(reply).map_err(|_| DomError::SelectProtocol)?;
+        self.push_effect(
+            Effect::SelectCursor {
+                key,
+                options,
+                cursor,
+                after,
+                acknowledge: false,
+            },
+            true,
+            cancel,
+        )
     }
     fn nearest_option_select(
         &self,
@@ -601,13 +818,23 @@ impl Draft {
         if old == new {
             return Ok(());
         }
-        for select in [old, new].into_iter().flatten() {
-            let changed =
-                self.select_operation(select, HtmlSelectOperation::Normalize, limits, cancel)?;
-            if removing && (self.selected(key)? || changed) {
-                self.queue_select(select, limits, cancel)?;
-            }
+        // LIFO continuations start the new Select only after the old Select's
+        // complete refresh, including every nested clone/removal hook.
+        for select in [new, old].into_iter().flatten() {
+            self.push_effect(
+                Effect::SelectStart {
+                    key: select,
+                    operation: HtmlSelectOperation::Normalize,
+                    after: SelectAfter::OptionCache {
+                        option: key,
+                        removing,
+                    },
+                },
+                true,
+                cancel,
+            )?;
         }
+        self.run_effects(limits, cancel)?;
         Ok(())
     }
     fn selectedcontent_ancestors(
@@ -682,6 +909,7 @@ impl Draft {
                             target: key,
                         },
                         true,
+                        cancel,
                     )?;
                 }
             }
@@ -691,7 +919,41 @@ impl Draft {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum SelectAfter {
+    None,
+    OptionCache { option: Key, removing: bool },
+}
 pub(super) enum Effect {
+    Style(style::Frame),
+    ChildrenChanged {
+        parent: Key,
+        stage: u8,
+    },
+    Output(output::Frame),
+    SelectStart {
+        key: Key,
+        operation: HtmlSelectOperation,
+        after: SelectAfter,
+    },
+    SelectCursor {
+        key: Key,
+        options: ScratchVec<Key>,
+        cursor: HtmlSelectCursor,
+        after: SelectAfter,
+        acknowledge: bool,
+    },
+    Setter {
+        key: Key,
+        options: ScratchVec<Key>,
+        cursor: HtmlSelectSetterCursor,
+        edit: crate::select::Edit,
+        acknowledge: bool,
+    },
+    Clear {
+        target: Key,
+    },
+    Tree(tree::Frame),
     Clone(import::Frame),
     Post {
         list: ScratchVec<Key>,
@@ -719,11 +981,150 @@ pub(super) enum Effect {
     Cleanup(Key),
 }
 pub(super) struct EffectFrame {
-    effect: Effect,
-    scoped: bool,
+    pub(super) effect: Effect,
+    pub(super) scoped: bool,
+    payload: Option<style::checkpoint::Charge>,
 }
+impl Effect {
+    fn retained_payload(
+        &self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<style::storage::Payload, DomError> {
+        step()?;
+        match self {
+            Self::Output(frame) => frame.retained_payload(step),
+            Self::Setter {
+                edit: crate::select::Edit::Value(value),
+                ..
+            } => {
+                let mut payload = style::storage::Payload::default();
+                payload.string(value)?;
+                Ok(payload)
+            }
+            Self::Clone(frame) => frame.retained_payload(step),
+            _ => Ok(style::storage::Payload::default()),
+        }
+    }
+}
+impl EffectFrame {
+    pub(super) fn checkpoint(
+        &self,
+        a: &mut style::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        check_cancel(cancel)?;
+        a.step()?;
+        let retained = self.effect.retained_payload(|| a.step())?;
+        let payload = a.effect_payload(retained, cancel)?;
+        let effect = match &self.effect {
+            Effect::Style(frame) => Effect::Style(*frame),
+            Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
+                parent: *parent,
+                stage: *stage,
+            },
+            Effect::Output(frame) => Effect::Output(frame.clone()),
+            Effect::SelectStart {
+                key,
+                operation,
+                after,
+            } => Effect::SelectStart {
+                key: *key,
+                operation: *operation,
+                after: *after,
+            },
+            Effect::SelectCursor {
+                key,
+                options,
+                cursor,
+                after,
+                acknowledge,
+            } => Effect::SelectCursor {
+                key: *key,
+                options: options.checkpoint(a, cancel)?,
+                cursor: *cursor,
+                after: *after,
+                acknowledge: *acknowledge,
+            },
+            Effect::Setter {
+                key,
+                options,
+                cursor,
+                edit,
+                acknowledge,
+            } => Effect::Setter {
+                key: *key,
+                options: options.checkpoint(a, cancel)?,
+                cursor: *cursor,
+                edit: edit.clone(),
+                acknowledge: *acknowledge,
+            },
+            Effect::Clear { target } => Effect::Clear { target: *target },
+            Effect::Tree(frame) => Effect::Tree(frame.checkpoint(a, cancel)?),
+            Effect::Clone(frame) => Effect::Clone(frame.checkpoint()),
+            Effect::Post { list, index } => Effect::Post {
+                list: list.checkpoint(a, cancel)?,
+                index: *index,
+            },
+            Effect::Update {
+                select,
+                targets,
+                index,
+            } => Effect::Update {
+                select: *select,
+                targets: targets.checkpoint(a, cancel)?,
+                index: *index,
+            },
+            Effect::Target { select, target } => Effect::Target {
+                select: *select,
+                target: *target,
+            },
+            Effect::Children {
+                option,
+                fragment,
+                target,
+                index,
+            } => Effect::Children {
+                option: *option,
+                fragment: *fragment,
+                target: *target,
+                index: *index,
+            },
+            Effect::Replace { fragment, target } => Effect::Replace {
+                fragment: *fragment,
+                target: *target,
+            },
+            Effect::Cleanup(fragment) => Effect::Cleanup(*fragment),
+        };
+        Ok(Self {
+            effect,
+            scoped: self.scoped,
+            payload,
+        })
+    }
+}
+
 impl Draft {
-    pub(super) fn push_effect(&mut self, effect: Effect, scoped: bool) -> Result<(), DomError> {
+    pub(super) fn push_effect(
+        &mut self,
+        effect: Effect,
+        scoped: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        // Payload-bearing frames enter through push_effect_retained only: their
+        // graph occurrence is admitted before it is materialized or cloned.
+        debug_assert!(!matches!(
+            &effect,
+            Effect::Output(_) | Effect::Setter { .. } | Effect::Clone(_)
+        ));
+        self.push_effect_retained(effect, scoped, None, cancel)
+    }
+    pub(super) fn push_effect_retained(
+        &mut self,
+        effect: Effect,
+        scoped: bool,
+        payload: Option<style::checkpoint::Charge>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         let old = self.effects.capacity() * size_of::<EffectFrame>();
         let required = self
             .effects
@@ -749,11 +1150,12 @@ impl Draft {
         } else {
             0
         };
+        self.source_admit(new_allocation, cancel)?;
         if scoped {
             self.select_scratch(new_allocation)?;
         }
         #[cfg(test)]
-        let before_growth = self.effect_bytes + self.select_temporary_bytes.get();
+        let before_growth = self.effect_bytes + self.select_temporary_bytes.load(Ordering::Relaxed);
         if target > self.effects.capacity() {
             // Own the geometric policy rather than asking amortized reserve to
             // choose a larger bank after preadmission. The full old bank stays
@@ -779,7 +1181,12 @@ impl Draft {
         if scoped {
             self.select_scratch(0)?;
         }
-        self.effects.push(EffectFrame { effect, scoped });
+        self.source_admit(0, cancel)?;
+        self.effects.push(EffectFrame {
+            effect,
+            scoped,
+            payload,
+        });
         Ok(())
     }
     pub(super) fn run_effects(
@@ -792,14 +1199,100 @@ impl Draft {
         }
         self.effects_running = true;
         let result = (|| {
-            while let Some(EffectFrame { effect, scoped }) = self.effects.pop() {
+            while !self.effects.is_empty() {
+                // Cancellation must not consume an unfinished continuation.
                 check_cancel(cancel)?;
-                if scoped {
+                if self.effects.last().expect("nonempty effects").scoped {
                     self.select_step(cancel)?;
+                } else {
+                    self.source_step(cancel)?;
                 }
+                let EffectFrame {
+                    effect,
+                    scoped,
+                    payload,
+                } = self.effects.pop().expect("admitted nonempty effect");
                 self.effect_scoped = scoped;
                 match effect {
-                    Effect::Clone(frame) => self.clone_effect(frame, scoped, limits, cancel)?,
+                    Effect::Style(frame) => self.style_effect(frame, cancel)?,
+                    Effect::ChildrenChanged { parent, stage } => {
+                        self.children_changed_effect(parent, stage, limits, cancel)?
+                    }
+                    Effect::Output(frame) => self.output_effect(frame, payload, limits, cancel)?,
+                    Effect::SelectStart {
+                        key,
+                        operation,
+                        after,
+                    } => {
+                        self.element(key)?
+                            .select_state()
+                            .ok_or(DomError::SelectInapplicable)?;
+                        let multiple = self.multiple(key, cancel)?;
+                        let options = if multiple && operation == HtmlSelectOperation::Normalize {
+                            self.select_vec()
+                        } else {
+                            self.options(key, cancel)?
+                        };
+                        let cursor = HtmlSelectCursor::new(operation, multiple, options.len())
+                            .map_err(|_| DomError::SelectProtocol)?;
+                        self.push_effect(
+                            Effect::SelectCursor {
+                                key,
+                                options,
+                                cursor,
+                                after,
+                                acknowledge: false,
+                            },
+                            true,
+                            cancel,
+                        )?;
+                    }
+                    Effect::SelectCursor {
+                        key,
+                        options,
+                        cursor,
+                        after,
+                        acknowledge,
+                    } => {
+                        self.select_cursor_step(
+                            key,
+                            options,
+                            cursor,
+                            SelectContinuation { after, acknowledge },
+                            limits,
+                            cancel,
+                        )?;
+                    }
+                    Effect::Setter {
+                        key,
+                        options,
+                        cursor,
+                        edit,
+                        acknowledge,
+                    } => {
+                        self.select_setter_step(
+                            key,
+                            options,
+                            cursor,
+                            SetterContinuation {
+                                edit,
+                                acknowledge,
+                                payload,
+                            },
+                            limits,
+                            cancel,
+                        )?;
+                    }
+                    Effect::Clear { target } => {
+                        if let Some(&child) = self.node(target)?.children.first() {
+                            self.push_effect(Effect::Clear { target }, true, cancel)?;
+                            self.remove(child, limits, cancel)?;
+                        }
+                    }
+                    Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
+                    Effect::Clone(frame) => {
+                        self.clone_effect(frame, scoped, payload, limits, cancel)?
+                    }
                     Effect::Post { list, index } => {
                         if let Some(&key) = list.get(index) {
                             self.push_effect(
@@ -808,6 +1301,7 @@ impl Draft {
                                     index: index + 1,
                                 },
                                 scoped,
+                                cancel,
                             )?;
                             if self.shadow_connected(key, cancel)? {
                                 self.navigable_post_connection_node(key, &mut || {
@@ -832,8 +1326,9 @@ impl Draft {
                                     index: index + 1,
                                 },
                                 true,
+                                cancel,
                             )?;
-                            self.push_effect(Effect::Target { select, target }, true)?;
+                            self.push_effect(Effect::Target { select, target }, true, cancel)?;
                         }
                     }
                     Effect::Target { select, target } => {
@@ -860,16 +1355,18 @@ impl Draft {
                         };
                         match selectedcontent_update(false, disabled, first) {
                             HtmlSelectedcontentUpdate::Clear => {
-                                while let Some(&child) = self.node(target)?.children.first() {
-                                    self.select_step(cancel)?;
-                                    self.remove(child, limits, cancel)?;
-                                }
+                                self.push_effect(Effect::Clear { target }, true, cancel)?;
                             }
                             HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
                                 let option = options[ordinal];
                                 let document = self.node(option)?.document;
-                                let fragment =
-                                    self.allocate(DomNodeKind::DocumentFragment, document, limits)?;
+                                let fragment = self.allocate(
+                                    DomNodeKind::DocumentFragment,
+                                    document,
+                                    limits,
+                                    cancel,
+                                )?;
+                                self.mark_source_private(fragment);
                                 self.push_effect(
                                     Effect::Children {
                                         option,
@@ -878,6 +1375,7 @@ impl Draft {
                                         index: 0,
                                     },
                                     true,
+                                    cancel,
                                 )?;
                             }
                             HtmlSelectedcontentUpdate::Skip => (),
@@ -901,9 +1399,11 @@ impl Draft {
                                     index: index + 1,
                                 },
                                 true,
+                                cancel,
                             )?;
                             self.begin_clone(
                                 import::Source::Staged(source),
+                                None,
                                 import::CloneRequest {
                                     document: self.node(fragment)?.document,
                                     placement: import::Placement::AfterClone(fragment),
@@ -914,16 +1414,17 @@ impl Draft {
                                 cancel,
                             )?;
                         } else {
-                            self.push_effect(Effect::Replace { fragment, target }, true)?;
+                            self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
                         }
                     }
                     Effect::Replace { fragment, target } => {
-                        while let Some(&child) = self.node(target)?.children.first() {
-                            self.select_step(cancel)?;
+                        if let Some(&child) = self.node(target)?.children.first() {
+                            self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
                             self.remove(child, limits, cancel)?;
+                        } else {
+                            self.push_effect(Effect::Cleanup(fragment), true, cancel)?;
+                            self.pre_insert(fragment, target, None, limits, cancel)?;
                         }
-                        self.push_effect(Effect::Cleanup(fragment), true)?;
-                        self.pre_insert(fragment, target, None, limits, cancel)?;
                     }
                     Effect::Cleanup(fragment) => {
                         let Key::Created(index) = fragment else {
@@ -949,7 +1450,7 @@ impl Draft {
         self.effect_scoped = false;
         result
     }
-    fn schedule_selectedcontent(
+    pub(super) fn schedule_selectedcontent(
         &mut self,
         select: Key,
         limits: DomLimits,
@@ -965,7 +1466,7 @@ impl Draft {
             if self.tag(key)? == Some(Tag::Selectedcontent)
                 && !self.element(key)?.selectedcontent_disabled().expect("SC")
             {
-                self.select_reserve(&mut targets, 1)?;
+                self.select_reserve(&mut targets, 1, cancel)?;
                 targets.push(key);
             }
             next = crate::slot::next_admitted(self, select, key, &mut || self.select_step(cancel))?;
@@ -977,6 +1478,7 @@ impl Draft {
                 index: 0,
             },
             true,
+            cancel,
         )?;
         self.run_effects(limits, cancel)
     }
@@ -1069,7 +1571,7 @@ impl Draft {
     pub(super) fn select_edit(
         &mut self,
         key: Key,
-        edit: crate::select::Edit,
+        edit: &crate::select::Edit,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -1080,7 +1582,7 @@ impl Draft {
                     .option_state_mut()
                     .ok_or(DomError::OptionInapplicable)?
                     .flags
-                    .selected_setter(selected);
+                    .selected_setter(*selected);
                 if let Some(select) = self.node(key)?.option_select {
                     self.select_operation(
                         select,
@@ -1098,46 +1600,107 @@ impl Draft {
                     .select_state()
                     .ok_or(DomError::SelectInapplicable)?;
                 let options = self.options(key, cancel)?;
-                let mut cursor = HtmlSelectSetterCursor::new(options.len());
-                loop {
-                    self.select_step(cancel)?;
-                    let reply = match cursor.action() {
-                        HtmlSelectSetterAction::Deselect { ordinal } => {
-                            self.write_selected(options[ordinal], false);
-                            HtmlSelectSetterReply::Applied
-                        }
-                        HtmlSelectSetterAction::ReadMatch { ordinal } => {
-                            HtmlSelectSetterReply::Matches(match &edit {
-                                crate::select::Edit::Index(index) => {
-                                    usize::try_from(*index).ok() == Some(ordinal)
-                                }
-                                crate::select::Edit::Value(value) => {
-                                    let actual =
-                                        self.option_value(options[ordinal], limits, cancel)?;
-                                    self.same_select_units(&actual, value, cancel)?
-                                }
-                                _ => unreachable!(),
-                            })
-                        }
-                        HtmlSelectSetterAction::SelectAndDirty { ordinal } => {
-                            self.element_mut(options[ordinal])
-                                .option_state_mut()
-                                .expect("Option")
-                                .flags
-                                .select_for_select_setter();
-                            HtmlSelectSetterReply::Applied
-                        }
-                        HtmlSelectSetterAction::UpdateSelectedcontent => {
-                            self.schedule_selectedcontent(key, limits, cancel)?;
-                            HtmlSelectSetterReply::Applied
-                        }
-                        HtmlSelectSetterAction::Complete => break,
-                    };
-                    cursor.reply(reply).map_err(|_| DomError::SelectProtocol)?;
+                let cursor = HtmlSelectSetterCursor::new(options.len());
+                let formation = style::formation::Formation::new(self, cancel)?;
+                if let (Some(formation), crate::select::Edit::Value(value)) = (&formation, edit) {
+                    let mut payload = style::storage::Payload::default();
+                    payload.string(value)?;
+                    formation.retain_payload(payload, cancel)?;
                 }
+                let edit = edit.clone();
+                self.push_effect_retained(
+                    Effect::Setter {
+                        key,
+                        options,
+                        cursor,
+                        edit,
+                        acknowledge: false,
+                    },
+                    true,
+                    formation.map(style::formation::Formation::into_charge),
+                    cancel,
+                )?;
             }
         }
         self.run_effects(limits, cancel)
+    }
+    fn select_setter_step(
+        &mut self,
+        key: Key,
+        options: ScratchVec<Key>,
+        mut cursor: HtmlSelectSetterCursor,
+        continuation: SetterContinuation,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let SetterContinuation {
+            edit,
+            acknowledge,
+            payload,
+        } = continuation;
+        if acknowledge {
+            cursor
+                .reply(HtmlSelectSetterReply::Applied)
+                .map_err(|_| DomError::SelectProtocol)?;
+        }
+        let reply = match cursor.action() {
+            HtmlSelectSetterAction::Deselect { ordinal } => {
+                self.write_selected(options[ordinal], false);
+                HtmlSelectSetterReply::Applied
+            }
+            HtmlSelectSetterAction::ReadMatch { ordinal } => {
+                HtmlSelectSetterReply::Matches(match &edit {
+                    crate::select::Edit::Index(index) => {
+                        usize::try_from(*index).ok() == Some(ordinal)
+                    }
+                    crate::select::Edit::Value(value) => {
+                        let actual = self.option_value(options[ordinal], limits, cancel)?;
+                        let matches = self.same_select_units(&actual.value, value, cancel)?;
+                        drop(actual.value);
+                        drop(actual.payload);
+                        matches
+                    }
+                    _ => unreachable!("only value/index setter owns a setter cursor"),
+                })
+            }
+            HtmlSelectSetterAction::SelectAndDirty { ordinal } => {
+                self.element_mut(options[ordinal])
+                    .option_state_mut()
+                    .expect("Option")
+                    .flags
+                    .select_for_select_setter();
+                HtmlSelectSetterReply::Applied
+            }
+            HtmlSelectSetterAction::UpdateSelectedcontent => {
+                self.push_effect_retained(
+                    Effect::Setter {
+                        key,
+                        options,
+                        cursor,
+                        edit,
+                        acknowledge: true,
+                    },
+                    true,
+                    payload,
+                    cancel,
+                )?;
+                return self.schedule_selectedcontent(key, limits, cancel);
+            }
+            HtmlSelectSetterAction::Complete => return Ok(()),
+        };
+        cursor.reply(reply).map_err(|_| DomError::SelectProtocol)?;
+        self.push_effect_retained(
+            Effect::Setter {
+                key,
+                options,
+                cursor,
+                edit,
+                acknowledge: false,
+            },
+            true,
+            payload,
+            cancel,
+        )
     }
     fn element_mut_checked(&mut self, key: Key) -> Result<&mut DomElement, DomError> {
         match &mut self.node_mut(key).kind {
@@ -1168,154 +1731,8 @@ impl Draft {
         key: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<DocumentString, DomError> {
-        use surgeist_html_semantics::*;
-        self.select_step(cancel)?;
-        let revision = HtmlHostFactsRevision::fresh();
-        let (capture_limits, semantic_limits) = limits
-            .select_value_queries
-            .ok_or(DomError::SelectValueQueriesUnconfigured)?;
-        let mut builder = HtmlCaptureBuilder::new(capture_limits, revision.clone());
-        let document = match &self.node(self.node(key)?.document)?.kind {
-            DomNodeKind::Document(d) => d,
-            _ => return Err(DomError::WrongDocument),
-        };
-        let doc = builder
-            .add_document(
-                document.mode(),
-                HtmlScriptingStatus::Disabled,
-                HtmlCaptureRegistryInput::Null,
-            )
-            .map_err(DomError::SelectCapture)?;
-        check_cancel(cancel)?;
-        // Only the ordinary Option subtree influences this query. Its omitted
-        // ancestry remains unavailable; association-owned subtrees are not children.
-        let mut entries = self.select_vec();
-        let mut next = Some(key);
-        while let Some(k) = next {
-            self.select_step(cancel)?;
-            let subject = match &self.node(k)?.kind {
-                DomNodeKind::Element(e) => builder.add_element(
-                    &doc,
-                    e.name().clone(),
-                    e.attributes().clone(),
-                    match e.saved_is() {
-                        None => HtmlCapturedIsValue::Absent,
-                        Some(v) => HtmlCapturedIsValue::Value(v.clone()),
-                    },
-                    HtmlCaptureRegistryInput::Null,
-                ),
-                DomNodeKind::Text(s) => builder.add_text(&doc, s.clone()),
-                DomNodeKind::Comment(s) => builder.add_comment(&doc, s.clone()),
-                DomNodeKind::ProcessingInstruction(p) => {
-                    builder.add_processing_instruction(&doc, p.target().clone(), p.data().clone())
-                }
-                DomNodeKind::DocumentType(d) => builder.add_doctype(
-                    &doc,
-                    HtmlDoctype::new(
-                        d.name().clone(),
-                        Some(d.public_id().clone()),
-                        Some(d.system_id().clone()),
-                    ),
-                ),
-                _ => return Err(DomError::SelectProtocol),
-            }
-            .map_err(DomError::SelectCapture)?;
-            check_cancel(cancel)?;
-            self.select_reserve(&mut entries, 1)?;
-            entries.push((k, subject));
-            next = crate::slot::next_admitted(self, key, k, &mut || self.select_step(cancel))?;
-        }
-        for (k, subject) in entries.iter() {
-            self.select_step(cancel)?;
-            if !matches!(self.node(*k)?.kind, DomNodeKind::Element(_)) {
-                continue;
-            }
-            let mut children = self.select_vec();
-            for child in &self.node(*k)?.children {
-                let mut found = None;
-                for (candidate, subject) in entries.iter() {
-                    self.select_step(cancel)?;
-                    if candidate == child {
-                        found = Some(subject.clone());
-                        break;
-                    }
-                }
-                self.select_reserve(&mut children, 1)?;
-                children.push(found.ok_or(DomError::SelectProtocol)?);
-            }
-            // Producer validation is bounded independently by captured subjects,
-            // relationships and depth; poll both sides of this atomic builder call.
-            builder
-                .establish_children(subject, &children)
-                .map_err(DomError::SelectCapture)?;
-            self.select_step(cancel)?;
-        }
-        check_cancel(cancel)?;
-        let capture = builder.finish().map_err(DomError::SelectCapture)?;
-        check_cancel(cancel)?;
-        let subject = capture
-            .subject_id(&entries[0].1)
-            .map_err(DomError::SelectCapture)?;
-        check_cancel(cancel)?;
-        let context = HtmlSemanticContext::new(
-            &capture,
-            revision,
-            HtmlSemanticContextInput::new(Vec::new()),
-            0,
-        )
-        .map_err(|_| DomError::SelectProtocol)?;
-        check_cancel(cancel)?;
-        // Producer internals have their own public retention/work contracts.
-        // Only real DOM mapping banks belong to the Select scratch domain.
-        let remaining = HtmlSemanticLimits::new(
-            semantic_limits
-                .work()
-                .saturating_sub(self.select_semantic_work.get()),
-            semantic_limits.output_records(),
-            semantic_limits.scratch_records(),
-            semantic_limits.integer_digits(),
-            semantic_limits
-                .allocated_bytes()
-                .saturating_sub(self.select_semantic_bytes.get()),
-            semantic_limits.nested_output_records(),
-        );
-        check_cancel(cancel)?;
-        let mut session = HtmlSemanticSession::new(
-            &capture,
-            &context,
-            HtmlValueInterpreter::new(limits.units),
-            remaining,
-            HtmlSemanticCancellation::new(),
-        )
-        .map_err(DomError::SelectSemantic)?;
-        check_cancel(cancel)?;
-        let report = session
-            .query(&[HtmlSemanticRequest::new(
-                subject,
-                HtmlSemanticQuery::OptionValue,
-            )])
-            .map_err(DomError::SelectSemantic)?;
-        check_cancel(cancel)?;
-        self.select_semantic_work.set(
-            self.select_semantic_work
-                .get()
-                .checked_add(report.usage().work())
-                .ok_or(DomError::RepresentationExhausted)?,
-        );
-        self.select_semantic_bytes.set(
-            self.select_semantic_bytes
-                .get()
-                .checked_add(report.usage().allocated_bytes())
-                .ok_or(DomError::RepresentationExhausted)?,
-        );
-        self.select_step(cancel)?;
-        match report.results()[0].fact() {
-            HtmlSemanticFact::OptionValue(HtmlSemanticValue::Known(value)) => {
-                Ok(value.value().clone())
-            }
-            _ => Err(DomError::SelectProtocol),
-        }
+    ) -> Result<value::Value, DomError> {
+        self.controlled_option_value(key, limits, cancel)
     }
 }
 
@@ -1324,6 +1741,99 @@ mod tests {
     use super::*;
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
+    #[test]
+    fn display_size_borrowed_projection_preserves_actual_select_size_recovery() {
+        let cancel = AtomicBool::new(false);
+        let cases: &[(Option<&str>, bool, bool)] = &[
+            (None, false, true),
+            (None, true, false),
+            (Some(""), false, true),
+            (Some("bogus"), true, false),
+            (Some("0"), false, false),
+            (Some("000"), false, false),
+            (Some("1"), false, true),
+            (Some("0001junk"), true, true),
+            (Some("+1"), true, true),
+            (Some("  +0001tail"), false, true),
+            (Some("-0"), false, false),
+            (Some("-000"), true, false),
+            (Some("-1"), false, true),
+            (Some("-1"), true, false),
+            (Some("2"), false, false),
+            (Some("10"), false, false),
+        ];
+        for &(raw, multiple, expected) in cases {
+            let mut dom = Dom::new(
+                DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000)
+                    .unwrap()
+                    .with_select_processing(64, 1_000_000, 1_000_000)
+                    .unwrap(),
+            )
+            .unwrap();
+            let mut batch = DomBatch::new();
+            let document = batch.create_document();
+            let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
+            if let Some(raw) = raw {
+                batch.set_attribute(&select, "size", raw);
+            }
+            if multiple {
+                batch.set_attribute(&select, "multiple", "");
+            }
+            let created = dom.apply(batch, &cancel).unwrap();
+            let select = created.created(&select).unwrap().unwrap();
+            let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+            assert_eq!(
+                draft
+                    .display_size(Key::Existing(select.slot), &cancel)
+                    .unwrap(),
+                expected,
+                "raw={raw:?}, multiple={multiple}"
+            );
+        }
+        for (raw, wrong_namespace, multiple, expected) in [
+            (
+                DocumentString::from("0".repeat(8192) + "1tail"),
+                false,
+                true,
+                true,
+            ),
+            (DocumentString::from_utf16(vec![0xd800]), false, false, true),
+            (DocumentString::from("1"), true, true, false),
+        ] {
+            let mut dom = Dom::new(
+                DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000)
+                    .unwrap()
+                    .with_select_processing(64, 1_000_000, 1_000_000)
+                    .unwrap(),
+            )
+            .unwrap();
+            let mut batch = DomBatch::new();
+            let document = batch.create_document();
+            let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
+            if wrong_namespace {
+                batch.set_attribute_ns(
+                    &select,
+                    crate::Namespace::from_uri("urn:other"),
+                    "size",
+                    raw,
+                );
+            } else {
+                batch.set_attribute(&select, "size", raw);
+            }
+            if multiple {
+                batch.set_attribute(&select, "multiple", "");
+            }
+            let created = dom.apply(batch, &cancel).unwrap();
+            let select = created.created(&select).unwrap().unwrap();
+            let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+            assert_eq!(
+                draft
+                    .display_size(Key::Existing(select.slot), &cancel)
+                    .unwrap(),
+                expected
+            );
+        }
+    }
     fn policy(work: usize, bytes: usize) -> DomLimits {
         DomLimits::new(32, 4096, 64, 0, 0, 8, 65536)
             .unwrap()
@@ -1357,7 +1867,7 @@ mod tests {
         let draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         let k = draft.resolve(option.into()).unwrap();
         assert_eq!(
-            draft.option_value(k, dom.limits, &cancel).unwrap(),
+            draft.option_value(k, dom.limits, &cancel).unwrap().value,
             DocumentString::from("value")
         );
         let work = draft.select_semantic_work.get();
@@ -1436,7 +1946,7 @@ mod tests {
         let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         let key = draft.resolve(select.into()).unwrap();
         draft
-            .select_edit(key, crate::select::Edit::Index(-1), dom.limits, &cancel)
+            .select_edit(key, &crate::select::Edit::Index(-1), dom.limits, &cancel)
             .unwrap();
         let work = draft.select_work.get();
         assert!(work > 0);
@@ -1520,9 +2030,9 @@ mod tests {
         let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         draft.select_scratch_limit = 0;
         let mut ordinary = draft.effect_vec::<Key>();
-        draft.select_reserve(&mut ordinary, 8).unwrap();
+        draft.select_reserve(&mut ordinary, 8, &cancel).unwrap();
         assert_eq!(
-            draft.select_temporary_bytes.get(),
+            draft.select_temporary_bytes.load(Ordering::Relaxed),
             ordinary.capacity() * size_of::<Key>()
         );
         draft.effect_scoped = true;
@@ -1534,7 +2044,7 @@ mod tests {
             })
         );
         drop(ordinary);
-        assert_eq!(draft.select_temporary_bytes.get(), 0);
+        assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
         draft.select_step(&cancel).unwrap();
     }
     #[test]
@@ -1545,24 +2055,33 @@ mod tests {
         let width = size_of::<Key>();
         draft.select_scratch_limit = 2 * width;
         let mut first = draft.select_vec::<Key>();
-        draft.select_reserve(&mut first, 1).unwrap();
+        draft.select_reserve(&mut first, 1, &cancel).unwrap();
         let mut second = draft.select_vec::<Key>();
-        draft.select_reserve(&mut second, 1).unwrap();
-        assert_eq!(draft.select_temporary_bytes.get(), 2 * width);
-        drop(second);
-        assert_eq!(draft.select_temporary_bytes.get(), width);
-        draft.select_scratch_limit = 2 * width - 1;
-        let mut refused = draft.select_vec::<Key>();
-        assert!(matches!(
-            draft.select_reserve(&mut refused, 1),
-            Err(DomError::ResourceLimit {
-                resource: DomResource::SelectScratch,
-                ..
-            })
-        ));
-        assert_eq!(refused.capacity(), 0);
-        assert_eq!(first.capacity(), 1);
-        drop(first);
-        assert_eq!(draft.select_temporary_bytes.get(), 0);
+        draft.select_reserve(&mut second, 1, &cancel).unwrap();
+        // The complete private owner and both live charges move together.
+        // Exact/one-short admission and one-time release survive the handoff.
+        std::thread::spawn(move || {
+            assert_eq!(
+                draft.select_temporary_bytes.load(Ordering::Relaxed),
+                2 * width
+            );
+            drop(second);
+            assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), width);
+            draft.select_scratch_limit = 2 * width - 1;
+            let mut refused = draft.select_vec::<Key>();
+            assert!(matches!(
+                draft.select_reserve(&mut refused, 1, &cancel),
+                Err(DomError::ResourceLimit {
+                    resource: DomResource::SelectScratch,
+                    ..
+                })
+            ));
+            assert_eq!(refused.capacity(), 0);
+            assert_eq!(first.capacity(), 1);
+            drop(first);
+            assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+        })
+        .join()
+        .unwrap();
     }
 }

@@ -183,7 +183,13 @@ fn detached_fragment_template_contents_and_manual_slot_intent_do_not_connect() {
     let detached = c.created(&detached).unwrap().unwrap();
     let in_fragment = c.created(&in_fragment).unwrap().unwrap();
     let s = dom.snapshot();
-    let contents = s.node(template).unwrap().as_template().unwrap().contents();
+    let contents = s
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     let inert = s.node(contents).unwrap().owner_document().unwrap();
     let mut b = DomBatch::new();
     let nested = b.create_element_ns(inert, Namespace::svg(), "script");
@@ -418,7 +424,8 @@ fn native_installation_processes_svg_and_clone_history_survives_disconnected_tem
         .unwrap()
         .as_template()
         .unwrap()
-        .contents();
+        .contents()
+        .unwrap();
     let inert = s.node(contents).unwrap().owner_document().unwrap();
     let mut b = DomBatch::new();
     let copy = b.import_node(result.snapshot(), n, inert, true);

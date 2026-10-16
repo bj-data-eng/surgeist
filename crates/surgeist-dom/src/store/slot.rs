@@ -3,6 +3,9 @@ use crate::slot::{self, Tree};
 
 impl Tree for Draft {
     type Key = Key;
+    fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.source_step(cancel)
+    }
     fn get(&self, key: Key) -> Result<slot::TreeNode<'_, Key>, DomError> {
         let n = self.node(key)?;
         Ok(slot::TreeNode {
@@ -28,13 +31,39 @@ impl State {
     }
 }
 impl Draft {
+    fn slot_signal_contains(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        for value in &self.signal_slots {
+            self.source_step(cancel)?;
+            if *value == key {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    fn slot_signal_push(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(additional) = self.source_reserve_amount::<Key>(
+            self.signal_slots.len(),
+            self.signal_slots.capacity(),
+            1,
+            cancel,
+        )? {
+            self.signal_slots
+                .try_reserve_exact(additional)
+                .map_err(|_| DomError::AllocationFailed)?;
+        } else {
+            reserve(&mut self.signal_slots, 1)?;
+        }
+        self.source_admit(0, cancel)?;
+        self.signal_slots.push(key);
+        Ok(())
+    }
     fn slot_reference_count(&self, cancel: &AtomicBool) -> Result<usize, DomError> {
         self.existing
             .iter()
             .chain(&self.created)
             .filter_map(Option::as_ref)
             .try_fold(self.signal_slots.len(), |sum, n| {
-                check_cancel(cancel)?;
+                self.source_step(cancel)?;
                 sum.checked_add(n.manual_nodes.len())
                     .and_then(|sum| sum.checked_add(n.assigned_nodes.len()))
                     .ok_or(DomError::RepresentationExhausted)
@@ -46,17 +75,16 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        check_cancel(cancel)?;
-        if !self.signal_slots.contains(&slot) {
+        self.source_step(cancel)?;
+        if !self.slot_signal_contains(slot, cancel)? {
             let count = self
                 .slot_reference_count(cancel)?
                 .checked_add(1)
                 .ok_or(DomError::RepresentationExhausted)?;
             admit(count, limits.slot_references, DomResource::SlotReferences)?;
-            reserve(&mut self.signal_slots, 1)?;
-            self.signal_slots.push(slot);
+            self.slot_signal_push(slot, cancel)?;
         }
-        self.queue_slot_marker()?;
+        self.queue_slot_marker(cancel)?;
         Ok(())
     }
     fn assign_slottables(
@@ -65,10 +93,29 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        check_cancel(cancel)?;
-        let nodes = slot::slottables(self, key, limits.nodes, cancel)?;
-        let changed = self.node(key)?.assigned_nodes != nodes;
-        let new_signal = changed && !self.signal_slots.contains(&key);
+        self.source_step(cancel)?;
+        let mut nodes = self.effect_vec();
+        slot::visit_slottables(self, key, cancel, &mut |node| {
+            admit(
+                nodes
+                    .len()
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                limits.nodes,
+                DomResource::SlotQueryOutput,
+            )?;
+            self.select_reserve(&mut nodes, 1, cancel)?;
+            nodes.push(node);
+            Ok(())
+        })?;
+        for _ in &*nodes {
+            self.source_step(cancel)?;
+        }
+        for _ in &self.node(key)?.assigned_nodes {
+            self.source_step(cancel)?;
+        }
+        let changed = self.node(key)?.assigned_nodes != *nodes;
+        let new_signal = changed && !self.slot_signal_contains(key, cancel)?;
         let required = self
             .slot_reference_count(cancel)?
             .checked_sub(self.node(key)?.assigned_nodes.len())
@@ -84,20 +131,19 @@ impl Draft {
         // shrinking changes even though source signals before replacing.
         if changed {
             if new_signal {
-                reserve(&mut self.signal_slots, 1)?;
-                self.signal_slots.push(key);
+                self.slot_signal_push(key, cancel)?;
             }
-            self.queue_slot_marker()?;
+            self.queue_slot_marker(cancel)?;
         }
-        self.node_mut(key).assigned_nodes = nodes;
+        self.node_mut(key).assigned_nodes = nodes.into_values();
         for index in 0..self.node(key)?.assigned_nodes.len() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let node = self.node(key)?.assigned_nodes[index];
             self.node_mut(node).assigned_slot = Some(key);
         }
         Ok(())
     }
-    fn assign_tree(
+    pub(super) fn assign_tree(
         &mut self,
         root: Key,
         limits: DomLimits,
@@ -105,7 +151,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut current = Some(root);
         while let Some(key) = current {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if slot::is_slot(&self.node(key)?.kind) {
                 self.assign_slottables(key, limits, cancel)?;
             }
@@ -127,7 +173,7 @@ impl Draft {
     pub(super) fn assign_manual(
         &mut self,
         target: Key,
-        incoming: Vec<NodeOperand>,
+        incoming: &[NodeOperand],
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -138,7 +184,7 @@ impl Draft {
     fn assign_manual_admitted(
         &mut self,
         target: Key,
-        incoming: Vec<NodeOperand>,
+        incoming: &[NodeOperand],
         limits: DomLimits,
         cancel: &AtomicBool,
         admit_action: &mut impl FnMut() -> Result<(), DomError>,
@@ -146,14 +192,15 @@ impl Draft {
         use surgeist_html::bounded::{
             HtmlSlotAssignAction as A, HtmlSlotAssignCursor, HtmlSlotAssignReply as R,
         };
+        self.source_step(cancel)?;
         if !slot::is_slot(&self.node(target)?.kind) {
             return Err(DomError::SlotInapplicable);
         }
-        let mut nodes = Vec::new();
-        reserve(&mut nodes, incoming.len())?;
+        let mut nodes = self.effect_vec();
+        self.select_reserve(&mut nodes, incoming.len(), cancel)?;
         for operand in incoming {
-            check_cancel(cancel)?;
-            let key = self.resolve(operand)?;
+            self.source_step(cancel)?;
+            let key = self.resolve(operand.clone())?;
             if !slot::is_slottable(&self.node(key)?.kind) {
                 return Err(DomError::WrongNodeKind);
             }
@@ -161,10 +208,11 @@ impl Draft {
         }
         let mut cursor =
             HtmlSlotAssignCursor::new(self.node(target)?.manual_nodes.len(), nodes.len());
-        let mut pending = Vec::new();
+        let mut pending = self.effect_vec();
         let mut referred = None;
         loop {
             admit_action()?;
+            self.source_step(cancel)?;
             let reply = match cursor.action() {
                 A::ClearPreviousManualInverse { previous_ordinal } => {
                     let key = self.node(target)?.manual_nodes[previous_ordinal];
@@ -178,6 +226,9 @@ impl Draft {
                 }
                 A::RemoveIncomingFromReferredManualSet { ordinal } => {
                     let key = referred.expect("actual preceding read");
+                    for _ in &self.node(key)?.manual_nodes {
+                        self.source_step(cancel)?;
+                    }
                     remove_reference(&mut self.node_mut(key).manual_nodes, nodes[ordinal], cancel)?;
                     R::Applied
                 }
@@ -190,7 +241,7 @@ impl Draft {
                     previous_ordinal,
                 } => R::SameNode(nodes[ordinal] == nodes[previous_ordinal]),
                 A::AppendIncomingToPendingSet { ordinal } => {
-                    reserve(&mut pending, 1)?;
+                    self.select_reserve(&mut pending, 1, cancel)?;
                     pending.push(nodes[ordinal]);
                     R::Applied
                 }
@@ -205,7 +256,8 @@ impl Draft {
                         limits.slot_references,
                         DomResource::SlotReferences,
                     )?;
-                    self.node_mut(target).manual_nodes = std::mem::take(&mut pending);
+                    self.node_mut(target).manual_nodes = pending.into_values();
+                    pending = self.effect_vec();
                     R::Applied
                 }
                 A::AssignSlottablesForTargetRoot => {
@@ -268,7 +320,7 @@ impl Draft {
         let mut current = Some(node);
         let mut has_slot = false;
         while let Some(key) = current {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if slot::is_slot(&self.node(key)?.kind) {
                 has_slot = true;
                 break;
@@ -285,34 +337,26 @@ impl Draft {
         &mut self,
         node: Key,
         changed: &crate::QualifiedName,
-        old: Option<DocumentString>,
+        old: Option<&DocumentString>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
         if changed.namespace().uri().is_some() {
             return Ok(());
         }
         let attribute = changed.local_name();
-        let is_name = attribute
-            .code_units()
-            .iter()
-            .copied()
-            .eq("name".encode_utf16());
-        let is_slot = attribute
-            .code_units()
-            .iter()
-            .copied()
-            .eq("slot".encode_utf16());
+        let is_name = self.source_ascii(attribute, "name", cancel)?;
+        let is_slot = self.source_ascii(attribute, "slot", cancel)?;
         if !is_name && !is_slot {
             return Ok(());
         }
-        let new = slot::name(
+        let new = slot::name_admitted(
             &self.node(node)?.kind,
             if is_name { "name" } else { "slot" },
-        );
-        if old.as_ref().map_or(&[][..], DocumentString::code_units)
-            == new.map_or(&[][..], DocumentString::code_units)
-        {
+            &mut || self.source_step(cancel),
+        )?;
+        if slot::same_name(old, new, &mut || self.source_step(cancel))? {
             return Ok(());
         }
         if is_name && slot::is_slot(&self.node(node)?.kind) {
@@ -334,6 +378,12 @@ impl Draft {
     ) -> Result<(), DomError> {
         // Explicit Rust retirement, not source remove/adopt: clean exact Key
         // relations before publication can reuse an existing arena slot.
+        for node in self.existing.iter().chain(&self.created).flatten() {
+            self.source_step(cancel)?;
+            for _ in &node.manual_nodes {
+                self.source_step(cancel)?;
+            }
+        }
         for node in self
             .existing
             .iter_mut()
@@ -349,15 +399,27 @@ impl Draft {
                 node.assigned_slot = None;
             }
         }
-        if self.signal_slots.contains(&key) {
+        if self.slot_signal_contains(key, cancel)? {
+            for _ in &self.signal_slots {
+                self.source_step(cancel)?;
+            }
             remove_reference(&mut self.signal_slots, key, cancel)?;
-            if let Key::Existing(slot) = key {
-                reserve(&mut self.cancelled_signals, 1)?;
-                self.cancelled_signals.push(NodeId {
-                    owner: self.store,
-                    slot,
-                    generation: self.generations[slot],
-                });
+            self.source_step(cancel)?;
+            if let Some(id) = self.published_id(key) {
+                if let Some(additional) = self.source_reserve_amount::<NodeId>(
+                    self.cancelled_signals.len(),
+                    self.cancelled_signals.capacity(),
+                    1,
+                    cancel,
+                )? {
+                    self.cancelled_signals
+                        .try_reserve_exact(additional)
+                        .map_err(|_| DomError::AllocationFailed)?;
+                } else {
+                    reserve(&mut self.cancelled_signals, 1)?;
+                }
+                self.source_admit(0, cancel)?;
+                self.cancelled_signals.push(id);
             }
         }
         Ok(())
@@ -429,6 +491,138 @@ mod tests {
         (dom, s, x)
     }
     #[test]
+    fn resolved_source_slot_bank_is_charged_before_the_cursor_reads_it() {
+        let (dom, s, x) = fixture();
+        let cancel = AtomicBool::new(false);
+        let batch = DomBatch::new();
+        let (mut draft, _, _) = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            crate::DomStyleEditLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128),
+            &cancel,
+        )
+        .unwrap();
+        let target = draft.resolve(s.into()).unwrap();
+        let live = draft.select_temporary_bytes.clone();
+        let mut entered = false;
+        draft
+            .assign_manual_admitted(target, &[x.into()], dom_limits(), &cancel, &mut || {
+                if !entered {
+                    entered = true;
+                    assert!(
+                        live.load(Ordering::Relaxed) >= size_of::<Key>(),
+                        "actual resolved input bank is already allocated at first cursor entry"
+                    );
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert!(entered);
+        assert_eq!(live.load(Ordering::Relaxed), 0);
+    }
+    fn dom_limits() -> DomLimits {
+        DomLimits::new(16, 4096, 32, 32, 32, 8, 65536).unwrap()
+    }
+    #[test]
+    fn source_slot_resolution_cannot_run_past_its_spent_work_allowance() {
+        let (dom, s, x) = fixture();
+        let cancel = AtomicBool::new(false);
+        let limits = |work| crate::DomStyleEditLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let batch = DomBatch::new();
+        let (measured, _, _) = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            limits(1_000_000),
+            &cancel,
+        )
+        .unwrap();
+        let spent = measured.source_work.load(Ordering::Relaxed);
+        drop(measured);
+        let batch = DomBatch::new();
+        let (mut draft, _, _) =
+            Draft::new_source(&dom, batch.owner, &batch.commands, limits(spent), &cancel).unwrap();
+        let target = draft.resolve(s.into()).unwrap();
+        assert_eq!(
+            draft.assign_manual(target, &[x.into()], dom_limits(), &cancel),
+            Err(DomError::StyleWorkLimit { limit: spent })
+        );
+        assert!(draft.node(target).unwrap().manual_nodes.is_empty());
+        assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+        assert!(dom.state.node(dom.owner, x).unwrap().manual_slot.is_none());
+    }
+    #[test]
+    fn source_slot_attribute_hook_admits_work_before_reading_its_name() {
+        let (dom, s, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let limits = |work| crate::DomStyleEditLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let batch = DomBatch::new();
+        let (measured, _, _) = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            limits(1_000_000),
+            &cancel,
+        )
+        .unwrap();
+        let spent = measured.source_work.load(Ordering::Relaxed);
+        drop(measured);
+        let batch = DomBatch::new();
+        let (mut draft, _, _) =
+            Draft::new_source(&dom, batch.owner, &batch.commands, limits(spent), &cancel).unwrap();
+        let key = draft.resolve(s.into()).unwrap();
+        let name = crate::QualifiedName::new(crate::Namespace::none(), None, "name");
+        assert_eq!(
+            draft.slot_attribute(key, &name, None, dom.limits(), &cancel),
+            Err(DomError::StyleWorkLimit { limit: spent })
+        );
+    }
+    #[test]
+    fn source_slot_retirement_admits_its_actual_cancellation_bank_before_allocating() {
+        let (mut dom, s, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut setup = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        let key = setup.resolve(s.into()).unwrap();
+        setup.signal_slot(key, dom.limits(), &cancel).unwrap();
+        let prepared = setup.finish(&dom, &cancel).unwrap();
+        dom.publish(prepared, &cancel).unwrap();
+        assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
+        let limits =
+            |bytes| crate::DomStyleEditLimits::new(bytes, 100_000, 1_000_000, 32, 128, 128);
+        let batch = DomBatch::new();
+        let (measured, _, _) = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            limits(1_000_000),
+            &cancel,
+        )
+        .unwrap();
+        let retained =
+            measured.source_storage_bytes(&cancel).unwrap() + measured.source_other_bytes;
+        drop(measured);
+        let batch = DomBatch::new();
+        let (mut draft, _, _) = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            limits(retained),
+            &cancel,
+        )
+        .unwrap();
+        let key = draft.resolve(s.into()).unwrap();
+        assert_eq!(
+            draft.slot_retirement(key, dom.limits(), &cancel),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedBytes,
+                limit: retained
+            })
+        );
+        assert!(draft.cancelled_signals.is_empty());
+        assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
+    }
+    #[test]
     fn actual_cursor_cancellation_after_partial_inverse_writes_never_publishes() {
         let (dom, s, x) = fixture();
         let before = dom.snapshot();
@@ -437,19 +631,14 @@ mod tests {
         let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         let target = draft.resolve(s.into()).unwrap();
         let mut actions = 0;
-        let result = draft.assign_manual_admitted(
-            target,
-            vec![x.into()],
-            dom.limits(),
-            &cancel,
-            &mut || {
+        let result =
+            draft.assign_manual_admitted(target, &[x.into()], dom.limits(), &cancel, &mut || {
                 actions += 1;
                 if actions == 5 {
                     cancel.store(true, Ordering::Release);
                 }
                 check_cancel(&cancel)
-            },
-        );
+            });
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(actions, 5);
         // Read/Set actions have run on the real staged owner before refusal.

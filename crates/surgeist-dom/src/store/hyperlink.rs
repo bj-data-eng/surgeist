@@ -10,11 +10,16 @@ use surgeist_html_semantics::{
     HtmlDocumentFirstBase, HtmlEncodingUrlLookupError, HtmlEncodingUrlParseFacts,
 };
 
+struct RetainedParse {
+    value: surgeist_html_semantics::HtmlHyperlinkUrlSnapshot,
+    payload: Option<style::checkpoint::Charge>,
+}
+
 fn failure(error: Failure) -> DomError {
     DomError::EncodingUrlFacts(error)
 }
 impl Draft {
-    fn encoding_url_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(super) fn encoding_url_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.effect_step(cancel)?;
         let next = self
             .encoding_url_work
@@ -29,22 +34,50 @@ impl Draft {
         self.encoding_url_work.set(next);
         Ok(())
     }
-    fn encoding_url_environment(
+    pub(super) fn encoding_url_environment(
         &self,
         document: Key,
         cancel: &AtomicBool,
-    ) -> Result<(HtmlBaseUrlRecord, HtmlBaseEncoding, HtmlBaseFactsRevision), DomError> {
-        self.encoding_url_step(cancel)?;
+    ) -> Result<
+        (
+            &HtmlBaseUrlRecord,
+            &HtmlBaseEncoding,
+            &HtmlBaseFactsRevision,
+        ),
+        DomError,
+    > {
+        self.encoding_url_environment_with(document, &mut || self.encoding_url_step(cancel))
+    }
+    /// The original canonical selection with admission supplied by its actual
+    /// caller. Parsed installation uses its own cumulative work/first-stop owner.
+    pub(super) fn encoding_url_environment_with(
+        &self,
+        document: Key,
+        step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<
+        (
+            &HtmlBaseUrlRecord,
+            &HtmlBaseEncoding,
+            &HtmlBaseFactsRevision,
+        ),
+        DomError,
+    > {
+        step()?;
         let node = self.node(document)?;
         let DomNodeKind::Document(metadata) = &node.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        // The existing exact-stamp Base binding establishes these actual native
-        // metadata/opaque-identity facts. No arbitrary metadata or parsed ingress
-        // is admitted; check the participating native environment explicitly.
-        if metadata.native_environment().has_ever_had_navigable()
-            || metadata.encoding().code_units() != [85, 84, 70, 45, 56]
-            || metadata.url().code_units() != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]
+        if metadata.document_environment().has_ever_had_navigable() {
+            return Err(failure(Failure::EnvironmentMismatch));
+        }
+        let native = matches!(
+            metadata.creation_cause(),
+            crate::DomDocumentCreationCause::Native
+        );
+        if native
+            && (metadata.encoding().code_units() != [85, 84, 70, 45, 56]
+                || metadata.url().code_units()
+                    != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107])
         {
             return Err(failure(Failure::EnvironmentMismatch));
         }
@@ -57,8 +90,25 @@ impl Draft {
             .document()
             .encoding()
             .ok_or_else(|| failure(Failure::Base(HtmlBaseMissing::CharacterEncoding)))?;
+        if !native {
+            step()?;
+            let url = facts
+                .document()
+                .document_url()
+                .ok_or_else(|| failure(Failure::Base(HtmlBaseMissing::DocumentUrl)))?;
+            if !super::base::parsed_document_inputs_match(
+                metadata,
+                url,
+                encoding,
+                Some(facts.document()),
+            )
+            .map_err(|missing| failure(Failure::Base(missing)))?
+            {
+                return Err(failure(Failure::EnvironmentMismatch));
+            }
+        }
         let first = if let Some(key) = base.first {
-            self.encoding_url_step(cancel)?;
+            step()?;
             HtmlDocumentFirstBase::Present(
                 self.node(key)?
                     .base
@@ -69,19 +119,41 @@ impl Draft {
         } else {
             HtmlDocumentFirstBase::Absent
         };
-        self.encoding_url_step(cancel)?;
+        step()?;
         let value = surgeist_html_semantics::select_document_base(Some(facts.document()), first)
             .map_err(|missing| failure(Failure::Base(missing)))?;
-        Ok((
-            value.clone(),
-            encoding.clone(),
-            facts.document().revision().clone(),
-        ))
+        Ok((value, encoding, facts.document().revision()))
+    }
+    /// Resolve an actual encoding-parse operand without fabricating an href or
+    /// hyperlink-cache history. The canonical bank and its cumulative work are
+    /// shared with reached A/Area parsing in this same source operation.
+    pub(super) fn resolve_encoding_url_units(
+        &self,
+        document: Key,
+        raw: &[u16],
+        cancel: &AtomicBool,
+    ) -> Result<&surgeist_html_semantics::HtmlEncodingUrlParseOutcome, DomError> {
+        self.encoding_url_step(cancel)?;
+        let (base, encoding, revision) = self.encoding_url_environment(document, cancel)?;
+        let facts = self
+            .node(document)?
+            .encoding_url_document
+            .as_ref()
+            .and_then(|document| document.facts.as_ref())
+            .ok_or_else(|| failure(Failure::MissingFacts))?;
+        facts
+            .lookup_units_with(raw, base, encoding, revision, || {
+                self.encoding_url_step(cancel)
+            })
+            .map_err(|error| match error {
+                HtmlEncodingUrlLookupError::Facts(error) => failure(Failure::Producer(error)),
+                HtmlEncodingUrlLookupError::Interrupted(error) => error,
+            })
     }
     pub(super) fn bind_encoding_url_facts(
         &mut self,
         basis: crate::DomDocumentStamp,
-        facts: HtmlEncodingUrlParseFacts,
+        facts: &HtmlEncodingUrlParseFacts,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -95,7 +167,7 @@ impl Draft {
         let (base, encoding, revision) = self.encoding_url_environment(key, cancel)?;
         self.encoding_url_step(cancel)?;
         facts
-            .validate_inputs(&base, &encoding, &revision)
+            .validate_inputs(base, encoding, revision)
             .map_err(|e| failure(Failure::Producer(e)))?;
         let mut records = facts.formation_usage().record_capacity();
         for (i, node) in self.existing.iter().enumerate() {
@@ -134,18 +206,38 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         self.encoding_url_step(cancel)?;
+        #[cfg(test)]
+        let growth = style::formation::mutation_observation::before(
+            self,
+            style::formation::mutation_observation::Site::EncodingFacts,
+            cancel,
+        )?;
+        let formation = style::formation::Formation::new(self, cancel)?;
+        if let Some(budget) = formation.as_ref() {
+            let mut payload = style::storage::Payload::default();
+            payload.producer(facts.retained_storage_usage())?;
+            budget.retain_payload(payload, cancel)?;
+        }
+        let facts = facts.clone();
+        #[cfg(test)]
+        style::formation::mutation_observation::grew_payload(
+            growth,
+            facts.retained_storage_usage().retained_bytes(),
+            facts.retained_storage_usage().utf16_extent(),
+        );
         self.node_mut(key)
             .encoding_url_document
             .as_mut()
             .expect("Document")
             .facts = Some(facts);
         self.units = units;
+        drop(formation);
         Ok(())
     }
     fn store_hyperlink_parse(
         &mut self,
         key: Key,
-        value: surgeist_html_semantics::HtmlHyperlinkUrlSnapshot,
+        value: RetainedParse,
         limits: DomLimits,
     ) -> Result<(), DomError> {
         let old = self
@@ -155,16 +247,18 @@ impl Draft {
             .expect("hyperlink")
             .units();
         let units = (self.units - old)
-            .checked_add(value.retained_utf16_extent())
+            .checked_add(value.value.retained_utf16_extent())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let document = self.node(key)?.document;
+        let RetainedParse { value, payload } = value;
         self.node_mut(key)
             .hyperlink
             .as_mut()
             .expect("hyperlink")
             .parsed = Some(Parsed { document, value });
         self.units = units;
+        drop(payload);
         Ok(())
     }
     pub(super) fn set_hyperlink_url(
@@ -206,22 +300,53 @@ impl Draft {
                         .node(document)?
                         .encoding_url_document
                         .as_ref()
-                        .and_then(|d| d.facts.clone())
+                        .and_then(|d| d.facts.as_ref())
                         .ok_or_else(|| failure(Failure::MissingFacts))?;
+                    #[cfg(test)]
+                    let snapshot_growth = std::cell::Cell::new(None);
+                    let mut retained = None;
                     let value = facts
                         .resolve_hyperlink_with(
                             href.expect("actual present href"),
-                            &base,
-                            &encoding,
-                            &revision,
+                            base,
+                            encoding,
+                            revision,
                             || self.encoding_url_step(cancel),
-                            |_| Ok(()),
+                            |usage| {
+                                #[cfg(test)]
+                                snapshot_growth
+                                    .set(style::formation::mutation_observation::before(
+                                    self,
+                                    style::formation::mutation_observation::Site::HyperlinkSnapshot,
+                                    cancel,
+                                )?);
+                                let formation = style::formation::Formation::new(self, cancel)?;
+                                if let Some(budget) = formation.as_ref() {
+                                    let mut payload = style::storage::Payload::default();
+                                    payload.producer(usage)?;
+                                    budget.retain_payload(payload, cancel)?;
+                                }
+                                retained = formation.map(style::formation::Formation::into_charge);
+                                Ok(())
+                            },
                         )
                         .map_err(|e| match e {
                             HtmlEncodingUrlLookupError::Facts(e) => failure(Failure::Producer(e)),
                             HtmlEncodingUrlLookupError::Interrupted(e) => e,
                         })?;
+                    #[cfg(test)]
+                    if snapshot_growth.get().is_some() {
+                        style::formation::mutation_observation::grew_payload(
+                            snapshot_growth.get(),
+                            value.retained_storage_usage().retained_bytes(),
+                            value.retained_storage_usage().utf16_extent(),
+                        );
+                    }
                     let success = value.url().is_some();
+                    let value = RetainedParse {
+                        value,
+                        payload: retained,
+                    };
                     if success {
                         parsed = Some(value);
                     } else {
@@ -294,7 +419,7 @@ impl Draft {
         };
         // HTML877d76574–76588: never-active-in-a-navigable establishes null node
         // navigable, so the not-top-level guard returns before flags/tasks.
-        if metadata.native_environment().has_ever_had_navigable() {
+        if metadata.document_environment().has_ever_had_navigable() {
             return Err(DomError::HyperlinkProcessingUnavailable);
         }
         Ok(())
@@ -411,8 +536,8 @@ mod tests {
         let original = bank(capacity);
         let alternative = bank(if capacity == 64 { 8 } else { 64 });
         let mut b = DomBatch::new();
-        b.bind_native_base_facts(dom.snapshot().document(doc).unwrap().stamp(), &env);
-        b.bind_native_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), &original);
+        b.bind_base_facts(dom.snapshot().document(doc).unwrap().stamp(), &env);
+        b.bind_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), &original);
         b.set_attribute(a, "href", "target");
         dom.apply(b, &cancel).unwrap();
         (dom, doc, a, original, alternative)
@@ -434,14 +559,181 @@ mod tests {
     ) -> DomBatch {
         let stamp = dom.snapshot().document(doc).unwrap().stamp();
         let mut b = DomBatch::new();
-        b.bind_native_encoding_url_facts(stamp, alternative);
+        b.bind_encoding_url_facts(stamp, alternative);
         b.set_attribute(a, "href", "next");
         b.set_attribute(a, "href", "target");
-        b.bind_native_encoding_url_facts(stamp, original);
+        b.bind_encoding_url_facts(stamp, original);
         if semantic {
             b.set_attribute(a, "title", "changed");
         }
         b
+    }
+    fn source_snapshot_alias(
+        bytes: usize,
+        bind: bool,
+    ) -> Option<style::formation::mutation_observation::Growth> {
+        source_snapshot_alias_limits(bytes, 10_000_000, bind)
+    }
+    fn source_snapshot_alias_limits(
+        bytes: usize,
+        units: usize,
+        bind: bool,
+    ) -> Option<style::formation::mutation_observation::Growth> {
+        use surgeist_html_semantics::*;
+        let cancel = AtomicBool::new(false);
+        let domain = DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 100_000)
+            .unwrap()
+            .with_base_processing(32, 1_000_000)
+            .unwrap()
+            .with_encoding_url_processing(32, 1_000_000)
+            .unwrap();
+        let mut dom = Dom::new(domain).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let anchor = setup.create_element_ns(&document, crate::Namespace::html(), "a");
+        setup.insert_before(&anchor, &document, None);
+        let created = dom.apply(setup, &cancel).unwrap();
+        let document = created.document(&document).unwrap();
+        let anchor = created.created(&anchor).unwrap().unwrap();
+        let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+        let base = HtmlBaseUrlRecord::observed(
+            revision.clone(),
+            "about:blank".into(),
+            HtmlBaseUrlScheme::Other,
+            true,
+        )
+        .unwrap();
+        let encoding = HtmlBaseEncoding::fresh();
+        let base_facts = HtmlParseBaseFacts::new(
+            HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(base.clone()),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                Some(encoding.clone()),
+            )
+            .unwrap(),
+            Vec::new(),
+            HtmlBaseFactsLimits::new(32, 1_000_000, 1_000_000),
+        )
+        .unwrap();
+        let mut setup = DomBatch::new();
+        setup.bind_base_facts(
+            dom.snapshot().document(document).unwrap().stamp(),
+            &base_facts,
+        );
+        dom.apply(setup, &cancel).unwrap();
+        let mut padded = Vec::with_capacity(65_536);
+        padded.push(u16::from(b'r'));
+        let facts = HtmlEncodingUrlParseFacts::new(
+            base,
+            encoding,
+            revision,
+            vec![HtmlEncodingUrlParseObservation::new(
+                DocumentString::from_utf16(padded),
+                HtmlEncodingUrlParseOutcome::Failure,
+            )],
+            HtmlBaseFactsLimits::new(32, 1_000_000, 1_000_000),
+        )
+        .unwrap();
+        let mut setup = DomBatch::new();
+        setup.bind_encoding_url_facts(dom.snapshot().document(document).unwrap().stamp(), &facts);
+        dom.apply(setup, &cancel).unwrap();
+        let before = dom.snapshot();
+        let mut batch = DomBatch::new();
+        if bind {
+            batch.bind_encoding_url_facts(before.document(document).unwrap().stamp(), &facts);
+        } else {
+            batch.set_attribute(anchor, "href", "r");
+        }
+        let mut lease = match dom.begin_style_batch(
+            batch,
+            crate::DomStyleEditLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
+            &cancel,
+        ) {
+            Ok(lease) => lease,
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedBytes,
+                ..
+            }) => return None,
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedUnits,
+                ..
+            }) if units < 10_000_000 => return None,
+            Err(error) => panic!("actual Source setup admission: {error:?}"),
+        };
+        style::formation::mutation_observation::start(if bind {
+            style::formation::mutation_observation::Site::EncodingFacts
+        } else {
+            style::formation::mutation_observation::Site::HyperlinkSnapshot
+        });
+        let result = lease.advance(&cancel);
+        let actual = style::formation::mutation_observation::finish();
+        match result {
+            Ok(crate::DomStyleProgress::Complete(_)) => {
+                if !bind {
+                    let snapshot = lease.snapshot();
+                    let observation = snapshot
+                        .node(anchor)
+                        .unwrap()
+                        .as_hyperlink()
+                        .unwrap()
+                        .parse_observation()
+                        .unwrap();
+                    assert!(observation.url().is_none());
+                    assert_eq!(observation.raw().code_units(), &[u16::from(b'r')]);
+                    assert!(observation.raw().shared_code_units().capacity() >= 65_536);
+                }
+            }
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedBytes,
+                ..
+            }) => assert_eq!(lease.snapshot().stamp(), before.stamp()),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::StyleRetainedUnits,
+                ..
+            }) if units < 10_000_000 => assert_eq!(lease.snapshot().stamp(), before.stamp()),
+            other => panic!("actual Source hyperlink result: {other:?}"),
+        }
+        actual
+    }
+    #[test]
+    fn source_hyperlink_snapshot_admits_selected_spare_backing_before_producer_clones() {
+        let high =
+            source_snapshot_alias(16_000_000, false).expect("actual selected provider snapshot");
+        if let Some(actual) = source_snapshot_alias(high.required - 1, false) {
+            assert!(
+                actual.required <= actual.limit,
+                "selected snapshot retained {} under {}",
+                actual.required,
+                actual.limit
+            );
+        }
+    }
+    #[test]
+    fn source_encoding_facts_admits_canonical_retain_before_whole_bank_clone() {
+        let high = source_snapshot_alias(16_000_000, true).expect("actual whole fact bank retain");
+        if let Some(actual) = source_snapshot_alias(high.required - 1, true) {
+            assert!(
+                actual.required <= actual.limit,
+                "fact bank retained {} under {}",
+                actual.required,
+                actual.limit
+            );
+        }
+    }
+    #[test]
+    fn source_selected_and_fact_occurrences_have_exact_and_one_short_utf16_admission() {
+        for bind in [false, true] {
+            let high = source_snapshot_alias_limits(16_000_000, 10_000_000, bind).unwrap();
+            let exact = source_snapshot_alias_limits(16_000_000, high.required_units, bind)
+                .expect("exact selected occurrence is formed");
+            assert_eq!(exact.required_units, exact.unit_limit);
+            assert!(
+                source_snapshot_alias_limits(16_000_000, high.required_units - 1, bind).is_none(),
+                "one-short must refuse before the actual selected retain"
+            );
+        }
     }
     #[test]
     fn capacity_only_candidates_keep_old_backing_usage_and_revision_in_both_directions() {
@@ -553,7 +845,7 @@ mod tests {
         let usage = |b: DomBatch| {
             let mut d = Draft::new(&dom, b.owner, &cancel).unwrap();
             for command in b.commands {
-                d.apply(command, dom.limits, &cancel).unwrap();
+                d.apply(&command, dom.limits, &cancel).unwrap();
             }
             d.encoding_url_work.get()
         };
@@ -574,7 +866,7 @@ mod tests {
         let b = edit(a, &["unobserved"]);
         let mut d = Draft::new(&dom, b.owner, &cancel).unwrap();
         assert_eq!(
-            d.apply(b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
+            d.apply(&b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
                 .unwrap_err(),
             failure(Failure::Producer(
                 HtmlEncodingUrlFactsError::MissingObservation
@@ -609,7 +901,7 @@ mod tests {
                 .render_blocking
                 .push(key);
             assert_eq!(
-                d.apply(b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
+                d.apply(&b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
                     .unwrap_err(),
                 DomError::LinkProcessingUnavailable
             );

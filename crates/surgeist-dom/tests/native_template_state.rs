@@ -1,7 +1,6 @@
 //! Independent HTML877d Template and DOM3071 clone/adopt/fragment oracles.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlTemplateFreshInsertionState;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlCapturedHost, HtmlCapturedNodeKind, HtmlCapturedTemplateCache,
     HtmlCapturedTemplateContents, HtmlTemplateDocumentRole,
@@ -20,7 +19,12 @@ fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
     dom.apply(b, &cancel()).unwrap()
 }
 fn contents(s: &DomSnapshot, t: NodeId) -> NodeId {
-    s.node(t).unwrap().as_template().unwrap().contents()
+    s.node(t)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap()
 }
 fn setup(dom: &mut Dom) -> (DocumentId, NodeId, NodeId, DocumentId) {
     let mut b = DomBatch::new();
@@ -75,7 +79,7 @@ fn real_contents_cache_defaults_class_and_opaque_origin_have_exact_costs() {
     assert_ne!(m.origin(), s.document(d).unwrap().metadata().origin());
     assert_eq!(m.custom_element_registry(), DomRegistryBinding::Null);
     assert_eq!(
-        m.native_environment().browsing_context(),
+        m.document_environment().browsing_context(),
         surgeist_html::HtmlBrowsingContextPresence::Absent
     );
     assert_eq!(s.node(f).unwrap().fragment_host(), Some(t));
@@ -85,8 +89,11 @@ fn real_contents_cache_defaults_class_and_opaque_origin_have_exact_costs() {
         DomNodeKind::DocumentFragment
     ));
     assert_eq!(
-        s.node(t).unwrap().as_template().unwrap().insertion_state(),
-        HtmlTemplateFreshInsertionState::NullTargetAndMarkers
+        {
+            let p = s.node(t).unwrap().as_template().unwrap().insertion_state();
+            (p.target(), p.start(), p.end())
+        },
+        (None, None, None)
     );
     let mut b = DomBatch::new();
     let sibling = b.create_element_ns(d, Namespace::html(), "template");
@@ -168,7 +175,12 @@ fn ordinary_children_stay_distinct_and_contents_do_not_become_shadow_connected()
     let form = c.created(&form).unwrap().unwrap();
     let button = c.created(&button).unwrap().unwrap();
     assert_eq!(
-        s.node(button).unwrap().as_button().unwrap().form_owner(),
+        s.node(button)
+            .unwrap()
+            .as_button()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert!(!s.node(button).unwrap().is_connected());
@@ -370,7 +382,15 @@ fn shallow_and_deep_import_preserve_both_lists_and_use_copy_contents_documents()
     assert_ne!(nested_copy, nested);
     assert_eq!(old.node(f).unwrap().children(), &[nested]);
     drop(source);
-    assert_eq!(old.node(t).unwrap().as_template().unwrap().contents(), f);
+    assert_eq!(
+        old.node(t)
+            .unwrap()
+            .as_template()
+            .unwrap()
+            .contents()
+            .unwrap(),
+        f
+    );
 }
 
 #[test]
@@ -617,8 +637,11 @@ fn native_for_and_shadow_attributes_do_not_create_parser_patching_or_shadow_stat
     );
     assert_eq!(s.node(t).unwrap().shadow_root(), None);
     assert_eq!(
-        s.node(t).unwrap().as_template().unwrap().insertion_state(),
-        HtmlTemplateFreshInsertionState::NullTargetAndMarkers
+        {
+            let p = s.node(t).unwrap().as_template().unwrap().insertion_state();
+            (p.target(), p.start(), p.end())
+        },
+        (None, None, None)
     );
     let stamp = s.stamp();
     let mut b = DomBatch::new();

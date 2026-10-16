@@ -71,7 +71,8 @@ fn assert_flags(fixture: &Fixture, expected: [(bool, bool); 3]) {
                 .unwrap()
                 .as_option()
                 .unwrap()
-                .cached_select(),
+                .cached_select()
+                .unwrap(),
             Some(fixture.select)
         );
     }

@@ -29,6 +29,31 @@ pub(super) struct Frame {
     subtree: bool,
     shadow_started: bool,
 }
+impl Frame {
+    pub(super) fn retained_payload(
+        &self,
+        step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<style::storage::Payload, DomError> {
+        match &self.source {
+            Source::Published(snapshot, _) => style::storage::state(&snapshot.state, step),
+            Source::Staged(_) => Ok(style::storage::Payload::default()),
+        }
+    }
+    pub(super) fn checkpoint(&self) -> Self {
+        Self {
+            source: self.source.clone(),
+            copy: self.copy,
+            document: self.document,
+            placement: self.placement,
+            template_child: self.template_child,
+            appended: self.appended,
+            next_child: self.next_child,
+            subtree: self.subtree,
+            shadow_started: self.shadow_started,
+        }
+    }
+}
+
 impl Draft {
     fn source_kind(&self, source: &Source) -> Result<DomNodeKind, DomError> {
         Ok(match source {
@@ -36,18 +61,38 @@ impl Draft {
             Source::Staged(k) => self.node(*k)?.kind.clone(),
         })
     }
+    fn published_clone_source(
+        &self,
+        snapshot: &DomSnapshot,
+        id: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<(Source, Option<style::checkpoint::Charge>), DomError> {
+        let formation = style::formation::Formation::new(self, cancel)?;
+        if let Some(formation) = &formation {
+            formation.retain_payload(
+                style::storage::state(&snapshot.state, || self.source_step(cancel))?,
+                cancel,
+            )?;
+        }
+        Ok((
+            Source::Published(snapshot.clone(), id),
+            formation.map(style::formation::Formation::into_charge),
+        ))
+    }
     fn source_child(
         &self,
         source: &Source,
         index: usize,
         template: bool,
-    ) -> Result<Option<Source>, DomError> {
-        Ok(match source {
+        cancel: &AtomicBool,
+    ) -> Result<Option<(Source, Option<style::checkpoint::Charge>)>, DomError> {
+        self.source_step(cancel)?;
+        match source {
             Source::Published(s, id) => {
                 let n = s.node(*id)?;
                 let n = if template {
                     if let Some(t) = n.as_template() {
-                        s.node(t.contents())?
+                        s.node(t.contents()?)?
                     } else {
                         return Ok(None);
                     }
@@ -56,38 +101,57 @@ impl Draft {
                 };
                 n.children()
                     .get(index)
-                    .map(|&id| Source::Published(s.clone(), id))
+                    .copied()
+                    .map(|id| self.published_clone_source(s, id, cancel))
+                    .transpose()
             }
             Source::Staged(k) => {
                 let n = self.node(*k)?;
                 let n = if template {
-                    if let Some(t) = n.template_contents {
-                        self.node(t)?
-                    } else {
+                    if !matches!(&n.kind, DomNodeKind::Element(element) if element.is_template()) {
                         return Ok(None);
                     }
+                    self.node(
+                        n.template_contents
+                            .ok_or(DomError::TemplateContentsUnavailable)?,
+                    )?
                 } else {
                     n
                 };
-                n.children.get(index).copied().map(Source::Staged)
+                Ok(n.children
+                    .get(index)
+                    .copied()
+                    .map(|key| (Source::Staged(key), None)))
             }
-        })
+        }
     }
     fn source_shadow(
         &self,
         source: &Source,
-    ) -> Result<Option<(Source, crate::DomShadowRootState)>, DomError> {
+        cancel: &AtomicBool,
+    ) -> Result<
+        Option<(
+            Source,
+            crate::DomShadowRootState,
+            Option<style::checkpoint::Charge>,
+        )>,
+        DomError,
+    > {
+        self.source_step(cancel)?;
         match source {
-            Source::Published(s, id) => s
-                .node(*id)?
-                .hosted_shadow_root()
-                .map(|r| Ok((Source::Published(s.clone(), r), *s.shadow_root(r)?.state())))
-                .transpose(),
+            Source::Published(s, id) => {
+                let Some(root) = s.node(*id)?.hosted_shadow_root() else {
+                    return Ok(None);
+                };
+                let state = *s.shadow_root(root)?.state();
+                let (source, payload) = self.published_clone_source(s, root, cancel)?;
+                Ok(Some((source, state, payload)))
+            }
             Source::Staged(k) => self
                 .node(*k)?
                 .shadow_root
-                .map(|r| match &self.node(r)?.kind {
-                    DomNodeKind::ShadowRoot(state) => Ok((Source::Staged(r), *state)),
+                .map(|root| match &self.node(root)?.kind {
+                    DomNodeKind::ShadowRoot(state) => Ok((Source::Staged(root), *state, None)),
                     _ => unreachable!("owned root"),
                 })
                 .transpose(),
@@ -102,8 +166,10 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
+        let (source, payload) = self.published_clone_source(snapshot, source, cancel)?;
         let root = self.begin_clone(
-            Source::Published(snapshot.clone(), source),
+            source,
+            payload,
             CloneRequest {
                 document,
                 placement: Placement::Detached,
@@ -119,6 +185,7 @@ impl Draft {
     pub(super) fn begin_clone(
         &mut self,
         source: Source,
+        payload: Option<style::checkpoint::Charge>,
         request: CloneRequest,
         limits: DomLimits,
         cancel: &AtomicBool,
@@ -129,8 +196,14 @@ impl Draft {
             subtree,
             scoped,
         } = request;
+        let start = self.created.len();
         let copy = self.clone_single(&source, document, limits, cancel)?;
-        self.push_effect(
+        if scoped {
+            for i in start..self.created.len() {
+                self.mark_source_private(Key::Created(i));
+            }
+        }
+        self.push_effect_retained(
             select::Effect::Clone(Frame {
                 source,
                 copy,
@@ -143,6 +216,8 @@ impl Draft {
                 shadow_started: false,
             }),
             scoped,
+            payload,
+            cancel,
         )?;
         Ok(copy)
     }
@@ -150,11 +225,13 @@ impl Draft {
         &mut self,
         mut frame: Frame,
         scoped: bool,
+        payload: Option<style::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if frame.subtree
-            && let Some(source) = self.source_child(&frame.source, frame.template_child, true)?
+            && let Some((source, source_payload)) =
+                self.source_child(&frame.source, frame.template_child, true, cancel)?
         {
             frame.template_child += 1;
             let parent = self
@@ -162,9 +239,10 @@ impl Draft {
                 .template_contents
                 .expect("fresh contents");
             let document = self.node(parent)?.document;
-            self.push_effect(select::Effect::Clone(frame), scoped)?;
+            self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
+                source_payload,
                 CloneRequest {
                     document,
                     placement: Placement::BeforeChildren(parent),
@@ -180,21 +258,23 @@ impl Draft {
             frame.appended = true;
             let placement = frame.placement;
             let copy = frame.copy;
-            self.push_effect(select::Effect::Clone(frame), scoped)?;
+            self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             if let Placement::BeforeChildren(parent) = placement {
                 self.pre_insert(copy, parent, None, limits, cancel)?;
             }
             return Ok(());
         }
         if frame.subtree
-            && let Some(source) = self.source_child(&frame.source, frame.next_child, false)?
+            && let Some((source, source_payload)) =
+                self.source_child(&frame.source, frame.next_child, false, cancel)?
         {
             frame.next_child += 1;
             let parent = frame.copy;
             let document = frame.document;
-            self.push_effect(select::Effect::Clone(frame), scoped)?;
+            self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
+                source_payload,
                 CloneRequest {
                     document,
                     placement: Placement::BeforeChildren(parent),
@@ -208,14 +288,15 @@ impl Draft {
         }
         if !frame.shadow_started {
             frame.shadow_started = true;
-            if let Some((source, state)) = self.source_shadow(&frame.source)?
+            if let Some((source, state, source_payload)) =
+                self.source_shadow(&frame.source, cancel)?
                 && state.clonable()
             {
                 let root =
                     self.attach_shadow(frame.copy, state.properties().into(), limits, cancel)?;
                 let document = frame.document;
-                self.push_effect(select::Effect::Clone(frame), scoped)?;
-                self.push_effect(
+                self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
+                self.push_effect_retained(
                     select::Effect::Clone(Frame {
                         source,
                         copy: root,
@@ -228,6 +309,8 @@ impl Draft {
                         shadow_started: false,
                     }),
                     scoped,
+                    source_payload,
+                    cancel,
                 )?;
                 return Ok(());
             }
@@ -245,21 +328,44 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancel)?;
+        let original_formation = style::formation::Formation::new(self, cancel)?;
+        if let Some(budget) = &original_formation {
+            let original = match source {
+                Source::Published(snapshot, id) => snapshot.node(*id)?.kind(),
+                Source::Staged(key) => &self.node(*key)?.kind,
+            };
+            budget.retain_payload(
+                style::storage::kind(original, || self.source_step(cancel))?,
+                cancel,
+            )?;
+        }
         let original = self.source_kind(source)?;
         let script = match source {
             Source::Published(s, id) => s.node(*id)?.node.script.map(|v| v.flags),
             Source::Staged(k) => self.node(*k)?.script.map(|v| v.flags),
         };
+        let formation = style::formation::Formation::new(self, cancel)?;
         let kind = match &original {
             DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
                 return Err(DomError::NotSupported);
             }
-            DomNodeKind::Element(e) => DomNodeKind::Element(
-                e.clone_initialized(self.native_environment(document)?, cancel)?,
-            ),
-            kind => kind.clone(),
+            DomNodeKind::Element(e) => DomNodeKind::Element(e.clone_initialized(
+                self.document_environment(document)?,
+                cancel,
+                formation.as_ref(),
+            )?),
+            kind => {
+                if let Some(budget) = &formation {
+                    budget.retain_payload(
+                        style::storage::kind(kind, || self.source_step(cancel))?,
+                        cancel,
+                    )?;
+                }
+                kind.clone()
+            }
         };
-        let copy = self.allocate(kind, document, limits)?;
+        let copy = self.allocate(kind, document, limits, cancel)?;
+        drop(formation);
         self.initialize_native_element(copy, limits, cancel)?;
         if let DomNodeKind::Element(element) = &original {
             let cause = if element
@@ -272,10 +378,10 @@ impl Draft {
             };
             for attribute in element.attributes().iter() {
                 check_cancel(cancel)?;
-                self.append_attribute(copy, attribute.clone(), cause, limits, cancel)?;
+                self.append_attribute(copy, attribute, cause, limits, cancel)?;
             }
             if let Some(nonce) = element.nonce() {
-                self.set_nonce(copy, nonce.clone(), limits, cancel)?;
+                self.set_nonce(copy, nonce, limits, cancel)?;
             }
             if let Some(state) = element.svg_script_state() {
                 let DomNodeKind::Element(e) = &mut self.node_mut(copy).kind else {
@@ -287,7 +393,7 @@ impl Draft {
                 self.clone_input_overlay(copy, state, limits, cancel)?;
             }
             if let Some(state) = element.textarea_state() {
-                self.clone_textarea_overlay(copy, state, limits)?;
+                self.clone_textarea_overlay(copy, state, limits, cancel)?;
             }
         }
         if let Some(flags) = script {

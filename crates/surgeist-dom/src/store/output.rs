@@ -4,6 +4,32 @@ use surgeist_html::{
     HtmlOutputAction as Action, HtmlOutputCursor, HtmlOutputDefaultSource, HtmlOutputOperation,
 };
 
+#[derive(Clone)]
+pub(super) struct Frame {
+    key: Key,
+    cursor: HtmlOutputCursor,
+    supplied: Option<DocumentString>,
+    read: Option<DocumentString>,
+    acknowledge: Option<Action>,
+}
+
+impl Frame {
+    pub(super) fn retained_payload(
+        &self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<style::storage::Payload, DomError> {
+        let mut payload = style::storage::Payload::default();
+        for value in [self.supplied.as_ref(), self.read.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            step()?;
+            payload.string(value)?;
+        }
+        Ok(payload)
+    }
+}
+
 impl Draft {
     fn output_state(&self, key: Key) -> Result<&crate::DomOutputState, DomError> {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
@@ -14,8 +40,9 @@ impl Draft {
     fn output_override(
         &mut self,
         key: Key,
-        value: Option<DocumentString>,
+        value: Option<&DocumentString>,
         limits: DomLimits,
+        cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let old = self
             .output_state(key)?
@@ -23,9 +50,17 @@ impl Draft {
             .as_ref()
             .map_or(0, DocumentString::len);
         let units = (self.units - old)
-            .checked_add(value.as_ref().map_or(0, DocumentString::len))
+            .checked_add(value.map_or(0, DocumentString::len))
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
+        let retained = value
+            .map(|value| style::formation::shared_string(self, value, cancel))
+            .transpose()?;
+        self.prepare_family_mutation(key, cancel)?;
+        let (value, payload) = match retained {
+            Some((value, payload)) => (Some(value), payload),
+            None => (None, None),
+        };
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
             unreachable!("checked Output")
         };
@@ -34,6 +69,7 @@ impl Draft {
             .expect("checked Output")
             .default_override = value;
         self.units = units;
+        drop(payload); // The canonical family now owns the transferred occurrence.
         Ok(())
     }
     // The ordinary parent/sibling links provide finite traversal without a second
@@ -47,7 +83,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut key = root;
         loop {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let node = self.node(key)?;
             if let DomNodeKind::Text(text) = &node.kind {
                 visit(text)?;
@@ -57,7 +93,7 @@ impl Draft {
                 continue;
             }
             loop {
-                check_cancel(cancel)?;
+                self.source_step(cancel)?;
                 if key == root {
                     return Ok(());
                 }
@@ -67,8 +103,9 @@ impl Draft {
                     .expect("ordinary descendant has parent");
                 let mut found = false;
                 let mut next = None;
-                for &child in &self.node(parent)?.children {
-                    check_cancel(cancel)?;
+                for child in &self.node(parent)?.children {
+                    self.source_step(cancel)?;
+                    let child = *child;
                     if found {
                         next = Some(child);
                         break;
@@ -88,16 +125,16 @@ impl Draft {
         key: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<DocumentString, DomError> {
+    ) -> Result<(DocumentString, Option<style::checkpoint::Charge>), DomError> {
         let state = self.output_state(key)?;
         if surgeist_html::output_default_source(state.default_override.is_some())
             == HtmlOutputDefaultSource::Override
         {
-            return Ok(state
-                .default_override
-                .as_ref()
-                .expect("actual override")
-                .clone());
+            return style::formation::shared_string(
+                self,
+                state.default_override.as_ref().expect("actual override"),
+                cancel,
+            );
         }
         let mut length = 0usize;
         self.output_text(key, cancel, |text| {
@@ -111,42 +148,86 @@ impl Draft {
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or(DomError::RepresentationExhausted)?;
         check_cancel(cancel)?;
+        #[cfg(test)]
+        let growth = style::formation::mutation_observation::before(
+            self,
+            style::formation::mutation_observation::Site::Output,
+            cancel,
+        )?;
+        let formation = style::formation::Formation::new(self, cancel)?;
+        if let Some(formation) = &formation {
+            formation.retain_payload(
+                style::storage::Payload {
+                    bytes: size_of::<Vec<u16>>(),
+                    units: length,
+                },
+                cancel,
+            )?;
+        }
         let mut output = Vec::new();
-        output
-            .try_reserve_exact(length)
-            .map_err(|_| DomError::AllocationFailed)?;
+        if formation.is_some() {
+            style::formation::reserve(&mut output, length, formation.as_ref(), cancel)?;
+        } else {
+            output
+                .try_reserve_exact(length)
+                .map_err(|_| DomError::AllocationFailed)?;
+        }
+        if let Some(formation) = &formation {
+            formation.retain_payload(
+                style::storage::Payload {
+                    bytes: 0,
+                    units: output
+                        .capacity()
+                        .checked_sub(length)
+                        .ok_or(DomError::RepresentationExhausted)?,
+                },
+                cancel,
+            )?;
+        }
         admit(
             output.capacity(),
             limits.units,
             DomResource::StringCodeUnits,
         )?;
         self.output_text(key, cancel, |text| {
-            for &unit in text.code_units() {
-                check_cancel(cancel)?;
-                output.push(unit);
+            for unit in text.code_units() {
+                self.source_step(cancel)?;
+                output.push(*unit);
             }
             Ok(())
         })?;
-        Ok(DocumentString::from_utf16(output))
+        #[cfg(test)]
+        style::formation::mutation_observation::grew(
+            growth,
+            size_of::<Vec<u16>>() + output.capacity() * size_of::<u16>(),
+        );
+        Ok((
+            DocumentString::from_utf16(output),
+            formation.map(style::formation::Formation::into_charge),
+        ))
     }
     pub(super) fn output_edit(
         &mut self,
         key: Key,
-        edit: crate::output::Edit,
+        edit: &crate::output::Edit,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.output_edit_admitted(key, edit, limits, cancel, &mut |_| check_cancel(cancel))
+        let (frame, payload) = self.output_frame(key, edit, cancel)?;
+        self.push_effect_retained(
+            select::Effect::Output(frame),
+            self.effect_scoped,
+            payload,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
     }
-    fn output_edit_admitted(
-        &mut self,
+    fn output_frame(
+        &self,
         key: Key,
-        edit: crate::output::Edit,
-        limits: DomLimits,
+        edit: &crate::output::Edit,
         cancel: &AtomicBool,
-        admit_action: &mut impl FnMut(Action) -> Result<(), DomError>,
-    ) -> Result<(), DomError> {
-        check_cancel(cancel)?;
+    ) -> Result<(Frame, Option<style::checkpoint::Charge>), DomError> {
         let state = self.output_state(key)?;
         let (operation, supplied) = match edit {
             crate::output::Edit::Value(value) => (HtmlOutputOperation::ValueSetter, Some(value)),
@@ -158,45 +239,143 @@ impl Draft {
             ),
             crate::output::Edit::Reset => (HtmlOutputOperation::Reset, None),
         };
-        let mut cursor = HtmlOutputCursor::new(operation);
-        let mut read = None;
-        loop {
-            let action = cursor.action();
-            if action == Action::Complete {
-                return Ok(());
+        let (supplied, payload) = match supplied {
+            Some(value) => {
+                let (value, payload) = style::formation::shared_string(self, value, cancel)?;
+                (Some(value), payload)
             }
-            admit_action(action)?;
-            match action {
-                Action::ReadDefaultValue => read = Some(self.output_default(key, limits, cancel)?),
-                Action::StoreReadDefaultAsOverride => self.output_override(
-                    key,
-                    Some(read.as_ref().expect("cursor read default").clone()),
-                    limits,
-                )?,
-                Action::ReplaceAllWithSuppliedValue => self.string_replace_all(
-                    key,
-                    supplied.as_ref().expect("cursor supplied value").clone(),
-                    limits,
-                    cancel,
-                )?,
-                Action::StoreSuppliedValueAsOverride => self.output_override(
-                    key,
-                    Some(supplied.as_ref().expect("cursor supplied value").clone()),
-                    limits,
-                )?,
-                Action::ReplaceAllWithReadDefault => self.string_replace_all(
-                    key,
-                    read.as_ref().expect("cursor read default").clone(),
-                    limits,
-                    cancel,
-                )?,
-                Action::ClearDefaultOverride => self.output_override(key, None, limits)?,
-                Action::Complete => unreachable!("completed cursor returned"),
+            None => (None, None),
+        };
+        Ok((
+            Frame {
+                key,
+                cursor: HtmlOutputCursor::new(operation),
+                supplied,
+                read: None,
+                acknowledge: None,
+            },
+            payload,
+        ))
+    }
+    // Both the canonical frame executor and the cancellation characterization
+    // consume this same source action. A replacement returns its operand before
+    // acknowledgement; its owning frame survives until all nested hooks finish.
+    fn output_action(
+        &mut self,
+        frame: &mut Frame,
+        payload: &mut Option<style::checkpoint::Charge>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(DocumentString, Option<style::checkpoint::Charge>)>, DomError> {
+        let action = frame.cursor.action();
+        match action {
+            Action::ReadDefaultValue => {
+                let (read, incoming) = self.output_default(frame.key, limits, cancel)?;
+                frame.read = Some(read);
+                style::formation::merge_charge(payload, incoming);
             }
-            cursor
+            Action::StoreReadDefaultAsOverride => self.output_override(
+                frame.key,
+                Some(frame.read.as_ref().expect("cursor read default")),
+                limits,
+                cancel,
+            )?,
+            Action::StoreSuppliedValueAsOverride => self.output_override(
+                frame.key,
+                Some(frame.supplied.as_ref().expect("cursor supplied value")),
+                limits,
+                cancel,
+            )?,
+            Action::ReplaceAllWithSuppliedValue => {
+                return style::formation::shared_string(
+                    self,
+                    frame.supplied.as_ref().expect("cursor supplied value"),
+                    cancel,
+                )
+                .map(Some);
+            }
+            Action::ReplaceAllWithReadDefault => {
+                return style::formation::shared_string(
+                    self,
+                    frame.read.as_ref().expect("cursor read default"),
+                    cancel,
+                )
+                .map(Some);
+            }
+            Action::ClearDefaultOverride => {
+                self.output_override(frame.key, None, limits, cancel)?
+            }
+            Action::Complete => unreachable!("complete cursor is not an action"),
+        }
+        frame
+            .cursor
+            .acknowledge(action)
+            .map_err(DomError::OutputProtocol)?;
+        Ok(None)
+    }
+    pub(super) fn output_effect(
+        &mut self,
+        mut frame: Frame,
+        mut payload: Option<style::checkpoint::Charge>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(action) = frame.acknowledge.take() {
+            frame
+                .cursor
                 .acknowledge(action)
                 .map_err(DomError::OutputProtocol)?;
         }
+        if frame.cursor.action() == Action::Complete {
+            return Ok(());
+        }
+        check_cancel(cancel)?;
+        if let Some((value, replacement_payload)) =
+            self.output_action(&mut frame, &mut payload, limits, cancel)?
+        {
+            frame.acknowledge = Some(frame.cursor.action());
+            let key = frame.key;
+            self.push_effect_retained(
+                select::Effect::Output(frame),
+                self.effect_scoped,
+                payload,
+                cancel,
+            )?;
+            self.string_replace_all(key, value, replacement_payload, limits, cancel)
+        } else {
+            self.push_effect_retained(
+                select::Effect::Output(frame),
+                self.effect_scoped,
+                payload,
+                cancel,
+            )
+        }
+    }
+    #[cfg(test)]
+    fn output_edit_admitted(
+        &mut self,
+        key: Key,
+        edit: crate::output::Edit,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        admit_action: &mut impl FnMut(Action) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        let (mut frame, mut payload) = self.output_frame(key, &edit, cancel)?;
+        while frame.cursor.action() != Action::Complete {
+            let action = frame.cursor.action();
+            admit_action(action)?;
+            if let Some((value, replacement_payload)) =
+                self.output_action(&mut frame, &mut payload, limits, cancel)?
+            {
+                self.string_replace_all(key, value, replacement_payload, limits, cancel)?;
+                frame
+                    .cursor
+                    .acknowledge(action)
+                    .map_err(DomError::OutputProtocol)?;
+            }
+        }
+        Ok(())
     }
 }
 

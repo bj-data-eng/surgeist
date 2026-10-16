@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(unfulfilled_lint_expectations)]
 #![warn(missing_docs)]
 
 //! App runtime and authoring DSL boundary for Surgeist.
@@ -165,7 +166,10 @@ mod command;
 mod coord;
 mod descriptor;
 mod diagnostic;
+mod dom_details;
+mod dom_event;
 mod dom_host;
+mod dom_style;
 mod effect;
 mod event;
 mod ids;
@@ -201,8 +205,25 @@ pub use descriptor::{
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
+pub use dom_details::{
+    DomDetailsEventContext, DomDetailsProgress, DomDetailsRuntime, DomDetailsRuntimeError,
+    DomDetailsRuntimeLimits, DomDetailsTask, DomDetailsTaskId, DomDetailsTransferError,
+};
+pub use dom_event::{
+    DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventDispatchError,
+    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
+    DomEventDom, DomEventListenerFailure, DomEventListenerFailureKind, DomEventListenerOptions,
+    DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource, DomEventType,
+    NativeDomEvent,
+};
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
+};
+pub use dom_style::{
+    DomStyleDisabledObservation, DomStyleDriveProgress, DomStyleEventContext,
+    DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
+    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSession, DomStyleSessionCreateError,
+    DomStyleShutdownOutcome, DomStyleShutdownReason, DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

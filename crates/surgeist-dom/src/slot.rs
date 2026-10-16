@@ -18,6 +18,9 @@ pub(crate) struct TreeNode<'a, K> {
 pub(crate) trait Tree {
     type Key: Copy + Eq;
     fn get(&self, key: Self::Key) -> Result<TreeNode<'_, Self::Key>, DomError>;
+    fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        check_cancel(cancel)
+    }
 }
 impl Tree for DomSnapshot {
     type Key = NodeId;
@@ -39,34 +42,71 @@ pub(crate) fn is_slot(kind: &DomNodeKind) -> bool {
 pub(crate) fn is_slottable(kind: &DomNodeKind) -> bool {
     matches!(kind, DomNodeKind::Element(_) | DomNodeKind::Text(_))
 }
-pub(crate) fn name<'a>(kind: &'a DomNodeKind, attr: &str) -> Option<&'a DocumentString> {
+pub(crate) fn name_admitted<'a, E>(
+    kind: &'a DomNodeKind,
+    attr: &str,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a DocumentString>, E> {
     match kind {
-        DomNodeKind::Element(e) => e
-            .attributes()
-            .iter()
-            .find(|a| {
-                a.name().namespace().uri().is_none()
-                    && a.name()
-                        .local_name()
-                        .code_units()
-                        .iter()
-                        .copied()
-                        .eq(attr.encode_utf16())
-            })
-            .map(|a| a.value()),
-        _ => None,
+        DomNodeKind::Element(e) => {
+            for a in e.attributes().iter() {
+                step()?;
+                if a.name().namespace().uri().is_some() {
+                    continue;
+                }
+                let units = a.name().local_name().code_units();
+                if units.len() != attr.len() {
+                    continue;
+                }
+                let mut equal = true;
+                for (actual, expected) in units.iter().zip(attr.bytes()) {
+                    step()?;
+                    if *actual != u16::from(expected) {
+                        equal = false;
+                        break;
+                    }
+                }
+                if equal {
+                    return Ok(Some(a.value()));
+                }
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
     }
 }
-fn same_name(a: Option<&DocumentString>, b: Option<&DocumentString>) -> bool {
-    a.map_or(&[][..], DocumentString::code_units) == b.map_or(&[][..], DocumentString::code_units)
+pub(crate) fn same_name(
+    a: Option<&DocumentString>,
+    b: Option<&DocumentString>,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    let a = a.map_or(&[][..], DocumentString::code_units);
+    let b = b.map_or(&[][..], DocumentString::code_units);
+    if a.len() != b.len() {
+        return Ok(false);
+    }
+    for (a, b) in a.iter().zip(b) {
+        step()?;
+        if a != b {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 pub(crate) fn root<T: Tree>(
     tree: &T,
-    mut key: T::Key,
+    key: T::Key,
     cancel: &AtomicBool,
 ) -> Result<T::Key, DomError> {
+    root_admitted(tree, key, &mut || tree.step(cancel))
+}
+pub(crate) fn root_admitted<T: Tree>(
+    tree: &T,
+    mut key: T::Key,
+    admit: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<T::Key, DomError> {
     loop {
-        check_cancel(cancel)?;
+        admit()?;
         match tree.get(key)?.parent {
             Some(p) => key = p,
             None => return Ok(key),
@@ -80,7 +120,7 @@ pub(crate) fn next<T: Tree>(
     key: T::Key,
     cancel: &AtomicBool,
 ) -> Result<Option<T::Key>, DomError> {
-    next_admitted(tree, boundary, key, &mut || check_cancel(cancel))
+    next_admitted(tree, boundary, key, &mut || tree.step(cancel))
 }
 pub(crate) fn next_admitted<T: Tree>(
     tree: &T,
@@ -117,7 +157,7 @@ pub(crate) fn find_slot<T: Tree>(
     open: bool,
     cancel: &AtomicBool,
 ) -> Result<Option<T::Key>, DomError> {
-    check_cancel(cancel)?;
+    tree.step(cancel)?;
     let n = tree.get(node)?;
     if !is_slottable(n.kind) {
         return Err(DomError::WrongNodeKind);
@@ -137,13 +177,13 @@ pub(crate) fn find_slot<T: Tree>(
     let manual = state.slot_assignment() == crate::HtmlSlotAssignment::Manual;
     let mut current = Some(root);
     while let Some(key) = current {
-        check_cancel(cancel)?;
+        tree.step(cancel)?;
         let candidate = tree.get(key)?;
         if is_slot(candidate.kind) {
             let matches = if manual {
                 let mut found = false;
                 for value in candidate.manual {
-                    check_cancel(cancel)?;
+                    tree.step(cancel)?;
                     if *value == node {
                         found = true;
                         break;
@@ -151,7 +191,11 @@ pub(crate) fn find_slot<T: Tree>(
                 }
                 found
             } else {
-                same_name(name(candidate.kind, "name"), name(n.kind, "slot"))
+                same_name(
+                    name_admitted(candidate.kind, "name", &mut || tree.step(cancel))?,
+                    name_admitted(n.kind, "slot", &mut || tree.step(cancel))?,
+                    &mut || tree.step(cancel),
+                )?
             };
             if matches {
                 return Ok(Some(key));
@@ -180,35 +224,48 @@ pub(crate) fn slottables<T: Tree>(
     limit: usize,
     cancel: &AtomicBool,
 ) -> Result<Vec<T::Key>, DomError> {
-    check_cancel(cancel)?;
+    let mut out = Vec::new();
+    visit_slottables(tree, slot, cancel, &mut |node| {
+        push(&mut out, node, limit, DomResource::SlotQueryOutput)
+    })?;
+    Ok(out)
+}
+pub(crate) fn visit_slottables<T: Tree>(
+    tree: &T,
+    slot: T::Key,
+    cancel: &AtomicBool,
+    visit: &mut impl FnMut(T::Key) -> Result<(), DomError>,
+) -> Result<(), DomError> {
+    tree.step(cancel)?;
     if !is_slot(tree.get(slot)?.kind) {
         return Err(DomError::SlotInapplicable);
     }
     let r = root(tree, slot, cancel)?;
     let rn = tree.get(r)?;
     let DomNodeKind::ShadowRoot(state) = rn.kind else {
-        return Ok(Vec::new());
+        return Ok(());
     };
     let host = rn.host.expect("shadow host");
-    let mut out = Vec::new();
     if state.slot_assignment() == crate::HtmlSlotAssignment::Manual {
-        for &node in tree.get(slot)?.manual {
-            check_cancel(cancel)?;
+        for node in tree.get(slot)?.manual {
+            tree.step(cancel)?;
+            let node = *node;
             if tree.get(node)?.parent == Some(host) {
-                push(&mut out, node, limit, DomResource::SlotQueryOutput)?;
+                visit(node)?;
             }
         }
     } else {
-        for &node in tree.get(host)?.children {
-            check_cancel(cancel)?;
+        for node in tree.get(host)?.children {
+            tree.step(cancel)?;
+            let node = *node;
             if is_slottable(tree.get(node)?.kind)
                 && find_slot(tree, node, false, cancel)? == Some(slot)
             {
-                push(&mut out, node, limit, DomResource::SlotQueryOutput)?;
+                visit(node)?;
             }
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// Logical result/scratch reference admission, independent of allocator RSS.

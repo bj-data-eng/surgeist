@@ -2,19 +2,19 @@
 use super::*;
 
 impl Draft {
-    pub(super) fn native_environment(
+    pub(super) fn document_environment(
         &self,
         document: Key,
-    ) -> Result<crate::DomNativeDocumentEnvironment, DomError> {
+    ) -> Result<crate::DomDocumentEnvironment, DomError> {
         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        Ok(metadata.native_environment())
+        Ok(metadata.document_environment())
     }
     pub(super) fn create_html_document(
         &mut self,
         associated_document: Key,
-        title: Option<DocumentString>,
+        title: Option<&DocumentString>,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
@@ -25,15 +25,31 @@ impl Draft {
         // Origin follows the source operation; the selected immutable native
         // environment also remains established. Other metadata uses defaults;
         // no browsing context or host/resource capability is implicitly copied.
-        let metadata =
-            DomDocumentMetadata::native_html(source.origin().clone(), source.native_environment());
+        let formation = style::formation::Formation::new(self, cancelled)?;
+        let metadata = DomDocumentMetadata::native_html(
+            source.origin().clone(),
+            source.document_environment(),
+            &mut |text| style::formation::string(text, formation.as_ref(), cancelled),
+        )?;
         let document = Key::Created(self.created.len());
-        let document = self.allocate(DomNodeKind::Document(metadata), document, limits)?;
+        let document =
+            self.allocate(DomNodeKind::Document(metadata), document, limits, cancelled)?;
+        drop(formation);
+        let operands = style::formation::Formation::new(self, cancelled)?;
+        let name = style::formation::string("html", operands.as_ref(), cancelled)?;
+        let public = style::formation::string("", operands.as_ref(), cancelled)?;
+        let system = style::formation::string("", operands.as_ref(), cancelled)?;
+        let formation = style::formation::Formation::new(self, cancelled)?;
+        let doctype = DomDocumentType::new(&name, &public, &system, formation.as_ref(), cancelled)?;
+        drop((name, public, system));
+        drop(operands);
         let doctype = self.allocate(
-            DomNodeKind::DocumentType(DomDocumentType::new("html".into(), "".into(), "".into())?),
+            DomNodeKind::DocumentType(doctype),
             document,
             limits,
+            cancelled,
         )?;
+        drop(formation);
         self.pre_insert(doctype, document, None, limits, cancelled)?;
         let html = self.html_skeleton_element(document, "html", limits, cancelled)?;
         self.pre_insert(html, document, None, limits, cancelled)?;
@@ -42,7 +58,9 @@ impl Draft {
         if let Some(title) = title {
             let element = self.html_skeleton_element(document, "title", limits, cancelled)?;
             self.pre_insert(element, head, None, limits, cancelled)?;
-            let text = self.allocate(DomNodeKind::Text(title), document, limits)?;
+            let (title, payload) = style::formation::shared_string(self, title, cancelled)?;
+            let text = self.allocate(DomNodeKind::Text(title), document, limits, cancelled)?;
+            drop(payload);
             self.pre_insert(text, element, None, limits, cancelled)?;
         }
         let body = self.html_skeleton_element(document, "body", limits, cancelled)?;
@@ -60,8 +78,15 @@ impl Draft {
         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
             unreachable!("canonical skeleton Document")
         };
-        let element = DomElement::native(local_name.into(), metadata, cancelled)?;
-        self.allocate(DomNodeKind::Element(element), document, limits)
+        let operand = style::formation::Formation::new(self, cancelled)?;
+        let local_name = style::formation::string(local_name, operand.as_ref(), cancelled)?;
+        let formation = style::formation::Formation::new(self, cancelled)?;
+        let element = DomElement::native(&local_name, metadata, cancelled, formation.as_ref())?;
+        drop(local_name);
+        drop(operand);
+        let key = self.allocate(DomNodeKind::Element(element), document, limits, cancelled)?;
+        drop(formation);
+        Ok(key)
     }
     pub(super) fn html_element_in_html_document(&self, key: Key) -> Result<bool, DomError> {
         let node = self.node(key)?;

@@ -23,6 +23,7 @@ fn update(snapshot: &DomSnapshot, image: NodeId) -> DomImageUpdate {
         .unwrap()
         .suspended_update()
         .unwrap()
+        .unwrap()
 }
 fn single() -> (Dom, DocumentId, NodeId) {
     let mut dom = owner();
@@ -240,7 +241,7 @@ fn image_form_owner_is_nonlisted_and_does_not_grant_custom_validity() {
     let image = commit.created(&image).unwrap().unwrap();
     let snapshot = dom.snapshot();
     let view = snapshot.node(image).unwrap().as_img().unwrap();
-    assert_eq!(view.form_owner(), Some(a));
+    assert_eq!(view.form_owner().unwrap(), Some(a));
     assert!(!view.parser_inserted());
     let captured = capture(&snapshot, document);
     let HtmlSemanticFact::FormOwner(HtmlSemanticValue::Known(owner)) =
@@ -273,7 +274,8 @@ fn image_form_owner_is_nonlisted_and_does_not_grant_custom_validity() {
             .unwrap()
             .as_img()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(a)
     );
     let mut batch = DomBatch::new();
@@ -285,11 +287,18 @@ fn image_form_owner_is_nonlisted_and_does_not_grant_custom_validity() {
             .unwrap()
             .as_img()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(b)
     );
     assert_eq!(
-        snapshot.node(image).unwrap().as_img().unwrap().form_owner(),
+        snapshot
+            .node(image)
+            .unwrap()
+            .as_img()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(a)
     );
 }

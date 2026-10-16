@@ -157,10 +157,11 @@ fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_
         .unwrap()
         .as_template()
         .unwrap()
-        .contents();
+        .contents()
+        .unwrap();
 
     let mut batch = DomBatch::new();
-    batch.bind_native_base_facts(dom.snapshot().document(document).unwrap().stamp(), &facts);
+    batch.bind_base_facts(dom.snapshot().document(document).unwrap().stamp(), &facts);
     let shadow_base = batch.create_element_ns(document, Namespace::html(), "base");
     let template_base = batch.create_element_ns(document, Namespace::html(), "base");
     // No observation for this spelling exists: these trees must not request one.
@@ -173,7 +174,10 @@ fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_
     batch.set_attribute(b, "href", "latest");
     let commit = apply(&mut dom, batch);
     let snapshot = dom.snapshot();
-    assert_eq!(snapshot.document(document).unwrap().first_base(), Some(a));
+    assert_eq!(
+        snapshot.document(document).unwrap().first_base().unwrap(),
+        Some(a)
+    );
     assert_eq!(frozen(&snapshot, a).value(), &first_record);
     for node in [
         b,
@@ -199,14 +203,20 @@ fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_
     batch.remove_attribute(a, "href");
     apply(&mut dom, batch);
     let current = dom.snapshot();
-    assert_eq!(current.document(document).unwrap().first_base(), Some(b));
+    assert_eq!(
+        current.document(document).unwrap().first_base().unwrap(),
+        Some(b)
+    );
     assert_eq!(frozen(&current, b).value(), &latest_record);
     assert_eq!(frozen(&current, a).value(), &first_record);
     assert_eq!(
         document_base(&capture(&current, document), document).value(),
         &latest_record
     );
-    assert_eq!(snapshot.document(document).unwrap().first_base(), Some(a));
+    assert_eq!(
+        snapshot.document(document).unwrap().first_base().unwrap(),
+        Some(a)
+    );
     assert!(
         snapshot
             .node(b)
@@ -243,8 +253,8 @@ fn detached_and_adopted_base_preserves_frozen_document_until_a_new_actual_freeze
     let base = commit.created(&base).unwrap().unwrap();
     let snapshot = dom.snapshot();
     let mut batch = DomBatch::new();
-    batch.bind_native_base_facts(snapshot.document(first).unwrap().stamp(), &first_facts);
-    batch.bind_native_base_facts(snapshot.document(second).unwrap().stamp(), &second_facts);
+    batch.bind_base_facts(snapshot.document(first).unwrap().stamp(), &first_facts);
+    batch.bind_base_facts(snapshot.document(second).unwrap().stamp(), &second_facts);
     batch.set_attribute(base, "href", "kept");
     apply(&mut dom, batch);
     let old = dom.snapshot();
@@ -303,7 +313,7 @@ fn exact_raw_utf16_observations_and_late_error_preserve_the_prior_frozen_record(
     let document = commit.document(&document).unwrap();
     let base = commit.created(&base).unwrap().unwrap();
     let mut batch = DomBatch::new();
-    batch.bind_native_base_facts(dom.snapshot().document(document).unwrap().stamp(), &facts);
+    batch.bind_base_facts(dom.snapshot().document(document).unwrap().stamp(), &facts);
     batch.set_attribute(base, "href", raw.clone());
     apply(&mut dom, batch);
     let before = dom.snapshot();

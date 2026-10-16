@@ -89,7 +89,15 @@ fn fresh_null_override_real_form_owner_and_barred_validation() {
     assert!(!state(&s, n).parser_inserted());
     assert!(state(&s, n).custom_validity_message().is_empty());
     assert_eq!(values(&s, d, n), ("".into(), "".into()));
-    assert_eq!(s.node(n).unwrap().as_output().unwrap().form_owner(), None);
+    assert_eq!(
+        s.node(n)
+            .unwrap()
+            .as_output()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
+        None
+    );
     let mut b = DomBatch::new();
     let form = b.create_element_ns(d, Namespace::html(), "form");
     b.insert_before(&form, root, None);
@@ -99,7 +107,12 @@ fn fresh_null_override_real_form_owner_and_barred_validation() {
     let form = c.created(&form).unwrap().unwrap();
     let s = dom.snapshot();
     assert_eq!(
-        s.node(n).unwrap().as_output().unwrap().form_owner(),
+        s.node(n)
+            .unwrap()
+            .as_output()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     assert_eq!(
@@ -145,7 +158,13 @@ fn descendant_text_is_exact_nested_physical_text_not_control_current_or_owned_co
     let c = apply(&mut dom, b);
     let template = c.created(&template).unwrap().unwrap();
     let s = dom.snapshot();
-    let contents = s.node(template).unwrap().as_template().unwrap().contents();
+    let contents = s
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
     let inert = s.node(contents).unwrap().owner_document().unwrap();
     let mut b = DomBatch::new();
     let ignored = b.create_text(inert, "ignored template contents");
@@ -329,7 +348,12 @@ fn clone_import_are_fresh_while_adoption_preserves_established_override() {
         assert!(state(&s, node).custom_validity_message().is_empty());
         assert!(!state(&s, node).parser_inserted());
         assert_eq!(
-            s.node(node).unwrap().as_output().unwrap().form_owner(),
+            s.node(node)
+                .unwrap()
+                .as_output()
+                .unwrap()
+                .form_owner()
+                .unwrap(),
             None
         );
     }
@@ -380,7 +404,8 @@ fn replace_all_removes_actual_nested_controls_and_preserves_detached_nodes() {
             .unwrap()
             .as_input()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     let mut b = DomBatch::new();
@@ -389,7 +414,12 @@ fn replace_all_removes_actual_nested_controls_and_preserves_detached_nodes() {
     let s = dom.snapshot();
     assert_eq!(s.node(radio).unwrap().parent(), None);
     assert_eq!(
-        s.node(radio).unwrap().as_input().unwrap().form_owner(),
+        s.node(radio)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         None
     );
     assert!(
@@ -406,7 +436,8 @@ fn replace_all_removes_actual_nested_controls_and_preserves_detached_nodes() {
             .unwrap()
             .as_textarea()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     assert_eq!(values(&s, d, n), ("new".into(), "old".into()));
@@ -584,7 +615,8 @@ fn first_id_form_lookup_and_owner_retirement_use_the_existing_canonical_relation
             .unwrap()
             .as_output()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     let mut b = DomBatch::new();
@@ -596,7 +628,8 @@ fn first_id_form_lookup_and_owner_retirement_use_the_existing_canonical_relation
             .unwrap()
             .as_output()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
     let old = dom.snapshot();
@@ -611,7 +644,8 @@ fn first_id_form_lookup_and_owner_retirement_use_the_existing_canonical_relation
             .unwrap()
             .as_output()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     assert!(matches!(
@@ -619,7 +653,12 @@ fn first_id_form_lookup_and_owner_retirement_use_the_existing_canonical_relation
         Err(DomError::StaleNode)
     ));
     assert_eq!(
-        old.node(n).unwrap().as_output().unwrap().form_owner(),
+        old.node(n)
+            .unwrap()
+            .as_output()
+            .unwrap()
+            .form_owner()
+            .unwrap(),
         Some(form)
     );
 }

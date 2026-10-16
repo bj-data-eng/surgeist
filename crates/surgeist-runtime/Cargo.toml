@@ -16,4 +16,11 @@ path = "src/lib.rs"
 default = []
 
 [dependencies]
+surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
+surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-dom = { path = "../surgeist-dom", version = "=0.1.0" }
+surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
+
+[dev-dependencies]
+surgeist-html-parser = { path = "../surgeist-html-parser", version = "=0.1.0" }
+surgeist-html-semantics = { path = "../surgeist-html-semantics", version = "=0.1.0" }

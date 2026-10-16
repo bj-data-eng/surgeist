@@ -86,8 +86,9 @@ impl<'a> DomInput<'a> {
             .input_state()
             .expect("checked Input")
     }
-    pub fn form_owner(self) -> Option<NodeId> {
-        self.node.node.control_owner
+    pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.node.snapshot.require_complete_source()?;
+        Ok(self.node.node.control_owner)
     }
     /// HTML's value-mode getter: exact current/default/on/empty-file readback.
     pub fn value(self) -> &'a [u16] {

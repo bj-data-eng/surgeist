@@ -235,7 +235,8 @@ fn ordinary_light_shadow_and_template_trees_keep_separate_groups() {
         .unwrap()
         .as_template()
         .unwrap()
-        .contents();
+        .contents()
+        .unwrap();
     let mut batch = DomBatch::new();
     let in_a = batch.create_element_ns(f.document, Namespace::html(), "details");
     let in_b = batch.create_element_ns(f.document, Namespace::html(), "details");

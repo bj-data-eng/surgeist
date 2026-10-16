@@ -87,7 +87,7 @@ fn connected_frame_src_updates_and_removal_keep_actual_native_null_content() {
         .document(document)
         .unwrap()
         .metadata()
-        .native_environment();
+        .document_environment();
     assert_eq!(
         environment.browsing_context(),
         HtmlBrowsingContextPresence::Absent

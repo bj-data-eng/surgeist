@@ -187,7 +187,7 @@ mod tests {
             HtmlParseBaseFacts::new(env, vec![obs], HtmlBaseFactsLimits::new(8, 8192, 10000))
                 .unwrap();
         let mut b = DomBatch::new();
-        b.bind_native_base_facts(dom.snapshot().document(d).unwrap().stamp(), &facts);
+        b.bind_base_facts(dom.snapshot().document(d).unwrap().stamp(), &facts);
         b.set_attribute(base, "href", "target");
         b.insert_before(base, d, None);
         dom.apply(b, &cancel).unwrap();

@@ -33,18 +33,23 @@ fn association(node: &DraftNode) -> Option<(bool, surgeist_html::HtmlNativeFormA
         })
 }
 impl Draft {
-    fn control_mut(&mut self, key: Key) -> &mut crate::control::NativeControlState {
+    fn control_mut(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<&mut crate::control::NativeControlState, DomError> {
+        self.prepare_family_mutation(key, cancel)?;
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
             unreachable!("checked native control")
         };
-        element
+        Ok(element
             .native_control_mut()
-            .expect("checked native control")
+            .expect("checked native control"))
     }
     pub(super) fn set_custom_validity(
         &mut self,
         key: Key,
-        raw: DocumentString,
+        raw: &DocumentString,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -55,9 +60,9 @@ impl Draft {
             .len();
         let mut length = 0usize;
         let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
-        for &unit in raw.code_units() {
-            check_cancel(cancel)?;
-            if normalizer.push(unit).is_some() {
+        for unit in raw.code_units() {
+            self.source_step(cancel)?;
+            if normalizer.push(*unit).is_some() {
                 length = length
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -67,19 +72,41 @@ impl Draft {
             .checked_add(length)
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let mut normalized = Vec::new();
-        reserve(&mut normalized, length)?;
+        #[cfg(test)]
+        let growth = style::formation::mutation_observation::before(
+            self,
+            style::formation::mutation_observation::Site::CustomValidity,
+            cancel,
+        )?;
+        let formation = style::formation::Formation::new(self, cancel)?;
+        let mut normalized = match &formation {
+            Some(formation) => {
+                style::formation::utf16_buffer(length, limits.units, Some(formation), cancel)?
+            }
+            None => {
+                let mut output = Vec::new();
+                reserve(&mut output, length)?;
+                output
+            }
+        };
         let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
-        for &unit in raw.code_units() {
-            check_cancel(cancel)?;
-            if let Some(unit) = normalizer.push(unit) {
-                check_cancel(cancel)?;
+        for unit in raw.code_units() {
+            self.source_step(cancel)?;
+            if let Some(unit) = normalizer.push(*unit) {
+                self.source_step(cancel)?;
                 normalized.push(unit);
             }
         }
-        check_cancel(cancel)?;
-        self.control_mut(key).message = DocumentString::from_utf16(normalized);
+        self.source_step(cancel)?;
+        let normalized = DocumentString::from_utf16(normalized);
+        #[cfg(test)]
+        style::formation::mutation_observation::grew(
+            growth,
+            size_of::<Vec<u16>>() + normalized.shared_code_units().capacity() * size_of::<u16>(),
+        );
+        self.control_mut(key, cancel)?.message = normalized;
         self.units = units;
+        drop(formation);
         Ok(())
     }
     pub(super) fn control_attribute(
@@ -92,15 +119,9 @@ impl Draft {
             return Ok(None);
         };
         for attribute in element.attributes().iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if attribute.name().namespace().uri().is_none()
-                && attribute
-                    .name()
-                    .local_name()
-                    .code_units()
-                    .iter()
-                    .copied()
-                    .eq(name.local_name().encode_utf16())
+                && self.source_ascii(attribute.name().local_name(), name.local_name(), cancel)?
             {
                 return Ok(Some(attribute.value()));
             }
@@ -121,7 +142,7 @@ impl Draft {
     fn nearest_form(&self, key: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
         let mut next = self.node(key)?.parent;
         while let Some(key) = next {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if self.is_form(key)? {
                 return Ok(Some(key));
             }
@@ -135,7 +156,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         loop {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             match self.shadow_including_parent(key)? {
                 Some(parent) => key = parent,
                 None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
@@ -149,10 +170,10 @@ impl Draft {
         let root = crate::slot::root(self, key, cancel)?;
         let mut next = Some(root);
         while let Some(candidate) = next {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if let Some(id) = self.control_attribute(candidate, KnownHtmlAttribute::Id, cancel)?
                 && !id.is_empty()
-                && same_units(id, value, cancel)?
+                && self.same_control_units(id, value, cancel)?
             {
                 return Ok(self.is_form(candidate)?.then_some(candidate));
             }
@@ -171,13 +192,13 @@ impl Draft {
         let mut found = None;
         let mut cursor = HtmlFormOwnerResetCursor::new(kind.listed(), owner.is_some());
         loop {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
                     if let Some(image) = self.node_mut(key).image.as_mut() {
                         image.parser_inserted = false;
                     } else {
-                        self.control_mut(key).parser_inserted = false;
+                        self.control_mut(key, cancel)?.parser_inserted = false;
                     }
                     R::Applied
                 }
@@ -275,7 +296,7 @@ impl Draft {
         // The actual ID event selects listed, form-attribute-bearing subjects;
         // this is not an end-batch repair or an unconditional control reset.
         for index in 0..self.existing.len() + self.created.len() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             let key = if index < self.existing.len() {
                 Key::Existing(index)
             } else {
@@ -388,7 +409,7 @@ impl Draft {
             let new = new.filter(|value| !value.is_empty());
             let changed = match (old, new) {
                 (None, None) => false,
-                (Some(a), Some(b)) => !same_units(a, b, cancel)?,
+                (Some(a), Some(b)) => !self.same_control_units(a, b, cancel)?,
                 _ => true,
             };
             if changed {
@@ -397,22 +418,26 @@ impl Draft {
         }
         Ok(())
     }
-}
-fn same_units(
-    a: &DocumentString,
-    b: &DocumentString,
-    cancel: &AtomicBool,
-) -> Result<bool, DomError> {
-    if a.len() != b.len() {
-        return Ok(false);
-    }
-    for (&a, &b) in a.code_units().iter().zip(b.code_units()) {
-        check_cancel(cancel)?;
-        if a != b {
+    fn same_control_units(
+        &self,
+        a: &DocumentString,
+        b: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self.source_limits.is_some() {
+            self.source_step(cancel)?;
+        }
+        if a.len() != b.len() {
             return Ok(false);
         }
+        for (a, b) in a.code_units().iter().zip(b.code_units()) {
+            self.source_step(cancel)?;
+            if a != b {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
-    Ok(true)
 }
 
 #[cfg(test)]

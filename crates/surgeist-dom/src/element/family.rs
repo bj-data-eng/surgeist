@@ -1,7 +1,12 @@
 //! Actual native family state; cloning this storage preserves snapshots, while
 //! DOM single-node cloning selects fresh initialization before copied attrs.
+use crate::store::style::{
+    formation::Formation,
+    storage::{self, Payload},
+};
 use crate::{Attribute, DocumentString, DomError, QualifiedName};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use surgeist_html::bounded::{
     IntegerPrefixScanner, IntegerUnitStepError, NumericMaterializationError,
 };
@@ -11,17 +16,27 @@ use surgeist_html::{
     KnownHtmlAttribute,
 };
 
+pub(super) struct AttributeMutation<'a> {
+    pub element_name: &'a QualifiedName,
+    pub name: &'a QualifiedName,
+    pub previous: &'a [Attribute],
+    pub attributes: &'a [Attribute],
+    pub removed: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum NativeFamily {
+pub(crate) enum NativeFamily {
     Common,
     Details,
+    Meta,
+    Style(Arc<crate::DomStyleState>),
     Base,
     Link,
     Img,
     Picture,
     Source,
     Hyperlink,
-    Template(surgeist_html::HtmlTemplateFreshInsertionState),
+    Template,
     Form(surgeist_html::HtmlFormNativeState),
     Fieldset(crate::DomFieldsetState),
     Button(crate::DomButtonState),
@@ -60,13 +75,15 @@ impl NativeFamily {
             Self::Form(_)
             | Self::Common
             | Self::Details
+            | Self::Meta
+            | Self::Style(_)
             | Self::Base
             | Self::Link
             | Self::Img
             | Self::Picture
             | Self::Source
             | Self::Hyperlink
-            | Self::Template(_)
+            | Self::Template
             | Self::Option(_)
             | Self::Optgroup
             | Self::Selectedcontent(_)
@@ -81,17 +98,22 @@ impl NativeFamily {
 
     pub(super) fn after_attribute(
         &self,
-        element_name: &QualifiedName,
-        name: &QualifiedName,
-        previous: &[Attribute],
-        attributes: &[Attribute],
-        removed: bool,
+        change: AttributeMutation<'_>,
         admit: &mut impl FnMut() -> Result<(), DomError>,
+        budget: Option<&Formation>,
+        cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
+        let AttributeMutation {
+            element_name,
+            name,
+            previous,
+            attributes,
+            removed,
+        } = change;
         if matches!(self, Self::Frame(_) | Self::Iframe(_)) {
             // One actual child-navigable hook boundary. The common src guard
             // checks content before Iframe's additional srcdoc-absence condition.
-            if attribute_is(name, KnownHtmlAttribute::Src) {
+            if attribute_is(name, KnownHtmlAttribute::Src, budget, cancel)? {
                 admit()?;
                 let process = match self {
                     Self::Frame(state) => state.src_change_requires_processing(),
@@ -103,12 +125,12 @@ impl NativeFamily {
                 }
             }
             if let Self::Iframe(state) = self {
-                if attribute_is(name, KnownHtmlAttribute::Srcdoc) {
+                if attribute_is(name, KnownHtmlAttribute::Srcdoc, budget, cancel)? {
                     admit()?;
                     if state.srcdoc_change_requires_processing() {
                         unreachable!("stored native null content cannot process srcdoc")
                     }
-                } else if attribute_is(name, KnownHtmlAttribute::Sandbox) {
+                } else if attribute_is(name, KnownHtmlAttribute::Sandbox, budget, cancel)? {
                     admit()?;
                     let process = if removed {
                         state.sandbox_removal_requires_clearing()
@@ -118,9 +140,9 @@ impl NativeFamily {
                     if process {
                         unreachable!("stored native unprocessed sandbox has no live policy write")
                     }
-                } else if attribute_is(name, KnownHtmlAttribute::Loading) {
-                    let old = loading_state(element_name, previous, admit)?;
-                    let current = loading_state(element_name, attributes, admit)?;
+                } else if attribute_is(name, KnownHtmlAttribute::Loading, budget, cancel)? {
+                    let old = loading_state(element_name, previous, admit, budget, cancel)?;
+                    let current = loading_state(element_name, attributes, admit, budget, cancel)?;
                     admit()?;
                     if surgeist_html::iframe_loading_became_eager(old, current)
                         && !state.lazy_load_resumption_is_null()
@@ -131,48 +153,130 @@ impl NativeFamily {
                     }
                 }
             }
-            return Ok(self.clone());
+            return self.shared(budget, cancel);
         }
-        if !matches!(self, Self::Canvas(_)) || dimension(name).is_none() {
-            return Ok(self.clone());
+        if !matches!(self, Self::Canvas(_)) || dimension(name, budget, cancel)?.is_none() {
+            return self.shared(budget, cancel);
         }
-        // Read the complete actual candidate attributes. Recomputing both
-        // dimensions through shared grammar avoids cloning unbounded Strings.
+        Self::canvas_from_attributes(attributes, admit, budget, cancel)
+    }
+    fn shared(&self, budget: Option<&Formation>, cancel: &AtomicBool) -> Result<Self, DomError> {
+        if let Some(budget) = budget {
+            budget.retain_payload(
+                storage::family_payload(self, || budget.step(cancel))?,
+                cancel,
+            )?;
+        }
+        Ok(self.clone())
+    }
+    /// Pure owned Canvas dimension interpretation shared with actual retained
+    /// materialization; this performs no attribute hooks or bitmap reset.
+    pub(crate) fn canvas_from_attributes(
+        attributes: &[Attribute],
+        admit: &mut impl FnMut() -> Result<(), DomError>,
+        budget: Option<&Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
         let mut width = None;
         let mut height = None;
         for attribute in attributes {
             admit()?;
-            match dimension(attribute.name()) {
-                Some(Dimension::Width) => width = parse_dimension(attribute.value(), admit)?,
-                Some(Dimension::Height) => height = parse_dimension(attribute.value(), admit)?,
-                None => {}
+            let target = match dimension(attribute.name(), budget, cancel)? {
+                Some(Dimension::Width) => &mut width,
+                Some(Dimension::Height) => &mut height,
+                None => continue,
+            };
+            let parsed = parse_dimension(attribute.value(), admit, budget, cancel)?;
+            let old_bytes = target
+                .as_ref()
+                .map_or(0, HtmlNonNegativeInteger::retained_buffer_bytes);
+            *target = parsed;
+            if let Some(budget) = budget {
+                budget.release_payload(Payload {
+                    bytes: old_bytes,
+                    units: old_bytes,
+                });
             }
         }
-        Ok(Self::Canvas(Arc::new(
-            HtmlCanvasNoneState::from_parsed_attributes(width, height),
-        )))
+        if let Some(budget) = budget {
+            // The owner documents at most three canonical digits per default
+            // normalization. It consumes the parsed integers without copying.
+            for _ in 0..6 {
+                budget.step(cancel)?;
+            }
+        }
+        let before = width
+            .as_ref()
+            .map_or(0, HtmlNonNegativeInteger::retained_buffer_bytes)
+            .checked_add(
+                height
+                    .as_ref()
+                    .map_or(0, HtmlNonNegativeInteger::retained_buffer_bytes),
+            )
+            .ok_or(DomError::RepresentationExhausted)?;
+        let state = HtmlCanvasNoneState::from_parsed_attributes(width, height);
+        if let Some(budget) = budget {
+            let mut retained = 0usize;
+            for dimension in [state.width(), state.height()] {
+                if let HtmlCanvasBitmapDimension::Parsed(value) = dimension {
+                    retained = retained
+                        .checked_add(value.retained_buffer_bytes())
+                        .ok_or(DomError::RepresentationExhausted)?;
+                }
+            }
+            let released = before
+                .checked_sub(retained)
+                .expect("normalization only releases parsed inputs");
+            budget.release_payload(Payload {
+                bytes: released,
+                units: released,
+            });
+            budget.retain_bytes(std::mem::size_of::<HtmlCanvasNoneState>(), cancel)?;
+        }
+        Ok(Self::Canvas(Arc::new(state)))
     }
 }
 
-fn attribute_is(name: &QualifiedName, attribute: KnownHtmlAttribute) -> bool {
-    name.namespace().uri().is_none()
-        && name
-            .local_name()
-            .code_units()
-            .iter()
-            .copied()
-            .eq(attribute.local_name().encode_utf16())
+fn attribute_is(
+    name: &QualifiedName,
+    attribute: KnownHtmlAttribute,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<bool, DomError> {
+    if let Some(budget) = budget {
+        budget.step(cancel)?;
+    }
+    if name.namespace().uri().is_some() {
+        return Ok(false);
+    }
+    let mut expected = attribute.local_name().encode_utf16();
+    for unit in name.local_name().code_units() {
+        if let Some(budget) = budget {
+            budget.step(cancel)?;
+        }
+        if Some(*unit) != expected.next() {
+            return Ok(false);
+        }
+    }
+    Ok(expected.next().is_none())
 }
 
 fn loading_state(
     element: &QualifiedName,
     attributes: &[Attribute],
     admit: &mut impl FnMut() -> Result<(), DomError>,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
 ) -> Result<HtmlLoading, DomError> {
     let mut raw = None;
     for attribute in attributes {
         admit()?;
-        if attribute_is(attribute.name(), KnownHtmlAttribute::Loading) {
+        if attribute_is(
+            attribute.name(),
+            KnownHtmlAttribute::Loading,
+            budget,
+            cancel,
+        )? {
             raw = Some(attribute);
             break;
         }
@@ -182,46 +286,83 @@ fn loading_state(
     // fixed keywords (at most five units each), with no unbounded materialization.
     // It owns missing/invalid defaults. Exact raw length admits either operand
     // without inventing a separate host fact or policy limit.
+    let mut report_payload = Payload::default();
+    if let Some(budget) = budget {
+        report_payload.name(element)?;
+        if let Some(raw) = raw {
+            report_payload.name(raw.name())?;
+            report_payload.string(raw.value())?;
+        }
+        budget.retain_payload(report_payload, cancel)?;
+        // The actual LOADING rule first checks attribute/namespace, performs
+        // one closed KnownHtmlElement lookup and compares its two keywords.
+        // Preadmit the complete public-vocabulary lookup (early match reduces
+        // it), both namespace comparisons, and both raw keyword comparisons.
+        budget.step(cancel)?;
+        for _ in 0..2 {
+            for _ in 0..=element.namespace().uri().map_or(0, DocumentString::len) {
+                budget.step(cancel)?;
+            }
+        }
+        for known in surgeist_html::KnownHtmlElement::ALL {
+            budget.step(cancel)?;
+            for _ in 0..=known.local_name().len() {
+                budget.step(cancel)?;
+            }
+        }
+        if let Some(raw) = raw {
+            for _ in 0..=raw.name().local_name().len() {
+                budget.step(cancel)?;
+            }
+            for _ in [HtmlLoading::Lazy, HtmlLoading::Eager] {
+                budget.step(cancel)?;
+                for _ in 0..=raw.value().len() {
+                    budget.step(cancel)?;
+                }
+            }
+        }
+    }
     let report = HtmlValueInterpreter::new(raw.map_or(0, |a| a.value().len()))
         .loading(element, raw)
         .expect("actual admitted attribute fits its exact raw-unit cap");
-    Ok(*report
+    let value = *report
         .intrinsic()
-        .expect("actual HTML Iframe loading rule is applicable"))
+        .expect("actual HTML Iframe loading rule is applicable");
+    drop(report);
+    if let Some(budget) = budget {
+        budget.release_payload(report_payload);
+    }
+    Ok(value)
 }
 
 enum Dimension {
     Width,
     Height,
 }
-fn dimension(name: &QualifiedName) -> Option<Dimension> {
-    if name.namespace().uri().is_some() {
-        return None;
-    }
-    let matches = |attribute: KnownHtmlAttribute| {
-        name.local_name()
-            .code_units()
-            .iter()
-            .copied()
-            .eq(attribute.local_name().encode_utf16())
-    };
-    if matches(KnownHtmlAttribute::Width) {
-        Some(Dimension::Width)
-    } else if matches(KnownHtmlAttribute::Height) {
-        Some(Dimension::Height)
+fn dimension(
+    name: &QualifiedName,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<Option<Dimension>, DomError> {
+    if attribute_is(name, KnownHtmlAttribute::Width, budget, cancel)? {
+        Ok(Some(Dimension::Width))
+    } else if attribute_is(name, KnownHtmlAttribute::Height, budget, cancel)? {
+        Ok(Some(Dimension::Height))
     } else {
-        None
+        Ok(None)
     }
 }
 
 fn parse_dimension(
     raw: &DocumentString,
     admit: &mut impl FnMut() -> Result<(), DomError>,
+    budget: Option<&Formation>,
+    cancel: &AtomicBool,
 ) -> Result<Option<HtmlNonNegativeInteger>, DomError> {
     let mut scanner = IntegerPrefixScanner::new(true);
-    for &unit in raw.code_units() {
+    for unit in raw.code_units() {
         admit()?;
-        if !scanner.feed(unit) {
+        if !scanner.feed(*unit) {
             break;
         }
     }
@@ -229,12 +370,37 @@ fn parse_dimension(
     let Ok(prefix) = scanner.finish() else {
         return Ok(None);
     };
+    if let Some(budget) = budget {
+        let visits = prefix
+            .end()
+            .checked_sub(prefix.start())
+            .and_then(|n| n.checked_mul(2))
+            .and_then(|n| n.checked_add(2))
+            .ok_or(DomError::RepresentationExhausted)?;
+        for _ in 0..visits {
+            budget.step(cancel)?;
+        }
+    }
     let Ok(digits) = prefix.try_nonnegative_digits(raw.code_units()) else {
         return Ok(None);
     };
     admit()?;
-    HtmlNonNegativeInteger::from_borrowed_digits_work_bound(digits.len())
+    let work = HtmlNonNegativeInteger::from_borrowed_digits_work_bound(digits.len())
         .ok_or(DomError::RepresentationExhausted)?;
+    if let Some(budget) = budget {
+        for _ in 0..work {
+            budget.step(cancel)?;
+        }
+        // The original bounded numeric materializer owns the byte capacity
+        // limit; no private String layout or numeric grammar is reproduced.
+        budget.retain_payload(
+            Payload {
+                bytes: digits.len(),
+                units: digits.len(),
+            },
+            cancel,
+        )?;
+    }
     // Scratch is bounded by the admitted raw prefix, independently of the
     // final digit charge (explicit defaults normalize to inline values).
     let materialized =
@@ -245,8 +411,19 @@ fn parse_dimension(
                 ) => DomError::RepresentationExhausted,
                 _ => DomError::AllocationFailed,
             })?;
+    let (value, bytes) = materialized.into_parts();
+    if let Some(budget) = budget {
+        let released = digits
+            .len()
+            .checked_sub(bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        budget.release_payload(Payload {
+            bytes: released,
+            units: released,
+        });
+    }
     admit()?;
-    Ok(Some(materialized.into_parts().0))
+    Ok(Some(value))
 }
 
 #[cfg(test)]
@@ -261,13 +438,24 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut reads = 0;
         let element = QualifiedName::new(crate::Namespace::html(), None, "canvas");
-        let result = family.after_attribute(&element, &name, &[], &attributes, false, &mut || {
-            reads += 1;
-            if reads == 5 {
-                cancel.store(true, Ordering::Release);
-            }
-            crate::store::check_cancel(&cancel)
-        });
+        let result = family.after_attribute(
+            AttributeMutation {
+                element_name: &element,
+                name: &name,
+                previous: &[],
+                attributes: &attributes,
+                removed: false,
+            },
+            &mut || {
+                reads += 1;
+                if reads == 5 {
+                    cancel.store(true, Ordering::Release);
+                }
+                crate::store::check_cancel(&cancel)
+            },
+            None,
+            &cancel,
+        );
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(reads, 5);
         assert_eq!(family.units(), Some(0));

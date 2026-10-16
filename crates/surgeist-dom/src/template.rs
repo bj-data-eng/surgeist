@@ -1,6 +1,44 @@
 //! Source-owned Template relations in the canonical DOM identity phase.
 use crate::{DocumentId, DomDocument, DomNode, NodeId};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TemplatePatch<K> {
+    pub(crate) target: Option<K>,
+    pub(crate) start: Option<K>,
+    pub(crate) end: Option<K>,
+}
+impl<K: Copy> TemplatePatch<K> {
+    pub(crate) const fn fresh() -> Self {
+        Self {
+            target: None,
+            start: None,
+            end: None,
+        }
+    }
+    pub(crate) fn map<T>(self, map: impl Fn(K) -> T) -> TemplatePatch<T> {
+        TemplatePatch {
+            target: self.target.map(&map),
+            start: self.start.map(&map),
+            end: self.end.map(map),
+        }
+    }
+}
+/// Actual canonical Template insertion references in this snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomTemplatePatch {
+    pub(crate) state: TemplatePatch<NodeId>,
+}
+impl DomTemplatePatch {
+    pub fn target(self) -> Option<NodeId> {
+        self.state.target
+    }
+    pub fn start(self) -> Option<NodeId> {
+        self.state.start
+    }
+    pub fn end(self) -> Option<NodeId> {
+        self.state.end
+    }
+}
 /// Whether HTML's template-owner algorithm actually created this Document.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomTemplateDocumentRole {
@@ -49,7 +87,7 @@ impl<K: Copy> TemplateDocument<K> {
 /// let commit = dom.apply(batch, &cancel)?;
 /// let old = dom.snapshot();
 /// let template = old.node(commit.created(&template)?.unwrap())?.as_template().unwrap();
-/// let contents = template.contents();
+/// let contents = template.contents()?;
 /// let owner = old.node(contents)?.owner_document().unwrap();
 /// let mut batch = DomBatch::new();
 /// let text = batch.create_text(owner, "body");
@@ -67,25 +105,31 @@ impl DomTemplate<'_> {
     pub fn id(self) -> NodeId {
         self.node.id()
     }
-    pub fn contents(self) -> NodeId {
+    /// The actual retained contents relation, including a source-internal shadow
+    /// reference. Explicit target retirement makes that relation unavailable.
+    /// This structural view is not HTML's content IDL getter, whose assertion
+    /// excludes a ShadowRoot reference.
+    pub fn contents(self) -> Result<NodeId, crate::DomError> {
         self.node
             .node
             .template_contents
-            .expect("initialized native Template")
+            .ok_or(crate::DomError::TemplateContentsUnavailable)
     }
-    /// Known-null native references. Parser patching/installation is a different
-    /// creation cause, which this native surface does not expose.
-    pub fn insertion_state(self) -> surgeist_html::HtmlTemplateFreshInsertionState {
-        self.node
-            .as_element()
-            .expect("Template element")
-            .template_insertion_state()
-            .expect("actual native Template state")
+    pub fn insertion_state(self) -> DomTemplatePatch {
+        DomTemplatePatch {
+            state: self
+                .node
+                .node
+                .template_patch
+                .expect("actual Template patch slots"),
+        }
     }
 }
 impl<'a> DomNode<'a> {
     pub fn as_template(self) -> Option<DomTemplate<'a>> {
-        self.as_element()?.template_insertion_state()?;
+        if !self.as_element()?.is_template() {
+            return None;
+        }
         Some(DomTemplate { node: self })
     }
     /// Actual DocumentFragment host, including Template contents and ShadowRoots.

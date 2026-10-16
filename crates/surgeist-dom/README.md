@@ -456,9 +456,13 @@ setters additionally require `with_select_value_queries(HtmlCaptureLimits,
 HtmlSemanticLimits)`. One sequential producer capture has its own finite retention
 limits. Producer semantic work and allocated bytes are cumulative over every
 Option query in a private batch; other semantic limits apply per query. These
-producer domains are separate from actual DOM temporary/effect banks. Native
-cancellation is polled before/after each finite synchronous producer call and
-through DOM steps; it does not cancel inside the producer's independent token.
+producer domains remain separate from DOM temporary/effect banks. The adapter
+passes the caller's cancellation token through the original capture and query
+algorithms, and preserves producer usage on both success and refusal. During a
+composed Source edit, its remaining live-byte, UTF-16 and work allowance also
+covers the synchronous producer graph, interleaved DOM mapping banks and the
+returned value occurrence. The producer graph remains admitted until the
+returned value has its own storage admission; resuming preserves spent work.
 
 Real Option removal queues duplicate-preserving UpdateSelect intentions in the
 same FIFO as one coalesced Slot marker. Checkpoint handoff leaves the Select head
@@ -592,7 +596,7 @@ and freezing Document remain distinct. Clone/import starts unfrozen, then copied
 attributes and actual insertion run fresh hooks. Native immutable installation
 has the same fresh cause, without replaying parser history.
 
-`DomBatch::bind_native_base_facts` consumes an exact `DomDocumentStamp` and the
+`DomBatch::bind_base_facts` consumes an exact `DomDocumentStamp` and the
 producer's immutable `HtmlParseBaseFacts`. This explicitly binds external
 observations to that actual native about:blank/UTF8 environment. The supplied
 opaque encoding identity is bound to the known native encoding, rather than
@@ -639,7 +643,7 @@ Documents have never been active in a navigable, so node navigable is null and
 HTML877d76574's top-level guard returns before flag/task access. Current batch
 commands and host observations admit no UI recipient or selector/style executor.
 DOM publishes actual `DocumentBase` invalidation and frozen `ElementState` changes;
-`NativeFactsPublished` certifies that bounded canonical publication, not UI,
+`FactsPublished` certifies that bounded canonical publication, not UI,
 CSSOM or task delivery. Identical qualified refreezes whose actual state/effects
 remain unchanged are canonical no-ops, without fabricated history counters.
 
@@ -677,7 +681,7 @@ frozen record when present; it does not substitute the fallback or rerun Base's
 CSP selection. Exact equal optional href values and namespaced attributes return
 before parsing, including after adoption. Present-empty href still parses.
 
-`DomBatch::bind_native_encoding_url_facts` binds immutable producer observations to
+`DomBatch::bind_encoding_url_facts` binds immutable producer observations to
 an exact initial `DomDocumentStamp`. The existing native Base-facts binding
 establishes opaque URL/encoding identities against the real UTF8/about:blank
 Document environment; identity binding never infers a charset from an arbitrary
@@ -878,9 +882,63 @@ capture; `revalidate` checks the live owner and reports `SkippedDestroyedTarget`
 without following generation reuse. Later signals belong to the next checkpoint.
 New pending work advances the revision even when final node values are restored.
 
+Native HTML Style retains its creation history and nullable CSSOM association.
+Ordinary atomic edits refuse at an external processing boundary without
+publishing a partial edit. `begin_style_batch` instead runs the same canonical
+source engine and returns a lease for actual external requests. Once a source
+phase publishes, dropping the lease parks its mandatory continuation in the DOM;
+`resume_style_edit` reacquires that exact operation. An acknowledged CSSOM
+publication is retained across a failed later DOM segment and is not reissued.
+Cancellation can discard unstarted later commands, but does not roll back an
+already published phase or fabricate its completion.
+
+`DomStyleEditLimits` bounds represented live bytes, UTF-16 backing capacity,
+cumulative work, phase publications, output records and published native
+identities. Storage includes simultaneous private candidates, checkpoints,
+temporary banks and retained outputs. Shared immutable payloads are charged per
+retained occurrence; allocator metadata and Arc control blocks are excluded.
+Growth admits requested replacement storage while the old bank is live and
+checks actual capacity afterwards. These are representation limits, not a
+physical-memory ceiling. CSS and CSSOM keep their independent producer limits.
+
+Before exposing an external phase, the source owner reserves checked revision,
+invocation and association headroom for its mandatory current-command tail.
+Finite work or storage refusal can preserve that tail for a raised-budget retry;
+retry retains spent work and acknowledged effects. Independent Base, Meta,
+Select and numerical limits remain separate and can be raised through
+`set_limits` without resetting their retained usage. Changes to cumulative
+OptionValue work and allocated-byte budgets must cover the amounts already
+spent by the retained operation.
+
+Style processing retains the actual mutable CSSOM store through
+`DomStyleCssomRoot`, independently of an execution lease. Binding admits the
+canonical root bank before external publication. `style_cssom_root` reissues
+access to that exact live root's retained owner, returns `None` for a missing
+binding and refuses an incomplete source tail or invalid root identity. Busy or
+poisoned access preserves custody and any unattempted commit envelope. Root
+retirement releases canonical custody; independently held access capabilities
+may outlive it without pinning the tree. Snapshots preserve historical identities
+but do not keep a mutable CSSOM owner alive.
+
+`set_style_disabled` changes the existing associated sheet's flag through this
+source protocol. A null-sheet assignment does nothing and cannot become a flag
+for a later-created sheet. The operation preserves sheet identity and association
+serial and queues no new load/error notification. Current CSSOM flags must be
+read from the actual retained owner, independently of a historical association's
+receipt revision; a flag read does not establish resource readiness. Pending
+parsed Style processing remains explicit and cannot certify a null sheet.
+
+The exclusive standalone `Dom` is `Send`, including a parked published source
+tail, its acknowledged receipt and mutable CSSOM custody. Transfer moves the
+whole owner; it does not reconstruct identity from a snapshot or authorize
+concurrent writers. Private numerical accounting uses shared atomics while
+owner-local cells remain, so this contract does not provide `Sync`. Runtime owns
+its separate session, resource/task lifecycle and controlled event reentry.
+
 Native HTML Template owns a separate real DocumentFragment. Its checked
 `DomNode::as_template()` view exposes contents and the HTML-owned known-null native
-insertion state. Use the contents NodeId in ordinary edits; ordinary Template
+insertion state. Its structural `contents()` read returns `Result<NodeId, DomError>`;
+use the contents NodeId in ordinary edits. Ordinary Template
 children remain a different, legal native DOM child list. A connected Template
 does not connect its contents. `fragment_host` and host-including cycle checks
 cross its ownership edge; shadow ancestry, tree scopes and CSS flat queries do not.
@@ -906,9 +964,15 @@ covers derived ownership/cache facts separately from shadow relations.
 Direct explicit destroy of genuinely owned contents returns InvalidDestruction,
 even when empty, parentless or adopted elsewhere. Destroy the detached owning
 Template to retire its owned contents/nested/shadow closure atomically; old captures
-and shared inert Documents survive. A non-owning declarative-shadow reference
-would not be an ownership edge; native creation does not fabricate that state.
-Native for/shadow attributes do not start parser patching. Declarative/retained
+and shared inert Documents survive. A retained declarative-shadow reference is
+non-owning: its target is an actual ShadowRoot with its own host. Detaching,
+adopting or destroying the referring Template preserves that root. Retiring the
+actual root clears each matching incoming reference before identity reuse, after
+which `contents()` returns `DomError::TemplateContentsUnavailable`. Old snapshots
+retain their original reference. Cloning reads the source contents' children into
+the copy's fresh owned fragment; it does not clone the referenced root as owned.
+Captures preserve the distinct shadow-reference relation. Native creation and
+for/shadow attributes do not fabricate that parser state or start patching. Declarative/retained
 HTML installation, registry objects and HTML callbacks still require their real
 adapters, as do #1124's remaining language/control/pseudo/host capabilities.
 
@@ -1162,8 +1226,42 @@ Declarative shadow relationships and hosted source fragment roots receive typed
 association refusals: native attachment cannot supply retained declarative/root
 document facts. Unsupported native families retain their actual requirement
 errors. A bare fragment does not carry complete parse-report context, provenance,
-effects or remaps; passing one explicitly requests native creation. Full parsed
-document/contextual-fragment transfer and report adoption remain under #1135.
+effects or remaps; passing one explicitly requests native creation.
+
+`Dom::install_parsed_html_document` separately transfers an admitted completed
+offline parser report into a fresh canonical Document. The caller supplies the
+current store stamp and explicit URL, opaque encoding, origin and destination
+input-platform facts through `DomParsedDocumentEnvironment`. The operation
+preserves actual construction state and publishes fresh canonical identities,
+without replaying native attribute or insertion hooks.
+
+`Dom::install_parsed_html_fragment` checks the original `DomHtmlCapture` against
+the actual current target and materializes a detached fragment in that Document.
+It applies the report's ordered Template-cache and shadow-attachment effects;
+it does not implicitly append the fragment to its context. Retained auxiliary
+parser Documents remain distinct from the captured target and template owners.
+`DomParsedHtmlInstallation` keeps the report, installed snapshot, changes and
+separate construction-subject and captured-subject bindings as historical data.
+Subsequent edits cannot extend or rewrite those bindings.
+
+The current profile requires the report's supported closed scripting, registry,
+image and Document-policy qualifications. Missing required family or historical
+state, a stale or foreign capture, incompatible environment, cancellation or
+admission failure refuses the complete installation. The adapter separately
+bounds mapped subjects, work, historical backing and simultaneous scratch
+capacities, including old and replacement vectors during growth. Canonical
+Draft and publication retain their own limits. Downstream associations are
+explicitly pending; installation does not execute resources, CSSOM or callbacks.
+For captured historical hyperlink observations, installation checks the actual
+parse Document against its current canonical Base selection, opaque encoding,
+full independently bound revision and exact raw-input outcome before and after
+the ordered construction effects. Missing or changed required facts receive
+`CurrentPolicyUnavailable`. Auxiliary parser and inert-owner history keep their
+original roles. An optional unused whole captured Base bank remains fully charged
+historical request data; it does not override the current canonical bindings.
+Contextual SVG processing and the remaining report profiles stay under
+[#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
+
 Remaining native special families and XML DOMImplementation creation also remain
 unadmitted capabilities. This crate does not claim complete DOM or
 HTML conformance. Those remaining

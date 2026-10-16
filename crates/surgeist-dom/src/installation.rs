@@ -1,7 +1,5 @@
 //! Explicit fresh-native installation, distinct from complete parser reports.
-use crate::{
-    DocumentId, DomChanges, DomCommit, DomDocumentStamp, DomError, DomSnapshot, DomStamp, NodeId,
-};
+use crate::{DocumentId, DomChanges, DomDocumentStamp, DomError, DomSnapshot, DomStamp, NodeId};
 use surgeist_html::HtmlNodeId;
 
 /// Adapter-owned source/map work and simultaneous retained heap storage.
@@ -128,7 +126,7 @@ pub struct DomNativeHtmlInstallation {
     pub(crate) source_root: HtmlNodeId,
     pub(crate) root: NodeId,
     pub(crate) snapshot: DomSnapshot,
-    pub(crate) commit: DomCommit,
+    pub(crate) changes: crate::DomChanges,
     pub(crate) bindings: Vec<DomNativeHtmlBinding>,
 }
 impl DomNativeHtmlInstallation {
@@ -148,7 +146,7 @@ impl DomNativeHtmlInstallation {
         &self.snapshot
     }
     pub fn changes(&self) -> &DomChanges {
-        self.commit.changes()
+        &self.changes
     }
     pub fn bindings(&self) -> &[DomNativeHtmlBinding] {
         &self.bindings

@@ -7,7 +7,7 @@
 | Cargo package | `surgeist-runtime` `0.1.0` | [Cargo.toml](../Cargo.toml) |
 | Rust library import | `surgeist_runtime` | [Cargo.toml](../Cargo.toml) |
 | Edition / minimum Rust | `2024` / `1.97` | [Cargo.toml](../Cargo.toml) |
-| Dependencies | None declared | [Cargo.toml](../Cargo.toml) |
+| Production dependencies | CSS, CSSOM, DOM and HTML; parser and HTML semantics are test dependencies | [Cargo.toml](../Cargo.toml) |
 | Features | Empty `default` feature set; no other features declared | [Cargo.toml](../Cargo.toml) |
 | License | MIT | [LICENSE](../LICENSE) |
 | Public entry point | Reexports from `src/lib.rs`; implementation modules are private | [lib.rs](../src/lib.rs) |
@@ -26,6 +26,10 @@
 | Services | Registration metadata, `ServiceMailbox`, `MailboxPolicy`, `MailboxPushOutcome` in [service.rs](../src/service.rs) |
 | Authored app contracts | `AppManifest::validate`, `ValidatedAppManifest`, `App::try_new` in [descriptor.rs](../src/descriptor.rs); snapshot declarations and entries in [snapshot.rs](../src/snapshot.rs) |
 | Causal context | Source-specific origins, current/parent correlations and sequence in [provenance.rs](../src/provenance.rs) |
+| Canonical host association | Generation-qualified surface focus/hover captures in [dom_host.rs](../src/dom_host.rs) |
+| Native event dispatch | Controlled `DomEventDom` access, listener registration, immutable dispatch paths and resumable progress in [dom_event.rs](../src/dom_event.rs) |
+| Style orchestration | `DomStyleSession`, execution permissions, resource custody and source/networking progress in [dom_style.rs](../src/dom_style.rs) |
+| Details orchestration | Bounded toggle tasks over the shared dispatcher in [dom_details.rs](../src/dom_details.rs) |
 
 ## Capacity and scheduling values
 
@@ -63,8 +67,8 @@ The source-backed first-success command is in [getting started](getting-started.
 
 ## Repository boundary
 
-This workspace crate owns its runtime source and public exports. Root `surgeist`
-owns cross-crate adapters, facade composition, integration tests, workspace
-wiring, and generated API audit artifacts. The crate carries no generated API
+This workspace crate owns its runtime source, public exports and consumer adapters
+to lower-level crates. Root `surgeist` owns facade composition, workspace wiring,
+cross-crate verification and generated API audit artifacts. The crate carries no generated API
 copies. [AGENTS.md](../AGENTS.md) maps repository facts to their authoritative
 sources; [explanation](explanation.md) describes the product boundary.

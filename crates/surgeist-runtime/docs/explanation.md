@@ -67,6 +67,38 @@ without discarding later invalidations or regressing rendered state. The
 [surface contracts](../src/surface.rs) define the lifecycle transitions and
 acknowledgement errors.
 
+## DOM orchestration
+
+`DomStyleSession` owns the original canonical `Dom` and the resources needed to
+finish admitted Style operations. A `DomStyleRuntime` is a weak execution
+permission for that session. Reacquiring a permission reaches the same owner and
+CSSOM stores; it does not reconstruct them from a snapshot. The scoped
+`DomEventDom` view permits canonical edits without exposing a replaceable mutable
+owner or a raw source lease.
+
+DOM owns each source operation's identity and published continuation. Runtime
+drives its requests through the CSS and CSSOM owners, retains acknowledged
+publications and queues the actual notification tasks. A later cancellation or
+refusal cannot undo an already published phase. Resuming uses the same operation
+and retained resources. Current CSSOM disabled observations come from the actual
+store and its revision, independently of an older association receipt.
+
+The native dispatcher retains an immutable event path and once-only progress
+across suspension. Style and Details use this shared dispatcher while retaining
+their own task rules. Callbacks receive controlled canonical access. Public
+observations do not retain the dispatcher or session, and terminal disposal does
+not dispatch callbacks or manufacture a completion receipt. For graceful
+shutdown, `try_shutdown` returns `DomStyleShutdownOutcome::Pending` with the whole
+session when obligations remain.
+
+These operations implement bounded native orchestration. A retained sheet or
+completed canonical edit does not establish fetched-resource completion,
+nonempty-media evaluation, rendering readiness, browser event-loop integration
+or JavaScript execution. The [Style](../src/dom_style.rs),
+[event](../src/dom_event.rs) and [Details](../src/dom_details.rs) modules define
+their admitted operations and typed unavailable states; the
+[DOM owner](../../surgeist-dom/README.md) defines canonical source continuations.
+
 ## Queues and host wakeups
 
 Runtime has separate bounded UI, task, and service lanes. Admission errors return

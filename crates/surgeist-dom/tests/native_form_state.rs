@@ -15,8 +15,8 @@ fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
 fn owner(s: &DomSnapshot, n: NodeId) -> Option<NodeId> {
     let n = s.node(n).unwrap();
     n.as_button()
-        .map(|b| b.form_owner())
-        .unwrap_or_else(|| n.as_fieldset().unwrap().form_owner())
+        .map(|b| b.form_owner().unwrap())
+        .unwrap_or_else(|| n.as_fieldset().unwrap().form_owner().unwrap())
 }
 fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(

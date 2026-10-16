@@ -75,7 +75,7 @@ fn facts(
 }
 fn bind(dom: &mut Dom, doc: DocumentId, facts: &HtmlParseBaseFacts) {
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
+    b.bind_base_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
     apply(dom, b);
 }
 fn freeze(dom: &mut Dom, base: NodeId, parent: NodeId, raw: &str) -> DomCommit {
@@ -201,7 +201,7 @@ fn positive_native_response_reads_actual_script_results_and_identical_refreeze_i
             .frozen()
             .unwrap()
             .response(),
-        DomBaseResponse::NativeFactsPublished
+        DomBaseResponse::FactsPublished
     );
     let before = dom.snapshot();
     let mut b = DomBatch::new();
@@ -244,7 +244,10 @@ fn missing_csp_and_missing_observation_refuse_after_staging_without_partial_free
                 .frozen()
                 .is_none()
         );
-        assert_eq!(dom.snapshot().document(doc).unwrap().first_base(), None);
+        assert_eq!(
+            dom.snapshot().document(doc).unwrap().first_base().unwrap(),
+            None
+        );
     }
 }
 
@@ -258,7 +261,7 @@ fn environment_and_identity_qualification_refuse_mismatches_without_replacing_bi
     let (substitute, _) = facts(&r, "x", HtmlBaseParseOutcome::Failure);
     let before = dom.snapshot();
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &substitute);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &substitute);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
         DomError::BaseFacts(DomBaseFactsError::InputsMismatch)
@@ -266,7 +269,7 @@ fn environment_and_identity_qualification_refuse_mismatches_without_replacing_bi
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     let (foreign, _) = facts(&revision(), "x", HtmlBaseParseOutcome::Failure);
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &foreign);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &foreign);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
         DomError::BaseFacts(DomBaseFactsError::ForeignProducer)
@@ -288,7 +291,7 @@ fn environment_and_identity_qualification_refuse_mismatches_without_replacing_bi
     let wrong =
         HtmlParseBaseFacts::new(wrong, vec![], HtmlBaseFactsLimits::new(0, 1024, 1024)).unwrap();
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &wrong);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &wrong);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
         DomError::BaseFacts(DomBaseFactsError::EnvironmentMismatch)
@@ -310,7 +313,7 @@ fn environment_and_identity_qualification_refuse_mismatches_without_replacing_bi
     )
     .unwrap();
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &mismatched);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &mismatched);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
         DomError::BaseFacts(DomBaseFactsError::InputsMismatch)
@@ -350,7 +353,7 @@ fn aggregate_actual_observation_capacity_and_retained_units_have_exact_boundarie
     dom.set_limits(limits(records - 1, 1_000_000, 131072))
         .unwrap();
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &facts);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &facts);
     assert!(matches!(
         dom.apply(b, &cancel()),
         Err(DomError::ResourceLimit {
@@ -388,7 +391,7 @@ fn aggregate_actual_observation_capacity_and_retained_units_have_exact_boundarie
     let other = c.document(&other).unwrap();
     let before = dom.snapshot();
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(other).unwrap().stamp(), &facts);
+    b.bind_base_facts(before.document(other).unwrap().stamp(), &facts);
     assert!(matches!(
         dom.apply(b, &cancel()),
         Err(DomError::ResourceLimit {
@@ -431,7 +434,7 @@ fn new_qualified_observations_preserve_frozen_history_until_an_actual_refreeze()
         },
     );
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(before.document(doc).unwrap().stamp(), &new);
+    b.bind_base_facts(before.document(doc).unwrap().stamp(), &new);
     let c = apply(&mut dom, b);
     assert!(
         c.changes()
@@ -547,7 +550,7 @@ fn clone_starts_unfrozen_then_real_removal_reveals_it_using_current_facts_and_re
             .contains(&DomChange::DocumentBase(doc))
     );
     assert_eq!(
-        dom.snapshot().document(doc).unwrap().first_base(),
+        dom.snapshot().document(doc).unwrap().first_base().unwrap(),
         Some(clone)
     );
     assert_eq!(
@@ -725,7 +728,7 @@ fn native_link_trigger_inputs_remain_qualified_without_advertising_resource_mode
             .document(doc)
             .unwrap()
             .metadata()
-            .native_environment()
+            .document_environment()
             .browsing_context(),
         surgeist_html::HtmlBrowsingContextPresence::Absent
     );
@@ -769,7 +772,8 @@ fn capture_rejects_differing_actual_document_revisions_in_the_producer_single_re
         .unwrap()
         .as_template()
         .unwrap()
-        .contents();
+        .contents()
+        .unwrap();
     let mut b = DomBatch::new();
     b.adopt(contents, other);
     apply(&mut dom, b);

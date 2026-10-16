@@ -26,6 +26,16 @@ pub struct DomSnapshot {
 }
 
 impl DomSnapshot {
+    pub fn incomplete_source_operation(&self) -> Option<crate::DomStyleOperationId> {
+        self.state.incomplete_source
+    }
+    pub(crate) fn require_complete_source(&self) -> Result<(), DomError> {
+        if self.state.incomplete_source.is_some() {
+            Err(DomError::IncompleteSourceOperation)
+        } else {
+            Ok(())
+        }
+    }
     pub fn owner(&self) -> DomOwnerId {
         self.owner
     }

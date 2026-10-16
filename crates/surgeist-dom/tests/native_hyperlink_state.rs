@@ -64,7 +64,7 @@ fn environment(
 }
 fn bind_base(dom: &mut Dom, doc: DocumentId, facts: &HtmlParseBaseFacts) {
     let mut b = DomBatch::new();
-    b.bind_native_base_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
+    b.bind_base_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
     dom.apply(b, &cancel()).unwrap();
 }
 fn href_facts(
@@ -99,7 +99,7 @@ fn bind(
     facts: &HtmlEncodingUrlParseFacts,
 ) -> Result<DomCommit, DomError> {
     let mut b = DomBatch::new();
-    b.bind_native_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
+    b.bind_encoding_url_facts(dom.snapshot().document(doc).unwrap().stamp(), facts);
     dom.apply(b, &cancel())
 }
 fn set(dom: &mut Dom, node: NodeId, raw: &str) -> Result<DomCommit, DomError> {
@@ -325,7 +325,7 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
         &environment(&r, &encoding, &fallback, vec![]),
     );
     let mut b = DomBatch::new();
-    b.bind_native_encoding_url_facts(before.document(doc).unwrap().stamp(), &facts);
+    b.bind_encoding_url_facts(before.document(doc).unwrap().stamp(), &facts);
     assert_eq!(
         dom.apply(b, &cancel()).unwrap_err(),
         DomError::EncodingUrlFacts(DomEncodingUrlFactsError::BasisRevisionMismatch)

@@ -45,7 +45,9 @@
 //! Explicit native HTML fragment installation preserves immutable component
 //! fields and UTF-16 through that same canonical owner, including real native
 //! Template contents and Script hooks. It returns a source-qualified historical
-//! map and installed snapshot; complete parser-report transfer remains separate.
+//! map and installed snapshot. Completed offline parser reports use separate
+//! canonical installation entries that preserve actual retained history and
+//! qualified contextual effects, with typed refusal for unsupported profiles.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -123,9 +125,11 @@ mod identity;
 mod image;
 mod input;
 mod installation;
+mod meta;
 mod names;
 mod node_values;
 mod output;
+mod parsed_installation;
 mod reflected;
 mod script;
 mod select;
@@ -134,6 +138,7 @@ mod shadow;
 mod slot;
 mod snapshot;
 mod store;
+mod style;
 mod svg_script;
 mod template;
 mod textarea;
@@ -147,8 +152,8 @@ pub use details::{
 };
 pub use document::DomNativeInputPlatform;
 pub use document::{
-    DomDocumentClass, DomDocumentMetadata, DomNativeDocumentEnvironment, DomOpaqueOrigin,
-    DomRegistryBinding,
+    DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentMetadata,
+    DomOpaqueOrigin, DomRegistryBinding,
 };
 pub use element::{DomElement, DomElementDefinition};
 pub use host::{
@@ -164,8 +169,14 @@ pub use installation::{
     DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,
     DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallation,
 };
+pub use meta::{DomDocumentPolicyContainer, DomMetaDocumentState, DomMetaError};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
+pub use parsed_installation::{
+    DomParsedDocumentEnvironment, DomParsedHtmlAssociationReadiness, DomParsedHtmlBinding,
+    DomParsedHtmlCapturedBinding, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
+    DomParsedHtmlInstallResource, DomParsedHtmlInstallation,
+};
 pub use script::DomHtmlScript;
 pub use select::{
     DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,
@@ -195,18 +206,29 @@ pub use surgeist_html::{
     HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
 pub use svg_script::{DomSvgScript, DomSvgScriptOrigin};
-pub use template::{DomTemplate, DomTemplateDocumentRole};
+pub use template::{DomTemplate, DomTemplateDocumentRole, DomTemplatePatch};
 pub use textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};
 pub use view_transition::{
     CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
-    DomViewTransition, DomViewTransitionBranches, DomViewTransitionCssomError, DomViewTransitionId,
-    DomViewTransitionImageRules, DomViewTransitionPseudo, DomViewTransitionPseudoChildren,
-    DomViewTransitionPseudoId, DomViewTransitionPseudoKind, DomViewTransitionRecord,
-    DomViewTransitionRecordId, DomViewTransitionRuleAssociations, DomViewTransitionRules,
-    DomViewTransitionSheet, DomViewTransitionSubject, ViewTransitionOperand,
-    ViewTransitionRecordOperand,
+    DomPreparedViewTransitionRules, DomPreparedViewTransitionSheet, DomViewTransition,
+    DomViewTransitionBranches, DomViewTransitionCaptureLimits, DomViewTransitionCssomError,
+    DomViewTransitionId, DomViewTransitionImageRules, DomViewTransitionPseudo,
+    DomViewTransitionPseudoChildren, DomViewTransitionPseudoId, DomViewTransitionPseudoKind,
+    DomViewTransitionRecord, DomViewTransitionRecordId, DomViewTransitionRuleAssociations,
+    DomViewTransitionRules, DomViewTransitionSheet, DomViewTransitionSubject,
+    ViewTransitionOperand, ViewTransitionRecordOperand,
 };
 
 pub use button::{DomButton, DomButtonState};
 pub use fieldset::{DomFieldset, DomFieldsetState};
 pub use form::DomForm;
+
+pub use store::style::operation::DomStyleEditLease;
+pub use style::{
+    DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
+    DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,
+    DomStyleEditCompletion, DomStyleEditLimits, DomStyleEditStatus, DomStyleInlineCspObservation,
+    DomStyleNativeHtmlInstallLimits, DomStyleNotificationCompletion, DomStyleNotificationToken,
+    DomStyleOperationId, DomStyleProgress, DomStyleRequest, DomStyleRootKind, DomStyleSheet,
+    DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource, DomStyleState,
+};

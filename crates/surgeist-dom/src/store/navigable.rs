@@ -23,7 +23,7 @@ impl Draft {
         let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
             unreachable!("canonical navigable-container node document")
         };
-        let context = document.native_environment().browsing_context();
+        let context = document.document_environment().browsing_context();
         let returned = if frame.is_some() {
             matches!(
                 surgeist_html::frame_post_connection(context),

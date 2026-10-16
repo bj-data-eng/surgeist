@@ -141,7 +141,7 @@ impl Draft {
                     let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
                         unreachable!("canonical Script node document")
                     };
-                    match metadata.native_environment().browsing_context() {
+                    match metadata.document_environment().browsing_context() {
                         HtmlBrowsingContextPresence::Absent => Reply::Disabled,
                         HtmlBrowsingContextPresence::Present => Reply::Enabled,
                         HtmlBrowsingContextPresence::Unavailable => Reply::Unavailable,

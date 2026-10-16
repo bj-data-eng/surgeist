@@ -32,7 +32,7 @@ impl Draft {
         // Every admitted creation/install/adoption target establishes this
         // actual never-navigable environment. No activation or hosted Document
         // ingress is admitted. Do not substitute the later disabled-images step.
-        let activity = if !document.native_environment().has_ever_had_navigable() {
+        let activity = if !document.document_environment().has_ever_had_navigable() {
             HtmlImageDocumentActivity::NotFullyActive
         } else {
             HtmlImageDocumentActivity::Unavailable
@@ -74,7 +74,7 @@ impl Draft {
         else {
             return Ok(());
         };
-        if let Key::Existing(slot) = key {
+        if let Some(target) = self.published_id(key) {
             let mut bank = self
                 .cancelled_images
                 .take()
@@ -83,7 +83,7 @@ impl Draft {
             // capacity therefore bounds this actual evidence bank independently
             // of how many superseded updates ran. Exact fallible growth and its
             // whole lifetime also join the existing Select scratch ledger.
-            self.select_reserve(&mut bank, 1)?;
+            self.select_reserve(&mut bank, 1, cancel)?;
             admit(
                 bank.capacity(),
                 limits.nodes,
@@ -91,11 +91,7 @@ impl Draft {
             )?;
             bank.push(Cancelled {
                 update: crate::DomImageUpdateId {
-                    target: NodeId {
-                        owner: self.store,
-                        slot,
-                        generation: self.generations[slot],
-                    },
+                    target,
                     invocation: waiting.invocation,
                 },
                 flags: waiting.flags,
@@ -186,6 +182,113 @@ impl Draft {
         }
         Ok(())
     }
+    fn image_attribute_name_admission(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if self.source_limits.is_some() {
+            self.source_step(cancel)?; // namespace presence
+            // The original recognizer scans this exact public vocabulary; each
+            // comparison reads at most its spelling and one terminal pair.
+            for known in KnownHtmlAttribute::ALL {
+                self.source_step(cancel)?;
+                for _ in 0..=known.local_name().len() {
+                    self.source_step(cancel)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn image_comparison_reads(
+        &self,
+        old: Option<&DocumentString>,
+        new: Option<&DocumentString>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        for value in [old, new].into_iter().flatten() {
+            if self.source_limits.is_some() {
+                self.source_step(cancel)?;
+            }
+            for _ in value.code_units() {
+                self.effect_step(cancel)?;
+            }
+        }
+        Ok(())
+    }
+    fn image_attribute_operand(
+        &self,
+        name: &crate::QualifiedName,
+        value: Option<&DocumentString>,
+        budget: Option<&style::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<crate::Attribute>, DomError> {
+        value
+            .map(|value| {
+                if let Some(budget) = budget {
+                    budget.step(cancel)?;
+                    let mut payload = style::storage::Payload::default();
+                    payload.name(name)?;
+                    payload.string(value)?;
+                    budget.retain_payload(payload, cancel)?;
+                }
+                Ok(crate::Attribute::new(name.clone(), value.clone()))
+            })
+            .transpose()
+    }
+    fn image_loading_report_budget(
+        &self,
+        element: &crate::QualifiedName,
+        raw: Option<&crate::Attribute>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<style::formation::Formation>, DomError> {
+        let budget = style::formation::Formation::new(self, cancel)?;
+        if let Some(budget) = budget.as_ref() {
+            budget.step(cancel)?;
+            let mut payload = style::storage::Payload::default();
+            payload.name(element)?;
+            if let Some(raw) = raw {
+                budget.step(cancel)?;
+                payload.name(raw.name())?;
+                payload.string(raw.value())?;
+            }
+            budget.retain_payload(payload, cancel)?;
+            // This is the original LOADING report, as in family::loading_state:
+            // expanded attribute name, two HTML namespace comparisons, closed
+            // element lookup, then both public Loading keyword comparisons.
+            budget.step(cancel)?;
+            for _ in 0..2 {
+                budget.step(cancel)?;
+                for _ in 0..=element.namespace().uri().map_or(0, DocumentString::len) {
+                    budget.step(cancel)?;
+                }
+            }
+            for known in KnownHtmlElement::ALL {
+                budget.step(cancel)?;
+                for _ in 0..=known.local_name().len() {
+                    budget.step(cancel)?;
+                }
+            }
+            if let Some(raw) = raw {
+                budget.step(cancel)?;
+                for _ in 0..=raw.name().local_name().len() {
+                    budget.step(cancel)?;
+                }
+                for keyword in [
+                    surgeist_html::HtmlLoading::Lazy,
+                    surgeist_html::HtmlLoading::Eager,
+                ] {
+                    budget.step(cancel)?;
+                    // Full raw traversal is a conservative envelope; the
+                    // interpreter stops at an earlier mismatch/length guard.
+                    for _ in 0..=raw.value().len() {
+                        budget.step(cancel)?;
+                    }
+                    budget.step(cancel)?;
+                    for _ in 0..=keyword.canonical_keyword().len() {
+                        budget.step(cancel)?;
+                    }
+                }
+            }
+        }
+        Ok(budget)
+    }
     pub(super) fn image_attribute_change(
         &mut self,
         key: Key,
@@ -199,6 +302,7 @@ impl Draft {
             return Ok(());
         };
         self.effect_step(cancel)?;
+        self.image_attribute_name_admission(cancel)?;
         let Some(attribute) = KnownHtmlAttribute::from_name(name) else {
             return Ok(());
         };
@@ -211,13 +315,16 @@ impl Draft {
             }
             return Ok(());
         }
+        if self.source_limits.is_some() {
+            self.source_step(cancel)?;
+        }
         let same_value = if attribute == KnownHtmlAttribute::Src {
             match (old, new) {
                 (Some(a), Some(b)) if a.len() == b.len() => {
                     let mut equal = true;
-                    for (&a, &b) in a.code_units().iter().zip(b.code_units()) {
+                    for (a, b) in a.code_units().iter().zip(b.code_units()) {
                         self.effect_step(cancel)?;
-                        if a != b {
+                        if *a != *b {
                             equal = false;
                             break;
                         }
@@ -241,35 +348,84 @@ impl Draft {
         if effect == HtmlImageAttributeEffect::None {
             return Ok(());
         }
-        let old_attr = old.map(|v| crate::Attribute::new(name.clone(), v.clone()));
-        let new_attr = new.map(|v| crate::Attribute::new(name.clone(), v.clone()));
+        if self.source_limits.is_some()
+            && matches!(
+                effect,
+                HtmlImageAttributeEffect::CompareCrossOrigin
+                    | HtmlImageAttributeEffect::CompareReferrerPolicy
+            )
+        {
+            self.image_comparison_reads(old, new, cancel)?;
+            let update = match effect {
+                HtmlImageAttributeEffect::CompareCrossOrigin => {
+                    let old = surgeist_html::bounded::crossorigin_processing_with(old, |_| {
+                        self.source_step(cancel)
+                    })?;
+                    let new = surgeist_html::bounded::crossorigin_processing_with(new, |_| {
+                        self.source_step(cancel)
+                    })?;
+                    surgeist_html::image_crossorigin_changed(old, new)
+                }
+                HtmlImageAttributeEffect::CompareReferrerPolicy => {
+                    let old = surgeist_html::bounded::referrerpolicy_processing_with(old, |_| {
+                        self.source_step(cancel)
+                    })?;
+                    let new = surgeist_html::bounded::referrerpolicy_processing_with(new, |_| {
+                        self.source_step(cancel)
+                    })?;
+                    surgeist_html::image_referrerpolicy_changed(old, new)
+                }
+                _ => unreachable!("selected borrowed comparison"),
+            };
+            self.effect_step(cancel)?;
+            if update {
+                self.start_image_update(key, HtmlImageUpdateFlags::new(false, false), cancel)?;
+            }
+            return Ok(());
+        }
+        // This lease precedes both real Attribute owners, so their graphs drop
+        // before its debit on every return/error, including nested updates.
+        let pair = style::formation::Formation::new(self, cancel)?;
+        let old_attr = self.image_attribute_operand(name, old, pair.as_ref(), cancel)?;
+        let new_attr = self.image_attribute_operand(name, new, pair.as_ref(), cancel)?;
+        if self.source_limits.is_some() {
+            self.source_step(cancel)?;
+        }
         let bound = old
             .map_or(0, DocumentString::len)
             .max(new.map_or(0, DocumentString::len));
-        for value in [old, new].into_iter().flatten() {
-            for _ in value.code_units() {
-                self.effect_step(cancel)?;
-            }
-        }
+        self.image_comparison_reads(old, new, cancel)?;
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             unreachable!("Img")
         };
         let interpreter = HtmlValueInterpreter::new(bound);
         macro_rules! states {
-            ($method:ident) => {
-                (
-                    *interpreter
-                        .$method(element.name(), old_attr.as_ref())
-                        .expect("actual admitted raw extent")
-                        .intrinsic()
-                        .expect("actual Img applicability"),
-                    *interpreter
-                        .$method(element.name(), new_attr.as_ref())
-                        .expect("actual admitted raw extent")
-                        .intrinsic()
-                        .expect("actual Img applicability"),
-                )
-            };
+            ($method:ident) => {{
+                let _old_report_budget =
+                    self.image_loading_report_budget(element.name(), old_attr.as_ref(), cancel)?;
+                let old_report = interpreter
+                    .$method(element.name(), old_attr.as_ref())
+                    .expect("actual admitted raw extent");
+                let old_state = *old_report.intrinsic().expect("actual Img applicability");
+                let _new_report_budget =
+                    self.image_loading_report_budget(element.name(), new_attr.as_ref(), cancel)?;
+                let new_report = interpreter
+                    .$method(element.name(), new_attr.as_ref())
+                    .expect("actual admitted raw extent");
+                #[cfg(test)]
+                source_observation::reported(
+                    self,
+                    old_attr.as_ref(),
+                    new_attr.as_ref(),
+                    [&old_report, &new_report],
+                    self.source_limits.is_some(),
+                    cancel,
+                )?;
+                #[cfg(test)]
+                report_cancellation::at_report(self, cancel);
+                let new_state = *new_report.intrinsic().expect("actual Img applicability");
+                (old_state, new_state)
+            }};
         }
         let update = match effect {
             HtmlImageAttributeEffect::CompareCrossOrigin => {
@@ -306,6 +462,108 @@ impl Draft {
 }
 
 #[cfg(test)]
+mod source_observation {
+    use super::*;
+    use std::cell::Cell;
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct Report {
+        pub required: usize,
+        pub limit: usize,
+    }
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static LAST: Cell<Option<Report>> = const { Cell::new(None) };
+    }
+    pub(super) fn start() {
+        ACTIVE.set(true);
+        LAST.set(None);
+    }
+    pub(super) fn finish() -> Option<Report> {
+        ACTIVE.set(false);
+        LAST.take()
+    }
+    fn string(value: &DocumentString) -> usize {
+        size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+    }
+    fn name(value: &crate::QualifiedName) -> usize {
+        value.namespace().uri().map_or(0, string)
+            + value.prefix().map_or(0, string)
+            + string(value.local_name())
+    }
+    fn attribute(value: &crate::Attribute) -> usize {
+        name(value.name()) + string(value.value())
+    }
+    pub(super) fn reported<T>(
+        draft: &Draft,
+        old: Option<&crate::Attribute>,
+        new: Option<&crate::Attribute>,
+        reports: [&surgeist_html::HtmlAttributeReport<T>; 2],
+        registered: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !ACTIVE.get() {
+            return Ok(());
+        }
+        let Some(limits) = draft.source_limits else {
+            return Ok(());
+        };
+        let extra = if registered {
+            0
+        } else {
+            old.map_or(0, attribute)
+                + new.map_or(0, attribute)
+                + reports
+                    .into_iter()
+                    .map(|report| {
+                        name(report.element()) + report.raw_attribute().map_or(0, attribute)
+                    })
+                    .sum::<usize>()
+        };
+        let observed = Report {
+            required: draft.source_storage_bytes(cancel)?
+                + draft.source_other_bytes
+                + draft.source_formation_bytes.load(Ordering::Relaxed)
+                + extra,
+            limit: limits.retained_bytes,
+        };
+        if LAST
+            .get()
+            .is_none_or(|old| old.required < observed.required)
+        {
+            LAST.set(Some(observed));
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod report_cancellation {
+    use super::*;
+    use std::cell::RefCell;
+    thread_local! { static LIVE: RefCell<Option<(Arc<AtomicUsize>,Arc<AtomicUsize>)>> = const { RefCell::new(None) }; static ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+    pub(super) fn start() {
+        LIVE.with_borrow_mut(|live| *live = None);
+        ACTIVE.set(true);
+    }
+    pub(super) fn at_report(draft: &Draft, cancel: &AtomicBool) {
+        if ACTIVE.replace(false) {
+            LIVE.with_borrow_mut(|live| {
+                *live = Some((
+                    draft.source_formation_bytes.clone(),
+                    draft.source_temporary_units.clone(),
+                ))
+            });
+            cancel.store(true, Ordering::Release);
+        }
+    }
+    pub(super) fn finish() -> (usize, usize) {
+        ACTIVE.set(false);
+        let (bytes, units) = LIVE
+            .with_borrow_mut(Option::take)
+            .expect("actual report reached");
+        (bytes.load(Ordering::Relaxed), units.load(Ordering::Relaxed))
+    }
+}
+#[cfg(test)]
 mod tests {
     use super::*;
     fn fixture() -> (Dom, NodeId) {
@@ -316,6 +574,310 @@ mod tests {
         let img = b.create_element_ns(&doc, crate::Namespace::html(), "img");
         let c = dom.apply(b, &cancel).unwrap();
         (dom, c.created(&img).unwrap().unwrap())
+    }
+    fn source_report(bytes: usize, require_complete: bool) -> Option<source_observation::Report> {
+        let cancel = AtomicBool::new(false);
+        let mut dom =
+            Dom::new(DomLimits::new(32, 1_000_000, 128, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let img = setup.create_element_ns(&document, crate::Namespace::html(), "img");
+        let mut old = Vec::with_capacity(65_536);
+        old.extend("lazy".encode_utf16());
+        setup.set_attribute(&img, "loading", DocumentString::from_utf16(old));
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let img = commit.created(&img).unwrap().unwrap();
+        let before = dom.snapshot();
+        let waiting = before
+            .node(img)
+            .unwrap()
+            .as_img()
+            .unwrap()
+            .suspended_update()
+            .unwrap()
+            .unwrap()
+            .id();
+        let mut edit = DomBatch::new();
+        let mut new = Vec::with_capacity(65_536);
+        new.extend("eager".encode_utf16());
+        edit.set_attribute(img, "loading", DocumentString::from_utf16(new));
+        let limits = crate::DomStyleEditLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let Ok(mut lease) = dom.begin_style_batch(edit, limits, &cancel) else {
+            return None;
+        };
+        source_observation::start();
+        let result = lease.advance(&cancel);
+        let report = source_observation::finish();
+        if require_complete {
+            assert!(matches!(result, Ok(crate::DomStyleProgress::Complete(_))));
+            assert_eq!(
+                lease
+                    .snapshot()
+                    .node(img)
+                    .unwrap()
+                    .as_img()
+                    .unwrap()
+                    .suspended_update()
+                    .unwrap()
+                    .unwrap()
+                    .id(),
+                waiting
+            );
+            assert_eq!(
+                before.node(img).unwrap().attribute(&"loading".into()),
+                Some(&"lazy".into())
+            );
+            assert_eq!(
+                lease
+                    .snapshot()
+                    .node(img)
+                    .unwrap()
+                    .attribute(&"loading".into()),
+                Some(&"eager".into())
+            );
+        } else if result.is_err() {
+            assert_eq!(lease.snapshot().stamp(), before.stamp());
+        }
+        report
+    }
+    #[test]
+    fn source_image_comparison_admits_actual_attribute_and_report_occurrences() {
+        let high = source_report(16_000_000, true).expect("actual loading report");
+        if let Some(actual) = source_report(high.required - 1, false) {
+            assert!(
+                actual.required <= actual.limit,
+                "Image comparison retained {} bytes under {}",
+                actual.required,
+                actual.limit
+            );
+        }
+    }
+    fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
+        let cancel = AtomicBool::new(false);
+        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+            usize::MAX,
+            usize::MAX,
+            100_000_000,
+            64,
+            4096,
+            4096,
+        ));
+        let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+        let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
+        draft.source_limits = Some(crate::DomStyleEditLimits::new(
+            base + bytes,
+            base_units + units,
+            100_000_000,
+            64,
+            4096,
+            4096,
+        ));
+    }
+    #[test]
+    fn source_image_loading_report_has_exact_graph_custody_and_one_short_refusal() {
+        let (mut dom, img) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut setup = DomBatch::new();
+        setup.set_attribute(img, "loading", "lazy");
+        dom.apply(setup, &cancel).unwrap();
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        let key = Key::Existing(img.slot);
+        let graph = || {
+            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+                unreachable!()
+            };
+            let raw = element
+                .attributes()
+                .iter()
+                .find(|a| {
+                    a.name().local_name().code_units()
+                        == "loading".encode_utf16().collect::<Vec<_>>()
+                })
+                .unwrap();
+            let mut bytes = 0;
+            let mut units = 0;
+            for name in [element.name(), raw.name()] {
+                for value in [
+                    name.namespace().uri(),
+                    name.prefix(),
+                    Some(name.local_name()),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    bytes += size_of::<Vec<u16>>()
+                        + value.shared_code_units().capacity() * size_of::<u16>();
+                    units += value.shared_code_units().capacity();
+                }
+            }
+            bytes += size_of::<Vec<u16>>()
+                + raw.value().shared_code_units().capacity() * size_of::<u16>();
+            units += raw.value().shared_code_units().capacity();
+            (bytes, units)
+        };
+        let (bytes, units) = graph();
+        source_budget(&mut draft, bytes, units);
+        {
+            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+                unreachable!()
+            };
+            let raw = element.attributes().iter().next().unwrap();
+            let budget = draft
+                .image_loading_report_budget(element.name(), Some(raw), &cancel)
+                .unwrap()
+                .unwrap();
+            let report = HtmlValueInterpreter::new(4)
+                .loading(element.name(), Some(raw))
+                .unwrap();
+            assert_eq!(report.intrinsic(), Some(&surgeist_html::HtmlLoading::Lazy));
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), units);
+            drop(report);
+            drop(budget);
+        }
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        for (b, u, resource) in [
+            (bytes - 1, units, DomResource::StyleRetainedBytes),
+            (bytes, units - 1, DomResource::StyleRetainedUnits),
+        ] {
+            source_budget(&mut draft, b, u);
+            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+                unreachable!()
+            };
+            let raw = element.attributes().iter().next().unwrap();
+            assert!(
+                matches!(draft.image_loading_report_budget(element.name(),Some(raw),&cancel),Err(DomError::ResourceLimit {resource:actual,..}) if actual==resource)
+            );
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        }
+    }
+    #[test]
+    fn source_image_comparisons_preserve_literal_states_and_ordinary_none_results() {
+        for (attribute, old, new, delta) in [
+            ("crossorigin", None, Some("use-credentials"), 1),
+            ("crossorigin", Some("bad"), Some("ANONYMOUS"), 0),
+            ("crossorigin", Some("use-credentials"), None, 1),
+            ("referrerpolicy", Some("origin"), Some("NO-REFERRER"), 1),
+            ("referrerpolicy", Some("bad"), Some(""), 0),
+            ("loading", Some("lazy"), Some("eager"), 0),
+            ("loading", Some("bad"), Some("LAZY"), 0),
+            ("src", Some("same"), Some("same"), 1),
+        ] {
+            for source in [false, true] {
+                let (mut dom, img) = fixture();
+                let cancel = AtomicBool::new(false);
+                if let Some(old) = old {
+                    let mut setup = DomBatch::new();
+                    setup.set_attribute(img, attribute, old);
+                    dom.apply(setup, &cancel).unwrap();
+                }
+                let before = dom.snapshot();
+                let invocation = before
+                    .node(img)
+                    .unwrap()
+                    .as_img()
+                    .unwrap()
+                    .suspended_update()
+                    .unwrap()
+                    .unwrap()
+                    .id()
+                    .invocation;
+                let mut edit = DomBatch::new();
+                if let Some(new) = new {
+                    edit.set_attribute(img, attribute, new);
+                } else {
+                    edit.remove_attribute(img, attribute);
+                }
+                if source {
+                    let mut lease = dom
+                        .begin_style_batch(
+                            edit,
+                            crate::DomStyleEditLimits::new(
+                                8_000_000,
+                                4_000_000,
+                                100_000_000,
+                                64,
+                                4096,
+                                4096,
+                            ),
+                            &cancel,
+                        )
+                        .unwrap();
+                    assert!(matches!(
+                        lease.advance(&cancel).unwrap(),
+                        crate::DomStyleProgress::Complete(_)
+                    ));
+                } else {
+                    dom.apply(edit, &cancel).unwrap();
+                }
+                let after = dom.snapshot();
+                assert_eq!(
+                    after
+                        .node(img)
+                        .unwrap()
+                        .as_img()
+                        .unwrap()
+                        .suspended_update()
+                        .unwrap()
+                        .unwrap()
+                        .id()
+                        .invocation,
+                    invocation + delta,
+                    "{attribute} {old:?}->{new:?} Source={source}"
+                );
+                assert_eq!(
+                    before.node(img).unwrap().attribute(&attribute.into()),
+                    old.map(DocumentString::from).as_ref()
+                );
+                assert_eq!(
+                    after.node(img).unwrap().attribute(&attribute.into()),
+                    new.map(DocumentString::from).as_ref()
+                );
+            }
+        }
+    }
+    #[test]
+    fn source_image_cancelled_report_unwinds_actual_graphs_without_publication_then_retries() {
+        let (mut dom, img) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut setup = DomBatch::new();
+        setup.set_attribute(img, "loading", "lazy");
+        dom.apply(setup, &cancel).unwrap();
+        let before = dom.snapshot();
+        let edit = || {
+            let mut edit = DomBatch::new();
+            edit.set_attribute(img, "loading", "eager");
+            edit
+        };
+        let limits =
+            crate::DomStyleEditLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let mut lease = dom.begin_style_batch(edit(), limits, &cancel).unwrap();
+        report_cancellation::start();
+        assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        drop(lease);
+        assert_eq!(report_cancellation::finish(), (0, 0));
+        assert!(dom.pending_style_edit().is_none());
+        cancel.store(false, Ordering::Release);
+        let mut lease = dom.begin_style_batch(edit(), limits, &cancel).unwrap();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            crate::DomStyleProgress::Complete(_)
+        ));
+        drop(lease);
+        assert_eq!(
+            before.node(img).unwrap().attribute(&"loading".into()),
+            Some(&"lazy".into())
+        );
+        assert_eq!(
+            dom.snapshot()
+                .node(img)
+                .unwrap()
+                .attribute(&"loading".into()),
+            Some(&"eager".into())
+        );
     }
     #[test]
     fn checked_invocation_exhaustion_refuses_without_wrapping_or_publishing_attributes() {
@@ -402,7 +964,7 @@ mod tests {
         let mut b = DomBatch::new();
         b.destroy(picture);
         let mut d = Draft::new(&dom, b.owner, &cancel).unwrap();
-        d.apply(b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
+        d.apply(&b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
             .unwrap();
         let bank = d.cancelled_images.as_ref().unwrap();
         assert_eq!(bank.len(), 1);
@@ -412,7 +974,10 @@ mod tests {
         assert!(bank.capacity() <= dom.limits.nodes);
         let capacity_bytes = bank.capacity() * size_of::<Cancelled>();
         assert!(capacity_bytes > 0);
-        assert_eq!(d.select_temporary_bytes.get(), capacity_bytes);
+        assert_eq!(
+            d.select_temporary_bytes.load(Ordering::Relaxed),
+            capacity_bytes
+        );
         drop(d);
         // The bank remains alive through a later actual public Option setter,
         // whose Select fast path allocates no extra storage itself.

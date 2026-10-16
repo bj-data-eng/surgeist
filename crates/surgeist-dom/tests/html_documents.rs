@@ -101,7 +101,7 @@ fn complete_skeleton_defaults_and_real_origin_are_published_with_one_document_ti
     let source_metadata = snapshot.document(source).unwrap().metadata();
     assert_eq!(source_metadata.class(), DomDocumentClass::Xml);
     assert_eq!(source_metadata.content_type(), &"application/xml".into());
-    let environment = metadata.native_environment();
+    let environment = metadata.document_environment();
     assert_eq!(
         environment.browsing_context(),
         surgeist_html::HtmlBrowsingContextPresence::Absent
@@ -687,7 +687,7 @@ fn invalid_origin_source_late_failure_and_cancelled_creation_publish_no_document
     assert!(commit.document(&accepted).is_ok());
 }
 #[test]
-fn semantic_capture_preserves_html_class_and_independent_native_environment_proof() {
+fn semantic_capture_preserves_html_class_and_independent_document_environment_proof() {
     use surgeist_html_semantics::{
         HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlDocumentClass, HtmlScriptingStatus,
     };

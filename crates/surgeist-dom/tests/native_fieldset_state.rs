@@ -39,7 +39,8 @@ fn state(snapshot: &DomSnapshot, node: NodeId) -> &DomFieldsetState {
             .unwrap()
             .as_fieldset()
             .unwrap()
-            .form_owner(),
+            .form_owner()
+            .unwrap(),
         None
     );
     assert!(!state.parser_inserted());

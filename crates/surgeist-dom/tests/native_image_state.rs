@@ -31,6 +31,7 @@ fn wait(dom: &Dom, img: NodeId) -> DomImageUpdate {
         .unwrap()
         .suspended_update()
         .unwrap()
+        .unwrap()
 }
 #[test]
 fn fresh_request_is_unavailable_and_real_inactive_wait_precedes_disabled_images() {
@@ -38,7 +39,7 @@ fn fresh_request_is_unavailable_and_real_inactive_wait_precedes_disabled_images(
     let s = dom.snapshot();
     let image = s.node(img).unwrap().as_img().unwrap();
     assert_eq!(image.dimension_attribute_source(), img);
-    assert_eq!(image.form_owner(), None);
+    assert_eq!(image.form_owner().unwrap(), None);
     assert!(!image.parser_inserted());
     let state = image.state();
     assert_eq!(
@@ -53,7 +54,7 @@ fn fresh_request_is_unavailable_and_real_inactive_wait_precedes_disabled_images(
     assert!(state.last_selected_source_is_null());
     assert!(state.last_auto_sizes_width_is_null());
     assert!(state.lazy_load_resumption_is_null());
-    let update = image.suspended_update().unwrap();
+    let update = image.suspended_update().unwrap().unwrap();
     assert_eq!(update.id().target(), img);
     assert_eq!(update.document(), doc);
     assert_eq!(update.flags(), HtmlImageUpdateFlags::new(false, false));
@@ -88,6 +89,7 @@ fn superseded_wholly_inactive_waits_use_one_fixed_node_slot_and_latest_exact_fla
             .as_img()
             .unwrap()
             .suspended_update()
+            .unwrap()
             .unwrap()
             .id(),
         initial.id()
@@ -146,6 +148,7 @@ fn retirement_captures_the_actual_same_batch_latest_wait_and_never_follows_reuse
             .as_img()
             .unwrap()
             .suspended_update()
+            .unwrap()
             .unwrap()
             .id(),
         prior.id()
@@ -282,11 +285,14 @@ fn native_authoring_installation_starts_fresh_updates_and_self_dimension_sources
     let image = report.node_for(&source_img).unwrap();
     let view = report.snapshot().node(image).unwrap().as_img().unwrap();
     assert_eq!(view.dimension_attribute_source(), image);
-    assert_eq!(view.form_owner(), Some(form));
+    assert_eq!(view.form_owner().unwrap(), Some(form));
     assert!(!view.parser_inserted());
-    assert_eq!(view.suspended_update().unwrap().id().target(), image);
     assert_eq!(
-        view.suspended_update().unwrap().flags(),
+        view.suspended_update().unwrap().unwrap().id().target(),
+        image
+    );
+    assert_eq!(
+        view.suspended_update().unwrap().unwrap().flags(),
         HtmlImageUpdateFlags::new(false, false)
     );
     assert!(view.state().current_request().current_url().is_empty());

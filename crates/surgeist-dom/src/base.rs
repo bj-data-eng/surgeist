@@ -17,13 +17,15 @@ pub enum DomBaseFactsError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomBaseResponse {
     Returned,
-    NativeFactsPublished,
+    FactsPublished,
+    ParsedCompleted,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Response {
     Returned,
     Pending,
-    NativeFactsPublished,
+    FactsPublished,
+    ParsedCompleted,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Frozen<K> {
@@ -89,15 +91,15 @@ impl<K> BaseDocument<K> {
     where
         K: Copy,
     {
-        // Native Documents have the source-initial empty set; no admitted front
-        // enters a render-blocking element. Retained resources need another phase.
-        if self.render_blocking.capacity() != 0 {
-            return Err(crate::DomError::LinkProcessingUnavailable);
-        }
+        let mut render_blocking = Vec::new();
+        render_blocking
+            .try_reserve_exact(self.render_blocking.len())
+            .map_err(|_| crate::DomError::AllocationFailed)?;
+        render_blocking.extend(self.render_blocking.iter().copied().map(&map));
         Ok(BaseDocument {
             facts: self.facts.clone(),
             first: self.first.map(map),
-            render_blocking: Vec::new(),
+            render_blocking,
         })
     }
     pub(crate) fn units(&self) -> usize {
@@ -171,7 +173,8 @@ impl<'a> DomFrozenBase<'a> {
     pub fn response(self) -> DomBaseResponse {
         match self.value.response {
             Response::Returned => DomBaseResponse::Returned,
-            Response::NativeFactsPublished => DomBaseResponse::NativeFactsPublished,
+            Response::FactsPublished => DomBaseResponse::FactsPublished,
+            Response::ParsedCompleted => DomBaseResponse::ParsedCompleted,
             Response::Pending => unreachable!("canonical publication completes Base response"),
         }
     }
@@ -224,13 +227,15 @@ impl<'a> crate::DomDocument<'a> {
             .facts
             .as_ref()
     }
-    pub fn first_base(self) -> Option<NodeId> {
-        self.snapshot
+    pub fn first_base(self) -> Result<Option<NodeId>, crate::DomError> {
+        self.snapshot.require_complete_source()?;
+        Ok(self
+            .snapshot
             .node(self.id.node())
             .expect("Document")
             .node
             .base_document
-            .as_ref()?
-            .first
+            .as_ref()
+            .and_then(|state| state.first))
     }
 }

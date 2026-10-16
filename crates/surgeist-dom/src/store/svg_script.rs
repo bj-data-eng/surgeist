@@ -7,6 +7,20 @@ pub(super) struct ProcessingTrace {
     cancel_after: usize,
 }
 
+#[cfg(test)]
+impl ProcessingTrace {
+    pub(super) fn checkpoint(
+        &self,
+        a: &mut style::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(Self {
+            writes: a.copy(&self.writes, cancel)?,
+            cancel_after: self.cancel_after,
+        })
+    }
+}
+
 impl Draft {
     pub(super) fn svg_script_post_connection(
         &mut self,
@@ -26,17 +40,15 @@ impl Draft {
         // Connection follows shadow topology; qualification follows the actual
         // node document, which need not be the connected host document.
         let document = self.node(key)?.document;
-        let closed = self.native_environment(document)?.svg_script_processing();
+        let environment = self.document_environment(document)?;
         check_cancel(cancel)?;
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
             unreachable!("checked SVG Script")
         };
-        closed.mark_processed(
-            &mut element
-                .svg_script_state_mut()
-                .expect("checked SVG Script")
-                .flags,
-        );
+        element
+            .svg_script_state_mut()
+            .expect("checked SVG Script")
+            .mark_processed_in(environment)?;
         #[cfg(test)]
         if let Some(trace) = &mut self.svg_processing_trace {
             // Private deterministic observer of the real write, absent from
@@ -112,7 +124,7 @@ mod tests {
         });
         assert_eq!(
             draft.apply(
-                Command::Insert {
+                &Command::Insert {
                     node: fragment.into(),
                     parent: parent.into(),
                     before: None
@@ -192,7 +204,7 @@ mod tests {
         let host_document = draft.resolve(d1.into()).unwrap();
         draft
             .apply(
-                Command::Insert {
+                &Command::Insert {
                     node: script.into(),
                     parent: root.into(),
                     before: None,

@@ -56,21 +56,38 @@ impl Draft {
                         .slot_mut(key)
                         .expect("checked reflected slot") = None
                 }
-                Effect::RemoveContentAttribute => self.remove_attribute(
-                    node,
-                    Some(crate::Namespace::none()),
-                    key.attribute().local_name().into(),
-                    limits,
-                    cancel,
-                )?,
-                Effect::SetEmptyContentAttribute => self.set_attribute(
-                    node,
-                    Some(crate::Namespace::none()),
-                    key.attribute().local_name().into(),
-                    "".into(),
-                    limits,
-                    cancel,
-                )?,
+                Effect::RemoveContentAttribute => {
+                    let operand = style::formation::Formation::new(self, cancel)?;
+                    let name = style::formation::string(
+                        key.attribute().local_name(),
+                        operand.as_ref(),
+                        cancel,
+                    )?;
+                    self.remove_attribute(
+                        node,
+                        Some(&crate::Namespace::none()),
+                        &name,
+                        limits,
+                        cancel,
+                    )?;
+                }
+                Effect::SetEmptyContentAttribute => {
+                    let operand = style::formation::Formation::new(self, cancel)?;
+                    let name = style::formation::string(
+                        key.attribute().local_name(),
+                        operand.as_ref(),
+                        cancel,
+                    )?;
+                    let value = style::formation::string("", operand.as_ref(), cancel)?;
+                    self.set_attribute(
+                        node,
+                        Some(&crate::Namespace::none()),
+                        &name,
+                        &value,
+                        limits,
+                        cancel,
+                    )?;
+                }
                 Effect::SetExplicitTargetFromSuppliedElement => {
                     *self
                         .node_mut(node)
