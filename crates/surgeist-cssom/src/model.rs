@@ -5,13 +5,21 @@ use surgeist_css::*;
 use surgeist_css::{CssFontFaceDescriptors, CssMarginRule, CssRule};
 
 /// Real product quotas, including retained detached objects. These bound admitted
-/// work/state, not allocator overhead or process RSS. Zero capacities are valid.
+/// work/state, not allocator overhead or process RSS. Source backing uses actual
+/// CSS-owned buffer capacities; other quotas retain their logical units. Zero
+/// capacities are valid, and can refuse required initialization work.
 #[derive(Clone, Debug)]
 pub struct CssomLimits {
     pub max_objects: usize,
     pub max_entries: usize,
     pub max_string_bytes: usize,
     pub max_input_bytes: usize,
+    /// Actual shared parse-source backing retained by this canonical state.
+    pub max_retained_source_bytes: usize,
+    /// Actual source payload visits, identity comparisons and retained-state walk actions.
+    pub max_source_traversal_steps: usize,
+    /// Representation walk depth, independent of CSS semantic nesting.
+    pub max_source_traversal_depth: usize,
     pub max_depth: usize,
     pub max_identity: u64,
     pub max_revision: u64,
@@ -28,6 +36,9 @@ impl Default for CssomLimits {
             max_entries: 1_000_000,
             max_string_bytes: 16 * 1024 * 1024,
             max_input_bytes: 16 * 1024 * 1024,
+            max_retained_source_bytes: 64 * 1024 * 1024,
+            max_source_traversal_steps: 16 * 1024 * 1024,
+            max_source_traversal_depth: 2048,
             max_depth: 256,
             max_identity: u64::MAX,
             max_revision: u64::MAX,

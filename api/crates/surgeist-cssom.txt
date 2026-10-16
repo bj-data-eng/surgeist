@@ -19,6 +19,7 @@ pub surgeist_cssom::CssomAuthoredRule::Ordinary(surgeist_css::syntax::CssRule)
 pub surgeist_cssom::CssomAuthoredRule::RawNestedDeclarations(surgeist_css::syntax::CssDeclarationList)
 pub surgeist_cssom::CssomAuthoredRule::Scoped(surgeist_css::syntax::CssScopedRule)
 pub surgeist_cssom::CssomAuthoredRule::SupportsTestChild(surgeist_css::named_supports::CssSupportsTestChild)
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomAuthoredRule
 pub enum surgeist_cssom::CssomBlockData
 pub surgeist_cssom::CssomBlockData::CounterStyle(alloc::boxed::Box<surgeist_css::syntax::counter_style::CssCounterStyleDescriptors>)
 pub surgeist_cssom::CssomBlockData::FontFace(surgeist_css::syntax::font_face::CssFontFaceDescriptors)
@@ -29,6 +30,7 @@ pub surgeist_cssom::CssomBlockData::Properties
 pub surgeist_cssom::CssomBlockData::Properties::authored: surgeist_cssom::CssomPropertyOccurrences
 pub surgeist_cssom::CssomBlockData::Properties::domain: surgeist_cssom::CssomPropertyDomain
 pub surgeist_cssom::CssomBlockData::Properties::selected: surgeist_cssom::CssomProjection<surgeist_css::specified_declaration_block::CssSpecifiedDeclarationBlock, surgeist_css::specified_declaration_block::CssDeclarationBlockError>
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomBlockData
 pub enum surgeist_cssom::CssomChange
 pub surgeist_cssom::CssomChange::Ancestry
 pub surgeist_cssom::CssomChange::Base
@@ -154,6 +156,7 @@ pub surgeist_cssom::CssomGroupPrelude::Supports(surgeist_css::syntax::CssSupport
 pub surgeist_cssom::CssomGroupPrelude::When(surgeist_css::when::CssWhenCondition)
 impl surgeist_cssom::CssomGroupPrelude
 pub const fn surgeist_cssom::CssomGroupPrelude::kind(&self) -> surgeist_cssom::CssomGroupKind
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomGroupPrelude
 pub enum surgeist_cssom::CssomInitialMedia<'a>
 pub surgeist_cssom::CssomInitialMedia::List
 pub surgeist_cssom::CssomInitialMedia::List::id: &'a surgeist_cssom::CssomMediaListId
@@ -221,6 +224,7 @@ pub surgeist_cssom::CssomParent::Sheet(surgeist_cssom::CssomSheetId)
 pub enum surgeist_cssom::CssomProjection<T, E>
 pub surgeist_cssom::CssomProjection::Available(T)
 pub surgeist_cssom::CssomProjection::Unavailable(E)
+impl<T: surgeist_css::source_retention::CssRetainedSources, E: surgeist_css::source_retention::CssRetainedSources> surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomProjection<T, E>
 pub enum surgeist_cssom::CssomPropertyDomain
 pub surgeist_cssom::CssomPropertyDomain::Keyframe
 pub surgeist_cssom::CssomPropertyDomain::Margin
@@ -230,6 +234,7 @@ pub surgeist_cssom::CssomPropertyOccurrences::Keyframe(surgeist_css::syntax::Css
 pub surgeist_cssom::CssomPropertyOccurrences::Margin(surgeist_css::syntax::page::CssMarginDeclarationBlock)
 pub surgeist_cssom::CssomPropertyOccurrences::Ordinary(surgeist_css::syntax::CssDeclarationList)
 pub surgeist_cssom::CssomPropertyOccurrences::RawContents(surgeist_css::syntax::CssDeclarationList)
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomPropertyOccurrences
 pub enum surgeist_cssom::CssomPublication
 pub surgeist_cssom::CssomPublication::Changed(alloc::boxed::Box<surgeist_cssom::CssomChangeSummary>)
 pub surgeist_cssom::CssomPublication::Unchanged
@@ -323,9 +328,11 @@ pub surgeist_cssom::CssomRuleData::SupportsTestChild(surgeist_css::named_support
 impl surgeist_cssom::CssomRuleData
 pub fn surgeist_cssom::CssomRuleData::block(&self) -> core::option::Option<&surgeist_cssom::CssomBlockId>
 pub fn surgeist_cssom::CssomRuleData::children(&self) -> core::option::Option<&surgeist_cssom::CssomRuleListId>
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomRuleData
 pub enum surgeist_cssom::CssomSelectors
 pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelectorList)
 pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
+impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomSelectors
 pub enum surgeist_cssom::CssomUsabilityRequirement
 pub surgeist_cssom::CssomUsabilityRequirement::AllCheckedValues
 pub surgeist_cssom::CssomUsabilityRequirement::WholeDeclarationDecision
@@ -2860,6 +2867,7 @@ impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_cssom::CssomRuleId, sheet: &surgeist_cssom::CssomSheetId, input: surgeist_cssom::CssomInputVersion, resolved_location: core::option::Option<alloc::string::String>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet(&mut self, source: &str, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::create_parsed_sheet_report(&mut self, report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssSheet>, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_typed_sheet(&mut self, sheet: surgeist_css::syntax::CssSheet, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_created_sheet_rule(&mut self, ticket: &surgeist_cssom::CssomSheetTicket, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_group_rule(&mut self, id: &surgeist_cssom::CssomRuleId, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
@@ -4479,7 +4487,10 @@ pub surgeist_cssom::CssomLimits::max_objects: usize
 pub surgeist_cssom::CssomLimits::max_owner_effect_identity: u64
 pub surgeist_cssom::CssomLimits::max_pending_owner_effect_bytes: usize
 pub surgeist_cssom::CssomLimits::max_pending_owner_effects: usize
+pub surgeist_cssom::CssomLimits::max_retained_source_bytes: usize
 pub surgeist_cssom::CssomLimits::max_revision: u64
+pub surgeist_cssom::CssomLimits::max_source_traversal_depth: usize
+pub surgeist_cssom::CssomLimits::max_source_traversal_steps: usize
 pub surgeist_cssom::CssomLimits::max_string_bytes: usize
 pub surgeist_cssom::CssomLimits::summary_history: usize
 impl core::default::Default for surgeist_cssom::CssomLimits

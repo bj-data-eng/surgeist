@@ -32,6 +32,7 @@ mod rule_serialization;
 mod shared_table;
 mod sheet_operations;
 mod sheet_replacement;
+mod source_retention;
 mod state_limits;
 mod store;
 

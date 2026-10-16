@@ -105,6 +105,15 @@ pub(crate) struct SupportsLexical {
     parent: Vec<usize>,
     range: Range<usize>,
 }
+impl CssRetainedSources for SupportsLexical {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        // A selected lexical window still owns its complete shared root.
+        sources.visit(self.root.as_ref())
+    }
+}
 impl fmt::Debug for SupportsLexical {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("SupportsLexical")

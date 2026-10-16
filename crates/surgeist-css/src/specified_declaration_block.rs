@@ -330,6 +330,20 @@ pub struct CssSpecifiedDeclarationEntry {
     member_ordinal: usize,
     value: EntryValue,
 }
+impl crate::CssRetainedSources for CssSpecifiedDeclarationEntry {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut crate::CssSourceRetention,
+    ) -> std::result::Result<(), crate::CssSourceRetentionError> {
+        sources.visit(&self.source)?;
+        match &self.value {
+            EntryValue::Completed(value) => sources.visit(value),
+            EntryValue::SvgGlyphOrientationVertical(value) => sources.visit(value),
+            EntryValue::Universal(value) => sources.visit(value),
+            EntryValue::Custom | EntryValue::Pending { .. } => Ok(()),
+        }
+    }
+}
 impl CssSpecifiedDeclarationEntry {
     #[must_use]
     pub fn property_name(&self) -> CssPropertyNameRef<'_> {

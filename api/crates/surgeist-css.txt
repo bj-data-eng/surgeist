@@ -19,6 +19,7 @@ pub surgeist_css::CssAbsoluteFontWeight::Number(surgeist_css::CssFontWeightNumbe
 impl surgeist_css::CssAbsoluteFontWeight
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssAbsoluteFontWeight
 #[non_exhaustive] pub enum surgeist_css::CssAccentColor
 pub surgeist_css::CssAccentColor::Auto
 pub surgeist_css::CssAccentColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
@@ -213,6 +214,7 @@ pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(kin
 pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components_with_limits(kind: surgeist_css::CssFontFaceDescriptorKind, values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFaceValueError>
 impl core::convert::From<surgeist_css::CssFontFaceDescriptorValue> for surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::from(value: surgeist_css::CssFontFaceDescriptorValue) -> Self
+impl surgeist_css::CssRetainedSources for surgeist_css::CssAuthoredFontFaceDescriptorValue
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredFontFeatureSettings
 pub surgeist_css::CssAuthoredFontFeatureSettings::Features(surgeist_css::CssAuthoredFontFeatureList)
 pub surgeist_css::CssAuthoredFontFeatureSettings::Normal
@@ -1755,6 +1757,7 @@ impl core::error::Error for surgeist_css::CssFontFaceDeclarationBlockError
 pub fn surgeist_css::CssFontFaceDeclarationBlockError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssFontFaceDeclarationBlockError
 pub fn surgeist_css::CssFontFaceDeclarationBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDeclarationBlockError
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceDescriptorKind
 pub surgeist_css::CssFontFaceDescriptorKind::AscentOverride
 pub surgeist_css::CssFontFaceDescriptorKind::DescentOverride
@@ -1795,6 +1798,7 @@ pub fn surgeist_css::CssFontFaceDescriptorValue::serialize_specified(&self) -> c
 pub fn surgeist_css::CssFontFaceDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::convert::From<surgeist_css::CssFontFaceDescriptorValue> for surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::from(value: surgeist_css::CssFontFaceDescriptorValue) -> Self
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptorValue
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceSource
 pub surgeist_css::CssFontFaceSource::Local(surgeist_css::CssFontLocalName)
 pub surgeist_css::CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource)
@@ -1871,6 +1875,7 @@ pub surgeist_css::CssFontFeatureValuesErrorKind::NegativeIndex
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesItem
 pub surgeist_css::CssFontFeatureValuesItem::Block(surgeist_css::CssFontFeatureValueBlock)
 pub surgeist_css::CssFontFeatureValuesItem::FontDisplay(surgeist_css::CssFontFeatureDisplayOccurrence)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesItem
 #[non_exhaustive] pub enum surgeist_css::CssFontFormat
 pub surgeist_css::CssFontFormat::Keyword(surgeist_css::CssFontFormatHint)
 pub surgeist_css::CssFontFormat::String(surgeist_css::CssFontFormatString)
@@ -2152,6 +2157,7 @@ pub surgeist_css::CssFontWidth::Percentage(surgeist_css::CssSpecifiedNonNegative
 impl surgeist_css::CssFontWidth
 pub fn surgeist_css::CssFontWidth::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontWidth::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontWidth
 #[non_exhaustive] pub enum surgeist_css::CssFontWidthKeyword
 pub surgeist_css::CssFontWidthKeyword::Condensed
 pub surgeist_css::CssFontWidthKeyword::Expanded
@@ -2616,6 +2622,7 @@ pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
 pub surgeist_css::CssKeyframeSelector::To
 impl surgeist_css::CssKeyframeSelector
 pub fn surgeist_css::CssKeyframeSelector::offset(&self) -> surgeist_css::CssKeyframePercent
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeSelector
 pub enum surgeist_css::CssKeyframeSelectorComparisonStage
 pub surgeist_css::CssKeyframeSelectorComparisonStage::Comparison
 pub surgeist_css::CssKeyframeSelectorComparisonStage::LeftNormalization
@@ -4307,6 +4314,7 @@ impl surgeist_css::CssMediaQuery
 pub const fn surgeist_css::CssMediaQuery::is_guaranteed_false(&self) -> bool
 pub const fn surgeist_css::CssMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssMediaQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaQuery
 #[non_exhaustive] pub enum surgeist_css::CssMediaQueryModifier
 pub surgeist_css::CssMediaQueryModifier::Not
 pub surgeist_css::CssMediaQueryModifier::Only
@@ -4612,6 +4620,7 @@ pub surgeist_css::CssPageBlockErrorKind::Resource(surgeist_css::CssSpecifiedValu
 #[non_exhaustive] pub enum surgeist_css::CssPageDeclaration
 pub surgeist_css::CssPageDeclaration::Descriptor(surgeist_css::CssPageDescriptor)
 pub surgeist_css::CssPageDeclaration::Property(surgeist_css::CssDeclaration)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDeclaration
 #[non_exhaustive] pub enum surgeist_css::CssPageDescriptorKind
 pub surgeist_css::CssPageDescriptorKind::Bleed
 pub surgeist_css::CssPageDescriptorKind::Marks
@@ -4647,6 +4656,7 @@ impl core::error::Error for surgeist_css::CssPageProjectionError
 pub fn surgeist_css::CssPageProjectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssPageProjectionError
 pub fn surgeist_css::CssPageProjectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageProjectionError
 #[non_exhaustive] pub enum surgeist_css::CssPagePseudo
 pub surgeist_css::CssPagePseudo::Blank
 pub surgeist_css::CssPagePseudo::First
@@ -4816,6 +4826,7 @@ pub surgeist_css::CssPseudoClass::VolumeLocked
 pub surgeist_css::CssPseudoClass::Where(surgeist_css::CssPseudoSelectorList)
 impl surgeist_css::CssPseudoClass
 pub fn surgeist_css::CssPseudoClass::has_pseudo_elements(&self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPseudoClass
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElement
 pub surgeist_css::CssPseudoElement::After
 pub surgeist_css::CssPseudoElement::Backdrop
@@ -5047,6 +5058,7 @@ pub fn surgeist_css::CssRule::serialize_cssom_with_limits(&self, limits: surgeis
 impl surgeist_css::CssRule
 pub fn surgeist_css::CssRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 pub fn surgeist_css::CssRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRule
 pub enum surgeist_css::CssRuleAdmissionContext
 pub surgeist_css::CssRuleAdmissionContext::Group
 pub surgeist_css::CssRuleAdmissionContext::Scope(surgeist_css::CssStyleAncestor)
@@ -5130,6 +5142,7 @@ pub surgeist_css::CssScopeSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssScopeSelector::Selector(surgeist_css::CssSelector)
 impl surgeist_css::CssScopeSelector
 pub const fn surgeist_css::CssScopeSelector::selector(&self) -> &surgeist_css::CssSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeSelector
 pub enum surgeist_css::CssScopeSelectorCssomContext
 pub surgeist_css::CssScopeSelectorCssomContext::End
 pub surgeist_css::CssScopeSelectorCssomContext::Start(surgeist_css::CssScopeNestingContext)
@@ -5153,9 +5166,11 @@ pub surgeist_css::CssScopedRule::Style(surgeist_css::CssScopedStyleRule)
 pub surgeist_css::CssScopedRule::Supports(surgeist_css::CssScopedSupportsRule)
 pub surgeist_css::CssScopedRule::SupportsCondition(surgeist_css::CssSupportsConditionRule)
 pub surgeist_css::CssScopedRule::When(surgeist_css::CssScopedWhenRule)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedRule
 #[non_exhaustive] pub enum surgeist_css::CssScopedStyleSelector
 pub surgeist_css::CssScopedStyleSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssScopedStyleSelector::Selector(surgeist_css::CssSelector)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleSelector
 #[non_exhaustive] pub enum surgeist_css::CssScrollBehavior
 pub surgeist_css::CssScrollBehavior::Auto
 pub surgeist_css::CssScrollBehavior::Smooth
@@ -5226,6 +5241,7 @@ pub fn surgeist_css::CssSelector::has_pseudo_elements(&self) -> bool
 impl surgeist_css::CssSelector
 pub fn surgeist_css::CssSelector::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSelector::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSelector
 #[non_exhaustive] pub enum surgeist_css::CssSelectorBinding
 pub surgeist_css::CssSelectorBinding::Absolute
 pub surgeist_css::CssSelectorBinding::ExplicitAnchors
@@ -5256,6 +5272,7 @@ pub surgeist_css::CssSerializedOrigin::Separator
 pub surgeist_css::CssSerializedOrigin::Separator::after: surgeist_css::CssValueOrigin
 pub surgeist_css::CssSerializedOrigin::Separator::before: surgeist_css::CssValueOrigin
 pub surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSerializedOrigin
 #[non_exhaustive] pub enum surgeist_css::CssShapeAbsoluteControlPointRef<'a>
 pub surgeist_css::CssShapeAbsoluteControlPointRef::Coordinates
 pub surgeist_css::CssShapeAbsoluteControlPointRef::Coordinates::anchor: surgeist_css::CssShapeControlAnchor
@@ -5357,6 +5374,9 @@ pub fn surgeist_css::CssSizeValue::serialize_specified(&self) -> core::result::R
 pub fn surgeist_css::CssSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
 pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
+pub enum surgeist_css::CssSourceRetentionError
+pub surgeist_css::CssSourceRetentionError::Allocation
+pub surgeist_css::CssSourceRetentionError::Limit(&'static str)
 #[non_exhaustive] pub enum surgeist_css::CssSpacingTrim
 pub surgeist_css::CssSpacingTrim::Normal
 pub surgeist_css::CssSpacingTrim::SpaceAll
@@ -5394,6 +5414,7 @@ pub surgeist_css::CssSpecifiedDeclarationValueRef::UnresolvedLonghand(&'a surgei
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedPageDeclarationEntry
 pub surgeist_css::CssSpecifiedPageDeclarationEntry::Descriptor(surgeist_css::CssPageDescriptor)
 pub surgeist_css::CssSpecifiedPageDeclarationEntry::Property(surgeist_css::CssSpecifiedDeclarationEntry)
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedPageDeclarationEntry
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedRuleSerializationErrorKind
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
@@ -5446,10 +5467,19 @@ pub surgeist_css::CssStyleSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector)
 impl surgeist_css::CssStyleSelector
 pub const fn surgeist_css::CssStyleSelector::selector(&self) -> &surgeist_css::CssSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleSelector
 pub enum surgeist_css::CssStyleSelectorContext
 pub surgeist_css::CssStyleSelectorContext::Nested
 pub surgeist_css::CssStyleSelectorContext::Ordinary
 pub surgeist_css::CssStyleSelectorContext::Scoped(surgeist_css::CssStyleAncestor)
+pub enum surgeist_css::CssStylesheetInputError<E>
+pub surgeist_css::CssStylesheetInputError::Allocation
+pub surgeist_css::CssStylesheetInputError::CapacityOverflow
+pub surgeist_css::CssStylesheetInputError::Interrupted(E)
+pub surgeist_css::CssStylesheetInputError::Limit(&'static str)
+impl<E: core::fmt::Debug + core::fmt::Display> core::error::Error for surgeist_css::CssStylesheetInputError<E>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_css::CssStylesheetInputError<E>
+pub fn surgeist_css::CssStylesheetInputError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_css::CssSupportStatus
 pub surgeist_css::CssSupportStatus::Complete
 pub surgeist_css::CssSupportStatus::Partial
@@ -5491,6 +5521,7 @@ pub surgeist_css::CssSupportsTestChild::Declaration(surgeist_css::CssSupportsTes
 pub surgeist_css::CssSupportsTestChild::QualifiedRule(surgeist_css::CssSupportsQualifiedRuleTest)
 impl surgeist_css::CssSupportsTestChild
 pub fn surgeist_css::CssSupportsTestChild::as_ref(&self) -> surgeist_css::CssSupportsTestChildRef<'_>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestChild
 pub enum surgeist_css::CssSupportsTestChildRef<'a>
 pub surgeist_css::CssSupportsTestChildRef::AtRule(&'a surgeist_css::CssSupportsAtRuleTest)
 pub surgeist_css::CssSupportsTestChildRef::Declaration(&'a surgeist_css::CssSupportsTestDeclaration)
@@ -6068,6 +6099,7 @@ pub surgeist_css::CssValueOrigin::Parsed(surgeist_css::CssParsedOrigin)
 pub surgeist_css::CssValueOrigin::Programmatic
 pub surgeist_css::CssValueOrigin::UnretainedInput
 pub surgeist_css::CssValueOrigin::UnretainedInput::byte_length: usize
+impl surgeist_css::CssRetainedSources for surgeist_css::CssValueOrigin
 #[non_exhaustive] pub enum surgeist_css::CssValueTokenRef<'a>
 pub surgeist_css::CssValueTokenRef::AtKeyword(&'a str)
 pub surgeist_css::CssValueTokenRef::Cdc
@@ -7751,6 +7783,7 @@ pub const fn surgeist_css::CssColorProfileDescriptor::value(&self) -> &surgeist_
 impl surgeist_css::CssColorProfileDescriptor
 pub fn surgeist_css::CssColorProfileDescriptor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColorProfileDescriptor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptor
 pub struct surgeist_css::CssColorProfileDescriptorValue
 impl surgeist_css::CssColorProfileDescriptorValue
 pub const fn surgeist_css::CssColorProfileDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -7763,6 +7796,7 @@ pub fn surgeist_css::CssColorProfileDescriptorValue::view(&self) -> surgeist_css
 impl surgeist_css::CssColorProfileDescriptorValue
 pub fn surgeist_css::CssColorProfileDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColorProfileDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptorValue
 pub struct surgeist_css::CssColorProfileName(_)
 impl surgeist_css::CssColorProfileName
 pub fn surgeist_css::CssColorProfileName::as_str(&self) -> &str
@@ -7777,6 +7811,7 @@ pub const fn surgeist_css::CssColorProfileRule::position(&self) -> core::option:
 impl surgeist_css::CssColorProfileRule
 pub fn surgeist_css::CssColorProfileRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColorProfileRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileRule
 pub struct surgeist_css::CssColorProfileValueError
 impl surgeist_css::CssColorProfileValueError
 pub fn surgeist_css::CssColorProfileValueError::kind(&self) -> &surgeist_css::CssColorProfileValueErrorKind
@@ -7958,6 +7993,7 @@ pub fn surgeist_css::CssComponentValue::try_string(value: impl core::convert::In
 pub fn surgeist_css::CssComponentValue::try_token(spelling: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssComponentValue::try_url(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssComponentValue::view(&self) -> surgeist_css::CssComponentValueRef<'_>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValue
 pub struct surgeist_css::CssComponentValueError
 impl surgeist_css::CssComponentValueError
 pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
@@ -7987,6 +8023,7 @@ pub fn surgeist_css::CssWhenConstructionError::from(error: surgeist_css::CssComp
 impl core::error::Error for surgeist_css::CssComponentValueError
 impl core::fmt::Display for surgeist_css::CssComponentValueError
 pub fn surgeist_css::CssComponentValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValueError
 pub struct surgeist_css::CssComponentValueLimits
 impl surgeist_css::CssComponentValueLimits
 pub const fn surgeist_css::CssComponentValueLimits::max_components(self) -> usize
@@ -8004,6 +8041,7 @@ pub fn surgeist_css::CssComponentValues::serialize(&self) -> core::result::Resul
 pub fn surgeist_css::CssComponentValues::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssComponentValues::try_new(items: alloc::vec::Vec<surgeist_css::CssComponentValue>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssComponentValues::try_new_with_limits(items: alloc::vec::Vec<surgeist_css::CssComponentValue>, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValues
 pub struct surgeist_css::CssCompoundSelector
 impl surgeist_css::CssCompoundSelector
 pub fn surgeist_css::CssCompoundSelector::attributes(&self) -> &[surgeist_css::CssAttributeSelector]
@@ -8018,6 +8056,7 @@ pub const fn surgeist_css::CssCompoundSelector::scope_anchors(&self) -> usize
 pub fn surgeist_css::CssCompoundSelector::try_new(members: alloc::vec::Vec<surgeist_css::CssSimpleSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssCompoundSelector::try_new_with_limits(members: alloc::vec::Vec<surgeist_css::CssSimpleSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssCompoundSelector::type_selector(&self) -> core::option::Option<&surgeist_css::CssQualifiedSelectorName>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCompoundSelector
 pub struct surgeist_css::CssCompoundSelectorArgument
 impl surgeist_css::CssCompoundSelectorArgument
 pub fn surgeist_css::CssCompoundSelectorArgument::compound(&self) -> &surgeist_css::CssCompoundSelector
@@ -8155,6 +8194,7 @@ pub fn surgeist_css::CssContainerPrelude::serialize(&self) -> core::result::Resu
 pub fn surgeist_css::CssContainerPrelude::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerPrelude::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
 pub fn surgeist_css::CssContainerPrelude::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssContainerPrelude
 pub struct surgeist_css::CssContainerPropertyValue
 impl surgeist_css::CssContainerPropertyValue
 pub fn surgeist_css::CssContainerPropertyValue::as_css(&self) -> &str
@@ -8180,6 +8220,7 @@ pub const fn surgeist_css::CssContainerRule::prelude(&self) -> &surgeist_css::Cs
 pub fn surgeist_css::CssContainerRule::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssContainerRule
 pub fn surgeist_css::CssContainerRule::try_new(prelude: surgeist_css::CssContainerPrelude, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssContainerRule
 pub struct surgeist_css::CssContainerScrollDirectionValue
 impl surgeist_css::CssContainerScrollDirectionValue
 pub fn surgeist_css::CssContainerScrollDirectionValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -8365,6 +8406,7 @@ pub fn surgeist_css::CssCounterStyleDescriptorValue::try_from_components_with_li
 impl surgeist_css::CssCounterStyleDescriptorValue
 pub fn surgeist_css::CssCounterStyleDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCounterStyleDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleDescriptorValue
 pub struct surgeist_css::CssCounterStyleDescriptors
 impl surgeist_css::CssCounterStyleDescriptors
 pub const fn surgeist_css::CssCounterStyleDescriptors::additive_symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
@@ -8381,6 +8423,7 @@ pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::op
 impl surgeist_css::CssCounterStyleDescriptors
 pub fn surgeist_css::CssCounterStyleDescriptors::entries(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssCounterStyleDescriptorEntry<'_>>
 pub fn surgeist_css::CssCounterStyleDescriptors::prospective(&self) -> core::result::Result<surgeist_css::CssCounterStyleDescriptorCollection<'_>, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleDescriptors
 pub struct surgeist_css::CssCounterStyleFixedSystem
 impl surgeist_css::CssCounterStyleFixedSystem
 pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerValue>
@@ -8425,6 +8468,7 @@ pub const fn surgeist_css::CssCounterStyleRule::descriptors(&self) -> &surgeist_
 pub const fn surgeist_css::CssCounterStyleRule::name(&self) -> &surgeist_css::CssCounterStyleName
 pub const fn surgeist_css::CssCounterStyleRule::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssCounterStyleRule::position(&self) -> surgeist_css::CssSourcePosition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleRule
 pub struct surgeist_css::CssCounterStyleValueError
 impl surgeist_css::CssCounterStyleValueError
 pub fn surgeist_css::CssCounterStyleValueError::kind(&self) -> &surgeist_css::CssCounterStyleValueErrorKind
@@ -8542,6 +8586,7 @@ pub fn surgeist_css::CssCustomMediaRule::try_from_components(values: surgeist_cs
 pub fn surgeist_css::CssCustomMediaRule::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
 pub fn surgeist_css::CssCustomMediaRule::try_new(name: surgeist_css::CssCustomMediaName, body: surgeist_css::CssCustomMediaBody) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
 pub fn surgeist_css::CssCustomMediaRule::try_new_with_limits(name: surgeist_css::CssCustomMediaName, body: surgeist_css::CssCustomMediaBody, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCustomMediaRule
 pub struct surgeist_css::CssCustomPropertyContribution
 impl surgeist_css::CssCustomPropertyContribution
 pub fn surgeist_css::CssCustomPropertyContribution::declaration(&self) -> &surgeist_css::CssCustomDeclaration
@@ -8599,6 +8644,7 @@ pub fn surgeist_css::CssDeclaration::to_specified_css(&self) -> core::result::Re
 pub fn surgeist_css::CssDeclaration::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclaration
 pub struct surgeist_css::CssDeclarationAnnotationError
 impl surgeist_css::CssDeclarationAnnotationError
 pub const fn surgeist_css::CssDeclarationAnnotationError::context(&self) -> surgeist_css::CssDeclarationContextRef<'_>
@@ -8619,6 +8665,7 @@ impl core::error::Error for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockError
 pub struct surgeist_css::CssDeclarationList
 impl surgeist_css::CssDeclarationList
 pub fn surgeist_css::CssDeclarationList::as_slice(&self) -> &[surgeist_css::CssDeclaration]
@@ -8635,6 +8682,7 @@ pub fn surgeist_css::CssDeclarationList::to_specified_css_with_limits(&self, lim
 impl core::ops::deref::Deref for surgeist_css::CssDeclarationList
 pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaration]
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationList
 pub struct surgeist_css::CssDecodedStylesheetInput(_)
 impl surgeist_css::CssDecodedStylesheetInput
 pub fn surgeist_css::CssDecodedStylesheetInput::encoding(&self) -> surgeist_css::CssEncoding
@@ -8668,6 +8716,7 @@ pub const fn surgeist_css::CssDescriptorOccurrence<T>::position(&self) -> surgei
 pub fn surgeist_css::CssDescriptorOccurrence<T>::same_occurrence(&self, other: &Self) -> bool
 pub const fn surgeist_css::CssDescriptorOccurrence<T>::value(&self) -> &T
 pub fn surgeist_css::CssDescriptorOccurrence<T>::value_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
+impl<T: surgeist_css::CssRetainedSources> surgeist_css::CssRetainedSources for surgeist_css::CssDescriptorOccurrence<T>
 impl<T> core::ops::deref::Deref for surgeist_css::CssDescriptorOccurrence<T>
 pub type surgeist_css::CssDescriptorOccurrence<T>::Target = T
 pub fn surgeist_css::CssDescriptorOccurrence<T>::deref(&self) -> &Self::Target
@@ -8778,6 +8827,7 @@ pub const fn surgeist_css::CssElseRule::position(&self) -> core::option::Option<
 pub fn surgeist_css::CssElseRule::rules(&self) -> &[surgeist_css::CssRule]
 pub fn surgeist_css::CssElseRule::try_new(condition: core::option::Option<surgeist_css::CssWhenCondition>, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub fn surgeist_css::CssElseRule::try_new_in_style(condition: core::option::Option<surgeist_css::CssWhenCondition>, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssElseRule
 pub struct surgeist_css::CssEmptyCellsPropertyValue
 impl surgeist_css::CssEmptyCellsPropertyValue
 pub fn surgeist_css::CssEmptyCellsPropertyValue::as_css(&self) -> &str
@@ -8990,11 +9040,13 @@ impl surgeist_css::CssFontFaceDescriptor
 pub const fn surgeist_css::CssFontFaceDescriptor::new(value: surgeist_css::CssAuthoredFontFaceDescriptorValue) -> Self
 pub const fn surgeist_css::CssFontFaceDescriptor::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssFontFaceDescriptor::value(&self) -> &surgeist_css::CssAuthoredFontFaceDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptor
 pub struct surgeist_css::CssFontFaceDescriptors
 impl surgeist_css::CssFontFaceDescriptors
 pub fn surgeist_css::CssFontFaceDescriptors::effective(&self, kind: surgeist_css::CssFontFaceDescriptorKind) -> core::option::Option<&surgeist_css::CssFontFaceDescriptor>
 pub fn surgeist_css::CssFontFaceDescriptors::new(occurrences: alloc::vec::Vec<surgeist_css::CssFontFaceDescriptor>) -> Self
 pub fn surgeist_css::CssFontFaceDescriptors::occurrences(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &surgeist_css::CssFontFaceDescriptor>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptors
 pub struct surgeist_css::CssFontFaceFamily
 impl surgeist_css::CssFontFaceFamily
 pub fn surgeist_css::CssFontFaceFamily::as_str(&self) -> &str
@@ -9014,6 +9066,7 @@ impl surgeist_css::CssFontFaceRule
 pub const fn surgeist_css::CssFontFaceRule::descriptors(&self) -> &surgeist_css::CssFontFaceDescriptors
 pub const fn surgeist_css::CssFontFaceRule::new(descriptors: surgeist_css::CssFontFaceDescriptors) -> Self
 pub const fn surgeist_css::CssFontFaceRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceRule
 pub struct surgeist_css::CssFontFaceSourceList
 impl surgeist_css::CssFontFaceSourceList
 pub fn surgeist_css::CssFontFaceSourceList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -9071,6 +9124,7 @@ pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::new(value: surgeist_
 pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::value(&self) -> &surgeist_css::CssFontFeatureDisplayValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureDisplayOccurrence
 pub struct surgeist_css::CssFontFeatureDisplayValue
 impl surgeist_css::CssFontFeatureDisplayValue
 pub const fn surgeist_css::CssFontFeatureDisplayValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -9084,6 +9138,7 @@ pub fn surgeist_css::CssFontFeatureDisplayValue::try_from_components_with_limits
 impl surgeist_css::CssFontFeatureDisplayValue
 pub fn surgeist_css::CssFontFeatureDisplayValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontFeatureDisplayValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureDisplayValue
 pub struct surgeist_css::CssFontFeatureIndex
 impl surgeist_css::CssFontFeatureIndex
 pub fn surgeist_css::CssFontFeatureIndex::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -9098,6 +9153,7 @@ pub fn surgeist_css::CssFontFeatureIndex::try_new(value: i32) -> core::option::O
 impl core::cmp::Eq for surgeist_css::CssFontFeatureIndex
 impl core::cmp::PartialEq for surgeist_css::CssFontFeatureIndex
 pub fn surgeist_css::CssFontFeatureIndex::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureIndex
 pub struct surgeist_css::CssFontFeatureSettingsPropertyValue
 impl surgeist_css::CssFontFeatureSettingsPropertyValue
 pub fn surgeist_css::CssFontFeatureSettingsPropertyValue::as_css(&self) -> &str
@@ -9116,12 +9172,14 @@ pub fn surgeist_css::CssFontFeatureValue::try_from_components_with_limits(kind: 
 impl surgeist_css::CssFontFeatureValue
 pub fn surgeist_css::CssFontFeatureValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontFeatureValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValue
 pub struct surgeist_css::CssFontFeatureValueBlock
 impl surgeist_css::CssFontFeatureValueBlock
 pub fn surgeist_css::CssFontFeatureValueBlock::definitions(&self) -> &[surgeist_css::CssFontFeatureValueDefinition]
 pub const fn surgeist_css::CssFontFeatureValueBlock::kind(&self) -> surgeist_css::CssFontFeatureValueKind
 pub const fn surgeist_css::CssFontFeatureValueBlock::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssFontFeatureValueBlock::try_new(kind: surgeist_css::CssFontFeatureValueKind, definitions: alloc::vec::Vec<surgeist_css::CssFontFeatureValueDefinition>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValueBlock
 pub struct surgeist_css::CssFontFeatureValueDefinition
 impl surgeist_css::CssFontFeatureValueDefinition
 pub const fn surgeist_css::CssFontFeatureValueDefinition::name(&self) -> &surgeist_css::CssFontFeatureValueName
@@ -9129,6 +9187,7 @@ pub const fn surgeist_css::CssFontFeatureValueDefinition::new(name: surgeist_css
 pub const fn surgeist_css::CssFontFeatureValueDefinition::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssFontFeatureValueDefinition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssFontFeatureValueDefinition::value(&self) -> &surgeist_css::CssFontFeatureValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValueDefinition
 pub struct surgeist_css::CssFontFeatureValueError
 impl surgeist_css::CssFontFeatureValueError
 pub fn surgeist_css::CssFontFeatureValueError::kind(&self) -> &surgeist_css::CssFontFeatureValueErrorKind
@@ -9165,12 +9224,14 @@ pub const fn surgeist_css::CssFontFeatureValuesFamilyList::origin(&self) -> &sur
 pub fn surgeist_css::CssFontFeatureValuesFamilyList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontFeatureValuesFamilyList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontFeatureValuesFamilyList::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFaceFamily>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesFamilyList
 pub struct surgeist_css::CssFontFeatureValuesRule
 impl surgeist_css::CssFontFeatureValuesRule
 pub fn surgeist_css::CssFontFeatureValuesRule::families(&self) -> &[surgeist_css::CssFontFaceFamily]
 pub fn surgeist_css::CssFontFeatureValuesRule::items(&self) -> &[surgeist_css::CssFontFeatureValuesItem]
 pub const fn surgeist_css::CssFontFeatureValuesRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssFontFeatureValuesRule::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFaceFamily>, items: alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesRule
 pub struct surgeist_css::CssFontFormatString
 impl surgeist_css::CssFontFormatString
 pub fn surgeist_css::CssFontFormatString::as_str(&self) -> &str
@@ -9227,6 +9288,7 @@ pub fn surgeist_css::CssFontObliqueAngle::try_from_component(component: surgeist
 impl core::cmp::Eq for surgeist_css::CssFontObliqueAngle
 impl core::cmp::PartialEq for surgeist_css::CssFontObliqueAngle
 pub fn surgeist_css::CssFontObliqueAngle::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontObliqueAngle
 pub struct surgeist_css::CssFontOpticalSizingPropertyValue
 impl surgeist_css::CssFontOpticalSizingPropertyValue
 pub fn surgeist_css::CssFontOpticalSizingPropertyValue::as_css(&self) -> &str
@@ -9236,6 +9298,7 @@ impl surgeist_css::CssFontPaletteDescriptor
 pub const fn surgeist_css::CssFontPaletteDescriptor::new(value: surgeist_css::CssFontPaletteDescriptorValue) -> Self
 pub const fn surgeist_css::CssFontPaletteDescriptor::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssFontPaletteDescriptor::value(&self) -> &surgeist_css::CssFontPaletteDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteDescriptor
 pub struct surgeist_css::CssFontPaletteDescriptorValue
 impl surgeist_css::CssFontPaletteDescriptorValue
 pub const fn surgeist_css::CssFontPaletteDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -9248,6 +9311,7 @@ pub fn surgeist_css::CssFontPaletteDescriptorValue::view(&self) -> surgeist_css:
 impl surgeist_css::CssFontPaletteDescriptorValue
 pub fn surgeist_css::CssFontPaletteDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontPaletteDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteDescriptorValue
 pub struct surgeist_css::CssFontPaletteIndex
 impl surgeist_css::CssFontPaletteIndex
 pub fn surgeist_css::CssFontPaletteIndex::try_new(value: surgeist_css::CssIntegerValue) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
@@ -9292,6 +9356,7 @@ pub fn surgeist_css::CssFontPaletteValuesRule::try_new(name: surgeist_css::CssFo
 impl surgeist_css::CssFontPaletteValuesRule
 pub fn surgeist_css::CssFontPaletteValuesRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontPaletteValuesRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteValuesRule
 pub struct surgeist_css::CssFontPropertyValue
 impl surgeist_css::CssFontPropertyValue
 pub fn surgeist_css::CssFontPropertyValue::as_css(&self) -> &str
@@ -9440,6 +9505,7 @@ pub fn surgeist_css::CssFontWeightNumber::try_from_component(component: surgeist
 impl core::cmp::Eq for surgeist_css::CssFontWeightNumber
 impl core::cmp::PartialEq for surgeist_css::CssFontWeightNumber
 pub fn surgeist_css::CssFontWeightNumber::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontWeightNumber
 pub struct surgeist_css::CssFontWeightPropertyValue
 impl surgeist_css::CssFontWeightPropertyValue
 pub fn surgeist_css::CssFontWeightPropertyValue::as_css(&self) -> &str
@@ -9936,6 +10002,7 @@ pub fn surgeist_css::CssImportRule::serialize(&self) -> core::result::Result<sur
 pub fn surgeist_css::CssImportRule::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssImportSerializationError>
 pub fn surgeist_css::CssImportRule::try_from_components(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
 pub fn surgeist_css::CssImportRule::try_from_components_with_limits(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssImportRule
 pub struct surgeist_css::CssImportRuleView<'a>
 impl<'a> surgeist_css::CssImportRuleView<'a>
 pub const fn surgeist_css::CssImportRuleView<'a>::media(self) -> &'a surgeist_css::CssMediaQueryList
@@ -10140,6 +10207,7 @@ impl surgeist_css::CssKeyframeBlock
 pub const fn surgeist_css::CssKeyframeBlock::declarations(&self) -> &surgeist_css::CssKeyframeDeclarationList
 pub const fn surgeist_css::CssKeyframeBlock::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssKeyframeBlock::selectors(&self) -> &surgeist_css::CssKeyframeSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeBlock
 pub struct surgeist_css::CssKeyframeDeclaration
 impl surgeist_css::CssKeyframeDeclaration
 pub fn surgeist_css::CssKeyframeDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
@@ -10151,6 +10219,7 @@ pub fn surgeist_css::CssKeyframeDeclaration::source(&self) -> &surgeist_css::Css
 pub fn surgeist_css::CssKeyframeDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
 impl core::cmp::PartialEq for surgeist_css::CssKeyframeDeclaration
 pub fn surgeist_css::CssKeyframeDeclaration::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeDeclaration
 pub struct surgeist_css::CssKeyframeDeclarationList
 impl surgeist_css::CssKeyframeDeclarationList
 pub fn surgeist_css::CssKeyframeDeclarationList::as_slice(&self) -> &[surgeist_css::CssKeyframeDeclaration]
@@ -10162,6 +10231,7 @@ pub fn surgeist_css::CssKeyframeDeclarationList::serialize_cssom_with_limits(&se
 impl core::ops::deref::Deref for surgeist_css::CssKeyframeDeclarationList
 pub type surgeist_css::CssKeyframeDeclarationList::Target = [surgeist_css::CssKeyframeDeclaration]
 pub fn surgeist_css::CssKeyframeDeclarationList::deref(&self) -> &Self::Target
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeDeclarationList
 pub struct surgeist_css::CssKeyframePercent
 impl surgeist_css::CssKeyframePercent
 pub fn surgeist_css::CssKeyframePercent::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>
@@ -10197,6 +10267,7 @@ pub fn surgeist_css::CssKeyframeSelectorList::serialize_key_text_with_limits(&se
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
 pub fn surgeist_css::CssKeyframeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssKeyframeSelector>) -> core::option::Option<Self>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeSelectorList
 pub struct surgeist_css::CssKeyframeSelectorMatcher<'query>
 impl<'query> surgeist_css::CssKeyframeSelectorMatcher<'query>
 pub fn surgeist_css::CssKeyframeSelectorMatcher<'query>::matches(&mut self, other: &surgeist_css::CssKeyframeSelectorList) -> core::result::Result<bool, surgeist_css::CssKeyframeSelectorComparisonError>
@@ -10211,6 +10282,7 @@ impl surgeist_css::CssKeyframesRule
 pub fn surgeist_css::CssKeyframesRule::blocks(&self) -> &[surgeist_css::CssKeyframeBlock]
 pub const fn surgeist_css::CssKeyframesRule::name(&self) -> &surgeist_css::CssKeyframesName
 pub const fn surgeist_css::CssKeyframesRule::position(&self) -> surgeist_css::CssSourcePosition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframesRule
 pub struct surgeist_css::CssKeyframesRuleView<'a>
 impl<'a> surgeist_css::CssKeyframesRuleView<'a>
 pub const fn surgeist_css::CssKeyframesRuleView<'a>::name(self) -> &'a surgeist_css::CssKeyframesName
@@ -10260,6 +10332,7 @@ pub const fn surgeist_css::CssLayerBlockRule::position(&self) -> core::option::O
 pub fn surgeist_css::CssLayerBlockRule::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssLayerBlockRule
 pub fn surgeist_css::CssLayerBlockRule::try_new(name: core::option::Option<surgeist_css::CssLayerName>, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssLayerBlockRule
 pub struct surgeist_css::CssLayerName
 impl surgeist_css::CssLayerName
 pub fn surgeist_css::CssLayerName::components(&self) -> &[alloc::string::String]
@@ -10414,6 +10487,7 @@ pub fn surgeist_css::CssLonghandContribution::property(&self) -> surgeist_css::C
 pub fn surgeist_css::CssLonghandContribution::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 pub fn surgeist_css::CssLonghandContribution::source(&self) -> &surgeist_css::CssDeclaration
 pub fn surgeist_css::CssLonghandContribution::value(&self) -> surgeist_css::CssContributionValueRef<'_>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssLonghandContribution
 pub struct surgeist_css::CssLonghandContributions
 impl surgeist_css::CssLonghandContributions
 pub fn surgeist_css::CssLonghandContributions::items(&self) -> &[surgeist_css::CssLonghandContribution]
@@ -10461,6 +10535,7 @@ pub fn surgeist_css::CssMarginDeclarationBlock::try_new(properties: alloc::vec::
 pub fn surgeist_css::CssMarginDeclarationBlock::try_new_with_limits(properties: alloc::vec::Vec<surgeist_css::CssDeclaration>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssPageBlockError>
 pub fn surgeist_css::CssMarginDeclarationBlock::try_specified_properties(&self) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssMarginDeclarationBlock::try_specified_properties_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSpecifiedDeclarationBlock, surgeist_css::CssDeclarationBlockError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMarginDeclarationBlock
 pub struct surgeist_css::CssMarginInlineEndPropertyValue
 impl surgeist_css::CssMarginInlineEndPropertyValue
 pub fn surgeist_css::CssMarginInlineEndPropertyValue::as_css(&self) -> &str
@@ -10503,6 +10578,7 @@ pub const fn surgeist_css::CssMarginRule::position(&self) -> core::option::Optio
 impl surgeist_css::CssMarginRule
 pub fn surgeist_css::CssMarginRule::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssMarginRule::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMarginRule
 pub struct surgeist_css::CssMarginRuleView<'a>
 impl<'a> surgeist_css::CssMarginRuleView<'a>
 pub const fn surgeist_css::CssMarginRuleView<'a>::declarations(self) -> &'a surgeist_css::CssSpecifiedDeclarationBlock
@@ -10696,6 +10772,7 @@ impl surgeist_css::CssMediaCondition
 pub fn surgeist_css::CssMediaCondition::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
 pub fn surgeist_css::CssMediaCondition::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
 pub fn surgeist_css::CssMediaCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaCondition
 pub struct surgeist_css::CssMediaConditionList
 impl surgeist_css::CssMediaConditionList
 pub fn surgeist_css::CssMediaConditionList::conditions(&self) -> &[surgeist_css::CssMediaCondition]
@@ -10730,6 +10807,7 @@ pub fn surgeist_css::CssMediaQueryList::serialize_cssom(&self) -> core::result::
 pub fn surgeist_css::CssMediaQueryList::serialize_cssom_members(&self) -> core::result::Result<alloc::vec::Vec<surgeist_css::CssSerializedValue>, surgeist_css::CssMediaCssomSerializationError>
 pub fn surgeist_css::CssMediaQueryList::serialize_cssom_members_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::vec::Vec<surgeist_css::CssSerializedValue>, surgeist_css::CssMediaCssomSerializationError>
 pub fn surgeist_css::CssMediaQueryList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaQueryList
 pub struct surgeist_css::CssMediaRange<T>
 impl<T> surgeist_css::CssMediaRange<T>
 pub fn surgeist_css::CssMediaRange<T>::view(&self) -> surgeist_css::CssMediaRangeRef<'_, T>
@@ -10748,6 +10826,7 @@ pub const fn surgeist_css::CssMediaRule::query(&self) -> &surgeist_css::CssMedia
 pub fn surgeist_css::CssMediaRule::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssMediaRule
 pub fn surgeist_css::CssMediaRule::try_new(query: surgeist_css::CssMediaQueryList, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaRule
 pub struct surgeist_css::CssMinBlockSizePropertyValue
 impl surgeist_css::CssMinBlockSizePropertyValue
 pub fn surgeist_css::CssMinBlockSizePropertyValue::as_css(&self) -> &str
@@ -10855,6 +10934,7 @@ pub struct surgeist_css::CssNestedDeclarationsRule
 impl surgeist_css::CssNestedDeclarationsRule
 pub const fn surgeist_css::CssNestedDeclarationsRule::declarations(&self) -> &surgeist_css::CssDeclarationList
 pub fn surgeist_css::CssNestedDeclarationsRule::position(&self) -> surgeist_css::CssSourcePosition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssNestedDeclarationsRule
 pub struct surgeist_css::CssNestingLimitError
 impl surgeist_css::CssNestingLimitError
 pub const fn surgeist_css::CssNestingLimitError::enclosing_production(&self) -> surgeist_css::CssProductionId
@@ -11237,6 +11317,7 @@ pub fn surgeist_css::CssPageDeclarationBlock::try_new_with_limits(occurrences: a
 impl surgeist_css::CssPageDeclarationBlock
 pub fn surgeist_css::CssPageDeclarationBlock::try_specified(&self) -> core::result::Result<surgeist_css::CssSpecifiedPageDeclarationBlock, surgeist_css::CssPageProjectionError>
 pub fn surgeist_css::CssPageDeclarationBlock::try_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSpecifiedPageDeclarationBlock, surgeist_css::CssPageProjectionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDeclarationBlock
 pub struct surgeist_css::CssPageDescriptor
 impl surgeist_css::CssPageDescriptor
 pub fn surgeist_css::CssPageDescriptor::importance(&self) -> surgeist_css::CssImportance
@@ -11244,6 +11325,7 @@ pub fn surgeist_css::CssPageDescriptor::new(value: surgeist_css::CssPageDescript
 pub fn surgeist_css::CssPageDescriptor::occurrence(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssPageDescriptorValue>>
 pub fn surgeist_css::CssPageDescriptor::value(&self) -> &surgeist_css::CssPageDescriptorValue
 pub fn surgeist_css::CssPageDescriptor::with_importance(&self, importance: surgeist_css::CssImportance) -> Self
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDescriptor
 pub struct surgeist_css::CssPageDescriptorValue
 impl surgeist_css::CssPageDescriptorValue
 pub const fn surgeist_css::CssPageDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -11253,6 +11335,7 @@ pub const fn surgeist_css::CssPageDescriptorValue::view(&self) -> surgeist_css::
 impl surgeist_css::CssPageDescriptorValue
 pub fn surgeist_css::CssPageDescriptorValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPageDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDescriptorValue
 pub struct surgeist_css::CssPageLineMinimum
 impl surgeist_css::CssPageLineMinimum
 pub fn surgeist_css::CssPageLineMinimum::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -11284,6 +11367,7 @@ pub const fn surgeist_css::CssPageRule::position(&self) -> surgeist_css::CssSour
 pub const fn surgeist_css::CssPageRule::selectors(&self) -> &surgeist_css::CssPageSelectorList
 pub fn surgeist_css::CssPageRule::with_body(&self, body: surgeist_css::CssPageBody) -> Self
 pub fn surgeist_css::CssPageRule::with_selectors(&self, selectors: surgeist_css::CssPageSelectorList) -> Self
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageRule
 pub struct surgeist_css::CssPageRuleView<'a>
 impl<'a> surgeist_css::CssPageRuleView<'a>
 pub const fn surgeist_css::CssPageRuleView<'a>::declarations(self) -> &'a surgeist_css::CssSpecifiedPageDeclarationBlock
@@ -11299,6 +11383,7 @@ pub const fn surgeist_css::CssPageSelector::origin(&self) -> core::option::Optio
 pub fn surgeist_css::CssPageSelector::pseudos(&self) -> &[surgeist_css::CssPagePseudo]
 pub fn surgeist_css::CssPageSelector::specificity(&self) -> surgeist_css::CssPageSpecificity
 pub fn surgeist_css::CssPageSelector::try_new(name: core::option::Option<surgeist_css::CssIdent>, pseudos: alloc::vec::Vec<surgeist_css::CssPagePseudo>) -> core::option::Option<Self>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageSelector
 pub struct surgeist_css::CssPageSelectorList
 impl surgeist_css::CssPageSelectorList
 pub fn surgeist_css::CssPageSelectorList::is_empty(&self) -> bool
@@ -11308,6 +11393,7 @@ pub fn surgeist_css::CssPageSelectorList::selectors(&self) -> &[surgeist_css::Cs
 impl surgeist_css::CssPageSelectorList
 pub fn surgeist_css::CssPageSelectorList::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPageSelectorList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageSelectorList
 pub struct surgeist_css::CssPageSpecificity
 impl surgeist_css::CssPageSpecificity
 pub const fn surgeist_css::CssPageSpecificity::first_or_blank(self) -> usize
@@ -11333,6 +11419,7 @@ pub struct surgeist_css::CssParsedOrigin
 impl surgeist_css::CssParsedOrigin
 pub const fn surgeist_css::CssParsedOrigin::source(&self) -> &surgeist_css::CssSourceSnapshot
 pub const fn surgeist_css::CssParsedOrigin::span(&self) -> surgeist_css::CssSourceSpan
+impl surgeist_css::CssRetainedSources for surgeist_css::CssParsedOrigin
 pub struct surgeist_css::CssParsedStyleSelectors
 impl surgeist_css::CssParsedStyleSelectors
 pub const fn surgeist_css::CssParsedStyleSelectors::context(&self) -> surgeist_css::CssStyleSelectorContext
@@ -11380,6 +11467,8 @@ pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attr
 pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical(self) -> Self
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_keyframe_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
+impl surgeist_css::CssParserContext
+pub fn surgeist_css::CssParserContext::parse_sheet_utf16_with_limits<E>(self, original: alloc::sync::Arc<alloc::vec::Vec<u16>>, limits: surgeist_css::CssStylesheetInputLimits, poll: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_css::CssParseReport<surgeist_css::CssSheet>, surgeist_css::CssStylesheetInputError<E>>
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_when_condition(self, source: &str) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::CssParserContext::parse_when_condition_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
@@ -11441,6 +11530,7 @@ pub fn surgeist_css::CssPendingFontFaceDescriptorValue::reparse_after_substituti
 impl surgeist_css::CssPendingFontFaceDescriptorValue
 pub fn surgeist_css::CssPendingFontFaceDescriptorValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPendingFontFaceDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPendingFontFaceDescriptorValue
 pub struct surgeist_css::CssPendingSubstitution
 impl surgeist_css::CssPendingSubstitution
 pub fn surgeist_css::CssPendingSubstitution::reenter(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssContributions, surgeist_css::CssExpansionError>
@@ -11638,6 +11728,7 @@ pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<s
 pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssPseudoSelectorList::try_new_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPseudoSelectorList
 pub struct surgeist_css::CssQualifiedAttributeName
 impl surgeist_css::CssQualifiedAttributeName
 pub const fn surgeist_css::CssQualifiedAttributeName::local_name(&self) -> &surgeist_css::CssAttributeName
@@ -11733,10 +11824,12 @@ pub struct surgeist_css::CssRecoveryDiagnostic
 impl surgeist_css::CssRecoveryDiagnostic
 pub const fn surgeist_css::CssRecoveryDiagnostic::action(&self) -> surgeist_css::CssRecoveryAction
 pub const fn surgeist_css::CssRecoveryDiagnostic::error(&self) -> &surgeist_css::Error
+pub const fn surgeist_css::CssRecoveryDiagnostic::source(&self) -> core::option::Option<&surgeist_css::CssSourceSnapshot>
 pub const fn surgeist_css::CssRecoveryDiagnostic::span(&self) -> surgeist_css::CssSourceSpan
 impl core::cmp::Eq for surgeist_css::CssRecoveryDiagnostic
 impl core::cmp::PartialEq for surgeist_css::CssRecoveryDiagnostic
 pub fn surgeist_css::CssRecoveryDiagnostic::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRecoveryDiagnostic
 pub struct surgeist_css::CssRectShape
 impl surgeist_css::CssRectShape
 pub const fn surgeist_css::CssRectShape::bottom(&self) -> &surgeist_css::CssRectShapeEdge
@@ -11787,6 +11880,7 @@ impl surgeist_css::CssRelativeSelector
 pub const fn surgeist_css::CssRelativeSelector::combinator(&self) -> surgeist_css::CssSelectorCombinator
 pub const fn surgeist_css::CssRelativeSelector::new(combinator: surgeist_css::CssSelectorCombinator, selector: surgeist_css::CssSelector) -> Self
 pub const fn surgeist_css::CssRelativeSelector::selector(&self) -> &surgeist_css::CssSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRelativeSelector
 pub struct surgeist_css::CssRelativeSelectorList
 impl surgeist_css::CssRelativeSelectorList
 pub fn surgeist_css::CssRelativeSelectorList::has_pseudo_elements(&self) -> bool
@@ -11955,6 +12049,7 @@ pub fn surgeist_css::CssScopeRule::serialize_cssom_start(&self, namespaces: &sur
 pub fn surgeist_css::CssScopeRule::serialize_cssom_start_with_limits(&self, namespaces: &surgeist_css::CssNamespaceContext, nesting: surgeist_css::CssScopeNestingContext, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssScopeRule
 pub fn surgeist_css::CssScopeRule::try_new(root: core::option::Option<surgeist_css::CssScopeSelectorList>, limit: core::option::Option<surgeist_css::CssScopeSelectorList>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext, nesting: surgeist_css::CssScopeNestingContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeRule
 pub struct surgeist_css::CssScopeSelectorList
 impl surgeist_css::CssScopeSelectorList
 pub fn surgeist_css::CssScopeSelectorList::selectors(&self) -> &[surgeist_css::CssScopeSelector]
@@ -11962,6 +12057,7 @@ pub fn surgeist_css::CssScopeSelectorList::try_new(selectors: alloc::vec::Vec<su
 impl surgeist_css::CssScopeSelectorList
 pub fn surgeist_css::CssScopeSelectorList::serialize_cssom(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssScopeSelectorCssomContext) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssScopeSelectorList::serialize_cssom_with_limits(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssScopeSelectorCssomContext, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeSelectorList
 pub struct surgeist_css::CssScopedContainerRule
 impl surgeist_css::CssScopedContainerRule
 pub const fn surgeist_css::CssScopedContainerRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
@@ -11969,6 +12065,7 @@ pub const fn surgeist_css::CssScopedContainerRule::prelude(&self) -> &surgeist_c
 pub const fn surgeist_css::CssScopedContainerRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopedContainerRule
 pub fn surgeist_css::CssScopedContainerRule::try_new(prelude: surgeist_css::CssContainerPrelude, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedContainerRule
 pub struct surgeist_css::CssScopedElseRule
 impl surgeist_css::CssScopedElseRule
 pub fn surgeist_css::CssScopedElseRule::condition(&self) -> core::option::Option<&surgeist_css::CssWhenCondition>
@@ -11976,6 +12073,7 @@ pub const fn surgeist_css::CssScopedElseRule::position(&self) -> core::option::O
 pub fn surgeist_css::CssScopedElseRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 pub fn surgeist_css::CssScopedElseRule::try_new(condition: core::option::Option<surgeist_css::CssWhenCondition>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub fn surgeist_css::CssScopedElseRule::try_new_in_style(condition: core::option::Option<surgeist_css::CssWhenCondition>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedElseRule
 pub struct surgeist_css::CssScopedLayerBlockRule
 impl surgeist_css::CssScopedLayerBlockRule
 pub const fn surgeist_css::CssScopedLayerBlockRule::name(&self) -> core::option::Option<&surgeist_css::CssLayerName>
@@ -11983,6 +12081,7 @@ pub const fn surgeist_css::CssScopedLayerBlockRule::position(&self) -> core::opt
 pub const fn surgeist_css::CssScopedLayerBlockRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopedLayerBlockRule
 pub fn surgeist_css::CssScopedLayerBlockRule::try_new(name: core::option::Option<surgeist_css::CssLayerName>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedLayerBlockRule
 pub struct surgeist_css::CssScopedLayerStatementRule
 impl surgeist_css::CssScopedLayerStatementRule
 pub const fn surgeist_css::CssScopedLayerStatementRule::names(&self) -> &surgeist_css::CssLayerNameList
@@ -11994,16 +12093,19 @@ pub const fn surgeist_css::CssScopedMediaRule::query(&self) -> &surgeist_css::Cs
 pub const fn surgeist_css::CssScopedMediaRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopedMediaRule
 pub fn surgeist_css::CssScopedMediaRule::try_new(query: surgeist_css::CssMediaQueryList, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedMediaRule
 pub struct surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopedRuleList
 pub const fn surgeist_css::CssScopedRuleList::new() -> Self
 pub fn surgeist_css::CssScopedRuleList::rules(&self) -> &[surgeist_css::CssScopedRule]
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedRuleList
 pub struct surgeist_css::CssScopedStyleRule
 impl surgeist_css::CssScopedStyleRule
 pub const fn surgeist_css::CssScopedStyleRule::declarations(&self) -> &surgeist_css::CssDeclarationList
 pub const fn surgeist_css::CssScopedStyleRule::position(&self) -> surgeist_css::CssSourcePosition
 pub fn surgeist_css::CssScopedStyleRule::rules(&self) -> &[surgeist_css::CssRule]
 pub const fn surgeist_css::CssScopedStyleRule::selectors(&self) -> &surgeist_css::CssScopedStyleSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleRule
 pub struct surgeist_css::CssScopedStyleSelectorList
 impl surgeist_css::CssScopedStyleSelectorList
 pub fn surgeist_css::CssScopedStyleSelectorList::selectors(&self) -> &[surgeist_css::CssScopedStyleSelector]
@@ -12011,6 +12113,7 @@ pub fn surgeist_css::CssScopedStyleSelectorList::try_new(selectors: alloc::vec::
 impl surgeist_css::CssScopedStyleSelectorList
 pub fn surgeist_css::CssScopedStyleSelectorList::serialize_cssom(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssScopedStyleSelectorList::serialize_cssom_with_limits(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleSelectorList
 pub struct surgeist_css::CssScopedSupportsRule
 impl surgeist_css::CssScopedSupportsRule
 pub const fn surgeist_css::CssScopedSupportsRule::condition(&self) -> &surgeist_css::CssSupportsCondition
@@ -12018,6 +12121,7 @@ pub const fn surgeist_css::CssScopedSupportsRule::position(&self) -> core::optio
 pub const fn surgeist_css::CssScopedSupportsRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopedSupportsRule
 pub fn surgeist_css::CssScopedSupportsRule::try_new(condition: surgeist_css::CssSupportsCondition, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedSupportsRule
 pub struct surgeist_css::CssScopedWhenRule
 impl surgeist_css::CssScopedWhenRule
 pub fn surgeist_css::CssScopedWhenRule::condition(&self) -> &surgeist_css::CssWhenCondition
@@ -12025,6 +12129,7 @@ pub const fn surgeist_css::CssScopedWhenRule::position(&self) -> core::option::O
 pub fn surgeist_css::CssScopedWhenRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 pub fn surgeist_css::CssScopedWhenRule::try_new(condition: surgeist_css::CssWhenCondition, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub fn surgeist_css::CssScopedWhenRule::try_new_in_style(condition: surgeist_css::CssWhenCondition, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedWhenRule
 pub struct surgeist_css::CssScrollBehaviorPropertyValue
 impl surgeist_css::CssScrollBehaviorPropertyValue
 pub fn surgeist_css::CssScrollBehaviorPropertyValue::as_css(&self) -> &str
@@ -12324,6 +12429,7 @@ pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::location(&self) -> core::option::Option<&surgeist_css::CssStylesheetLocation>
 pub const fn surgeist_css::CssSheet::new() -> Self
+pub const fn surgeist_css::CssSheet::parse_source(&self) -> core::option::Option<&surgeist_css::CssStylesheetParseSource>
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssSheet
 pub fn surgeist_css::CssSheet::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
@@ -12333,6 +12439,9 @@ pub fn surgeist_css::CssSheet::to_specified_css(&self) -> core::result::Result<a
 pub fn surgeist_css::CssSheet::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 impl surgeist_css::CssSheet
 pub fn surgeist_css::CssSheet::try_from_rules(rules: alloc::vec::Vec<surgeist_css::CssRule>) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl core::cmp::PartialEq for surgeist_css::CssSheet
+pub fn surgeist_css::CssSheet::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSheet
 pub struct surgeist_css::CssShorthandMetadata
 impl surgeist_css::CssShorthandMetadata
 pub const fn surgeist_css::CssShorthandMetadata::is_legacy(&self) -> bool
@@ -12368,10 +12477,22 @@ pub const fn surgeist_css::CssSourcePosition::column(self) -> surgeist_css::CssU
 pub const fn surgeist_css::CssSourcePosition::line(self) -> surgeist_css::CssLineIndex
 impl core::fmt::Display for surgeist_css::CssSourcePosition
 pub fn surgeist_css::CssSourcePosition::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssSourceRetention
+impl surgeist_css::CssSourceRetention
+pub fn surgeist_css::CssSourceRetention::at_depth<T>(&mut self, depth: usize, visit: impl core::ops::function::FnOnce(&mut Self) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>
+pub fn surgeist_css::CssSourceRetention::charge_step(&mut self) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub const fn surgeist_css::CssSourceRetention::new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self
+pub fn surgeist_css::CssSourceRetention::source(&mut self, source: &surgeist_css::CssSourceSnapshot) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub const fn surgeist_css::CssSourceRetention::steps(&self) -> usize
+pub const fn surgeist_css::CssSourceRetention::usage(&self) -> surgeist_css::CssSourceStorageUsage
+pub fn surgeist_css::CssSourceRetention::visit<T: surgeist_css::CssRetainedSources + ?core::marker::Sized>(&mut self, value: &T) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
 pub struct surgeist_css::CssSourceSnapshot(_)
 impl surgeist_css::CssSourceSnapshot
 pub fn surgeist_css::CssSourceSnapshot::as_str(&self) -> &str
+pub fn surgeist_css::CssSourceSnapshot::original_utf16(&self) -> core::option::Option<&alloc::sync::Arc<alloc::vec::Vec<u16>>>
+pub fn surgeist_css::CssSourceSnapshot::original_utf16_range(&self, range: core::ops::range::Range<usize>) -> core::option::Option<core::ops::range::Range<usize>>
 pub fn surgeist_css::CssSourceSnapshot::same_snapshot(&self, other: &Self) -> bool
+pub fn surgeist_css::CssSourceSnapshot::storage_usage(&self) -> surgeist_css::CssSourceStorageUsage
 impl core::cmp::Eq for surgeist_css::CssSourceSnapshot
 impl core::cmp::PartialEq for surgeist_css::CssSourceSnapshot
 pub fn surgeist_css::CssSourceSnapshot::eq(&self, other: &Self) -> bool
@@ -12381,6 +12502,11 @@ pub struct surgeist_css::CssSourceSpan
 impl surgeist_css::CssSourceSpan
 pub const fn surgeist_css::CssSourceSpan::end(self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssSourceSpan::start(self) -> surgeist_css::CssSourcePosition
+pub struct surgeist_css::CssSourceStorageUsage(_)
+impl surgeist_css::CssSourceStorageUsage
+pub fn surgeist_css::CssSourceStorageUsage::checked_add(self, other: Self) -> core::option::Option<Self>
+pub const fn surgeist_css::CssSourceStorageUsage::retained_bytes(self) -> usize
+pub fn surgeist_css::CssSourceStorageUsage::validate(self, maximum: usize) -> bool
 pub struct surgeist_css::CssSpeakAs
 impl surgeist_css::CssSpeakAs
 pub const fn surgeist_css::CssSpeakAs::digits(self) -> bool
@@ -12438,6 +12564,7 @@ pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value(&self, name: s
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value_with_limits(&self, name: surgeist_css::CssPropertyNameRef<'_>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedDeclarationBlock
 pub struct surgeist_css::CssSpecifiedDeclarationEntry
 impl surgeist_css::CssSpecifiedDeclarationEntry
 pub const fn surgeist_css::CssSpecifiedDeclarationEntry::authored_ordinal(&self) -> usize
@@ -12447,6 +12574,7 @@ pub fn surgeist_css::CssSpecifiedDeclarationEntry::property_name(&self) -> surge
 pub const fn surgeist_css::CssSpecifiedDeclarationEntry::source(&self) -> &surgeist_css::CssDeclaration
 pub fn surgeist_css::CssSpecifiedDeclarationEntry::value(&self) -> surgeist_css::CssSpecifiedDeclarationValueRef<'_>
 pub fn surgeist_css::CssSpecifiedDeclarationEntry::with_importance(&self, importance: surgeist_css::CssImportance) -> Self
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedDeclarationEntry
 pub struct surgeist_css::CssSpecifiedFlex
 impl surgeist_css::CssSpecifiedFlex
 pub fn surgeist_css::CssSpecifiedFlex::calculation(&self) -> core::option::Option<&surgeist_css::CssFlexCalculation>
@@ -12463,6 +12591,7 @@ pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::serialize_cssom(&self
 pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssFontFaceDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssFontFaceDescriptor]) -> core::result::Result<Self, surgeist_css::CssFontFaceDeclarationBlockError>
 pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(entries: &[surgeist_css::CssFontFaceDescriptor], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssFontFaceDeclarationBlockError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedFontFaceDeclarationBlock
 pub struct surgeist_css::CssSpecifiedLength
 impl surgeist_css::CssSpecifiedLength
 pub fn surgeist_css::CssSpecifiedLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
@@ -12537,6 +12666,7 @@ pub fn surgeist_css::CssSpecifiedNonNegativePercentage::try_from_component(compo
 impl core::cmp::Eq for surgeist_css::CssSpecifiedNonNegativePercentage
 impl core::cmp::PartialEq for surgeist_css::CssSpecifiedNonNegativePercentage
 pub fn surgeist_css::CssSpecifiedNonNegativePercentage::eq(&self, other: &Self) -> bool
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedNonNegativePercentage
 pub struct surgeist_css::CssSpecifiedNumber
 impl surgeist_css::CssSpecifiedNumber
 pub fn surgeist_css::CssSpecifiedNumber::calculation(&self) -> core::option::Option<&surgeist_css::CssNumberCalculation>
@@ -12546,6 +12676,7 @@ pub fn surgeist_css::CssSpecifiedNumber::serialize_specified(&self) -> core::res
 pub fn surgeist_css::CssSpecifiedNumber::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSpecifiedNumber::try_from_calculation(calculation: surgeist_css::CssNumberCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedNumber::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedNumber
 pub struct surgeist_css::CssSpecifiedPageDeclarationBlock
 impl surgeist_css::CssSpecifiedPageDeclarationBlock
 pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedPageDeclarationEntry]
@@ -12553,6 +12684,7 @@ pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::serialize_cssom(&self) ->
 pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssSpecifiedPageDeclarationEntry]) -> core::result::Result<Self, surgeist_css::CssPageProjectionError>
 pub fn surgeist_css::CssSpecifiedPageDeclarationBlock::try_from_entries_with_limits(entries: &[surgeist_css::CssSpecifiedPageDeclarationEntry], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssPageProjectionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedPageDeclarationBlock
 pub struct surgeist_css::CssSpecifiedPercentage
 impl surgeist_css::CssSpecifiedPercentage
 pub fn surgeist_css::CssSpecifiedPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>
@@ -12592,6 +12724,7 @@ pub fn surgeist_css::CssPageProjectionError::from(v: surgeist_css::CssSpecifiedV
 impl core::error::Error for surgeist_css::CssSpecifiedValueSerializationError
 impl core::fmt::Display for surgeist_css::CssSpecifiedValueSerializationError
 pub fn surgeist_css::CssSpecifiedValueSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedValueSerializationError
 pub struct surgeist_css::CssSpecifiedValueSerializationLimits
 impl surgeist_css::CssSpecifiedValueSerializationLimits
 pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_css_bytes(self) -> usize
@@ -12673,12 +12806,14 @@ pub const fn surgeist_css::CssStyleRule::declarations(&self) -> &surgeist_css::C
 pub const fn surgeist_css::CssStyleRule::position(&self) -> surgeist_css::CssSourcePosition
 pub fn surgeist_css::CssStyleRule::rules(&self) -> &[surgeist_css::CssRule]
 pub const fn surgeist_css::CssStyleRule::selectors(&self) -> &surgeist_css::CssStyleSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleRule
 pub struct surgeist_css::CssStyleSelectorList
 impl surgeist_css::CssStyleSelectorList
 pub fn surgeist_css::CssStyleSelectorList::selectors(&self) -> &[surgeist_css::CssStyleSelector]
 impl surgeist_css::CssStyleSelectorList
 pub fn surgeist_css::CssStyleSelectorList::serialize_cssom(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssStyleSelectorList::serialize_cssom_with_limits(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleSelectorList
 pub struct surgeist_css::CssStylesheetDecodeHints<'a>
 pub surgeist_css::CssStylesheetDecodeHints::environment_encoding: core::option::Option<surgeist_css::CssEncoding>
 pub surgeist_css::CssStylesheetDecodeHints::protocol_label: core::option::Option<&'a str>
@@ -12689,12 +12824,26 @@ pub const fn surgeist_css::CssStylesheetDecodeLimits::max_original_bytes(self) -
 pub const fn surgeist_css::CssStylesheetDecodeLimits::new(original_bytes: usize, decoded_utf8_bytes: usize) -> Self
 impl core::default::Default for surgeist_css::CssStylesheetDecodeLimits
 pub fn surgeist_css::CssStylesheetDecodeLimits::default() -> Self
+pub struct surgeist_css::CssStylesheetInputLimits
+pub surgeist_css::CssStylesheetInputLimits::max_checkpoints: usize
+pub surgeist_css::CssStylesheetInputLimits::max_input_units: usize
+pub surgeist_css::CssStylesheetInputLimits::max_map_entries: usize
+pub surgeist_css::CssStylesheetInputLimits::max_output_bytes: usize
+pub surgeist_css::CssStylesheetInputLimits::max_retained_bytes: usize
+pub surgeist_css::CssStylesheetInputLimits::max_scratch_bytes: usize
+pub surgeist_css::CssStylesheetInputLimits::max_work: usize
+impl core::default::Default for surgeist_css::CssStylesheetInputLimits
+pub fn surgeist_css::CssStylesheetInputLimits::default() -> Self
 pub struct surgeist_css::CssStylesheetLocation(_)
 impl surgeist_css::CssStylesheetLocation
 pub fn surgeist_css::CssStylesheetLocation::as_str(&self) -> &str
 pub fn surgeist_css::CssStylesheetLocation::new(text: alloc::string::String) -> Self
 pub struct surgeist_css::CssStylesheetParseOptions
 pub surgeist_css::CssStylesheetParseOptions::location: core::option::Option<surgeist_css::CssStylesheetLocation>
+pub struct surgeist_css::CssStylesheetParseSource
+impl surgeist_css::CssStylesheetParseSource
+pub const fn surgeist_css::CssStylesheetParseSource::context(&self) -> surgeist_css::CssParserContext
+pub const fn surgeist_css::CssStylesheetParseSource::source(&self) -> &surgeist_css::CssSourceSnapshot
 pub struct surgeist_css::CssSubstitutionDependentValue
 impl surgeist_css::CssSubstitutionDependentValue
 pub fn surgeist_css::CssSubstitutionDependentValue::as_css(&self) -> &str
@@ -12711,6 +12860,7 @@ pub fn surgeist_css::CssSupportsAtRuleTest::body(&self) -> core::option::Option<
 pub fn surgeist_css::CssSupportsAtRuleTest::name(&self) -> &str
 pub fn surgeist_css::CssSupportsAtRuleTest::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSupportsAtRuleTest::prelude(&self) -> &surgeist_css::CssComponentValues
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsAtRuleTest
 pub struct surgeist_css::CssSupportsCondition
 impl surgeist_css::CssSupportsCondition
 pub fn surgeist_css::CssSupportsCondition::components(&self) -> &[surgeist_css::CssComponentValue]
@@ -12722,6 +12872,7 @@ pub fn surgeist_css::CssSupportsCondition::serialize(&self) -> core::result::Res
 pub fn surgeist_css::CssSupportsCondition::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssSupportsCondition::try_from_components(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssSupportsCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsCondition
 pub struct surgeist_css::CssSupportsConditionList
 impl surgeist_css::CssSupportsConditionList
 pub fn surgeist_css::CssSupportsConditionList::conditions(&self) -> &[surgeist_css::CssSupportsCondition]
@@ -12747,6 +12898,7 @@ pub fn surgeist_css::CssSupportsConditionRule::try_new_with_limits(name: surgeis
 impl surgeist_css::CssSupportsConditionRule
 pub fn surgeist_css::CssSupportsConditionRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSupportsConditionRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsConditionRule
 pub struct surgeist_css::CssSupportsDeclaration
 impl surgeist_css::CssSupportsDeclaration
 pub fn surgeist_css::CssSupportsDeclaration::authored(&self) -> core::option::Option<&str>
@@ -12769,6 +12921,7 @@ impl surgeist_css::CssSupportsQualifiedRuleTest
 pub fn surgeist_css::CssSupportsQualifiedRuleTest::body(&self) -> &surgeist_css::CssSupportsTestBody
 pub fn surgeist_css::CssSupportsQualifiedRuleTest::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSupportsQualifiedRuleTest::prelude(&self) -> &surgeist_css::CssComponentValues
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsQualifiedRuleTest
 pub struct surgeist_css::CssSupportsRule
 impl surgeist_css::CssSupportsRule
 pub const fn surgeist_css::CssSupportsRule::condition(&self) -> &surgeist_css::CssSupportsCondition
@@ -12776,6 +12929,7 @@ pub const fn surgeist_css::CssSupportsRule::position(&self) -> core::option::Opt
 pub fn surgeist_css::CssSupportsRule::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssSupportsRule
 pub fn surgeist_css::CssSupportsRule::try_new(condition: surgeist_css::CssSupportsCondition, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsRule
 pub struct surgeist_css::CssSupportsTestBody
 impl surgeist_css::CssSupportsTestBody
 pub fn surgeist_css::CssSupportsTestBody::children(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_css::CssSupportsTestChildRef<'_>>
@@ -12794,6 +12948,7 @@ pub fn surgeist_css::CssSupportsTestBody::to_specified_css(&self) -> core::resul
 pub fn surgeist_css::CssSupportsTestBody::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssSupportsTestBody
 pub fn surgeist_css::CssSupportsTestBody::to_specified_css_with_graph_limits(&self, limits: surgeist_css::CssRuleGraphSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestBody
 pub struct surgeist_css::CssSupportsTestDeclaration
 impl surgeist_css::CssSupportsTestDeclaration
 pub fn surgeist_css::CssSupportsTestDeclaration::components(&self) -> &[surgeist_css::CssComponentValue]
@@ -12804,6 +12959,7 @@ pub fn surgeist_css::CssSupportsTestDeclaration::position(&self) -> core::option
 pub fn surgeist_css::CssSupportsTestDeclaration::property(&self) -> &str
 pub fn surgeist_css::CssSupportsTestDeclaration::property_component(&self) -> &surgeist_css::CssComponentValue
 pub fn surgeist_css::CssSupportsTestDeclaration::value_components(&self) -> &[surgeist_css::CssComponentValue]
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestDeclaration
 pub struct surgeist_css::CssSupportsTestDeclarations
 impl surgeist_css::CssSupportsTestDeclarations
 pub fn surgeist_css::CssSupportsTestDeclarations::declarations(&self) -> &[surgeist_css::CssSupportsTestDeclaration]
@@ -12814,6 +12970,7 @@ pub const fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::ordinary_
 pub const fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::property(&self) -> surgeist_css::CssPropertyNameRef<'static>
 pub fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 pub fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::source(&self) -> &surgeist_css::CssDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSvgGlyphOrientationVerticalContribution
 pub struct surgeist_css::CssSvgGlyphOrientationVerticalDeclaration
 impl surgeist_css::CssSvgGlyphOrientationVerticalDeclaration
 pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
@@ -13421,6 +13578,7 @@ pub fn surgeist_css::CssUniversalReset::excludes(&self, property: surgeist_css::
 pub const fn surgeist_css::CssUniversalReset::keyword(&self) -> surgeist_css::CssGlobalKeyword
 pub fn surgeist_css::CssUniversalReset::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 pub fn surgeist_css::CssUniversalReset::source(&self) -> &surgeist_css::CssDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssUniversalReset
 pub struct surgeist_css::CssUniversalResetMetadata
 impl surgeist_css::CssUniversalResetMetadata
 pub fn surgeist_css::CssUniversalResetMetadata::excludes(&self, property: surgeist_css::CssPropertyNameRef<'_>) -> bool
@@ -13478,6 +13636,7 @@ pub fn surgeist_css::CssUrl::new(value: impl core::convert::Into<alloc::string::
 impl surgeist_css::CssUrl
 pub fn surgeist_css::CssUrl::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssUrl::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssUrl
 pub struct surgeist_css::CssUrlModifierFunction
 impl surgeist_css::CssUrlModifierFunction
 pub const fn surgeist_css::CssUrlModifierFunction::argument_components(&self) -> &surgeist_css::CssComponentValues
@@ -13614,6 +13773,7 @@ pub fn surgeist_css::CssWhenCondition::serialize(&self) -> core::result::Result<
 pub fn surgeist_css::CssWhenCondition::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssWhenCondition::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::CssWhenCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssWhenConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssWhenCondition
 pub struct surgeist_css::CssWhenConditionList
 impl surgeist_css::CssWhenConditionList
 pub fn surgeist_css::CssWhenConditionList::conditions(&self) -> &[surgeist_css::CssWhenCondition]
@@ -13632,6 +13792,7 @@ pub const fn surgeist_css::CssWhenRule::position(&self) -> core::option::Option<
 pub fn surgeist_css::CssWhenRule::rules(&self) -> &[surgeist_css::CssRule]
 pub fn surgeist_css::CssWhenRule::try_new(condition: surgeist_css::CssWhenCondition, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub fn surgeist_css::CssWhenRule::try_new_in_style(condition: surgeist_css::CssWhenCondition, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+impl surgeist_css::CssRetainedSources for surgeist_css::CssWhenRule
 pub struct surgeist_css::CssWhiteSpace
 impl surgeist_css::CssWhiteSpace
 pub const fn surgeist_css::CssWhiteSpace::collapse(&self) -> core::option::Option<surgeist_css::CssWhiteSpaceCollapse>
@@ -13745,6 +13906,126 @@ pub const fn surgeist_css::Error::position(&self) -> surgeist_css::CssSourcePosi
 impl core::error::Error for surgeist_css::Error
 impl core::fmt::Display for surgeist_css::Error
 pub fn surgeist_css::Error::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl surgeist_css::CssRetainedSources for surgeist_css::Error
+pub trait surgeist_css::CssRetainedSources
+impl surgeist_css::CssRetainedSources for surgeist_css::CssAbsoluteFontWeight
+impl surgeist_css::CssRetainedSources for surgeist_css::CssAuthoredFontFaceDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptor
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValueError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValues
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCompoundSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssContainerPrelude
+impl surgeist_css::CssRetainedSources for surgeist_css::CssContainerRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleDescriptors
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssCustomMediaRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssElseRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDeclarationBlockError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptor
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDescriptors
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureDisplayOccurrence
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureDisplayValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureIndex
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValueBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValueDefinition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesFamilyList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesItem
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFeatureValuesRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontObliqueAngle
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteDescriptor
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontPaletteValuesRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontWeightNumber
+impl surgeist_css::CssRetainedSources for surgeist_css::CssFontWidth
+impl surgeist_css::CssRetainedSources for surgeist_css::CssImportRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeDeclarationList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframeSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssKeyframesRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssLayerBlockRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssLonghandContribution
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMarginDeclarationBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMarginRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaCondition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaQuery
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaQueryList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssMediaRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssNestedDeclarationsRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDeclarationBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDescriptor
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageProjectionError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPageSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssParsedOrigin
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPendingFontFaceDescriptorValue
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPseudoClass
+impl surgeist_css::CssRetainedSources for surgeist_css::CssPseudoSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRecoveryDiagnostic
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRelativeSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopeSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedContainerRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedElseRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedLayerBlockRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedMediaRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedRuleList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedStyleSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedSupportsRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssScopedWhenRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSerializedOrigin
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSheet
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedDeclarationBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedDeclarationEntry
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedFontFaceDeclarationBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedNonNegativePercentage
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedNumber
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedPageDeclarationBlock
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedPageDeclarationEntry
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSpecifiedValueSerializationError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleSelector
+impl surgeist_css::CssRetainedSources for surgeist_css::CssStyleSelectorList
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsAtRuleTest
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsCondition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsConditionRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsQualifiedRuleTest
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestBody
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestChild
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSupportsTestDeclaration
+impl surgeist_css::CssRetainedSources for surgeist_css::CssSvgGlyphOrientationVerticalContribution
+impl surgeist_css::CssRetainedSources for surgeist_css::CssUniversalReset
+impl surgeist_css::CssRetainedSources for surgeist_css::CssUrl
+impl surgeist_css::CssRetainedSources for surgeist_css::CssValueOrigin
+impl surgeist_css::CssRetainedSources for surgeist_css::CssWhenCondition
+impl surgeist_css::CssRetainedSources for surgeist_css::CssWhenRule
+impl surgeist_css::CssRetainedSources for surgeist_css::Error
+impl<T: surgeist_css::CssRetainedSources + ?core::marker::Sized> surgeist_css::CssRetainedSources for &T
+impl<T: surgeist_css::CssRetainedSources + ?core::marker::Sized> surgeist_css::CssRetainedSources for alloc::boxed::Box<T>
+impl<T: surgeist_css::CssRetainedSources> surgeist_css::CssRetainedSources for [T]
+impl<T: surgeist_css::CssRetainedSources> surgeist_css::CssRetainedSources for core::option::Option<T>
+impl<T: surgeist_css::CssRetainedSources> surgeist_css::CssRetainedSources for surgeist_css::CssDescriptorOccurrence<T>
 pub fn surgeist_css::classify_rule_syntax(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssRuleSyntax>>
 pub fn surgeist_css::classify_rule_syntax_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssRuleSyntax>>
 pub fn surgeist_css::conformance_exclusion(id: &str) -> core::option::Option<&'static surgeist_css::CssExclusionMetadata>

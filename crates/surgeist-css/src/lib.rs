@@ -2006,6 +2006,10 @@ pub use parser_context::{
 };
 mod report;
 mod source;
+mod source_retention;
+pub use source_retention::*;
+mod stylesheet_utf16;
+pub use stylesheet_utf16::*;
 mod syntax;
 mod tokenization;
 pub use numeric::{

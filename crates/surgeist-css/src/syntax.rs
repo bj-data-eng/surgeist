@@ -74,10 +74,17 @@ macro_rules! numeric_fields_eq {
 /// The private fields guarantee that every retained rule is valid authored CSS
 /// syntax. Discarded source remains in the parse report diagnostics; the sheet
 /// does not apply cascade, substitution, selector matching, or resource loading.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct CssSheet {
     location: Option<crate::CssStylesheetLocation>,
     rules: Vec<CssRule>,
+    parse_source: Option<crate::CssStylesheetParseSource>,
+}
+
+impl PartialEq for CssSheet {
+    fn eq(&self, other: &Self) -> bool {
+        self.location == other.location && self.rules == other.rules
+    }
 }
 
 impl CssSheet {
@@ -86,11 +93,22 @@ impl CssSheet {
         Self {
             location: None,
             rules: Vec::new(),
+            parse_source: None,
         }
     }
 
     pub(crate) fn push_rule(&mut self, rule: CssRule) {
         self.rules.push(rule);
+    }
+
+    /// Complete root source and actual grammar context; absent for construction.
+    #[must_use]
+    pub const fn parse_source(&self) -> Option<&crate::CssStylesheetParseSource> {
+        self.parse_source.as_ref()
+    }
+
+    pub(crate) fn bind_parse_source(&mut self, source: crate::CssStylesheetParseSource) {
+        self.parse_source = Some(source);
     }
 
     /// Returns the host-supplied symbolic stylesheet location, or null.
@@ -978,6 +996,15 @@ pub struct CssSupportsCondition {
     lexical: crate::supports::SupportsLexical,
     origin: CssValueOrigin,
     authored_form: SupportsAuthoredForm,
+}
+impl crate::CssRetainedSources for CssSupportsCondition {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut crate::CssSourceRetention,
+    ) -> Result<(), crate::CssSourceRetentionError> {
+        sources.visit(&self.origin)?;
+        sources.visit(&self.lexical)
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SupportsAuthoredForm {
@@ -2222,6 +2249,15 @@ pub struct CssContainerPrelude {
     entries: Vec<CssContainerQueryEntry>,
     lexical: crate::supports::SupportsLexical,
     origin: CssValueOrigin,
+}
+impl crate::CssRetainedSources for CssContainerPrelude {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut crate::CssSourceRetention,
+    ) -> Result<(), crate::CssSourceRetentionError> {
+        sources.visit(&self.origin)?;
+        sources.visit(&self.lexical)
+    }
 }
 
 impl CssContainerPrelude {
@@ -9361,6 +9397,7 @@ impl CssSheet {
         Ok(Self {
             location: None,
             rules,
+            parse_source: None,
         })
     }
 }

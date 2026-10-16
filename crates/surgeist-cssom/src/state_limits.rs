@@ -151,6 +151,14 @@ impl State {
             add(&mut entries, 1);
         }
         for sheet in self.sheets.values() {
+            if let Some(input) = sheet.authored.parse_source()
+                && input.source().as_str().len() > limits.max_input_bytes
+            {
+                return Err(CssomError::Limit {
+                    resource: "parse input bytes",
+                    maximum: limits.max_input_bytes,
+                });
+            }
             // Retained raw input includes imports filtered from constructed sheets.
             add(&mut entries, sheet.authored.rules().len());
             version(&mut strings, &sheet.inputs.version);
@@ -317,6 +325,7 @@ impl State {
             }
         }
         limit(entries, limits.max_entries, "entries")?;
+        self.check_source_limits(limits)?;
         limit(
             strings,
             limits.max_string_bytes,

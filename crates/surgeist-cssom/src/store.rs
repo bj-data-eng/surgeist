@@ -1,3 +1,4 @@
+use crate::parser_resources::check_resource_diagnostics;
 use crate::{
     css_adapter::{check_declarations, parse, projection},
     model::State,
@@ -399,6 +400,36 @@ impl CssomBatch {
         inputs: CssomSheetInputs,
     ) -> Result<CssomSheetTicket, CssomError> {
         self.apply(|this| this.create_sheet(sheet, Vec::new(), inputs, true))
+    }
+    /// Imports an actual complete CSS parse report in the staged parser context.
+    /// Recovery diagnostics and immutable source provenance remain retained.
+    pub fn create_parsed_sheet_report(
+        &mut self,
+        report: CssParseReport<CssSheet>,
+        inputs: CssomSheetInputs,
+    ) -> Result<CssomSheetTicket, CssomError> {
+        self.apply(|this| {
+            let source = report
+                .syntax()
+                .parse_source()
+                .ok_or(CssomError::InvalidInput(
+                    "stylesheet parse source unavailable",
+                ))?;
+            if source.context() != this.staged.context.parser_context() {
+                return Err(CssomError::InvalidInput(
+                    "stylesheet parser context mismatch",
+                ));
+            }
+            if source.source().as_str().len() > this.limits.max_input_bytes {
+                return Err(CssomError::Limit {
+                    resource: "parse input bytes",
+                    maximum: this.limits.max_input_bytes,
+                });
+            }
+            check_resource_diagnostics(report.diagnostics())?;
+            let (sheet, diagnostics) = report.into_parts();
+            this.create_sheet(sheet, diagnostics, inputs, true)
+        })
     }
     pub(crate) fn create_sheet(
         &mut self,

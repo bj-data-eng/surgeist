@@ -1057,6 +1057,35 @@ struct ContributionContext {
     source: CssDeclaration,
     replacement: Option<CssComponentValues>,
 }
+impl crate::CssRetainedSources for ContributionContext {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut crate::CssSourceRetention,
+    ) -> Result<(), crate::CssSourceRetentionError> {
+        sources.visit(&self.source)?;
+        sources.visit(&self.replacement)
+    }
+}
+
+macro_rules! retained_contribution_context {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl crate::CssRetainedSources for $ty {
+            fn visit_retained_sources(
+                &self,
+                sources: &mut crate::CssSourceRetention,
+            ) -> Result<(), crate::CssSourceRetentionError> {
+                // Checked values derive from this original/replacement input;
+                // the immutable context retains both, including unused tokens.
+                sources.visit(self.context.as_ref())
+            }
+        }
+    )+};
+}
+retained_contribution_context!(
+    CssLonghandContribution,
+    CssUniversalReset,
+    CssSvgGlyphOrientationVerticalContribution,
+);
 
 /// One property-coupled contribution retaining its authored source occurrence.
 ///

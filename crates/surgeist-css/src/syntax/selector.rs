@@ -1,5 +1,175 @@
 use super::{CssCustomIdent, CssNamespacePrefix, CssValueOrigin};
 use crate::CssViewTransitionNameSelector;
+use crate::{CssRetainedSources, CssSourceRetention, CssSourceRetentionError};
+
+impl CssRetainedSources for CssSelector {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Tag(_) | Self::Key(_) | Self::Class(_) => Ok(()),
+            Self::PseudoClass(value) => sources.visit(value),
+            Self::Compound(value) => sources.visit(value),
+            Self::Complex(value) => {
+                sources.visit(&value.first)?;
+                for part in &value.rest {
+                    sources.visit(&part.selector)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+impl CssRetainedSources for CssCompoundSelector {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.pseudo_classes.as_slice())?;
+        if let Some(value) = &self.pseudo_elements {
+            for segment in &value.segments {
+                sources.charge_step()?;
+                match segment {
+                    CssPseudoElementSegment::PseudoClass(value) => sources.visit(value)?,
+                    CssPseudoElementSegment::PseudoElement(value) => match value {
+                        CssPseudoElement::Slotted(value) => {
+                            sources.visit(value.compound.as_ref())?
+                        }
+                        CssPseudoElement::Part(value) => {
+                            for name in &value.names {
+                                sources.visit(&name.component)?;
+                            }
+                        }
+                        CssPseudoElement::Before
+                        | CssPseudoElement::After
+                        | CssPseudoElement::FirstLine
+                        | CssPseudoElement::FirstLetter
+                        | CssPseudoElement::Prefix
+                        | CssPseudoElement::Suffix
+                        | CssPseudoElement::Marker
+                        | CssPseudoElement::Selection
+                        | CssPseudoElement::SearchText
+                        | CssPseudoElement::TargetText
+                        | CssPseudoElement::SpellingError
+                        | CssPseudoElement::GrammarError
+                        | CssPseudoElement::Highlight(_)
+                        | CssPseudoElement::Placeholder
+                        | CssPseudoElement::Backdrop
+                        | CssPseudoElement::FileSelectorButton
+                        | CssPseudoElement::DetailsContent
+                        | CssPseudoElement::ViewTransition
+                        | CssPseudoElement::ViewTransitionGroup(_)
+                        | CssPseudoElement::ViewTransitionImagePair(_)
+                        | CssPseudoElement::ViewTransitionOld(_)
+                        | CssPseudoElement::ViewTransitionNew(_)
+                        | CssPseudoElement::UnknownWebkit(_) => {}
+                    },
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssPseudoSelectorList {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for item in &self.items {
+            match item {
+                CssPseudoSelectorListItem::Selector(value) => sources.visit(value)?,
+                CssPseudoSelectorListItem::InvalidNesting(value) => {
+                    sources.visit(&value.origin)?;
+                    sources.visit(&value.components)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssPseudoClass {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::HostFunction(value) | Self::HostContext(value) => {
+                sources.visit(value.compound.as_ref())
+            }
+            Self::Dir(value) => sources.visit(&value.component),
+            Self::Lang(value) => {
+                for range in &value.ranges {
+                    sources.visit(&range.component)?;
+                }
+                Ok(())
+            }
+            Self::Not(value) | Self::Is(value) | Self::Where(value) => sources.visit(value),
+            Self::Has(value) => {
+                for selector in &value.selectors {
+                    sources.visit(selector.selector())?;
+                }
+                Ok(())
+            }
+            Self::NthChild(value) | Self::NthLastChild(value) => {
+                sources.visit(&value.selector_list)
+            }
+            Self::Host
+            | Self::Root
+            | Self::Scope
+            | Self::Defined
+            | Self::AnyLink
+            | Self::Link
+            | Self::Visited
+            | Self::Target
+            | Self::Current
+            | Self::Hover
+            | Self::Active
+            | Self::Focus
+            | Self::FocusVisible
+            | Self::FocusWithin
+            | Self::Disabled
+            | Self::Enabled
+            | Self::Checked
+            | Self::Unchecked
+            | Self::Required
+            | Self::Optional
+            | Self::Valid
+            | Self::Invalid
+            | Self::UserValid
+            | Self::UserInvalid
+            | Self::PlaceholderShown
+            | Self::Autofill
+            | Self::FirstChild
+            | Self::LastChild
+            | Self::OnlyChild
+            | Self::Empty
+            | Self::FirstOfType
+            | Self::LastOfType
+            | Self::OnlyOfType
+            | Self::NthOfType(_)
+            | Self::NthLastOfType(_)
+            | Self::Playing
+            | Self::Paused
+            | Self::Seeking
+            | Self::Buffering
+            | Self::Stalled
+            | Self::Muted
+            | Self::VolumeLocked
+            | Self::Open
+            | Self::Modal
+            | Self::Fullscreen
+            | Self::PictureInPicture
+            | Self::PopoverOpen
+            | Self::Default
+            | Self::Indeterminate
+            | Self::ReadOnly
+            | Self::ReadWrite
+            | Self::InRange
+            | Self::OutOfRange => Ok(()),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]

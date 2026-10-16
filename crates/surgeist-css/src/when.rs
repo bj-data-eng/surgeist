@@ -20,6 +20,15 @@ pub struct CssWhenCondition {
     lexical: SupportsLexical,
     origin: CssValueOrigin,
 }
+impl CssRetainedSources for CssWhenCondition {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(&self.origin)?;
+        sources.visit(&self.lexical)
+    }
+}
 /// Inspectable authored shape; constructing a kind cannot construct a condition.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]

@@ -4,6 +4,90 @@ use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
 use crate::*;
 use std::{fmt, ops::Range};
 
+impl CssRetainedSources for CssSupportsConditionRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.data.name.component())?;
+        sources.visit(&self.data.origin)?;
+        sources.visit(&self.data.opening)?;
+        sources.visit(&self.data.closing)?;
+        sources.visit(&self.data.body)
+    }
+}
+impl CssRetainedSources for CssSupportsTestBody {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.local_recovery.as_slice())?;
+        sources.visit(&self.recovery_origin)?;
+        for value in &self.items {
+            match value {
+                CssSupportsTestItem::Declarations(value) => {
+                    for value in value.declarations() {
+                        sources.visit(value)?;
+                    }
+                }
+                CssSupportsTestItem::QualifiedRule(value) => sources.visit(value)?,
+                CssSupportsTestItem::AtRule(value) => sources.visit(value)?,
+            }
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssSupportsTestDeclaration {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.components())?;
+        sources.visit(&self.terminator)?;
+        sources.visit(self.recovery.as_slice())
+    }
+}
+impl CssRetainedSources for CssSupportsQualifiedRuleTest {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(&self.data.prelude)?;
+        sources.visit(&self.data.opening)?;
+        sources.visit(&self.data.closing)?;
+        sources.visit(self.data.recovery.as_slice())?;
+        sources.visit(self.data.body.as_ref())
+    }
+}
+impl CssRetainedSources for CssSupportsAtRuleTest {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(&self.data.at_keyword)?;
+        sources.visit(&self.data.prelude)?;
+        sources.visit(&self.data.opening)?;
+        sources.visit(&self.data.closing)?;
+        sources.visit(self.data.recovery.as_slice())?;
+        if let Some(value) = &self.data.body {
+            sources.visit(value.as_ref())?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssSupportsTestChild {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Declaration(value) => sources.visit(value),
+            Self::QualifiedRule(value) => sources.visit(value),
+            Self::AtRule(value) => sources.visit(value),
+        }
+    }
+}
+
 /// A checked, decoded extension name with its original identifier token.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSupportsConditionName {

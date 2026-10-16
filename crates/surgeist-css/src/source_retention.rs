@@ -1,0 +1,913 @@
+//! Retained source admission over actual CSS payloads, independent of formatting.
+use crate::*;
+
+/// Finite failure while enumerating or retaining shared source backing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssSourceRetentionError {
+    Limit(&'static str),
+    Allocation,
+}
+
+/// CSS-owned source traversal. Implemented for retained CSS payload owners.
+pub trait CssRetainedSources {
+    #[doc(hidden)]
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError>;
+}
+
+/// One cumulative admission, deduplicated by actual immutable snapshot identity.
+/// It does not count references held by callers or inspect Arc strong counts.
+pub struct CssSourceRetention {
+    sources: Vec<CssSourceSnapshot>,
+    usage: CssSourceStorageUsage,
+    bytes: usize,
+    visits: usize,
+    maximum_visits: usize,
+    depth: usize,
+    maximum_depth: usize,
+}
+impl CssSourceRetention {
+    #[must_use]
+    pub const fn new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self {
+        Self {
+            sources: Vec::new(),
+            usage: CssSourceStorageUsage(0),
+            bytes,
+            visits: 0,
+            maximum_visits,
+            depth: 0,
+            maximum_depth,
+        }
+    }
+    pub fn visit<T: CssRetainedSources + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), CssSourceRetentionError> {
+        self.charge_step()?;
+        if self.depth >= self.maximum_depth {
+            return Err(CssSourceRetentionError::Limit("source depth"));
+        }
+        self.depth += 1;
+        let result = value.visit_retained_sources(self);
+        self.depth -= 1;
+        result
+    }
+    /// Charges one actual consumer traversal action into this same work bank.
+    pub fn charge_step(&mut self) -> Result<(), CssSourceRetentionError> {
+        self.visits = self
+            .visits
+            .checked_add(1)
+            .filter(|count| *count <= self.maximum_visits)
+            .ok_or(CssSourceRetentionError::Limit("source visits"))?;
+        Ok(())
+    }
+    pub fn source(&mut self, source: &CssSourceSnapshot) -> Result<(), CssSourceRetentionError> {
+        self.charge_step()?;
+        for index in 0..self.sources.len() {
+            self.charge_step()?;
+            if self.sources[index].same_snapshot(source) {
+                return Ok(());
+            }
+        }
+        let usage = self
+            .usage
+            .checked_add(source.storage_usage())
+            .filter(|value| value.validate(self.bytes))
+            .ok_or(CssSourceRetentionError::Limit("retained source bytes"))?;
+        if self.sources.len() == self.sources.capacity() {
+            let required = self
+                .sources
+                .len()
+                .checked_add(1)
+                .ok_or(CssSourceRetentionError::Limit("source storage"))?;
+            let capacity = self
+                .sources
+                .capacity()
+                .saturating_mul(2)
+                .max(required)
+                .min(self.maximum_visits);
+            self.sources
+                .try_reserve_exact(capacity - self.sources.len())
+                .map_err(|_| CssSourceRetentionError::Allocation)?;
+        }
+        if self.sources.capacity() > self.maximum_visits {
+            return Err(CssSourceRetentionError::Limit("source storage"));
+        }
+        self.sources.push(source.clone());
+        self.usage = usage;
+        Ok(())
+    }
+    #[must_use]
+    pub const fn usage(&self) -> CssSourceStorageUsage {
+        self.usage
+    }
+
+    #[must_use]
+    pub const fn steps(&self) -> usize {
+        self.visits
+    }
+
+    /// Visits payloads beneath an actual consumer-owned representation depth.
+    /// This preserves accumulated work/source identity and restores only the
+    /// enclosing depth on return, including failure.
+    pub fn at_depth<T>(
+        &mut self,
+        depth: usize,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSourceRetentionError>,
+    ) -> Result<T, CssSourceRetentionError> {
+        if depth < self.depth || depth > self.maximum_depth {
+            return Err(CssSourceRetentionError::Limit("source depth"));
+        }
+        let previous = self.depth;
+        self.depth = depth;
+        let result = visit(self);
+        self.depth = previous;
+        result
+    }
+}
+impl<T: CssRetainedSources> CssRetainedSources for [T] {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl<T: CssRetainedSources> CssRetainedSources for Option<T> {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl<T: CssRetainedSources + ?Sized> CssRetainedSources for &T {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(*self)
+    }
+}
+impl<T: CssRetainedSources + ?Sized> CssRetainedSources for Box<T> {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.as_ref())
+    }
+}
+impl CssRetainedSources for CssParsedOrigin {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.source(self.source())
+    }
+}
+impl CssRetainedSources for CssValueOrigin {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Parsed(origin) => sources.visit(origin),
+            Self::ImplicitClosure { opening, at } => {
+                sources.visit(opening)?;
+                sources.visit(at)
+            }
+            Self::Programmatic | Self::UnretainedInput { .. } => Ok(()),
+        }
+    }
+}
+impl CssRetainedSources for CssRecoveryDiagnostic {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.source() {
+            sources.source(value)?;
+        }
+        sources.visit(self.error())
+    }
+}
+impl CssRetainedSources for Error {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let ErrorKind::InvalidComponentValue(value) = self.kind() {
+            sources.visit(value.as_ref())?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssComponentValueError {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.origin())
+    }
+}
+impl CssRetainedSources for CssComponentValue {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.origin())?;
+        match self.view() {
+            CssComponentValueRef::Function(value) => {
+                sources.visit(value.values())?;
+                sources.visit(value.closing_origin())?;
+            }
+            CssComponentValueRef::Block(value) => {
+                sources.visit(value.values())?;
+                sources.visit(value.closing_origin())?;
+            }
+            CssComponentValueRef::Token(_) | CssComponentValueRef::Comment(_) => {
+                if let Some(origin) = self.implicit_termination_origin() {
+                    sources.visit(origin)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssComponentValues {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.items())
+    }
+}
+impl CssRetainedSources for CssDeclaration {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.parsed_name() {
+            sources.visit(value)?;
+        }
+        if let Some(value) = self.parsed_value() {
+            sources.visit(value)?;
+        }
+        // The private payload constructors derive the semantic body from these
+        // exact components; the semantic body cannot import an independent origin.
+        sources.visit(self.value_components())
+    }
+}
+impl CssRetainedSources for CssDeclarationList {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self.iter() {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssSpecifiedDeclarationBlock {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self.entries() {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssSheet {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.parse_source() {
+            sources.source(value.source())?;
+        }
+        sources.visit(self.rules())
+    }
+}
+
+macro_rules! via {
+    ($ty:ty, $value:ident, $($field:expr),+ $(,)?) => {
+        impl CssRetainedSources for $ty {
+            fn visit_retained_sources(&$value, sources: &mut CssSourceRetention) -> Result<(), CssSourceRetentionError> {
+                $(sources.visit($field)?;)+
+                Ok(())
+            }
+        }
+    };
+}
+via!(
+    CssStyleRule,
+    self,
+    self.selectors(),
+    self.declarations(),
+    self.rules()
+);
+via!(
+    CssScopedStyleRule,
+    self,
+    self.selectors(),
+    self.declarations(),
+    self.rules()
+);
+via!(CssNestedDeclarationsRule, self, self.declarations());
+via!(CssMediaRule, self, self.query(), self.rules());
+via!(CssScopedMediaRule, self, self.query(), self.rules());
+via!(CssSupportsRule, self, self.condition(), self.rules());
+via!(CssScopedSupportsRule, self, self.condition(), self.rules());
+via!(CssContainerRule, self, self.prelude(), self.rules());
+via!(CssScopedContainerRule, self, self.prelude(), self.rules());
+via!(CssLayerBlockRule, self, self.rules());
+via!(CssScopedLayerBlockRule, self, self.rules());
+via!(
+    CssCounterStyleDescriptorValue,
+    self,
+    &self.origin().cloned(),
+    self.components()
+);
+via!(
+    CssFontFeatureDisplayValue,
+    self,
+    &self.origin().cloned(),
+    self.components()
+);
+via!(
+    CssFontFeatureValue,
+    self,
+    &self.origin().cloned(),
+    self.components()
+);
+via!(CssFontPaletteDescriptorValue, self, self.components());
+via!(CssColorProfileDescriptorValue, self, self.components());
+via!(CssFontPaletteDescriptor, self, self.value());
+via!(CssColorProfileDescriptor, self, self.value());
+via!(CssFontPaletteValuesRule, self, self.descriptors());
+via!(CssColorProfileRule, self, self.descriptors());
+via!(CssKeyframesRule, self, self.blocks());
+via!(
+    CssKeyframeBlock,
+    self,
+    self.selectors(),
+    self.declarations()
+);
+via!(CssKeyframeSelectorList, self, self.selectors());
+via!(CssStyleSelectorList, self, self.selectors());
+via!(CssScopedStyleSelectorList, self, self.selectors());
+via!(CssScopeSelectorList, self, self.selectors());
+via!(CssScopedRuleList, self, self.rules());
+via!(CssFontFaceRule, self, self.descriptors());
+via!(CssFontFaceDescriptor, self, self.value());
+via!(CssPendingFontFaceDescriptorValue, self, self.components());
+via!(CssKeyframeDeclaration, self, self.source());
+via!(CssKeyframeDeclarationList, self, self.as_slice());
+via!(CssStyleSelector, self, self.selector());
+via!(CssScopeSelector, self, self.selector());
+via!(CssRelativeSelector, self, self.selector());
+via!(CssPageSelector, self, &self.origin());
+via!(CssPageSelectorList, self, &self.origin(), self.selectors());
+via!(
+    CssPageDescriptorValue,
+    self,
+    self.origin(),
+    self.components()
+);
+via!(CssMarginDeclarationBlock, self, self.properties());
+via!(
+    CssMarginRule,
+    self,
+    &self.detached_origin(),
+    self.declarations()
+);
+via!(
+    CssPageRule,
+    self,
+    self.selectors(),
+    self.declarations(),
+    self.margin_rules()
+);
+via!(
+    CssCounterStyleRule,
+    self,
+    &self.parsed_name(),
+    self.descriptors()
+);
+via!(
+    CssFontFeatureValueDefinition,
+    self,
+    &self.parsed_name(),
+    self.value()
+);
+via!(CssFontFeatureValueBlock, self, self.definitions());
+via!(
+    CssFontFeatureDisplayOccurrence,
+    self,
+    &self.parsed_name(),
+    self.value()
+);
+via!(CssFontFeatureValuesRule, self, self.items());
+via!(CssWhenRule, self, self.condition(), self.rules());
+via!(CssScopedWhenRule, self, self.condition(), self.rules());
+via!(CssElseRule, self, &self.condition(), self.rules());
+via!(CssScopedElseRule, self, &self.condition(), self.rules());
+
+impl<T: CssRetainedSources> CssRetainedSources for CssDescriptorOccurrence<T> {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.parsed_name() {
+            sources.visit(value)?;
+        }
+        if let Some(value) = self.parsed_value() {
+            sources.visit(value)?;
+        }
+        if let Some(value) = self.value_components() {
+            sources.visit(value)?;
+        }
+        sources.visit(self.value())
+    }
+}
+impl CssRetainedSources for CssCounterStyleDescriptors {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self.occurrences() {
+            use CssCounterStyleDescriptorRef::*;
+            match value {
+                System(value)
+                | Negative(value)
+                | Symbols(value)
+                | Prefix(value)
+                | Suffix(value)
+                | Range(value)
+                | Pad(value)
+                | Fallback(value)
+                | AdditiveSymbols(value)
+                | SpeakAs(value) => sources.visit(value)?,
+            }
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssFontFaceDescriptors {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self.occurrences() {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssKeyframeSelector {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Self::Percent(value) = self
+            && let Some(value) = value.calculation()
+        {
+            sources.visit(value.components())?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssScopedStyleSelector {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Selector(value) => sources.visit(value),
+            Self::Relative(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssFontFeatureValuesItem {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Block(value) => sources.visit(value),
+            Self::FontDisplay(value) => sources.visit(value),
+        }
+    }
+}
+via!(CssPageDeclarationBlock, self, self.occurrences());
+impl CssRetainedSources for CssPageDeclaration {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Property(value) => sources.visit(value),
+            Self::Descriptor(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssPageDescriptor {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.occurrence() {
+            sources.visit(value)?;
+        }
+        sources.visit(self.value())
+    }
+}
+impl CssRetainedSources for CssImportRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(&self.syntax.at_keyword)?;
+        sources.visit(&self.syntax.prelude.target)?;
+        sources.visit(&self.syntax.prelude.layer)?;
+        sources.visit(&self.syntax.prelude.supports)?;
+        sources.visit(&self.syntax.prelude.semicolon)?;
+        if let CssImportTarget::Url(value) = self.target() {
+            sources.visit(value.url())?;
+        }
+        if let Some(value) = self.supports() {
+            sources.visit(value.condition())?;
+        }
+        if let Some(value) = self.media() {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssMediaQueryList {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.queries())?;
+        sources.visit(self.comma_origins.as_slice())
+    }
+}
+impl CssRetainedSources for CssMediaQuery {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.origin())?;
+        match self {
+            Self::Condition(value) => sources.visit(value),
+            Self::Typed(value) => {
+                sources.visit(&value.syntax.modifier)?;
+                sources.visit(&value.syntax.media_type)?;
+                sources.visit(&value.syntax.conjunction)?;
+                if let Some(value) = value.condition() {
+                    sources.visit(value)?;
+                }
+                Ok(())
+            }
+            Self::Never(_) => Ok(()),
+        }
+    }
+}
+impl CssRetainedSources for CssMediaCondition {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        use crate::media::MediaConditionSyntax;
+        sources.visit(self.origin())?;
+        match &self.syntax {
+            MediaConditionSyntax::Feature(value) => {
+                sources.visit(&value.component)?;
+                sources.visit(&value.name)?;
+                for values in &value.separators {
+                    sources.visit(values.as_slice())?;
+                }
+            }
+            MediaConditionSyntax::Group { closing } => sources.visit(closing)?,
+            MediaConditionSyntax::Junction(values) => sources.visit(values.as_slice())?,
+            MediaConditionSyntax::Enclosed | MediaConditionSyntax::Not => {}
+        }
+        match self.kind() {
+            CssMediaConditionKind::Parenthesized(value) | CssMediaConditionKind::Not(value) => {
+                sources.visit(value.as_ref())
+            }
+            CssMediaConditionKind::And(value) | CssMediaConditionKind::Or(value) => {
+                for value in value.conditions() {
+                    sources.visit(value)?;
+                }
+                Ok(())
+            }
+            CssMediaConditionKind::CustomMediaReference(value) => sources.visit(value.component()),
+            CssMediaConditionKind::UnknownFeature(value) => sources.visit(value.component()),
+            CssMediaConditionKind::GeneralEnclosed(value) => sources.visit(value.component()),
+            CssMediaConditionKind::Feature(_) => Ok(()), // private grammar derives this from the retained Feature syntax
+        }
+    }
+}
+impl CssRetainedSources for CssAuthoredFontFaceDescriptorValue {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Ordinary(value) => sources.visit(value),
+            Self::Pending(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssFontFaceDescriptorValue {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::FontFamily(_) | Self::FontDisplay(_) | Self::UnicodeRange(_) => Ok(()),
+            Self::FontNamedInstance(value) => {
+                if let CssFontNamedInstance::String(value) = value {
+                    sources.visit(value.component())?;
+                }
+                Ok(())
+            }
+            Self::FontLanguageOverride(value) => {
+                if let CssFontLanguageOverride::String(value) = value {
+                    sources.visit(value.component())?;
+                }
+                Ok(())
+            }
+            Self::Src(value) => {
+                for value in value.sources() {
+                    sources.charge_step()?;
+                    if let CssFontFaceSource::Url(value) = value {
+                        sources.visit(value.url())?;
+                    }
+                }
+                Ok(())
+            }
+            Self::FontWeight(value) => {
+                if let CssFontFaceWeight::Range { start, end } = value {
+                    sources.visit(start)?;
+                    sources.visit(end)?;
+                }
+                Ok(())
+            }
+            Self::FontStyle(value) => {
+                if let CssFontFaceStyle::Oblique { range: Some(value) } = value {
+                    sources.visit(value.start())?;
+                    if let Some(value) = value.end() {
+                        sources.visit(value)?;
+                    }
+                }
+                Ok(())
+            }
+            Self::FontWidth(value) => {
+                if let CssFontFaceWidth::Range { start, end } = value {
+                    sources.visit(start)?;
+                    sources.visit(end)?;
+                }
+                Ok(())
+            }
+            Self::FontFeatureSettings(value) => {
+                if let CssAuthoredFontFeatureSettings::Features(values) = value {
+                    for value in values.features() {
+                        sources.charge_step()?;
+                        if let CssAuthoredFontFeatureValue::Index(value) = value.value() {
+                            sources.visit(value)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Self::FontVariationSettings(value) => {
+                if let CssFontVariationSettings::Variations(values) = value {
+                    for value in values.variations() {
+                        sources.visit(value.value())?;
+                    }
+                }
+                Ok(())
+            }
+            Self::AscentOverride(value)
+            | Self::DescentOverride(value)
+            | Self::LineGapOverride(value) => {
+                if let CssFontMetricOverride::Percentage(value) = value {
+                    sources.visit(value)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+impl CssRetainedSources for CssAbsoluteFontWeight {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Number(value) => sources.visit(value),
+            Self::Normal | Self::Bold => Ok(()),
+        }
+    }
+}
+impl CssRetainedSources for CssFontWidth {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Percentage(value) => sources.visit(value),
+            Self::Keyword(_) => Ok(()),
+        }
+    }
+}
+impl CssRetainedSources for CssUrl {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        for value in self.modifiers() {
+            sources.charge_step()?;
+            match value {
+                CssUrlModifier::Function(value) => sources.visit(value.argument_components())?,
+                CssUrlModifier::Ident(_) => {}
+            }
+        }
+        Ok(())
+    }
+}
+macro_rules! numeric {
+    ($($ty:ty),+) => { $(impl CssRetainedSources for $ty {
+        fn visit_retained_sources(&self, sources: &mut CssSourceRetention) -> Result<(), CssSourceRetentionError> {
+            if let Some(value) = self.literal_component() { sources.visit(value)?; }
+            if let Some(value) = self.calculation() { sources.visit(value.components())?; }
+            Ok(())
+        }
+    })+ };
+}
+numeric!(
+    CssFontWeightNumber,
+    CssFontObliqueAngle,
+    CssFontFeatureIndex,
+    CssSpecifiedNumber,
+    CssSpecifiedNonNegativePercentage
+);
+via!(CssSpecifiedFontFaceDeclarationBlock, self, self.entries());
+via!(CssSpecifiedPageDeclarationBlock, self, self.entries());
+via!(CssSpecifiedValueSerializationError, self, &self.origin());
+via!(CssFontFeatureValuesFamilyList, self, self.origin());
+impl CssRetainedSources for CssSpecifiedPageDeclarationEntry {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Property(value) => sources.visit(value),
+            Self::Descriptor(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssDeclarationBlockError {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.declaration() {
+            sources.visit(value)?;
+        }
+        if let CssDeclarationBlockErrorKind::Serialization(value) = self.kind() {
+            sources.visit(value)?;
+        }
+        if let CssDeclarationBlockErrorKind::Expansion(value) = self.kind()
+            && let CssExpansionErrorKind::InvalidReplacement(value) = value.kind()
+        {
+            sources.visit(value.origin())?;
+        }
+        Ok(())
+    }
+}
+impl CssRetainedSources for CssSerializedOrigin {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Token(value) => sources.visit(value),
+            Self::Separator { before, after } => {
+                sources.visit(before)?;
+                sources.visit(after)
+            }
+            Self::End(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssPageProjectionError {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Properties(value) => sources.visit(value),
+            Self::Resource(value) => sources.visit(value),
+            Self::DuplicateDescriptor { .. } => Ok(()),
+        }
+    }
+}
+impl CssRetainedSources for CssFontFaceDeclarationBlockError {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::Serialization(value) => sources.visit(value),
+            Self::DuplicateDescriptor { .. } => Ok(()),
+        }
+    }
+}
+
+impl CssRetainedSources for CssScopeRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.root() {
+            sources.visit(value)?;
+        }
+        if let Some(value) = self.limit() {
+            sources.visit(value)?;
+        }
+        sources.visit(self.rules())
+    }
+}
+impl CssRetainedSources for CssRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::CustomMedia(value) => sources.visit(value),
+            Self::Import(value) => sources.visit(value),
+            // These owners contain decoded Strings and positions, no source handles.
+            Self::Namespace(_) | Self::LayerStatement(_) => Ok(()),
+            Self::CounterStyle(value) => sources.visit(value),
+            Self::Page(value) => sources.visit(value),
+            Self::LayerBlock(value) => sources.visit(value),
+            Self::FontFace(value) => sources.visit(value),
+            Self::FontFeatureValues(value) => sources.visit(value),
+            Self::FontPaletteValues(value) => sources.visit(value),
+            Self::ColorProfile(value) => sources.visit(value),
+            Self::Keyframes(value) => sources.visit(value),
+            Self::Style(value) => sources.visit(value),
+            Self::NestedDeclarations(value) => sources.visit(value),
+            Self::Media(value) => sources.visit(value),
+            Self::Supports(value) => sources.visit(value),
+            Self::SupportsCondition(value) => sources.visit(value),
+            Self::Container(value) => sources.visit(value),
+            Self::When(value) => sources.visit(value),
+            Self::Else(value) => sources.visit(value),
+            Self::Scope(value) => sources.visit(value),
+        }
+    }
+}
+impl CssRetainedSources for CssScopedRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        match self {
+            Self::CustomMedia(value) => sources.visit(value),
+            Self::LayerStatement(_) => Ok(()),
+            Self::CounterStyle(value) => sources.visit(value),
+            Self::Page(value) => sources.visit(value),
+            Self::LayerBlock(value) => sources.visit(value),
+            Self::FontFace(value) => sources.visit(value),
+            Self::FontFeatureValues(value) => sources.visit(value),
+            Self::FontPaletteValues(value) => sources.visit(value),
+            Self::ColorProfile(value) => sources.visit(value),
+            Self::Keyframes(value) => sources.visit(value),
+            Self::Style(value) => sources.visit(value),
+            Self::NestedDeclarations(value) => sources.visit(value),
+            Self::Media(value) => sources.visit(value),
+            Self::Supports(value) => sources.visit(value),
+            Self::SupportsCondition(value) => sources.visit(value),
+            Self::Container(value) => sources.visit(value),
+            Self::When(value) => sources.visit(value),
+            Self::Else(value) => sources.visit(value),
+            Self::Scope(value) => sources.visit(value),
+        }
+    }
+}

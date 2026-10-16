@@ -3,6 +3,22 @@ use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
 use crate::*;
 use std::fmt;
 
+impl CssRetainedSources for CssCustomMediaRule {
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.visit(self.data.name.component())?;
+        sources.visit(&self.data.origin)?;
+        sources.visit(&self.data.body_origin)?;
+        sources.visit(&self.data.semicolon)?;
+        if let CssCustomMediaBody::Media(value) = &self.data.body {
+            sources.visit(value)?;
+        }
+        Ok(())
+    }
+}
+
 /// A decoded extension name and its original identifier component.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCustomMediaName {

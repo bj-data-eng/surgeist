@@ -27,6 +27,33 @@ byte limits. The immutable input retains original bytes and the exact unfiltered
 UTF-8 snapshot used by parsing. The stylesheet location is host-supplied symbolic
 text; see the [entry-point reference](docs/reference.md#entry-points-and-features).
 
+`CssParserContext::parse_sheet_utf16_with_limits` accepts shared original UTF16,
+uses the general CSS Syntax input cursor for newline/NUL/surrogate preprocessing,
+and invokes the ordinary stylesheet grammar in the supplied complete context.
+Finite preparation limits cover original units, normalized bytes, map entries,
+position checkpoints, fixed decoder/checkpoint registers, retained backing and
+work. A fallible callback is polled during preparation and immediately before
+and after grammar execution. The grammar retains its existing resource limits;
+it does not provide fine-grained cancellation or a whole-grammar work budget.
+Failure returns no partial report.
+
+Every actual stylesheet parse retains a root `CssStylesheetParseSource`, including
+empty and fully recovered inputs. Constructed sheets have no parse attestation.
+Root sheets, parsed origins and stylesheet recovery diagnostics share the actual
+immutable `CssSourceSnapshot`. UTF16 snapshots additionally retain the original
+shared units and exact normalized-scalar-boundary to original-unit mapping.
+Diagnostic coordinates continue to address normalized parser UTF8, with original
+unit intervals queried separately. Old rules and diagnostics keep their source
+after a consumer replaces an association. Source and syntax equality keep their
+existing text/semantic meaning; `same_snapshot` separately compares identity.
+
+`CssSourceStorageUsage` accounts for actual String/checkpoint/UTF16/map backing
+capacities. `CssSourceRetention` traverses retained CSS payloads under finite
+visits/depth and accumulates each actual source identity once. It inspects stored
+provenance independently of formatting, resource execution or Arc strong counts.
+Source storage admission is separate from input parsing admission and caller-owned
+historical captures.
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and

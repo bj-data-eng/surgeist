@@ -69,6 +69,31 @@ The supplied parser context applies to subsequent parsed creation/replacement;
 context updates preserve existing checked values and their original parser facts.
 Typed ingress preserves the context carried by each checked CSS occurrence.
 
+`CssomBatch::create_parsed_sheet_report` consumes an ordinary CSS stylesheet
+report, preserving ordered recovery diagnostics. Its owner-issued complete root
+source/context must match the staged parser context, including the independent
+glyph-definition choice; the complete root parser input obeys `max_input_bytes`
+even when no rules survive. Constructed syntax has no parse attestation and uses
+typed ingress.
+
+`CssomLimits::max_retained_source_bytes` defaults to 64 MiB and is an intentional
+additional storage contract. CSS supplies checked actual backing usage and source
+traversal; CSSOM admits all source identities retained in its canonical/staged
+sheet, rule, declaration, descriptor, media and map records, including detached
+objects and edited values. Repeated references to the same snapshot count once;
+distinct parse snapshots count separately even when their text is equal. This
+does not redefine logical input/string limits. UTF16 preparation has separate CSS
+input-unit/output/work admission, and its shared original/map backing still needs
+CSSOM storage admission. Caller-owned historical snapshots do not count again
+against the current state's logical quota; this is not process RSS accounting.
+Linked snapshots actively retained by the current context or selector-input
+contexts do count, including their transitive complete retained states. A link's
+selected sheet does not narrow the snapshot's owned data.
+`max_source_traversal_steps` (16 Mi steps) charges payload/state/table visits and
+identity comparisons into one cumulative bank; `max_source_traversal_depth`
+(2048) bounds CSS representation walking independently of CSS nesting. These
+finite defaults are storage-admission policy, not CSS grammar limits.
+
 Snapshots own checked current payloads, original occurrences, ordered membership,
 namespace facts and every independently revised supplied/linked input. They remain
 readable after edits and after dropping the store. Removal/replacement detaches

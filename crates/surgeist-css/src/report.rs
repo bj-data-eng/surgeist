@@ -155,6 +155,7 @@ pub struct CssRecoveryDiagnostic {
     span: CssSourceSpan,
     action: CssRecoveryAction,
     opening_owner: Option<usize>,
+    source: Option<crate::CssSourceSnapshot>,
 }
 
 impl PartialEq for CssRecoveryDiagnostic {
@@ -164,6 +165,15 @@ impl PartialEq for CssRecoveryDiagnostic {
 }
 impl Eq for CssRecoveryDiagnostic {}
 impl CssRecoveryDiagnostic {
+    /// Actual immutable parser input, when established by the owning parser.
+    #[must_use]
+    pub const fn source(&self) -> Option<&crate::CssSourceSnapshot> {
+        self.source.as_ref()
+    }
+
+    pub(crate) fn bind_source(&mut self, source: &crate::CssSourceSnapshot) {
+        self.source = Some(source.clone());
+    }
     pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
         self.error.resolve_original_coordinates(source);
         self.span = CssSourceSpan::new(
@@ -206,6 +216,7 @@ impl CssRecoveryDiagnostic {
             span,
             action,
             opening_owner: None,
+            source: None,
         })
     }
 

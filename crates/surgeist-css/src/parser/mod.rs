@@ -646,6 +646,22 @@ pub(crate) fn parse_sheet_snapshot(
     source_snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
+    let (mut sheet, mut diagnostics) =
+        parse_sheet_snapshot_inner(source_snapshot, parser_context).into_parts();
+    sheet.bind_parse_source(crate::CssStylesheetParseSource::new(
+        source_snapshot.clone(),
+        parser_context,
+    ));
+    for diagnostic in &mut diagnostics {
+        diagnostic.bind_source(source_snapshot);
+    }
+    crate::CssParseReport::new(sheet, diagnostics)
+}
+
+fn parse_sheet_snapshot_inner(
+    source_snapshot: &CssSourceSnapshot,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<CssSheet> {
     let source = source_snapshot.as_str();
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
         // The public limit is intentionally higher than the platform's small
