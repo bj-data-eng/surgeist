@@ -347,6 +347,16 @@ and preserves closed native createDocument semantics. It retains no surrounding
 navigation chapter or subsequent example and adds no newer edition, browser
 override or hosted lifecycle implementation.
 
+The [element-task association clauses](html-element-task-association--877d6146487f.md)
+retain task fields and runnability plus queue-task, global-task and element-task
+algorithms from original lines81133–81144 and81195–81232 of the same HTML877d
+snapshot. The original element's relevant global determines the queued task's
+associated Document through the global-task algorithm; later nodeDocument changes
+do not replace that recorded association. The bounded excerpt includes the
+wrapper recommendation and adds no newer edition or whole event-loop selection.
+Explicit Rust identity retirement remains the selected product policy in #136,
+separately from these task source clauses.
+
 The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing, scripting-state and bounded hosted Document activity clauses. The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
 
 The previous live [language/direction](dom-html-language-direction--editor-capture-20261010--494ac341fe2b.md), [interaction](dom-html-host-interaction--editor-capture-20261010--8a01a8043e7c.md), [HTML selector facts](dom-html-host-selector-facts--editor-capture-20261010--07d421b207b3.md) and [table processing](style-specialized-determinations-html-tables--editor-capture-20261011--7e90e654e94f.md) captures remain historical source identities and original decision evidence. For unstarted HTML language and HTML-supplied host facts, this pinned baseline supersedes those bounded live source selections. This changes source selection, not completed implementation provenance or the separately selected WHATWG DOM foundation. The repository LICENSE pin previously associated with those live captures did not identify their served chapter bytes; the new immutable full snapshot does identify this retained HTML edition.

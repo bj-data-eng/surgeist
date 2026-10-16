@@ -294,3 +294,25 @@ International terms for specification prose; its BSD 3-Clause provision applies
 only to portions incorporated into source code. The
 [conversion record](../../references/CONVERSION-REPORT.md#document-policy-container-initial-state--2026-10-16)
 records the bounded fidelity checks. No policy runtime is incorporated.
+
+## Element-task association clauses — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded task reference](../../references/html-element-task-association--877d6146487f.md)
+retains task fields and runnability, the queue-task algorithm and its wrapper
+recommendation, and global-task and element-task algorithms from immutable HTML
+revision `877d6146487f15b15bc8dd0e3c625063a37b456a`. Complete original SHA-256:
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Original ranges81133–81144 and81195–81232 are identified in that reference;
+surrounding event-loop and navigation chapters are not included.
+
+Surgeist's changes are offline bounded extraction, Markdown headings and
+provenance, normalization of whitespace, definition/algorithm list formatting
+and absolute same-edition source links. Original task fields, order, conditions
+and warning remain intact. No semantic change, source script execution,
+implementation code ingestion or endorsement is implied.
+
+The existing exact [LICENSE](LICENSE) covers this specification prose under
+Creative Commons Attribution 4.0 International. Its BSD 3-Clause provision applies
+only to portions incorporated into code. The repository's own license is unchanged.
