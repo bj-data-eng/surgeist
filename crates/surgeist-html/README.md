@@ -6,6 +6,12 @@ attributes, including isolated surrogates. It owns native document/fragment
 builders and the controlled `bounded` construction operations used by parser.
 Both producers publish the same HTML result and result-local node IDs.
 
+`HtmlNode::document_design_mode_enabled` reads the actual owned Document's
+source-defined initial false state; non-Documents return `None`. These controlled
+constructors admit no design-mode mutation. Existing parser report views lend
+the same qualified node, so consumers can transfer its state without inventing
+a native default. Captured external Documents retain their own state authority.
+
 The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior. [INVENTORY.md](INVENTORY.md) connects the vocabulary and local
 operations to their clauses. The [detailed HTML guide](../../docs/reference/html-operations.md)

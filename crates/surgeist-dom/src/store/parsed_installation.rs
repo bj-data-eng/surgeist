@@ -895,6 +895,9 @@ impl Dom {
             let HtmlNodeKind::Document(mode) = node.kind() else {
                 continue;
             };
+            let design_mode_enabled = node
+                .document_design_mode_enabled()
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
             let (class, inert, _) = source
                 .observation(&node.id(), &mut c, |r| r.document_facts())?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
@@ -910,12 +913,16 @@ impl Dom {
                     if inert {
                         return Err(Error::UnsupportedState { subject: node.id() });
                     }
-                    DomDocumentMetadata::from_parsed(class, *mode, environment)
+                    DomDocumentMetadata::from_parsed(class, *mode, environment, design_mode_enabled)
                 } else {
                     if !inert || *mode != surgeist_html::HtmlDocumentMode::NoQuirks {
                         return Err(Error::UnsupportedState { subject: node.id() });
                     }
-                    DomDocumentMetadata::parsed_template_owner(class, environment.input)
+                    DomDocumentMetadata::parsed_template_owner(
+                        class,
+                        environment.input,
+                        design_mode_enabled,
+                    )
                 }
             } else if report
                 .fragment_parser_document()
@@ -926,6 +933,7 @@ impl Dom {
                         .fragment_parser_document()
                         .expect("selected descriptor"),
                     self.document_environment,
+                    design_mode_enabled,
                 )
             } else {
                 if !inert || *mode != surgeist_html::HtmlDocumentMode::NoQuirks {
@@ -934,6 +942,7 @@ impl Dom {
                 DomDocumentMetadata::parsed_template_owner(
                     class,
                     self.document_environment.input_platform(),
+                    design_mode_enabled,
                 )
             };
             state::transfer_document_meta(&source, node, &mut metadata, &mut c)?;

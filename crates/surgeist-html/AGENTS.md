@@ -7,6 +7,12 @@ results. [Parser](../surgeist-html-parser/AGENTS.md) and
 bounded front doors directly. The [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 governs behavior. Preserve exact UTF-16 and private generic storage invariants.
 
+The owned `HtmlNode` Document design-mode readback certifies the original
+constructor's false state under this owner's no-mutator domain. A raw node-kind
+value or captured external Document supplies no such qualification. If controlled
+construction gains a design-mode transition, update the readback to retain its
+actual current state rather than continuing to return an initial value.
+
 Through bounded `pisct run`, from repository root:
 
 ```sh

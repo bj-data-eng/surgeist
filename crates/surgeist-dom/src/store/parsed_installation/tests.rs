@@ -245,12 +245,32 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
         HtmlInputEmptySelectionSupport::Unsupported,
         HtmlInputNoneDirectionSupport::Unsupported,
     ));
-    let first = DomDocumentMetadata::from_fragment_parser(&descriptor, current);
-    let repeated = DomDocumentMetadata::from_fragment_parser(&descriptor, current);
+    let first = DomDocumentMetadata::from_fragment_parser(
+        &descriptor,
+        current,
+        descriptor
+            .document()
+            .document_design_mode_enabled()
+            .unwrap(),
+    );
+    let repeated = DomDocumentMetadata::from_fragment_parser(
+        &descriptor,
+        current,
+        descriptor
+            .document()
+            .document_design_mode_enabled()
+            .unwrap(),
+    );
     let independent = parse();
     let separate = DomDocumentMetadata::from_fragment_parser(
         &independent.fragment_parser_document().unwrap(),
         current,
+        independent
+            .fragment_parser_document()
+            .unwrap()
+            .document()
+            .document_design_mode_enabled()
+            .unwrap(),
     );
     assert_eq!(first.origin(), repeated.origin());
     assert_ne!(first.origin(), separate.origin());

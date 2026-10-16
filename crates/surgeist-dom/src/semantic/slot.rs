@@ -169,6 +169,13 @@ impl DomHtmlCapture {
             &mut control,
             self.output_default_units,
         )?;
+        let input = super::inheritance::with_facts(
+            input,
+            &self.source,
+            &self.capture,
+            &self.entries,
+            &mut control,
+        )?;
         let policy = limits.adapter.base.or(self.base_policy);
         let (input, base_work) = super::base::with_facts(
             input,

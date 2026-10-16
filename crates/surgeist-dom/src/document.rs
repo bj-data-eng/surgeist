@@ -84,6 +84,7 @@ pub struct DomDocumentMetadata {
     url: DocumentString,
     origin: DomOpaqueOrigin,
     mode: HtmlDocumentMode,
+    design_mode_enabled: bool,
     allow_declarative_shadow_roots: bool,
     registry: DomRegistryBinding,
     environment: DomDocumentEnvironment,
@@ -198,6 +199,7 @@ impl DomDocumentMetadata {
             CONTENT_TYPE,
             DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity))),
             environment,
+            false,
             materialize,
         )
     }
@@ -222,6 +224,7 @@ impl DomDocumentMetadata {
             "text/html",
             origin,
             environment,
+            false,
             materialize,
         )
     }
@@ -232,6 +235,7 @@ impl DomDocumentMetadata {
         content_type: &str,
         origin: DomOpaqueOrigin,
         environment: DomDocumentEnvironment,
+        design_mode_enabled: bool,
         materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
     ) -> Result<Self, DomError> {
         Ok(Self {
@@ -241,6 +245,7 @@ impl DomDocumentMetadata {
             url: materialize(URL)?,
             origin,
             mode: HtmlDocumentMode::NoQuirks,
+            design_mode_enabled,
             allow_declarative_shadow_roots: false,
             registry: DomRegistryBinding::Null,
             environment,
@@ -262,6 +267,7 @@ impl DomDocumentMetadata {
         class: DomDocumentClass,
         mode: HtmlDocumentMode,
         environment: &crate::DomParsedDocumentEnvironment,
+        design_mode_enabled: bool,
     ) -> Self {
         let mut materialize = |text: &str| Ok(text.into());
         let mut result = Self::native_defaults(
@@ -273,6 +279,7 @@ impl DomDocumentMetadata {
             },
             environment.origin.clone(),
             DomDocumentEnvironment::new(environment.input),
+            design_mode_enabled,
             &mut materialize,
         )
         .expect("parsed metadata materializer always returns Ok");
@@ -293,11 +300,13 @@ impl DomDocumentMetadata {
     pub(crate) fn parsed_template_owner(
         class: DomDocumentClass,
         input: DomNativeInputPlatform,
+        design_mode_enabled: bool,
     ) -> Self {
         let mut materialize = |text: &str| Ok(text.into());
         let mut result =
             Self::template_owner(class, DomDocumentEnvironment::new(input), &mut materialize)
                 .expect("parsed template metadata materializer always returns Ok");
+        result.design_mode_enabled = design_mode_enabled;
         result.cause = DomDocumentCreationCause::ParsedTemplateOwner;
         result.meta = None;
         result.policy = crate::DomDocumentPolicyContainer::unavailable();
@@ -312,6 +321,7 @@ impl DomDocumentMetadata {
     pub(crate) fn from_fragment_parser(
         descriptor: &surgeist_html_parser::HtmlParseFragmentParserDocument<'_>,
         current: DomDocumentEnvironment,
+        design_mode_enabled: bool,
     ) -> Self {
         let mut materialize = |text: &str| Ok(text.into());
         let mut result = Self::native_defaults(
@@ -321,6 +331,7 @@ impl DomDocumentMetadata {
                 descriptor.origin().clone(),
             )),
             current,
+            design_mode_enabled,
             &mut materialize,
         )
         .expect("fragment parser metadata materializer always returns Ok");
@@ -350,6 +361,11 @@ impl DomDocumentMetadata {
     }
     pub fn mode(&self) -> HtmlDocumentMode {
         self.mode
+    }
+    /// Actual canonical Document design-mode flag. This readback neither
+    /// executes editing nor supplies the ordered designMode setter.
+    pub const fn design_mode_enabled(&self) -> bool {
+        self.design_mode_enabled
     }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots

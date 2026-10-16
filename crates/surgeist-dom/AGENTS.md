@@ -271,7 +271,17 @@ records and CSSOM effects. Broader CSS pseudo capture and actual composed
 publication remain with #1124/#382/#388/#1058, as described in the README.
 
 The direct HTML semantic adapter consumes actual immutable canonical values and
-public producer builders/session calls. Retain exact two-way subject mapping,
+public producer builders/session calls. Canonical Document design-mode state
+comes from actual native creation or the matching owned HTML Document readback
+during completed-report transfer; captured existing Documents are not reset.
+Initial and Slot contexts join all actual Document rows through the shared
+GlobalInheritance owner, including supplemental Documents, with explicit finite
+subject/work bounds applied independently per producer formation. Preserve the
+typed errors and actual host/capture/revision qualifications. No external
+spellcheck defaults, range ownership or executed focus is established by this
+readback; the ordered setter requires those separate real owners.
+
+Retain exact two-way subject mapping,
 document/host qualification and unavailable external facts. Native absent
 browsing context proves scripting disabled independently of XML/HTML class.
 Do not reconstruct saved state from content attributes or rerun fresh native

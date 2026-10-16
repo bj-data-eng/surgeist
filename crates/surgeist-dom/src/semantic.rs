@@ -2,6 +2,7 @@
 
 mod base;
 mod control;
+mod inheritance;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
 
@@ -36,6 +37,10 @@ use crate::{
 /// entries (two per Button, one per Input), with their validation independently bounded by
 /// `work`. Actual HTML/null-definition classifications also use subjects, with
 /// their context qualification/duplicate comparisons charged to adapter work.
+/// Document design-mode rows use at most `subjects` records. The same finite
+/// `work` bound independently limits GlobalInheritance producer validation per
+/// formation, including Slot context reconstruction; it is not a cumulative
+/// producer work meter across separate formations.
 /// Producer allocations obey the supplied HtmlCaptureLimits.
 /// Control facts admit up to twice subjects (association plus actual Input flags).
 /// Applicable current values use the shared HTML type predicate and the supplied
@@ -102,6 +107,7 @@ pub enum DomHtmlCaptureError {
     Semantic(HtmlSemanticFailure),
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
     Inert(surgeist_html_semantics::HtmlInertFactError),
+    GlobalInheritance(surgeist_html_semantics::HtmlGlobalInheritanceError),
     Controls(surgeist_html_semantics::HtmlControlFactsError),
     BaseFacts(surgeist_html_semantics::HtmlBaseFactsError),
     OutputDefaults(surgeist_html_semantics::HtmlOutputDefaultError),
@@ -130,6 +136,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Semantic(e) => Some(e),
             Self::Language(e) => Some(e),
             Self::Inert(e) => Some(e),
+            Self::GlobalInheritance(e) => Some(e),
             Self::Controls(e) => Some(e),
             Self::BaseFacts(e) => Some(e),
             Self::OutputDefaults(e) => Some(e),
@@ -784,6 +791,7 @@ impl DomSnapshot {
             &mut control,
             capture_limits.utf16_units(),
         )?;
+        let input = inheritance::with_facts(input, self, &capture, &entries, &mut control)?;
         let base_policy = control.limits.base;
         let (input, base_work) = base::with_facts(
             input,

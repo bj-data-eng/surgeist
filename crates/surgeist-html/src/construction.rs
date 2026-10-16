@@ -612,6 +612,13 @@ impl<'a> HtmlNode<'a> {
     pub fn kind(self) -> &'a HtmlNodeKind {
         &self.arena.records[self.index].kind
     }
+    /// Original design-mode state of this owned Document, or `None` for a
+    /// non-Document. Controlled construction initializes Documents with design
+    /// mode disabled and admits no operation that changes it. Captured external
+    /// Documents are not owned construction nodes and receive no such grant.
+    pub fn document_design_mode_enabled(self) -> Option<bool> {
+        matches!(self.kind(), HtmlNodeKind::Document(_)).then_some(false)
+    }
     /// Ordinary parent; association fragment roots have no ordinary parent.
     pub fn parent(self) -> Option<HtmlNodeId> {
         self.arena.records[self.index]

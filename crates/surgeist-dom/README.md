@@ -1176,6 +1176,17 @@ and custom-element state come from actual canonical records. It creates no
 intermediate HTML construction tree. Common slots not represented by HTML's
 capture schema remain available through the retained `source()` snapshot.
 
+`DomDocumentMetadata::design_mode_enabled` reads canonical Document state.
+Native creators establish false; completed-report installation transfers each
+owned ordinary, auxiliary and inert Document's original HTML-qualified state.
+Captured existing Documents preserve their current state. Initial and Slot
+semantic contexts feed these actual Document rows to the shared editability
+kernel. The explicit subject/work limits also bound this fact formation and its
+producer validation independently per formation. No cumulative producer budget
+or external spellcheck default is inferred. Explicit spellcheck attributes can
+answer; policy-dependent defaults remain missing until supplied by their owner.
+This readback does not execute the designMode setter, range reset or focusing.
+
 Actual open and closed ShadowRoots extend that closure through their reciprocal
 host/root association, ordinary ancestors, actual node documents and shadow
 subtrees. The root's document remains independent of the host's document,

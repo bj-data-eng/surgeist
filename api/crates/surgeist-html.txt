@@ -4856,6 +4856,7 @@ pub struct surgeist_html::HtmlNode<'a>
 impl<'a> surgeist_html::HtmlNode<'a>
 pub fn surgeist_html::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
 pub fn surgeist_html::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<surgeist_html::HtmlDeclarativeShadowRoot<'a>>
+pub fn surgeist_html::HtmlNode<'a>::document_design_mode_enabled(self) -> core::option::Option<bool>
 pub fn surgeist_html::HtmlNode<'a>::fragment_owner(self) -> core::option::Option<&'a surgeist_html::HtmlFragmentOwner>
 pub fn surgeist_html::HtmlNode<'a>::id(self) -> surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlNode<'a>::is_shadow_contents(self) -> bool
