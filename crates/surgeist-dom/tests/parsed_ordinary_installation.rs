@@ -3790,3 +3790,125 @@ fn stale_foreign_cancelled_and_finite_refusals_publish_no_document_or_partial_ma
     ));
     assert_eq!(dom.snapshot().stamp(), newer.stamp());
 }
+
+fn assert_parsed_dialog_closed_services(view: DomDialog<'_>) {
+    assert!(!view.is_modal());
+    assert!(!view.has_toggle_task_tracker());
+    assert!(!view.has_close_watcher());
+    assert_eq!(view.request_close_return_value(), None);
+    assert_eq!(view.request_close_source(), None);
+    assert!(!view.force_close_watcher_enabled());
+}
+
+#[test]
+fn parsed_dialog_report_transfers_actual_return_value_independently_of_attribute() {
+    // HTML877d interactive chapter1026: returnValue is initialized to the
+    // empty string; an unrelated content attribute is not an IDL assignment.
+    // Ordinary open addition/insertion (1054-1094) cannot invoke show/close.
+    // The actual offline Document is inactive, so setup is not reached.
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><dialog open returnvalue=attribute-only></dialog>",
+    ));
+    let source_root = report.document().unwrap().root().id();
+    let (mut dom, environment) = setup();
+    let before = dom.snapshot();
+    let result = install(&mut dom, report, environment);
+    assert_eq!(
+        result.node_for(&source_root),
+        Some(result.document().node())
+    );
+    assert_ne!(result.snapshot().stamp(), before.stamp());
+    let id = element(&result, "dialog");
+    let node = result.snapshot().node(id).unwrap();
+    assert_eq!(node.owner_document(), Some(result.document()));
+    assert!(node.is_connected());
+    let element = node.as_element().unwrap();
+    assert_eq!(
+        element.attribute(&"open".into()),
+        Some(&DocumentString::from(""))
+    );
+    assert_eq!(
+        element.attribute(&"returnvalue".into()),
+        Some(&DocumentString::from("attribute-only")),
+    );
+    let dialog = node.as_dialog().expect("actual parsed Dialog state");
+    assert_eq!(dialog.return_value().code_units(), []);
+    assert_parsed_dialog_closed_services(dialog);
+    assert!(
+        !element
+            .common_state()
+            .html()
+            .unwrap()
+            .has_previously_focused_element()
+    );
+}
+
+#[test]
+fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
+    // Foundation4879: each actual new Document starts with an empty open
+    // dialogs list. In this closed original parse no operation adds a member.
+    // Interactive1054-1094 and1294-1326: insertion stops at inactive, whereas
+    // open removal/removal must perform cleanup before any inactivity guard.
+    // The final absence of Dialog is not the reason history is known.
+    let report = parse(HtmlSource::utf8("<!doctype html><p>source-only</p>"));
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let document = installed.document();
+    let body = element(&installed, "body");
+    let historical = installed.snapshot().clone();
+
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_element_ns(document, Namespace::html(), "dialog");
+    batch.set_attribute(&ticket, "open", "");
+    batch.insert_before(&ticket, body, None);
+    let created = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let id = created.created(&ticket).unwrap().unwrap();
+    let opened = dom.snapshot();
+    let node = opened.node(id).unwrap();
+    assert_eq!(node.owner_document(), Some(document));
+    assert!(node.is_connected());
+    assert_eq!(node.as_dialog().unwrap().return_value().code_units(), []);
+    assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
+    assert!(historical.node(id).is_err());
+
+    // Cleanup needs this actual Document's retained interaction history,
+    // independently of the later native Dialog's own creation state.
+    let mut batch = DomBatch::new();
+    batch.remove_attribute(id, "open");
+    dom.apply(batch, &AtomicBool::new(false))
+        .expect("source-established Document list history supports open cleanup");
+    let cleaned = dom.snapshot();
+    let node = cleaned.node(id).unwrap();
+    assert_eq!(node.as_element().unwrap().attribute(&"open".into()), None);
+    assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
+    assert!(
+        opened
+            .node(id)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+
+    // Exercise removed-open cleanup as a separate real ordinary operation.
+    let mut batch = DomBatch::new();
+    batch.set_attribute(id, "open", "");
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let mut batch = DomBatch::new();
+    batch.detach(id);
+    dom.apply(batch, &AtomicBool::new(false))
+        .expect("source-established Document list history supports removed-open cleanup");
+    let detached = dom.snapshot();
+    let node = detached.node(id).unwrap();
+    assert!(!node.is_connected());
+    assert_eq!(node.owner_document(), Some(document));
+    assert!(
+        node.as_element()
+            .unwrap()
+            .attribute(&"open".into())
+            .is_some()
+    );
+    assert_eq!(node.as_dialog().unwrap().return_value().code_units(), []);
+    assert_parsed_dialog_closed_services(node.as_dialog().unwrap());
+}
