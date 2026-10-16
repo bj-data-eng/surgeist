@@ -647,6 +647,15 @@ reuses the selected HTML snapshot under the existing
 It preserves Document and policy-container defaults needed by native Meta work.
 The disclosed Markdown conversion adds no implementation or dependency.
 
+## Hosted same-site definitions
+
+The [bounded HTML same-site reference](references/html-hosted-same-site--877d6146487f--d13a3b5702d5.md)
+reuses the already selected HTML877d edition and unchanged complete WHATWG
+license. Its [attribution and modification notice](licenses/whatwg/NOTICE.md#hosted-same-site-definitions--2026-10-16)
+records the complete selected site/origin comparison units and offline
+extraction. Specification prose uses CC BY 4.0; the BSD 3-Clause provision
+applies only to portions incorporated into code. Project licensing is unchanged.
+
 ## URL equality and serialization source
 
 The [bounded URL reference](references/url-equality-serialization--fde3f74f0633.md)

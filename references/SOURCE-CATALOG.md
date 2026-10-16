@@ -733,6 +733,17 @@ The reference supplies no normative cancellation or cleanup policy.
 | [frame_tree_node.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/frame_tree_node.cc) | `4e4b14ebc84ab4e570ad46bb4622e454a2fbf9d9` | metadata-only corroboration; inspected lines 195–257, 290–302; no browser source excerpt |
 | [navigation_controller_impl.cc](html-child-history-lifetime--pinned-browser-metadata.md) | [upstream](https://github.com/chromium/chromium/blob/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/content/browser/renderer_host/navigation_controller_impl.cc) | `580d1a893d488d255329cddefc9aeaf4bcf8a67a` | metadata-only corroboration; inspected lines 5452–5466; no browser source excerpt |
 
+## Hosted same-site definitions — 2026-10-16
+
+The [same-site reference](html-hosted-same-site--877d6146487f--d13a3b5702d5.md)
+adds a bounded representation of the already cataloged complete HTML877d
+identity. Original-source counts remain unchanged; extraction hashes are not
+new source identities.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [Hosted same-site definitions](html-hosted-same-site--877d6146487f--d13a3b5702d5.md) | [HTML877d sites](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#sites) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; complete site and origin same-site algorithms, original raw lines 64446–64454 and 64486–64493 |
+
 ## URL equality and serialization — 2026-10-16
 
 The [bounded URL reference](url-equality-serialization--fde3f74f0633.md) adds one

@@ -458,6 +458,27 @@ contributes the iframe-owned slot. This is editorial native qualification,
 not modified HTML source, an upstream fix or an implementation-conformance claim.
 The COOP value/record excerpt above remains a separate HTML source selection.
 
+## Hosted same-site definitions — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [same-site reference](../../references/html-hosted-same-site--877d6146487f--d13a3b5702d5.md)
+reuses HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original
+SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The retained complete [LICENSE](LICENSE), SHA-256
+`85dc6f5ccb57a6fe8c33d158f9fc8fc7ee5655a5d3db2cdd131c6a3d0f48a864`,
+supplies CC BY 4.0 terms for prose and the separate BSD 3-Clause provision for
+portions incorporated into source code.
+
+Changes by Surgeist on 16 October 2026: bounded offline selection, Markdown
+headings, provenance, immutable source links and a separately marked reading
+guide. The complete site and origin same-site algorithm divs retain original
+bytes, links, IDs, whitespace and branches inside inert fenced blocks. The
+[conversion report](../../references/CONVERSION-REPORT.md#hosted-same-site-definitions--2026-10-16)
+records exact ranges and hashes. No source script or renderer ran. No
+endorsement, replacement standard, broader origin implementation or browser
+conformance is implied. Surgeist's own license remains unchanged.
+
 ## URL equality and serialization — 2026-10-16
 
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).

@@ -959,6 +959,23 @@ runtimes. The complete source hash and conversion limits are recorded in the
 [conversion report](CONVERSION-REPORT.md#document-policy-container-initial-state--2026-10-16).
 No new edition is selected.
 
+## Hosted same-site definitions
+
+The [bounded same-site reference](html-hosted-same-site--877d6146487f--d13a3b5702d5.md)
+retains the complete site and origin comparison algorithms from the existing
+HTML877d edition. It completes the definitions reached by the retained
+[Window Settings setup and initial constructor](html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md).
+Obtain-a-site returns an opaque origin unchanged; same-site then compares its
+actual identity. Serialized `null` is not an identity comparison.
+
+Cross-site ancestry uses current parent navigable and active-Document Settings;
+top-level origin is the distinct original constructor operand. Native consumers
+retain those roles and their finite qualified captures. This source addition
+selects no new origin profile, URL/public-suffix service or standard edition.
+The [conversion report](CONVERSION-REPORT.md#hosted-same-site-definitions--2026-10-16)
+and [WHATWG notice](../licenses/whatwg/NOTICE.md#hosted-same-site-definitions--2026-10-16)
+record exact extraction and attribution.
+
 ## URL equality and serialization
 
 The [bounded URL reference](url-equality-serialization--fde3f74f0633.md) selects

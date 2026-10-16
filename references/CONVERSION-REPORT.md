@@ -1015,6 +1015,30 @@ historical records, cleanup custody and cancellation; they do not independently
 supply the missing HTML completion rule. Actual native qualifications belong to
 the linked owning issues, separately from literal retained source.
 
+## Hosted same-site definitions — 2026-10-16
+
+The [same-site reference](html-hosted-same-site--877d6146487f--d13a3b5702d5.md)
+reuses complete HTML877d, 14,930,614 bytes, original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Two complete algorithm divs are selected: raw lines 64446–64454, 1,050 bytes,
+SHA-256 `5db184d37a6d47d31f09945c2d9c1dd636b222dc368b4722aff24643b66049f9`;
+and 64486–64493, 701 bytes,
+SHA-256 `8d09ed975cf9382a86f22acb0d61e70c413842899e2fb74e227a2161cc1627e5`.
+Inclusive LF-delimited ranges joined by one extra LF have SHA-256
+`d13a3b5702d5a580a69546be2cc80a55cc29b7ce731552573716c07618f1cde5`,
+which supplies the filename suffix.
+
+Each selected source body remains byte-identical inside an inert HTML fence.
+Only editorial headings, provenance, external source links and the separately
+marked reading guide are added. The complete algorithms, definitions, IDs,
+original links, whitespace and branch order remain intact. No source script,
+renderer, acquisition or Cargo build is involved. The existing exact
+[WHATWG license and supplemental notice](../licenses/whatwg/NOTICE.md#hosted-same-site-definitions--2026-10-16)
+retain copyright, CC BY 4.0 prose terms and the distinct BSD code provision.
+This is an additional representation of an existing source identity; counts
+remain 391 = 260 full + 102 partial + 29 metadata-only. Fidelity and navigation
+checks do not certify native Settings or child-lifecycle implementation.
+
 ## URL equality and serialization — 2026-10-16
 
 The [URL reference](url-equality-serialization--fde3f74f0633.md) retains five
