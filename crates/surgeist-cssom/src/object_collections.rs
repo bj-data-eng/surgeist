@@ -53,7 +53,10 @@ macro_rules! sheet_reads {
             ) -> Result<Option<&'a str>, CssomError> {
                 store.state.sheet_owner_node(self.id())
             }
-            pub fn title<'a>(&self, store: &'a CssomStore) -> Result<Option<&'a str>, CssomError> {
+            pub fn title<'a>(
+                &self,
+                store: &'a CssomStore,
+            ) -> Result<Option<&'a [u16]>, CssomError> {
                 store.state.sheet_title(self.id())
             }
             pub fn parent_style_sheet(
@@ -93,7 +96,7 @@ macro_rules! sheet_reads {
             pub fn owner_node(&self) -> Result<Option<&str>, CssomError> {
                 self.snapshot.sheet_owner_node(self.handle.id())
             }
-            pub fn title(&self) -> Result<Option<&str>, CssomError> {
+            pub fn title(&self) -> Result<Option<&[u16]>, CssomError> {
                 self.snapshot.sheet_title(self.handle.id())
             }
             pub fn parent_style_sheet(

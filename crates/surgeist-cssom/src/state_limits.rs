@@ -162,7 +162,17 @@ impl State {
             // Retained raw input includes imports filtered from constructed sheets.
             add(&mut entries, sheet.authored.rules().len());
             version(&mut strings, &sheet.inputs.version);
-            add(&mut strings, sheet.inputs.title.len());
+            let title_bytes =
+                sheet
+                    .inputs
+                    .title
+                    .capacity()
+                    .checked_mul(2)
+                    .ok_or(CssomError::Limit {
+                        resource: "host and live string bytes",
+                        maximum: limits.max_string_bytes,
+                    })?;
+            add(&mut strings, title_bytes);
             for text in [
                 &sheet.inputs.base_url,
                 &sheet.inputs.location,

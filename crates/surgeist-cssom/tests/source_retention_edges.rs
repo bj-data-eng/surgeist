@@ -17,7 +17,7 @@ fn parsed(text: &str) -> CssParseReport<CssSheet> {
     let mut units = Vec::with_capacity(4096);
     units.extend(text.encode_utf16());
     CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssStylesheetInputLimits::default(), || {
+        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap()

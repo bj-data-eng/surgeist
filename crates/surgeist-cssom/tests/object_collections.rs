@@ -40,7 +40,7 @@ fn external(store: &mut CssomStore, text: &str, clean: bool, locked: bool) -> Cs
         CssomSheetInputs::external(version(CssomInputRole::Owner, "external", 1), clean);
     inputs.disallow_modification = locked;
     inputs.owner = Some("opaque-style-node".into());
-    inputs.title = "Selected".into();
+    inputs.title = std::sync::Arc::new("Selected".encode_utf16().collect());
     let ticket = edit.create_parsed_sheet(text, inputs).unwrap();
     let id = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
     store.css_style_sheet(&id).unwrap()
@@ -318,7 +318,10 @@ fn per_operation_guards_precede_invalid_syntax_and_untruncated_indices() {
         opaque.owner_node(&owner).unwrap(),
         Some("opaque-style-node")
     );
-    assert_eq!(opaque.title(&owner).unwrap(), Some("Selected"));
+    assert_eq!(
+        opaque.title(&owner).unwrap(),
+        Some("Selected".encode_utf16().collect::<Vec<_>>().as_slice())
+    );
     assert_exception(opaque.css_rules(&owner), CssomException::Security);
     assert_exception(opaque.rules(&owner), CssomException::Security);
     assert_exception(

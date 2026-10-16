@@ -3,7 +3,7 @@ use surgeist_css::*;
 
 fn parse(units: Vec<u16>) -> CssParseReport<CssSheet> {
     CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssStylesheetInputLimits::default(), || {
+        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap()
@@ -90,33 +90,33 @@ fn real_utf8_parses_are_qualified_and_equality_ignores_qualification() {
 #[test]
 fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() {
     let original = Arc::new(vec![97]);
-    let base = CssStylesheetInputLimits::default();
+    let base = CssUtf16InputLimits::default();
     for limits in [
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_input_units: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_output_bytes: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_map_entries: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_checkpoints: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_scratch_bytes: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_retained_bytes: 0,
             ..base
         },
-        CssStylesheetInputLimits {
+        CssUtf16InputLimits {
             max_work: 0,
             ..base
         },
@@ -127,7 +127,7 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
                 limits,
                 || Ok::<_, ()>(())
             ),
-            Err(CssStylesheetInputError::Limit(_))
+            Err(CssUtf16InputError::Limit(_))
         ));
     }
     for stop in 1..=7 {
@@ -140,10 +140,7 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
                 if calls == stop { Err(stop) } else { Ok(()) }
             },
         );
-        assert_eq!(
-            result.unwrap_err(),
-            CssStylesheetInputError::Interrupted(stop)
-        );
+        assert_eq!(result.unwrap_err(), CssUtf16InputError::Interrupted(stop));
         assert_eq!(calls, stop);
     }
 }
@@ -152,7 +149,7 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
 fn actual_padded_original_backing_counts_independently_of_text_length() {
     let mut raw = Vec::with_capacity(4096);
     raw.push(97);
-    let limits = CssStylesheetInputLimits {
+    let limits = CssUtf16InputLimits {
         max_retained_bytes: 8191,
         ..Default::default()
     };
@@ -163,6 +160,6 @@ fn actual_padded_original_backing_counts_independently_of_text_length() {
         >(
             ()
         )),
-        Err(CssStylesheetInputError::Limit("retained source bytes"))
+        Err(CssUtf16InputError::Limit("retained source bytes"))
     ));
 }

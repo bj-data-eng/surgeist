@@ -192,9 +192,19 @@ impl CssomBatch {
         id: &CssomMediaListId,
         value: CssMediaQueryList,
     ) -> Result<bool, CssomError> {
+        self.set_media_with_source(id, value, false)
+    }
+
+    pub(crate) fn set_media_with_source(
+        &mut self,
+        id: &CssomMediaListId,
+        value: CssMediaQueryList,
+        retain_input: bool,
+    ) -> Result<bool, CssomError> {
         self.apply(|this| {
             this.staged.media(id)?;
-            if this.staged.media[id] == value {
+            let changed = this.staged.media[id] != value;
+            if !changed && !retain_input {
                 return Ok(false);
             }
             let sheets = this
@@ -213,8 +223,10 @@ impl CssomBatch {
                     .media = value.clone();
             }
             this.staged.media.insert(id.clone(), value);
-            this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
-            Ok(true)
+            if changed {
+                this.affect(CssomObjectId::MediaList(id.clone()), &[CssomChange::Media]);
+            }
+            Ok(changed)
         })
     }
 }

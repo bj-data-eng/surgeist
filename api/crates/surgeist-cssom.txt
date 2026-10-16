@@ -214,6 +214,9 @@ pub surgeist_cssom::CssomOwnerEffectStatus::Applying
 pub surgeist_cssom::CssomOwnerEffectStatus::Canceled
 pub surgeist_cssom::CssomOwnerEffectStatus::HostFailed
 pub surgeist_cssom::CssomOwnerEffectStatus::Pending
+pub enum surgeist_cssom::CssomOwnerMediaInput<'a>
+pub surgeist_cssom::CssomOwnerMediaInput::Parsed(surgeist_css::report::CssParseReport<surgeist_css::syntax::CssMediaQueryList>)
+pub surgeist_cssom::CssomOwnerMediaInput::Utf8(core::option::Option<&'a str>)
 pub enum surgeist_cssom::CssomOwnerNotification
 pub surgeist_cssom::CssomOwnerNotification::MatchingEcho
 pub surgeist_cssom::CssomOwnerNotification::Unrelated
@@ -2752,7 +2755,7 @@ pub fn surgeist_cssom::CssStyleSheet::media(&self, store: &surgeist_cssom::Cssom
 pub fn surgeist_cssom::CssStyleSheet::owner_node<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a str>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssStyleSheet::parent_style_sheet(&self, store: &surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<surgeist_cssom::CssStyleSheet>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssStyleSheet::set_disabled(&self, store: &mut surgeist_cssom::CssomStore, disabled: bool) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssStyleSheet::title<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssStyleSheet::title<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a [u16]>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssStyleSheet::type(&self, store: &surgeist_cssom::CssomStore) -> core::result::Result<&'static str, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssStyleSheetInit<'a>
 pub surgeist_cssom::CssStyleSheetInit::base_url: core::option::Option<alloc::string::String>
@@ -2868,6 +2871,7 @@ pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_c
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet(&mut self, source: &str, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet_report(&mut self, report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssSheet>, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::create_parsed_sheet_with_media_reports(&mut self, sheet_report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssSheet>, media_report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssMediaQueryList>, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_typed_sheet(&mut self, sheet: surgeist_css::syntax::CssSheet, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_created_sheet_rule(&mut self, ticket: &surgeist_cssom::CssomSheetTicket, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_group_rule(&mut self, id: &surgeist_cssom::CssomRuleId, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
@@ -4320,7 +4324,7 @@ pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::href(&self) 
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::media(&self) -> core::result::Result<surgeist_cssom::CssomCapture<surgeist_cssom::MediaList>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::owner_node(&self) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::parent_style_sheet(&self) -> core::result::Result<core::option::Option<surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>>, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::title(&self) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::title(&self) -> core::result::Result<core::option::Option<&[u16]>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>::type(&self) -> core::result::Result<&'static str, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomCapture<surgeist_cssom::CssSupportsConditionRule>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::CssSupportsConditionRule>::as_grouping_rule(&self) -> surgeist_cssom::CssomCapture<surgeist_cssom::CssGroupingRule>
@@ -4364,7 +4368,7 @@ pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::href(&self) -> 
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::media(&self) -> core::result::Result<surgeist_cssom::CssomCapture<surgeist_cssom::MediaList>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::owner_node(&self) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::parent_style_sheet(&self) -> core::result::Result<core::option::Option<surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>>, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::title(&self) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::title(&self) -> core::result::Result<core::option::Option<&[u16]>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheet>::type(&self) -> core::result::Result<&'static str, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheetList>
 pub fn surgeist_cssom::CssomCapture<surgeist_cssom::StyleSheetList>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_cssom::CssomCapture<surgeist_cssom::CssStyleSheet>>, surgeist_cssom::CssomError>
@@ -4643,7 +4647,7 @@ pub surgeist_cssom::CssomSheetInputs::location: core::option::Option<alloc::stri
 pub surgeist_cssom::CssomSheetInputs::media: surgeist_css::syntax::CssMediaQueryList
 pub surgeist_cssom::CssomSheetInputs::origin_clean: bool
 pub surgeist_cssom::CssomSheetInputs::owner: core::option::Option<alloc::string::String>
-pub surgeist_cssom::CssomSheetInputs::title: alloc::string::String
+pub surgeist_cssom::CssomSheetInputs::title: alloc::sync::Arc<alloc::vec::Vec<u16>>
 pub surgeist_cssom::CssomSheetInputs::version: surgeist_cssom::CssomInputVersion
 impl surgeist_cssom::CssomSheetInputs
 pub fn surgeist_cssom::CssomSheetInputs::constructed(version: surgeist_cssom::CssomInputVersion, document: alloc::string::String, base_url: core::option::Option<alloc::string::String>) -> Self
@@ -4652,9 +4656,9 @@ pub struct surgeist_cssom::CssomSheetListId
 impl surgeist_cssom::CssomSheetListId
 pub fn surgeist_cssom::CssomSheetListId::owner(&self) -> &surgeist_cssom::CssomOwnerId
 pub struct surgeist_cssom::CssomSheetOwnerAttributes<'a>
-pub surgeist_cssom::CssomSheetOwnerAttributes::media: core::option::Option<&'a str>
+pub surgeist_cssom::CssomSheetOwnerAttributes::media: surgeist_cssom::CssomOwnerMediaInput<'a>
 pub surgeist_cssom::CssomSheetOwnerAttributes::owner: &'a str
-pub surgeist_cssom::CssomSheetOwnerAttributes::title: core::option::Option<&'a str>
+pub surgeist_cssom::CssomSheetOwnerAttributes::title: core::option::Option<&'a [u16]>
 pub surgeist_cssom::CssomSheetOwnerAttributes::version: surgeist_cssom::CssomInputVersion
 pub struct surgeist_cssom::CssomSheetTicket
 pub struct surgeist_cssom::CssomSnapshot
@@ -4826,7 +4830,7 @@ pub fn surgeist_cssom::StyleSheet::media(&self, store: &surgeist_cssom::CssomSto
 pub fn surgeist_cssom::StyleSheet::owner_node<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a str>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::StyleSheet::parent_style_sheet(&self, store: &surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<surgeist_cssom::CssStyleSheet>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::StyleSheet::set_disabled(&self, store: &mut surgeist_cssom::CssomStore, disabled: bool) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::StyleSheet::title<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::StyleSheet::title<'a>(&self, store: &'a surgeist_cssom::CssomStore) -> core::result::Result<core::option::Option<&'a [u16]>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::StyleSheet::type(&self, store: &surgeist_cssom::CssomStore) -> core::result::Result<&'static str, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::StyleSheetList
 impl surgeist_cssom::StyleSheetList

@@ -1,4 +1,3 @@
-use crate::parser_resources::check_resource_diagnostics;
 use crate::{
     css_adapter::{check_declarations, parse, projection},
     model::State,
@@ -409,28 +408,41 @@ impl CssomBatch {
         inputs: CssomSheetInputs,
     ) -> Result<CssomSheetTicket, CssomError> {
         self.apply(|this| {
-            let source = report
-                .syntax()
-                .parse_source()
-                .ok_or(CssomError::InvalidInput(
-                    "stylesheet parse source unavailable",
-                ))?;
-            if source.context() != this.staged.context.parser_context() {
-                return Err(CssomError::InvalidInput(
-                    "stylesheet parser context mismatch",
-                ));
-            }
-            if source.source().as_str().len() > this.limits.max_input_bytes {
-                return Err(CssomError::Limit {
-                    resource: "parse input bytes",
-                    maximum: this.limits.max_input_bytes,
-                });
-            }
-            check_resource_diagnostics(report.diagnostics())?;
+            check_stylesheet_report(&report, this.staged.context.parser_context(), &this.limits)?;
             let (sheet, diagnostics) = report.into_parts();
             this.create_sheet(sheet, diagnostics, inputs, true)
         })
     }
+    /// Creates one sheet from actual stylesheet and media parser reports.
+    /// `inputs.media` must be constructed and empty: the media report is the
+    /// single actual media input. Body diagnostics remain sheet-owned; media
+    /// diagnostics are returned separately with their own source coordinates.
+    pub fn create_parsed_sheet_with_media_reports(
+        &mut self,
+        sheet_report: CssParseReport<CssSheet>,
+        media_report: CssParseReport<CssMediaQueryList>,
+        mut inputs: CssomSheetInputs,
+    ) -> Result<CssomSheetConstruction, CssomError> {
+        self.apply(|this| {
+            if inputs.media.parse_source().is_some() || !inputs.media.queries().is_empty() {
+                return Err(CssomError::InvalidInput(
+                    "initial media input already supplied",
+                ));
+            }
+            let context = this.staged.context.parser_context();
+            check_stylesheet_report(&sheet_report, context, &this.limits)?;
+            crate::sheet_operations::validate_media_report(&media_report, context, &this.limits)?;
+            let (sheet, diagnostics) = sheet_report.into_parts();
+            let (media, media_diagnostics) = media_report.into_parts();
+            inputs.media = media;
+            let ticket = this.create_sheet(sheet, diagnostics, inputs, true)?;
+            Ok(CssomSheetConstruction::from_parts(
+                ticket,
+                media_diagnostics,
+            ))
+        })
+    }
+
     pub(crate) fn create_sheet(
         &mut self,
         authored: CssSheet,
@@ -1020,4 +1032,19 @@ impl CssomBatch {
             CssomObjectId::SheetList(_) => self.staged.sheet_order != self.base.sheet_order,
         })
     }
+}
+
+fn check_stylesheet_report(
+    report: &CssParseReport<CssSheet>,
+    context: CssParserContext,
+    limits: &CssomLimits,
+) -> Result<(), CssomError> {
+    crate::parser_resources::check_parsed_source(
+        report.syntax().parse_source(),
+        report.diagnostics(),
+        context,
+        limits,
+        "stylesheet parse source unavailable",
+        "stylesheet parser context mismatch",
+    )
 }

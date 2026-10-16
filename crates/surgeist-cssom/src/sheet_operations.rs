@@ -39,6 +39,15 @@ pub struct CssomSheetConstruction {
     media_diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssomSheetConstruction {
+    pub(crate) fn from_parts(
+        ticket: CssomSheetTicket,
+        media_diagnostics: Vec<CssRecoveryDiagnostic>,
+    ) -> Self {
+        Self {
+            ticket,
+            media_diagnostics,
+        }
+    }
     pub(crate) fn into_parts(self) -> (CssomSheetTicket, Vec<CssRecoveryDiagnostic>) {
         (self.ticket, self.media_diagnostics)
     }
@@ -50,12 +59,21 @@ impl CssomSheetConstruction {
     }
 }
 
+/// Actual owner media input. UTF8 text is parsed in the current staged context;
+/// parsed reports must carry their complete matching source/context attestation.
+pub enum CssomOwnerMediaInput<'a> {
+    Utf8(Option<&'a str>),
+    Parsed(CssParseReport<CssMediaQueryList>),
+}
+
 /// Current applicable owner attributes supplied by a host, without DOM inspection.
+/// The title is already selected by source applicability: absent or inapplicable
+/// attributes supply `None`. Owner presence alone does not select a live title.
 pub struct CssomSheetOwnerAttributes<'a> {
     pub owner: &'a str,
     pub version: CssomInputVersion,
-    pub title: Option<&'a str>,
-    pub media: Option<&'a str>,
+    pub title: Option<&'a [u16]>,
+    pub media: CssomOwnerMediaInput<'a>,
 }
 pub struct CssomSheetAttributeEdit {
     changed: bool,
@@ -81,7 +99,7 @@ impl CssomSnapshot {
     pub(crate) fn sheet_owner_node(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
         self.state.sheet_owner_node(id)
     }
-    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&[u16]>, CssomError> {
         self.state.sheet_title(id)
     }
     pub(crate) fn sheet_media(&self, id: &CssomSheetId) -> Result<&CssomMediaListId, CssomError> {
@@ -201,13 +219,19 @@ impl CssomBatch {
                 ));
             }
             let (media, media_diagnostics) = match init.media {
-                CssomInitialMedia::Text(source) => parse_media(source, &this.limits)?,
+                CssomInitialMedia::Text(source) => {
+                    parse_media(source, &this.limits, this.staged.context.parser_context())?
+                }
                 CssomInitialMedia::List { snapshot, id } => {
                     let text = snapshot
                         .media(id)?
                         .serialize_cssom_with_limits(this.limits.css)
                         .map_err(CssomError::Media)?;
-                    parse_media(text.as_css(), &this.limits)?
+                    parse_media(
+                        text.as_css(),
+                        &this.limits,
+                        this.staged.context.parser_context(),
+                    )?
                 }
             };
             let mut inputs =
@@ -277,10 +301,31 @@ impl CssomBatch {
                 ));
             }
             let media_id = sheet.media.clone();
-            let title = attributes.title.unwrap_or("");
-            let (media, diagnostics) = parse_media(attributes.media.unwrap_or(""), &this.limits)?;
-            let mut title_value = String::new();
-            if title.len() > this.limits.max_string_bytes {
+            let title = attributes.title.unwrap_or(&[]);
+            let report = match attributes.media {
+                CssomOwnerMediaInput::Utf8(text) => {
+                    let text = text.unwrap_or("");
+                    if text.len() > this.limits.max_input_bytes {
+                        return Err(CssomError::Limit {
+                            resource: "parse input bytes",
+                            maximum: this.limits.max_input_bytes,
+                        });
+                    }
+                    this.staged
+                        .context
+                        .parser_context()
+                        .parse_media_query_list(text)
+                }
+                CssomOwnerMediaInput::Parsed(report) => report,
+            };
+            validate_media_report(&report, this.staged.context.parser_context(), &this.limits)?;
+            let (media, diagnostics) = report.into_parts();
+            let mut title_value = Vec::new();
+            let title_bytes = title.len().checked_mul(2).ok_or(CssomError::Limit {
+                resource: "owner title bytes",
+                maximum: this.limits.max_string_bytes,
+            })?;
+            if title_bytes > this.limits.max_string_bytes {
                 return Err(CssomError::Limit {
                     resource: "owner title bytes",
                     maximum: this.limits.max_string_bytes,
@@ -292,13 +337,23 @@ impl CssomBatch {
                     resource: "owner title capacity",
                     maximum: this.limits.max_string_bytes,
                 })?;
-            title_value.push_str(title);
-            let changed =
-                sheet.inputs.title != title_value || sheet.inputs.version != attributes.version;
-            let media_changed = this.set_media(&media_id, media)?;
+            title_value.extend_from_slice(title);
+            if title_value
+                .capacity()
+                .checked_mul(2)
+                .is_none_or(|bytes| bytes > this.limits.max_string_bytes)
+            {
+                return Err(CssomError::Limit {
+                    resource: "owner title capacity",
+                    maximum: this.limits.max_string_bytes,
+                });
+            }
+            let changed = sheet.inputs.title.as_slice() != title_value.as_slice()
+                || sheet.inputs.version != attributes.version;
+            let media_changed = this.set_media_with_source(&media_id, media, changed)?;
             if changed {
                 let sheet = this.staged.sheets.get_mut(id).expect("checked sheet");
-                sheet.inputs.title = title_value;
+                sheet.inputs.title = std::sync::Arc::new(title_value);
                 sheet.inputs.version = attributes.version;
                 this.affect(
                     CssomObjectId::Sheet(id.clone()),
@@ -313,20 +368,33 @@ impl CssomBatch {
     }
 }
 
+pub(crate) fn validate_media_report(
+    report: &CssParseReport<CssMediaQueryList>,
+    context: CssParserContext,
+    limits: &CssomLimits,
+) -> Result<(), CssomError> {
+    crate::parser_resources::check_parsed_source(
+        report.syntax().parse_source(),
+        report.diagnostics(),
+        context,
+        limits,
+        "media parse source unavailable",
+        "media parser context mismatch",
+    )
+}
+
 fn parse_media(
     source: &str,
     limits: &CssomLimits,
+    context: CssParserContext,
 ) -> Result<(CssMediaQueryList, Vec<CssRecoveryDiagnostic>), CssomError> {
-    if source.is_empty() {
-        return Ok((CssMediaQueryList::new(Vec::new()), Vec::new()));
-    }
     if source.len() > limits.max_input_bytes {
         return Err(CssomError::Limit {
             resource: "parse input bytes",
             maximum: limits.max_input_bytes,
         });
     }
-    let report = parse_media_query_list(source);
+    let report = context.parse_media_query_list(source);
     check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }
@@ -403,8 +471,8 @@ impl crate::model::State {
     pub(crate) fn sheet_owner_node(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
         Ok(self.sheet(id)?.inputs.owner.as_deref())
     }
-    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&str>, CssomError> {
+    pub(crate) fn sheet_title(&self, id: &CssomSheetId) -> Result<Option<&[u16]>, CssomError> {
         let title = &self.sheet(id)?.inputs.title;
-        Ok((!title.is_empty()).then_some(title.as_str()))
+        Ok((!title.is_empty()).then_some(title.as_slice()))
     }
 }

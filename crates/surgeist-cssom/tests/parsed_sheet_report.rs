@@ -35,7 +35,7 @@ fn batch(owner: &CssomStore) -> CssomBatch {
 fn report_ingress_preserves_recovery_and_shared_original_after_owner_drop() {
     let raw = Arc::new("@unknown x;\r\n.a { color: red }".encode_utf16().collect());
     let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(raw, CssStylesheetInputLimits::default(), || Ok::<_, ()>(()))
+        .parse_sheet_utf16_with_limits(raw, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap();
     let source = report.syntax().parse_source().unwrap().source().clone();
     let diagnostics = report.diagnostics().to_vec();

@@ -78,7 +78,7 @@ macro_rules! numeric_fields_eq {
 pub struct CssSheet {
     location: Option<crate::CssStylesheetLocation>,
     rules: Vec<CssRule>,
-    parse_source: Option<crate::CssStylesheetParseSource>,
+    parse_source: Option<crate::CssParseSource>,
 }
 
 impl PartialEq for CssSheet {
@@ -103,11 +103,11 @@ impl CssSheet {
 
     /// Complete root source and actual grammar context; absent for construction.
     #[must_use]
-    pub const fn parse_source(&self) -> Option<&crate::CssStylesheetParseSource> {
+    pub const fn parse_source(&self) -> Option<&crate::CssParseSource> {
         self.parse_source.as_ref()
     }
 
-    pub(crate) fn bind_parse_source(&mut self, source: crate::CssStylesheetParseSource) {
+    pub(crate) fn bind_parse_source(&mut self, source: crate::CssParseSource) {
         self.parse_source = Some(source);
     }
 
@@ -1819,19 +1819,36 @@ impl CssScopedLayerBlockRule {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssMediaQueryList {
+    parse_source: Option<crate::CssParseSource>,
     queries: Vec<CssMediaQuery>,
     pub(crate) comma_origins: Vec<CssValueOrigin>,
 }
 
+impl PartialEq for CssMediaQueryList {
+    fn eq(&self, other: &Self) -> bool {
+        self.queries == other.queries && self.comma_origins == other.comma_origins
+    }
+}
+
 impl CssMediaQueryList {
+    /// Complete actual parse input/context, absent for constructed lists.
+    #[must_use]
+    pub const fn parse_source(&self) -> Option<&crate::CssParseSource> {
+        self.parse_source.as_ref()
+    }
+    pub(crate) fn bind_parse_source(&mut self, source: crate::CssParseSource) {
+        self.parse_source = Some(source);
+    }
+
     /// Constructs a list, including the valid empty media-query list.
     ///
     /// Every supplied checked member is retained in order.
     #[must_use]
     pub fn new(queries: Vec<CssMediaQuery>) -> Self {
         Self {
+            parse_source: None,
             queries,
             comma_origins: Vec::new(),
         }
@@ -1842,6 +1859,7 @@ impl CssMediaQueryList {
         comma_origins: Vec<CssValueOrigin>,
     ) -> Self {
         Self {
+            parse_source: None,
             queries,
             comma_origins,
         }

@@ -69,6 +69,39 @@ The supplied parser context applies to subsequent parsed creation/replacement;
 context updates preserve existing checked values and their original parser facts.
 Typed ingress preserves the context carried by each checked CSS occurrence.
 
+Sheet titles retain exact UTF16 as `Arc<Vec<u16>>`; applicable owner edits borrow
+`[u16]` and copy fallibly within finite admission. Live getters borrow the current
+store and captured getters borrow their snapshot; both return null for empty
+titles and otherwise exact units, including lone surrogates. The host supplies
+the title already selected by HTML applicability. An owner node alone does not
+establish a live title reference; absent/inapplicable attributes supply empty.
+Staged record copies share immutable backing. The existing string-byte bank
+charges each canonical sheet title's checked actual Vec capacity times two,
+including spare capacity. This per-record admission does not inspect Arc counts
+or deduplicate titles by text or pointer. Separately retained snapshots do not
+increase the current State's quota; the distinct CSS source bank deduplicates
+actual `CssSourceSnapshot` identities.
+
+`CssomOwnerMediaInput` distinguishes real UTF8 input from an ordinary qualified
+CSS media report. The report preserves complete input/context and diagnostics;
+context mismatch, full-input overflow and parser resource recovery refuse the
+ordinary batch. Owner version/title changes retain the actual parsed media root
+even when its query list is semantically unchanged or empty. A true unchanged
+version/title/media operation preserves the previous root, revision and effects.
+CSS owns UTF16 preprocessing and media grammar; owner adapters do not normalize
+title units or fabricate stylesheet wrappers around media attributes.
+
+`create_parsed_sheet_with_media_reports` is the initial two-report ingress. It
+validates stylesheet and media source/context/full-input/resource facts together
+and returns the existing `CssomSheetConstruction`: body diagnostics stay on the
+sheet and media diagnostics retain their separate input coordinates. Its
+`inputs.media` must be constructed and empty; a second parsed or nonempty value
+is refused rather than ignored. The media report supplies the single actual
+initial value, including a retained root for an empty list. Existing typed media
+inputs remain already checked values: parser input byte limits apply at actual
+parse/report ingress, while retained source backing admission applies to every
+retained parsed source regardless of the ingress.
+
 `CssomBatch::create_parsed_sheet_report` consumes an ordinary CSS stylesheet
 report, preserving ordered recovery diagnostics. Its owner-issued complete root
 source/context must match the staged parser context, including the independent

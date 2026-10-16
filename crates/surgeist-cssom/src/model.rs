@@ -166,7 +166,9 @@ pub struct CssomSheetInputs {
     pub location: Option<String>,
     pub constructor_document: Option<String>,
     pub owner: Option<String>,
-    pub title: String,
+    /// Exact immutable DOMString units. Shared title backing avoids deep copies
+    /// when canonical sheet records are cloned during staging.
+    pub title: Arc<Vec<u16>>,
     pub alternate: bool,
     pub disabled: bool,
     pub origin_clean: bool,
@@ -187,7 +189,7 @@ impl CssomSheetInputs {
             location: None,
             constructor_document: Some(document),
             owner: None,
-            title: String::new(),
+            title: Arc::new(Vec::new()),
             alternate: false,
             disabled: false,
             origin_clean: true,
@@ -204,7 +206,7 @@ impl CssomSheetInputs {
             location: None,
             constructor_document: None,
             owner: None,
-            title: String::new(),
+            title: Arc::new(Vec::new()),
             alternate: false,
             disabled: false,
             origin_clean,

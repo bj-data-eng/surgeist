@@ -96,9 +96,10 @@ pub use fragments::{
 pub(crate) use fragments::{
     parse_declaration_with_context, parse_group_block_with_context,
     parse_keyframe_declaration_block_with_context, parse_keyframes_block_with_context,
-    parse_margin_block_with_context, parse_page_block_with_context,
-    parse_property_value_text_for_grammar_with_context, parse_property_value_text_with_context,
-    parse_rule_with_context, parse_scope_block_with_context, parse_scoped_group_block_with_context,
+    parse_margin_block_with_context, parse_media_query_list_snapshot,
+    parse_page_block_with_context, parse_property_value_text_for_grammar_with_context,
+    parse_property_value_text_with_context, parse_rule_with_context,
+    parse_scope_block_with_context, parse_scoped_group_block_with_context,
     parse_style_block_with_context,
 };
 mod color;
@@ -648,7 +649,7 @@ pub(crate) fn parse_sheet_snapshot(
 ) -> crate::CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) =
         parse_sheet_snapshot_inner(source_snapshot, parser_context).into_parts();
-    sheet.bind_parse_source(crate::CssStylesheetParseSource::new(
+    sheet.bind_parse_source(crate::CssParseSource::new(
         source_snapshot.clone(),
         parser_context,
     ));

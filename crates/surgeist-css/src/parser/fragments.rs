@@ -910,8 +910,22 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
 /// valid unknown features retain unknown truth. This operation
 /// performs no matching or contextual evaluation.
 pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQueryList> {
-    bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    crate::CssParserContext::default().parse_media_query_list(source)
+}
+
+pub(crate) fn parse_media_query_list_snapshot(
+    snapshot: &crate::CssSourceSnapshot,
+    context: crate::CssParserContext,
+) -> crate::CssParseReport<CssMediaQueryList> {
+    let source = snapshot.as_str();
+    let (mut list, mut diagnostics) = bounded(source, || {
+        let state = RecoveryState::at_depth_with_snapshot(
+            source,
+            0,
+            StyleContextCaptures::default(),
+            snapshot.clone(),
+        )
+        .with_parser_context(context);
         let working_source = crate::tokenization::prepare(source);
         let mut input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut input);
@@ -946,6 +960,12 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
         diagnostics.extend(state.take_implicit_closure_diagnostics(source));
         crate::CssParseReport::new(query, diagnostics)
     })
+    .into_parts();
+    list.bind_parse_source(crate::CssParseSource::new(snapshot.clone(), context));
+    for diagnostic in &mut diagnostics {
+        diagnostic.bind_source(snapshot);
+    }
+    crate::CssParseReport::new(list, diagnostics)
 }
 
 /// Parses the CSSOM single-query boundary through the owning media-query list parser.

@@ -37,7 +37,17 @@ and after grammar execution. The grammar retains its existing resource limits;
 it does not provide fine-grained cancellation or a whole-grammar work budget.
 Failure returns no partial report.
 
-Every actual stylesheet parse retains a root `CssStylesheetParseSource`, including
+`CssParserContext::parse_media_query_list_utf16_with_limits` uses the same private
+prepared-source owner and ordinary media-query grammar. `CssUtf16InputLimits`
+and `CssUtf16InputError` apply to both real UTF16 grammar frontends; the UTF8
+media-query function remains its actual input format, with a context method for
+an explicit complete parser context. Parsed media lists retain a complete
+`CssParseSource`, including empty/comment-only inputs and recovered members;
+constructed lists remain unqualified. Diagnostics share the actual immutable
+source and normalized coordinates. Media semantic equality excludes the added
+parse attestation; source identity and full-context admission remain separate.
+
+Every actual stylesheet parse retains a root `CssParseSource`, including
 empty and fully recovered inputs. Constructed sheets have no parse attestation.
 Root sheets, parsed origins and stylesheet recovery diagnostics share the actual
 immutable `CssSourceSnapshot`. UTF16 snapshots additionally retain the original

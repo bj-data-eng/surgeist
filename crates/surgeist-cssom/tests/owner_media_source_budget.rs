@@ -34,16 +34,14 @@ fn comment_only_owner_media_obeys_source_budget_and_refuses_atomically() {
     assert!(sheet.authored().parse_source().is_none());
     assert!(before.media(sheet.media()).unwrap().queries().is_empty());
 
-    let mut edit = owner
-        .batch(CssomEditGuard::from_snapshot(&before))
-        .unwrap();
+    let mut edit = owner.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
     match edit.update_sheet_owner_attributes(
         &id,
         CssomSheetOwnerAttributes {
             owner: "style",
             version: version(2),
             title: None,
-            media: Some("/* complete owner media input */"),
+            media: CssomOwnerMediaInput::Utf8(Some("/* complete owner media input */")),
         },
     ) {
         Err(CssomError::Limit {

@@ -291,7 +291,7 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
     let mut facts = CssomSheetInputs::external(version(CssomInputRole::Owner, "style", 1), false);
     facts.owner = Some("style".into());
     facts.location = Some("https://host.example/fixed".into());
-    facts.title = "old".into();
+    facts.title = std::sync::Arc::new("old".encode_utf16().collect());
     facts.disallow_modification = true;
     facts.media = parse_media_query_list("screen").into_parts().0;
     let mut edit = batch(&owner);
@@ -324,7 +324,7 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
                 owner: "style",
                 version: version(CssomInputRole::Owner, "style", 2),
                 title: None,
-                media: None
+                media: CssomOwnerMediaInput::Utf8(None)
             }
         )
         .unwrap()
@@ -355,7 +355,7 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
     assert!(captured_sheet(&owner, &after, &sheet).disabled().unwrap());
     assert_eq!(
         captured_sheet(&owner, &before, &sheet).title().unwrap(),
-        Some("old")
+        Some("old".encode_utf16().collect::<Vec<_>>().as_slice())
     );
     assert!(!captured_sheet(&owner, &before, &sheet).disabled().unwrap());
     let mut edit = batch(&owner);
@@ -365,8 +365,8 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
             CssomSheetOwnerAttributes {
                 owner: "other",
                 version: version(CssomInputRole::Owner, "other", 1),
-                title: Some("wrong"),
-                media: None
+                title: Some(&[119, 114, 111, 110, 103]),
+                media: CssomOwnerMediaInput::Utf8(None)
             }
         ),
         Err(CssomError::InvalidInput(_))

@@ -372,7 +372,7 @@ pub struct CssSourceSnapshot(Arc<SourceSnapshotData>);
 struct SourceSnapshotData {
     text: String,
     checkpoints: Vec<CssSourcePosition>,
-    utf16: Option<crate::stylesheet_utf16::Utf16Source>,
+    utf16: Option<crate::utf16_input::Utf16Source>,
     storage: CssSourceStorageUsage,
 }
 
@@ -500,10 +500,7 @@ impl CssSourceSnapshot {
         Some(boundary(range.start)?..boundary(range.end)?)
     }
 
-    pub(crate) fn attach_utf16(
-        mut self,
-        input: crate::stylesheet_utf16::Utf16Source,
-    ) -> Option<Self> {
+    pub(crate) fn attach_utf16(mut self, input: crate::utf16_input::Utf16Source) -> Option<Self> {
         let extra = input.original.capacity().checked_mul(2)?.checked_add(
             input
                 .map
@@ -518,11 +515,11 @@ impl CssSourceSnapshot {
 
     pub(crate) fn try_from_preprocessed<E>(
         source: String,
-        limits: crate::CssStylesheetInputLimits,
+        limits: crate::CssUtf16InputLimits,
         other_bytes: usize,
-        step: &mut impl FnMut() -> Result<(), crate::CssStylesheetInputError<E>>,
-    ) -> Result<Self, crate::CssStylesheetInputError<E>> {
-        use crate::CssStylesheetInputError::{Allocation, CapacityOverflow};
+        step: &mut impl FnMut() -> Result<(), crate::CssUtf16InputError<E>>,
+    ) -> Result<Self, crate::CssUtf16InputError<E>> {
+        use crate::CssUtf16InputError::{Allocation, CapacityOverflow};
         let backing = |capacity: usize| {
             other_bytes
                 .checked_add(source.capacity())?
@@ -530,19 +527,19 @@ impl CssSourceSnapshot {
         };
         let mut position = CssSourcePosition::from_byte_offset_in("", 0);
         let mut checkpoints = Vec::new();
-        crate::stylesheet_utf16::check(1, limits.max_checkpoints, "source checkpoints")?;
-        crate::stylesheet_utf16::check(
+        crate::utf16_input::check(1, limits.max_checkpoints, "source checkpoints")?;
+        crate::utf16_input::check(
             backing(1).ok_or(CapacityOverflow)?,
             limits.max_retained_bytes,
             "retained source bytes",
         )?;
         checkpoints.try_reserve_exact(1).map_err(|_| Allocation)?;
-        crate::stylesheet_utf16::check(
+        crate::utf16_input::check(
             checkpoints.capacity(),
             limits.max_checkpoints,
             "source checkpoints",
         )?;
-        crate::stylesheet_utf16::check(
+        crate::utf16_input::check(
             backing(checkpoints.capacity()).ok_or(CapacityOverflow)?,
             limits.max_retained_bytes,
             "retained source bytes",
@@ -554,7 +551,7 @@ impl CssSourceSnapshot {
             let end = offset + character.len_utf8();
             if end - start >= 64 {
                 position = position.advanced_by(&source[start..end]);
-                crate::stylesheet_utf16::check(
+                crate::utf16_input::check(
                     checkpoints.len().checked_add(1).ok_or(CapacityOverflow)?,
                     limits.max_checkpoints,
                     "source checkpoints",
@@ -565,7 +562,7 @@ impl CssSourceSnapshot {
                         .saturating_mul(2)
                         .max(1)
                         .min(limits.max_checkpoints);
-                    crate::stylesheet_utf16::check(
+                    crate::utf16_input::check(
                         backing(capacity).ok_or(CapacityOverflow)?,
                         limits.max_retained_bytes,
                         "retained source bytes",
@@ -573,12 +570,12 @@ impl CssSourceSnapshot {
                     checkpoints
                         .try_reserve_exact(capacity - checkpoints.len())
                         .map_err(|_| Allocation)?;
-                    crate::stylesheet_utf16::check(
+                    crate::utf16_input::check(
                         checkpoints.capacity(),
                         limits.max_checkpoints,
                         "source checkpoints",
                     )?;
-                    crate::stylesheet_utf16::check(
+                    crate::utf16_input::check(
                         backing(checkpoints.capacity()).ok_or(CapacityOverflow)?,
                         limits.max_retained_bytes,
                         "retained source bytes",
@@ -597,7 +594,7 @@ impl CssSourceSnapshot {
                     .ok_or(CapacityOverflow)?,
             )
             .ok_or(CapacityOverflow)?;
-        crate::stylesheet_utf16::check(bytes, limits.max_retained_bytes, "retained source bytes")?;
+        crate::utf16_input::check(bytes, limits.max_retained_bytes, "retained source bytes")?;
         Ok(Self(Arc::new(SourceSnapshotData {
             text: source,
             checkpoints,
@@ -659,27 +656,23 @@ impl CssParsedOrigin {
 #[cfg(test)]
 mod utf16_admission_tests {
     use super::*;
-    use crate::{CssParserContext, CssStylesheetInputError, CssStylesheetInputLimits};
+    use crate::{CssParserContext, CssUtf16InputError, CssUtf16InputLimits};
 
     #[test]
     fn actual_preparation_backing_and_work_accept_exact_and_refuse_one_short() {
         let original = Arc::new(vec![u16::from(b'a'); 64]);
         let mut calls = 0;
         let report = CssParserContext::default()
-            .parse_sheet_utf16_with_limits(
-                original.clone(),
-                CssStylesheetInputLimits::default(),
-                || {
-                    calls += 1;
-                    Ok::<_, ()>(())
-                },
-            )
+            .parse_sheet_utf16_with_limits(original.clone(), CssUtf16InputLimits::default(), || {
+                calls += 1;
+                Ok::<_, ()>(())
+            })
             .unwrap();
         let source = report.syntax().parse_source().unwrap().source();
         let raw = source.0.utf16.as_ref().unwrap();
         let scratch = std::mem::size_of::<crate::tokenization::bounded::InputCursor>()
             + std::mem::size_of::<CssSourcePosition>();
-        let exact = CssStylesheetInputLimits {
+        let exact = CssUtf16InputLimits {
             max_input_units: original.len(),
             max_output_bytes: source.0.text.capacity(),
             max_map_entries: raw.map.capacity(),
@@ -697,49 +690,49 @@ mod utf16_admission_tests {
             .unwrap();
         for (limits, cause) in [
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_input_units: exact.max_input_units - 1,
                     ..exact
                 },
                 "original UTF16 units",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_output_bytes: exact.max_output_bytes - 1,
                     ..exact
                 },
                 "normalized UTF8 bytes",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_map_entries: exact.max_map_entries - 1,
                     ..exact
                 },
                 "source map entries",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_checkpoints: exact.max_checkpoints - 1,
                     ..exact
                 },
                 "source checkpoints",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_scratch_bytes: exact.max_scratch_bytes - 1,
                     ..exact
                 },
                 "preparation scratch bytes",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_retained_bytes: exact.max_retained_bytes - 1,
                     ..exact
                 },
                 "retained source bytes",
             ),
             (
-                CssStylesheetInputLimits {
+                CssUtf16InputLimits {
                     max_work: exact.max_work - 1,
                     ..exact
                 },
@@ -747,7 +740,7 @@ mod utf16_admission_tests {
             ),
         ] {
             assert!(
-                matches!(CssParserContext::default().parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(())), Err(CssStylesheetInputError::Limit(actual)) if actual == cause),
+                matches!(CssParserContext::default().parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(())), Err(CssUtf16InputError::Limit(actual)) if actual == cause),
                 "{cause}"
             );
         }
@@ -761,7 +754,7 @@ mod utf16_admission_tests {
             CssParserContext::default()
                 .parse_sheet_utf16_with_limits(
                     original.clone(),
-                    CssStylesheetInputLimits::default(),
+                    CssUtf16InputLimits::default(),
                     || {
                         total += 1;
                         Ok::<_, usize>(())
@@ -772,15 +765,13 @@ mod utf16_admission_tests {
         let mut calls = 0;
         let result = CssParserContext::default().parse_sheet_utf16_with_limits(
             original.clone(),
-            CssStylesheetInputLimits::default(),
+            CssUtf16InputLimits::default(),
             || {
                 calls += 1;
                 if calls == total { Err(calls) } else { Ok(()) }
             },
         );
-        assert!(
-            matches!(result, Err(CssStylesheetInputError::Interrupted(actual)) if actual == total)
-        );
+        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == total));
         assert_eq!(calls, total);
         assert_eq!(Arc::strong_count(&original), 1);
     }

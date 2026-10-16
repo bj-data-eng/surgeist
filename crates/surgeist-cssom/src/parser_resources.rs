@@ -1,6 +1,29 @@
 //! Publication admission policy for native recovered parser resource failures.
-use crate::CssomError;
-use surgeist_css::{CssComponentValueErrorKind, CssRecoveryDiagnostic, ErrorKind};
+use crate::{CssomError, CssomLimits};
+use surgeist_css::{
+    CssComponentValueErrorKind, CssParseSource, CssParserContext, CssRecoveryDiagnostic, ErrorKind,
+};
+
+pub(crate) fn check_parsed_source(
+    source: Option<&CssParseSource>,
+    diagnostics: &[CssRecoveryDiagnostic],
+    context: CssParserContext,
+    limits: &CssomLimits,
+    missing: &'static str,
+    mismatch: &'static str,
+) -> Result<(), CssomError> {
+    let source = source.ok_or(CssomError::InvalidInput(missing))?;
+    if source.context() != context {
+        return Err(CssomError::InvalidInput(mismatch));
+    }
+    if source.source().as_str().len() > limits.max_input_bytes {
+        return Err(CssomError::Limit {
+            resource: "parse input bytes",
+            maximum: limits.max_input_bytes,
+        });
+    }
+    check_resource_diagnostics(diagnostics)
+}
 
 fn component_resource(kind: CssComponentValueErrorKind) -> bool {
     matches!(

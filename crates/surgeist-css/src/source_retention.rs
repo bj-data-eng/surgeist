@@ -560,6 +560,9 @@ impl CssRetainedSources for CssMediaQueryList {
         &self,
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
+        if let Some(source) = self.parse_source() {
+            sources.source(source.source())?;
+        }
         sources.visit(self.queries())?;
         sources.visit(self.comma_origins.as_slice())
     }
