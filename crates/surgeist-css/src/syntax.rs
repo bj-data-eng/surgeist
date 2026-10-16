@@ -4500,6 +4500,10 @@ impl CssCustomIdent {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    pub(crate) fn retained_buffer_bytes(&self) -> usize {
+        self.0.value.capacity()
+    }
 }
 
 fn is_reserved_custom_ident(value: &str) -> bool {

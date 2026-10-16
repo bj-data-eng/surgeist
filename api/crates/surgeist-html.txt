@@ -4780,6 +4780,7 @@ pub fn surgeist_html::HtmlNonNegativeInteger::decimal_digits(&self) -> &str
 pub fn surgeist_html::HtmlNonNegativeInteger::from_decimal_digits(input: &surgeist_html::DocumentString) -> core::result::Result<Self, surgeist_html::HtmlDecimalDigitsError>
 pub fn surgeist_html::HtmlNonNegativeInteger::is_zero(&self) -> bool
 pub fn surgeist_html::HtmlNonNegativeInteger::remainder(&self, divisor: core::num::nonzero::NonZeroU32) -> u32
+pub fn surgeist_html::HtmlNonNegativeInteger::retained_buffer_bytes(&self) -> usize
 pub fn surgeist_html::HtmlNonNegativeInteger::to_u128(&self) -> core::result::Result<u128, surgeist_html::HtmlNumericRangeError>
 pub fn surgeist_html::HtmlNonNegativeInteger::to_u64(&self) -> core::result::Result<u64, surgeist_html::HtmlNumericRangeError>
 impl surgeist_html::HtmlNonNegativeInteger

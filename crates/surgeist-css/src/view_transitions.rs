@@ -23,6 +23,14 @@ impl CssViewTransitionIdent {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    /// Returns the actual owned decoded-name buffer capacity in bytes, in
+    /// constant work without allocation. Includes spare capacity; excludes the
+    /// inline value header, allocator bookkeeping and unrelated shared graphs.
+    #[must_use]
+    pub fn retained_buffer_bytes(&self) -> usize {
+        self.0.retained_buffer_bytes()
+    }
 }
 
 /// The specified `none | <custom-ident>` value, before participant discovery.

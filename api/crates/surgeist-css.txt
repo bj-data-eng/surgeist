@@ -13692,6 +13692,7 @@ pub const fn surgeist_css::CssVerticalAlignPropertyValue::value(&self) -> &surge
 pub struct surgeist_css::CssViewTransitionIdent(_)
 impl surgeist_css::CssViewTransitionIdent
 pub fn surgeist_css::CssViewTransitionIdent::as_str(&self) -> &str
+pub fn surgeist_css::CssViewTransitionIdent::retained_buffer_bytes(&self) -> usize
 pub fn surgeist_css::CssViewTransitionIdent::try_new(value: surgeist_css::CssCustomIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssViewTransitionNamePropertyValue
 impl surgeist_css::CssViewTransitionNamePropertyValue

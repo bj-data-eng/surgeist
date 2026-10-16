@@ -1002,6 +1002,14 @@ impl HtmlNonNegativeInteger {
         &self.digits
     }
 
+    /// Returns the actual owned decimal buffer capacity in bytes, in constant
+    /// work without allocation. This includes spare capacity, excludes this
+    /// value's inline header and allocator bookkeeping, and does not measure
+    /// unrelated or shared allocations.
+    pub fn retained_buffer_bytes(&self) -> usize {
+        self.digits.capacity()
+    }
+
     /// Returns the exact remainder without projecting the whole value.
     pub fn remainder(&self, divisor: NonZeroU32) -> u32 {
         let divisor = u64::from(divisor.get());
@@ -2823,6 +2831,44 @@ impl Error for NumericMaterializationFailure {}
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retained_integer_bytes_observe_real_spare_buffer_without_changing_value_identity() {
+        use std::hash::{Hash, Hasher};
+        let mut digits = String::with_capacity(128);
+        digits.push_str("123");
+        let capacity = digits.capacity();
+        let pointer = digits.as_ptr();
+        assert!(capacity >= 128);
+        let value = super::HtmlNonNegativeInteger { digits };
+        let canonical = super::HtmlNonNegativeInteger::from(123);
+        let hash = |value: &super::HtmlNonNegativeInteger| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            value.hash(&mut hasher);
+            hasher.finish()
+        };
+        for _ in 0..3 {
+            assert_eq!(value.retained_buffer_bytes(), capacity);
+            assert!(value.retained_buffer_bytes() > value.decimal_digits().len());
+            assert_eq!(value.decimal_digits(), "123");
+            assert_eq!(value.decimal_digits().as_ptr(), pointer);
+            assert_eq!(value, canonical);
+            assert_eq!(hash(&value), hash(&canonical));
+        }
+    }
+
+    #[test]
+    fn retained_integer_bytes_include_arithmetic_spare_capacity_after_canonicalization() {
+        let value = super::HtmlNonNegativeInteger::from_decimal_digits(&"000123".into())
+            .unwrap()
+            .multiplied_by(1);
+        assert_eq!(value.decimal_digits(), "123");
+        // The real owning arithmetic reserves input digits plus the u32 carry
+        // envelope, then retains that allocation after canonical output.
+        assert!(value.retained_buffer_bytes() >= 13);
+        assert_eq!(value.retained_buffer_bytes(), value.digits.capacity());
+        assert_eq!(value.to_u128(), Ok(123));
+    }
+
     #[test]
     fn integer_unit_scanner_keeps_author_and_recovery_prefixes_distinct() {
         use super::{IntegerPrefixScanner, NumericParseError, ScannedIntegerPrefix};
