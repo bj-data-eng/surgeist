@@ -2049,6 +2049,8 @@ pub surgeist_html::HtmlDetailsExclusivity::CloseOther
 pub enum surgeist_html::HtmlDetailsState
 pub surgeist_html::HtmlDetailsState::Closed
 pub surgeist_html::HtmlDetailsState::Open
+impl surgeist_html::HtmlDetailsState
+pub const fn surgeist_html::HtmlDetailsState::as_str(self) -> &'static str
 pub enum surgeist_html::HtmlDimension
 pub surgeist_html::HtmlDimension::Absolute(surgeist_html::HtmlNonNegativeDecimal)
 pub surgeist_html::HtmlDimension::Percentage(surgeist_html::HtmlNonNegativeDecimal)
@@ -2262,8 +2264,8 @@ pub enum surgeist_html::HtmlImageUpdateStartDecision
 pub surgeist_html::HtmlImageUpdateStartDecision::CheckImageSupport
 pub surgeist_html::HtmlImageUpdateStartDecision::NeedsFullyActiveFact
 pub surgeist_html::HtmlImageUpdateStartDecision::WaitForFullyActive
-pub enum surgeist_html::HtmlImgNativeRequestState
-pub surgeist_html::HtmlImgNativeRequestState::Unavailable
+pub enum surgeist_html::HtmlImgFreshRequestState
+pub surgeist_html::HtmlImgFreshRequestState::Unavailable
 pub enum surgeist_html::HtmlInputCheckedAttributeChange
 pub surgeist_html::HtmlInputCheckedAttributeChange::Added
 pub surgeist_html::HtmlInputCheckedAttributeChange::Removed
@@ -3182,6 +3184,46 @@ pub surgeist_html::HtmlStandardCommand::TogglePopover
 impl surgeist_html::HtmlStandardCommand
 pub fn surgeist_html::HtmlStandardCommand::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlStandardCommand::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlStyleAttributeEffect
+pub surgeist_html::HtmlStyleAttributeEffect::None
+pub surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes
+pub enum surgeist_html::HtmlStyleNotificationAction
+pub surgeist_html::HtmlStyleNotificationAction::Complete
+pub surgeist_html::HtmlStyleNotificationAction::DispatchError
+pub surgeist_html::HtmlStyleNotificationAction::DispatchLoad
+pub surgeist_html::HtmlStyleNotificationAction::ReadScriptBlocking
+pub surgeist_html::HtmlStyleNotificationAction::RemoveScriptBlocking
+pub surgeist_html::HtmlStyleNotificationAction::UnblockRendering
+pub enum surgeist_html::HtmlStyleNotificationReply
+pub surgeist_html::HtmlStyleNotificationReply::Applied
+pub surgeist_html::HtmlStyleNotificationReply::ScriptBlocking(bool)
+pub enum surgeist_html::HtmlStyleTrigger
+pub surgeist_html::HtmlStyleTrigger::ChildrenChanged
+pub surgeist_html::HtmlStyleTrigger::ChildrenChanged::on_parser_stack: bool
+pub surgeist_html::HtmlStyleTrigger::Insertion
+pub surgeist_html::HtmlStyleTrigger::Insertion::connected: bool
+pub surgeist_html::HtmlStyleTrigger::Insertion::on_parser_stack: bool
+pub surgeist_html::HtmlStyleTrigger::ParserPopped
+pub surgeist_html::HtmlStyleTrigger::Removal
+pub surgeist_html::HtmlStyleTrigger::Removal::disconnected: bool
+pub surgeist_html::HtmlStyleTrigger::Removal::on_parser_stack: bool
+pub enum surgeist_html::HtmlStyleUpdateAction
+pub surgeist_html::HtmlStyleUpdateAction::BlockRendering
+pub surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp
+pub surgeist_html::HtmlStyleUpdateAction::Complete
+pub surgeist_html::HtmlStyleUpdateAction::CreateSheet
+pub surgeist_html::HtmlStyleUpdateAction::ReadConnected
+pub surgeist_html::HtmlStyleUpdateAction::ReadRenderBlocking
+pub surgeist_html::HtmlStyleUpdateAction::ReadScriptBlocking
+pub surgeist_html::HtmlStyleUpdateAction::ReadType
+pub surgeist_html::HtmlStyleUpdateAction::RegisterScriptBlocking
+pub surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet
+pub enum surgeist_html::HtmlStyleUpdateReply
+pub surgeist_html::HtmlStyleUpdateReply::Applied
+pub surgeist_html::HtmlStyleUpdateReply::Blocking(bool)
+pub surgeist_html::HtmlStyleUpdateReply::Connected(bool)
+pub surgeist_html::HtmlStyleUpdateReply::InlineAllowed(bool)
+pub surgeist_html::HtmlStyleUpdateReply::TypeEligible(bool)
 pub enum surgeist_html::HtmlTabindexValue
 pub surgeist_html::HtmlTabindexValue::Integer(surgeist_html::HtmlInteger)
 pub surgeist_html::HtmlTabindexValue::Null
@@ -4004,6 +4046,11 @@ impl surgeist_html::HtmlDetailsName
 pub fn surgeist_html::HtmlDetailsName::into_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlDetailsName::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAttributeConformanceError>
 pub fn surgeist_html::HtmlDetailsName::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlDetailsToggleEvent
+impl surgeist_html::HtmlDetailsToggleEvent
+pub const fn surgeist_html::HtmlDetailsToggleEvent::new_state(self) -> surgeist_html::HtmlDetailsState
+pub const fn surgeist_html::HtmlDetailsToggleEvent::old_state(self) -> surgeist_html::HtmlDetailsState
+pub const fn surgeist_html::HtmlDetailsToggleEvent::queued(old: surgeist_html::HtmlDetailsState, new: surgeist_html::HtmlDetailsState, tracked_old: core::option::Option<surgeist_html::HtmlDetailsState>) -> Self
 pub struct surgeist_html::HtmlDimensionList
 impl surgeist_html::HtmlDimensionList
 pub fn surgeist_html::HtmlDimensionList::as_document_string(&self) -> surgeist_html::DocumentString
@@ -4220,22 +4267,22 @@ pub struct surgeist_html::HtmlImageUpdateOrderError
 impl core::error::Error for surgeist_html::HtmlImageUpdateOrderError
 impl core::fmt::Display for surgeist_html::HtmlImageUpdateOrderError
 pub fn surgeist_html::HtmlImageUpdateOrderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_html::HtmlImgNativeState
-impl surgeist_html::HtmlImgNativeState
-pub fn surgeist_html::HtmlImgNativeState::current_request(&self) -> &surgeist_html::HtmlImgUnavailableRequest
-pub const fn surgeist_html::HtmlImgNativeState::dimension_attribute_source_is_self(&self) -> bool
-pub fn surgeist_html::HtmlImgNativeState::fresh() -> Self
-pub const fn surgeist_html::HtmlImgNativeState::last_auto_sizes_width_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlImgNativeState::last_selected_source_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlImgNativeState::lazy_load_resumption_is_null(&self) -> bool
-pub const fn surgeist_html::HtmlImgNativeState::pending_request_is_null(&self) -> bool
+pub struct surgeist_html::HtmlImgFreshState
+impl surgeist_html::HtmlImgFreshState
+pub fn surgeist_html::HtmlImgFreshState::current_request(&self) -> &surgeist_html::HtmlImgUnavailableRequest
+pub const fn surgeist_html::HtmlImgFreshState::dimension_attribute_source_is_self(&self) -> bool
+pub fn surgeist_html::HtmlImgFreshState::fresh() -> Self
+pub const fn surgeist_html::HtmlImgFreshState::last_auto_sizes_width_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgFreshState::last_selected_source_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgFreshState::lazy_load_resumption_is_null(&self) -> bool
+pub const fn surgeist_html::HtmlImgFreshState::pending_request_is_null(&self) -> bool
 pub struct surgeist_html::HtmlImgUnavailableRequest
 impl surgeist_html::HtmlImgUnavailableRequest
 pub const fn surgeist_html::HtmlImgUnavailableRequest::current_pixel_density(&self) -> u32
 pub fn surgeist_html::HtmlImgUnavailableRequest::current_url(&self) -> &surgeist_html::DocumentString
 pub const fn surgeist_html::HtmlImgUnavailableRequest::image_data_is_available(&self) -> bool
 pub const fn surgeist_html::HtmlImgUnavailableRequest::preferred_dimensions_are_null(&self) -> bool
-pub const fn surgeist_html::HtmlImgUnavailableRequest::state(&self) -> surgeist_html::HtmlImgNativeRequestState
+pub const fn surgeist_html::HtmlImgUnavailableRequest::state(&self) -> surgeist_html::HtmlImgFreshRequestState
 pub struct surgeist_html::HtmlInputColorSerialization
 impl surgeist_html::HtmlInputColorSerialization
 pub fn surgeist_html::HtmlInputColorSerialization::html_compatible(&self) -> bool
@@ -5118,6 +5165,29 @@ pub struct surgeist_html::HtmlSrcsetWidthError
 impl core::error::Error for surgeist_html::HtmlSrcsetWidthError
 impl core::fmt::Display for surgeist_html::HtmlSrcsetWidthError
 pub fn surgeist_html::HtmlSrcsetWidthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlStyleNativeState
+impl surgeist_html::HtmlStyleNativeState
+pub const fn surgeist_html::HtmlStyleNativeState::created_by_document_parser(self) -> bool
+pub const fn surgeist_html::HtmlStyleNativeState::fresh() -> Self
+pub const fn surgeist_html::HtmlStyleNativeState::on_parser_stack(self) -> bool
+impl core::default::Default for surgeist_html::HtmlStyleNativeState
+pub fn surgeist_html::HtmlStyleNativeState::default() -> Self
+pub struct surgeist_html::HtmlStyleNotificationCursor
+impl surgeist_html::HtmlStyleNotificationCursor
+pub const fn surgeist_html::HtmlStyleNotificationCursor::action(self) -> surgeist_html::HtmlStyleNotificationAction
+pub const fn surgeist_html::HtmlStyleNotificationCursor::new(success: bool) -> Self
+pub fn surgeist_html::HtmlStyleNotificationCursor::reply(&mut self, reply: surgeist_html::HtmlStyleNotificationReply) -> core::result::Result<(), surgeist_html::HtmlStyleProtocolError>
+pub struct surgeist_html::HtmlStyleProtocolError
+impl core::error::Error for surgeist_html::HtmlStyleProtocolError
+impl core::fmt::Display for surgeist_html::HtmlStyleProtocolError
+pub fn surgeist_html::HtmlStyleProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::HtmlStyleUpdateCursor
+impl surgeist_html::HtmlStyleUpdateCursor
+pub const fn surgeist_html::HtmlStyleUpdateCursor::action(self) -> surgeist_html::HtmlStyleUpdateAction
+pub const fn surgeist_html::HtmlStyleUpdateCursor::new() -> Self
+pub fn surgeist_html::HtmlStyleUpdateCursor::reply(&mut self, reply: surgeist_html::HtmlStyleUpdateReply) -> core::result::Result<(), surgeist_html::HtmlStyleProtocolError>
+impl core::default::Default for surgeist_html::HtmlStyleUpdateCursor
+pub fn surgeist_html::HtmlStyleUpdateCursor::default() -> Self
 pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
 impl surgeist_html::HtmlStylesheetLinkAttributeContext
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool
@@ -5541,5 +5611,8 @@ pub fn surgeist_html::nonce_insertion_effect(element: &surgeist_html::QualifiedN
 pub const fn surgeist_html::output_default_source(has_override: bool) -> surgeist_html::HtmlOutputDefaultSource
 pub fn surgeist_html::reflected_element_attribute_change(reflected: surgeist_html::KnownHtmlAttribute, changed: &surgeist_html::QualifiedName) -> bool
 pub fn surgeist_html::select_input_numeric_constraints(min: surgeist_html::HtmlInputNumericContent, max: surgeist_html::HtmlInputNumericContent, step: surgeist_html::HtmlInputNumericStep, value: surgeist_html::HtmlInputNumericContent, state: surgeist_html::HtmlInputType) -> core::option::Option<surgeist_html::HtmlInputNumericConstraints>
+pub fn surgeist_html::style_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute) -> surgeist_html::HtmlStyleAttributeEffect
+pub fn surgeist_html::style_type_allows_css_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub const fn surgeist_html::style_update_is_required(trigger: surgeist_html::HtmlStyleTrigger) -> bool
 pub const fn surgeist_html::template_contents_owner_document(created_by_template_owner_algorithm: bool, has_associated_inert_document: bool) -> surgeist_html::HtmlTemplateContentsOwnerDocument
 pub fn surgeist_html::textarea_value_setter_finish(comparison: surgeist_html::HtmlInputValueComparison) -> surgeist_html::HtmlTextControlValueSetterFinish

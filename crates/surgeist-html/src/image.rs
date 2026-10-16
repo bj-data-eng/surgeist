@@ -8,9 +8,9 @@ use crate::{
 };
 use std::{cmp::Ordering, error::Error, fmt};
 
-/// The request state supported by fresh, not-yet-continued native images.
+/// The request state supported by fresh images before their resource continuation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlImgNativeRequestState {
+pub enum HtmlImgFreshRequestState {
     Unavailable,
 }
 
@@ -21,8 +21,8 @@ pub struct HtmlImgUnavailableRequest {
     url: DocumentString,
 }
 impl HtmlImgUnavailableRequest {
-    pub const fn state(&self) -> HtmlImgNativeRequestState {
-        HtmlImgNativeRequestState::Unavailable
+    pub const fn state(&self) -> HtmlImgFreshRequestState {
+        HtmlImgFreshRequestState::Unavailable
     }
     pub fn current_url(&self) -> &DocumentString {
         &self.url
@@ -48,10 +48,10 @@ impl HtmlImgUnavailableRequest {
 /// While an update waits at the first inactive-Document guard, this tuple stays
 /// unchanged; that waiting invocation is separate consumer-owned state.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlImgNativeState {
+pub struct HtmlImgFreshState {
     current: HtmlImgUnavailableRequest,
 }
-impl HtmlImgNativeState {
+impl HtmlImgFreshState {
     pub fn fresh() -> Self {
         Self {
             current: HtmlImgUnavailableRequest { url: "".into() },

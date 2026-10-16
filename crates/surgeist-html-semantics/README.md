@@ -36,6 +36,19 @@ Fresh/cleared null, observed parse failure and unavailable history remain distin
 The join checks the exact current href and admits retained UTF-16 and Document
 references atomically. It establishes no origin, Blob-store or navigation facts.
 
+`select_document_base_serialization` shares the first-present/frozen/missing
+selection with `select_document_base`. Its caller establishes the serialized
+fallback; the helper does not infer a native Document or manufacture a URL record.
+
+URL records, Base parse-facts banks, Hyperlink banks and selected Hyperlink
+snapshots expose checked `retained_storage_usage()`. This counts owner payload
+headers, actual record capacity and UTF-16 backing capacity, including private
+fallbacks and spare capacity. Aliased occurrences are conservatively counted
+separately; allocator and Arc bookkeeping are excluded. The cache is formed
+within existing bounded construction/resolution and does not change logical
+formation limits or semantic equality. A selected snapshot counts its chosen
+observation, not the original observation bank.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

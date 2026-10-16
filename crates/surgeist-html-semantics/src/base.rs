@@ -69,6 +69,7 @@ struct UrlRecord {
     serialization: DocumentString,
     scheme: HtmlBaseUrlScheme,
     about_blank: bool,
+    retained: HtmlBaseRetainedStorageUsage,
 }
 /// An actual external record observation. Equality is record identity, not text.
 /// Its constructor attests URL-standard truth; HTML does not parse its spelling.
@@ -84,12 +85,23 @@ impl HtmlBaseUrlRecord {
         if matches_about_blank && scheme != HtmlBaseUrlScheme::Other {
             return Err(HtmlBaseFactsError::ContradictoryObservation);
         }
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<UrlRecord>(),
+            units: 0,
+        };
+        retained.string(&serialization)?;
         Ok(Self(Arc::new(UrlRecord {
             revision,
             serialization,
             scheme,
             about_blank: matches_about_blank,
+            retained,
         })))
+    }
+    /// Actual retained record payload and UTF-16 backing, independent of any
+    /// optional ParseFacts bank. This does not attest a Document or parse result.
+    pub fn retained_storage_usage(&self) -> HtmlBaseRetainedStorageUsage {
+        self.0.retained
     }
     pub fn serialization(&self) -> &DocumentString {
         &self.0.serialization
@@ -429,11 +441,54 @@ impl Validation {
         Ok(true)
     }
 }
+/// Checked retained payload footprint of a complete parse-facts graph.
+/// Immutable backing shared by several occurrences is conservatively counted
+/// per occurrence. Allocator/Arc bookkeeping is outside this payload measure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlBaseRetainedStorageUsage {
+    pub(crate) bytes: usize,
+    pub(crate) units: usize,
+}
+impl HtmlBaseRetainedStorageUsage {
+    /// Graph headers, actual observation capacity and all UTF-16 backing payloads.
+    pub fn retained_bytes(self) -> usize {
+        self.bytes
+    }
+    /// Actual retained UTF-16 capacities, including spare capacity and fallbacks.
+    pub fn utf16_extent(self) -> usize {
+        self.units
+    }
+    pub(crate) fn add(&mut self, bytes: usize) -> Result<(), HtmlBaseFactsError> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        Ok(())
+    }
+    pub(crate) fn string(&mut self, value: &DocumentString) -> Result<(), HtmlBaseFactsError> {
+        let units = value.shared_code_units().capacity();
+        self.units = self
+            .units
+            .checked_add(units)
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        self.add(size_of::<Vec<u16>>())?;
+        self.add(
+            units
+                .checked_mul(size_of::<u16>())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )
+    }
+    pub(crate) fn url(&mut self, value: &HtmlBaseUrlRecord) -> Result<(), HtmlBaseFactsError> {
+        self.add(size_of::<UrlRecord>())?;
+        self.string(value.serialization())
+    }
+}
 #[derive(Debug)]
 struct ParseFacts {
     document: HtmlBaseDocumentFacts,
     observations: Vec<HtmlBaseParseObservation>,
     usage: HtmlBaseFactsUsage,
+    retained: HtmlBaseRetainedStorageUsage,
 }
 /// Immutable original input backing. Clones share its issuer and actual values.
 #[derive(Clone, Debug)]
@@ -452,10 +507,22 @@ impl HtmlParseBaseFacts {
             work: 0,
             units: 0,
         };
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<ParseFacts>(),
+            units: 0,
+        };
+        retained.add(
+            observations
+                .capacity()
+                .checked_mul(size_of::<HtmlBaseParseObservation>())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )?;
         if let Some(url) = &document.url {
+            retained.url(url)?;
             v.string(url.serialization())?;
         }
         if let HtmlAboutBaseUrl::KnownRecord(url) = &document.about {
+            retained.url(url)?;
             v.string(url.serialization())?;
         }
         for (i, observation) in observations.iter().enumerate() {
@@ -463,9 +530,12 @@ impl HtmlParseBaseFacts {
             if observation.revision != document.revision {
                 return Err(HtmlBaseFactsError::RevisionMismatch);
             }
+            retained.string(&observation.raw)?;
+            retained.url(&observation.fallback)?;
             v.string(&observation.raw)?;
             v.string(observation.fallback.serialization())?;
             if let HtmlBaseParseOutcome::Parsed { record, .. } = &observation.outcome {
+                retained.url(record)?;
                 v.string(record.serialization())?;
             }
             for previous in &observations[..i] {
@@ -489,7 +559,13 @@ impl HtmlParseBaseFacts {
             document,
             observations,
             usage,
+            retained,
         })))
+    }
+    /// Cached during the existing bounded formation pass. This does not change
+    /// logical formation limits or their work/UTF-16 accounting contract.
+    pub fn retained_storage_usage(&self) -> HtmlBaseRetainedStorageUsage {
+        self.0.retained
     }
     pub fn document(&self) -> &HtmlBaseDocumentFacts {
         &self.0.document
@@ -682,9 +758,34 @@ pub fn select_document_base<'a>(
     document: Option<&'a HtmlBaseDocumentFacts>,
     first: HtmlDocumentFirstBase<'a>,
 ) -> Result<&'a HtmlBaseUrlRecord, HtmlBaseMissing> {
+    document_base_choice(
+        first,
+        |record| record,
+        || document.ok_or(HtmlBaseMissing::DocumentFacts)?.fallback(),
+    )
+}
+
+/// Selects the already-established serialized fallback or the actual first
+/// frozen Base's serialization. This does not establish that the supplied
+/// fallback is a Document's URL, parse a URL, or infer missing environment facts.
+pub fn select_document_base_serialization<'a>(
+    established_fallback: &'a DocumentString,
+    first: HtmlDocumentFirstBase<'a>,
+) -> Result<&'a DocumentString, HtmlBaseMissing> {
+    document_base_choice(first, HtmlBaseUrlRecord::serialization, || {
+        Ok(established_fallback)
+    })
+}
+fn document_base_choice<'a, T>(
+    first: HtmlDocumentFirstBase<'a>,
+    frozen: impl FnOnce(&'a HtmlBaseUrlRecord) -> T,
+    fallback: impl FnOnce() -> Result<T, HtmlBaseMissing>,
+) -> Result<T, HtmlBaseMissing> {
     match first {
-        HtmlDocumentFirstBase::Present(value) => value.ok_or(HtmlBaseMissing::FrozenBase),
-        HtmlDocumentFirstBase::Absent => document.ok_or(HtmlBaseMissing::DocumentFacts)?.fallback(),
+        HtmlDocumentFirstBase::Present(value) => {
+            value.map(frozen).ok_or(HtmlBaseMissing::FrozenBase)
+        }
+        HtmlDocumentFirstBase::Absent => fallback(),
     }
 }
 

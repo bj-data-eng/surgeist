@@ -2,7 +2,7 @@
 //! CSP selection, navigable, resource effect or second URL identity is created.
 use crate::{
     DocumentString, HtmlBaseEncoding, HtmlBaseFactsError, HtmlBaseFactsLimits,
-    HtmlBaseFactsRevision, HtmlBaseFactsUsage, HtmlBaseUrlRecord,
+    HtmlBaseFactsRevision, HtmlBaseFactsUsage, HtmlBaseRetainedStorageUsage, HtmlBaseUrlRecord,
 };
 use std::{error::Error, fmt, sync::Arc};
 
@@ -64,6 +64,7 @@ struct Facts {
     revision: HtmlBaseFactsRevision,
     observations: Vec<HtmlHyperlinkParseObservation>,
     usage: HtmlBaseFactsUsage,
+    retained: HtmlBaseRetainedStorageUsage,
 }
 /// Immutable actual observations for ONE base/encoding/full revision context.
 /// The adapter separately binds this context to its actual Document metadata,
@@ -89,14 +90,27 @@ impl HtmlHyperlinkParseFacts {
     ) -> Result<Self, HtmlHyperlinkFactsError> {
         let mut v = crate::base::Validation::new(limits);
         v.records(observations.capacity())?;
+        let mut retained = HtmlBaseRetainedStorageUsage {
+            bytes: size_of::<Facts>(),
+            units: 0,
+        };
+        retained.add(
+            observations
+                .capacity()
+                .checked_mul(size_of::<HtmlHyperlinkParseObservation>())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )?;
+        retained.url(&base)?;
         v.retained_string(base.serialization())?;
         for (i, observation) in observations.iter().enumerate() {
             v.step()?;
+            retained.string(&observation.raw)?;
             v.retained_string(&observation.raw)?;
             if let HtmlHyperlinkParseOutcome::Parsed(record) = &observation.outcome {
                 if record.revision() != &revision {
                     return Err(HtmlHyperlinkFactsError::RevisionMismatch);
                 }
+                retained.url(record)?;
                 v.retained_string(record.serialization())?;
             }
             for previous in &observations[..i] {
@@ -113,7 +127,13 @@ impl HtmlHyperlinkParseFacts {
             revision,
             observations,
             usage,
+            retained,
         })))
+    }
+    /// Owner-computed payload footprint, including private bank headers and
+    /// actual retained UTF-16 capacity. Logical formation usage is unchanged.
+    pub fn retained_storage_usage(&self) -> HtmlBaseRetainedStorageUsage {
+        self.0.retained
     }
     pub fn same_owner(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -196,13 +216,27 @@ impl HtmlHyperlinkParseFacts {
                             HtmlBaseFactsError::RepresentationExhausted.into(),
                         )
                     })?;
+                let mut retained = HtmlBaseRetainedStorageUsage {
+                    bytes: size_of::<HtmlHyperlinkUrlSnapshot>(),
+                    units: 0,
+                };
+                let footprint = (|| {
+                    retained.string(&observation.raw)?;
+                    retained.url(self.base())?;
+                    if let HtmlHyperlinkParseOutcome::Parsed(record) = &observation.outcome {
+                        retained.url(record)?;
+                    }
+                    Ok::<_, HtmlBaseFactsError>(())
+                })();
+                footprint.map_err(|e| HtmlHyperlinkLookupError::Facts(e.into()))?;
+                debug_assert_eq!(retained.utf16_extent(), units);
                 return Ok(HtmlHyperlinkUrlSnapshot {
                     raw: observation.raw.clone(),
                     base: self.base().clone(),
                     encoding: self.encoding().clone(),
                     revision: self.revision().clone(),
                     outcome: observation.outcome.clone(),
-                    units,
+                    retained_bytes: retained.retained_bytes(),
                 });
             }
         }
@@ -222,7 +256,7 @@ pub struct HtmlHyperlinkUrlSnapshot {
     encoding: HtmlBaseEncoding,
     revision: HtmlBaseFactsRevision,
     outcome: HtmlHyperlinkParseOutcome,
-    units: usize,
+    retained_bytes: usize,
 }
 impl PartialEq for HtmlHyperlinkUrlSnapshot {
     fn eq(&self, other: &Self) -> bool {
@@ -235,6 +269,13 @@ impl PartialEq for HtmlHyperlinkUrlSnapshot {
 }
 impl Eq for HtmlHyperlinkUrlSnapshot {}
 impl HtmlHyperlinkUrlSnapshot {
+    /// Footprint of this selected observation only, without the original bank.
+    pub fn retained_storage_usage(&self) -> HtmlBaseRetainedStorageUsage {
+        HtmlBaseRetainedStorageUsage {
+            bytes: self.retained_bytes,
+            units: self.retained_utf16_extent(),
+        }
+    }
     pub fn raw(&self) -> &DocumentString {
         &self.raw
     }
@@ -257,7 +298,20 @@ impl HtmlHyperlinkUrlSnapshot {
         }
     }
     pub fn retained_utf16_extent(&self) -> usize {
-        self.units
+        // These exact immutable three backings were checked during resolution.
+        // Reusing that invariant keeps one cached word instead of enlarging
+        // every inline captured Element merely for derived usage readback.
+        self.raw
+            .shared_code_units()
+            .capacity()
+            .checked_add(self.base.serialization().shared_code_units().capacity())
+            .and_then(|n| {
+                n.checked_add(
+                    self.url()
+                        .map_or(0, |r| r.serialization().shared_code_units().capacity()),
+                )
+            })
+            .expect("qualified snapshot retained extent was checked")
     }
 }
 

@@ -53,7 +53,7 @@ unit at a time, preserving all other units. Keep its state across chunks of one
 string; a trailing CR emits LF immediately and needs no finish step. Consumers
 own per-unit admission, cancellation and output storage.
 
-`HtmlImgNativeState` retains the closed fresh standalone image request tuple;
+`HtmlImgFreshState` retains the closed fresh standalone image request tuple;
 it is independent of Input Image Button history. Shared image decisions preserve
 the inactive-Document wait before image-support checks, exact per-invocation
 flags, latest-started supersession even after a later abort, semantic attribute
@@ -61,6 +61,17 @@ changes and Img/Source Picture mutation fanout. Consumers retain canonical
 dimension-source/form identities, checked invocation order, waiting work,
 retirement, finite admission and atomic publication. These values do not execute
 resources, complete a suspended update or replace retained image history.
+
+`HtmlDetailsToggleEvent` retains source-owned old/new states for the actual
+queued toggle. It supplies values, not a DOM target, listener registry or event
+execution; Runtime owns the task tracker and real dispatch.
+
+`HtmlStyleUpdateCursor` owns the ordered remove/guard/CSP/create/blocking
+steps. Consumers acknowledge actual owner actions after completion; the cursor
+executes no CSSOM mutation or CSP interpretation. Exact type eligibility and
+source triggers are shared local rules. `HtmlStyleNotificationCursor` requires
+real event dispatch before reading current script-blocking predicates and
+unblocking; queue-time observations cannot replace post-handler reads.
 
 `HtmlHyperlinkSetUrlCursor` orders A/Area cache clearing, href presence,
 encoding-parse and successful storage. Shared attribute and tree decisions

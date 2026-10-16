@@ -1,6 +1,6 @@
 //! Native standalone image state and wholly inactive update ownership.
 use crate::{DocumentId, DomNode, NodeId};
-use surgeist_html::{HtmlImageUpdateFlags, HtmlImgNativeState};
+use surgeist_html::{HtmlImageUpdateFlags, HtmlImgFreshState};
 
 /// An exact canonical target and its checked, nonwrapping update invocation.
 /// This metadata grants no execution or activation authority.
@@ -25,7 +25,7 @@ pub(crate) struct Waiting {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ImageState<K> {
-    pub(crate) native: HtmlImgNativeState,
+    pub(crate) native: HtmlImgFreshState,
     pub(crate) dimension_source: K,
     pub(crate) parser_inserted: bool,
     // Independent of whether a particular invocation remains pending. A later
@@ -36,7 +36,7 @@ pub(crate) struct ImageState<K> {
 impl<K: Copy> ImageState<K> {
     pub(crate) fn fresh(key: K) -> Self {
         Self {
-            native: HtmlImgNativeState::fresh(),
+            native: HtmlImgFreshState::fresh(),
             dimension_source: key,
             parser_inserted: false,
             high_water: 0,
@@ -81,7 +81,7 @@ impl<'a> DomImg<'a> {
     pub fn id(self) -> NodeId {
         self.node.id()
     }
-    pub fn state(self) -> &'a HtmlImgNativeState {
+    pub fn state(self) -> &'a HtmlImgFreshState {
         &self.node.node.image.as_ref().expect("checked Img").native
     }
     pub fn dimension_attribute_source(self) -> NodeId {

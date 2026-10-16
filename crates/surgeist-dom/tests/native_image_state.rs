@@ -2,7 +2,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::{
-    HtmlConstructionLimits, HtmlFragment, HtmlImageUpdateFlags, HtmlImgNativeRequestState,
+    HtmlConstructionLimits, HtmlFragment, HtmlImageUpdateFlags, HtmlImgFreshRequestState,
 };
 
 fn cancel() -> AtomicBool {
@@ -43,7 +43,7 @@ fn fresh_request_is_unavailable_and_real_inactive_wait_precedes_disabled_images(
     let state = image.state();
     assert_eq!(
         state.current_request().state(),
-        HtmlImgNativeRequestState::Unavailable
+        HtmlImgFreshRequestState::Unavailable
     );
     assert!(state.current_request().current_url().is_empty());
     assert_eq!(state.current_request().current_pixel_density(), 1);

@@ -20,6 +20,49 @@ pub enum HtmlDetailsState {
     Closed,
     Open,
 }
+impl HtmlDetailsState {
+    /// Exact state string used by the selected Details ToggleEvent clause.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Closed => "closed",
+            Self::Open => "open",
+        }
+    }
+}
+
+/// The exact payload queued by HTML877d's Details notification algorithm.
+/// Details supplies no source Element; task identities and recipients belong
+/// to the consuming owner. Equal states remain an actual notification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlDetailsToggleEvent {
+    old: HtmlDetailsState,
+    new: HtmlDetailsState,
+}
+impl HtmlDetailsToggleEvent {
+    /// Queue with the pending tracker's old state, when one exists, and the
+    /// latest transition's new state. The consumer removes/requeues the task.
+    pub const fn queued(
+        old: HtmlDetailsState,
+        new: HtmlDetailsState,
+        tracked_old: Option<HtmlDetailsState>,
+    ) -> Self {
+        Self {
+            old: match tracked_old {
+                Some(first) => first,
+                None => old,
+            },
+            new,
+        }
+    }
+    /// First old state retained by the source task tracker.
+    pub const fn old_state(self) -> HtmlDetailsState {
+        self.old
+    }
+    /// Latest queued new state, independent of attributes at delivery time.
+    pub const fn new_state(self) -> HtmlDetailsState {
+        self.new
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDetailsAttributeEffect {
     None,

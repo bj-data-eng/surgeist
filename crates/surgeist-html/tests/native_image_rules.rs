@@ -5,11 +5,11 @@ use surgeist_html::*;
 
 #[test]
 fn fresh_image_retains_the_unavailable_request_and_distinct_null_slots() {
-    let state = HtmlImgNativeState::fresh();
+    let state = HtmlImgFreshState::fresh();
     let snapshot = state.clone();
     assert_eq!(
         state.current_request().state(),
-        HtmlImgNativeRequestState::Unavailable
+        HtmlImgFreshRequestState::Unavailable
     );
     assert!(state.current_request().current_url().is_empty());
     assert_eq!(state.current_request().current_pixel_density(), 1);
@@ -38,7 +38,7 @@ fn inactive_update_waits_before_any_image_support_or_resource_step() {
         HtmlImageUpdateStartDecision::NeedsFullyActiveFact
     );
     // A suspension cannot mutate the request or create a pending image request.
-    let initial = HtmlImgNativeState::fresh();
+    let initial = HtmlImgFreshState::fresh();
     assert!(initial.current_request().current_url().is_empty());
     assert!(initial.pending_request_is_null());
 }

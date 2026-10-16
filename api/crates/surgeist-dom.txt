@@ -736,7 +736,7 @@ pub fn surgeist_dom::DomImg<'a>::dimension_attribute_source(self) -> surgeist_do
 pub fn surgeist_dom::DomImg<'a>::form_owner(self) -> core::option::Option<surgeist_dom::NodeId>
 pub fn surgeist_dom::DomImg<'a>::id(self) -> surgeist_dom::NodeId
 pub fn surgeist_dom::DomImg<'a>::parser_inserted(self) -> bool
-pub fn surgeist_dom::DomImg<'a>::state(self) -> &'a surgeist_html::image::HtmlImgNativeState
+pub fn surgeist_dom::DomImg<'a>::state(self) -> &'a surgeist_html::image::HtmlImgFreshState
 pub fn surgeist_dom::DomImg<'a>::suspended_update(self) -> core::option::Option<surgeist_dom::DomImageUpdate>
 pub struct surgeist_dom::DomInput<'a>
 impl<'a> surgeist_dom::DomInput<'a>
