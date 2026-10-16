@@ -353,3 +353,33 @@ The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
 International terms for this specification prose. Its BSD 3-Clause provision
 applies only to portions incorporated into code. W3C policy material is identified
 separately under its own notice and license in the reference.
+
+## Native hosted lifecycle and global clauses — 2026-10-16
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [navigable lifecycle reference](../../references/html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md)
+and [initial Document/global/agent/settings reference](../../references/html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md),
+plus [initial teardown reference](../../references/html-hosted-initial-teardown--877d6146487f--c2dd632ac56d.md),
+retain nine, seventeen and nine complete source fragments from HTML revision
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, original complete snapshot SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Each reference records exact original line ranges and fragment hashes.
+
+Changes by Surgeist on 2026-10-16: bounded offline selection, Markdown headings,
+provenance and editorial scope notes, and rewriting only fragment-only hrefs to
+the immutable original snapshot. Source bodies remain literal semantic HTML;
+wording, conditions, ordered steps, IDs, definition/list boundaries, notes and
+issues are preserved. Source scripts are not executed. Native execution choices
+are identified separately and do not rewrite source obligations. No endorsement
+or whole-browser conformance is implied.
+
+The teardown reference additionally retains source-authored whitespace and the
+raw75916 singular wait-variable discrepancy. Its separate editorial section
+identifies #136's native captured-plural-list qualification, including zero
+children and retained Pending state; the original wording remains unchanged.
+
+The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
+International terms for this specification prose. Its BSD 3-Clause provision
+applies only to portions incorporated into code. The separate W3C HR-Time
+reference has its own notice and license.

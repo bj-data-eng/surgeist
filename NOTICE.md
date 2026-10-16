@@ -509,6 +509,24 @@ accompanies that material. HTML opaque-origin definitions retain their separate
 [WHATWG license and attribution](licenses/whatwg/NOTICE.md#permissions-policy-opaque-origin-definitions--2026-10-16).
 This is implementation-support source material, not a complete policy engine.
 
+## Native hosted lifecycle and clock sources
+
+The [navigable lifecycle](references/html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md),
+[initial Document/global/agent/settings clauses](references/html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md)
+and [initial teardown clauses](references/html-hosted-initial-teardown--877d6146487f--c2dd632ac56d.md)
+contain bounded extracts of the existing immutable WHATWG HTML edition, under
+its [license and modification notice](licenses/whatwg/NOTICE.md#native-hosted-lifecycle-and-global-clauses--2026-10-16).
+Literal HTML source structure and JavaScript-only source steps remain visible;
+the separate native execution projection does not modify those source steps.
+
+The [High Resolution Time clauses](references/hr-time-native-clock--1f0b9faf793d--5f2276cce0af.md)
+contain material derived from W3C commit
+`1f0b9faf793db3b06c8e85462448e8a812d00fb9`. The complete existing
+[W3C Software and Document License 2023](licenses/w3c/software-license-2023.txt)
+and [attribution and modification notice](licenses/w3c/NOTICE.md#native-hosted-high-resolution-time-clauses)
+accompany the literal bounded source. These references support implementation;
+they do not certify a complete browser environment or change this project's license.
+
 ## HTML-delegated SVG script material
 
 The [bounded SVG Tiny 1.2 reference](references/svg-tiny12-script-processing--REC-20081222--2f36eb76440c.md) supplies HTML-delegated script

@@ -1536,3 +1536,32 @@ not published as replacement technical specifications. The additional 2015
 notices do not replace the original ©2008/©2010 notices. No generic software
 license is substituted for the document terms and no marked upstream code
 component, XML loader or executable example is incorporated.
+
+## Native hosted High Resolution Time clauses
+
+This document includes material copied from or derived from
+[High Resolution Time](https://github.com/w3c/hr-time/blob/1f0b9faf793db3b06c8e85462448e8a812d00fb9/index.bs).
+Copyright © 2026 World Wide Web Consortium. All Rights Reserved. This work is
+distributed under the [W3C Software and Document License](software-license-2023.txt)
+in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+The [native clock reference](../../references/hr-time-native-clock--1f0b9faf793d--5f2276cce0af.md)
+retains four complete source units from W3C revision
+`1f0b9faf793db3b06c8e85462448e8a812d00fb9` (1 September 2026), original
+`index.bs` SHA-256
+`e928551146aa839cb2d6da490b4c2b07921b596d92514c8a37c6062eac6bddde`.
+The exact pinned repository
+[LICENSE.md](https://github.com/w3c/hr-time/blob/1f0b9faf793db3b06c8e85462448e8a812d00fb9/LICENSE.md)
+licenses its documents by contributors under the W3C Software and Document
+License; the linked official URL resolves to the existing complete local 2023
+license. The retained 166-byte declaration has SHA-256
+`6eabf929228fcdce39d1aff9a837175928c4a19eafc4517b72d5781db9ece661`.
+
+Changes by Surgeist on 2026-10-16: bounded extraction, explanatory Markdown
+headings, immutable original-line links, provenance and separately identified
+native-execution scope notes. Original Bikeshed fragments remain byte for byte
+inside text fences; conditions, algorithm order, branches, notes and unresolved
+source issues are unchanged. No source compiler or scripts are run, endorsement
+is not implied, and this support reference is not a replacement specification.
+The repository's own license is unchanged.

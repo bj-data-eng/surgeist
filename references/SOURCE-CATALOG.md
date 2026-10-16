@@ -1,6 +1,6 @@
 # Exact source catalog
 
-372 retained source identities: 260 full documents/source witnesses, 98 partial witnesses, and 14 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
+374 retained source identities: 260 full documents/source witnesses, 100 partial witnesses, and 14 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments and the bounded WebKit Autofill.cpp witness as corroborating URL/hash provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
@@ -636,3 +636,20 @@ reuses the existing HTML877d complete source identity, SHA-256
 Its partial coverage is the complete Document initial-policy paragraph and
 policy-container item/default list. No new identity is added; the collection
 remains 372 identities (260 full, 98 partial, 14 metadata-only).
+
+## Native hosted creation prerequisites — 2026-10-16
+
+The Permissions Policy original retained by the preceding creation-reference
+addition and the newly selected High Resolution Time original add two partial
+identities relative to the preceding catalog. Current totals are 374 identities:
+260 full, 100 partial and 14 metadata-only; earlier dated counts remain historical.
+The three new HTML renderings reuse the existing complete HTML877d identity.
+Source hashes below identify complete originals, not excerpt or Markdown hashes.
+
+| Representation | Complete original source | Original SHA-256 | Coverage |
+| --- | --- | --- | --- |
+| [Initial Permissions Policy creation](permissions-policy-native-creation--29398046f1e0.md) | [W3C index.bs29398046](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/index.bs) | 51a87c5f4008510e501b5a4fe553baf8271e0e3af6ce6e8feece987639794c9a | partial; selected complete records, allowlist, declared-origin, iframe and initial-inheritance algorithms; reference published separately before this catalog entry |
+| [Native clock clauses](hr-time-native-clock--1f0b9faf793d--5f2276cce0af.md) | [W3C HR-Time index.bs1f0b9faf](https://github.com/w3c/hr-time/blob/1f0b9faf793db3b06c8e85462448e8a812d00fb9/index.bs) | e928551146aa839cb2d6da490b4c2b07921b596d92514c8a37c6062eac6bddde | partial; complete clocks/moments/durations, time-origin, coarsen-time and relative/current/shared-time units |
+| [Navigable lifecycle](html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; complete selected navigable/history records, top/child creation and destruction callers, make-active |
+| [Initial Document/global/agent/settings](html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; seventeen complete selected initial-constructor, environment, agent, group, settings, event-loop and loaded-state units |
+| [Initial top-level teardown](html-hosted-initial-teardown--877d6146487f--c2dd632ac56d.md) | [HTML877d](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/) | 877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f | additional partial representation; nine complete selected Navigation initial-state, related-collection, destruction/abort/cleanup and task-source units, with separate native wait-variable qualification |

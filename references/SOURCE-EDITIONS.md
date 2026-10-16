@@ -357,7 +357,7 @@ wrapper recommendation and adds no newer edition or whole event-loop selection.
 Explicit Rust identity retirement remains the selected product policy in #136,
 separately from these task source clauses.
 
-The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing, scripting-state and bounded hosted Document activity clauses. The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
+The collection omits unrelated full browser runtime chapters (loading/navigation, browsing contexts, web application scripting APIs, workers, worklets, storage, rendering, and XML syntax) except the explicitly retained host facts, DOM parsing, scripting-state, bounded hosted Document activity and [native hosted lifecycle clauses](#native-hosted-lifecycle-and-clock). The supplemental [microdata encoding clauses](#remaining-intrinsic-html-source-clauses) retain section 5.2; section 5.3 vocabulary examples remain outside that capture. Original links resolve to the immutable snapshot. Complete element chapters necessarily include JavaScript interfaces and algorithms for script execution, fetch/media behavior and custom elements; their source retention does not require native bindings or runtime implementation in surgeist-html. Named external DOM, Infra, URL, Encoding, MathML, SVG and Web IDL specifications remain separate sources rather than being replaced by an HTML-only conformance assertion.
 
 The previous live [language/direction](dom-html-language-direction--editor-capture-20261010--494ac341fe2b.md), [interaction](dom-html-host-interaction--editor-capture-20261010--8a01a8043e7c.md), [HTML selector facts](dom-html-host-selector-facts--editor-capture-20261010--07d421b207b3.md) and [table processing](style-specialized-determinations-html-tables--editor-capture-20261011--7e90e654e94f.md) captures remain historical source identities and original decision evidence. For unstarted HTML language and HTML-supplied host facts, this pinned baseline supersedes those bounded live source selections. This changes source selection, not completed implementation provenance or the separately selected WHATWG DOM foundation. The repository LICENSE pin previously associated with those live captures did not identify their served chapter bytes; the new immutable full snapshot does identify this retained HTML edition.
 
@@ -542,6 +542,46 @@ existing HTML edition. The selected native feature roster and opaque-origin
 projection are recorded separately in #1218. This does not select response
 policies, reporting, arbitrary-origin introspection or general navigation.
 The existing pinned Fullscreen definition supplies its feature and default.
+
+### Native hosted lifecycle and clock
+
+For [#136](https://github.com/bj-data-eng/surgeist/issues/136) and
+[#1124](https://github.com/bj-data-eng/surgeist/issues/1124), the
+[navigable lifecycle reference](html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md)
+and [initial Document/global/agent/settings reference](html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md)
+reuse the existing complete HTML877d source identity. They retain complete
+selected creation, destruction-caller, history-record, make-active and
+environment definitions and algorithms, including JavaScript-only steps.
+Their raw ranges and original-fragment hashes are recorded in each reference;
+literal HTML bodies preserve source wording and structure. They do not establish
+transitive source closure or implement every referenced service.
+
+The [initial teardown clauses](html-hosted-initial-teardown--877d6146487f--c2dd632ac56d.md)
+reuse that same HTML identity for actual Document destruction, abort, unloading
+cleanup, related navigable collections, initial Navigation state and task-source
+definitions. The source's raw75916 singular wait-variable discrepancy is kept
+literally; #136 separately qualifies the native predicate as the captured plural
+child-list size, including zero. A satisfied predicate does not skip the parent
+global task or cleanup. Unreached child-history application and the complete
+browser event-loop processing model remain outside this capture.
+
+The [native clock clauses](hr-time-native-clock--1f0b9faf793d--5f2276cce0af.md)
+select W3C High Resolution Time commit
+`1f0b9faf793db3b06c8e85462448e8a812d00fb9` (1 September 2026), preceding the
+HTML pin. Complete `index.bs` SHA-256:
+`e928551146aa839cb2d6da490b4c2b07921b596d92514c8a37c6062eac6bddde`.
+Four complete selected source units cover clocks/moments/durations, time origin,
+coarsening, and relative/current/shared time, with literal Bikeshed source.
+Both isolation branches, optional jitter and Unix-aligned exposure definitions
+remain visible even where they lie outside the native API.
+
+The native Rust projection is recorded separately in #136 under “Native hosted
+execution: Global, settings and agent ownership”. It requires actual native
+Globals, agents/event loops, settings, canonical Document associations and an
+Instant-backed shared epoch with selected 100-microsecond flooring, while
+excluding JavaScript realm execution and Performance/Unix exposure. Retained
+source algorithms are not rewritten to make those exclusions normative no-ops.
+This source selection certifies neither implementation nor browser conformance.
 
 ### HTML autocomplete credential recovery
 

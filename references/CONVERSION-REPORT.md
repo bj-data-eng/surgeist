@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **372 source identities: 260 full documents/source witnesses, 98 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **374 source identities: 260 full documents/source witnesses, 100 partial witnesses and 14 metadata-only records**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -364,6 +364,51 @@ attribution. Fullscreen's feature/default definition links the existing capture.
 W3C and WHATWG licenses and modification notices accompany their respective
 material. The owning issue records native product choices separately; no
 response-header/reporting engine or repository-license change is selected.
+
+## Native hosted lifecycle and clock sources — 2026-10-16
+
+The [navigable lifecycle reference](html-hosted-navigable-lifecycle--877d6146487f--3a9658155866.md)
+and [global/agent/settings reference](html-hosted-global-agent-settings--877d6146487f--03a314e0aa55.md)
+retain nine and seventeen complete fragments, respectively, from the existing
+HTML877d snapshot. Their original 443 and 986 lines have joined-fragment hashes
+`3a96581558660a74c558d5a3ca46e360be9f4192f044a4eee52edbf800e72c14`
+and `03a314e0aa5534a3fc2e1aa15d51c876f718912479ebd33074937b07e7214148`.
+Source bodies remain literal semantic HTML inside Markdown; only fragment-only
+href values are rewritten to the immutable same-edition snapshot. Wording,
+conditions, algorithm/list order, IDs, boundaries, notes and issue markers are
+preserved. Explanatory headings and provenance/scope notes are editorial.
+These are additional representations of one existing complete source identity.
+
+The [initial teardown reference](html-hosted-initial-teardown--877d6146487f--c2dd632ac56d.md)
+adds nine complete selected fragments, 344 original lines, with joined hash
+`c2dd632ac56d753b0610a68c53f8f1ab6f97b9e8d0f346eec8faef48ef056bf6`.
+It uses the same literal HTML/href-only treatment and existing HTML identity.
+Raw75916's singular wait-variable typo stays in the original body; a separate
+editorial section identifies #136's captured-plural-list qualification and its
+zero-child/Pending consequences. Source-authored whitespace is retained rather
+than silently normalized. This preserves actual destruction/abort/cleanup and
+initial state, not unreached child-history traversal or full browser processing.
+
+The [High Resolution Time reference](hr-time-native-clock--1f0b9faf793d--5f2276cce0af.md)
+adds one partial identity at W3C revision
+`1f0b9faf793db3b06c8e85462448e8a812d00fb9`, complete original SHA-256
+`e928551146aa839cb2d6da490b4c2b07921b596d92514c8a37c6062eac6bddde`.
+Its four complete units, 206 original lines, are byte-identical fenced Bikeshed
+source with per-fragment hashes and immutable original-line links. Their joined
+original SHA-256 is
+`5f2276cce0afddcce60b76ebf97d5afb985bd1ff9e3d7d291f18d4183e6adb3a`.
+No compiler, source scripts or software acquisition is used. Native clock
+selection remains distinct editorial policy; both source isolation branches,
+potential jitter, full time-origin section and unresolved source issue remain.
+The exact repository license declaration selects the existing complete local
+W3C Software and Document License 2023. WHATWG material retains its own notices.
+
+The source catalog now also records the Permissions Policy original retained by
+the preceding creation-reference addition. Together these are two new partial
+identities relative to the preceding catalog: 374 total, comprising 260 full,
+100 partial and 14 metadata-only. Historical counts above and below remain
+dated evidence. No transitive browser-source closure or implementation verdict
+is implied by this retention.
 
 ## HTML autocomplete credential determination — 2026-10-11
 
