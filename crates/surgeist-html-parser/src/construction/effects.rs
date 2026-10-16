@@ -354,6 +354,11 @@ impl SessionStorage {
                 let binding = document.try_clone(c)?;
                 self.set_node_document(c, node, binding)?;
                 self.adopt_registry(c, node, &document, root)?;
+                self.start_img_update(
+                    c,
+                    node,
+                    surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                )?;
                 let next = self.next_view_node(c, root, node, None)?;
                 let retained_document = document.try_clone(c)?;
                 self.write_current_effect(

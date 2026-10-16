@@ -403,11 +403,12 @@ impl LocationKernel {
                 return Err(KernelError::DuplicateOpenElement);
             }
         }
-        let node = copy_node(node, control)?;
+        let copied = copy_node(node, control)?;
         self.open
             .as_mut()
             .ok_or(KernelError::Consumed)?
-            .try_push(control, node)?;
+            .try_push(control, copied)?;
+        self.session.parser_stack_added(control, node)?;
         Ok(())
     }
 

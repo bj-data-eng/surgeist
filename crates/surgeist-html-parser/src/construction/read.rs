@@ -578,6 +578,10 @@ impl<'a> HtmlParseColorComputation<'a> {
     }
 }
 impl<'a> HtmlParseCause<'a> {
+    pub(super) fn qualified(history: &'a FrozenHistory, cause: &'a ConstructionCause) -> Self {
+        Self { history, cause }
+    }
+
     pub fn color_computation(&self) -> Option<HtmlParseColorComputation<'a>> {
         match self.cause.computation.as_ref()? {
             provenance::InputValueComputation::Color(value) => Some(HtmlParseColorComputation {

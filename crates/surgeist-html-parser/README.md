@@ -27,7 +27,7 @@ capacity and cleanup.
 The document profile is fresh ordinary Disabled execution. Fragments retain
 qualified Inert/Disabled context facts. JavaScript execution, resource fetching,
 live shadow attachment and browser events remain outside these profiles.
-Unsupported or reached unavailable facts return typed failures. Failure retains
+Unsupported execution or required construction facts return typed failures. Failure retains
 the original request and live ownership until explicit cleanup; no successful
 partial report is returned.
 
@@ -35,6 +35,38 @@ Completed reports retain each ordinary element's no-definition custom-element
 state and independent creation-time `is` value through the public metadata
 cursor. Formatting reconstruction and cloning preserve their actual creation
 causes; later HTML/body attribute merges do not rewrite that saved value.
+
+Ordinary offline reports also lend subject-qualified closed common state; nonce
+is retained independently. A/Area records preserve the actual source-time URL
+snapshot and historical parse Document. Absent href, observed URL parse failure
+and unavailable context are separate states. Immutable request observation banks
+are qualified against the actual Document's base, encoding and full external
+revision at each reached operation; later Base elements cannot rewrite earlier
+cached URLs. Template-owner facts bind only the actual separately created inert
+Document and must agree with its known default context.
+
+Standalone Img records retain the actual fresh request, dimension source and
+latest inactive update wait with its generation and flags. Source/Picture hooks
+and real clones use the original source effect owner. Disabled image support
+cannot skip the source-prior wait for a fully active Document. These are retained
+algorithm states, without resource fetching or a live parser continuation.
+Style records preserve actual parser creation, creating parser Document and
+completed stack-pop history; general clones have fresh creation state. Their
+CSSOM association disposition is explicitly pending. Construction completion
+therefore does not assert that every semantic observation or downstream
+association is available.
+
+`retained_construction_bytes()` is the original controller's inclusive retained
+construction payload/capacity receipt. It counts the owned payload Vec's inline
+snapshot header once and adds the provider's checked selected backing; declared
+alias occurrences remain conservatively charged. Opaque standard Arc headers and
+allocator bookkeeping retain the original controller's provider limitation.
+Original source backing, report header and separately lent root/inert BaseFacts
+provider graphs are outside that receipt. The original owner keeps diagnostic
+family subtotals privately; they are not extra consumer admission. Unused request
+execution banks, including their spare capacity, are released before successful
+publication. Every failure preserves the actual original request bank and its
+ownership; resource cleanup does not reconstruct it.
 
 From the repository root, run focused checks through bounded `pisct run`:
 

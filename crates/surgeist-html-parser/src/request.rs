@@ -70,6 +70,7 @@ pub struct HtmlDocumentParseRequest {
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
+    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
 }
 impl HtmlDocumentParseRequest {
     /// Parse the owned decoded source into a complete immutable report.
@@ -89,6 +90,7 @@ impl HtmlDocumentParseRequest {
             cancellation: self.cancellation,
             context: self.context,
             base_facts: self.base_facts,
+            associated: self.associated,
         }
     }
     /// Selects the no-browsing-context operation: scripting is Disabled and
@@ -100,6 +102,7 @@ impl HtmlDocumentParseRequest {
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Offline,
             base_facts: None,
+            associated: None,
         }
     }
     /// Selects one document from the supplied immutable capture. Enabled
@@ -138,6 +141,7 @@ impl HtmlDocumentParseRequest {
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Captured { capture, document },
             base_facts: None,
+            associated: None,
         })
     }
     /// Supplies actual ordinary-document URL/encoding/CSP observations. This
@@ -156,6 +160,49 @@ impl HtmlDocumentParseRequest {
     }
     pub fn base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
         self.base_facts.as_ref()
+    }
+    /// Supplies immutable URL observations; admission/qualification is performed
+    /// by the original execution control, never by an extra URL interpreter.
+    pub fn with_hyperlink_facts(
+        mut self,
+        facts: Vec<surgeist_html_semantics::HtmlHyperlinkParseFacts>,
+    ) -> Self {
+        self.associated_mut().hyperlinks = facts;
+        self
+    }
+    /// Attests the actual default URL/encoding context of this parse's separately
+    /// created associated template-contents Document. No owner is created here.
+    pub fn with_template_base_facts(
+        mut self,
+        facts: crate::HtmlParseBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        let document = facts.document();
+        if document.iframe_srcdoc()
+            || document
+                .document_url()
+                .is_some_and(|url| !url.matches_about_blank())
+            || matches!(
+                document.about_base_url(),
+                crate::HtmlAboutBaseUrl::KnownRecord(_)
+            )
+        {
+            return Err(HtmlParseRequestError::Base(
+                crate::HtmlBaseFactsError::ContradictoryObservation,
+            ));
+        }
+        self.associated_mut().template = Some(facts);
+        Ok(self)
+    }
+    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
+        let inputs = self.associated.get_or_insert_with(|| {
+            std::sync::Arc::new(crate::construction::associated::Inputs::default())
+        });
+        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its input bank")
+    }
+    pub(crate) fn associated_inputs(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.associated.as_ref()
     }
     /// Exact supplied source, including its immutable identity and coordinates.
     pub fn source(&self) -> &HtmlSource {
@@ -205,8 +252,17 @@ pub(crate) struct DocumentRequestParts {
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
+    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
 }
 impl DocumentRequestParts {
+    pub(crate) fn associated_inputs(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.associated.as_ref()
+    }
+    pub(crate) fn release_associated_inputs(&mut self) {
+        self.associated = None;
+    }
     pub(crate) fn image_support(&self) -> crate::HtmlImageSupport {
         self.context.image_support()
     }

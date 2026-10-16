@@ -6323,10 +6323,13 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     // actual effect-readiness fields, including Range and Radio, and its shared
     // handle identity/range qualification reads one additional header. Four
     // HTML namespace comparisons inspect28 units at three credits each; local
-    // p length differs from both option and textarea, so no local units read.
+    // p length differs from option, textarea and style, so no local units read.
+    // Actual Style-pop qualification adds html_local's3 record reads plus the
+    // two comparison headers =5 visits, and one28-unit namespace comparison
+    // at3 bytes per pair. It mutates no Style row for this p element.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        63
+        63 + 3 + 2
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -6342,7 +6345,7 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
-        4 * 28 * 3
+        (4 + 1) * 28 * 3
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),

@@ -52,6 +52,31 @@ pub struct HtmlParseFailure {
     cleanup_error: Option<HtmlParseEngineCondition>,
 }
 impl HtmlParseFailure {
+    fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        match &self.storage {
+            FailureStorage::OrdinaryInitialization(owner) => {
+                owner.request()?.associated_inputs().map(AsRef::as_ref)
+            }
+            FailureStorage::Ordinary(owner) => owner
+                .original_request()
+                .associated_inputs()
+                .map(AsRef::as_ref),
+            FailureStorage::OrdinaryFrozen(owner) => {
+                owner.request.associated_inputs().map(AsRef::as_ref)
+            }
+            _ => None,
+        }
+    }
+    /// Actual original supplied observation bank, including unused entries.
+    /// Failure does not replace it with a selected or reconstructed collection.
+    pub fn hyperlink_facts(&self) -> Option<&[surgeist_html_semantics::HtmlHyperlinkParseFacts]> {
+        self.associated_inputs()
+            .map(|inputs| inputs.hyperlinks.as_slice())
+    }
+    pub fn hyperlink_fact_capacity(&self) -> Option<usize> {
+        self.associated_inputs()
+            .map(|inputs| inputs.hyperlinks.capacity())
+    }
     pub fn reason(&self) -> HtmlParseFailureReason {
         self.reason
     }
@@ -277,6 +302,9 @@ impl std::error::Error for HtmlParseFailure {}
 fn session_reason(e: SessionError) -> HtmlParseFailureReason {
     match e {
         SessionError::Stop(s) => HtmlParseFailureReason::Stop(s),
+        SessionError::AssociatedFacts => {
+            HtmlParseFailureReason::Stop(ParseStop::InvalidAssociatedFacts)
+        }
         SessionError::ContextFactUnavailable(f) => HtmlParseFailureReason::MissingContextFact(f),
         SessionError::ContextReactionUnavailable => {
             HtmlParseFailureReason::UnsupportedContextReactions

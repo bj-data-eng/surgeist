@@ -497,6 +497,7 @@ impl SessionStorage {
         };
         *element = Some(node.index);
         self.bind_clone_metadata(c, node.index, bindings)?;
+        self.initial_associated_state(c, node.index)?;
         if base::is_base(
             self.construction
                 .node_at(source)
@@ -715,6 +716,7 @@ impl SessionStorage {
                     node: None,
                     registry,
                     creation: Some(context::ElementCreationState {
+                        common_scope: original.common_scope,
                         state: original.state,
                         saved_is,
                     }),
@@ -921,6 +923,7 @@ impl SessionStorage {
         position: usize,
     ) -> Result<(), SessionError> {
         self.initial_nonce_attribute(c, node, position)?;
+        self.initial_associated_attribute(c, node, position)?;
         if bindings.details.is_some() {
             self.initial_details_attribute(c, node, position)?;
         }

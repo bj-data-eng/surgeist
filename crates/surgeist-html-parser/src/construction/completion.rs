@@ -34,6 +34,15 @@ impl StandaloneDocumentState {
 impl SessionStorage {
     pub(super) fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
         self.require(c)?;
+        self.completion_slot_during_effects(c)
+    }
+    /// The original nested source-effect owner has already admitted its frame;
+    /// its activity observation must not require that same frame to be idle.
+    pub(super) fn completion_slot_during_effects(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<usize, SessionError> {
+        c.require_identity(&self.control)?;
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::StandaloneDocumentCompletion { node, .. } = payload {

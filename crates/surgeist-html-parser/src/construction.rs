@@ -44,10 +44,12 @@ mod attribute_writer;
 mod construction_owner;
 use crate::bounded::HtmlConstructionAttributeEditMode;
 use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_slot};
+pub(crate) mod associated;
 mod base;
 mod clone;
 mod input_color;
 mod input_image;
+pub(crate) mod style;
 #[cfg(test)]
 use input_image::append_native_input_value;
 mod completion;
@@ -131,6 +133,7 @@ pub(crate) enum SessionError {
     ScriptMetadataUnavailable,
     SvgScriptMetadataUnavailable,
     ImageFormMetadataUnavailable,
+    AssociatedFacts,
     FormAssociationMetadataUnavailable,
     TextareaMetadataUnavailable,
     OutputMetadataUnavailable,
@@ -364,6 +367,22 @@ struct AppendFields {
     textarea: Option<usize>,
 }
 enum RetainedPayload {
+    AssociatedInputs {
+        inputs: Arc<associated::Inputs>,
+        usage: associated::AssociatedStorageUsage,
+    },
+    Style {
+        node: usize,
+        state: style::StyleMetadata,
+    },
+    Hyperlink {
+        node: usize,
+        state: associated::HyperlinkMetadata,
+    },
+    Image {
+        node: usize,
+        state: associated::ImageMetadata,
+    },
     Nonce {
         node: Option<usize>,
         raw: usize,
@@ -723,6 +742,10 @@ impl PayloadStorage {
                 | RetainedPayload::SelectFamily { .. }
                 | RetainedPayload::Details { .. }
                 | RetainedPayload::Link { .. }
+                | RetainedPayload::AssociatedInputs { .. }
+                | RetainedPayload::Hyperlink { .. }
+                | RetainedPayload::Image { .. }
+                | RetainedPayload::Style { .. }
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
                     origins.require_disposal_owner(control)?
@@ -822,6 +845,17 @@ impl PayloadStorage {
             }
         }
         while let Some(payload) = values.pop() {
+            let associated_usage = match &payload {
+                RetainedPayload::AssociatedInputs { usage, .. } => Some(*usage),
+                RetainedPayload::Hyperlink { state, .. } => Some(state.usage),
+                RetainedPayload::Image { state, .. } => Some(state.usage),
+                _ => None,
+            };
+            if let Some(usage) = associated_usage {
+                drop(payload);
+                usage.release(control, owner);
+                continue;
+            }
             if let RetainedPayload::PiAttributes { values, .. } = payload {
                 values
                     .release(control)
@@ -2804,6 +2838,7 @@ impl SessionStorage {
             };
             *element = Some(node.index);
             self.initial_nonce_attributes(control, node.index)?;
+            self.initial_associated_state(control, node.index)?;
             self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
             Ok(node)
         })();
@@ -3893,7 +3928,15 @@ impl SessionStorage {
         }
         let mut next = Some(root);
         while let Some(node) = next {
-            for name in ["option", "optgroup", "selectedcontent", "script", "details"] {
+            for name in [
+                "option",
+                "optgroup",
+                "selectedcontent",
+                "script",
+                "details",
+                "img",
+                "source",
+            ] {
                 if self.html_local(control, node, name)? {
                     local = true;
                     if name == "option" || name == "selectedcontent" {
@@ -4401,6 +4444,17 @@ impl SessionStorage {
                     payload_write::<Option<FormEffects>>(control, 1)?;
                     self.effects.form = Some(effects);
                     if effects.stage != FormEffectStage::IdChange {
+                        self.image_tree_changed(
+                            control,
+                            node,
+                            if effects.stage == FormEffectStage::Removal {
+                                surgeist_html::HtmlImageTreeChange::Removed
+                            } else {
+                                surgeist_html::HtmlImageTreeChange::Inserted
+                            },
+                            effects.root,
+                            effects.old_parent,
+                        )?;
                         self.intrinsic_tree_hook(
                             control,
                             node,
@@ -5932,6 +5986,7 @@ impl ParserArenaSession {
                     prepared,
                 )?
             };
+            storage.mark_document_parser_style(control, node.index)?;
             if let Some(link) = link_slot {
                 payload_write::<Option<usize>>(control, 1)?;
                 let RetainedPayload::Link { node: bound, .. } = &mut storage.payloads.values[link]
@@ -6217,6 +6272,7 @@ impl ParserArenaSession {
         self.qualify_stack_removal(control, node, capability)?;
         let storage = self.active_mut()?;
         let node = storage.index(control, node)?;
+        storage.style_stack_changed(control, node, false)?;
         if storage.html_local(control, node, "option")? {
             storage.update_for_option(control, node)?;
             return storage.drain_construction_effects(control);
@@ -20271,7 +20327,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            32
+            33
         );
         assert_eq!(session.root(&mut c).unwrap_err(), SessionError::Stop(stop));
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -20314,8 +20370,11 @@ mod tests {
     #[test]
     fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // Four completed records retain append-index entries; html/body/img add three creation rows.
-        for cap in [32, 31] {
+        // Prior completed prefix32 plus exactly one retained standalone Image
+        // row =33. Its empty request Vec owns bytes but no auxiliary entries.
+        // Preserve the earlier cap31 record-ticket rejection; cap32 independently
+        // rejects the NEW Image row after physical node installation.
+        for cap in [33, 32, 31] {
             let source = crate::HtmlSource::utf8("<img>");
             let mut c = ParseControl::new(
                 limits()
@@ -20347,10 +20406,51 @@ mod tests {
                 crate::construction::CreationContext::Ordinary,
             );
             assert!(input.is_none());
-            if cap == 32 {
+            if cap == 33 {
                 let image = result.unwrap();
                 assert_form_owner(&session, &mut c, &image, None, false);
-                // Actual name/namespace/attributes + record ticket + metadata + two nonce slots.
+                // Prior name/namespace/attributes + record ticket + form/creation
+                // metadata + two nonce slots, plus one standalone Image row.
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .current,
+                    33
+                );
+                assert_eq!(
+                    session
+                        .active()
+                        .unwrap()
+                        .payloads
+                        .values
+                        .iter()
+                        .filter(|entry| matches!(entry, RetainedPayload::Image { .. }))
+                        .count(),
+                    1
+                );
+            } else if cap == 32 {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::AuxiliaryEntries,
+                        limit: 32,
+                        current: 32,
+                        requested_delta: 1
+                    }))
+                ));
+                let storage = session.active().unwrap();
+                assert_eq!(storage.construction.storage().len(), 4);
+                assert!(
+                    !storage
+                        .payloads
+                        .values
+                        .iter()
+                        .any(|entry| matches!(entry, RetainedPayload::Image { .. }))
+                );
+                assert!(storage.payloads.values.iter().any(|entry| matches!(
+                    entry,
+                    RetainedPayload::FormAssociation { node: None, .. }
+                )));
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)

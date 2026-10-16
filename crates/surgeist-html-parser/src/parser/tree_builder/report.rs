@@ -26,6 +26,16 @@ pub struct ImmutableParseReport {
     usage: ParseUsage,
 }
 impl ImmutableParseReport {
+    /// Authoritative current original-controller construction capacity at this
+    /// completed report's publication. Includes retained selected A/Img graphs
+    /// and owned vector/string payloads; excludes released execution banks.
+    /// Original source backing, this report header and separately lent root or
+    /// inert Document BaseFacts provider graphs remain outside this measure.
+    pub fn retained_construction_bytes(&self) -> u64 {
+        self.usage
+            .resource(crate::HtmlParseResource::ManagedCapacityBytes)
+            .current()
+    }
     /// Refusal retains the same source-owning native seal. Generic native-only
     /// completion cannot supply the actual D1/history proof required here.
     pub(crate) fn take_document(
@@ -40,6 +50,7 @@ impl ImmutableParseReport {
             &mut sealed.parts.arena,
             c,
             sealed.request.base_facts(),
+            sealed.request.is_offline(),
         )?;
         super::write(
             size_of::<Self>()
@@ -51,8 +62,10 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
+        let mut storage = storage.commit();
+        storage.release_execution_inputs(c);
+        sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let storage = storage.commit();
         let sealed = input.take().expect("qualified original document seal");
         // The remaining source binding and execution control are consumed here;
         // no useful work, release/refund or cancellation check follows snapshot.
@@ -72,7 +85,7 @@ impl ImmutableParseReport {
         sealed.parts.prepare_report_request(&sealed.request)?;
         let c = &mut sealed.parts.control;
         crate::construction::read::prepare_public_readers(&sealed.parts.arena, c)?;
-        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None)?;
+        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, false)?;
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedFragmentConstruction>>()

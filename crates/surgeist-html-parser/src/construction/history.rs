@@ -193,6 +193,9 @@ impl FrozenHistory {
     pub(super) fn arena(&self) -> &FrozenArena {
         &self.arena
     }
+    pub(super) fn arena_mut(&mut self) -> &mut FrozenArena {
+        &mut self.arena
+    }
     pub(crate) fn view(&self) -> Result<HistoryView<'_>, SessionError> {
         let storage = self.arena.storage.as_ref().ok_or(SessionError::Consumed)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;

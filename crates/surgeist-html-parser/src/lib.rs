@@ -32,6 +32,7 @@ pub use parser::tree_builder::parse::{
 pub use parser::tree_builder::report::ImmutableParseReport as HtmlParseReport;
 
 pub use construction::SvgScriptOrigin as HtmlParseSvgScriptOrigin;
+pub use construction::associated::HyperlinkUnavailable as HtmlParseHyperlinkUnavailable;
 pub use construction::context::{
     FrozenCapturedRegistry as HtmlParseCapturedRegistry, FrozenFragmentEffect as HtmlParseEffect,
     FrozenFragmentEffects as HtmlParseEffects, FrozenFragmentHost as HtmlParseEffectHost,
@@ -83,6 +84,12 @@ pub use construction::report::{
     MetadataDocument as HtmlParseMetadataDocument, MetadataRef as HtmlParseMetadata,
     MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
 };
+pub use construction::report::{
+    MetadataHyperlink as HtmlParseHyperlink, MetadataHyperlinkState as HtmlParseHyperlinkState,
+    MetadataImage as HtmlParseImage, MetadataImageUpdate as HtmlParseImageUpdate,
+    MetadataStyle as HtmlParseStyle,
+};
+pub use construction::style::StyleAssociation as HtmlParseStyleAssociation;
 pub use construction::{
     FormAssociationEvidence as HtmlParseFormEvidence,
     OutputDefaultValueOverride as HtmlParseOutputOverride,

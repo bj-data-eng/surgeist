@@ -54,6 +54,7 @@ impl RegistryRef {
 /// current attributes and registry reassignment cannot rewrite it.
 #[derive(Clone, Copy)]
 pub(super) struct ElementCreationState {
+    pub(super) common_scope: surgeist_html::HtmlCommonScope,
     pub(super) state: crate::HtmlCustomElementState,
     pub(super) saved_is: Option<usize>,
 }
@@ -371,6 +372,7 @@ impl ParserArenaSession {
                 node: Some(root.index),
                 registry,
                 creation: Some(ElementCreationState {
+                    common_scope: surgeist_html::HtmlCommonScope::Html,
                     state: crate::HtmlCustomElementState::Uncustomized,
                     saved_is: None,
                 }),
@@ -815,7 +817,15 @@ impl SessionStorage {
         self.payloads.values.push(RetainedPayload::LookupRegistry {
             node: None,
             registry,
-            creation: Some(ElementCreationState { state, saved_is }),
+            creation: Some(ElementCreationState {
+                common_scope: if html {
+                    surgeist_html::HtmlCommonScope::Html
+                } else {
+                    surgeist_html::HtmlCommonScope::Element
+                },
+                state,
+                saved_is,
+            }),
         });
         prepared
             .as_mut()

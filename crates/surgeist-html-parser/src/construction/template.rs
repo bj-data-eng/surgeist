@@ -451,6 +451,7 @@ impl SessionStorage {
                 *state = DocumentState::Ordinary {
                     inert: Some(node.index),
                 };
+                self.bind_template_base(c, node.index)?;
                 Ok(DocumentRef::Owned(node.index))
             }
         }

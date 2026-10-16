@@ -70,6 +70,7 @@ pub enum ParseStop {
     },
     InternalInvariant(Invariant),
     UnsupportedStandaloneState(StandaloneUnsupported),
+    InvalidAssociatedFacts,
     /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
     ColorProcessing(HtmlColorProcessingError),
     BaseFacts(crate::HtmlBaseMissing),
@@ -315,6 +316,10 @@ impl ParseControl {
             Ok(reason) => self.latch_stop(ParseStop::ColorProcessing(reason)),
             Err(reason) => self.latch_stop(ParseStop::InternalInvariant(reason)),
         }
+    }
+    pub(crate) fn invalid_associated_facts<T>(&mut self) -> Result<T, ParseStop> {
+        self.checkpoint()?;
+        self.fail(ParseStop::InvalidAssociatedFacts)
     }
     pub(crate) fn stop_base_facts(&mut self, reason: crate::HtmlBaseMissing) -> ParseStop {
         if let Err(first) = self.checkpoint() {
@@ -570,6 +575,60 @@ impl ParseControl {
             }
         }
         Ok(())
+    }
+    /// Admits an immutable provider graph retained by this original owner.
+    /// Provider-computed bytes include its backing capacities, rather than a
+    /// second inferred layout. Logical extents and capacity commit atomically.
+    pub(crate) fn acquire_retained_provider(
+        &mut self,
+        bytes: u64,
+        units: u64,
+        entries: u64,
+    ) -> Result<(), ParseStop> {
+        let values = self.plan_storage(&[
+            (HtmlParseResource::ManagedUtf16Units, units),
+            (HtmlParseResource::AuxiliaryEntries, entries),
+        ])?;
+        let Some(total) = self
+            .usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current
+            .checked_add(bytes)
+        else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
+        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
+        for resource in RESOURCES {
+            if resource.storage() {
+                self.set(resource, values[resource as usize]);
+            }
+        }
+        self.set(HtmlParseResource::ManagedCapacityBytes, total);
+        self.set(HtmlParseResource::PeakTransientBytes, total);
+        self.usage.actual_capacity_bytes = total;
+        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
+        Ok(())
+    }
+    /// Ownership disposal after the retained provider handle has been dropped.
+    /// This does not execute source work or observe a later cancellation.
+    pub(crate) fn release_retained_provider(
+        &mut self,
+        owner: &ControlIdentity,
+        bytes: u64,
+        units: u64,
+        entries: u64,
+    ) {
+        assert!(
+            Arc::ptr_eq(&owner.0, &self.identity),
+            "original provider owner"
+        );
+        self.commit_prepared_release(&[
+            (HtmlParseResource::ManagedCapacityBytes, bytes),
+            (HtmlParseResource::PeakTransientBytes, bytes),
+            (HtmlParseResource::ManagedUtf16Units, units),
+            (HtmlParseResource::AuxiliaryEntries, entries),
+        ]);
     }
     /// Nonmutating logical preflight before actual storage reservations. The
     /// session rechecks with `acquire_many` immediately before graph mutation;
@@ -1045,6 +1104,25 @@ impl ParseControl {
         };
         self.set(resource, value);
         Ok(())
+    }
+    /// Fixed original-owner disposal of exactly admitted resources. Selected
+    /// replacement and cleanup retain the private ownership receipt; final
+    /// report publication additionally preflights release before its last poll.
+    /// This cannot execute source work or observe a later cancellation.
+    pub(crate) fn commit_prepared_release(&mut self, requests: &[(HtmlParseResource, u64)]) {
+        for &(resource, units) in requests {
+            let current = self.usage.resource(resource).current;
+            self.set(
+                resource,
+                current
+                    .checked_sub(units)
+                    .expect("preflighted final report release"),
+            );
+        }
+        self.usage.actual_capacity_bytes = self
+            .usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current;
     }
     /// Releases actually deallocated non-node logical slots after first-stop.
     /// No successful engine transition may use this cleanup-only path.

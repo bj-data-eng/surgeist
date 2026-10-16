@@ -200,6 +200,18 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             c,
         )?);
         driver.prologue = Some(prologue::DocumentPrologue::new(driver.source, c)?);
+        if let Some(inputs) = request.associated_inputs() {
+            driver
+                .prologue
+                .as_mut()
+                .expect("initialized prologue")
+                .kernel
+                .as_mut()
+                .expect("initialized kernel")
+                .session
+                .install_associated_inputs(c, inputs)
+                .map_err(|error| StandaloneError::Head(error.into()))?;
+        }
         if let Some(facts) = request.base_facts() {
             driver
                 .prologue

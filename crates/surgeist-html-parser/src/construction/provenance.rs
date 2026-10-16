@@ -2124,6 +2124,16 @@ impl SessionStorage {
     }
 }
 impl ParseEvidence {
+    /// Constant observation after original-control qualification at report prep.
+    pub(super) fn retained_cause<'a>(
+        &'a self,
+        reference: &ConstructionCauseRef,
+    ) -> Option<&'a ConstructionCause> {
+        if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity) {
+            return None;
+        }
+        self.native.causes.as_slice().get(reference.index)
+    }
     pub(super) fn current_cause(
         &self,
         c: &mut ParseControl,

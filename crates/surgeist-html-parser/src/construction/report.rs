@@ -6,21 +6,28 @@ use history::{FrozenHistory, PreparedHistory};
 
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
+    ordinary_common: bool,
+    associated_slot: Option<usize>,
 }
 pub(crate) struct PreparedReportStorage<'a> {
     history: PreparedHistory<'a>,
+    ordinary_common: bool,
+    associated_slot: Option<usize>,
 }
 impl<'a> PreparedReportStorage<'a> {
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
         base_facts: Option<&crate::HtmlParseBaseFacts>,
+        ordinary_common: bool,
     ) -> Result<Self, SessionError> {
         let frozen = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = arena(storage);
-        for payload in &storage.payloads.values {
+        let mut associated_slot = None;
+        let mut associated_usage = associated::AssociatedStorageUsage::default();
+        for (payload_index, payload) in storage.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
@@ -31,10 +38,130 @@ impl<'a> PreparedReportStorage<'a> {
                 checked_node(arena, node, c)?;
             }
             match payload {
+                RetainedPayload::AssociatedInputs { inputs, usage } => {
+                    if associated_slot.replace(payload_index).is_some() {
+                        return Err(SessionError::AssociatedFacts);
+                    }
+                    // Prepay final row/request Arc drops and every actual bank
+                    // handle destruction before the publication checkpoint.
+                    // Unused Vec capacity needs no per-element destruction.
+                    payload_write::<RetainedPayload>(c, 1)?;
+                    c.charge(WorkCategory::ProviderCall, 2)?;
+                    for _ in &inputs.hyperlinks {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(WorkCategory::ProviderCall, 1)?;
+                    }
+                    if inputs.template.is_some() {
+                        c.charge(WorkCategory::ProviderCall, 1)?;
+                    }
+                    for (resource, amount) in usage.resources() {
+                        if c.usage().resource(resource).current < amount {
+                            return Err(SessionError::AssociatedFacts);
+                        }
+                    }
+                }
+                RetainedPayload::Hyperlink { node, state } => {
+                    checked_document(storage, &state.document, c)?;
+                    if !matches!(
+                        arena.node_at(*node).map(|n| n.kind()),
+                        Some(HtmlNodeKind::Element(_))
+                    ) {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(raw) = state.raw {
+                        checked_raw(storage, raw, c)?;
+                    }
+                    if let Some(cause) = &state.cause {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if storage
+                            .evidence
+                            .as_ref()
+                            .and_then(|e| e.retained_cause(cause))
+                            .is_none()
+                        {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                    associated_usage.checked_sum(state.diagnostic_usage(), c)?;
+                }
+                RetainedPayload::Style { node, state } => {
+                    let HtmlNodeKind::Element(element) =
+                        arena.node_at(*node).ok_or(SessionError::WrongToken)?.kind()
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    if !exact_ascii(
+                        c,
+                        element.name().namespace().uri(),
+                        "http://www.w3.org/1999/xhtml",
+                    )? || !exact_ascii(c, Some(element.name().local_name()), "style")?
+                    {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if let Some(document) = &state.parser_document {
+                        checked_document(storage, document, c)?;
+                    }
+                    if state.state.created_by_document_parser() != state.parser_document.is_some()
+                        || state.state.on_parser_stack()
+                    {
+                        return Err(SessionError::AssociatedFacts);
+                    }
+                    if let Some(cause) = &state.cause {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if storage
+                            .evidence
+                            .as_ref()
+                            .and_then(|e| e.retained_cause(cause))
+                            .is_none()
+                        {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                }
+                RetainedPayload::Image { node, state } => {
+                    checked_node(arena, state.dimension_source, c)?;
+                    if *node != state.dimension_source || state.latest == 0 {
+                        return Err(SessionError::AssociatedFacts);
+                    }
+                    if let Some(cause) = &state.cause {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if storage
+                            .evidence
+                            .as_ref()
+                            .and_then(|e| e.retained_cause(cause))
+                            .is_none()
+                        {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
+                    associated_usage.checked_sum(state.usage, c)?;
+                }
                 RetainedPayload::BaseDocument { node, facts, first } => {
                     checked_document(storage, &DocumentRef::Owned(*node), c)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
-                    if base_facts.is_none_or(|original| !facts.same_owner(original)) {
+                    let mut inert = false;
+                    for p in &storage.payloads.values {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if let RetainedPayload::AssociatedInputs { inputs, .. } = p
+                            && inputs
+                                .template
+                                .as_ref()
+                                .is_some_and(|original| facts.same_owner(original))
+                        {
+                            for candidate in &storage.payloads.values {
+                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                if matches!(candidate, RetainedPayload::Document { node: Some(bound), state: template::DocumentState::InertTemplate, .. } if bound == node)
+                                {
+                                    inert = true;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    if (*node != 0 || base_facts.is_none_or(|original| !facts.same_owner(original)))
+                        && !inert
+                    {
                         return Err(SessionError::WrongToken);
                     }
                     if let Some(first) = first {
@@ -145,9 +272,70 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                 }
                 RetainedPayload::LookupRegistry {
+                    node,
+                    registry,
                     creation: Some(state),
-                    ..
                 } => {
+                    if ordinary_common {
+                        if storage.fragment.is_some()
+                            || !matches!(registry, context::RegistryRef::Null)
+                        {
+                            return Err(SessionError::ContextUnavailable);
+                        }
+                        let HtmlNodeKind::Element(element) = arena
+                            .node_at(node.ok_or(SessionError::WrongToken)?)
+                            .ok_or(SessionError::WrongToken)?
+                            .kind()
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        let class = surgeist_html::bounded::element_classification_with(
+                            element.name(),
+                            |step| match step {
+                                surgeist_html::bounded::HtmlElementNameRead::NamespaceHeader
+                                | surgeist_html::bounded::HtmlElementNameRead::LocalNameHeader => {
+                                    c.charge(WorkCategory::RecordVisit, 1)
+                                }
+                                surgeist_html::bounded::HtmlElementNameRead::NamespacePair
+                                | surgeist_html::bounded::HtmlElementNameRead::LocalNamePair => {
+                                    c.charge(WorkCategory::InspectByte, 3)
+                                }
+                            },
+                        )?;
+                        if class.common_scope() != state.common_scope {
+                            return Err(SessionError::WrongToken);
+                        }
+                        let subject = node.ok_or(SessionError::WrongToken)?;
+                        let family = match class {
+                            surgeist_html::HtmlElementClass::KnownHtml(
+                                surgeist_html::KnownHtmlElement::A
+                                | surgeist_html::KnownHtmlElement::Area,
+                            ) => 1,
+                            surgeist_html::HtmlElementClass::FormAssociated(
+                                surgeist_html::HtmlNativeFormAssociationKind::Image,
+                            ) => 2,
+                            surgeist_html::HtmlElementClass::KnownHtml(
+                                surgeist_html::KnownHtmlElement::Style,
+                            ) => 3,
+                            _ => 0,
+                        };
+                        if family != 0 {
+                            let mut count = 0usize;
+                            for candidate in &storage.payloads.values {
+                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                if matches!((family, candidate),
+                                    (1, RetainedPayload::Hyperlink { node, .. })
+                                    | (2, RetainedPayload::Image {node, ..})
+                                    | (3, RetainedPayload::Style {node, ..}) if *node == subject)
+                                {
+                                    count += 1;
+                                }
+                            }
+                            if count != 1 {
+                                return Err(SessionError::AssociatedFacts);
+                            }
+                        }
+                    }
                     if let Some(saved) = state.saved_is {
                         checked_raw(storage, saved, c)?;
                     }
@@ -202,11 +390,15 @@ impl<'a> PreparedReportStorage<'a> {
         payload_write::<ReportStorage>(c, 1)?;
         Ok(Self {
             history: PreparedHistory::prepare(input, c)?,
+            ordinary_common,
+            associated_slot,
         })
     }
     pub(crate) fn commit(self) -> ReportStorage {
         ReportStorage {
             history: self.history.commit(),
+            ordinary_common: self.ordinary_common,
+            associated_slot: self.associated_slot,
         }
     }
 }
@@ -296,7 +488,10 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         RetainedPayload::Details { .. } => None,
         RetainedPayload::Shadow { root, .. } => *root,
         RetainedPayload::StandaloneDocumentCompletion { node, .. }
-        | RetainedPayload::BaseDocument { node, .. } => Some(*node),
+        | RetainedPayload::BaseDocument { node, .. }
+        | RetainedPayload::Hyperlink { node, .. }
+        | RetainedPayload::Image { node, .. }
+        | RetainedPayload::Style { node, .. } => Some(*node),
         RetainedPayload::Base { node, .. }
         | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::LookupRegistry { node, .. }
@@ -317,6 +512,24 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
     }
 }
 impl ReportStorage {
+    pub(crate) fn release_execution_inputs(&mut self, c: &mut ParseControl) {
+        if let Some(slot) = self.associated_slot.take() {
+            let storage = self
+                .history
+                .arena_mut()
+                .storage
+                .as_mut()
+                .expect("qualified report");
+            let payload =
+                mem::replace(&mut storage.payloads.values[slot], RetainedPayload::Retired);
+            let RetainedPayload::AssociatedInputs { usage, .. } = &payload else {
+                unreachable!("qualified execution bank");
+            };
+            let resources = usage.resources();
+            drop(payload);
+            c.commit_prepared_release(&resources);
+        }
+    }
     pub(crate) fn history(&self) -> &FrozenHistory {
         &self.history
     }
@@ -334,6 +547,8 @@ impl ReportStorage {
             .as_ref()
             .expect("qualified report storage");
         MetadataCursor {
+            history: &self.history,
+            ordinary_common: self.ordinary_common,
             storage,
             arena: arena(storage),
             next: 0,
@@ -341,6 +556,8 @@ impl ReportStorage {
     }
 }
 pub struct MetadataCursor<'a> {
+    ordinary_common: bool,
+    history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     next: usize,
@@ -359,6 +576,8 @@ impl<'a> MetadataCursor<'a> {
         self.next += 1;
         if metadata_node(payload).is_some() {
             MetadataStep::Record(MetadataRef {
+                history: self.history,
+                ordinary_common: self.ordinary_common,
                 storage: self.storage,
                 arena: self.arena,
                 payload,
@@ -371,6 +590,8 @@ impl<'a> MetadataCursor<'a> {
 /// Issued only by the qualified report's fixed slot observation. No caller can
 /// supply a raw payload index or mix this lender with another result's arena.
 pub struct MetadataRef<'a> {
+    ordinary_common: bool,
+    history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     payload: &'a RetainedPayload,
@@ -405,7 +626,193 @@ impl<'a> MetadataBase<'a> {
         self.responded
     }
 }
+pub enum MetadataHyperlinkState<'a> {
+    AbsentHref,
+    Observed(&'a surgeist_html_semantics::HtmlHyperlinkUrlSnapshot),
+    Unavailable(&'a associated::HyperlinkUnavailable),
+}
+pub struct MetadataHyperlink<'a> {
+    document: MetadataDocument<'a>,
+    state: MetadataHyperlinkState<'a>,
+    cause: Option<read::HtmlParseCause<'a>>,
+    raw: Option<&'a DocumentString>,
+}
+impl<'a> MetadataHyperlink<'a> {
+    pub fn document(&self) -> &MetadataDocument<'a> {
+        &self.document
+    }
+    pub fn state(&self) -> &MetadataHyperlinkState<'a> {
+        &self.state
+    }
+    pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
+        self.cause.as_ref()
+    }
+    pub fn raw(&self) -> Option<&'a DocumentString> {
+        self.raw
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MetadataImageUpdate {
+    Waiting {
+        generation: u64,
+        flags: surgeist_html::HtmlImageUpdateFlags,
+    },
+    UnavailableActivity {
+        latest_started: u64,
+    },
+}
+pub struct MetadataImage<'a> {
+    history: &'a FrozenHistory,
+    storage: &'a FrozenStorage,
+    arena: &'a HtmlConstructionResult,
+    node: usize,
+    state: &'a associated::ImageMetadata,
+}
+impl<'a> MetadataImage<'a> {
+    pub fn state(&self) -> &'a surgeist_html::HtmlImgFreshState {
+        &self.state.fresh
+    }
+    pub fn dimension_attribute_source(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(self.state.dimension_source)
+            .expect("qualified Img source")
+            .as_node()
+    }
+    pub fn latest_started(&self) -> u64 {
+        self.state.latest
+    }
+    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+        self.state.cause.as_ref().map(|cause| {
+            read::HtmlParseCause::qualified(
+                self.history,
+                self.storage
+                    .evidence
+                    .as_ref()
+                    .and_then(|e| e.retained_cause(cause))
+                    .expect("qualified Img cause"),
+            )
+        })
+    }
+
+    pub fn update(&self) -> MetadataImageUpdate {
+        match self.state.waiting {
+            Some(flags) => MetadataImageUpdate::Waiting {
+                generation: self.state.latest,
+                flags,
+            },
+            None => MetadataImageUpdate::UnavailableActivity {
+                latest_started: self.state.latest,
+            },
+        }
+    }
+    pub fn subject(&self) -> HtmlNode<'a> {
+        self.arena
+            .node_at(self.node)
+            .expect("qualified Img")
+            .as_node()
+    }
+}
+pub struct MetadataStyle<'a> {
+    state: surgeist_html::HtmlStyleState,
+    parser_document: Option<MetadataDocument<'a>>,
+    cause: Option<read::HtmlParseCause<'a>>,
+}
+impl<'a> MetadataStyle<'a> {
+    pub fn state(&self) -> surgeist_html::HtmlStyleState {
+        self.state
+    }
+    pub fn creating_parser_document(&self) -> Option<&MetadataDocument<'a>> {
+        self.parser_document.as_ref()
+    }
+    pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
+        self.cause.as_ref()
+    }
+    pub fn association(&self) -> style::StyleAssociation {
+        style::StyleAssociation::Pending
+    }
+}
 impl<'a> MetadataRef<'a> {
+    /// Exact creation subject in a completed ordinary offline, no-execution or
+    /// interaction profile. The source scope is retained at actual creation;
+    /// report preparation validates it through HTML's one bounded classifier.
+    /// This is current closed-state qualification, not native-fresh evidence.
+    pub fn common_state(&self) -> Option<surgeist_html::HtmlCommonState> {
+        if !self.ordinary_common {
+            return None;
+        }
+        let RetainedPayload::LookupRegistry {
+            creation: Some(state),
+            ..
+        } = self.payload
+        else {
+            return None;
+        };
+        Some(surgeist_html::HtmlCommonState::closed(state.common_scope))
+    }
+
+    pub fn style(&self) -> Option<MetadataStyle<'a>> {
+        let RetainedPayload::Style { state, .. } = self.payload else {
+            return None;
+        };
+        Some(MetadataStyle {
+            state: state.state,
+            parser_document: state
+                .parser_document
+                .as_ref()
+                .map(|document| self.document_ref(document)),
+            cause: state.cause.as_ref().map(|cause| {
+                read::HtmlParseCause::qualified(
+                    self.history,
+                    self.storage
+                        .evidence
+                        .as_ref()
+                        .and_then(|e| e.retained_cause(cause))
+                        .expect("qualified Style cause"),
+                )
+            }),
+        })
+    }
+    pub fn hyperlink(&self) -> Option<MetadataHyperlink<'a>> {
+        let RetainedPayload::Hyperlink { state, .. } = self.payload else {
+            return None;
+        };
+        Some(MetadataHyperlink {
+            document: self.document_ref(&state.document),
+            cause: state.cause.as_ref().map(|cause| {
+                read::HtmlParseCause::qualified(
+                    self.history,
+                    self.storage
+                        .evidence
+                        .as_ref()
+                        .and_then(|e| e.retained_cause(cause))
+                        .expect("qualified URL cause"),
+                )
+            }),
+            raw: state.raw.map(|i| self.raw(i)),
+            state: match &state.value {
+                associated::HyperlinkValue::Absent => MetadataHyperlinkState::AbsentHref,
+                associated::HyperlinkValue::Observed(value) => {
+                    MetadataHyperlinkState::Observed(value)
+                }
+                associated::HyperlinkValue::Unavailable(error) => {
+                    MetadataHyperlinkState::Unavailable(error)
+                }
+            },
+        })
+    }
+    pub fn image(&self) -> Option<MetadataImage<'a>> {
+        let RetainedPayload::Image { node, state } = self.payload else {
+            return None;
+        };
+        Some(MetadataImage {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+            node: *node,
+            state,
+        })
+    }
+
     /// Wrong metadata row is None; a real base with no frozen slot is Some(None).
     pub fn base_frozen(&self) -> Option<Option<MetadataBase<'a>>> {
         match self.payload {
