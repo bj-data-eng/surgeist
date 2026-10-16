@@ -56,6 +56,12 @@ impl CssParserContext {
             glyph: GlyphDefinition::WritingModes,
         }
     }
+    /// Selects the document mode while preserving all other grammar choices.
+    #[must_use]
+    pub const fn with_mode(mut self, mode: CssParserMode) -> Self {
+        self.mode = mode;
+        self
+    }
     /// Selects the independent frozen SVG authored definition in property-name lookup.
     /// Explicit finite grammar handles retain their finite meaning. This is idempotent.
     #[must_use]

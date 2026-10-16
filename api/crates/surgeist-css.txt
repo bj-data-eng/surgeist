@@ -11478,6 +11478,7 @@ pub fn surgeist_css::CssParserContext::parse_supports_condition(self, source: &s
 pub fn surgeist_css::CssParserContext::parse_supports_condition_with_limits(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_components(self, values: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_value(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub const fn surgeist_css::CssParserContext::with_mode(self, mode: surgeist_css::CssParserMode) -> Self
 pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical(self) -> Self
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_keyframe_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
