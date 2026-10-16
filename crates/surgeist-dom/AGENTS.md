@@ -194,6 +194,16 @@ and owned contents in the source-qualified map. Admit iterative traversal, rows,
 final identities and bindings before the single existing publication; no fallible
 output work follows success. Canonical tree and adapter quotas remain distinct.
 
+Completed contextual SVG Script installation joins the original sealed fragment
+producer with the current canonical closed destination, separately from Native
+creation. Preserve actual processed bits and Parser/Clone cause; neither final
+attributes, Disabled scripting nor absent browsing context alone supplies that
+proof. Keep captured target, auxiliary parser and inert-owner Documents distinct.
+Do not replay parser-end processing on detached transfer. Later canonical
+connection, clone and adoption retain their actual source rules, identities and
+historical snapshots. Reject unsupported current environments atomically rather
+than fabricating resource, execution or notification completion.
+
 ShadowRoot uses the same NodeId/State/Draft/ticket owner as ordinary nodes.
 Keep reciprocal host/root links separate from ordinary parents; roots remain
 parentless DocumentFragment subtypes. Native attach consumes actual HTML shadow

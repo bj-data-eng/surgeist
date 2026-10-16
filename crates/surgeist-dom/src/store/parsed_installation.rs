@@ -145,11 +145,13 @@ struct Row<'a> {
     source: HtmlNode<'a>,
     key: Option<Key>,
 }
-/// Qualification of the actual sealed ordinary offline construction producer.
+/// Qualification of the actual sealed completed construction producer.
 /// It is not derivable from a node's origin, browsing-context or scripting flag.
-/// Only `collect` mints it after checking the complete report domain.
+/// Ordinary offline collection or completed Disabled/Null fragment admission
+/// establishes the producer domain; destination Documents are independently
+/// qualified before any retained SVG state is constructed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ParsedOfflineSvgQualification {
+pub(crate) struct ParsedSvgQualification {
     _sealed: (),
 }
 struct PreparedInstallation {
@@ -192,7 +194,7 @@ struct Source<'a> {
     captured_bindings: Vec<DomParsedHtmlCapturedBinding>,
     bootstrap: [Option<HtmlNodeId>; 2],
     shadow: Vec<ParsedShadow>,
-    pub(super) svg_qualification: Option<ParsedOfflineSvgQualification>,
+    pub(super) svg_qualification: Option<ParsedSvgQualification>,
 }
 struct ParsedShadow {
     subject: HtmlNodeId,
@@ -451,7 +453,7 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         arena: Arena::Document(document),
         rows: Vec::new(),
         metadata: Vec::new(),
-        svg_qualification: Some(ParsedOfflineSvgQualification { _sealed: () }),
+        svg_qualification: Some(ParsedSvgQualification { _sealed: () }),
         capture: None,
         captured_bindings: Vec::new(),
         bootstrap: [None, None],
@@ -763,6 +765,17 @@ fn apply_fragment_effects(
     Ok(())
 }
 
+fn qualify_svg_destination(metadata: &DomDocumentMetadata) -> Result<(), Error> {
+    let environment = metadata.document_environment();
+    if metadata.custom_element_registry() != crate::DomRegistryBinding::Null
+        || environment.browsing_context() != surgeist_html::HtmlBrowsingContextPresence::Absent
+        || environment.has_ever_had_navigable()
+    {
+        return Err(Error::CurrentPolicyUnavailable);
+    }
+    Ok(())
+}
+
 impl Dom {
     /// Transfers a completed ordinary offline report to a new canonical
     /// Document. It materializes retained state directly; no fresh-native
@@ -862,6 +875,12 @@ impl Dom {
         };
         if capture.is_some() {
             self.qualify_contextual_policy(&source, &mut c)?;
+            // collect_fragment qualified the original completed descriptor,
+            // exact capture and sealed Disabled/Null construction domain.
+            // Its controller has no acquisition, execution or notification
+            // recipients. Current captured policy is a separate canonical join;
+            // new auxiliary/inert Documents are checked below before use.
+            source.svg_qualification = Some(ParsedSvgQualification { _sealed: () });
         }
         let root_id = source.arena.root().id();
         let mut draft = Draft::new(self, Arc::new(BatchIdentity), cancelled)?;
@@ -918,6 +937,9 @@ impl Dom {
                 )
             };
             state::transfer_document_meta(&source, node, &mut metadata, &mut c)?;
+            if capture.is_some() {
+                qualify_svg_destination(&metadata)?;
+            }
             let own = Key::Created(draft.created.len());
             let key =
                 draft.allocate(DomNodeKind::Document(metadata), own, self.limits, cancelled)?;
@@ -1044,14 +1066,13 @@ impl Dom {
         for binding in &source.captured_bindings {
             c.step(1)?;
             let node = self.state.node(self.owner, binding.node)?;
-            if let DomNodeKind::Document(metadata) = &node.kind
-                && (metadata.meta_state().is_none()
+            if let DomNodeKind::Document(metadata) = &node.kind {
+                qualify_svg_destination(metadata)?;
+                if metadata.meta_state().is_none()
                     || metadata.policy_container().referrer_policy().is_none()
-                    || metadata.custom_element_registry() != crate::DomRegistryBinding::Null
-                    || metadata.document_environment().browsing_context()
-                        != surgeist_html::HtmlBrowsingContextPresence::Absent)
-            {
-                return Err(Error::CurrentPolicyUnavailable);
+                {
+                    return Err(Error::CurrentPolicyUnavailable);
+                }
             }
         }
         Ok(())

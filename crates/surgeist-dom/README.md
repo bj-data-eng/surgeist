@@ -1295,7 +1295,15 @@ the ordered construction effects. Missing or changed required facts receive
 `CurrentPolicyUnavailable`. Auxiliary parser and inert-owner history keep their
 original roles. An optional unused whole captured Base bank remains fully charged
 historical request data; it does not override the current canonical bindings.
-Contextual SVG processing and the remaining report profiles stay under
+Completed contextual SVG Script transfer uses the original closed fragment
+producer and independently checked current canonical Document environments.
+It preserves the actual processed bit and Parser/Clone cause, including false
+state in detached fragment or Template contents. Installation does not replay
+processing; later explicit canonical insertion uses the actual connection rule.
+Captured target, auxiliary parser and inert-template Documents keep their
+distinct identities and historical bindings. This grants no acquisition,
+execution or load/error notification capability. Other report profiles and
+missing family state remain under
 [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
 
 Remaining native special families also remain

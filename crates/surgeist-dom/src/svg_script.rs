@@ -1,8 +1,8 @@
-//! Native SVG Tiny processing state, separate from HTML preparation.
+//! Retained SVG Tiny processing state, separate from HTML preparation.
 use crate::{DomNode, NodeId};
 use surgeist_html::SvgScriptFlags;
 
-/// Actual native creation cause; neither variant claims parser provenance.
+/// Actual SVG Script creation cause, preserving parser and clone provenance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSvgScriptOrigin {
     Native,
@@ -20,7 +20,7 @@ pub(crate) struct SvgScriptState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProcessingQualification {
     Native(crate::document::ClosedSvgScriptProcessing),
-    ParsedOffline(crate::store::parsed_installation::ParsedOfflineSvgQualification),
+    Parsed(crate::store::parsed_installation::ParsedSvgQualification),
 }
 impl SvgScriptState {
     pub(crate) const fn fresh() -> Self {
@@ -35,12 +35,12 @@ impl SvgScriptState {
     pub(crate) fn from_parsed(
         flags: SvgScriptFlags,
         origin: DomSvgScriptOrigin,
-        qualification: &crate::store::parsed_installation::ParsedOfflineSvgQualification,
+        qualification: &crate::store::parsed_installation::ParsedSvgQualification,
     ) -> Self {
         Self {
             flags,
             origin,
-            qualification: ProcessingQualification::ParsedOffline(*qualification),
+            qualification: ProcessingQualification::Parsed(*qualification),
         }
     }
     pub(crate) fn mark_processed_in(
@@ -56,9 +56,10 @@ impl SvgScriptState {
         }
         match self.qualification {
             ProcessingQualification::Native(proof) => proof.mark_processed(&mut self.flags),
-            ProcessingQualification::ParsedOffline(_proof) => {
-                // The completed immutable controller's actual ordinary/offline
-                // qualification is retained, distinct from the Native witness.
+            ProcessingQualification::Parsed(_proof) => {
+                // The original completed ordinary or contextual controller's
+                // closed qualification is retained, distinct from Native.
+                // Installation did not replay this processing transition.
                 self.flags.mark_processed();
             }
         }
