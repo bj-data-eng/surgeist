@@ -651,6 +651,14 @@ impl HtmlControlledOptionValueCapture {
     pub fn usage(&self) -> HtmlControlledOptionValueUsage {
         self.control.usage()
     }
+    /// Borrows the actual successful retained report without repeating the query.
+    /// This permits the caller to join usage before admitting its output copy.
+    pub fn report(&self) -> Option<&HtmlSemanticReport> {
+        match &self.phase {
+            Phase::Finished { report, .. } => report.as_ref(),
+            Phase::Building(_) | Phase::Moving => None,
+        }
+    }
     pub fn capture_usage(&self) -> HtmlCaptureUsage {
         match &self.phase {
             Phase::Building(builder) => builder.usage(),

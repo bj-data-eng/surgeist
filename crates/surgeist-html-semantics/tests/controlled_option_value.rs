@@ -506,3 +506,98 @@ fn query_entry_stop_live_limit_is_terminal_for_a_finished_owner() {
 fn query_entry_stop_cancellation_is_terminal_for_a_finished_owner() {
     query_entry_stop_is_terminal(true);
 }
+
+fn report_lender_fixture() -> (HtmlControlledOptionValueCapture, HtmlCaptureBuilderSubject) {
+    let cancel = AtomicBool::new(false);
+    let mut owner = HtmlControlledOptionValueCapture::new(
+        limits(),
+        HtmlHostFactsRevision::fresh(),
+        envelope(),
+        &cancel,
+    )
+    .unwrap();
+    let doc = owner
+        .add_document(HtmlDocumentMode::NoQuirks, envelope(), &cancel)
+        .unwrap();
+    let option = owner
+        .add_element(
+            &doc,
+            &QualifiedName::new(Namespace::html(), None, "option"),
+            &OrderedAttributes::new([]).unwrap(),
+            None,
+            envelope(),
+            &cancel,
+        )
+        .unwrap();
+    owner
+        .establish_children(&option, &[], envelope(), &cancel)
+        .unwrap();
+    (owner, option)
+}
+
+#[test]
+fn report_lender_is_absent_until_success_and_after_terminal_entry_refusal() {
+    let cancel = AtomicBool::new(false);
+    let (mut owner, option) = report_lender_fixture();
+    let building = owner.usage();
+    assert!(owner.report().is_none());
+    assert_eq!(owner.usage(), building);
+    owner.finish(envelope(), &cancel).unwrap();
+    let finished = owner.usage();
+    assert!(owner.report().is_none());
+    assert_eq!(owner.usage(), finished);
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(matches!(
+        owner
+            .query_option_value(
+                &option,
+                HtmlValueInterpreter::new(100_000),
+                semantic_limits(),
+                envelope(),
+                &cancel,
+            )
+            .unwrap_err()
+            .kind(),
+        HtmlControlledOptionValueError::Control(HtmlOptionValueControlError::Cancelled)
+    ));
+    let failed = owner.usage();
+    for _ in 0..3 {
+        assert!(owner.report().is_none());
+        assert_eq!(owner.usage(), failed);
+    }
+}
+
+#[test]
+fn report_lender_borrows_the_same_retained_report_after_usage_join() {
+    let cancel = AtomicBool::new(false);
+    let (mut owner, option) = report_lender_fixture();
+    owner.finish(envelope(), &cancel).unwrap();
+    let original = std::ptr::from_ref(
+        owner
+            .query_option_value(
+                &option,
+                HtmlValueInterpreter::new(100_000),
+                semantic_limits(),
+                envelope(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    // The mutable query loan ends here. A consumer can now join actual current
+    // storage/work before borrowing this same completed output for retention.
+    let usage = owner.usage();
+    let storage = owner.storage_usage();
+    for _ in 0..3 {
+        let report = owner.report().expect("actual successful retained report");
+        assert_eq!(std::ptr::from_ref(report), original);
+        let HtmlSemanticFact::OptionValue(HtmlSemanticValue::Known(readback)) =
+            report.results()[0].fact()
+        else {
+            panic!("the original empty Option.value report")
+        };
+        assert!(readback.value().is_empty());
+        assert_eq!(readback.origin(), HtmlOptionReadbackOrigin::DescendantText);
+        assert_eq!(owner.usage(), usage);
+        assert_eq!(owner.storage_usage(), storage);
+    }
+}
