@@ -36,7 +36,8 @@ state and independent creation-time `is` value through the public metadata
 cursor. Formatting reconstruction and cloning preserve their actual creation
 causes; later HTML/body attribute merges do not rewrite that saved value.
 
-Ordinary offline reports also lend subject-qualified closed common state; nonce
+Ordinary offline and completed inert/disabled contextual reports lend
+subject-qualified closed common state for actual Null lookup registries; nonce
 is retained independently. A/Area records preserve the actual source-time URL
 snapshot and historical parse Document. Absent href, observed URL parse failure
 and unavailable context are separate states. Immutable request observation banks
@@ -72,6 +73,20 @@ operations while preserving earlier cached observations. `base_state()` separate
 unfrozen, frozen and unavailable current state, retaining a genuine previous
 frozen value as history. An installer must refuse required unavailable state;
 it cannot substitute target defaults or null.
+
+Completed contextual reports also lend `fragment_parser_document()`: the real
+auxiliary §13.4 Document, its actual mode/completion, original context/source and
+once-created opaque origin. Its closed constructor establishes HTML class with
+`application/xml`, UTF-8, `about:blank`, known-null about-base, no srcdoc, Null
+Document registry and false Document allow-DSD, independently from parser DSD
+permission. This parser Document has no browsing context or navigable and disabled
+scripting; output-node scripting still follows the captured context. The actual
+ordinary html child and per-Document Meta history remain in the same report arena.
+The descriptor does not grant source-era platform, host, resource or current
+policy capabilities. Cloning its opaque origin preserves identity across references
+and imports; independently parsed Documents get different origins even for the
+same supplied source/capture. Ordinary reports and inert/captured Documents cannot
+issue this distinct constructor descriptor.
 
 `retained_construction_bytes()` is the original controller's inclusive retained
 construction payload/capacity receipt. It counts the owned payload Vec's inline

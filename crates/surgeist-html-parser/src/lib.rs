@@ -120,3 +120,6 @@ pub use parser::tree_builder::prologue::{
 pub use surgeist_html::{
     HtmlScriptReadySteps as HtmlParseScriptReadySteps, HtmlScriptResult as HtmlParseScriptResult,
 };
+
+pub use construction::context::FragmentParserOrigin as HtmlParseOpaqueOrigin;
+pub use construction::fragment_document::FragmentParserDocument as HtmlParseFragmentParserDocument;

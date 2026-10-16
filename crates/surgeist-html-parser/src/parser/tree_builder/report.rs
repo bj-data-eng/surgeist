@@ -85,7 +85,7 @@ impl ImmutableParseReport {
         sealed.parts.prepare_report_request(&sealed.request)?;
         let c = &mut sealed.parts.control;
         crate::construction::read::prepare_public_readers(&sealed.parts.arena, c)?;
-        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, false)?;
+        let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true)?;
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedFragmentConstruction>>()
@@ -140,6 +140,14 @@ impl ImmutableParseReport {
             ReportContext::Fragment(request) => Some(request.context()),
             _ => None,
         }
+    }
+    /// Actual source-created auxiliary parser Document, qualified by this
+    /// completed contextual report. Ordinary reports cannot issue this lender.
+    pub fn fragment_parser_document(
+        &self,
+    ) -> Option<crate::construction::fragment_document::FragmentParserDocument<'_>> {
+        self.context()?;
+        self.storage.fragment_parser_document(self.source())
     }
     pub fn document_state(&self) -> Option<StandaloneDocumentState> {
         match &self.context {

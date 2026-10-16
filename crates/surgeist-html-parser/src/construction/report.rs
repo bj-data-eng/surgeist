@@ -6,12 +6,12 @@ use history::{FrozenHistory, PreparedHistory};
 
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
-    ordinary_common: bool,
+    closed_common: bool,
     associated_slot: Option<usize>,
 }
 pub(crate) struct PreparedReportStorage<'a> {
     history: PreparedHistory<'a>,
-    ordinary_common: bool,
+    closed_common: bool,
     associated_slot: Option<usize>,
 }
 impl<'a> PreparedReportStorage<'a> {
@@ -19,7 +19,7 @@ impl<'a> PreparedReportStorage<'a> {
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
         base_facts: Option<&crate::HtmlParseBaseFacts>,
-        ordinary_common: bool,
+        closed_common: bool,
     ) -> Result<Self, SessionError> {
         let frozen = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
@@ -288,12 +288,13 @@ impl<'a> PreparedReportStorage<'a> {
                     registry,
                     creation: Some(state),
                 } => {
-                    if ordinary_common {
-                        if storage.fragment.is_some()
-                            || !matches!(registry, context::RegistryRef::Null)
-                        {
-                            return Err(SessionError::ContextUnavailable);
-                        }
+                    if closed_common
+                        && storage.fragment.is_none()
+                        && !matches!(registry, context::RegistryRef::Null)
+                    {
+                        return Err(SessionError::ContextUnavailable);
+                    }
+                    if closed_common && matches!(registry, context::RegistryRef::Null) {
                         let HtmlNodeKind::Element(element) = arena
                             .node_at(node.ok_or(SessionError::WrongToken)?)
                             .ok_or(SessionError::WrongToken)?
@@ -446,20 +447,21 @@ impl<'a> PreparedReportStorage<'a> {
             }
         }
         if storage.fragment.is_some() {
+            fragment_document::qualify(storage, c)?;
             frozen.prepare_fragment_effects(c)?;
         }
         payload_write::<Self>(c, 1)?;
         payload_write::<ReportStorage>(c, 1)?;
         Ok(Self {
             history: PreparedHistory::prepare(input, c)?,
-            ordinary_common,
+            closed_common,
             associated_slot,
         })
     }
     pub(crate) fn commit(self) -> ReportStorage {
         ReportStorage {
             history: self.history.commit(),
-            ordinary_common: self.ordinary_common,
+            closed_common: self.closed_common,
             associated_slot: self.associated_slot,
         }
     }
@@ -592,6 +594,12 @@ impl ReportStorage {
             c.commit_prepared_release(&resources);
         }
     }
+    pub(crate) fn fragment_parser_document<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+    ) -> Option<fragment_document::FragmentParserDocument<'a>> {
+        fragment_document::FragmentParserDocument::new(&self.history, source)
+    }
     pub(crate) fn history(&self) -> &FrozenHistory {
         &self.history
     }
@@ -610,7 +618,7 @@ impl ReportStorage {
             .expect("qualified report storage");
         MetadataCursor {
             history: &self.history,
-            ordinary_common: self.ordinary_common,
+            closed_common: self.closed_common,
             storage,
             arena: arena(storage),
             next: 0,
@@ -618,7 +626,7 @@ impl ReportStorage {
     }
 }
 pub struct MetadataCursor<'a> {
-    ordinary_common: bool,
+    closed_common: bool,
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
@@ -639,7 +647,7 @@ impl<'a> MetadataCursor<'a> {
         if metadata_node(payload).is_some() {
             MetadataStep::Record(MetadataRef {
                 history: self.history,
-                ordinary_common: self.ordinary_common,
+                closed_common: self.closed_common,
                 storage: self.storage,
                 arena: self.arena,
                 payload,
@@ -652,7 +660,7 @@ impl<'a> MetadataCursor<'a> {
 /// Issued only by the qualified report's fixed slot observation. No caller can
 /// supply a raw payload index or mix this lender with another result's arena.
 pub struct MetadataRef<'a> {
-    ordinary_common: bool,
+    closed_common: bool,
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
@@ -927,15 +935,17 @@ impl<'a> MetadataStyle<'a> {
     }
 }
 impl<'a> MetadataRef<'a> {
-    /// Exact creation subject in a completed ordinary offline, no-execution or
-    /// interaction profile. The source scope is retained at actual creation;
+    /// Exact creation subject in a completed ordinary offline or contextual
+    /// no-execution/no-interaction profile with actual Null lookup registry.
+    /// The source scope is retained at actual creation;
     /// report preparation validates it through HTML's one bounded classifier.
     /// This is current closed-state qualification, not native-fresh evidence.
     pub fn common_state(&self) -> Option<surgeist_html::HtmlCommonState> {
-        if !self.ordinary_common {
+        if !self.closed_common {
             return None;
         }
         let RetainedPayload::LookupRegistry {
+            registry: context::RegistryRef::Null,
             creation: Some(state),
             ..
         } = self.payload

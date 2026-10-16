@@ -64,7 +64,27 @@ enum InternalIs<'a> {
     Unavailable,
 }
 
+/// Actual opaque origin of one source-created fragment parser Document.
+/// No caller can construct one or derive it from a source/target identity.
+/// Cloning preserves identity, including across imports of the same report.
+#[derive(Clone)]
+pub struct FragmentParserOrigin(Arc<()>);
+impl PartialEq for FragmentParserOrigin {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for FragmentParserOrigin {}
+impl std::fmt::Debug for FragmentParserOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HtmlParseOpaqueOrigin(..)")
+    }
+}
+
 pub(super) struct FragmentContextStorage {
+    pub(super) origin: FragmentParserOrigin,
+    origin_allocation: SharedAllocation<()>,
+    pub(super) completion: usize,
     pub(super) context: crate::HtmlFragmentContext,
     pub(super) mode: crate::HtmlParserScriptingMode,
     pub(super) allow_shadow: bool,
@@ -334,6 +354,7 @@ impl ParserArenaSession {
             .capture()
             .node(context.context_document().subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
+        let completion = storage.completion_slot(c)?;
         let mode = request.effective_scripting_mode();
         if !matches!(
             mode,
@@ -354,7 +375,15 @@ impl ParserArenaSession {
                     crate::HtmlCapturedRegistry::Registry(_)
                 )),
         )?;
+        // One admitted source-created opaque origin. Its zero-sized shared
+        // payload uses the existing provider boundary: Arc allocator/header
+        // layout is opaque; the actual inline handles/ticket are admitted above.
+        // No fallible operation separates successful issuance from retention.
+        let (origin, origin_allocation) = c.share_owned(()).map_err(|(stop, ())| stop)?;
         storage.fragment = Some(FragmentContextStorage {
+            origin: FragmentParserOrigin(origin),
+            origin_allocation,
+            completion,
             context: context.clone(),
             mode,
             allow_shadow: request.allow_declarative_shadow_roots(),
@@ -1068,6 +1097,10 @@ impl FragmentContextStorage {
             HtmlParseResource::SourceMapEntries,
             self.source_entries,
         );
+        // Public handles exist only after successful report publication. This
+        // original cleanup owner retires its actual identity ticket on failure.
+        c.release_zero_sized_shared(self.origin.0, self.origin_allocation)
+            .unwrap_or_else(|_| panic!("original fragment origin owner/ticket"));
         self.effects.release(c)
     }
 }
@@ -3462,5 +3495,78 @@ mod tests {
         session.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
         assert_eq!(actual_bytes, expected_bytes as u64);
+    }
+}
+
+#[cfg(test)]
+mod fragment_origin_tests {
+    use super::*;
+    use crate::*;
+
+    #[test]
+    fn source_created_fragment_origin_retires_with_original_owner_after_cancellation() {
+        let mut capture = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(10, 100, 10, 1_000, 10, 10, 10),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = capture
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let element = capture
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        capture.establish_root(&element).unwrap();
+        let capture = capture.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(""),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        let origin = Arc::downgrade(
+            &session
+                .active()
+                .unwrap()
+                .fragment
+                .as_ref()
+                .unwrap()
+                .origin
+                .0,
+        );
+        assert_eq!(origin.strong_count(), 1);
+        request.cancellation().cancel();
+        assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+        session.release(&mut c).unwrap();
+        assert!(origin.upgrade().is_none());
+        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        for resource in [
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::AuxiliaryEntries,
+        ] {
+            assert_eq!(c.usage().resource(resource).current(), 0, "{resource:?}");
+        }
     }
 }

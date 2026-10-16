@@ -57,6 +57,7 @@ mod completion;
 pub(crate) mod context;
 mod details;
 mod effects;
+pub(crate) mod fragment_document;
 #[cfg(test)]
 mod link_history;
 #[cfg(test)]
