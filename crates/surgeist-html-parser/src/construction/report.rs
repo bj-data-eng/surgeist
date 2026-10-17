@@ -1114,8 +1114,10 @@ impl<'a> MetadataRef<'a> {
     /// no-execution/no-interaction profile with actual Null lookup registry.
     /// The source scope is retained at actual creation;
     /// report preparation validates it through HTML's one bounded classifier.
-    /// This is current closed-state qualification, not native-fresh evidence.
-    pub fn common_state(&self) -> Option<surgeist_html::HtmlCommonState> {
+    /// This qualifies the profile's current null-only references, not native freshness.
+    pub fn common_state(
+        &self,
+    ) -> Option<surgeist_html::HtmlCommonState<core::convert::Infallible>> {
         if !self.closed_common {
             return None;
         }
@@ -1127,7 +1129,7 @@ impl<'a> MetadataRef<'a> {
         else {
             return None;
         };
-        Some(surgeist_html::HtmlCommonState::closed(state.common_scope))
+        Some(surgeist_html::HtmlCommonState::new(state.common_scope))
     }
 
     fn dialog_disposition(&self, missing: Option<&'a dialog::Missing>) -> DialogDispositionRef<'a> {

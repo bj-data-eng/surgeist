@@ -345,14 +345,15 @@ fn classification_separates_common_scope_and_nonce_applicability() {
 }
 
 #[test]
-fn shared_closed_values_preserve_all_element_and_html_fields() {
+fn initial_common_values_preserve_element_and_html_applicability() {
     for scope in [HtmlCommonScope::Element, HtmlCommonScope::Html] {
-        let current = HtmlCommonState::closed(scope);
+        let current = HtmlCommonState::<Infallible>::new(scope);
         assert_eq!(current.scope(), scope);
         assert!(current.element().reaction_queue_is_empty());
         assert!(!current.element().click_in_progress());
         assert_eq!(current.html().is_some(), scope == HtmlCommonScope::Html);
         if let Some(html) = current.html() {
+            assert_eq!(html.previously_focused_element(), None);
             assert!(!html.has_previously_focused_element());
             assert!(!html.has_attached_internals());
             assert!(html.popover_is_hidden());
@@ -363,6 +364,86 @@ fn shared_closed_values_preserve_all_element_and_html_fields() {
             assert!(!html.has_popover_opened_in_mode());
         }
     }
+}
+
+#[test]
+fn remembering_and_clearing_focus_retains_the_actual_nullable_reference() {
+    // HTML877d #previously-focused-element: initially null, subsequently the
+    // actual remembered element. References here are value-owner inputs only.
+    let mut current = HtmlCommonState::<u32>::new(HtmlCommonScope::Html);
+    let html = current.html_mut().unwrap();
+    assert_eq!(html.previously_focused_element(), None);
+    assert!(!html.has_previously_focused_element());
+    html.remember_focused_element(Some(17));
+    assert_eq!(html.previously_focused_element(), Some(&17));
+    assert!(html.has_previously_focused_element());
+    html.remember_focused_element(Some(29));
+    assert_eq!(html.previously_focused_element(), Some(&29));
+    html.remember_focused_element(None);
+    assert_eq!(html.previously_focused_element(), None);
+    assert!(!html.has_previously_focused_element());
+    html.remember_focused_element(Some(41));
+    html.clear_previously_focused_element();
+    assert_eq!(html.previously_focused_element(), None);
+    assert!(!html.has_previously_focused_element());
+    assert!(!html.has_attached_internals());
+    assert!(html.popover_is_hidden());
+    assert!(!html.has_popover_trigger());
+    assert!(!html.popover_is_hiding());
+    assert!(!html.has_popover_toggle_task_tracker());
+    assert!(!html.has_popover_close_watcher());
+    assert!(!html.has_popover_opened_in_mode());
+    assert!(current.element().reaction_queue_is_empty());
+    assert!(!current.element().click_in_progress());
+}
+
+#[test]
+fn common_reference_mapping_moves_the_actual_noncopy_reference_once() {
+    let mut current = HtmlCommonState::<String>::new(HtmlCommonScope::Html);
+    current
+        .html_mut()
+        .unwrap()
+        .remember_focused_element(Some("remembered element".to_owned()));
+    let mut calls = 0;
+    let mapped = current.map(|reference| {
+        calls += 1;
+        (7_u8, reference)
+    });
+    assert_eq!(calls, 1);
+    assert_eq!(mapped.scope(), HtmlCommonScope::Html);
+    let html = mapped.html().unwrap();
+    assert!(html.has_previously_focused_element());
+    let (domain, reference) = html.previously_focused_element().unwrap();
+    assert_eq!(*domain, 7);
+    assert_eq!(reference, "remembered element");
+    assert!(html.popover_is_hidden());
+    assert!(!html.has_attached_internals());
+    assert!(mapped.element().reaction_queue_is_empty());
+    assert!(!mapped.element().click_in_progress());
+}
+
+#[test]
+fn null_only_profile_mapping_preserves_nullness_and_nonhtml_inapplicability() {
+    for scope in [HtmlCommonScope::Element, HtmlCommonScope::Html] {
+        // Native and admitted offline-parser profiles cannot supply a positive
+        // reference; the consuming owner changes reference domains losslessly.
+        let mapped: HtmlCommonState<u32> =
+            HtmlCommonState::<Infallible>::new(scope).map(|reference| match reference {});
+        assert_eq!(mapped.scope(), scope);
+        if let Some(html) = mapped.html() {
+            assert_eq!(html.previously_focused_element(), None);
+            assert!(!html.has_previously_focused_element());
+        } else {
+            assert_eq!(scope, HtmlCommonScope::Element);
+        }
+    }
+    let mut nonhtml = HtmlCommonState::<u32>::new(HtmlCommonScope::Element);
+    assert!(nonhtml.html_mut().is_none());
+    let mapped: HtmlCommonState<String> = nonhtml.map(|_| {
+        panic!("non-HTML state cannot contain an HTML reference");
+    });
+    assert_eq!(mapped.scope(), HtmlCommonScope::Element);
+    assert!(mapped.html().is_none());
 }
 
 #[test]

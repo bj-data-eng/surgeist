@@ -24,13 +24,16 @@ captured-tree queries belong to [surgeist-html-semantics](../surgeist-html-seman
 Consumers depend directly on the owner they use. No HTML result is a live DOM.
 
 `element_classification_with` selects family and common/nonce applicability from
-the exact expanded name through one bounded inventory. `HtmlCommonState` holds
-the shared closed current values; constructing a value does not qualify any
-element's state. Native creation obtains fresh common and nonce evidence through
+the exact expanded name through one bounded inventory. `HtmlCommonState<R>` holds
+current common values with consumer-owned element references. Its HTML-only state
+retains the actual nullable previously focused element; the remaining reaction,
+click, internals and popover fields retain their supported closed values.
+Constructing a value does not qualify any element's state. Native creation obtains
+fresh null-only common state (`R = Infallible`) and nonce evidence through
 `native_element_initialization_with`. Parsed installation must instead consume
 the parser's completed-report and subject-qualified common-state readback, with
-the retained cryptographic nonce read independently. A profile permitting a
-common-state transition must extend its current-state model before admission.
+the retained cryptographic nonce read independently. Reference mapping preserves
+nullness and applicability; consumers qualify and publish live transitions.
 
 `HtmlCanvasNoneState` describes a native canvas with no bound rendering context,
 an origin-clean transparent-black bitmap and exact attribute-derived dimensions.

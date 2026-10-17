@@ -4124,16 +4124,6 @@ pub struct surgeist_html::HtmlClosedElementState
 impl surgeist_html::HtmlClosedElementState
 pub const fn surgeist_html::HtmlClosedElementState::click_in_progress(&self) -> bool
 pub const fn surgeist_html::HtmlClosedElementState::reaction_queue_is_empty(&self) -> bool
-pub struct surgeist_html::HtmlClosedHtmlState
-impl surgeist_html::HtmlClosedHtmlState
-pub const fn surgeist_html::HtmlClosedHtmlState::has_attached_internals(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_close_watcher(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_opened_in_mode(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_toggle_task_tracker(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::has_popover_trigger(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::has_previously_focused_element(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::popover_is_hidden(&self) -> bool
-pub const fn surgeist_html::HtmlClosedHtmlState::popover_is_hiding(&self) -> bool
 pub struct surgeist_html::HtmlCommaSeparatedTokens
 impl surgeist_html::HtmlCommaSeparatedTokens
 pub fn surgeist_html::HtmlCommaSeparatedTokens::as_document_string(&self) -> surgeist_html::DocumentString
@@ -4147,12 +4137,27 @@ pub struct surgeist_html::HtmlCommandReadback
 impl surgeist_html::HtmlCommandReadback
 pub fn surgeist_html::HtmlCommandReadback::custom_value(&self) -> core::option::Option<&surgeist_html::DocumentString>
 pub fn surgeist_html::HtmlCommandReadback::state(&self) -> surgeist_html::HtmlCommandState
-pub struct surgeist_html::HtmlCommonState
-impl surgeist_html::HtmlCommonState
-pub const fn surgeist_html::HtmlCommonState::closed(scope: surgeist_html::HtmlCommonScope) -> Self
-pub const fn surgeist_html::HtmlCommonState::element(&self) -> surgeist_html::HtmlClosedElementState
-pub const fn surgeist_html::HtmlCommonState::html(&self) -> core::option::Option<surgeist_html::HtmlClosedHtmlState>
-pub const fn surgeist_html::HtmlCommonState::scope(&self) -> surgeist_html::HtmlCommonScope
+pub struct surgeist_html::HtmlCommonHtmlState<R>
+impl<R> surgeist_html::HtmlCommonHtmlState<R>
+pub fn surgeist_html::HtmlCommonHtmlState<R>::clear_previously_focused_element(&mut self)
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_attached_internals(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_popover_close_watcher(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_popover_opened_in_mode(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_popover_toggle_task_tracker(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_popover_trigger(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::has_previously_focused_element(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::popover_is_hidden(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::popover_is_hiding(&self) -> bool
+pub const fn surgeist_html::HtmlCommonHtmlState<R>::previously_focused_element(&self) -> core::option::Option<&R>
+pub fn surgeist_html::HtmlCommonHtmlState<R>::remember_focused_element(&mut self, element: core::option::Option<R>)
+pub struct surgeist_html::HtmlCommonState<R>
+impl<R> surgeist_html::HtmlCommonState<R>
+pub const fn surgeist_html::HtmlCommonState<R>::element(&self) -> surgeist_html::HtmlClosedElementState
+pub const fn surgeist_html::HtmlCommonState<R>::html(&self) -> core::option::Option<&surgeist_html::HtmlCommonHtmlState<R>>
+pub fn surgeist_html::HtmlCommonState<R>::html_mut(&mut self) -> core::option::Option<&mut surgeist_html::HtmlCommonHtmlState<R>>
+pub fn surgeist_html::HtmlCommonState<R>::map<T>(self, map: impl core::ops::function::FnOnce(R) -> T) -> surgeist_html::HtmlCommonState<T>
+pub const fn surgeist_html::HtmlCommonState<R>::new(scope: surgeist_html::HtmlCommonScope) -> Self
+pub const fn surgeist_html::HtmlCommonState<R>::scope(&self) -> surgeist_html::HtmlCommonScope
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize
@@ -4863,7 +4868,7 @@ pub fn surgeist_html::HtmlMonth::to_document_string(&self) -> surgeist_html::Doc
 pub fn surgeist_html::HtmlMonth::year(&self) -> &surgeist_html::HtmlYear
 pub struct surgeist_html::HtmlNativeInitialization
 impl surgeist_html::HtmlNativeInitialization
-pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlCommonState
+pub const fn surgeist_html::HtmlNativeInitialization::common(&self) -> surgeist_html::HtmlCommonState<core::convert::Infallible>
 pub const fn surgeist_html::HtmlNativeInitialization::nonce(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshNonce>
 pub const fn surgeist_html::HtmlNativeInitialization::requirement(&self) -> surgeist_html::HtmlElementClass
 pub const fn surgeist_html::HtmlNativeInitialization::slot(&self) -> core::option::Option<surgeist_html::HtmlNativeFreshSlot>

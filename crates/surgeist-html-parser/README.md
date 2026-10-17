@@ -37,8 +37,9 @@ cursor. Formatting reconstruction and cloning preserve their actual creation
 causes; later HTML/body attribute merges do not rewrite that saved value.
 
 Ordinary offline and completed inert/disabled contextual reports lend
-subject-qualified closed common state for actual Null lookup registries; nonce
-is retained independently. A/Area records preserve the actual source-time URL
+subject-qualified common state for actual Null lookup registries. Its
+`HtmlCommonState<Infallible>` retains the profile's actual null previous focus;
+nonce is retained independently. A/Area records preserve the actual source-time URL
 snapshot and historical parse Document. Absent href, observed URL parse failure
 and unavailable context are separate states. Immutable request observation banks
 are qualified against the actual Document's base, encoding and full external

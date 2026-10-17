@@ -910,7 +910,7 @@ pub fn surgeist_html_parser::HtmlParseMetaMissing<'a>::subject(&self) -> surgeis
 pub struct surgeist_html_parser::HtmlParseMetadata<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetadata<'a>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::base_state(&self) -> core::option::Option<surgeist_html_parser::HtmlParseBaseState<'a>>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::common_state(&self) -> core::option::Option<surgeist_html::native_initialization::HtmlCommonState>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::common_state(&self) -> core::option::Option<surgeist_html::native_initialization::HtmlCommonState<core::convert::Infallible>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::creation(&self) -> core::option::Option<(surgeist_html::custom_element_state::HtmlCustomElementState, core::option::Option<&'a surgeist_html::values::DocumentString>)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::dialog(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDialog<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_base_facts(&self) -> core::option::Option<&'a surgeist_html_semantics::base::HtmlParseBaseFacts>

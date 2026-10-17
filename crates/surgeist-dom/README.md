@@ -91,8 +91,12 @@ Source/A/Area/Template/Script and SVG Script families,
 preserving prefix, case and exact UTF-16. It does not apply HTML content-model
 validation or parser aliases. Registry/definition are known-null; actual valid
 HTML custom names establish Undefined state through shared rules. Common state
-includes the actual empty reaction queue/unset click flag, and the HTML-only
-closed focus/internals/popover tuple. Exposed operations preserve those values.
+includes the actual empty reaction queue/unset click flag, and HTML-only common
+state with a nullable canonical `NodeId` for previous focus. Native and cloned
+elements start null; parsed installation maps the report's actual null-only
+state. Current operations preserve that value, and remembered-focus execution
+still requires its qualified host observation. Internals/popover fields retain
+their closed values.
 Special built-ins lacking their actual family adapter reject atomically with
 `NativeInitializationRequired` carrying the exact HTML-owned requirement. SVG
 lowercase script has its actual native state; uppercase Script is ordinary SVG.

@@ -1,4 +1,4 @@
-//! Shared element classification, closed common values and native freshness.
+//! Shared element classification, current common values and native freshness.
 //!
 //! HTML877d #elements-in-the-dom defines interface dispatch, including obsolete
 //! exceptions and the custom/unknown fallback. The 113 concrete modern normative
@@ -11,6 +11,7 @@ use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI}
 use crate::{
     HtmlNativeFormAssociationKind, HtmlTemplateFreshInsertionState, KnownHtmlElement, QualifiedName,
 };
+use core::convert::Infallible;
 
 /// Name-derived family and namespace applicability, independent of creation cause.
 ///
@@ -31,7 +32,7 @@ pub enum HtmlElementClass {
     SvgScript,
 }
 impl HtmlElementClass {
-    /// Applicable closed common fields, not evidence of their current values.
+    /// Applicable common fields, not evidence of their current values.
     pub const fn common_scope(self) -> HtmlCommonScope {
         match self {
             Self::GenericElement | Self::CommonSvg | Self::CommonMathml | Self::SvgScript => {
@@ -76,8 +77,8 @@ impl HtmlNativeInitialization {
     pub const fn requirement(&self) -> HtmlElementClass {
         self.requirement
     }
-    pub const fn common(&self) -> HtmlCommonState {
-        HtmlCommonState::closed(self.requirement.common_scope())
+    pub const fn common(&self) -> HtmlCommonState<Infallible> {
+        HtmlCommonState::new(self.requirement.common_scope())
     }
     /// Fresh nonce evidence belongs to native creation, separately from common
     /// current values. Retained nonce readback must come from its actual owner.
@@ -126,33 +127,53 @@ pub enum HtmlCommonScope {
     Html,
 }
 
-/// The closed current common tuple, reusable across construction causes.
+/// Current common values with consumer-owned element references.
 ///
-/// A consuming owner may retain this closed tuple while its exposed operations
-/// preserve it. A capability that can change these slots requires richer current
-/// state before admission. This value carries no report, subject or creation
-/// authority: the actual producer must qualify it. The mutable nonce slot is
-/// separately owned and observed, and is not part of this tuple.
+/// HTML-only applicability owns the nullable previously focused element. Other
+/// common fields retain their supported closed values. This value carries no
+/// report, subject or creation authority: the actual producer must qualify it.
+/// The mutable nonce slot is separately owned and observed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlCommonState {
-    scope: HtmlCommonScope,
+pub struct HtmlCommonState<R> {
+    html: Option<HtmlCommonHtmlState<R>>,
 }
-impl HtmlCommonState {
-    /// Constructs the literal closed values for the given applicability.
+impl<R> HtmlCommonState<R> {
+    /// Constructs the literal initial common values, including null previous focus.
     /// This does not establish that any particular element has these values.
-    pub const fn closed(scope: HtmlCommonScope) -> Self {
-        Self { scope }
+    pub const fn new(scope: HtmlCommonScope) -> Self {
+        Self {
+            html: match scope {
+                HtmlCommonScope::Element => None,
+                HtmlCommonScope::Html => Some(HtmlCommonHtmlState {
+                    previously_focused_element: None,
+                }),
+            },
+        }
     }
     pub const fn scope(&self) -> HtmlCommonScope {
-        self.scope
+        if self.html.is_some() {
+            HtmlCommonScope::Html
+        } else {
+            HtmlCommonScope::Element
+        }
     }
     pub const fn element(&self) -> HtmlClosedElementState {
         HtmlClosedElementState { closed: () }
     }
-    pub const fn html(&self) -> Option<HtmlClosedHtmlState> {
-        match self.scope {
-            HtmlCommonScope::Html => Some(HtmlClosedHtmlState { closed: () }),
-            HtmlCommonScope::Element => None,
+    pub const fn html(&self) -> Option<&HtmlCommonHtmlState<R>> {
+        self.html.as_ref()
+    }
+    /// Mutates this value's HTML-only state, if applicable. The consuming owner
+    /// remains responsible for qualifying and publishing live transitions.
+    pub fn html_mut(&mut self) -> Option<&mut HtmlCommonHtmlState<R>> {
+        self.html.as_mut()
+    }
+    /// Transfers actual references without changing nullness or applicability.
+    pub fn map<T>(self, map: impl FnOnce(R) -> T) -> HtmlCommonState<T> {
+        HtmlCommonState {
+            html: self.html.map(|html| HtmlCommonHtmlState {
+                previously_focused_element: html.previously_focused_element.map(map),
+            }),
         }
     }
 }
@@ -173,17 +194,27 @@ impl HtmlClosedElementState {
     }
 }
 
-/// The HTML-only closed tuple from #previously-focused-element,
-/// #attached-internals and #the-popover-attribute. These are actual null, hidden
-/// and false values, not missing observations or execution capabilities.
+/// HTML-only current common state from #previously-focused-element,
+/// #attached-internals and #the-popover-attribute. Previous focus retains its
+/// actual nullable reference; internals and popover fields remain closed.
 /// Popover runtime visibility is distinct from HtmlPopoverState's attribute rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlClosedHtmlState {
-    closed: (),
+pub struct HtmlCommonHtmlState<R> {
+    previously_focused_element: Option<R>,
 }
-impl HtmlClosedHtmlState {
+impl<R> HtmlCommonHtmlState<R> {
+    pub const fn previously_focused_element(&self) -> Option<&R> {
+        self.previously_focused_element.as_ref()
+    }
     pub const fn has_previously_focused_element(&self) -> bool {
-        false
+        self.previously_focused_element.is_some()
+    }
+    /// Remembers the qualified focused element, including established absence.
+    pub fn remember_focused_element(&mut self, element: Option<R>) {
+        self.previously_focused_element = element;
+    }
+    pub fn clear_previously_focused_element(&mut self) {
+        self.previously_focused_element = None;
     }
     pub const fn has_attached_internals(&self) -> bool {
         false

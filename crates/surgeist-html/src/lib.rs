@@ -94,7 +94,7 @@ pub use interpretation::*;
 pub use marquee::HtmlMarqueeState;
 pub use media::*;
 pub use native_initialization::{
-    HtmlClosedElementState, HtmlClosedHtmlState, HtmlCommonScope, HtmlCommonState,
+    HtmlClosedElementState, HtmlCommonHtmlState, HtmlCommonScope, HtmlCommonState,
     HtmlElementClass, HtmlNativeFreshNonce, HtmlNativeFreshSlot, HtmlNativeInitialization,
 };
 pub use newlines::HtmlNewlineNormalizer;

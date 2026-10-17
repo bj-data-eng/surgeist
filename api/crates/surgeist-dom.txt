@@ -1024,7 +1024,7 @@ pub fn surgeist_dom::DomElement::canvas_none_state(&self) -> core::option::Optio
 pub fn surgeist_dom::DomElement::captured_in_view_transition(&self) -> bool
 pub fn surgeist_dom::DomElement::child_navigable(&self) -> core::option::Option<core::option::Option<surgeist_dom::DomHostedNavigableId>>
 pub fn surgeist_dom::DomElement::child_navigable_presence(&self) -> core::option::Option<surgeist_html::child_navigable::HtmlChildNavigablePresence>
-pub fn surgeist_dom::DomElement::common_state(&self) -> surgeist_html::native_initialization::HtmlCommonState
+pub fn surgeist_dom::DomElement::common_state(&self) -> surgeist_html::native_initialization::HtmlCommonState<surgeist_dom::NodeId>
 pub fn surgeist_dom::DomElement::custom_element_definition(&self) -> surgeist_dom::DomElementDefinition
 pub fn surgeist_dom::DomElement::custom_element_registry(&self) -> surgeist_dom::DomRegistryBinding
 pub fn surgeist_dom::DomElement::custom_element_state(&self) -> surgeist_html::custom_element_state::HtmlCustomElementState

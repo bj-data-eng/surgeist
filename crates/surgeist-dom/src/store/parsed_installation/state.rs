@@ -606,7 +606,7 @@ pub(super) fn kind(
                 saved_is.cloned(),
                 nonce.cloned(),
                 family,
-                common,
+                common.map(|reference| match reference {}),
             ))
         }
     })

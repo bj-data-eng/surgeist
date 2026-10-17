@@ -29,7 +29,7 @@ pub struct DomElement {
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
     saved_is: Option<DocumentString>,
-    common: HtmlCommonState,
+    common: HtmlCommonState<crate::NodeId>,
     nonce: Option<DocumentString>,
     family: NativeFamily,
     content_navigable: Option<crate::DomHostedNavigableId>,
@@ -52,7 +52,7 @@ impl DomElement {
         saved_is: Option<DocumentString>,
         nonce: Option<DocumentString>,
         family: NativeFamily,
-        common: HtmlCommonState,
+        common: HtmlCommonState<crate::NodeId>,
     ) -> Self {
         Self {
             name,
@@ -359,7 +359,8 @@ impl DomElement {
             Requirement::HtmlFrame => NativeFamily::Frame,
             requirement => return Err(DomError::NativeInitializationRequired(requirement)),
         };
-        let common = initialization.common();
+        let common: HtmlCommonState<crate::NodeId> =
+            initialization.common().map(|reference| match reference {});
         let html = common.html().is_some();
         let custom_name = html
             && (saved_is.is_some()
@@ -638,8 +639,8 @@ impl DomElement {
     pub(crate) fn is_html_script(&self) -> bool {
         matches!(self.family, NativeFamily::Script)
     }
-    /// Actual closed common tuple. Exposed operations preserve its values.
-    pub fn common_state(&self) -> HtmlCommonState {
+    /// Actual current common values with canonical element references.
+    pub fn common_state(&self) -> HtmlCommonState<crate::NodeId> {
         self.common
     }
     /// Cryptographic nonce slot, independent of content. None means inapplicable.
