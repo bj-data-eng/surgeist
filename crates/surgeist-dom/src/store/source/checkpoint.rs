@@ -438,7 +438,7 @@ impl Draft {
             source_other_units: self.source_other_units,
             source_invocation: self.source_invocation,
             source_headroom: None,
-            dialog_show: self.dialog_show,
+            dialog_method: self.dialog_method,
             dispatch_retirements: a.copy(&self.dispatch_retirements, cancel)?,
             meta_work: Cell::new(self.meta_work.get()),
             meta_work_limit: self.meta_work_limit,

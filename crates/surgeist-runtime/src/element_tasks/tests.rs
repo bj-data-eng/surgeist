@@ -25,7 +25,7 @@ fn session(dom: Dom) -> DomSession {
                 work: 1_000_000,
                 css_input: surgeist_css::CssUtf16InputLimits::default(),
             },
-            dom_manipulation: limits(),
+            element_tasks: limits(),
             hosted: DomHostedRuntimeLimits {
                 canonical: surgeist_dom::DomHostedLimits::new(
                     surgeist_dom::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
@@ -46,8 +46,8 @@ fn session(dom: Dom) -> DomSession {
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn limits() -> DomManipulationRuntimeLimits {
-    DomManipulationRuntimeLimits {
+fn limits() -> DomElementTaskRuntimeLimits {
+    DomElementTaskRuntimeLimits {
         tasks: 32,
         storage_bytes: 65536,
         work: 1_000_000,
@@ -96,24 +96,24 @@ fn fixture() -> (DomSession, DocumentId, NodeId, NodeId) {
     )
 }
 struct Context {
-    dom_manipulation: DomManipulationRuntime,
+    element_tasks: DomElementTaskRuntime,
     log: Vec<(NodeId, DomToggleEvent, DomEventPhase)>,
     reenter: bool,
     refused_limit_change: bool,
     panic_next_access: bool,
     replacement_session: Option<DomSession>,
 }
-impl DomManipulationEventContext for Context {
-    fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+impl DomElementTaskEventContext for Context {
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
         if std::mem::take(&mut self.panic_next_access) {
             panic!("actual Details context accessor unwind");
         }
-        &mut self.dom_manipulation
+        &mut self.element_tasks
     }
 }
 fn context(dom: &mut DomSession) -> Context {
     Context {
-        dom_manipulation: dom.dom_manipulation_execution(),
+        element_tasks: dom.element_task_execution(),
         log: Vec::new(),
         reenter: false,
         refused_limit_change: false,
@@ -131,7 +131,7 @@ fn registry() -> DomEventDispatcher<Context> {
 }
 fn ingest(dom: &mut DomSession, context: &mut Context) {
     context
-        .dom_manipulation
+        .element_tasks
         .ingest(&mut dom.dom(), &cancel())
         .unwrap();
 }
@@ -161,12 +161,13 @@ fn complete(
     dom: &mut DomSession,
     registry: &mut DomEventDispatcher<Context>,
     c: &mut Context,
-) -> (DomManipulationTask, DomEventDispatchReceipt) {
-    match DomManipulationRuntime::run_next(
+) -> (DomElementTask, DomEventDispatchReceipt) {
+    match DomElementTaskRuntime::run_next(
         &mut dom.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         registry,
         c,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -176,7 +177,7 @@ fn complete(
     )
     .unwrap()
     {
-        DomManipulationProgress::Complete { task, receipt, .. } => {
+        DomElementTaskProgress::Complete { task, receipt, .. } => {
             assert!(
                 receipt.failures().is_empty(),
                 "positive fixture listener failed: {:?}",
@@ -193,8 +194,8 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     let (mut dom, document, a, b) = fixture();
     let mut c = context(&mut dom);
     // Three actual raw transitions fit two task slots because A is replaced.
-    c.dom_manipulation
-        .set_limits(DomManipulationRuntimeLimits {
+    c.element_tasks
+        .set_limits(DomElementTaskRuntimeLimits {
             tasks: 2,
             ..limits()
         })
@@ -231,10 +232,15 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     batch.set_attribute(b, "open", "");
     apply(&mut dom, batch);
     ingest(&mut dom, &mut c);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 2);
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(0)
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap()
             .unwrap()
             .id()
@@ -242,8 +248,8 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
         b
     );
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(1)
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
             .unwrap()
             .unwrap()
             .id()
@@ -283,7 +289,12 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
             (a, DomEventPhase::AtTarget)
         ]
     );
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -306,8 +317,8 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
                 if c.reenter {
                     c.reenter = false;
                     c.refused_limit_change = c
-                        .dom_manipulation
-                        .set_limits(DomManipulationRuntimeLimits {
+                        .element_tasks
+                        .set_limits(DomElementTaskRuntimeLimits {
                             tasks: 64,
                             ..limits()
                         })
@@ -315,7 +326,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
                     let mut batch = DomBatch::new();
                     batch.remove_attribute(a, "open");
                     dom.apply(batch, &cancel()).unwrap();
-                    c.dom_manipulation.ingest(dom, &cancel()).unwrap();
+                    c.element_tasks.ingest(dom, &cancel()).unwrap();
                 }
                 Ok(())
             }),
@@ -327,7 +338,11 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     let (_, receipt) = complete(&mut dom, &mut registry, &mut c);
     assert!(receipt.failures().is_empty());
     assert!(c.refused_limit_change);
-    let replacement = c.dom_manipulation.pending_task(0).unwrap().unwrap();
+    let replacement = c
+        .element_tasks
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     assert_eq!(
         replacement.details().unwrap().event().old_state(),
         HtmlDetailsState::Closed
@@ -338,18 +353,30 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     );
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 2);
     assert_eq!(
-        c.dom_manipulation.pending_task(0).unwrap().unwrap(),
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap()
+            .unwrap(),
         replacement
     );
     assert_ne!(
-        c.dom_manipulation.pending_task(1).unwrap().unwrap().id(),
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
+            .unwrap()
+            .unwrap()
+            .id(),
         replacement.id()
     );
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(1)
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
             .unwrap()
             .unwrap()
             .details()
@@ -390,7 +417,12 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
         fresh_close.details().unwrap().event().new_state().as_str()
     );
     assert_eq!(c.log[3].1.source(), None);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -428,11 +460,12 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     let commit = apply(&mut dom, batch);
     let replacement = commit.created(&replacement).unwrap().unwrap();
     assert_ne!(replacement, b);
-    match DomManipulationRuntime::run_next(
+    match DomElementTaskRuntime::run_next(
         &mut dom.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut c,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -442,12 +475,17 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     )
     .unwrap()
     {
-        DomManipulationProgress::SkippedTargetDestroyed(task) => assert_eq!(task.id().target(), b),
+        DomElementTaskProgress::SkippedTargetDestroyed(task) => assert_eq!(task.id().target(), b),
         other => panic!("{other:?}"),
     }
     assert_eq!(c.log.len(), 1);
     assert_eq!(c.log[0].0, a);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -483,11 +521,12 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
         .unwrap();
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    let (task, receipt) = match DomManipulationRuntime::run_next(
+    let (task, receipt) = match DomElementTaskRuntime::run_next(
         &mut dom.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut c,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -497,7 +536,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     )
     .unwrap()
     {
-        DomManipulationProgress::Complete { task, receipt, .. } => (task, receipt),
+        DomElementTaskProgress::Complete { task, receipt, .. } => (task, receipt),
         other => panic!("expected real delivery with reported failure: {other:?}"),
     };
     assert_eq!(task.id().target(), a);
@@ -505,22 +544,31 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     assert_eq!(receipt.failures().len(), 1);
     assert_eq!(c.log.len(), 2);
     assert!(matches!(dom.snapshot().node(a), Err(DomError::StaleNode)));
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
 fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity() {
     let (mut dom, _, a, b) = fixture();
     let mut c = context(&mut dom);
-    c.dom_manipulation
-        .set_limits(DomManipulationRuntimeLimits {
+    c.element_tasks
+        .set_limits(DomElementTaskRuntimeLimits {
             tasks: 1,
             ..limits()
         })
         .unwrap();
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    let first = c.dom_manipulation.pending_task(0).unwrap().unwrap();
+    let first = c
+        .element_tasks
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     open(&mut dom, b);
     close(&mut dom, a);
     let transfer = dom
@@ -533,12 +581,12 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
         .map(|i| i.operation())
         .collect::<Vec<_>>();
     let rejected = c
-        .dom_manipulation
+        .element_tasks
         .ingest_transfer(&mut dom.dom(), transfer, &cancel())
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::Admission
+        DomElementTaskRuntimeError::Admission
     ));
     let transfer = rejected.into_transfer();
     assert_eq!(
@@ -549,20 +597,30 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
             .collect::<Vec<_>>(),
         ops
     );
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 1);
-    assert_eq!(c.dom_manipulation.pending_task(0).unwrap(), Some(first));
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(first)
+    );
     // Increase the same owner's finite bound: the original pending A tracker
     // still supplies the first closed state when the exact transfer is retried.
-    c.dom_manipulation.set_limits(limits()).unwrap();
+    c.element_tasks.set_limits(limits()).unwrap();
     assert_eq!(
-        c.dom_manipulation
+        c.element_tasks
             .ingest_transfer(&mut dom.dom(), transfer, &cancel())
             .unwrap(),
         2
     );
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(0)
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap()
             .unwrap()
             .id()
@@ -570,8 +628,8 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
         b
     );
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(1)
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
             .unwrap()
             .unwrap()
             .details()
@@ -581,8 +639,8 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
         HtmlDetailsState::Closed
     );
     assert_eq!(
-        c.dom_manipulation
-            .pending_task(1)
+        c.element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
             .unwrap()
             .unwrap()
             .details()
@@ -600,15 +658,20 @@ fn intake_refusal_returns_whole_transfer_without_losing_prior_order_or_identity(
         .unwrap();
     let stopped = AtomicBool::new(true);
     let rejected = c
-        .dom_manipulation
+        .element_tasks
         .ingest_transfer(&mut dom.dom(), transfer, &stopped)
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::Dom(DomError::Cancelled)
+        DomElementTaskRuntimeError::Dom(DomError::Cancelled)
     ));
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 2);
-    c.dom_manipulation
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        2
+    );
+    c.element_tasks
         .ingest_transfer(&mut dom.dom(), rejected.into_transfer(), &cancel())
         .unwrap();
 }
@@ -627,9 +690,9 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
                 c.log
                     .push((a, *event.toggle_event().unwrap(), event.phase()));
                 let (replacement_session, _, _, _) = fixture();
-                let replacement = replacement_session.dom_manipulation_execution();
+                let replacement = replacement_session.element_task_execution();
                 c.replacement_session = Some(replacement_session);
-                drop(std::mem::replace(&mut c.dom_manipulation, replacement));
+                drop(std::mem::replace(&mut c.element_tasks, replacement));
                 Ok(())
             }),
             DomEventListenerOptions {
@@ -649,12 +712,17 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .unwrap();
     open(&mut dom, a);
     ingest(&mut dom, &mut c);
-    let original = c.dom_manipulation.pending_task(0).unwrap().unwrap();
-    let mut progress = DomManipulationRuntime::run_next(
+    let original = c
+        .element_tasks
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
+    let mut progress = DomElementTaskRuntime::run_next(
         &mut dom.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut c,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: DomEventDispatchLimits {
                 callbacks: 1,
                 ..dispatch_limits()
@@ -668,29 +736,44 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
     .unwrap();
     assert!(matches!(
         &progress,
-        DomManipulationProgress::Retained {
+        DomElementTaskProgress::Retained {
             dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
             ..
         }
     ));
     assert_eq!(c.log.len(), 1);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     let original_owner = match &mut progress {
-        DomManipulationProgress::Retained {
+        DomElementTaskProgress::Retained {
             displaced_owner, ..
         } => displaced_owner
             .take()
             .expect("original owner returned after callback dropped it"),
         other => panic!("{other:?}"),
     };
-    assert_eq!(original_owner.pending_task(0).unwrap(), Some(original));
-    c.dom_manipulation = original_owner;
+    assert_eq!(
+        original_owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(original)
+    );
+    c.element_tasks = original_owner;
     let (task, receipt) = complete(&mut dom, &mut registry, &mut c);
     assert_eq!(task, original);
     assert_eq!(receipt.callbacks(), 2);
     assert!(receipt.failures().is_empty());
     assert_eq!(c.log.len(), 2);
-    assert_eq!(c.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        c.element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -706,36 +789,49 @@ fn real_transfer_qualification_and_finite_banks_fail_without_partial_intake() {
         .dom()
         .take_details_toggle_intentions(128, &cancel())
         .unwrap();
-    let mut owner = dom.dom_manipulation_execution();
+    let mut owner = dom.element_task_execution();
     owner
         .ingest_transfer(&mut dom.dom(), newer, &cancel())
         .unwrap();
-    let kept = owner.pending_task(0).unwrap().unwrap();
+    let kept = owner
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     let rejected = owner
         .ingest_transfer(&mut dom.dom(), older, &cancel())
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::OutOfOrderTransfer
+        DomElementTaskRuntimeError::OutOfOrderTransfer
     ));
-    assert_eq!(owner.pending_task(0).unwrap(), Some(kept));
+    assert_eq!(
+        owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(kept)
+    );
     let (mut foreign, _, _, _) = fixture();
-    let mut foreign_owner = foreign.dom_manipulation_execution();
+    let mut foreign_owner = foreign.element_task_execution();
     let rejected = foreign_owner
         .ingest_transfer(&mut foreign.dom(), rejected.into_transfer(), &cancel())
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::Binding
+        DomElementTaskRuntimeError::Binding
     ));
-    assert_eq!(foreign_owner.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        foreign_owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 
     // The actual same durable owner retains its transfer across resource refusal.
     let (mut limited_dom, _, target, _) = fixture();
-    let mut limited = limited_dom.dom_manipulation_execution();
+    let mut limited = limited_dom.element_task_execution();
     limited
-        .set_limits(DomManipulationRuntimeLimits {
-            storage_bytes: ManipulationState::fixed_bytes().unwrap(),
+        .set_limits(DomElementTaskRuntimeLimits {
+            storage_bytes: ElementTaskState::fixed_bytes().unwrap(),
             ..limits()
         })
         .unwrap();
@@ -749,12 +845,17 @@ fn real_transfer_qualification_and_finite_banks_fail_without_partial_intake() {
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::Admission
+        DomElementTaskRuntimeError::Admission
     ));
-    assert_eq!(limited.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        limited
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     let spent = limited.work_used().unwrap();
     limited
-        .set_limits(DomManipulationRuntimeLimits {
+        .set_limits(DomElementTaskRuntimeLimits {
             work: spent,
             ..limits()
         })
@@ -764,23 +865,33 @@ fn real_transfer_qualification_and_finite_banks_fail_without_partial_intake() {
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::Admission
+        DomElementTaskRuntimeError::Admission
     ));
-    assert_eq!(limited.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        limited
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert_eq!(limited.work_used().unwrap(), spent);
     limited.set_limits(limits()).unwrap();
     limited
         .ingest_transfer(&mut limited_dom.dom(), rejected.into_transfer(), &cancel())
         .unwrap();
     assert_eq!(
-        limited.pending_task(0).unwrap().unwrap().id().target(),
+        limited
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap()
+            .unwrap()
+            .id()
+            .target(),
         target
     );
 
     // Exercise actual checked issuance on a separate original owner, without
     // resetting a consumed serial or reconstructing the limited owner above.
     let (mut exhausted_dom, _, exhausted_target, _) = fixture();
-    let mut exhausted = exhausted_dom.dom_manipulation_execution();
+    let mut exhausted = exhausted_dom.element_task_execution();
     exhausted.state().unwrap().borrow_mut().next = u64::MAX;
     open(&mut exhausted_dom, exhausted_target);
     let transfer = exhausted_dom
@@ -792,9 +903,14 @@ fn real_transfer_qualification_and_finite_banks_fail_without_partial_intake() {
         .unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomManipulationRuntimeError::IdentityExhausted
+        DomElementTaskRuntimeError::IdentityExhausted
     ));
-    assert_eq!(exhausted.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        exhausted
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -802,19 +918,20 @@ fn empty_zero_task_and_work_bounds_need_no_task_cleanup_admission() {
     let (mut dom, _, _, _) = fixture();
     let mut c = context(&mut dom);
     let mut registry = registry();
-    c.dom_manipulation
-        .set_limits(DomManipulationRuntimeLimits {
+    c.element_tasks
+        .set_limits(DomElementTaskRuntimeLimits {
             tasks: 0,
-            storage_bytes: ManipulationState::fixed_bytes().unwrap(),
+            storage_bytes: ElementTaskState::fixed_bytes().unwrap(),
             work: 0,
         })
         .unwrap();
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut dom.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut c,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -823,9 +940,9 @@ fn empty_zero_task_and_work_bounds_need_no_task_cleanup_admission() {
             &cancel()
         )
         .unwrap(),
-        DomManipulationProgress::Empty
+        DomElementTaskProgress::Empty
     ));
-    assert_eq!(c.dom_manipulation.work_used().unwrap(), 0);
+    assert_eq!(c.element_tasks.work_used().unwrap(), 0);
 }
 
 #[test]
@@ -853,13 +970,18 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
         .unwrap();
     open(&mut dom, target);
     ingest(&mut dom, &mut context);
-    let original = context.dom_manipulation.pending_task(0).unwrap().unwrap();
+    let original = context
+        .element_tasks
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut dom.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -871,7 +993,10 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
     assert!(failed.is_err());
     assert_eq!(context.log.len(), 1);
     assert_eq!(
-        context.dom_manipulation.pending_task(0).unwrap(),
+        context
+            .element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
         Some(original)
     );
     let (task, receipt) = complete(&mut dom, &mut registry, &mut context);
@@ -879,7 +1004,13 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());
     assert_eq!(context.log.len(), 1);
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -898,15 +1029,20 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
         .unwrap();
     open(&mut dom, target);
     ingest(&mut dom, &mut context);
-    let original = context.dom_manipulation.pending_task(0).unwrap().unwrap();
+    let original = context
+        .element_tasks
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     let mut low = dispatch_limits();
     low.work = 0;
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut dom.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: low,
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -914,7 +1050,7 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
             },
             &cancel()
         ),
-        Err(DomManipulationRuntimeError::Dispatch(
+        Err(DomElementTaskRuntimeError::Dispatch(
             DomEventDispatchError::Admission(DomEventResource::Work)
         ))
     ));
@@ -922,11 +1058,12 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     batch.detach(target);
     batch.destroy(target);
     apply(&mut dom, batch);
-    let result = DomManipulationRuntime::run_next(
+    let result = DomElementTaskRuntime::run_next(
         &mut dom.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -936,10 +1073,16 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     )
     .unwrap();
     assert!(
-        matches!(result,DomManipulationProgress::SkippedTargetDestroyed(task) if task==original)
+        matches!(result,DomElementTaskProgress::SkippedTargetDestroyed(task) if task==original)
     );
     assert!(context.log.is_empty());
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -989,7 +1132,7 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
                 work: 1_000_000,
                 css_input: surgeist_css::CssUtf16InputLimits::default(),
             },
-            dom_manipulation: self::limits(),
+            element_tasks: self::limits(),
             hosted: DomHostedRuntimeLimits {
                 canonical: surgeist_dom::DomHostedLimits::new(
                     surgeist_dom::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
@@ -1010,8 +1153,8 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
             let rejected = DomSession::new(dom, limits).unwrap_err();
             assert!(matches!(
                 rejected.error(),
-                crate::dom_style::DomSessionCreateFailure::DomManipulation(
-                    DomManipulationRuntimeError::PretransferredSession
+                crate::dom_style::DomSessionCreateFailure::ElementTasks(
+                    DomElementTaskRuntimeError::PretransferredSession
                 )
             ));
             let dom = rejected.into_dom();
@@ -1042,3 +1185,5 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
 }
 
 mod queue_tests;
+
+mod close_tests;

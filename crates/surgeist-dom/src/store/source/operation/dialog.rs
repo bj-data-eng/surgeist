@@ -39,7 +39,7 @@ impl Drop for ResumeWorkPolicy {
 )]
 pub(super) enum OperationDraft {
     Segment(Draft),
-    Observed(ShowObservation),
+    Observed(DialogObservation),
 }
 // Existing Style/child/installation/Select execution remains the original
 // segmented engine. Its entry points select the Segment phase before use.
@@ -121,22 +121,22 @@ impl Usage {
 }
 struct DialogFiring {
     subject: NodeId,
-    old: surgeist_html::HtmlDialogState,
-    new: surgeist_html::HtmlDialogState,
+    payload: crate::source::event::DomSourceEventPayload,
     cancelable: bool,
     kind: DomSourceEventKind,
     cursor: Option<HtmlDialogCursor>,
 }
-pub(super) struct ShowObservation {
+pub(super) struct DialogObservation {
     request: DomSourceEventRequest,
     owner: Arc<BatchIdentity>,
     cursor: Option<HtmlDialogCursor>,
     pub(super) usage: Usage,
     limits: DomSourceLimits,
     accepted: Option<DomSourceEventOutcome>,
+    inputs: storage::Payload,
     receiver: crate::DomDispatchCustody,
 }
-impl ShowObservation {
+impl DialogObservation {
     pub(super) fn status(&self, operation: &Operation) -> DomSourceStatus {
         DomSourceStatus {
             operation: operation.id,
@@ -158,8 +158,15 @@ impl ShowObservation {
                 .checked_add(size_of::<EventWork>())
                 .and_then(|n| n.checked_add(size_of::<AtomicU64>() + 2 * size_of::<AtomicUsize>()))
                 .and_then(|n| n.checked_add(self.request.work.bytes.load(Ordering::Relaxed)))
+                .and_then(|n| n.checked_add(self.inputs.bytes))
                 .ok_or(DomError::RepresentationExhausted)?,
-            units: self.request.work.units.load(Ordering::Relaxed),
+            units: self
+                .request
+                .work
+                .units
+                .load(Ordering::Relaxed)
+                .checked_add(self.inputs.units)
+                .ok_or(DomError::RepresentationExhausted)?,
         })
     }
 }
@@ -196,13 +203,13 @@ impl Operation {
             units: work.units.load(Ordering::Relaxed),
         })
     }
-    pub(super) fn observation(&self) -> Option<&ShowObservation> {
+    pub(super) fn observation(&self) -> Option<&DialogObservation> {
         match &self.draft {
             OperationDraft::Observed(observation) => Some(observation),
             OperationDraft::Segment(_) => None,
         }
     }
-    fn observation_mut(&mut self) -> Option<&mut ShowObservation> {
+    fn observation_mut(&mut self) -> Option<&mut DialogObservation> {
         match &mut self.draft {
             OperationDraft::Observed(observation) => Some(observation),
             OperationDraft::Segment(_) => None,
@@ -240,7 +247,7 @@ impl Operation {
         observation.limits = limits;
         Ok(())
     }
-    pub(super) fn observe_show(
+    pub(super) fn observe_dialog_method(
         &mut self,
         dom: &mut Dom,
         subject: NodeId,
@@ -251,12 +258,17 @@ impl Operation {
             old,
             new,
             cancelable,
-            source: surgeist_html::HtmlDialogEventSource::Null,
+            source,
         } = action
         else {
             return Err(DomError::InvalidSourceEvent);
         };
-        if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) }]) if *actual == subject)
+        if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) } | Command::CloseDialog { node: NodeOperand::Existing(actual), .. }]) if *actual == subject)
+            || !matches!(
+                source,
+                surgeist_html::HtmlDialogEventSource::Null
+                    | surgeist_html::HtmlDialogEventSource::OperationSource
+            )
             || !self.draft.created.is_empty()
             || !self.draft.tickets.is_empty()
             || !self.draft.effects.is_empty()
@@ -265,15 +277,16 @@ impl Operation {
         }
         let cursor = self
             .draft
-            .dialog_show
+            .dialog_method
             .ok_or(DomError::InvalidSourceEvent)?
             .cursor;
         self.observe_dialog_event(
             dom,
             DialogFiring {
                 subject,
-                old,
-                new,
+                payload: crate::source::event::DomSourceEventPayload::Toggle(
+                    crate::DomSourceToggleEvent { old, new },
+                ),
                 cancelable,
                 kind: DomSourceEventKind::BeforeToggle,
                 cursor: Some(cursor),
@@ -284,17 +297,31 @@ impl Operation {
     pub(super) fn observe_dialog_task(
         &mut self,
         dom: &mut Dom,
-        task: crate::DomDialogToggleTaskInfo,
+        task: crate::DomDialogTaskInfo,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
         self.observe_dialog_event(
             dom,
             DialogFiring {
                 subject: task.id().target(),
-                old: task.old_state(),
-                new: task.new_state(),
+                payload: match task {
+                    crate::DomDialogTaskInfo::Toggle(info) => {
+                        crate::source::event::DomSourceEventPayload::Toggle(
+                            crate::DomSourceToggleEvent {
+                                old: info.old_state(),
+                                new: info.new_state(),
+                            },
+                        )
+                    }
+                    crate::DomDialogTaskInfo::Close(_) => {
+                        crate::source::event::DomSourceEventPayload::Close
+                    }
+                },
                 cancelable: false,
-                kind: DomSourceEventKind::Toggle,
+                kind: match task {
+                    crate::DomDialogTaskInfo::Toggle(_) => DomSourceEventKind::Toggle,
+                    crate::DomDialogTaskInfo::Close(_) => DomSourceEventKind::Close,
+                },
                 cursor: None,
             },
             cancel,
@@ -308,8 +335,7 @@ impl Operation {
     ) -> Result<DomSourceProgress, DomError> {
         let DialogFiring {
             subject,
-            old,
-            new,
+            payload,
             cancelable,
             kind,
             cursor,
@@ -351,8 +377,7 @@ impl Operation {
                 parent: dom.source_parents.last().map(|parent| parent.id),
                 subject,
                 kind,
-                old,
-                new,
+                payload,
                 cancelable,
                 stage: AtomicU8::new(0),
                 work: self.draft.source_work.clone(),
@@ -380,7 +405,7 @@ impl Operation {
                 input_processing::InputProcessing::new(0, 0),
             ),
         };
-        let observation = ShowObservation {
+        let observation = DialogObservation {
             receiver,
             request: request.clone(),
             owner: self.draft.owner.clone(),
@@ -388,6 +413,7 @@ impl Operation {
             usage,
             limits,
             accepted: None,
+            inputs: self.command_storage,
         };
         self.draft = OperationDraft::Observed(observation);
         self.event_exposed = true;
@@ -816,10 +842,29 @@ impl Dom {
     }
     pub(in crate::store) fn source_rebase_limits(
         &self,
-        mut limits: DomSourceLimits,
+        limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLimits, DomError> {
-        let retained = self.source_observation_payload(cancel)?;
+        self.source_rebase_transferred_limits(limits, storage::Payload::default(), cancel)
+    }
+    // A method rebase retains the SAME command input; unlike callback edits it
+    // forms no second string occurrence. New Draft admission includes that one
+    // input while the old observation still owns its remaining header/control.
+    fn source_rebase_transferred_limits(
+        &self,
+        mut limits: DomSourceLimits,
+        transferred: storage::Payload,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLimits, DomError> {
+        let mut retained = self.source_observation_payload(cancel)?;
+        retained.bytes = retained
+            .bytes
+            .checked_sub(transferred.bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        retained.units = retained
+            .units
+            .checked_sub(transferred.units)
+            .ok_or(DomError::RepresentationExhausted)?;
         for operation in self.source_observers() {
             let observation = operation.observation().expect("observer");
             observation.request.work.step_own(cancel)?;
@@ -988,7 +1033,7 @@ impl Dom {
     }
 }
 impl DomSourceLease<'_> {
-    fn finish_show_noop(
+    fn finish_dialog_noop(
         &mut self,
         canceled_operation: bool,
         cancel: &AtomicBool,
@@ -1091,6 +1136,9 @@ impl DomSourceLease<'_> {
         let observation = operation
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
+        if observation.request.kind() == DomSourceEventKind::Close {
+            return self.finish_dialog_noop(false, cancel);
+        }
         let subject = observation.request.subject();
         self.dom.source_event_step(&observation.request, cancel)?;
         if matches!(
@@ -1098,11 +1146,11 @@ impl DomSourceLease<'_> {
                 .dispatch_custody_association(&observation.receiver, 0, subject)?,
             crate::DomDispatchAssociation::Retired(_)
         ) {
-            return self.finish_show_noop(false, cancel);
+            return self.finish_dialog_noop(false, cancel);
         }
         self.rebase_dialog_observation(None, cancel)
     }
-    pub(super) fn advance_show_observation(
+    pub(super) fn advance_dialog_observation(
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
@@ -1117,7 +1165,7 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::InvalidSourceEvent)?;
         self.dom.source_event_step(&observation.request, cancel)?;
         if operation.cancelled && observation.request.work.stage.load(Ordering::Relaxed) == 0 {
-            return self.finish_show_noop(true, cancel);
+            return self.finish_dialog_noop(true, cancel);
         }
         if observation.accepted.is_none() {
             return Ok(DomSourceProgress::Request(DomSourceRequest::Event(
@@ -1135,15 +1183,17 @@ impl DomSourceLease<'_> {
         let mut cursor = cursor.take().expect("Show cursor");
         self.dom.source_event_step(&observation.request, cancel)?;
         cursor
-            .reply(HtmlDialogReply::EventCanceled(
-                outcome == DomSourceEventOutcome::Canceled,
-            ))
+            .reply(if observation.request.cancelable() {
+                HtmlDialogReply::EventCanceled(outcome == DomSourceEventOutcome::Canceled)
+            } else {
+                HtmlDialogReply::Applied
+            })
             .map_err(DomError::DialogProtocol)?;
         self.dom.source_event_step(&observation.request, cancel)?;
         let action = cursor.action();
         match action {
             HtmlDialogAction::Complete(HtmlDialogOutcome::Completed) => {
-                return self.finish_show_noop(false, cancel);
+                return self.finish_dialog_noop(false, cancel);
             }
             HtmlDialogAction::Complete(HtmlDialogOutcome::InvalidState) => {
                 return Err(DomError::DialogInvalidState);
@@ -1199,7 +1249,11 @@ impl DomSourceLease<'_> {
         let subject = observation.request.subject();
         let owner = observation.owner.clone();
         let work = observation.usage.work.clone();
-        let limits = self.dom.source_rebase_limits(observation.limits, cancel)?;
+        let limits = self.dom.source_rebase_transferred_limits(
+            observation.limits,
+            observation.inputs,
+            cancel,
+        )?;
         let (mut draft, canonical, command) = Draft::new_source_root_with_work(
             self.dom,
             owner,
@@ -1211,13 +1265,22 @@ impl DomSourceLease<'_> {
         )?;
         let key = draft.resolve(subject.into())?;
         if let Some(cursor) = cursor {
-            draft.dialog_show = Some(crate::store::dialog::ShowFrame {
+            draft.dialog_method = Some(crate::store::dialog::MethodFrame {
                 subject: key,
                 cursor,
-                state: crate::store::dialog::ShowState::Ready,
+                state: crate::store::dialog::MethodState::Ready,
                 invocation: Invocation::Unissued,
-                captured_document: None,
-                popover_endpoint: None,
+                locals: if matches!(
+                    &operation.commands,
+                    OperationRoot::Edit([Command::CloseDialog { .. }])
+                ) {
+                    crate::store::dialog::MethodLocals::Close
+                } else {
+                    crate::store::dialog::MethodLocals::Show {
+                        captured_document: None,
+                        popover_endpoint: None,
+                    }
+                },
             });
         } else {
             // HTML's post-dispatch instruction clears CURRENT tracker, even if
@@ -1292,7 +1355,10 @@ mod tests;
 mod admission_tests;
 
 #[cfg(test)]
-mod manipulation_tests;
+mod element_task_tests;
 
 #[cfg(test)]
 mod watcher_payload_tests;
+
+#[cfg(test)]
+mod close_tests;

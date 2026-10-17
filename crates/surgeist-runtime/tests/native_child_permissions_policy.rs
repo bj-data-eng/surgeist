@@ -41,7 +41,7 @@ fn session() -> DomSession {
                 work: 4_000_000,
                 css_input: CssUtf16InputLimits::default(),
             },
-            dom_manipulation: DomManipulationRuntimeLimits {
+            element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 64,
                 storage_bytes: 32_000_000,
                 work: 4_000_000,

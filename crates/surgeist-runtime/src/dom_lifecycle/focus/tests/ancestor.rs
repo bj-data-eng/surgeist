@@ -145,7 +145,7 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         )?,
         DomSourceEventServiceProgress::Serviced { .. }
     ));
-    let tasks = session.dom_manipulation_execution();
+    let tasks = session.element_task_execution();
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
     let child = {

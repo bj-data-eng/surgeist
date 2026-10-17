@@ -74,7 +74,7 @@ acknowledgement errors.
 task state, Source event continuations and native hosted lifecycle. Its explicit
 `DomSessionLimits` admits each domain's actual storage and work.
 `source_execution()`, `style_execution()`,
-`dom_manipulation_execution()` and `hosted_execution()` return weak permissions into
+`element_task_execution()` and `hosted_execution()` return weak permissions into
 that same session. Dropping or reacquiring a permission preserves the original
 resources, queues and spent work.
 The scoped `DomEventDom` view permits canonical edits without exposing a
@@ -157,7 +157,7 @@ Window state remains unavailable. The live execution checks for retired Globals
 are preserved.
 
 Each admitted native Window starts never activated. The current HTML event
-surface admits load, error, toggle and beforetoggle; physical Window input and
+surface admits load, error, toggle, beforetoggle and close; physical Window input and
 application UiInput have no canonical HTML activation-event join. Future
 trusted activation-triggering input must update the actual Window state and
 perform HTML's propagation and close-watcher notification before admission.
@@ -271,23 +271,53 @@ or expired live issuer does not supply that proof. Resource-bearing edits still
 need their actual composed service, including removal of an associated Style
 sheet through the Source driver.
 
-Configure the shared task owner's count, storage and cumulative work through
-`DomSessionLimits::dom_manipulation`. Each `run_next` also receives explicit
-`DomManipulationRunLimits`: dispatcher limits bound event delivery, and Source
-limits bound Dialog's canonical cleanup continuation. Replacing a weak execution
-permission resets neither domain. The queued-task cleanup uses the original
-Source engine and reserves its closing revision before callbacks can run.
+Configure the shared element-task owner's aggregate count, storage and cumulative
+work through `DomSessionLimits::element_tasks`. Each `run_next` selects
+`DomElementTaskSourceKind::DomManipulation` or `UserInteraction` and receives
+explicit `DomElementTaskRunLimits`: dispatcher limits bound event delivery, and
+Source limits bound canonical cleanup. Selection preserves FIFO within that
+source; physical bank order promises no ordering between sources. Filtering
+uses the original work allowance. Replacing a weak execution permission resets
+neither domain. Queued-task cleanup uses the original Source engine and reserves
+its closing revision before callbacks can run.
 
-Details and Dialog toggle tasks share one DOM-manipulation task bank. Details
-ingestion admits the actual canonical pending intentions before taking custody;
-Dialog queue publication joins through its exact Source continuation. Their
-concrete event payloads and family trackers remain distinct. Coalescing removes
-the tracked task and appends its replacement at the current queue tail, retaining
-the first old state and latest new state. Tasks preserve their original queued
-Document and Global across target adoption; dispatch builds its path from the
-current tree. After dispatch, the surviving Dialog's current tracker is cleared
-even when a callback replaced it; that clear does not remove the newer queued
-task. A retired target never redirects cleanup to a replacement generation.
+Details and Dialog toggles use the DOM-manipulation source; Dialog Close
+notifications use the user-interaction source. Their closed payloads derive the
+source, while one actual owner, binding, serial and admission ledger retain all
+queued and executing work. Details ingestion admits actual canonical pending
+intentions before taking custody; Dialog publication joins through its exact
+Source continuation. Toggle coalescing removes the tracked task and appends its
+replacement at that source's current tail, retaining first old and latest new
+state. Close tasks have no tracker and do not coalesce. Tasks preserve their
+original queued Document and Global across adoption; dispatch builds its path
+from the current tree. After a Toggle dispatch, the surviving Dialog's current
+tracker is cleared even when a callback replaced it; that clear does not remove
+the newer queued task. Close dispatch performs no toggle-tracker write and
+replays none of the initiating method's effects. A retired target never redirects
+cleanup to a replacement generation.
+
+The standard `close_dialog(receiver, result)` Source operation represents
+`close(optional returnValue)`, whose source is null. It retains omitted versus
+supplied-empty result through the original method continuation. Initial absent
+open returns; otherwise authentic noncancelable beforetoggle precedes a new
+current open read. A surviving callback that removes open supplies the genuine
+early return. The method publishes the toggle, runs complete open-removal hooks,
+applies only a supplied result, clears actual request-close slots and reads
+canonical previous focus. Known absence reaches real Close task publication.
+Unsupported modal or positive restoration work stays at its exact pending action.
+The method completes only after its actual final QueueClose acknowledgment;
+subsequent notification delivery has independent task custody.
+
+If the original receiver is actually retired during beforetoggle, the dispatcher
+finishes its retained path and authentic receipt before the method reports
+`SourceReceiverRetired` at its required ReadOpen. Retirement is not an absent-open
+result or cancellation. Detach, adoption and failed destruction retain their
+ordinary source checks. This bounded method has no later arbitrary callback
+boundary; broader started actions with unsettled cleanup require their own
+original-operation failure continuation before admission. Internal command or
+watcher Close callers with nonnull source, source retargeting and their additional
+lifetime requirements remain contribution work.
+
 At task completion, the native loop checks the canonical checkpoint state.
 Pending Slot work cannot be delivered by this bounded contribution: it retains
 the started task and its delivered-event progress with `CheckpointUnavailable`. An actually empty bank
@@ -331,7 +361,7 @@ completed canonical edit does not establish fetched-resource completion,
 nonempty-media evaluation, rendering readiness, browser event-loop integration
 or JavaScript execution. The [Style](../src/dom_style.rs),
 [event](../src/dom_event.rs) and
-[DOM manipulation task](../src/dom_manipulation.rs) modules define their admitted
+[Element task](../src/element_tasks.rs) modules define their admitted
 operations and typed unavailable states; the
 [hosted lifecycle](../src/dom_lifecycle.rs) owns native creation and teardown. The
 [DOM owner](../../surgeist-dom/README.md) defines canonical source continuations.

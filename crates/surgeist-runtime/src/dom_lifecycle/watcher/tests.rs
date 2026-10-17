@@ -1,7 +1,8 @@
 //! Real Source hooks, original Window membership and affine-effect retries.
+mod close;
 use super::*;
 use crate::{
-    DomHostedTaskProgress, DomHostedTopLevel, DomManipulationRuntimeLimits, DomSession,
+    DomElementTaskRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel, DomSession,
     DomSessionLimits, DomShutdownOutcome, DomShutdownReason, DomSourceDriveProgress,
     DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
 };
@@ -24,7 +25,7 @@ fn session_limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: surgeist_css::CssUtf16InputLimits::default(),
         },
-        dom_manipulation: DomManipulationRuntimeLimits {
+        element_tasks: DomElementTaskRuntimeLimits {
             tasks: 8,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -989,23 +990,23 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             if phase_short {
                 assert!(matches!(
                     error,
-                    crate::DomSourceRuntimeError::DomManipulation(
-                        crate::DomManipulationRuntimeError::Dom(DomError::SourcePublicationLimit)
+                    crate::DomSourceRuntimeError::ElementTasks(
+                        crate::DomElementTaskRuntimeError::Dom(DomError::SourcePublicationLimit)
                     )
                 ))
             } else {
                 assert!(matches!(
                     error,
-                    crate::DomSourceRuntimeError::DomManipulation(
-                        crate::DomManipulationRuntimeError::Dom(DomError::SourceOutputLimit)
+                    crate::DomSourceRuntimeError::ElementTasks(
+                        crate::DomElementTaskRuntimeError::Dom(DomError::SourceOutputLimit)
                     )
                 ))
             }
             assert_eq!(session.snapshot().stamp(), before.stamp());
             assert_eq!(
                 session
-                    .dom_manipulation_execution()
-                    .pending_tasks()
+                    .element_task_execution()
+                    .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
                     .unwrap(),
                 0
             );
@@ -1042,8 +1043,8 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         );
         assert_eq!(
             session
-                .dom_manipulation_execution()
-                .pending_tasks()
+                .element_task_execution()
+                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             1
         );
@@ -1066,11 +1067,11 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         assert_eq!(status.published_phases(), 3);
         assert!(!status.cancellation_requested());
         let task = session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap()
             .unwrap()
-            .dialog()
+            .dialog_toggle()
             .unwrap();
         assert_eq!(dialog.toggle_task_tracker().unwrap().task(), task.id());
         assert_eq!(task.id().target(), subject);

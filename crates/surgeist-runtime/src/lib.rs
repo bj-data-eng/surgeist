@@ -170,10 +170,10 @@ mod dom_dialog;
 mod dom_event;
 mod dom_host;
 mod dom_lifecycle;
-mod dom_manipulation;
 mod dom_source;
 mod dom_style;
 mod effect;
+mod element_tasks;
 mod event;
 mod ids;
 mod input;
@@ -227,11 +227,6 @@ pub use dom_lifecycle::{
     DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind, DomHostedTaskProgress,
     DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
 };
-pub use dom_manipulation::{
-    DomDetailsTask, DomManipulationEventContext, DomManipulationProgress, DomManipulationRunLimits,
-    DomManipulationRuntime, DomManipulationRuntimeError, DomManipulationRuntimeLimits,
-    DomManipulationTask, DomManipulationTaskId,
-};
 pub use dom_source::{
     DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
     DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
@@ -247,6 +242,11 @@ pub use effect::{
     EffectBatch, EffectDisposition, EffectKindId, EffectOutcome, InvalidateResourceEffect,
     LoadResourceEffect, PersistEffect, RedrawTarget, ReprioritizeTaskEffect, RequestRedrawEffect,
     RuntimeIntent, ServiceDiagnosticEffect, StartServiceEffect, StartTaskEffect, StopServiceEffect,
+};
+pub use element_tasks::{
+    DomDetailsTask, DomElementTask, DomElementTaskEventContext, DomElementTaskId,
+    DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntime,
+    DomElementTaskRuntimeError, DomElementTaskRuntimeLimits, DomElementTaskSourceKind,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{

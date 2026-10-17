@@ -21,6 +21,7 @@ mod details;
 mod dialog;
 mod dispatch;
 mod document;
+mod element_tasks;
 mod form;
 pub(crate) mod hosted;
 mod hyperlink;
@@ -29,7 +30,6 @@ mod import;
 mod input;
 mod input_processing;
 mod installation;
-mod manipulation;
 mod meta;
 mod navigable;
 mod output;
@@ -834,7 +834,7 @@ fn discard_history(mut history: Option<Box<HistoryEntry>>) {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
-    manipulation_tasks: Option<std::sync::Weak<crate::manipulation::Binding>>,
+    element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
     owner: DomOwnerId,
     revision: DomRevision,
@@ -873,7 +873,7 @@ impl Dom {
     ) -> Result<Self, DomError> {
         Ok(Self {
             dispatch_custody: dispatch::CustodyBank::default(),
-            manipulation_tasks: None,
+            element_tasks: None,
             owner: DomOwnerId::allocate()?,
             revision: DomRevision(0),
             limits,
@@ -1441,7 +1441,7 @@ struct Draft {
     source_other_units: usize,
     source_invocation: u64,
     source_headroom: Option<source::headroom::Scan>,
-    dialog_show: Option<dialog::ShowFrame>,
+    dialog_method: Option<dialog::MethodFrame>,
     dispatch_retirements: Vec<(NodeId, Key)>,
     phase_map: Option<source::PhaseMap>,
     base_work: std::cell::Cell<u64>,
@@ -1695,7 +1695,7 @@ impl Draft {
             source_other_units: 0,
             source_invocation: 0,
             source_headroom: None,
-            dialog_show: None,
+            dialog_method: None,
             dispatch_retirements: Vec::new(),
             phase_map: None,
             base_work: std::cell::Cell::new(0),
@@ -2281,9 +2281,18 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
             }
+            Command::CloseDialog { node, result } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::Close(result.as_ref()),
+                    limits,
+                    cancelled,
+                )?;
+            }
             Command::ShowDialog { node } => {
                 let key = self.resolve(node.clone())?;
-                self.dialog_show_boundary(key, limits, cancelled)?;
+                self.dialog_method_boundary(key, dialog::MethodInput::Show, limits, cancelled)?;
             }
             Command::SetDialogReturnValue { node, value } => {
                 let node = self.resolve(node.clone())?;

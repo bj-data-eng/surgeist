@@ -56,12 +56,12 @@ impl DomCloseWatcherId {
 /// Historical canonical identity and first state of the currently tracked task.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDialogToggleTracker {
-    pub(crate) task: crate::DomManipulationTaskId,
+    pub(crate) task: crate::DomElementTaskId,
     pub(crate) old: surgeist_html::HtmlDialogState,
 }
 impl DomDialogToggleTracker {
     /// Exact actual task identity; this observation grants no execution right.
-    pub const fn task(self) -> crate::DomManipulationTaskId {
+    pub const fn task(self) -> crate::DomElementTaskId {
         self.task
     }
     /// First old state preserved by coalescing.

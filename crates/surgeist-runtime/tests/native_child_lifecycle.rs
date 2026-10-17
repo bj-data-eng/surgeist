@@ -47,7 +47,7 @@ fn session() -> DomSession {
                 work: 1_000_000,
                 css_input: CssUtf16InputLimits::default(),
             },
-            dom_manipulation: DomManipulationRuntimeLimits {
+            element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 32,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
@@ -303,15 +303,15 @@ fn single_subtree_insertion_creates_both_sibling_children_before_source_completi
 #[test]
 fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop() {
     struct Context {
-        dom_manipulation: DomManipulationRuntime,
+        element_tasks: DomElementTaskRuntime,
         source: DomSourceRuntime,
         root: NodeId,
         parent: NodeId,
         returned: Vec<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
     }
-    impl DomManipulationEventContext for Context {
-        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
-            &mut self.dom_manipulation
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+            &mut self.element_tasks
         }
     }
     let mut session = session();
@@ -319,7 +319,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
     let parent = body(&session.snapshot(), top.document());
     let (root, siblings) = detached_siblings(&mut session, top.document());
     let mut context = Context {
-        dom_manipulation: session.dom_manipulation_execution(),
+        element_tasks: session.element_task_execution(),
         source: session.source_execution(),
         root,
         parent,
@@ -368,17 +368,15 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
             )
             .unwrap();
         assert_eq!(
-            context
-                .dom_manipulation
-                .ingest(&mut dom, &cancel())
-                .unwrap(),
+            context.element_tasks.ingest(&mut dom, &cancel()).unwrap(),
             1
         );
-        let progress = DomManipulationRuntime::run_next(
+        let progress = DomElementTaskRuntime::run_next(
             &mut dom,
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: DomEventDispatchLimits {
                     path_items: 128,
                     snapshot_listeners: 128,
@@ -394,7 +392,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         )
         .unwrap();
         match progress {
-            DomManipulationProgress::Complete { receipt, .. } => {
+            DomElementTaskProgress::Complete { receipt, .. } => {
                 assert_eq!(receipt.callbacks(), 1);
                 assert!(receipt.failures().is_empty());
             }
@@ -409,7 +407,13 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         Ok(DomSourceDriveProgress::Complete(_))
     ));
     assert_sibling_children(&session.snapshot(), top, siblings);
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert_eq!(session.snapshot().incomplete_source_operation(), None);
     assert_eq!(session.snapshot().incomplete_hosted_operation(), None);
 }
@@ -1681,14 +1685,14 @@ fn history_job_task_admission_refusal_retains_original_fifo_for_raised_limit_ret
 #[test]
 fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() {
     struct Context {
-        dom_manipulation: DomManipulationRuntime,
+        element_tasks: DomElementTaskRuntime,
         hosted: HostedRuntime,
         traversables: [DomHostedNavigableId; 2],
         pumped: Vec<Result<DomHostedTaskProgress, DomHostedRuntimeError>>,
     }
-    impl DomManipulationEventContext for Context {
-        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
-            &mut self.dom_manipulation
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+            &mut self.element_tasks
         }
     }
     let mut session = session();
@@ -1755,7 +1759,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         assert_eq!(queued.hosted_entry(entry).unwrap().history(), Some((0, 0)));
     }
     let mut context = Context {
-        dom_manipulation: session.dom_manipulation_execution(),
+        element_tasks: session.element_task_execution(),
         hosted: session.hosted_execution(),
         traversables: [first.navigable(), second.navigable()],
         pumped: Vec::new(),
@@ -1794,17 +1798,15 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
             )
             .unwrap();
         assert_eq!(
-            context
-                .dom_manipulation
-                .ingest(&mut dom, &cancel())
-                .unwrap(),
+            context.element_tasks.ingest(&mut dom, &cancel()).unwrap(),
             1
         );
-        let progress = DomManipulationRuntime::run_next(
+        let progress = DomElementTaskRuntime::run_next(
             &mut dom,
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: DomEventDispatchLimits {
                     path_items: 128,
                     snapshot_listeners: 128,
@@ -1819,7 +1821,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
             &cancel(),
         )
         .unwrap();
-        let DomManipulationProgress::Complete { receipt, .. } = progress else {
+        let DomElementTaskProgress::Complete { receipt, .. } = progress else {
             panic!("the real child Details task and its checkpoint must complete")
         };
         assert_eq!(receipt.callbacks(), 1);
@@ -1880,7 +1882,13 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         after_callback.hosted_entry(other_entry).unwrap().history(),
         Some((0, 0))
     );
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 
     let (first_complete, first_jobs) = pump_one_history(&mut session, first.navigable());
     assert_eq!(first_complete, first_operation);

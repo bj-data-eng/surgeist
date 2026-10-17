@@ -1048,7 +1048,7 @@ impl HostedRuntime {
 mod url_configuration_tests {
     use super::*;
     use crate::{
-        DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
+        DomElementTaskRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
         DomSourceServices, DomSourceUnavailable, DomSourceUrlService, DomStyleRuntimeLimits,
     };
     use surgeist_dom::{
@@ -1102,7 +1102,7 @@ mod url_configuration_tests {
                     work: 4_000_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                dom_manipulation: DomManipulationRuntimeLimits {
+                element_tasks: DomElementTaskRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 32_000_000,
                     work: 4_000_000,

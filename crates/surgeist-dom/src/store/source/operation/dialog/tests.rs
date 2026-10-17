@@ -44,10 +44,28 @@ pub(super) fn request(dom: &mut Dom, subject: NodeId) -> DomSourceEventRequest {
         panic!("actual initial event boundary");
     };
     assert!(!lease.status().has_published());
-    assert_eq!(request.old_state(), surgeist_html::HtmlDialogState::Closed);
-    assert_eq!(request.new_state(), surgeist_html::HtmlDialogState::Open);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .old_state(),
+        surgeist_html::HtmlDialogState::Closed
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .new_state(),
+        surgeist_html::HtmlDialogState::Open
+    );
     assert!(request.cancelable());
-    assert_eq!(request.source(), None);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .source(),
+        None
+    );
     assert_eq!(lease.status().phase(), DomSourcePhase::EventObservation);
     request
 }

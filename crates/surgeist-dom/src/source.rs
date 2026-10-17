@@ -215,6 +215,17 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// Invoke the standard nonmodal close method with its null source. Omitted
+    /// result preserves returnValue; supplied empty is a real empty value.
+    pub fn close_dialog(node: NodeId, result: Option<DocumentString>) -> Self {
+        Self {
+            command: Command::CloseDialog {
+                node: node.into(),
+                result,
+            },
+        }
+    }
+
     /// Invoke nonmodal Dialog show through the original Source engine.
     pub fn show_dialog(node: NodeId) -> Self {
         Self {

@@ -371,7 +371,11 @@ pub(in crate::store) fn commands(
                 }
                 payload.string(qualified_name)?;
             }
-            Command::CreateHtmlDocument {
+            Command::CloseDialog {
+                result: Some(value),
+                ..
+            }
+            | Command::CreateHtmlDocument {
                 title: Some(value), ..
             }
             | Command::SetTextareaValue { value, .. }

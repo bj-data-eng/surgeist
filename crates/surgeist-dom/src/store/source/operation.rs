@@ -22,7 +22,7 @@ enum OperationRoot {
     Edit([Command; 1]),
     NativeInstallation,
     SelectCompletion(NodeId),
-    DialogToggleTask(crate::DomDialogToggleTaskInfo),
+    DialogTask(crate::DomDialogTaskInfo),
     #[cfg(test)]
     Commands(Vec<Command>),
 }
@@ -40,7 +40,7 @@ impl std::ops::Deref for OperationRoot {
     fn deref(&self) -> &[Command] {
         match self {
             Self::Edit(commands) => commands,
-            Self::NativeInstallation | Self::SelectCompletion(_) | Self::DialogToggleTask(_) => &[],
+            Self::NativeInstallation | Self::SelectCompletion(_) | Self::DialogTask(_) => &[],
             #[cfg(test)]
             Self::Commands(commands) => commands,
         }
@@ -64,7 +64,7 @@ pub(in crate::store) struct Operation {
     published: bool,
     event_exposed: bool,
     event_work: std::sync::Weak<crate::source::event::EventWork>,
-    dialog_queue: Option<crate::DomManipulationTaskId>,
+    dialog_queue: Option<crate::DomElementTaskId>,
     cancelled: bool,
     phases: u64,
     headroom: Option<headroom::Reservation>,
@@ -113,7 +113,7 @@ pub struct DomSourceLease<'a> {
     id: DomSourceOperationId,
     complete: bool,
     select_authorization: Option<Arc<crate::select::Authorization>>,
-    task_authorization: Option<Arc<crate::manipulation::Binding>>,
+    task_authorization: Option<Arc<crate::element_tasks::Binding>>,
 }
 impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
@@ -170,7 +170,7 @@ impl Dom {
             })
             .ok_or(DomError::RepresentationExhausted)?;
         style
-            .checked_add(crate::manipulation::retained(&self.manipulation_tasks)?)
+            .checked_add(crate::element_tasks::retained(&self.element_tasks)?)
             .and_then(|bytes| {
                 bytes.checked_add(
                     self.hosted_source
@@ -380,9 +380,11 @@ impl Dom {
         {
             return Err(DomError::InvalidNativeTask);
         }
-        if self.source_operation.as_ref().is_some_and(|operation| {
-            matches!(operation.commands, OperationRoot::DialogToggleTask(_))
-        }) {
+        if self
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| matches!(operation.commands, OperationRoot::DialogTask(_)))
+        {
             return Err(DomError::InvalidSourceOperation);
         }
         self.resume_source_permission(id, limits, cancel)
@@ -645,7 +647,8 @@ impl Operation {
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
             parent: None,
-            phase: if self.draft.dialog_show.is_some() || self.draft.pending_dialog_hook().is_some()
+            phase: if self.draft.dialog_method.is_some()
+                || self.draft.pending_dialog_hook().is_some()
             {
                 crate::DomSourcePhase::DialogService
             } else {
@@ -1248,7 +1251,7 @@ impl Operation {
                         surgeist_html::HtmlDialogAction::RememberFocusedElement
                             | surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
                     ) {
-                        crate::source::watcher::DialogOccurrence::Show(occurrence)
+                        crate::source::watcher::DialogOccurrence::Method(occurrence)
                     } else {
                         crate::source::watcher::DialogOccurrence::Hook(occurrence)
                     }
@@ -1427,9 +1430,9 @@ impl Operation {
         self.draft.cancelled_images = None;
         if let Some(next) = issued_next {
             self.draft.source_invocation = next;
-            if let Some(occurrence) = dialog.as_ref().and_then(|request| request.show()) {
+            if let Some(occurrence) = dialog.as_ref().and_then(|request| request.method()) {
                 self.draft
-                    .dialog_show
+                    .dialog_method
                     .as_mut()
                     .expect("exposed actual Show")
                     .invocation = Invocation::Exposed(occurrence.ordinal);
@@ -1511,15 +1514,19 @@ impl DomSourceLease<'_> {
             .expect("qualified original operation")
             .entry_scope
             .seal();
-        if self.dom.source_operation.as_ref().is_some_and(|operation| {
-            matches!(operation.commands, OperationRoot::DialogToggleTask(_))
-        }) && !self.task_authorization.as_ref().is_some_and(|binding| {
-            self.dom
-                .manipulation_tasks
-                .as_ref()
-                .and_then(std::sync::Weak::upgrade)
-                .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
-        }) {
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| matches!(operation.commands, OperationRoot::DialogTask(_)))
+            && !self.task_authorization.as_ref().is_some_and(|binding| {
+                self.dom
+                    .element_tasks
+                    .as_ref()
+                    .and_then(std::sync::Weak::upgrade)
+                    .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
+            })
+        {
             return Err(DomError::InvalidSourceOperation);
         }
         // Independent public capabilities may commit concurrently. Keep the
@@ -1531,7 +1538,7 @@ impl DomSourceLease<'_> {
             .as_ref()
             .is_some_and(|op| op.observation().is_some())
         {
-            return self.advance_show_observation(cancel);
+            return self.advance_dialog_observation(cancel);
         }
         let root = self
             .dom
@@ -1585,7 +1592,7 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
         if !op.event_exposed
-            && let OperationRoot::DialogToggleTask(task) = op.commands
+            && let OperationRoot::DialogTask(task) = op.commands
         {
             return op.observe_dialog_task(self.dom, task, cancel);
         }
@@ -1707,9 +1714,15 @@ impl DomSourceLease<'_> {
                     )
                 } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
                     op.draft.run_effects(self.dom.limits, cancel)
-                } else if let Some(frame) = op.draft.dialog_show {
+                } else if let Some(frame) = op.draft.dialog_method {
+                    let input = match &op.commands[op.index] {
+                        Command::CloseDialog { result, .. } => {
+                            crate::store::dialog::MethodInput::Close(result.as_ref())
+                        }
+                        _ => crate::store::dialog::MethodInput::Show,
+                    };
                     op.draft
-                        .dialog_show_boundary(frame.subject, self.dom.limits, cancel)
+                        .dialog_method_boundary(frame.subject, input, self.dom.limits, cancel)
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
@@ -1723,7 +1736,7 @@ impl DomSourceLease<'_> {
                     subject: Some(subject),
                     action,
                 }) => {
-                    let observed = op.observe_show(self.dom, subject, action, cancel);
+                    let observed = op.observe_dialog_method(self.dom, subject, action, cancel);
                     if observed.is_err() {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
@@ -1737,7 +1750,11 @@ impl DomSourceLease<'_> {
                         .draft
                         .pending_dialog(action)
                         .expect("qualified actual Dialog stop");
-                    if matches!(action, surgeist_html::HtmlDialogAction::QueueToggle { .. }) {
+                    if matches!(
+                        action,
+                        surgeist_html::HtmlDialogAction::QueueToggle { .. }
+                            | surgeist_html::HtmlDialogAction::QueueClose
+                    ) {
                         let subject = op
                             .draft
                             .published_id(pending.subject)
@@ -1842,7 +1859,7 @@ impl DomSourceLease<'_> {
                     return Err(e);
                 }
                 Ok(()) => {
-                    if op.draft.dialog_show.is_some() {
+                    if op.draft.dialog_method.is_some() {
                         continue;
                     }
                     // The real current command has drained. Excess conservative

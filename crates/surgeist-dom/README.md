@@ -1055,9 +1055,29 @@ execution retirement, which leaves the surviving Dialog and its original Window
 custody intact. Retries retain the original receipt without repeating manager
 effects. Queued delivery cannot bypass an unfinished synchronous tail.
 Show completion requires the actual producer Complete branch, including the
-proven negative allow-focus path above. Close, modal, positive focusing,
-request-close, platform close requests and general popover processing remain
-separate contributions.
+proven negative allow-focus path above.
+
+`DomSourceEdit::close_dialog(receiver, result)` represents the standard nonmodal
+close method with its actual null source. An omitted result preserves returnValue;
+a supplied empty string writes empty. The original HTML cursor orders authentic
+noncancelable beforetoggle, the postcallback open read, toggle publication,
+complete open-removal/watcher hooks and result/request-state updates. A surviving
+callback that removes open supplies the genuine early return. Known previous-focus
+absence reaches actual final Close task publication; unsupported modal or focus
+restoration work retains its precise action wait. Method Complete requires the
+real QueueClose acknowledgment.
+
+Dialog toggles use the DOM-manipulation task source and its tracker. Close
+notifications are separate user-interaction tasks, with no toggle tracker or
+coalescing. Runtime's one element-task owner selects the actual source explicitly;
+both preserve the queued target and original Global/Document association.
+Successful Toggle dispatch clears the surviving Dialog's current tracker;
+Close dispatch does not clear it or repeat method effects. Real receiver
+retirement during beforetoggle preserves the started dispatcher and authentic
+receipt, then yields `SourceReceiverRetired` at ReadOpen rather than a synthetic
+absent-open return. Internal Close callers with nonnull source, modal operations,
+positive focusing, request-close, platform close requests and general popover
+processing remain separate contributions.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

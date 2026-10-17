@@ -947,10 +947,10 @@ impl HostedState {
             document: info.document,
         };
         if !event_loop.executing
-            && let Some(records::CurrentTask::DomManipulation { task, .. }) = event_loop.current
+            && let Some(records::CurrentTask::ElementTask { task, .. }) = event_loop.current
         {
             let details = self
-                .dom_manipulation
+                .element_tasks
                 .as_ref()
                 .ok_or(DomHostedRuntimeError::Protocol)?;
             details
@@ -1011,7 +1011,7 @@ impl HostedState {
         );
         if !complete {
             let details = self
-                .dom_manipulation
+                .element_tasks
                 .as_ref()
                 .ok_or(DomHostedRuntimeError::Protocol)?;
             details
@@ -1149,9 +1149,9 @@ fn checkpoint(
     Ok(())
 }
 fn manipulation_error(
-    error: crate::dom_manipulation::DomManipulationRuntimeError,
+    error: crate::element_tasks::DomElementTaskRuntimeError,
 ) -> DomHostedRuntimeError {
-    use crate::dom_manipulation::DomManipulationRuntimeError as Error;
+    use crate::element_tasks::DomElementTaskRuntimeError as Error;
     match error {
         Error::Hosted(error) => error,
         Error::Dom(error) => DomHostedRuntimeError::Dom(error.into()),
@@ -1443,7 +1443,7 @@ impl State {
 mod completion_retention_tests {
     use super::*;
     use crate::{
-        DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
+        DomElementTaskRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
         DomSourceServices, DomStyleRuntimeLimits,
     };
     use surgeist_dom::{
@@ -1470,7 +1470,7 @@ mod completion_retention_tests {
                     work: 4_000_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                dom_manipulation: DomManipulationRuntimeLimits {
+                element_tasks: DomElementTaskRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 32_000_000,
                     work: 4_000_000,

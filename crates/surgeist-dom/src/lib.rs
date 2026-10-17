@@ -115,9 +115,9 @@ mod batch;
 mod button;
 mod control;
 mod details;
-mod manipulation;
-pub use manipulation::{
-    DomManipulationTaskId, DomManipulationTaskRetention, DomManipulationTaskSource,
+mod element_tasks;
+pub use element_tasks::{
+    DomElementTaskId, DomElementTaskRetention, DomElementTaskSource, DomElementTaskSourceKind,
 };
 mod dialog;
 mod dispatch;
@@ -230,8 +230,8 @@ pub use snapshot::{
     DomTreeScope,
 };
 pub use store::source::operation::dialog_queue::{
-    DomDialogToggleQueueCommit, DomDialogToggleQueuePlan, DomDialogToggleQueuePublication,
-    DomDialogToggleTask, DomDialogToggleTaskInfo,
+    DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,
+    DomDialogTaskQueuePlan, DomDialogTaskQueuePublication, DomDialogToggleTaskInfo,
 };
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,

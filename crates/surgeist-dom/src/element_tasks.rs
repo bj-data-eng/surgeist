@@ -1,4 +1,4 @@
-//! Affine ownership of the actual shared DOM-manipulation task source.
+//! Affine ownership of the actual shared element-task bank and payloads.
 use crate::{DomOwnerId, NodeId};
 use std::sync::{
     Arc, Weak,
@@ -10,18 +10,24 @@ pub(crate) struct Binding {
     pub(crate) owner: DomOwnerId,
     pub(crate) bytes: AtomicUsize,
 }
+/// HTML element tasks preserve FIFO independently within each task source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomElementTaskSourceKind {
+    DomManipulation,
+    UserInteraction,
+}
 /// The one actual host task owner bound to a canonical DOM. This capability is
 /// trusted to publish only its real prepared tasks, never a synthetic queue ack.
-pub struct DomManipulationTaskSource {
+pub struct DomElementTaskSource {
     pub(crate) binding: Arc<Binding>,
 }
-impl std::fmt::Debug for DomManipulationTaskSource {
+impl std::fmt::Debug for DomElementTaskSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DomManipulationTaskSource")
+        f.debug_struct("DomElementTaskSource")
             .finish_non_exhaustive()
     }
 }
-impl DomManipulationTaskSource {
+impl DomElementTaskSource {
     /// Producer-owned fixed binding payload, excluding allocator metadata.
     pub const fn binding_payload_bytes() -> usize {
         std::mem::size_of::<Binding>()
@@ -32,11 +38,11 @@ impl DomManipulationTaskSource {
         &self,
         serial: u64,
         target: NodeId,
-    ) -> Result<DomManipulationTaskId, crate::DomError> {
+    ) -> Result<DomElementTaskId, crate::DomError> {
         if serial == 0 || target.owner() != self.binding.owner {
             return Err(crate::DomError::InvalidSourceOperation);
         }
-        Ok(DomManipulationTaskId {
+        Ok(DomElementTaskId {
             owner: self.binding.owner,
             serial,
             target,
@@ -45,12 +51,12 @@ impl DomManipulationTaskSource {
 }
 /// Exact source issuer, nonwrapping occurrence and target generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomManipulationTaskId {
+pub struct DomElementTaskId {
     pub(crate) owner: DomOwnerId,
     pub(crate) serial: u64,
     pub(crate) target: NodeId,
 }
-impl DomManipulationTaskId {
+impl DomElementTaskId {
     /// Actual queued receiver.
     pub const fn target(self) -> NodeId {
         self.target
@@ -58,11 +64,11 @@ impl DomManipulationTaskId {
 }
 /// Continuous admission of actual task-owner storage. Drop the represented
 /// allocation before this guard. It remains observable after any Source closes.
-pub struct DomManipulationTaskRetention {
+pub struct DomElementTaskRetention {
     pub(crate) binding: Arc<Binding>,
     pub(crate) bytes: usize,
 }
-impl DomManipulationTaskRetention {
+impl DomElementTaskRetention {
     /// Transfer a checked subextent to its actual allocation owner, without
     /// changing aggregate admission or creating credit.
     pub fn split(&mut self, bytes: usize) -> Result<Self, crate::DomError> {
@@ -88,7 +94,7 @@ impl DomManipulationTaskRetention {
         Ok(())
     }
 }
-impl Drop for DomManipulationTaskRetention {
+impl Drop for DomElementTaskRetention {
     fn drop(&mut self) {
         self.binding.bytes.fetch_sub(self.bytes, Ordering::Relaxed);
     }
@@ -98,7 +104,7 @@ pub(crate) fn retained(binding: &Option<Weak<Binding>>) -> Result<usize, crate::
         .as_ref()
         .and_then(Weak::upgrade)
         .map_or(Ok(0), |binding| {
-            DomManipulationTaskSource::binding_payload_bytes()
+            DomElementTaskSource::binding_payload_bytes()
                 .checked_add(binding.bytes.load(Ordering::Relaxed))
                 .ok_or(crate::DomError::RepresentationExhausted)
         })

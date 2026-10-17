@@ -47,7 +47,7 @@ fn session() -> DomSession {
                 work: 1_000_000,
                 css_input: CssUtf16InputLimits::default(),
             },
-            dom_manipulation: DomManipulationRuntimeLimits {
+            element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 16,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
@@ -80,15 +80,15 @@ fn dispatch_limits() -> DomEventDispatchLimits {
 }
 
 struct Context {
-    dom_manipulation: DomManipulationRuntime,
+    element_tasks: DomElementTaskRuntime,
     target: NodeId,
     observations: Vec<(Option<DomEventTarget>, Option<NodeId>, DomEventPhase)>,
     edits: Vec<Result<DomCommit, DomError>>,
 }
 
-impl DomManipulationEventContext for Context {
-    fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
-        &mut self.dom_manipulation
+impl DomElementTaskEventContext for Context {
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+        &mut self.element_tasks
     }
 }
 
@@ -104,7 +104,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
     let snapshot = session.snapshot();
     let html = snapshot.node(top.document().node()).unwrap().children()[0];
     let body = snapshot.node(html).unwrap().children()[1];
-    let mut details = session.dom_manipulation_execution();
+    let mut details = session.element_task_execution();
     let target = {
         let mut dom = session.dom();
         let mut batch = DomBatch::new();
@@ -116,12 +116,15 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
         assert_eq!(details.ingest(&mut dom, &cancel()).unwrap(), 1);
         target
     };
-    let queued = details.pending_task(0).unwrap().unwrap();
+    let queued = details
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     let association = queued.queue_association().unwrap();
     assert_eq!(association.document(), top.document());
     assert_eq!(association.global(), top.global());
     let mut context = Context {
-        dom_manipulation: details,
+        element_tasks: details,
         target,
         observations: Vec::new(),
         edits: Vec::new(),
@@ -175,11 +178,12 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .unwrap();
     }
 
-    let progress = DomManipulationRuntime::run_next(
+    let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -188,7 +192,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
         &cancel(),
     )
     .unwrap();
-    let DomManipulationProgress::Complete {
+    let DomElementTaskProgress::Complete {
         task,
         receipt,
         displaced_owner: None,
@@ -219,13 +223,20 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
     assert_eq!(settings.document().id(), top.document());
     assert!(settings.environment_ready());
     assert!(settings.document().is_fully_active().unwrap());
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -234,7 +245,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             &cancel(),
         )
         .unwrap(),
-        DomManipulationProgress::Empty
+        DomElementTaskProgress::Empty
     ));
 }
 
@@ -247,7 +258,7 @@ enum TargetEdit {
 }
 
 struct ReentryContext {
-    dom_manipulation: DomManipulationRuntime,
+    element_tasks: DomElementTaskRuntime,
     target: NodeId,
     destination: DocumentId,
     edit: TargetEdit,
@@ -257,9 +268,9 @@ struct ReentryContext {
     replacement_callbacks: usize,
 }
 
-impl DomManipulationEventContext for ReentryContext {
-    fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
-        &mut self.dom_manipulation
+impl DomElementTaskEventContext for ReentryContext {
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+        &mut self.element_tasks
     }
 }
 
@@ -314,8 +325,8 @@ fn queue_details(
     session: &mut DomSession,
     document: DocumentId,
     parent: NodeId,
-) -> (NodeId, DomManipulationRuntime, DomManipulationTask) {
-    let mut details = session.dom_manipulation_execution();
+) -> (NodeId, DomElementTaskRuntime, DomElementTask) {
+    let mut details = session.element_task_execution();
     let mut dom = session.dom();
     let mut batch = DomBatch::new();
     let target = batch.create_element_ns(document, Namespace::html(), "details");
@@ -324,7 +335,10 @@ fn queue_details(
     let commit = dom.apply(batch, &cancel()).unwrap();
     let target = commit.created(&target).unwrap().unwrap();
     assert_eq!(details.ingest(&mut dom, &cancel()).unwrap(), 1);
-    let queued = details.pending_task(0).unwrap().unwrap();
+    let queued = details
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
     (target, details, queued)
 }
 
@@ -403,13 +417,9 @@ fn reentry_registry(
     registry
 }
 
-fn assert_complete(
-    progress: DomManipulationProgress,
-    queued: DomManipulationTask,
-    callbacks: usize,
-) {
+fn assert_complete(progress: DomElementTaskProgress, queued: DomElementTask, callbacks: usize) {
     match progress {
-        DomManipulationProgress::Complete {
+        DomElementTaskProgress::Complete {
             task,
             receipt,
             displaced_owner: None,
@@ -448,7 +458,7 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
         assert_eq!(association.global(), original.global());
     }
     let mut context = ReentryContext {
-        dom_manipulation: details,
+        element_tasks: details,
         target,
         destination: destination.document(),
         edit: if same_edit {
@@ -466,11 +476,12 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
     if retire_before_resume {
         first_limits.callbacks = 1;
     }
-    let progress = DomManipulationRuntime::run_next(
+    let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: first_limits,
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -505,7 +516,7 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
     let progress = if retire_before_resume {
         assert!(matches!(
             progress,
-            DomManipulationProgress::Retained {
+            DomElementTaskProgress::Retained {
                 task,
                 dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
                 displaced_owner: None,
@@ -525,11 +536,12 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
         // active. Its actual lifecycle now changes current activity while the
         // original dispatch retains its exact next listener and task Document.
         retire_top(&mut session, destination);
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -586,13 +598,20 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
             .unwrap(),
         !retire_before_resume
     );
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -601,7 +620,7 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
             &cancel()
         )
         .unwrap(),
-        DomManipulationProgress::Empty
+        DomElementTaskProgress::Empty
     ));
 }
 
@@ -637,7 +656,7 @@ fn detach_during_started_dispatch_keeps_live_target_delivery_and_mutation() {
     let parent = body(&session, top.document());
     let (target, details, queued) = queue_details(&mut session, top.document(), parent);
     let mut context = ReentryContext {
-        dom_manipulation: details,
+        element_tasks: details,
         target,
         destination: top.document(),
         edit: TargetEdit::Detach,
@@ -647,11 +666,12 @@ fn detach_during_started_dispatch_keeps_live_target_delivery_and_mutation() {
         replacement_callbacks: 0,
     };
     let mut registry = reentry_registry(&mut session, target);
-    let progress = DomManipulationRuntime::run_next(
+    let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -675,7 +695,13 @@ fn detach_during_started_dispatch_keeps_live_target_delivery_and_mutation() {
         node.attribute(&"later-listener".into()),
         Some(&"delivered".into())
     );
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -685,7 +711,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
     let parent = body(&session, top.document());
     let (target, details, queued) = queue_details(&mut session, top.document(), parent);
     let mut context = ReentryContext {
-        dom_manipulation: details,
+        element_tasks: details,
         target,
         destination: top.document(),
         edit: TargetEdit::Destroy,
@@ -697,11 +723,12 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
     let mut registry = reentry_registry(&mut session, target);
     let mut low = dispatch_limits();
     low.callbacks = 1;
-    let progress = DomManipulationRuntime::run_next(
+    let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: low,
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -711,7 +738,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
     )
     .unwrap();
     assert!(
-        matches!(progress, DomManipulationProgress::Retained { task, dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks), displaced_owner: None } if task == queued)
+        matches!(progress, DomElementTaskProgress::Retained { task, dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks), displaced_owner: None } if task == queued)
     );
     assert_eq!(context.observations.len(), 1);
     assert_eq!(context.edits.len(), 1);
@@ -720,23 +747,27 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         session.snapshot().node(target),
         Err(DomError::StaleNode)
     ));
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 1);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        1
+    );
 
     // Drop/reacquire only weak execution permission. The original session owns
     // the exact retained task, event, registry binding and retirement evidence.
-    let old = std::mem::replace(
-        &mut context.dom_manipulation,
-        session.dom_manipulation_execution(),
-    );
+    let old = std::mem::replace(&mut context.element_tasks, session.element_task_execution());
     drop(old);
     let mut foreign = self::session();
     let foreign_before = foreign.snapshot().stamp();
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut foreign.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -744,7 +775,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
             },
             &cancel()
         ),
-        Err(DomManipulationRuntimeError::Binding)
+        Err(DomElementTaskRuntimeError::Binding)
     ));
     assert_eq!(foreign.snapshot().stamp(), foreign_before);
     let mut wrong_registry = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -754,11 +785,12 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
     })
     .unwrap();
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut wrong_registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -766,14 +798,17 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
             },
             &cancel()
         ),
-        Err(DomManipulationRuntimeError::Dispatch(
+        Err(DomElementTaskRuntimeError::Dispatch(
             DomEventDispatchError::WrongContinuation
         ))
     ));
     assert_eq!(context.observations.len(), 1);
     assert_eq!(context.edits.len(), 1);
     assert_eq!(
-        context.dom_manipulation.pending_task(0).unwrap(),
+        context
+            .element_tasks
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
         Some(queued)
     );
 
@@ -812,11 +847,12 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         ),
         Err(DomEventDispatchError::Dom(DomError::StaleNode))
     ));
-    let progress = DomManipulationRuntime::run_next(
+    let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: surgeist_dom::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
@@ -841,13 +877,20 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
             .attribute(&"later-listener".into()),
         None
     );
-    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .element_tasks
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
-            crate::DomManipulationRunLimits {
+            crate::DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: surgeist_dom::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
@@ -856,6 +899,6 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
             &cancel()
         )
         .unwrap(),
-        DomManipulationProgress::Empty
+        DomElementTaskProgress::Empty
     ));
 }

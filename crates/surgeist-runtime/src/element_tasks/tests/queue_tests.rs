@@ -13,7 +13,7 @@ fn queue_request(prior: bool) -> (DomSession, NodeId, DomSourceDialogRequest) {
     if prior {
         open(&mut session, details);
         session
-            .dom_manipulation_execution()
+            .element_task_execution()
             .ingest(&mut session.dom(), &cancel())
             .unwrap();
     }
@@ -101,10 +101,10 @@ fn candidate_peak(prior: bool) -> usize {
     // candidate banks, complete Intake header and final output backing.
     let old = usize::from(prior);
     let new = old + 1;
-    size_of::<RefCell<ManipulationState>>()
+    size_of::<RefCell<ElementTaskState>>()
         + size_of::<Cell<usize>>()
-        + size_of::<surgeist_dom::DomManipulationTaskSource>()
-        + surgeist_dom::DomManipulationTaskSource::binding_payload_bytes()
+        + size_of::<surgeist_dom::DomElementTaskSource>()
+        + surgeist_dom::DomElementTaskSource::binding_payload_bytes()
         + size_of::<Intake>()
         + old * (size_of::<Task>() + size_of::<Tracker>())
         + new * (size_of::<Plan>() + size_of::<Tracker>() + size_of::<Task>())
@@ -114,14 +114,14 @@ fn queue_runtime_exact_candidate_peak_succeeds_and_one_short_has_no_effect() {
     for prior in [false, true] {
         for short in [true, false] {
             let (mut session, subject, request) = queue_request(prior);
-            let mut runtime = session.dom_manipulation_execution();
+            let mut runtime = session.element_task_execution();
             let owner = runtime.state().unwrap();
             let old = usize::from(prior);
             assert_eq!(owner.borrow().tasks.capacity(), old);
             assert_eq!(owner.borrow().trackers.capacity(), old);
             let original = owner.borrow().tasks.first().map(|task| task.value.id());
             runtime
-                .set_limits(DomManipulationRuntimeLimits {
+                .set_limits(DomElementTaskRuntimeLimits {
                     tasks: 1 + old,
                     storage_bytes: candidate_peak(prior) - usize::from(short),
                     work: 1_000_000,
@@ -135,7 +135,7 @@ fn queue_runtime_exact_candidate_peak_succeeds_and_one_short_has_no_effect() {
             let result = runtime.queue_dialog(&mut lease, &request, &cancel());
             if short {
                 assert!(
-                    matches!(result, Err(DomManipulationRuntimeError::Admission)),
+                    matches!(result, Err(DomElementTaskRuntimeError::Admission)),
                     "one-short must refuse original candidate: {result:?}"
                 );
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
@@ -191,7 +191,7 @@ fn queue_runtime_exact_candidate_peak_succeeds_and_one_short_has_no_effect() {
 #[test]
 fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_acceptance() {
     let (mut session, subject, request) = queue_request(false);
-    let mut runtime = session.dom_manipulation_execution();
+    let mut runtime = session.element_task_execution();
     let owner = runtime.state().unwrap();
     let mut view = session.dom();
     let mut lease = view
@@ -201,12 +201,12 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
     let stopped = AtomicBool::new(true);
     assert!(matches!(
         runtime.queue_dialog(&mut lease, &request, &stopped),
-        Err(DomManipulationRuntimeError::Dom(DomError::Cancelled))
+        Err(DomElementTaskRuntimeError::Dom(DomError::Cancelled))
     ));
     assert_eq!(lease.snapshot().stamp(), before);
     assert!(owner.borrow().tasks.is_empty());
     runtime
-        .set_limits(DomManipulationRuntimeLimits {
+        .set_limits(DomElementTaskRuntimeLimits {
             tasks: 0,
             storage_bytes: 65_536,
             work: 1_000_000,
@@ -214,7 +214,7 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
         .unwrap();
     assert!(matches!(
         runtime.queue_dialog(&mut lease, &request, &cancel()),
-        Err(DomManipulationRuntimeError::Admission)
+        Err(DomElementTaskRuntimeError::Admission)
     ));
     assert_eq!(lease.snapshot().stamp(), before);
     assert!(owner.borrow().tasks.is_empty());
@@ -242,11 +242,7 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
     {
         let mut owner = owner.borrow_mut();
         assert!(matches!(
-            lease.accept_dialog_toggle_queue(
-                &request,
-                &mut owner.tasks[index].publication,
-                &stopped
-            ),
+            lease.accept_dialog_task_queue(&request, &mut owner.tasks[index].publication, &stopped),
             Err(DomError::Cancelled)
         ));
         assert!(owner.tasks[index].publication.is_some());
@@ -272,12 +268,12 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
 }
 
 struct HeldObservations {
-    owner: DomManipulationRuntime,
+    owner: DomElementTaskRuntime,
     event: Option<NativeDomEvent>,
     path: Option<crate::DomEventComposedPath>,
 }
-impl DomManipulationEventContext for HeldObservations {
-    fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+impl DomElementTaskEventContext for HeldObservations {
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
         &mut self.owner
     }
 }
@@ -285,7 +281,7 @@ impl DomManipulationEventContext for HeldObservations {
 fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_backing() {
     let (mut session, _, target, _) = fixture();
     open(&mut session, target);
-    let mut owner = session.dom_manipulation_execution();
+    let mut owner = session.element_task_execution();
     owner.ingest(&mut session.dom(), &cancel()).unwrap();
     let state = owner.state().unwrap();
     assert_eq!(state.borrow().tasks.capacity(), 1);
@@ -317,11 +313,12 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
             },
         )
         .unwrap();
-    let receipt = match DomManipulationRuntime::run_next(
+    let receipt = match DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut dispatcher,
         &mut context,
-        crate::DomManipulationRunLimits {
+        crate::DomElementTaskRunLimits {
             dispatch: dispatch_limits(),
             source: source_limits(),
         },
@@ -329,7 +326,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     )
     .unwrap()
     {
-        DomManipulationProgress::Complete { receipt, .. } => receipt,
+        DomElementTaskProgress::Complete { receipt, .. } => receipt,
         other => panic!("actual Details delivery required: {other:?}"),
     };
     assert_eq!(receipt.callbacks(), 1);
@@ -338,7 +335,13 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         receipt.failures()[0].kind,
         crate::DomEventListenerFailureKind::Reported(DomEventCallbackError { code: 91 })
     ));
-    assert_eq!(context.owner.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        context
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     let (event_bytes, path_bytes) = crate::dom_event::manipulation_observation_layout(
         context.event.as_ref().unwrap(),
         context.path.as_ref().unwrap(),
@@ -350,15 +353,15 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     let installed = candidate_peak(false) - size_of::<Intake>() - size_of::<Plan>();
     let exact = installed + event_bytes + path_bytes;
     assert!(matches!(
-        context.owner.set_limits(DomManipulationRuntimeLimits {
+        context.owner.set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: exact - 1,
             ..limits()
         }),
-        Err(DomManipulationRuntimeError::Admission)
+        Err(DomElementTaskRuntimeError::Admission)
     ));
     context
         .owner
-        .set_limits(DomManipulationRuntimeLimits {
+        .set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: exact,
             ..limits()
         })
@@ -367,7 +370,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     assert_eq!(state.borrow().payload_bytes.get(), path_bytes);
     context
         .owner
-        .set_limits(DomManipulationRuntimeLimits {
+        .set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: installed + path_bytes,
             ..limits()
         })
@@ -376,17 +379,17 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     assert_eq!(state.borrow().payload_bytes.get(), 0);
     context
         .owner
-        .set_limits(DomManipulationRuntimeLimits {
+        .set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: installed,
             ..limits()
         })
         .unwrap();
     assert_eq!(receipt.failures().len(), 1);
     assert!(matches!(
-        context.owner.set_limits(DomManipulationRuntimeLimits {
+        context.owner.set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: installed - 1,
             ..limits()
         }),
-        Err(DomManipulationRuntimeError::Admission)
+        Err(DomElementTaskRuntimeError::Admission)
     ));
 }

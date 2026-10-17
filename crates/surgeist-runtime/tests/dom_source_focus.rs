@@ -44,7 +44,7 @@ fn session() -> DomSession {
                 work: 4_000_000,
                 css_input: surgeist_css::CssUtf16InputLimits::default(),
             },
-            dom_manipulation: DomManipulationRuntimeLimits {
+            element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 32,
                 storage_bytes: 32_000_000,
                 work: 4_000_000,
@@ -243,11 +243,11 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     );
     assert_eq!(after.relevant_global(subject).unwrap(), None);
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap();
-    assert!(task.dialog().unwrap().queue_association().is_none());
+    assert!(task.dialog_toggle().unwrap().queue_association().is_none());
     drop(scope);
     pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
@@ -256,8 +256,8 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     assert_eq!(session.snapshot().stamp(), after.stamp());
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap(),
         Some(task)
     );
@@ -299,11 +299,11 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
             .has_close_watcher()
     );
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap()
-        .dialog()
+        .dialog_toggle()
         .unwrap();
     assert_eq!(task.queue_association().unwrap().global(), top.global());
     assert_eq!(task.queue_association().unwrap().document(), top.document());
@@ -489,11 +489,11 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         );
         assert_eq!(
             session
-                .dom_manipulation_execution()
-                .pending_task(0)
+                .element_task_execution()
+                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
                 .unwrap()
                 .unwrap()
-                .dialog()
+                .dialog_toggle()
                 .unwrap()
                 .queue_association()
                 .unwrap()

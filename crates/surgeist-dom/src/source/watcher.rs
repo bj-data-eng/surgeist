@@ -8,7 +8,7 @@ pub(crate) struct HookOccurrence {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DialogOccurrence {
     Hook(HookOccurrence),
-    Show(HookOccurrence),
+    Method(HookOccurrence),
 }
 /// Exact source-qualified manager effect. The trusted owner performs the real
 /// callback-free registration/removal before publishing this capability.

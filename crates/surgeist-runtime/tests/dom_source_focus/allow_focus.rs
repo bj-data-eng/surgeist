@@ -67,8 +67,8 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(watcher_b.subject(), sentinel);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -256,17 +256,17 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap();
-    let toggle = task.dialog().unwrap();
+    let toggle = task.dialog_toggle().unwrap();
     assert_eq!(toggle.id().target(), subject);
     assert_eq!(toggle.old_state(), HtmlDialogState::Closed);
     assert_eq!(toggle.new_state(), HtmlDialogState::Open);
@@ -340,15 +340,15 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap(),
         Some(task)
     );
@@ -385,8 +385,8 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert!(session.dom().pending_source_edit().is_none());
     let before_return = session.snapshot();
     let original_task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap();
     assert_eq!(original_task, task);
@@ -443,27 +443,27 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap(),
         Some(original_task)
     );
     assert_eq!(
-        original_task.dialog().unwrap().old_state(),
+        original_task.dialog_toggle().unwrap().old_state(),
         HtmlDialogState::Closed
     );
     assert_eq!(
-        original_task.dialog().unwrap().new_state(),
+        original_task.dialog_toggle().unwrap().new_state(),
         HtmlDialogState::Open
     );
-    assert_eq!(original_task.dialog().unwrap().source(), None);
+    assert_eq!(original_task.dialog_toggle().unwrap().source(), None);
     assert_eq!(
         original_task.queue_association().unwrap().global(),
         a.global()
@@ -475,7 +475,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert!(session.dom().pending_source_edit().is_none());
 
     struct Delivery {
-        owner: DomManipulationRuntime,
+        owner: DomElementTaskRuntime,
         calls: usize,
         target: Option<NodeId>,
         current: Option<DomEventTarget>,
@@ -484,13 +484,13 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         bubbles: Option<bool>,
         edit: Option<Result<DomCommit, DomError>>,
     }
-    impl DomManipulationEventContext for Delivery {
-        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+    impl DomElementTaskEventContext for Delivery {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
             &mut self.owner
         }
     }
     let mut delivery = Delivery {
-        owner: session.dom_manipulation_execution(),
+        owner: session.element_task_execution(),
         calls: 0,
         target: None,
         current: None,
@@ -528,7 +528,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             },
         )
         .unwrap();
-    let run_limits = DomManipulationRunLimits {
+    let run_limits = DomElementTaskRunLimits {
         dispatch: DomEventDispatchLimits {
             path_items: 32,
             snapshot_listeners: 32,
@@ -538,15 +538,16 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         },
         source: limits(),
     };
-    let delivered = DomManipulationRuntime::run_next(
+    let delivered = DomElementTaskRuntime::run_next(
         &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut delivery,
         run_limits,
         &cancel,
     )
     .unwrap();
-    let DomManipulationProgress::Complete {
+    let DomElementTaskProgress::Complete {
         task: delivered_task,
         receipt,
         displaced_owner,
@@ -614,7 +615,13 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             .close_watcher(),
         Some(watcher_a)
     );
-    assert_eq!(delivery.owner.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        delivery
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert!(session.dom().pending_source_edit().is_none());
     assert_eq!(completed.incomplete_source_operation(), None);
     assert_eq!(
@@ -647,11 +654,11 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         None
     );
     assert_eq!(
-        original_task.dialog().unwrap().old_state(),
+        original_task.dialog_toggle().unwrap().old_state(),
         HtmlDialogState::Closed
     );
     assert_eq!(
-        original_task.dialog().unwrap().new_state(),
+        original_task.dialog_toggle().unwrap().new_state(),
         HtmlDialogState::Open
     );
     assert_eq!(
@@ -663,15 +670,16 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         a.document()
     );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut delivery,
             run_limits,
             &cancel,
         )
         .unwrap(),
-        DomManipulationProgress::Empty
+        DomElementTaskProgress::Empty
     ));
     assert_eq!(delivery.calls, 1);
     assert_eq!(session.snapshot().stamp(), completed.stamp());

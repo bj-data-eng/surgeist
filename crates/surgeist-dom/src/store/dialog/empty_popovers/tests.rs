@@ -37,14 +37,14 @@ fn known_empty_raw_layer_qualifies_even_with_open_dialogs_but_unknown_and_member
     let document = draft.resolve(first.node().into()).unwrap();
     let subject = draft.resolve(dialog.into()).unwrap();
     assert_eq!(
-        draft.dialog_show_node_document(subject, &cancel).unwrap(),
+        draft.dialog_method_node_document(subject, &cancel).unwrap(),
         first
     );
     // Exercise the real list owner, independently of active watcher eligibility.
     draft.dialog_list_add(document, subject, &cancel).unwrap();
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
 
@@ -68,7 +68,7 @@ fn known_empty_raw_layer_qualifies_even_with_open_dialogs_but_unknown_and_member
     draft.source_admit(0, &cancel).unwrap();
     assert!(
         !draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     let Some(DocumentInteractiveState::Known { top_layer, .. }) =
@@ -80,19 +80,19 @@ fn known_empty_raw_layer_qualifies_even_with_open_dialogs_but_unknown_and_member
     assert_eq!(top_layer.capacity(), 1);
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     draft.node_mut(document).interactive_document = Some(DocumentInteractiveState::Unavailable);
     assert!(
         !draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     draft.node_mut(document).interactive_document = None;
     assert!(
         !draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
@@ -121,13 +121,13 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     )
     .unwrap();
     let subject = draft.resolve(dialog.into()).unwrap();
-    let captured = draft.dialog_show_node_document(subject, &cancel).unwrap();
+    let captured = draft.dialog_method_node_document(subject, &cancel).unwrap();
     assert_eq!(captured, first);
     let destination = draft.resolve(second.node().into()).unwrap();
     draft
         .adopt(subject, destination, dom.limits, &cancel)
         .unwrap();
-    let current = draft.dialog_show_node_document(subject, &cancel).unwrap();
+    let current = draft.dialog_method_node_document(subject, &cancel).unwrap();
     assert_eq!(current, second);
     let original = draft.resolve(captured.node().into()).unwrap();
     draft.node_mut(original).interactive_document = Some(DocumentInteractiveState::Unavailable);
@@ -135,12 +135,12 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     // the previously captured exact Document, never substitute this new one.
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(current, &cancel)
+            .dialog_method_known_empty_top_layer(current, &cancel)
             .unwrap()
     );
     assert!(
         !draft
-            .dialog_show_known_empty_top_layer(captured, &cancel)
+            .dialog_method_known_empty_top_layer(captured, &cancel)
             .unwrap()
     );
     assert_eq!(before.node(dialog).unwrap().owner_document(), Some(first));
@@ -168,21 +168,21 @@ fn captured_document_qualification_rejects_actual_foreign_and_wrong_generation()
     )
     .unwrap();
     assert_eq!(
-        draft.dialog_show_known_empty_top_layer(wrong_generation, &cancel),
+        draft.dialog_method_known_empty_top_layer(wrong_generation, &cancel),
         Err(DomError::StaleNode)
     );
     assert_eq!(
-        draft.dialog_show_known_empty_top_layer(foreign, &cancel),
+        draft.dialog_method_known_empty_top_layer(foreign, &cancel),
         Err(DomError::ForeignOwner)
     );
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(second, &cancel)
+            .dialog_method_known_empty_top_layer(second, &cancel)
             .unwrap()
     );
 }
@@ -212,11 +212,11 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
             cancel.store(true, Ordering::Relaxed);
             let cancelled = if capture {
                 draft
-                    .dialog_show_node_document(subject, &cancel)
+                    .dialog_method_node_document(subject, &cancel)
                     .map(|_| ())
             } else {
                 draft
-                    .dialog_show_known_empty_top_layer(first, &cancel)
+                    .dialog_method_known_empty_top_layer(first, &cancel)
                     .map(|_| ())
             };
             assert_eq!(cancelled, Err(DomError::Cancelled));
@@ -224,11 +224,11 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
             cancel.store(false, Ordering::Relaxed);
             let result = if capture {
                 draft
-                    .dialog_show_node_document(subject, &cancel)
+                    .dialog_method_node_document(subject, &cancel)
                     .map(|document| assert_eq!(document, first))
             } else {
                 draft
-                    .dialog_show_known_empty_top_layer(first, &cancel)
+                    .dialog_method_known_empty_top_layer(first, &cancel)
                     .map(|empty| assert!(empty))
             };
             if short {
@@ -239,12 +239,12 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
             assert_eq!(draft.source_work.load(Ordering::Relaxed), cap);
             draft.source_limits = Some(limits(10_000_000));
             assert_eq!(
-                draft.dialog_show_node_document(subject, &cancel).unwrap(),
+                draft.dialog_method_node_document(subject, &cancel).unwrap(),
                 first
             );
             assert!(
                 draft
-                    .dialog_show_known_empty_top_layer(first, &cancel)
+                    .dialog_method_known_empty_top_layer(first, &cancel)
                     .unwrap()
             );
             assert_eq!(draft.source_storage_bytes(&cancel).unwrap(), storage);
@@ -272,30 +272,30 @@ fn original_checkpoint_restores_actual_adoption_and_keeps_spent_work_for_retry()
     let checkpoint = draft
         .source_checkpoint(draft.source_other_bytes, draft.source_other_units, &cancel)
         .unwrap();
-    let captured = draft.dialog_show_node_document(subject, &cancel).unwrap();
+    let captured = draft.dialog_method_node_document(subject, &cancel).unwrap();
     draft
         .adopt(subject, destination, dom.limits, &cancel)
         .unwrap();
     assert_eq!(
-        draft.dialog_show_node_document(subject, &cancel).unwrap(),
+        draft.dialog_method_node_document(subject, &cancel).unwrap(),
         second
     );
     let spent = draft.source_work.load(Ordering::Relaxed);
     cancel.store(true, Ordering::Relaxed);
     assert_eq!(
-        draft.dialog_show_known_empty_top_layer(captured, &cancel),
+        draft.dialog_method_known_empty_top_layer(captured, &cancel),
         Err(DomError::Cancelled)
     );
     checkpoint.restore(&mut draft);
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
     cancel.store(false, Ordering::Relaxed);
     assert_eq!(
-        draft.dialog_show_node_document(subject, &cancel).unwrap(),
+        draft.dialog_method_node_document(subject, &cancel).unwrap(),
         first
     );
     assert!(
         draft
-            .dialog_show_known_empty_top_layer(first, &cancel)
+            .dialog_method_known_empty_top_layer(first, &cancel)
             .unwrap()
     );
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);

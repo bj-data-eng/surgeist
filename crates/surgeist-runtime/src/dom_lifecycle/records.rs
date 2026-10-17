@@ -5,7 +5,7 @@
 //! after live top-level membership ends. All canonical roles use source-issued
 //! identities; these records do not mirror the canonical navigation graph.
 use super::clock;
-use crate::dom_manipulation::DomManipulationTaskId;
+use crate::element_tasks::DomElementTaskId;
 use std::{cell::RefCell, rc::Rc};
 use surgeist_dom::{
     DocumentId, DomHostedBrowsingContextId, DomHostedGlobalId, DomHostedHostId,
@@ -91,8 +91,9 @@ pub(super) struct Top {
 /// Actual task-source identity currently executing in this native window loop.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CurrentTask {
-    DomManipulation {
-        task: DomManipulationTaskId,
+    ElementTask {
+        source: surgeist_dom::DomElementTaskSourceKind,
+        task: DomElementTaskId,
         document: DocumentId,
     },
     History {

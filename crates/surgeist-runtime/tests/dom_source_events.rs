@@ -42,7 +42,7 @@ fn session_limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: surgeist_css::CssUtf16InputLimits::default(),
         },
-        dom_manipulation: DomManipulationRuntimeLimits {
+        element_tasks: DomElementTaskRuntimeLimits {
             tasks: 8,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -167,12 +167,12 @@ fn show_publishes_open_and_retains_queued_task(
     association: Option<(DomHostedGlobalId, DocumentId)>,
 ) {
     struct Context {
-        owner: DomManipulationRuntime,
+        owner: DomElementTaskRuntime,
         beforetoggle_calls: usize,
         toggle_calls: usize,
     }
-    impl DomManipulationEventContext for Context {
-        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
             &mut self.owner
         }
     }
@@ -206,14 +206,32 @@ fn show_publishes_open_and_retains_queued_task(
         )
         .unwrap();
     let mut context = Context {
-        owner: session.dom_manipulation_execution(),
+        owner: session.element_task_execution(),
         beforetoggle_calls: 0,
         toggle_calls: 0,
     };
     let request = request(&mut session, subject);
-    assert_eq!(request.old_state(), HtmlDialogState::Closed);
-    assert_eq!(request.new_state(), HtmlDialogState::Open);
-    assert_eq!(request.source(), None);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .old_state(),
+        HtmlDialogState::Closed
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .new_state(),
+        HtmlDialogState::Open
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .source(),
+        None
+    );
     let receipt = serviced(
         session
             .source_execution()
@@ -263,9 +281,19 @@ fn show_publishes_open_and_retains_queued_task(
         published.incomplete_source_operation(),
         Some(request.operation())
     );
-    assert_eq!(context.owner.pending_tasks().unwrap(), 1);
-    let task = context.owner.pending_task(0).unwrap().unwrap();
-    let dialog = task.dialog().expect("the actual Show toggle task");
+    assert_eq!(
+        context
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        1
+    );
+    let task = context
+        .owner
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
+    let dialog = task.dialog_toggle().expect("the actual Show toggle task");
     assert_eq!(dialog.id().target(), subject);
     assert_eq!(dialog.old_state(), HtmlDialogState::Closed);
     assert_eq!(dialog.new_state(), HtmlDialogState::Open);
@@ -291,8 +319,20 @@ fn show_publishes_open_and_retains_queued_task(
         request.operation()
     );
     assert_eq!(context.beforetoggle_calls, 1);
-    assert_eq!(context.owner.pending_tasks().unwrap(), 1);
-    assert_eq!(context.owner.pending_task(0).unwrap(), Some(task));
+    assert_eq!(
+        context
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        context
+            .owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(task)
+    );
     let retried = session.snapshot();
     assert_eq!(retried.stamp(), published.stamp());
     assert_eq!(
@@ -309,23 +349,30 @@ fn show_publishes_open_and_retains_queued_task(
         Some(&"".into())
     );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut listeners,
             &mut context,
-            DomManipulationRunLimits {
+            DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: source_limits()
             },
             &cancel,
         ),
-        Err(DomManipulationRuntimeError::Dom(
+        Err(DomElementTaskRuntimeError::Dom(
             DomError::SourceOperationPending
         ))
     ));
     assert_eq!(context.toggle_calls, 0);
     assert_eq!(context.beforetoggle_calls, 1);
-    assert_eq!(context.owner.pending_task(0).unwrap(), Some(task));
+    assert_eq!(
+        context
+            .owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(task)
+    );
     assert_eq!(session.snapshot().stamp(), published.stamp());
     assert_eq!(
         before_addition
@@ -374,9 +421,27 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
         .unwrap();
     let before = session.snapshot().stamp();
     let request = request(&mut session, subject);
-    assert_eq!(request.old_state(), HtmlDialogState::Closed);
-    assert_eq!(request.new_state(), HtmlDialogState::Open);
-    assert_eq!(request.source(), None);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .old_state(),
+        HtmlDialogState::Closed
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .new_state(),
+        HtmlDialogState::Open
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .source(),
+        None
+    );
     assert_eq!(session.snapshot().stamp(), before);
     let mut observed = (0, false);
     let permission = session.source_execution();
@@ -458,9 +523,27 @@ fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callbac
     let request = request(&mut session, subject);
     // HTML877d Show queues closed -> open with a null source only after the
     // authentic uncanceled beforetoggle and its current open recheck.
-    assert_eq!(request.old_state(), HtmlDialogState::Closed);
-    assert_eq!(request.new_state(), HtmlDialogState::Open);
-    assert_eq!(request.source(), None);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .old_state(),
+        HtmlDialogState::Closed
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .new_state(),
+        HtmlDialogState::Open
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .source(),
+        None
+    );
     let mut calls = 0;
     let receipt = serviced(
         session
@@ -622,9 +705,27 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
     let request = request(&mut session, subject);
     // Pinned HTML877d Show step 5 queues closed -> open with a null source;
     // this remains distinct from future nonnull-source/Close coverage.
-    assert_eq!(request.old_state(), HtmlDialogState::Closed);
-    assert_eq!(request.new_state(), HtmlDialogState::Open);
-    assert_eq!(request.source(), None);
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .old_state(),
+        HtmlDialogState::Closed
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .new_state(),
+        HtmlDialogState::Open
+    );
+    assert_eq!(
+        request
+            .toggle_event()
+            .expect("ToggleEvent source payload")
+            .source(),
+        None
+    );
     let mut observed = (0, Vec::new());
     let receipt = serviced(
         session
@@ -878,8 +979,8 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
     assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -915,8 +1016,8 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -944,13 +1045,13 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
 #[test]
 fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_delivery() {
     struct Context {
-        owner: DomManipulationRuntime,
+        owner: DomElementTaskRuntime,
         beforetoggle_calls: usize,
         toggle_calls: usize,
         callback_edits: Vec<Result<DomCommit, DomError>>,
     }
-    impl DomManipulationEventContext for Context {
-        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
             &mut self.owner
         }
     }
@@ -972,7 +1073,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         )
     };
     let mut context = Context {
-        owner: session.dom_manipulation_execution(),
+        owner: session.element_task_execution(),
         beforetoggle_calls: 0,
         toggle_calls: 0,
         callback_edits: Vec::new(),
@@ -984,8 +1085,12 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         context.owner.ingest(&mut session.dom(), &cancel).unwrap(),
         1
     );
-    let original_a = context.owner.pending_task(0).unwrap().unwrap();
-    assert!(matches!(original_a, DomManipulationTask::Details(_)));
+    let original_a = context
+        .owner
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(original_a, DomElementTask::DetailsToggle(_)));
     assert_eq!(original_a.id().target(), a);
 
     let mut listeners = dispatcher();
@@ -1054,9 +1159,24 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         }
         other => panic!("actual queueing must leave Show at its actual next service: {other:?}"),
     }
-    assert_eq!(context.owner.pending_tasks().unwrap(), 3);
+    assert_eq!(
+        context
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        3
+    );
     let pending = (0..3)
-        .map(|index| context.owner.pending_task(index).unwrap().unwrap())
+        .map(|index| {
+            context
+                .owner
+                .pending_task(
+                    surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                    index,
+                )
+                .unwrap()
+                .unwrap()
+        })
         .collect::<Vec<_>>();
     // Both notifications were queued before Dialog's task. B's raw intention
     // arose during the authentic callback and must join A in this same bank.
@@ -1073,7 +1193,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         assert_eq!(details.event().old_state().as_str(), "closed");
         assert_eq!(details.event().new_state().as_str(), "open");
     }
-    let dialog_task = pending[2].dialog().expect("the actual Dialog task");
+    let dialog_task = pending[2].dialog_toggle().expect("the actual Dialog task");
     assert_eq!(dialog_task.old_state(), HtmlDialogState::Closed);
     assert_eq!(dialog_task.new_state(), HtmlDialogState::Open);
     assert_eq!(dialog_task.source(), None);
@@ -1110,17 +1230,18 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         Some(&"kept".into())
     );
     assert!(matches!(
-        DomManipulationRuntime::run_next(
+        DomElementTaskRuntime::run_next(
             &mut session.dom(),
+            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
             &mut listeners,
             &mut context,
-            DomManipulationRunLimits {
+            DomElementTaskRunLimits {
                 dispatch: dispatch_limits(),
                 source: source_limits()
             },
             &cancel,
         ),
-        Err(DomManipulationRuntimeError::Dom(
+        Err(DomElementTaskRuntimeError::Dom(
             DomError::SourceOperationPending
         ))
     ));
@@ -1131,10 +1252,23 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         session.snapshot().incomplete_source_operation(),
         Some(request.operation())
     );
-    assert_eq!(context.owner.pending_tasks().unwrap(), 3);
+    assert_eq!(
+        context
+            .owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        3
+    );
     assert_eq!(
         (0..3)
-            .map(|index| context.owner.pending_task(index).unwrap().unwrap())
+            .map(|index| context
+                .owner
+                .pending_task(
+                    surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                    index
+                )
+                .unwrap()
+                .unwrap())
             .collect::<Vec<_>>(),
         pending
     );
@@ -1263,13 +1397,18 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
             panic!("adopted Dialog queueing must retain Show at its actual next service: {other:?}")
         }
     }
-    let owner = session.dom_manipulation_execution();
-    assert_eq!(owner.pending_tasks().unwrap(), 1);
+    let owner = session.element_task_execution();
+    assert_eq!(
+        owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        1
+    );
     let task = owner
-        .pending_task(0)
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap()
-        .dialog()
+        .dialog_toggle()
         .expect("the actual queued Dialog");
     assert_eq!(task.id().target(), subject);
     assert_eq!(task.old_state(), HtmlDialogState::Closed);
@@ -1492,10 +1631,15 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         resumed_parent.parent_operation(),
         Some(grandparent_request.operation())
     );
-    let owner = session.dom_manipulation_execution();
+    let owner = session.element_task_execution();
     // C produced an intention, not an executable task or a forged transfer.
     // Its actual operation and observations have closed before queue intake.
-    assert_eq!(owner.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        0
+    );
     assert_eq!(
         session
             .snapshot()
@@ -1534,10 +1678,21 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
             "P's authentic queue publication must stop at its actual next service: {other:?}"
         ),
     }
-    assert_eq!(owner.pending_tasks().unwrap(), 2);
+    assert_eq!(
+        owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        2
+    );
     let pending = [
-        owner.pending_task(0).unwrap().unwrap(),
-        owner.pending_task(1).unwrap().unwrap(),
+        owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap()
+            .unwrap(),
+        owner
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
+            .unwrap()
+            .unwrap(),
     ];
     let details_task = pending[0]
         .details()
@@ -1546,7 +1701,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
     assert_eq!(details_task.event().old_state().as_str(), "closed");
     assert_eq!(details_task.event().new_state().as_str(), "open");
     let dialog_task = pending[1]
-        .dialog()
+        .dialog_toggle()
         .expect("P's real Dialog task appended second");
     assert_eq!(dialog_task.id().target(), parent);
     assert_eq!(dialog_task.old_state(), HtmlDialogState::Closed);
@@ -1623,11 +1778,22 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         parent_status.parent_operation()
     );
     assert_eq!(after_raise.phase(), DomSourcePhase::DialogService);
-    assert_eq!(owner.pending_tasks().unwrap(), 2);
+    assert_eq!(
+        owner
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .unwrap(),
+        2
+    );
     assert_eq!(
         [
-            owner.pending_task(0).unwrap().unwrap(),
-            owner.pending_task(1).unwrap().unwrap()
+            owner
+                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .unwrap()
+                .unwrap(),
+            owner
+                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
+                .unwrap()
+                .unwrap()
         ],
         pending
     );
@@ -2864,8 +3030,8 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
     assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -2984,8 +3150,8 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
     assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -3108,8 +3274,8 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
     assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );

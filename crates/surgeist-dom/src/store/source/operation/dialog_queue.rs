@@ -1,19 +1,19 @@
 //! Actual queue publication for the original Dialog Source cursor.
 use super::*;
-use crate::{DomElementTaskAssociation, DomManipulationTaskId, DomManipulationTaskSource};
+use crate::{DomElementTaskAssociation, DomElementTaskId, DomElementTaskSource};
 use surgeist_html::{HtmlDialogAction, HtmlDialogState, HtmlDialogToggleDecision};
 
 /// Immutable payload of one real queued Dialog toggle task.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDialogToggleTaskInfo {
-    pub(crate) id: DomManipulationTaskId,
+    pub(crate) id: DomElementTaskId,
     pub(crate) old: HtmlDialogState,
     pub(crate) new: HtmlDialogState,
     pub(crate) association: Option<DomElementTaskAssociation>,
 }
 impl DomDialogToggleTaskInfo {
     /// Exact task and receiver generation.
-    pub const fn id(self) -> DomManipulationTaskId {
+    pub const fn id(self) -> DomElementTaskId {
         self.id
     }
     /// First state retained by the HTML coalescing decision.
@@ -28,47 +28,102 @@ impl DomDialogToggleTaskInfo {
     pub const fn queue_association(self) -> Option<DomElementTaskAssociation> {
         self.association
     }
-    /// This admitted Show contribution has an actual null source.
+    /// The admitted standard methods supply an actual null source.
     pub const fn source(self) -> Option<NodeId> {
         None
     }
 }
+/// Plain close notification, without ToggleEvent state or tracker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDialogCloseTaskInfo {
+    pub(crate) id: DomElementTaskId,
+    pub(crate) association: Option<DomElementTaskAssociation>,
+}
+impl DomDialogCloseTaskInfo {
+    /// Exact task serial and target generation.
+    pub const fn id(self) -> DomElementTaskId {
+        self.id
+    }
+    /// Immutable original queue-associated Global and Document.
+    pub const fn queue_association(self) -> Option<DomElementTaskAssociation> {
+        self.association
+    }
+}
+/// Closed Dialog element-task payload; its event source is intrinsic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDialogTaskInfo {
+    /// Coalesced ToggleEvent notification on the DOM-manipulation source.
+    Toggle(DomDialogToggleTaskInfo),
+    /// Noncoalesced plain close notification on the user-interaction source.
+    Close(DomDialogCloseTaskInfo),
+}
+impl DomDialogTaskInfo {
+    /// Exact task serial and target generation.
+    pub const fn id(self) -> DomElementTaskId {
+        match self {
+            Self::Toggle(info) => info.id,
+            Self::Close(info) => info.id,
+        }
+    }
+    /// Immutable original queue-associated Global and Document.
+    pub const fn queue_association(self) -> Option<DomElementTaskAssociation> {
+        match self {
+            Self::Toggle(info) => info.association,
+            Self::Close(info) => info.association,
+        }
+    }
+    /// Actual source intrinsic to the closed payload.
+    pub const fn source(self) -> crate::DomElementTaskSourceKind {
+        match self {
+            Self::Toggle(_) => crate::DomElementTaskSourceKind::DomManipulation,
+            Self::Close(_) => crate::DomElementTaskSourceKind::UserInteraction,
+        }
+    }
+    /// Toggle data only; plain close notifications contain none.
+    pub const fn toggle(self) -> Option<DomDialogToggleTaskInfo> {
+        if let Self::Toggle(info) = self {
+            Some(info)
+        } else {
+            None
+        }
+    }
+}
 /// Affine permission belonging to the actual queued task, never a copied ID.
 #[derive(Debug)]
-pub struct DomDialogToggleTask {
-    pub(crate) info: DomDialogToggleTaskInfo,
-    pub(crate) binding: std::sync::Weak<crate::manipulation::Binding>,
+pub struct DomDialogTask {
+    pub(crate) info: DomDialogTaskInfo,
+    pub(crate) binding: std::sync::Weak<crate::element_tasks::Binding>,
 }
-impl DomDialogToggleTask {
+impl DomDialogTask {
     /// Immutable historical task inputs.
-    pub const fn info(&self) -> DomDialogToggleTaskInfo {
+    pub const fn info(&self) -> DomDialogTaskInfo {
         self.info
     }
 }
 /// Exact original request's prepared language decision and real task inputs.
 #[derive(Clone, Copy, Debug)]
-pub struct DomDialogToggleQueuePlan {
+pub struct DomDialogTaskQueuePlan {
     operation: DomSourceOperationId,
-    info: DomDialogToggleTaskInfo,
-    replacing: Option<DomManipulationTaskId>,
+    info: DomDialogTaskInfo,
+    replacing: Option<DomElementTaskId>,
 }
-impl DomDialogToggleQueuePlan {
+impl DomDialogTaskQueuePlan {
     /// Actual candidate task payload.
-    pub const fn task(self) -> DomDialogToggleTaskInfo {
+    pub const fn task(self) -> DomDialogTaskInfo {
         self.info
     }
     /// Only this still-queued task may be removed by replacement.
-    pub const fn replacing(self) -> Option<DomManipulationTaskId> {
+    pub const fn replacing(self) -> Option<DomElementTaskId> {
         self.replacing
     }
 }
 /// Move-only evidence of the actual no-callback queue/tracker publication.
 #[derive(Debug)]
-pub struct DomDialogToggleQueuePublication {
+pub struct DomDialogTaskQueuePublication {
     operation: DomSourceOperationId,
-    task: DomManipulationTaskId,
+    task: DomElementTaskId,
 }
-impl DomDialogToggleQueuePublication {
+impl DomDialogTaskQueuePublication {
     /// Original operation which performed this exact real queue publication.
     pub const fn operation(&self) -> DomSourceOperationId {
         self.operation
@@ -76,20 +131,20 @@ impl DomDialogToggleQueuePublication {
 }
 /// Exclusive canonical publication loan. No fallible work or user callback is
 /// allowed between installing the prepared real queue and consuming this loan.
-pub struct DomDialogToggleQueueCommit<'a, 'dom> {
+pub struct DomDialogTaskQueueCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     prepared: Option<crate::store::PreparedPublication>,
-    plan: DomDialogToggleQueuePlan,
-    task: Option<DomDialogToggleTask>,
+    plan: DomDialogTaskQueuePlan,
+    task: Option<DomDialogTask>,
     canonical: storage::Payload,
     outputs: usize,
     remaining_phases: u64,
     checkpoint: Option<checkpoint::Checkpoint>,
 }
-impl DomDialogToggleQueueCommit<'_, '_> {
+impl DomDialogTaskQueueCommit<'_, '_> {
     /// Publish the already admitted canonical tracker after the actual owner
     /// removes/clears/appends/stores its prepared task. This fence cannot fail.
-    pub fn publish(mut self) -> (DomDialogToggleTask, DomDialogToggleQueuePublication) {
+    pub fn publish(mut self) -> (DomDialogTask, DomDialogTaskQueuePublication) {
         let commit = self
             .lease
             .dom
@@ -106,7 +161,7 @@ impl DomDialogToggleQueueCommit<'_, '_> {
         op.phases += 1;
         op.published = true;
         op.event_exposed = true;
-        op.dialog_queue = Some(self.plan.info.id);
+        op.dialog_queue = Some(self.plan.info.id());
         op.headroom = Some(headroom::Reservation {
             remaining_phases: self.remaining_phases,
         });
@@ -115,14 +170,14 @@ impl DomDialogToggleQueueCommit<'_, '_> {
         self.checkpoint.take();
         (
             self.task.take().expect("actual task permission"),
-            DomDialogToggleQueuePublication {
+            DomDialogTaskQueuePublication {
                 operation: self.plan.operation,
-                task: self.plan.info.id,
+                task: self.plan.info.id(),
             },
         )
     }
 }
-impl Drop for DomDialogToggleQueueCommit<'_, '_> {
+impl Drop for DomDialogTaskQueueCommit<'_, '_> {
     fn drop(&mut self) {
         if let Some(checkpoint) = self.checkpoint.take() {
             checkpoint.restore(
@@ -140,13 +195,16 @@ impl Drop for DomDialogToggleQueueCommit<'_, '_> {
 impl<'dom> DomSourceLease<'dom> {
     /// Exact prior Details intentions which must join this same source bank
     /// before its reached Dialog append. Ordinary idle-only intake is unchanged.
-    pub fn dialog_toggle_prior_details<'snapshot>(
+    pub fn dialog_task_prior_details<'snapshot>(
         &self,
         request: &DomSourceDialogRequest,
         snapshot: &'snapshot DomSnapshot,
     ) -> Result<&'snapshot [crate::DomDetailsToggleIntention], DomError> {
         if request.operation != self.id
-            || !matches!(request.action, HtmlDialogAction::QueueToggle { .. })
+            || !matches!(
+                request.action,
+                HtmlDialogAction::QueueToggle { .. } | HtmlDialogAction::QueueClose
+            )
         {
             return Err(DomError::InvalidSourceOperation);
         }
@@ -158,7 +216,7 @@ impl<'dom> DomSourceLease<'dom> {
             .ok_or(DomError::InvalidSourceOperation)?;
         let frame = operation
             .draft
-            .dialog_show
+            .dialog_method
             .ok_or(DomError::InvalidSourceOperation)?;
         if operation.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
@@ -174,22 +232,22 @@ impl<'dom> DomSourceLease<'dom> {
         Ok(&snapshot.state.details_intentions)
     }
     /// Admit actual task-owner storage through this exact Source permission.
-    pub fn retain_manipulation_payload(
+    pub fn retain_element_task_payload(
         &mut self,
-        source: &DomManipulationTaskSource,
+        source: &DomElementTaskSource,
         bytes: usize,
         cancel: &AtomicBool,
-    ) -> Result<crate::DomManipulationTaskRetention, DomError> {
+    ) -> Result<crate::DomElementTaskRetention, DomError> {
         source.retain_payload(self.dom, bytes, cancel)
     }
     /// Prepare the actual HTML queue decision without queueing or acknowledging.
-    pub fn dialog_toggle_queue_plan(
+    pub fn dialog_task_queue_plan(
         &mut self,
         request: &DomSourceDialogRequest,
-        source: &DomManipulationTaskSource,
+        source: &DomElementTaskSource,
         serial: u64,
         cancel: &AtomicBool,
-    ) -> Result<DomDialogToggleQueuePlan, DomError> {
+    ) -> Result<DomDialogTaskQueuePlan, DomError> {
         source.qualify(self.dom)?;
         let op = self
             .dom
@@ -199,7 +257,7 @@ impl<'dom> DomSourceLease<'dom> {
             .ok_or(DomError::InvalidSourceOperation)?;
         let frame = op
             .draft
-            .dialog_show
+            .dialog_method
             .ok_or(DomError::InvalidSourceOperation)?;
         if op.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
@@ -207,38 +265,51 @@ impl<'dom> DomSourceLease<'dom> {
         {
             return Err(DomError::InvalidSourceOperation);
         }
-        let HtmlDialogAction::QueueToggle {
-            old,
-            new,
-            source: surgeist_html::HtmlDialogEventSource::Null,
-        } = request.action
-        else {
-            return Err(DomError::InvalidSourceOperation);
-        };
         op.refresh_admission(cancel)?;
-        let tracker = op.draft.dialog_state(frame.subject)?.toggle_tracker;
-        let decision = HtmlDialogToggleDecision::new(old, new, tracker.map(|tracker| tracker.old));
-        let info = DomDialogToggleTaskInfo {
-            id: source.task_id(serial, request.subject)?,
-            old: decision.old_state(),
-            new: decision.new_state(),
-            association: op.draft.element_task_association(frame.subject, cancel)?,
+        let id = source.task_id(serial, request.subject)?;
+        let association = op.draft.element_task_association(frame.subject, cancel)?;
+        let (info, replacing) = match request.action {
+            HtmlDialogAction::QueueToggle {
+                old,
+                new,
+                source:
+                    surgeist_html::HtmlDialogEventSource::Null
+                    | surgeist_html::HtmlDialogEventSource::OperationSource,
+            } => {
+                let tracker = op.draft.dialog_state(frame.subject)?.toggle_tracker;
+                let decision =
+                    HtmlDialogToggleDecision::new(old, new, tracker.map(|tracker| tracker.old));
+                (
+                    DomDialogTaskInfo::Toggle(DomDialogToggleTaskInfo {
+                        id,
+                        old: decision.old_state(),
+                        new: decision.new_state(),
+                        association,
+                    }),
+                    tracker.map(|tracker| tracker.task),
+                )
+            }
+            HtmlDialogAction::QueueClose => (
+                DomDialogTaskInfo::Close(DomDialogCloseTaskInfo { id, association }),
+                None,
+            ),
+            _ => return Err(DomError::InvalidSourceOperation),
         };
-        Ok(DomDialogToggleQueuePlan {
+        Ok(DomDialogTaskQueuePlan {
             operation: self.id,
             info,
-            replacing: tracker.map(|tracker| tracker.task),
+            replacing,
         })
     }
     /// Complete all fallible canonical formation before the actual queue fence.
-    pub fn prepare_dialog_toggle_queue<'a>(
+    pub fn prepare_dialog_task_queue<'a>(
         &'a mut self,
         request: &DomSourceDialogRequest,
-        source: &DomManipulationTaskSource,
-        plan: DomDialogToggleQueuePlan,
+        source: &DomElementTaskSource,
+        plan: DomDialogTaskQueuePlan,
         cancel: &AtomicBool,
-    ) -> Result<DomDialogToggleQueueCommit<'a, 'dom>, DomError> {
-        let actual = self.dialog_toggle_queue_plan(request, source, plan.info.id.serial, cancel)?;
+    ) -> Result<DomDialogTaskQueueCommit<'a, 'dom>, DomError> {
+        let actual = self.dialog_task_queue_plan(request, source, plan.info.id().serial, cancel)?;
         if actual.info != plan.info || actual.replacing != plan.replacing {
             return Err(DomError::InvalidSourceOperation);
         }
@@ -261,22 +332,30 @@ impl<'dom> DomSourceLease<'dom> {
             let formation = formation::Formation::new(&op.draft, cancel)?;
             if let Some(formation) = &formation {
                 formation.retain_bytes(
-                    size_of::<DomDialogToggleQueueCommit<'_, '_>>()
+                    size_of::<DomDialogTaskQueueCommit<'_, '_>>()
                         .checked_sub(size_of::<Draft>())
                         .and_then(|header| {
-                            header.checked_add(size_of::<crate::dialog::DomDialogState>())
+                            header.checked_add(
+                                if matches!(plan.info, DomDialogTaskInfo::Toggle(_)) {
+                                    size_of::<crate::dialog::DomDialogState>()
+                                } else {
+                                    0
+                                },
+                            )
                         })
                         .ok_or(DomError::RepresentationExhausted)?,
                     cancel,
                 )?;
             }
-            let frame = op.draft.dialog_show.expect("qualified Dialog frame");
-            let mut state = op.draft.dialog_state(frame.subject)?.clone();
-            state.toggle_tracker = Some(crate::dialog::DomDialogToggleTracker {
-                task: plan.info.id,
-                old: plan.info.old,
-            });
-            op.draft.element_mut(frame.subject).set_dialog_state(state);
+            let frame = op.draft.dialog_method.expect("qualified Dialog frame");
+            if let DomDialogTaskInfo::Toggle(info) = plan.info {
+                let mut state = op.draft.dialog_state(frame.subject)?.clone();
+                state.toggle_tracker = Some(crate::dialog::DomDialogToggleTracker {
+                    task: info.id,
+                    old: info.old,
+                });
+                op.draft.element_mut(frame.subject).set_dialog_state(state);
+            }
             op.draft.details_intentions.clear();
             op.draft.prepare_transition_phase(cancel)?;
             let mut prepared = op.draft.finish(self.dom, cancel)?;
@@ -290,33 +369,79 @@ impl<'dom> DomSourceLease<'dom> {
                 )?;
                 prepared.changes.push(DomChange::SourceOperation);
             }
-            let document = op.draft.node(frame.subject)?.document;
-            let original_window_active = match self
-                .dom
-                .snapshot()
-                .relevant_global(plan.info.id.target)
-                .map_err(|_| DomError::HostedSourceUnavailable)?
-            {
-                None => false,
-                Some(global) => {
-                    let associated = self
+            let (required_phases, future_outputs) = match (plan.info, frame.locals) {
+                (DomDialogTaskInfo::Close(_), _) => (2, 1),
+                (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Close) => {
+                    let watcher = op.draft.dialog_state(frame.subject)?.watcher.is_some();
+                    op.draft
+                        .admit_dialog_occurrences(u64::from(watcher), cancel)?;
+                    let document = op.draft.node(frame.subject)?.document;
+                    let member = match op.draft.node(document)?.interactive_document.as_ref() {
+                        Some(crate::dialog::DocumentInteractiveState::Known {
+                            open_dialogs,
+                            ..
+                        }) => {
+                            let mut found = false;
+                            for item in open_dialogs {
+                                op.draft.source_step(cancel)?;
+                                found |= *item == frame.subject;
+                            }
+                            found
+                        }
+                        _ => false,
+                    };
+                    let changed_result = match &op.commands[op.index] {
+                        Command::CloseDialog {
+                            result: Some(result),
+                            ..
+                        } => {
+                            let old = op.draft.dialog_state(frame.subject)?.return_value();
+                            let mut same = old.len() == result.len();
+                            if same {
+                                for (old, new) in old.code_units().iter().zip(result.code_units()) {
+                                    op.draft.source_step(cancel)?;
+                                    if old != new {
+                                        same = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            !same
+                        }
+                        _ => false,
+                    };
+                    (
+                        3 + u64::from(watcher),
+                        2 + usize::from(member) + usize::from(watcher || changed_result),
+                    )
+                }
+                (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Show { .. }) => {
+                    let document = op.draft.node(frame.subject)?.document;
+                    let original_window_active = match self
                         .dom
                         .snapshot()
-                        .global_document(global)
-                        .map_err(|_| DomError::HostedSourceUnavailable)?;
-                    let key = op.draft.resolve(associated.node().into())?;
-                    op.draft.document_fully_active(key, cancel)?
+                        .relevant_global(plan.info.id().target())
+                        .map_err(|_| DomError::HostedSourceUnavailable)?
+                    {
+                        None => false,
+                        Some(global) => {
+                            let associated = self
+                                .dom
+                                .snapshot()
+                                .global_document(global)
+                                .map_err(|_| DomError::HostedSourceUnavailable)?;
+                            let key = op.draft.resolve(associated.node().into())?;
+                            op.draft.document_fully_active(key, cancel)?
+                        }
+                    };
+                    let reached_hook = op.draft.document_fully_active(document, cancel)?
+                        && op.draft.shadow_connected(frame.subject, cancel)?;
+                    op.draft
+                        .admit_dialog_occurrences(2 + u64::from(reached_hook), cancel)?;
+                    let active_hook = reached_hook && original_window_active;
+                    (3 + u64::from(active_hook), 3 + usize::from(active_hook))
                 }
             };
-            let reached_hook = op.draft.document_fully_active(document, cancel)?
-                && op.draft.shadow_connected(frame.subject, cancel)?;
-            // Remember and focusing are distinct actual Show occurrences after AddOpen;
-            // the reached ordinary Hook has its own original shared ordinal.
-            op.draft
-                .admit_dialog_occurrences(2 + u64::from(reached_hook), cancel)?;
-            let active_hook = reached_hook && original_window_active;
-            let extra = u64::from(active_hook);
-            let required_phases = 3 + extra;
             if op
                 .phases
                 .checked_add(required_phases)
@@ -341,7 +466,7 @@ impl<'dom> DomSourceLease<'dom> {
                 .checked_add(prepared.changes.len())
                 .ok_or(DomError::RepresentationExhausted)?;
             if outputs
-                .checked_add(3 + usize::from(active_hook))
+                .checked_add(future_outputs)
                 .is_none_or(|outputs| outputs > op.limits.outputs)
             {
                 return Err(DomError::SourceOutputLimit);
@@ -364,11 +489,11 @@ impl<'dom> DomSourceLease<'dom> {
         }
         self.dom.source_operation = Some(op);
         let (prepared, canonical, outputs, remaining_phases) = result.expect("formed publication");
-        Ok(DomDialogToggleQueueCommit {
+        Ok(DomDialogTaskQueueCommit {
             lease: self,
             prepared: Some(prepared),
             plan,
-            task: Some(DomDialogToggleTask {
+            task: Some(DomDialogTask {
                 info: plan.info,
                 binding: Arc::downgrade(&source.binding),
             }),
@@ -379,10 +504,10 @@ impl<'dom> DomSourceLease<'dom> {
         })
     }
     /// Accept the exact real queue publication once, preserving it on refusal.
-    pub fn accept_dialog_toggle_queue(
+    pub fn accept_dialog_task_queue(
         &mut self,
         request: &DomSourceDialogRequest,
-        publication: &mut Option<DomDialogToggleQueuePublication>,
+        publication: &mut Option<DomDialogTaskQueuePublication>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         check_cancel(cancel)?;
@@ -397,7 +522,7 @@ impl<'dom> DomSourceLease<'dom> {
             .ok_or(DomError::InvalidSourceOperation)?;
         let frame = op
             .draft
-            .dialog_show
+            .dialog_method
             .as_mut()
             .ok_or(DomError::InvalidSourceOperation)?;
         if candidate.operation != self.id
@@ -409,7 +534,7 @@ impl<'dom> DomSourceLease<'dom> {
         }
         op.draft.source_step(cancel)?;
         op.draft
-            .dialog_show
+            .dialog_method
             .as_mut()
             .expect("frame")
             .cursor
@@ -421,13 +546,13 @@ impl<'dom> DomSourceLease<'dom> {
     }
 }
 
-impl DomManipulationTaskSource {
+impl DomElementTaskSource {
     /// Begin the mandatory event/cleanup root of this actual affine queued task.
     /// The task remains in its original Runtime FIFO; no new task is queued.
-    pub fn begin_dialog_toggle_task<'a>(
+    pub fn begin_dialog_task<'a>(
         &self,
         dom: &'a mut Dom,
-        task: &mut Option<DomDialogToggleTask>,
+        task: &mut Option<DomDialogTask>,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'a>, DomError> {
@@ -445,14 +570,14 @@ impl DomManipulationTaskSource {
         // resolved through a reused slot or converted into another task.
         if dom
             .snapshot()
-            .node(actual.info.id.target())?
+            .node(actual.info.id().target())?
             .as_dialog()
             .is_none()
         {
             return Err(DomError::InvalidSourceOperation);
         }
         let mut lease = dom.begin_source_root(
-            OperationRoot::DialogToggleTask(actual.info),
+            OperationRoot::DialogTask(actual.info),
             Arc::new(BatchIdentity),
             limits,
             cancel,
@@ -462,7 +587,7 @@ impl DomManipulationTaskSource {
         // can still refuse. Until its genuine observation exists, keep the
         // queued task's affine permission with the original caller. Ordinary
         // unpublished-root rollback then cannot strand that task on retry.
-        if !matches!(lease.advance(cancel)?, DomSourceProgress::Request(DomSourceRequest::Event(ref request)) if request.kind() == crate::DomSourceEventKind::Toggle)
+        if !matches!(lease.advance(cancel)?, DomSourceProgress::Request(DomSourceRequest::Event(ref request)) if matches!(request.kind(), crate::DomSourceEventKind::Toggle | crate::DomSourceEventKind::Close))
         {
             return Err(DomError::InvalidSourceOperation);
         }
@@ -471,16 +596,19 @@ impl DomManipulationTaskSource {
     }
     /// Resume only this original actual task's canonical dispatch/cleanup root.
     /// A copied pending Source operation identity is insufficient authority.
-    pub fn resume_dialog_toggle_task<'a>(
+    pub fn resume_dialog_task<'a>(
         &self,
         dom: &'a mut Dom,
-        task: DomManipulationTaskId,
+        task: DomElementTaskId,
         operation: DomSourceOperationId,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'a>, DomError> {
         self.qualify(dom)?;
-        if !dom.source_operation.as_ref().is_some_and(|current| current.id == operation && matches!(current.commands, OperationRoot::DialogToggleTask(info) if info.id == task)) {
+        if !dom.source_operation.as_ref().is_some_and(|current| {
+            current.id == operation
+                && matches!(current.commands, OperationRoot::DialogTask(info) if info.id() == task)
+        }) {
             return Err(DomError::InvalidSourceOperation);
         }
         let mut lease = dom.resume_source_permission(operation, limits, cancel)?;

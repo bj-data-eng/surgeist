@@ -11,9 +11,12 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     let before = session.snapshot();
     let document = before.node(subject).unwrap().owner_document().unwrap();
     let event = start(session, subject, scope);
-    assert_eq!(event.old_state(), HtmlDialogState::Closed);
-    assert_eq!(event.new_state(), HtmlDialogState::Open);
-    assert_eq!(event.source(), None);
+    let payload = event
+        .toggle_event()
+        .expect("actual Show ToggleEvent payload");
+    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
+    assert_eq!(payload.new_state(), HtmlDialogState::Open);
+    assert_eq!(payload.source(), None);
     let receipt = dispatch(session, &event);
     assert_eq!(receipt.callbacks(), 0);
     assert!(!receipt.default_prevented());
@@ -59,17 +62,19 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     assert_eq!(status.phase(), DomSourcePhase::DialogService);
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap();
-    let dialog_task = task.dialog().expect("the actual original Show toggle task");
+    let dialog_task = task
+        .dialog_toggle()
+        .expect("the actual original Show toggle task");
     assert_eq!(dialog_task.id().target(), subject);
     assert_eq!(dialog_task.old_state(), HtmlDialogState::Closed);
     assert_eq!(dialog_task.new_state(), HtmlDialogState::Open);
@@ -125,15 +130,15 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     assert_eq!(session.snapshot().stamp(), after.stamp());
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap(),
         Some(task)
     );

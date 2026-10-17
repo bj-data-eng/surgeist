@@ -19,10 +19,12 @@ pub struct DomSourceEventId {
 /// Exact native event firing clause admitted by the original Source engine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceEventKind {
-    /// The synchronous cancelable Show beforetoggle observation.
+    /// Synchronous beforetoggle with the reached method’s actual cancelability.
     BeforeToggle,
     /// A queued Dialog toggle task with mandatory canonical tracker cleanup.
     Toggle,
+    /// Plain queued close notification, without ToggleEvent data.
+    Close,
 }
 /// The original event's completed cancelation outcome, attested by its executor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,8 +46,7 @@ pub(crate) struct EventWork {
     pub(crate) parent: Option<DomSourceOperationId>,
     pub(crate) subject: NodeId,
     pub(crate) kind: DomSourceEventKind,
-    pub(crate) old: HtmlDialogState,
-    pub(crate) new: HtmlDialogState,
+    pub(crate) payload: DomSourceEventPayload,
     pub(crate) cancelable: bool,
     pub(crate) stage: AtomicU8,
     pub(crate) work: Arc<AtomicU64>,
@@ -97,8 +98,33 @@ impl EventWork {
         Ok(())
     }
 }
-/// Immutable event data, not dispatch or reply authority. The initial bridge
-/// represents Show's closed-to-open, null-source, cancelable beforetoggle.
+/// Actual ToggleEvent data; plain events have no invented state strings.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceToggleEvent {
+    pub(crate) old: HtmlDialogState,
+    pub(crate) new: HtmlDialogState,
+}
+impl DomSourceToggleEvent {
+    /// Exact source-selected old state.
+    pub const fn old_state(self) -> HtmlDialogState {
+        self.old
+    }
+    /// Exact source-selected new state.
+    pub const fn new_state(self) -> HtmlDialogState {
+        self.new
+    }
+    /// Standard Show/Close methods and the admitted Toggle tasks supply null.
+    pub const fn source(self) -> Option<NodeId> {
+        None
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum DomSourceEventPayload {
+    Toggle(DomSourceToggleEvent),
+    Close,
+}
+/// Immutable actual method/task event data, not dispatch or reply authority.
+/// ToggleEvent data exists only for beforetoggle and toggle; Close is plain.
 #[derive(Clone, Debug)]
 pub struct DomSourceEventRequest {
     pub(crate) work: Arc<EventWork>,
@@ -120,15 +146,12 @@ impl DomSourceEventRequest {
     pub fn subject(&self) -> NodeId {
         self.work.subject
     }
-    pub fn old_state(&self) -> HtmlDialogState {
-        self.work.old
-    }
-    pub fn new_state(&self) -> HtmlDialogState {
-        self.work.new
-    }
-    /// The original reached action was qualified as the Show adapter's Null source.
-    pub const fn source(&self) -> Option<NodeId> {
-        None
+    /// Actual ToggleEvent data, absent for a plain Close notification.
+    pub fn toggle_event(&self) -> Option<DomSourceToggleEvent> {
+        match self.work.payload {
+            DomSourceEventPayload::Toggle(payload) => Some(payload),
+            DomSourceEventPayload::Close => None,
+        }
     }
     pub fn cancelable(&self) -> bool {
         self.work.cancelable
@@ -150,9 +173,9 @@ impl DomSourceDialogRequest {
             _ => None,
         }
     }
-    pub(crate) fn show(&self) -> Option<super::watcher::HookOccurrence> {
+    pub(crate) fn method(&self) -> Option<super::watcher::HookOccurrence> {
         match self.occurrence {
-            Some(super::watcher::DialogOccurrence::Show(value)) => Some(value),
+            Some(super::watcher::DialogOccurrence::Method(value)) => Some(value),
             _ => None,
         }
     }

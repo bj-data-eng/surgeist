@@ -9,11 +9,11 @@ impl Operation {
     fn focus_frame(
         &self,
         request: &DomSourceDialogRequest,
-    ) -> Result<crate::store::dialog::ShowFrame, DomError> {
-        let occurrence = request.show().ok_or(DomError::InvalidSourceOperation)?;
+    ) -> Result<crate::store::dialog::MethodFrame, DomError> {
+        let occurrence = request.method().ok_or(DomError::InvalidSourceOperation)?;
         let frame = self
             .draft
-            .dialog_show
+            .dialog_method
             .ok_or(DomError::InvalidSourceOperation)?;
         if request.operation != self.id
             || !matches!(
@@ -99,7 +99,7 @@ impl Operation {
             .reply(HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;
         frame.invocation = Invocation::Unissued;
-        self.draft.dialog_show = Some(frame);
+        self.draft.dialog_method = Some(frame);
         Ok(())
     }
 }

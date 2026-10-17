@@ -1,8 +1,8 @@
 //! Actual headless Host producer, original Source receipt, and physical extents.
 use super::*;
 use crate::{
-    DomEventDispatchLimits, DomEventDispatcher, DomEventRegistryLimits,
-    DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
+    DomElementTaskRuntimeLimits, DomEventDispatchLimits, DomEventDispatcher,
+    DomEventRegistryLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
     DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
     DomSourceServices, DomStyleRuntimeLimits,
 };
@@ -27,7 +27,7 @@ fn session_limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: surgeist_css::CssUtf16InputLimits::default(),
         },
-        dom_manipulation: DomManipulationRuntimeLimits {
+        element_tasks: DomElementTaskRuntimeLimits {
             tasks: 8,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -130,7 +130,7 @@ fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomSourceDialogReq
             .unwrap(),
         DomSourceEventServiceProgress::Serviced { .. }
     ));
-    let tasks = session.dom_manipulation_execution();
+    let tasks = session.element_task_execution();
     let request = {
         let mut dom = session.dom();
         let mut lease = dom

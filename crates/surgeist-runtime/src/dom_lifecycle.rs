@@ -371,7 +371,7 @@ struct HostedState {
     creation: Option<Creation>,
     children: Vec<child::Creation>,
     destruction: destruction::State,
-    dom_manipulation: Option<crate::dom_manipulation::DomManipulationRuntime>,
+    element_tasks: Option<crate::element_tasks::DomElementTaskRuntime>,
 }
 impl HostedOwner {
     pub(crate) fn admit_initial_headers(
@@ -411,7 +411,7 @@ impl HostedOwner {
                 creation: None,
                 children: Vec::new(),
                 destruction: destruction::State::new(),
-                dom_manipulation: None,
+                element_tasks: None,
             })),
         })
     }
@@ -1578,22 +1578,22 @@ impl HostedOwner {
 }
 
 impl HostedRuntime {
-    pub(crate) fn ingest_dom_manipulation(
+    pub(crate) fn ingest_element_tasks(
         &self,
-        dom_manipulation: &crate::dom_manipulation::DomManipulationRuntime,
+        element_tasks: &crate::element_tasks::DomElementTaskRuntime,
         dom: &mut DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<usize, crate::dom_manipulation::DomManipulationRuntimeError> {
+    ) -> Result<usize, crate::element_tasks::DomElementTaskRuntimeError> {
         let owner = self
             .state()
-            .map_err(crate::dom_manipulation::DomManipulationRuntimeError::Hosted)?;
+            .map_err(crate::element_tasks::DomElementTaskRuntimeError::Hosted)?;
         let state = owner
             .try_borrow()
-            .map_err(|_| crate::dom_manipulation::DomManipulationRuntimeError::Busy)?;
+            .map_err(|_| crate::element_tasks::DomElementTaskRuntimeError::Busy)?;
         state
             .qualify(dom)
-            .map_err(crate::dom_manipulation::DomManipulationRuntimeError::Hosted)?;
-        dom_manipulation.ingest_source(dom, &state.source, cancel)
+            .map_err(crate::element_tasks::DomElementTaskRuntimeError::Hosted)?;
+        element_tasks.ingest_source(dom, &state.source, cancel)
     }
 }
 
@@ -1645,11 +1645,12 @@ impl Drop for NativeTaskRunning {
     }
 }
 impl HostedRuntime {
-    pub(crate) fn enter_dom_manipulation(
+    pub(crate) fn enter_element_task(
         &self,
         dom: &DomEventDom<'_>,
         association: surgeist_dom::DomElementTaskAssociation,
-        task: crate::dom_manipulation::DomManipulationTaskId,
+        source: surgeist_dom::DomElementTaskSourceKind,
+        task: crate::element_tasks::DomElementTaskId,
         retired_target: bool,
         cancel: &AtomicBool,
     ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
@@ -1673,7 +1674,11 @@ impl HostedRuntime {
         let mut event_loop = loop_owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let current = records::CurrentTask::DomManipulation { task, document };
+        let current = records::CurrentTask::ElementTask {
+            source,
+            task,
+            document,
+        };
         if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
             return Err(DomHostedRuntimeError::Busy);
         }
@@ -1756,11 +1761,11 @@ impl HostedRuntime {
 }
 
 impl HostedOwner {
-    pub(crate) fn bind_dom_manipulation(
+    pub(crate) fn bind_element_tasks(
         &self,
-        dom_manipulation: crate::dom_manipulation::DomManipulationRuntime,
+        element_tasks: crate::element_tasks::DomElementTaskRuntime,
     ) {
-        self.state.borrow_mut().dom_manipulation = Some(dom_manipulation);
+        self.state.borrow_mut().element_tasks = Some(element_tasks);
     }
 }
 
@@ -1872,9 +1877,7 @@ impl HostedRuntime {
 ))]
 mod constructor_settings_tests {
     use super::*;
-    use crate::{
-        DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits,
-    };
+    use crate::{DomElementTaskRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits};
     use surgeist_css::CssUtf16InputLimits;
     use surgeist_dom::{DomHostedRecordLimits, DomLimits};
 
@@ -1909,7 +1912,7 @@ mod constructor_settings_tests {
                     work: 1_000_000,
                     css_input: CssUtf16InputLimits::default(),
                 },
-                dom_manipulation: DomManipulationRuntimeLimits {
+                element_tasks: DomElementTaskRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 16_000_000,
                     work: 1_000_000,

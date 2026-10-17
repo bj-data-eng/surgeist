@@ -5,16 +5,16 @@ use super::tests::{attest, fixture, limits, request};
 use super::*;
 
 struct Owner {
-    source: crate::DomManipulationTaskSource,
-    retained: Option<crate::DomManipulationTaskRetention>,
+    source: crate::DomElementTaskSource,
+    retained: Option<crate::DomElementTaskRetention>,
 }
 struct Allocation {
     values: Vec<NodeId>,
-    _retained: crate::DomManipulationTaskRetention,
+    _retained: crate::DomElementTaskRetention,
 }
 fn owner(dom: &mut Dom) -> Owner {
     let source = dom
-        .bind_manipulation_task_source(&AtomicBool::new(false))
+        .bind_element_task_source(&AtomicBool::new(false))
         .unwrap();
     let retained = source
         .retain_payload(dom, size_of::<Owner>(), &AtomicBool::new(false))
@@ -189,19 +189,14 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
             panic!("the original uncanceled Show must reach QueueToggle");
         };
         let plan = lease
-            .dialog_toggle_queue_plan(&request, &owner.source, 1, &cancel)
+            .dialog_task_queue_plan(&request, &owner.source, 1, &cancel)
             .unwrap();
         assert!(matches!(
-            lease.prepare_dialog_toggle_queue(
-                &request,
-                &owner.source,
-                plan,
-                &AtomicBool::new(true)
-            ),
+            lease.prepare_dialog_task_queue(&request, &owner.source, plan, &AtomicBool::new(true)),
             Err(DomError::Cancelled)
         ));
         {
-            let result = lease.prepare_dialog_toggle_queue(&request, &owner.source, plan, &cancel);
+            let result = lease.prepare_dialog_task_queue(&request, &owner.source, plan, &cancel);
             if let Some(expected) = failure {
                 match result {
                     Err(actual) => assert_eq!(actual, expected),
@@ -230,7 +225,7 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         );
         let op = dom.source_operation.as_ref().unwrap();
         assert_eq!(
-            op.draft.dialog_show.unwrap().cursor.action(),
+            op.draft.dialog_method.unwrap().cursor.action(),
             surgeist_html::HtmlDialogAction::QueueToggle {
                 old: surgeist_html::HtmlDialogState::Closed,
                 new: surgeist_html::HtmlDialogState::Open,
@@ -274,9 +269,9 @@ fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effec
                 .draft
                 .source_invocation = u64::MAX - remaining;
             let plan = lease
-                .dialog_toggle_queue_plan(&request, &owner.source, 1, &cancel)
+                .dialog_task_queue_plan(&request, &owner.source, 1, &cancel)
                 .unwrap();
-            let result = lease.prepare_dialog_toggle_queue(&request, &owner.source, plan, &cancel);
+            let result = lease.prepare_dialog_task_queue(&request, &owner.source, plan, &cancel);
             if remaining == 1 {
                 assert!(matches!(result, Err(DomError::RepresentationExhausted)));
             } else {
@@ -306,7 +301,7 @@ fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effec
                 .as_ref()
                 .unwrap()
                 .draft
-                .dialog_show
+                .dialog_method
                 .unwrap()
                 .invocation,
             Invocation::Unissued

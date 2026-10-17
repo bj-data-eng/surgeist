@@ -172,6 +172,10 @@ pub(crate) enum Command {
         node: NodeOperand,
         value: DocumentString,
     },
+    CloseDialog {
+        node: NodeOperand,
+        result: Option<DocumentString>,
+    },
     ShowDialog {
         node: NodeOperand,
     },

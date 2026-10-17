@@ -298,8 +298,8 @@ fn input_image_disabled_history_observes_absent_empty_and_changed_reentry_after_
         assert_eq!(
             fixture
                 .session
-                .dom_manipulation_execution()
-                .pending_tasks()
+                .element_task_execution()
+                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             0
         );
@@ -484,8 +484,8 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
         assert_eq!(
             fixture
                 .session
-                .dom_manipulation_execution()
-                .pending_tasks()
+                .element_task_execution()
+                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             0
         );

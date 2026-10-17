@@ -1369,8 +1369,8 @@ pub struct DomSessionLimits {
     pub source_events: crate::dom_dialog::DomSourceEventRuntimeLimits,
     /// Style source/resource/task orchestration admission.
     pub style: DomStyleRuntimeLimits,
-    /// Details task/tracker admission.
-    pub dom_manipulation: crate::dom_manipulation::DomManipulationRuntimeLimits,
+    /// Shared element-task owner admission.
+    pub element_tasks: crate::element_tasks::DomElementTaskRuntimeLimits,
     /// Native hosted lifecycle and its canonical source admission.
     pub hosted: crate::dom_lifecycle::DomHostedRuntimeLimits,
 }
@@ -1381,8 +1381,8 @@ pub enum DomSessionCreateFailure {
     SourceEvents(crate::dom_dialog::DomSourceEventRuntimeError),
     /// Existing Style source/resource custody prevents adoption or admission.
     Style(DomStyleRuntimeError),
-    /// The actual Details task owner could not be admitted.
-    DomManipulation(crate::dom_manipulation::DomManipulationRuntimeError),
+    /// The actual shared element-task owner could not be admitted.
+    ElementTasks(crate::element_tasks::DomElementTaskRuntimeError),
     /// The actual hosted source/domain owner could not be admitted.
     Hosted(crate::dom_lifecycle::DomHostedRuntimeError),
 }
@@ -1391,7 +1391,7 @@ impl std::fmt::Display for DomSessionCreateFailure {
         match self {
             Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
             Self::Style(error) => std::fmt::Display::fmt(error, f),
-            Self::DomManipulation(error) => std::fmt::Display::fmt(error, f),
+            Self::ElementTasks(error) => std::fmt::Display::fmt(error, f),
             Self::Hosted(error) => std::fmt::Display::fmt(error, f),
         }
     }
@@ -1401,7 +1401,7 @@ impl std::error::Error for DomSessionCreateFailure {
         match self {
             Self::SourceEvents(error) => Some(error),
             Self::Style(error) => Some(error),
-            Self::DomManipulation(error) => Some(error),
+            Self::ElementTasks(error) => Some(error),
             Self::Hosted(error) => Some(error),
         }
     }
@@ -1412,7 +1412,7 @@ impl std::error::Error for DomSessionCreateFailure {
 pub struct DomSession {
     dom: Dom,
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
-    dom_manipulation: crate::dom_manipulation::ManipulationOwner,
+    element_tasks: crate::element_tasks::ElementTaskOwner,
     hosted: crate::dom_lifecycle::HostedOwner,
     events: crate::dom_dialog::SourceEventOwner,
 }
@@ -1462,8 +1462,8 @@ pub enum DomShutdownReason {
     SourceEvent(surgeist_dom::DomSourceEventId),
     /// An actual Details source intention has not reached its task owner.
     DetailsIntentions,
-    /// An actual queued/running Details task has not completed or been canceled.
-    DomManipulationTask(crate::dom_manipulation::DomManipulationTaskId),
+    /// An actual queued/running element task has not completed or been canceled.
+    DomElementTask(crate::element_tasks::DomElementTaskId),
     /// Canonical hooks are not complete.
     SourceTail(DomSourceOperationId),
     /// A canonical root still retains its actual mutable resource.
@@ -1506,11 +1506,11 @@ impl DomSession {
         reason = "Creation refusal returns the actual unchanged input Dom without another allocation or resource-loss failure"
     )]
     pub fn new(mut dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
-        if dom.has_manipulation_task_source() {
+        if dom.has_element_task_source() {
             return Err(DomSessionCreateError {
                 dom,
-                error: DomSessionCreateFailure::DomManipulation(
-                    crate::dom_manipulation::DomManipulationRuntimeError::PretransferredSession,
+                error: DomSessionCreateFailure::ElementTasks(
+                    crate::element_tasks::DomElementTaskRuntimeError::PretransferredSession,
                 ),
             });
         }
@@ -1541,8 +1541,8 @@ impl DomSession {
         if dom.has_transferred_details_toggle_intentions() {
             return Err(DomSessionCreateError {
                 dom,
-                error: DomSessionCreateFailure::DomManipulation(
-                    crate::dom_manipulation::DomManipulationRuntimeError::PretransferredSession,
+                error: DomSessionCreateFailure::ElementTasks(
+                    crate::element_tasks::DomElementTaskRuntimeError::PretransferredSession,
                 ),
             });
         }
@@ -1561,16 +1561,16 @@ impl DomSession {
             });
         }
         let owner = dom.owner();
-        let details =
-            match crate::dom_manipulation::ManipulationOwner::new(owner, limits.dom_manipulation) {
-                Ok(details) => details,
-                Err(error) => {
-                    return Err(DomSessionCreateError {
-                        dom,
-                        error: DomSessionCreateFailure::DomManipulation(error),
-                    });
-                }
-            };
+        let details = match crate::element_tasks::ElementTaskOwner::new(owner, limits.element_tasks)
+        {
+            Ok(details) => details,
+            Err(error) => {
+                return Err(DomSessionCreateError {
+                    dom,
+                    error: DomSessionCreateFailure::ElementTasks(error),
+                });
+            }
+        };
         let hosted = match crate::dom_lifecycle::HostedOwner::new(&mut dom, limits.hosted) {
             Ok(hosted) => hosted,
             Err(error) => {
@@ -1581,7 +1581,7 @@ impl DomSession {
             }
         };
         details.bind_hosted(hosted.execution());
-        hosted.bind_dom_manipulation(details.execution());
+        hosted.bind_element_tasks(details.execution());
         details.bind_source(&mut dom);
         // All binding preconditions were checked before Hosted adoption. This
         // exclusive construction has executed no callbacks or Source edits.
@@ -1597,7 +1597,7 @@ impl DomSession {
                 owner,
                 limits.style,
             ))),
-            dom_manipulation: details,
+            element_tasks: details,
             hosted,
             events,
         })
@@ -1608,9 +1608,9 @@ impl DomSession {
             state: std::rc::Rc::downgrade(&self.state),
         }
     }
-    /// Weak permission for this exact session's original Details task owner.
-    pub fn dom_manipulation_execution(&self) -> crate::dom_manipulation::DomManipulationRuntime {
-        self.dom_manipulation.execution()
+    /// Weak permission for this exact session's original element-task owner.
+    pub fn element_task_execution(&self) -> crate::element_tasks::DomElementTaskRuntime {
+        self.element_tasks.execution()
     }
     /// Weak permission for this exact session's original native lifecycle owner.
     pub fn hosted_execution(&self) -> crate::dom_lifecycle::HostedRuntime {
@@ -1630,7 +1630,7 @@ impl DomSession {
     pub fn source_execution(&self) -> crate::dom_source::DomSourceRuntime {
         crate::dom_source::DomSourceRuntime::new(
             self.style_execution(),
-            self.dom_manipulation_execution(),
+            self.element_task_execution(),
             self.hosted_execution(),
             self.events.execution(),
         )
@@ -1661,10 +1661,10 @@ impl DomSession {
             Err(crate::dom_lifecycle::DomHostedRuntimeError::Busy) => Some(DomShutdownReason::Busy),
             Err(_) => Some(DomShutdownReason::Admission),
         };
-        let details = match self.dom_manipulation.pending() {
-            Ok(Some(task)) => Some(DomShutdownReason::DomManipulationTask(task)),
+        let details = match self.element_tasks.pending() {
+            Ok(Some(task)) => Some(DomShutdownReason::DomElementTask(task)),
             Ok(None) => None,
-            Err(crate::dom_manipulation::DomManipulationRuntimeError::Busy) => {
+            Err(crate::element_tasks::DomElementTaskRuntimeError::Busy) => {
                 Some(DomShutdownReason::Busy)
             }
             Err(_) => Some(DomShutdownReason::Admission),
@@ -2259,7 +2259,7 @@ mod tests {
                 work: 1_000_000,
             },
             style,
-            dom_manipulation: crate::dom_manipulation::DomManipulationRuntimeLimits {
+            element_tasks: crate::element_tasks::DomElementTaskRuntimeLimits {
                 tasks: 32,
                 storage_bytes: 16 * 1024 * 1024,
                 work: 1_000_000,

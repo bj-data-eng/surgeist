@@ -10,11 +10,11 @@ use crate::dom_dialog::{
 use crate::dom_event::DomEventDispatcher;
 use crate::dom_event::DomEventDom;
 use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime, HostedSourceProgress};
-use crate::dom_manipulation::{DomManipulationRuntime, DomManipulationRuntimeError};
 use crate::dom_style::{
     DomStyleRuntime, DomStyleRuntimeError, DomStyleServiceProgress, DomStyleUnavailable,
     StyleSourceGuard,
 };
+use crate::element_tasks::{DomElementTaskRuntime, DomElementTaskRuntimeError};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DomError, DomNativeCheckpointLimits, DomNativeHtmlInstallError, DomNativeHtmlInstallTarget,
@@ -87,7 +87,7 @@ pub enum DomSourceRuntimeError {
     /// The original Style resource or processing owner refused its step.
     Style(DomStyleRuntimeError),
     /// The original bound Details owner is unavailable or foreign.
-    DomManipulation(DomManipulationRuntimeError),
+    ElementTasks(DomElementTaskRuntimeError),
     /// The original hosted owner is unavailable or foreign.
     Hosted(DomHostedRuntimeError),
     /// The named native installation refused its actual input or target.
@@ -104,7 +104,7 @@ impl std::error::Error for DomSourceRuntimeError {
             Self::SourceEvent(error) => Some(error),
             Self::Dom(error) => Some(error),
             Self::Style(error) => Some(error),
-            Self::DomManipulation(error) => Some(error),
+            Self::ElementTasks(error) => Some(error),
             Self::Hosted(error) => Some(error),
             Self::NativeInstallation(error) => Some(error),
         }
@@ -126,7 +126,7 @@ impl From<DomStyleRuntimeError> for DomSourceRuntimeError {
 /// neither extracts the canonical owner nor releases its resources or cursor.
 pub struct DomSourceRuntime {
     styles: DomStyleRuntime,
-    dom_manipulation: DomManipulationRuntime,
+    element_tasks: DomElementTaskRuntime,
     hosted: HostedRuntime,
     events: SourceEventRuntime,
 }
@@ -138,13 +138,13 @@ impl std::fmt::Debug for DomSourceRuntime {
 impl DomSourceRuntime {
     pub(crate) fn new(
         styles: DomStyleRuntime,
-        dom_manipulation: DomManipulationRuntime,
+        element_tasks: DomElementTaskRuntime,
         hosted: HostedRuntime,
         events: SourceEventRuntime,
     ) -> Self {
         Self {
             styles,
-            dom_manipulation,
+            element_tasks,
             hosted,
             events,
         }
@@ -197,9 +197,9 @@ impl DomSourceRuntime {
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
     ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
-        self.dom_manipulation
+        self.element_tasks
             .validate_view(dom)
-            .map_err(DomSourceRuntimeError::DomManipulation)?;
+            .map_err(DomSourceRuntimeError::ElementTasks)?;
         self.hosted
             .validate_view(dom)
             .map_err(DomSourceRuntimeError::Hosted)?;
@@ -450,13 +450,14 @@ impl DomSourceRuntime {
                     if matches!(
                         request.action(),
                         surgeist_html::HtmlDialogAction::QueueToggle {
-                            source: surgeist_html::HtmlDialogEventSource::Null,
+                            source: surgeist_html::HtmlDialogEventSource::Null
+                                | surgeist_html::HtmlDialogEventSource::OperationSource,
                             ..
-                        }
+                        } | surgeist_html::HtmlDialogAction::QueueClose
                     ) {
-                        self.dom_manipulation
+                        self.element_tasks
                             .queue_dialog(lease, &request, cancel)
-                            .map_err(DomSourceRuntimeError::DomManipulation)?;
+                            .map_err(DomSourceRuntimeError::ElementTasks)?;
                         continue;
                     }
                     if matches!(
@@ -656,7 +657,7 @@ mod tests {
                     work: 100_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                dom_manipulation: crate::DomManipulationRuntimeLimits {
+                element_tasks: crate::DomElementTaskRuntimeLimits {
                     tasks: 8,
                     storage_bytes: 1_000_000,
                     work: 100_000,

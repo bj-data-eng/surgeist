@@ -263,7 +263,7 @@ fn parked(
     ));
     assert_eq!(context.calls, 1);
     drop(context.result.unwrap()?);
-    let tasks = session.dom_manipulation_execution();
+    let tasks = session.element_task_execution();
     let request = {
         let mut dom = session.dom();
         let mut lease =
@@ -407,8 +407,8 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         let basis = case.session.snapshot().stamp();
         let queue = case
             .session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap();
         {
             let mut dom = case.session.dom();
@@ -527,8 +527,8 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         );
         assert_eq!(
             case.session
-                .dom_manipulation_execution()
-                .pending_task(0)
+                .element_task_execution()
+                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
                 .unwrap(),
             queue
         );
@@ -565,8 +565,8 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         );
         assert_eq!(
             case.session
-                .dom_manipulation_execution()
-                .pending_task(0)
+                .element_task_execution()
+                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
                 .unwrap(),
             queue
         );

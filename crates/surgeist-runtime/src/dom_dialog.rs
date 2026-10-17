@@ -284,12 +284,32 @@ impl State {
         let job = Rc::new(RefCell::new(Job {
             next: None,
             request: request.clone(),
-            event: NativeDomEvent::dialog_before_toggle(
-                request.subject(),
-                request.old_state(),
-                request.new_state(),
-                request.cancelable(),
-            ),
+            event: match request.kind() {
+                surgeist_dom::DomSourceEventKind::BeforeToggle => {
+                    let payload = request
+                        .toggle_event()
+                        .ok_or(DomSourceEventRuntimeError::Protocol)?;
+                    NativeDomEvent::dialog_before_toggle(
+                        request.subject(),
+                        payload.old_state(),
+                        payload.new_state(),
+                        request.cancelable(),
+                    )
+                }
+                surgeist_dom::DomSourceEventKind::Toggle => {
+                    let payload = request
+                        .toggle_event()
+                        .ok_or(DomSourceEventRuntimeError::Protocol)?;
+                    NativeDomEvent::dialog_toggle(
+                        request.subject(),
+                        payload.old_state(),
+                        payload.new_state(),
+                    )
+                }
+                surgeist_dom::DomSourceEventKind::Close => {
+                    NativeDomEvent::dialog_close(request.subject())
+                }
+            },
             phase: Phase::Ready,
             payload_reserved: payload,
             source_payload_reserved: payload,
@@ -615,7 +635,14 @@ impl SourceEventRuntime {
                 return Err(DomSourceEventRuntimeError::Protocol);
             };
             if receipt.original_target() != request.subject()
-                || receipt.event_type() != DomEventType::BeforeToggle
+                || receipt.event_type()
+                    != match request.kind() {
+                        surgeist_dom::DomSourceEventKind::BeforeToggle => {
+                            DomEventType::BeforeToggle
+                        }
+                        surgeist_dom::DomSourceEventKind::Toggle => DomEventType::Toggle,
+                        surgeist_dom::DomSourceEventKind::Close => DomEventType::Close,
+                    }
             {
                 return Err(DomSourceEventRuntimeError::Protocol);
             }

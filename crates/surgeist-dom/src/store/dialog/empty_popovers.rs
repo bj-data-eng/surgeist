@@ -2,7 +2,7 @@
 use super::*;
 
 impl Draft {
-    pub(super) fn dialog_show_node_document(
+    pub(super) fn dialog_method_node_document(
         &self,
         subject: Key,
         cancel: &AtomicBool,
@@ -19,7 +19,7 @@ impl Draft {
             .ok_or(DomError::UnavailableCreation)
     }
 
-    pub(super) fn dialog_show_known_empty_top_layer(
+    pub(super) fn dialog_method_known_empty_top_layer(
         &self,
         document: DocumentId,
         cancel: &AtomicBool,

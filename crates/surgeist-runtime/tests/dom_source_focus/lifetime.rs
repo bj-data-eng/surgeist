@@ -101,8 +101,8 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     drop(receipt);
     assert!(matches!(
         resume(&mut session, event.operation(), Some(&scope)),
-        Err(DomSourceRuntimeError::DomManipulation(
-            DomManipulationRuntimeError::Dom(DomError::HostedSourceUnavailable)
+        Err(DomSourceRuntimeError::ElementTasks(
+            DomElementTaskRuntimeError::Dom(DomError::HostedSourceUnavailable)
         ))
     ));
     let after = session.snapshot();
@@ -126,8 +126,8 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -269,11 +269,11 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
         global
     );
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap()
-        .dialog()
+        .dialog_toggle()
         .unwrap();
     assert_eq!(task.queue_association().unwrap().global(), global);
     assert_eq!(task.queue_association().unwrap().document(), document);
@@ -324,8 +324,8 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -335,8 +335,8 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     );
     let accepted = session.snapshot();
     let task = session
-        .dom_manipulation_execution()
-        .pending_task(0)
+        .element_task_execution()
+        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
         .unwrap()
         .unwrap();
     assert_eq!(task.queue_association().unwrap().global(), top.global());
@@ -349,15 +349,15 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     assert_eq!(session.snapshot().stamp(), accepted.stamp());
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_task(0)
+            .element_task_execution()
+            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
             .unwrap(),
         Some(task)
     );
@@ -397,8 +397,8 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -425,8 +425,8 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     assert_eq!(
         session
-            .dom_manipulation_execution()
-            .pending_tasks()
+            .element_task_execution()
+            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );

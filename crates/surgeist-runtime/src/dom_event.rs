@@ -169,6 +169,8 @@ pub enum DomEventType {
     Toggle,
     /// The source-qualified Dialog beforetoggle event.
     BeforeToggle,
+    /// The plain user-interaction Dialog close notification.
+    Close,
 }
 impl DomEventType {
     /// Exact source event type spelling.
@@ -178,6 +180,7 @@ impl DomEventType {
             Self::Error => "error",
             Self::Toggle => "toggle",
             Self::BeforeToggle => "beforetoggle",
+            Self::Close => "close",
         }
     }
 }
@@ -345,11 +348,11 @@ pub struct DomEventDispatchReceipt {
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
     default_prevented: bool,
-    manipulation: Option<crate::dom_manipulation::TaskPayload>,
+    element_task_payload: Option<crate::element_tasks::TaskPayload>,
 }
 impl DomEventDispatchReceipt {
-    pub(crate) fn release_manipulation_retention(&mut self) {
-        self.manipulation.take();
+    pub(crate) fn release_element_task_retention(&mut self) {
+        self.element_task_payload.take();
     }
     pub(crate) fn retained_backing_bytes(&self) -> usize {
         self.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
@@ -681,7 +684,7 @@ impl<C> DomEventDispatcher<C> {
             .continuation
             .upgrade()
             .ok_or(DomEventDispatchError::Abandoned)?
-            .manipulation
+            .element_task_payload
             .borrow_mut()
             .as_mut()
             .map(|retained| {
@@ -792,26 +795,31 @@ impl<C> DomEventDispatcher<C> {
                 event.0.status.set(Status::Complete);
                 let failure_bytes =
                     dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>();
-                let manipulation = custody.manipulation.borrow_mut().as_mut().map(|retained| {
-                    retained
-                        .split(failure_bytes, failure_bytes)
-                        .expect("pre-admitted actual failure backing")
-                });
+                let element_task_payload =
+                    custody
+                        .element_task_payload
+                        .borrow_mut()
+                        .as_mut()
+                        .map(|retained| {
+                            retained
+                                .split(failure_bytes, failure_bytes)
+                                .expect("pre-admitted actual failure backing")
+                        });
                 let receipt = DomEventDispatchReceipt {
                     target: event.0.original,
                     event_type: event.0.event_type(),
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
                     default_prevented: event.default_prevented(),
-                    manipulation,
+                    element_task_payload,
                 };
                 drop(dispatch);
-                custody.settle_manipulation();
+                custody.settle_element_task();
                 Ok(DomEventDispatchOutcome::Complete(receipt))
             }
             other => {
                 *custody.borrow_mut() = Some(dispatch);
-                custody.settle_manipulation();
+                custody.settle_element_task();
                 event.0.status.set(Status::Retained);
                 Ok(match other {
                     Ok(Err(RunStop::Resource(resource))) => {
@@ -1023,6 +1031,7 @@ impl DomToggleEvent {
 enum EventData {
     StyleLoad,
     StyleError,
+    DialogClose,
     DetailsToggle(DomToggleEvent),
     DialogToggle(DomToggleEvent),
     DialogBeforeToggle {
@@ -1042,13 +1051,14 @@ struct Event {
     canceled: Cell<bool>,
     path: RefCell<Option<Rc<EventPath>>>,
     continuation: std::rc::Weak<EventContinuation>,
-    manipulation: RefCell<Option<crate::dom_manipulation::TaskPayload>>,
+    element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
 }
 impl Event {
     fn event_type(&self) -> DomEventType {
         match self.data {
             EventData::StyleLoad => DomEventType::Load,
             EventData::StyleError => DomEventType::Error,
+            EventData::DialogClose => DomEventType::Close,
             EventData::DetailsToggle(_) | EventData::DialogToggle(_) => DomEventType::Toggle,
             EventData::DialogBeforeToggle { .. } => DomEventType::BeforeToggle,
         }
@@ -1073,7 +1083,7 @@ impl NativeDomEventOwner {
     fn new(original: NodeId, data: EventData) -> Self {
         let custody = Rc::new(EventContinuation {
             dispatch: RefCell::new(None),
-            manipulation: RefCell::new(None),
+            element_task_payload: RefCell::new(None),
         });
         let event = NativeDomEvent(Rc::new(Event {
             original,
@@ -1087,7 +1097,7 @@ impl NativeDomEventOwner {
             canceled: Cell::new(false),
             path: RefCell::new(None),
             continuation: Rc::downgrade(&custody),
-            manipulation: RefCell::new(None),
+            element_task_payload: RefCell::new(None),
         }));
         Self {
             event,
@@ -1095,31 +1105,31 @@ impl NativeDomEventOwner {
         }
     }
 
-    pub(crate) fn settle_manipulation(&self) {
-        self._custody.settle_manipulation();
+    pub(crate) fn settle_element_task(&self) {
+        self._custody.settle_element_task();
     }
-    pub(crate) fn retain_manipulation(&self, mut retained: crate::dom_manipulation::TaskPayload) {
-        if self.event.0.manipulation.borrow().is_none() {
+    pub(crate) fn retain_element_task(&self, mut retained: crate::element_tasks::TaskPayload) {
+        if self.event.0.element_task_payload.borrow().is_none() {
             let bytes = std::mem::size_of::<Event>();
-            *self.event.0.manipulation.borrow_mut() = Some(
+            *self.event.0.element_task_payload.borrow_mut() = Some(
                 retained
                     .split(bytes, bytes)
                     .expect("pre-admitted actual event body"),
             );
         }
-        let mut continuation = self._custody.manipulation.borrow_mut();
+        let mut continuation = self._custody.element_task_payload.borrow_mut();
         if let Some(existing) = continuation.as_mut() {
             existing.absorb(retained).expect("same original task owner");
         } else {
             *continuation = Some(retained);
         }
     }
-    pub(crate) fn manipulation_extent(&self) -> (usize, usize) {
+    pub(crate) fn element_task_extent(&self) -> (usize, usize) {
         let mut full = 0;
         let mut source = 0;
         for retained in [
-            self.event.0.manipulation.borrow(),
-            self._custody.manipulation.borrow(),
+            self.event.0.element_task_payload.borrow(),
+            self._custody.element_task_payload.borrow(),
         ] {
             if let Some(retained) = retained.as_ref() {
                 full += retained.full();
@@ -1335,6 +1345,10 @@ impl NativeDomEvent {
         )
     }
 
+    pub(crate) fn dialog_close(target: NodeId) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::DialogClose)
+    }
+
     /// Actual null-source Dialog toggle task payload, including equal states.
     pub(crate) fn dialog_toggle(
         target: NodeId,
@@ -1381,7 +1395,7 @@ impl NativeDomEvent {
             EventData::DetailsToggle(payload)
             | EventData::DialogToggle(payload)
             | EventData::DialogBeforeToggle { payload, .. } => Some(payload),
-            EventData::StyleLoad | EventData::StyleError => None,
+            EventData::StyleLoad | EventData::StyleError | EventData::DialogClose => None,
         }
     }
     /// Current shadow-adjusted target; cleanup clears shadow-internal targets.
@@ -1532,7 +1546,7 @@ struct PathItem {
 struct EventPath {
     items: Vec<PathItem>,
     // Shared independently by composed_path iterators after Event/Task release.
-    _manipulation: Option<crate::dom_manipulation::TaskPayload>,
+    _manipulation: Option<crate::element_tasks::TaskPayload>,
 }
 impl std::ops::Deref for EventPath {
     type Target = Vec<PathItem>;
@@ -1543,7 +1557,7 @@ impl std::ops::Deref for EventPath {
 struct EventContinuation {
     dispatch: RefCell<Option<Dispatch>>,
     // Declared after the actual dispatch so its allocations drop first.
-    manipulation: RefCell<Option<crate::dom_manipulation::TaskPayload>>,
+    element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
 }
 impl std::ops::Deref for EventContinuation {
     type Target = RefCell<Option<Dispatch>>;
@@ -1552,7 +1566,7 @@ impl std::ops::Deref for EventContinuation {
     }
 }
 impl EventContinuation {
-    fn settle_manipulation(&self) {
+    fn settle_element_task(&self) {
         let dispatch = self.dispatch.borrow();
         let own = std::mem::size_of::<Self>()
             + dispatch.as_ref().map_or(0, |dispatch| {
@@ -1564,7 +1578,7 @@ impl EventContinuation {
             + dispatch
                 .as_ref()
                 .map_or(0, |dispatch| dispatch.association_custody.retained_bytes());
-        if let Some(retained) = self.manipulation.borrow_mut().as_mut() {
+        if let Some(retained) = self.element_task_payload.borrow_mut().as_mut() {
             retained
                 .shrink(full, own)
                 .expect("actual continuation within pre-admitted maximum");
