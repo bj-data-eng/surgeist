@@ -186,19 +186,15 @@ fn producer_scaffold() -> (u64, u64, u64) {
         .unwrap();
     let scaffold = lease.status().spent_work();
     let prepared = lease
-        .prepare_remembered_focus(&request, source, &AtomicBool::new(false))
+        .prepare_dialog_focus(&request, source, &AtomicBool::new(false))
         .unwrap()
         .unwrap();
     let preparation = lease.status().spent_work() - scaffold;
     let start = lease.status().spent_work();
     let payload = lease
-        .retain_hosted_runtime_payload(
-            source,
-            size_of::<RememberedFormation>(),
-            &AtomicBool::new(false),
-        )
+        .retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &AtomicBool::new(false))
         .unwrap();
-    let formation = RememberedFormation {
+    let formation = FocusFormation {
         preparation: prepared,
         payload,
     };
@@ -225,7 +221,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             .unwrap();
         assert_eq!(lease.status().spent_work(), scaffold);
         assert!(
-            matches!(hosted.service_remembered_focus(&mut lease,&original,&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
+            matches!(hosted.service_dialog_focus(&mut lease,&original,&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
         );
         assert_eq!(lease.snapshot().stamp(), basis);
         assert_eq!(lease.status().spent_work(), cap);
@@ -261,7 +257,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(
             replacement
-                .service_remembered_focus(&mut lease, &original, &cancel)
+                .service_dialog_focus(&mut lease, &original, &cancel)
                 .is_err()
         );
         cancel.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -269,7 +265,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         assert_eq!(owner.borrow().work, after_progress);
         assert!(
             replacement
-                .service_remembered_focus(&mut lease, &original, &cancel)
+                .service_dialog_focus(&mut lease, &original, &cancel)
                 .unwrap()
         );
         assert!(owner.borrow().focus.pending.is_none());
@@ -286,7 +282,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             "already-null observation is a semantic no-op"
         );
         assert!(matches!(
-            replacement.service_remembered_focus(&mut lease, &original, &cancel),
+            replacement.service_dialog_focus(&mut lease, &original, &cancel),
             Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                 DomError::InvalidSourceOperation
             )))
@@ -331,7 +327,7 @@ fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
             .unwrap();
         assert!(
             hosted
-                .service_remembered_focus(&mut lease, &original, &cancel)
+                .service_dialog_focus(&mut lease, &original, &cancel)
                 .is_err()
         );
     }
@@ -359,7 +355,7 @@ fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
         .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
         .unwrap();
     assert!(matches!(
-        hosted.service_remembered_focus(&mut lease, &original, &cancel),
+        hosted.service_dialog_focus(&mut lease, &original, &cancel),
         Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
             DomError::HostedSourceUnavailable
         )))
@@ -448,7 +444,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
         let mut hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
         let baseline = size_of::<RefCell<HostedState>>() + size_of::<records::Host>();
-        let candidate = size_of::<RememberedFormation>();
+        let candidate = size_of::<FocusFormation>();
         let mut limits = session_limits().hosted;
         match kind {
             0 => limits.storage_bytes = baseline + candidate - 1,
@@ -470,7 +466,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
                 .raw_mut()
                 .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
                 .unwrap();
-            let result = hosted.service_remembered_focus(&mut lease, &original, &cancel);
+            let result = hosted.service_dialog_focus(&mut lease, &original, &cancel);
             assert!(matches!(result, Err(DomHostedRuntimeError::Admission)));
             assert!(owner.borrow().focus.pending.is_none());
             assert_eq!(lease.snapshot().stamp(), stamp);
@@ -489,7 +485,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
             .unwrap();
         assert!(
             hosted
-                .service_remembered_focus(&mut lease, &original, &cancel)
+                .service_dialog_focus(&mut lease, &original, &cancel)
                 .unwrap()
         );
         assert_eq!(owner.borrow().work - before, 3);
@@ -561,7 +557,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
                 }
             }
         }
-        let candidate = size_of::<RememberedFormation>();
+        let candidate = size_of::<FocusFormation>();
         assert!(low > candidate);
         let value = filler(
             &mut lease,
@@ -570,8 +566,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
         )
         .unwrap();
         let basis = lease.snapshot().stamp();
-        let result =
-            hosted.service_remembered_focus(&mut lease, &original, &AtomicBool::new(false));
+        let result = hosted.service_dialog_focus(&mut lease, &original, &AtomicBool::new(false));
         if short {
             assert!(matches!(
                 result,
@@ -592,7 +587,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
         if short {
             assert!(
                 hosted
-                    .service_remembered_focus(&mut lease, &original, &AtomicBool::new(false))
+                    .service_dialog_focus(&mut lease, &original, &AtomicBool::new(false))
                     .unwrap()
             );
         }
@@ -625,7 +620,7 @@ fn retained_result() -> (DomSession, DomSourceDialogRequest) {
             )
             .unwrap();
         assert!(
-            matches!(hosted.service_remembered_focus(&mut lease,&original,&AtomicBool::new(false)),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {limit}))) if limit==cap)
+            matches!(hosted.service_dialog_focus(&mut lease,&original,&AtomicBool::new(false)),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {limit}))) if limit==cap)
         );
     }
     assert_eq!(
@@ -665,7 +660,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
             )
             .unwrap();
         assert!(matches!(
-            lease.accept_remembered_focus(
+            lease.accept_dialog_focus(
                 &second_request,
                 &second_owner.borrow().source,
                 &mut foreign,
@@ -699,7 +694,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
             .unwrap();
         assert!(
             hosted
-                .service_remembered_focus(&mut lease, original, &cancel)
+                .service_dialog_focus(&mut lease, original, &cancel)
                 .unwrap()
         );
         assert!(owner.borrow().focus.pending.is_none());
@@ -757,7 +752,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
         .unwrap();
     assert!(
         hosted
-            .service_remembered_focus(&mut lease, &original, &cancel)
+            .service_dialog_focus(&mut lease, &original, &cancel)
             .unwrap()
     );
     assert_eq!(owner.borrow().work, work);
@@ -766,3 +761,61 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
         original.operation()
     );
 }
+
+#[test]
+fn focus_preparation_rejects_wrong_observation_and_native_focusing_stays_unavailable() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, host, _, original) = parked(10_000_000);
+    let hosted = session.hosted_execution();
+    let owner = hosted.state().unwrap();
+    let source = &owner.borrow().source;
+    let mut dom = session.dom();
+    let mut lease = dom
+        .raw_mut()
+        .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
+        .unwrap();
+    let stamp = lease.snapshot().stamp();
+    let prepared = lease
+        .prepare_dialog_focus(&original, source, &cancel)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        prepared.target(),
+        DomDialogFocusTarget::RememberedHost(host)
+    );
+    assert!(matches!(
+        prepared.publish(DomDialogFocusObservation::Denied),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    assert_eq!(lease.snapshot().stamp(), stamp);
+    let prepared = lease
+        .prepare_dialog_focus(&original, source, &cancel)
+        .unwrap()
+        .unwrap();
+    let mut publication = Some(
+        prepared
+            .publish(DomDialogFocusObservation::KnownNone)
+            .unwrap(),
+    );
+    lease
+        .accept_dialog_focus(&original, source, &mut publication, &cancel)
+        .unwrap();
+    assert!(publication.is_none());
+    let focusing = request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps);
+    assert_ne!(
+        focusing, original,
+        "each actual Show action has its own original occurrence"
+    );
+    assert!(
+        lease
+            .prepare_dialog_focus(&focusing, source, &cancel)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
+        focusing
+    );
+}
+
+mod denial;

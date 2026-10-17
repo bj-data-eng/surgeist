@@ -176,15 +176,12 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         // Canonical preparation/real retention only, excluding all three
         // Runtime qualification/retained-Host/observation visits under test.
         let source = &owner.borrow().source;
-        let payload = lease.retain_hosted_runtime_payload(
-            source,
-            size_of::<RememberedFormation>(),
-            &cancel,
-        )?;
+        let payload =
+            lease.retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &cancel)?;
         let preparation = lease
-            .prepare_remembered_focus(&child, source, &cancel)?
+            .prepare_dialog_focus(&child, source, &cancel)?
             .unwrap();
-        let formation = RememberedFormation {
+        let formation = FocusFormation {
             preparation,
             payload,
         };
@@ -261,7 +258,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
         assert!(effective > 0);
         assert!(effective <= source_limits(10_000_000).retained_bytes());
         assert!(source_limits(10_000_000).retained_bytes() < child_limits().retained_bytes());
-        let candidate = size_of::<RememberedFormation>();
+        let candidate = size_of::<FocusFormation>();
         let value = filler(
             &mut lease,
             &owner.borrow().source,
@@ -269,7 +266,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
         )
         .unwrap();
         let basis = lease.snapshot().stamp();
-        let result = hosted.service_remembered_focus(&mut lease, &child, &AtomicBool::new(false));
+        let result = hosted.service_dialog_focus(&mut lease, &child, &AtomicBool::new(false));
         if short {
             assert!(matches!(
                 result,
@@ -292,7 +289,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
         if short {
             assert!(
                 hosted
-                    .service_remembered_focus(&mut lease, &child, &AtomicBool::new(false))
+                    .service_dialog_focus(&mut lease, &child, &AtomicBool::new(false))
                     .unwrap()
             );
         }
@@ -341,7 +338,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
                 .unwrap();
             let basis = lease.snapshot().stamp();
             let error = hosted
-                .service_remembered_focus(&mut lease, &child, &cancel)
+                .service_dialog_focus(&mut lease, &child, &cancel)
                 .unwrap_err();
             assert!(exhausted(&error, cap), "wrong ancestor refusal: {error:?}");
             assert_eq!(lease.snapshot().stamp(), basis);
@@ -396,7 +393,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
             .unwrap();
         assert!(
             hosted
-                .service_remembered_focus(&mut lease, &child, &cancel)
+                .service_dialog_focus(&mut lease, &child, &cancel)
                 .unwrap()
         );
         assert!(owner.borrow().focus.pending.is_none());
@@ -576,7 +573,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
         assert!(
             hosted
-                .service_remembered_focus(&mut lease, &child, &cancel)
+                .service_dialog_focus(&mut lease, &child, &cancel)
                 .unwrap()
         );
         assert_eq!(

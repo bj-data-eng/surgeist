@@ -368,8 +368,11 @@ impl Draft {
                 self.dialog_show.map(|frame| PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
-                    invocation: (frame.cursor.action() == Action::RememberFocusedElement)
-                        .then_some(frame.invocation),
+                    invocation: matches!(
+                        frame.cursor.action(),
+                        Action::RememberFocusedElement | Action::RunDialogFocusingSteps
+                    )
+                    .then_some(frame.invocation),
                 })
             })
             .filter(|pending| pending.action == action)

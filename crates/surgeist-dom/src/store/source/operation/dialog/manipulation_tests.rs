@@ -239,3 +239,77 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         );
     }
 }
+
+#[test]
+fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effect() {
+    let cancel = AtomicBool::new(false);
+    for remaining in [1_u64, 2] {
+        let (mut dom, executor, _, first, _) = fixture();
+        let owner = owner(&mut dom);
+        let event = request(&mut dom, first);
+        attest(
+            &mut dom,
+            &executor,
+            &event,
+            DomSourceEventOutcome::NotCanceled,
+        );
+        let stamp = dom.snapshot().stamp();
+        {
+            let mut lease = dom
+                .resume_source_edit(event.operation(), limits(), &cancel)
+                .unwrap();
+            let DomSourceProgress::Request(DomSourceRequest::Dialog(request)) =
+                lease.advance(&cancel).unwrap()
+            else {
+                panic!("the genuine original Show must reach QueueToggle")
+            };
+            // The real event receipt is rebased by advance above. Only now
+            // does this actual operation own a Draft; place the private
+            // near-exhaustion counter at the queue-preparation boundary.
+            lease
+                .dom
+                .source_operation
+                .as_mut()
+                .unwrap()
+                .draft
+                .source_invocation = u64::MAX - remaining;
+            let plan = lease
+                .dialog_toggle_queue_plan(&request, &owner.source, 1, &cancel)
+                .unwrap();
+            let result = lease.prepare_dialog_toggle_queue(&request, &owner.source, plan, &cancel);
+            if remaining == 1 {
+                assert!(matches!(result, Err(DomError::RepresentationExhausted)));
+            } else {
+                drop(result.expect("Remember plus focusing fit exactly two original ordinals"));
+            }
+        }
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.snapshot()
+                .node(first)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .toggle_task_tracker(),
+            None
+        );
+        assert_eq!(
+            dom.source_operation
+                .as_ref()
+                .unwrap()
+                .draft
+                .source_invocation,
+            u64::MAX - remaining
+        );
+        assert!(matches!(
+            dom.source_operation
+                .as_ref()
+                .unwrap()
+                .draft
+                .dialog_show
+                .unwrap()
+                .invocation,
+            Invocation::Unissued
+        ));
+    }
+}

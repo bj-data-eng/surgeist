@@ -1522,6 +1522,11 @@ pub surgeist_html::HtmlAcceptSpecifierKind::Extension
 pub surgeist_html::HtmlAcceptSpecifierKind::Image
 pub surgeist_html::HtmlAcceptSpecifierKind::SymbolicMime
 pub surgeist_html::HtmlAcceptSpecifierKind::Video
+pub enum surgeist_html::HtmlAllowFocusDecision
+pub surgeist_html::HtmlAllowFocusDecision::Allowed
+pub surgeist_html::HtmlAllowFocusDecision::Denied
+pub surgeist_html::HtmlAllowFocusDecision::NeedsFeaturePermission
+pub surgeist_html::HtmlAllowFocusDecision::NeedsTransientActivation
 pub enum surgeist_html::HtmlAreaCoordinatesAuthorError
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::Cardinality
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::ForbiddenPresence
@@ -5782,6 +5787,7 @@ pub fn surgeist_html::VocabularySource::retained_capture(self) -> &'static str
 pub fn surgeist_html::VocabularySource::retained_capture_sha256(self) -> &'static str
 pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
+pub const fn surgeist_html::allow_focus_decision(feature_permission: core::option::Option<bool>, transient_activation: core::option::Option<bool>) -> surgeist_html::HtmlAllowFocusDecision
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
 pub fn surgeist_html::blocking_tokens_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlBlockingTokens, E>
 pub const fn surgeist_html::computed_dialog_closed_by(state: surgeist_html::HtmlClosedByState, modal: bool) -> surgeist_html::HtmlClosedBy

@@ -8,6 +8,33 @@
 //! changes. showModal, requestClose and light-dismiss execution remain separate.
 use crate::{HtmlClosedBy, HtmlClosedByState, KnownHtmlAttribute, Namespace};
 
+/// Ordered partial observations for HTML's allow-focus steps. Unknown feature
+/// permission cannot be replaced by a known activation state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlAllowFocusDecision {
+    NeedsFeaturePermission,
+    NeedsTransientActivation,
+    Allowed,
+    Denied,
+}
+/// First test the document's actual feature permission; only a negative result
+/// consults the relevant Window's transient activation. This decides permission,
+/// never whether any focusing effects were performed.
+pub const fn allow_focus_decision(
+    feature_permission: Option<bool>,
+    transient_activation: Option<bool>,
+) -> HtmlAllowFocusDecision {
+    match feature_permission {
+        None => HtmlAllowFocusDecision::NeedsFeaturePermission,
+        Some(true) => HtmlAllowFocusDecision::Allowed,
+        Some(false) => match transient_activation {
+            None => HtmlAllowFocusDecision::NeedsTransientActivation,
+            Some(true) => HtmlAllowFocusDecision::Allowed,
+            Some(false) => HtmlAllowFocusDecision::Denied,
+        },
+    }
+}
+
 /// Exact creation values, not a getter for an advanced live Dialog.
 /// Common HTML previous-focus initialization remains its existing owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -652,5 +679,30 @@ mod close_watcher_tests {
             HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest),
             false
         ));
+    }
+}
+
+#[cfg(test)]
+mod allow_focus_tests {
+    use super::{HtmlAllowFocusDecision as D, allow_focus_decision};
+    #[test]
+    fn permission_precedes_activation_and_unknown_is_not_false() {
+        assert_eq!(allow_focus_decision(None, None), D::NeedsFeaturePermission);
+        assert_eq!(
+            allow_focus_decision(None, Some(false)),
+            D::NeedsFeaturePermission
+        );
+        assert_eq!(
+            allow_focus_decision(None, Some(true)),
+            D::NeedsFeaturePermission
+        );
+        assert_eq!(allow_focus_decision(Some(true), None), D::Allowed);
+        assert_eq!(allow_focus_decision(Some(true), Some(false)), D::Allowed);
+        assert_eq!(
+            allow_focus_decision(Some(false), None),
+            D::NeedsTransientActivation
+        );
+        assert_eq!(allow_focus_decision(Some(false), Some(true)), D::Allowed);
+        assert_eq!(allow_focus_decision(Some(false), Some(false)), D::Denied);
     }
 }

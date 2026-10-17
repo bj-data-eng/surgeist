@@ -310,10 +310,10 @@ impl<'dom> DomSourceLease<'dom> {
             };
             let reached_hook = op.draft.document_fully_active(document, cancel)?
                 && op.draft.shadow_connected(frame.subject, cancel)?;
-            // Remember is a distinct actual Show occurrence after AddOpen;
+            // Remember and focusing are distinct actual Show occurrences after AddOpen;
             // the reached ordinary Hook has its own original shared ordinal.
             op.draft
-                .admit_dialog_occurrences(1 + u64::from(reached_hook), cancel)?;
+                .admit_dialog_occurrences(2 + u64::from(reached_hook), cancel)?;
             let active_hook = reached_hook && original_window_active;
             let extra = u64::from(active_hook);
             let required_phases = 3 + extra;

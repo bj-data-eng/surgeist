@@ -1034,13 +1034,30 @@ raw layer leaves the corresponding popover action pending. These checks use
 canonical Document state independently of the Host's headless focus proof;
 they perform no popover dispatch or focus movement.
 
+At RunDialogFocusingSteps, the allow-focus decision reads the receiver's
+then-current Document. An explicitly retired hosted Document has no browsing
+context, so feature permission is denied. If its actual original Window remains
+in Runtime's watcher custody, that Window's constructor-owned never-activated
+state supplies the second negative input. The shared HTML rule then returns
+before focus-target selection or focus effects. The original affine receipt
+acknowledges this proven denial and lets Show reach its actual Complete branch.
+The receiver's original Global still owns any previously queued task; adoption
+does not substitute it for the current Document's Window.
+
+A missing or pruned Window supplies no activation observation. Native Documents
+without a Global and branches requiring an unknown permission or actual focus
+movement retain their service wait. This negative branch provides no arbitrary
+focus setter or positive focus implementation.
+
 Open removal and source-required tree cleanup destroy the actual watcher before
 clearing the canonical association. This cleanup remains available after hosted
 execution retirement, which leaves the surviving Dialog and its original Window
 custody intact. Retries retain the original receipt without repeating manager
-effects. Queued delivery cannot bypass an unfinished synchronous tail. This
-bounded entry does not complete positive Show, Close, modal, focus, request-close,
-platform close requests or general popover processing.
+effects. Queued delivery cannot bypass an unfinished synchronous tail.
+Show completion requires the actual producer Complete branch, including the
+proven negative allow-focus path above. Close, modal, positive focusing,
+request-close, platform close requests and general popover processing remain
+separate contributions.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

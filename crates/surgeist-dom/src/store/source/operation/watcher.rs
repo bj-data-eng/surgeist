@@ -9,13 +9,12 @@ impl Operation {
         matches!(
             self.receipt,
             Some(
-                Receipt::Watcher { applied: true, .. }
-                    | Receipt::RememberedFocus { applied: true, .. }
+                Receipt::Watcher { applied: true, .. } | Receipt::DialogFocus { applied: true, .. }
             )
         )
     }
     pub(super) fn restore_external_receipt(&mut self, value: bool) {
-        if let Some(Receipt::Watcher { applied, .. } | Receipt::RememberedFocus { applied, .. }) =
+        if let Some(Receipt::Watcher { applied, .. } | Receipt::DialogFocus { applied, .. }) =
             &mut self.receipt
         {
             *applied = value;

@@ -470,11 +470,14 @@ impl DomSourceRuntime {
                     {
                         continue;
                     }
-                    if request.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement
-                        && self
-                            .hosted
-                            .service_remembered_focus(lease, &request, cancel)
-                            .map_err(DomSourceRuntimeError::Hosted)?
+                    if matches!(
+                        request.action(),
+                        surgeist_html::HtmlDialogAction::RememberFocusedElement
+                            | surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
+                    ) && self
+                        .hosted
+                        .service_dialog_focus(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
                     {
                         continue;
                     }

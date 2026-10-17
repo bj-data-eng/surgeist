@@ -3,7 +3,11 @@ pub(crate) mod event;
 mod focus;
 mod scope;
 mod url;
-pub use focus::{DomRememberedFocusPreparation, DomRememberedFocusPublication};
+pub(crate) use focus::FocusQualification;
+pub use focus::{
+    DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
+    DomDialogFocusTarget,
+};
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
 use crate::batch::{Command, Creation};

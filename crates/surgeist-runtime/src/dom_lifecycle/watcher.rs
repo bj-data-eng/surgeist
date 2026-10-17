@@ -29,9 +29,17 @@ impl WindowBank {
 pub(super) struct NativeWindow {
     pub id: DomHostedGlobalId,
     pub retired: bool,
+    // HTML's initial positive-infinity timestamp is represented by its exact
+    // never-activated state, not a finite zero or a sampled clock. The current
+    // native input domain admits no trusted activation-triggering HTML input;
+    // any future such ingress must update/notify Windows before dispatch.
+    activation: NativeWindowActivation,
     manager: HtmlCloseWatcherManager,
     groups: Vec<WatcherGroup>,
     groups_payload: Option<DomHostedRuntimeRetention>,
+}
+enum NativeWindowActivation {
+    NeverActivated,
 }
 struct WatcherGroup {
     members: Vec<Watcher>,
@@ -81,9 +89,15 @@ impl NativeWindow {
         Self {
             id,
             retired: false,
+            activation: NativeWindowActivation::NeverActivated,
             manager: HtmlCloseWatcherManager::fresh(),
             groups: Vec::new(),
             groups_payload: None,
+        }
+    }
+    pub(super) fn transient_activation(&self) -> bool {
+        match self.activation {
+            NativeWindowActivation::NeverActivated => false,
         }
     }
     pub(super) fn needed(&self) -> bool {
@@ -213,7 +227,7 @@ pub(super) fn reserve_window(
     )
 }
 impl HostedState {
-    fn find_window(
+    pub(super) fn find_window(
         &mut self,
         id: DomHostedGlobalId,
         cancel: &AtomicBool,

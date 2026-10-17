@@ -146,6 +146,30 @@ rechecks that Document before completing the empty hide step. Such Show paths
 wait at RunDialogFocusingSteps. Unknown or nonempty state retains its precise
 popover wait. Headlessness alone supplies no top-layer evidence.
 
+For the focusing action, Runtime qualifies the receiver's current canonical
+Document independently from its original execution scope and queued-task
+Global. An explicitly retired Document denies feature permission before policy
+evaluation. Its actual retained original Window can then establish no transient
+activation from its constructor-owned never-activated state. Runtime publishes
+that precise negative allow-focus result through the same affine focus bridge;
+accepted denial completes the focusing action without moving focus. Missing
+Window state remains unavailable. The live execution checks for retired Globals
+are preserved.
+
+Each admitted native Window starts never activated. The current HTML event
+surface admits load, error, toggle and beforetoggle; physical Window input and
+application UiInput have no canonical HTML activation-event join. Future
+trusted activation-triggering input must update the actual Window state and
+perform HTML's propagation and close-watcher notification before admission.
+Headless focus absence is a separate Host fact.
+
+Watcher custody can retain an original Window after execution teardown.
+An unfinished Source tail prevents its real cleanup from overtaking a pending
+focus receipt; it cannot manufacture a missing Window. After the tail completes,
+ordinary watcher cleanup can release that retired Window. Native no-Global
+Documents, unknown or allowed feature branches and positive focusing still
+retain their precise service wait.
+
 Each native Agent owns its Window records separately from execution Globals.
 The Window manager retains actual ordered watcher groups and Dialog-bound action
 descriptors; registration does not require a nonmodal watcher to be enabled.

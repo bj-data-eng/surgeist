@@ -87,8 +87,8 @@ pub(in crate::store) struct Operation {
     canonical_aux_bytes: usize,
 }
 enum Receipt {
-    RememberedFocus {
-        publication: crate::DomRememberedFocusPublication,
+    DialogFocus {
+        publication: crate::DomDialogFocusPublication,
         applied: bool,
     },
     Watcher {
@@ -1243,7 +1243,11 @@ impl Operation {
                             Invocation::Exposed(ordinal) => ordinal,
                         },
                     };
-                    if pending.action == surgeist_html::HtmlDialogAction::RememberFocusedElement {
+                    if matches!(
+                        pending.action,
+                        surgeist_html::HtmlDialogAction::RememberFocusedElement
+                            | surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
+                    ) {
                         crate::source::watcher::DialogOccurrence::Show(occurrence)
                     } else {
                         crate::source::watcher::DialogOccurrence::Hook(occurrence)
@@ -1849,7 +1853,7 @@ impl DomSourceLease<'_> {
 
                     if !matches!(
                         op.receipt,
-                        Some(Receipt::Watcher { .. } | Receipt::RememberedFocus { .. })
+                        Some(Receipt::Watcher { .. } | Receipt::DialogFocus { .. })
                     ) {
                         op.receipt = None;
                         op.request = None;
@@ -2383,7 +2387,7 @@ impl DomSourceLease<'_> {
 }
 impl Operation {
     fn apply_receipt(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if let Some(Receipt::RememberedFocus {
+        if let Some(Receipt::DialogFocus {
             publication,
             applied,
         }) = &self.receipt
@@ -2392,8 +2396,8 @@ impl Operation {
                 return Ok(());
             }
             let request = publication.request.clone();
-            self.apply_remembered_focus(&request, cancel)?;
-            if let Some(Receipt::RememberedFocus { applied, .. }) = &mut self.receipt {
+            self.apply_dialog_focus(&request, cancel)?;
+            if let Some(Receipt::DialogFocus { applied, .. }) = &mut self.receipt {
                 *applied = true;
             }
             return Ok(());
@@ -2421,7 +2425,7 @@ impl Operation {
             return Err(DomError::StyleProtocol);
         }
         let reply = match self.receipt.as_ref().expect("actual retained receipt") {
-            Receipt::Watcher { .. } | Receipt::RememberedFocus { .. } => {
+            Receipt::Watcher { .. } | Receipt::DialogFocus { .. } => {
                 unreachable!("external receipt handled above")
             }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),

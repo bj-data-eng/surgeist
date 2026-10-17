@@ -1,8 +1,8 @@
-//! Actual complete-Host absence producer; no external focus adapter is implied.
+//! Qualified negative focus observations from actual Host/Window lifetime state.
 use super::*;
 use surgeist_dom::{
-    DomHostedRuntimeRetention, DomRememberedFocusPreparation, DomRememberedFocusPublication,
-    DomSourceDialogRequest, DomSourceLease,
+    DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
+    DomDialogFocusTarget, DomHostedRuntimeRetention, DomSourceDialogRequest, DomSourceLease,
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HostFocusDisposition {
@@ -24,7 +24,7 @@ impl fmt::Debug for DomSourceExecutionScope {
     }
 }
 pub(super) struct FocusState {
-    pub(super) pending: Option<DomRememberedFocusPublication>,
+    pub(super) pending: Option<DomDialogFocusPublication>,
     pub(super) host_backing: Option<DomHostedRuntimeRetention>,
     _header: DomHostedRuntimeRetention,
 }
@@ -42,8 +42,8 @@ impl FocusState {
 }
 // Actual temporary producer header; its result moves into the pre-admitted
 // fixed slot before this separate relative formation extent is released.
-struct RememberedFormation {
-    preparation: DomRememberedFocusPreparation,
+struct FocusFormation {
+    preparation: DomDialogFocusPreparation,
     payload: DomHostedRuntimeRetention,
 }
 impl HostedRuntime {
@@ -120,7 +120,7 @@ impl HostedRuntime {
         }
         Err(DomHostedRuntimeError::TargetNotFound)
     }
-    pub(crate) fn service_remembered_focus(
+    pub(crate) fn service_dialog_focus(
         &self,
         lease: &mut DomSourceLease<'_>,
         request: &DomSourceDialogRequest,
@@ -138,36 +138,66 @@ impl HostedRuntime {
                 return Err(DomHostedRuntimeError::OperationPending);
             }
         } else {
-            // Read only the retained original scope and immutable Host mode.
-            // Missing/unobserved scope needs no owned observation formation.
-            let host = match lease
-                .execution_entry_scope()
-                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
-            {
-                surgeist_dom::DomSourceExecutionEntryScope::ExplicitHost(host)
-                | surgeist_dom::DomSourceExecutionEntryScope::Hosted {
-                    original_host: Some(host),
-                    ..
-                } => host,
-                _ => return Ok(false),
-            };
-            let mut disposition = None;
-            for index in 0..state.hosts.len() {
-                state.step(cancel)?;
+            let remembering =
+                request.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement;
+            if remembering {
+                // Missing/unobserved original scope needs no owned formation.
+                let host = match lease
+                    .execution_entry_scope()
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
+                {
+                    surgeist_dom::DomSourceExecutionEntryScope::ExplicitHost(host)
+                    | surgeist_dom::DomSourceExecutionEntryScope::Hosted {
+                        original_host: Some(host),
+                        ..
+                    } => host,
+                    _ => return Ok(false),
+                };
+                let mut disposition = None;
+                for index in 0..state.hosts.len() {
+                    state.step(cancel)?;
+                    lease
+                        .admit_hosted_runtime_work(1, cancel)
+                        .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+                    if state.hosts[index].id == host {
+                        disposition = Some(state.hosts[index].focus);
+                        break;
+                    }
+                }
+                if disposition.ok_or(DomHostedRuntimeError::TargetNotFound)?
+                    != HostFocusDisposition::HeadlessNoContentSystemFocus
+                {
+                    return Ok(false);
+                }
+            } else {
+                // A borrowed coarse availability check avoids forming a result
+                // for native/no-Global or active-permission-unknown Documents.
+                // The original DOM preparation below qualifies actual Retired
+                // state and supplies the authoritative original Window identity.
                 lease
                     .admit_hosted_runtime_work(1, cancel)
                     .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
-                if state.hosts[index].id == host {
-                    disposition = Some(state.hosts[index].focus);
-                    break;
+                state.step(cancel)?;
+                let snapshot = lease.snapshot();
+                let document = snapshot
+                    .node(request.subject())
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
+                    .owner_document()
+                    .ok_or(DomHostedRuntimeError::Binding)?;
+                let environment = snapshot
+                    .document(document)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
+                    .metadata()
+                    .document_environment();
+                if !environment.has_ever_had_navigable()
+                    || environment.browsing_context()
+                        != surgeist_html::HtmlBrowsingContextPresence::Absent
+                {
+                    return Ok(false);
                 }
             }
-            let disposition = disposition.ok_or(DomHostedRuntimeError::TargetNotFound)?;
-            if disposition != HostFocusDisposition::HeadlessNoContentSystemFocus {
-                return Ok(false);
-            }
             let retained = state.source_retained_bytes(lease, cancel)?;
-            let temporary = size_of::<RememberedFormation>();
+            let temporary = size_of::<FocusFormation>();
             if retained
                 .checked_add(temporary)
                 .is_none_or(|bytes| bytes > state.limits.storage_bytes)
@@ -181,34 +211,73 @@ impl HostedRuntime {
             // Admit the entire owned temporary before DOM clones the exact
             // request into its affine preparation. Public DOM qualification
             // keeps its original validation order; this private service is
-            // reached only for the drive loop's actual remembered occurrence.
+            // reached only for the drive loop's actual focus occurrence.
             let Some(prepared) = lease
-                .prepare_remembered_focus(request, &state.source, cancel)
+                .prepare_dialog_focus(request, &state.source, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
             else {
                 return Ok(false);
             };
-            let formation = RememberedFormation {
+            let formation = FocusFormation {
                 preparation: prepared,
                 payload,
+            };
+            let observation = match formation.preparation.target() {
+                DomDialogFocusTarget::RememberedHost(_) => DomDialogFocusObservation::KnownNone,
+                DomDialogFocusTarget::RetiredDocumentWindow { global, host, .. } => {
+                    let location = match state.find_window(global, cancel, || {
+                        lease
+                            .admit_hosted_runtime_work(1, cancel)
+                            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+                    }) {
+                        Ok(location) => location,
+                        Err(DomHostedRuntimeError::Binding) => return Ok(false),
+                        Err(error) => return Err(error),
+                    };
+                    let (h, t, c, w) = location;
+                    let window = &state.hosts[h].top_levels[t]
+                        .group
+                        .as_ref()
+                        .expect("actual retained group")
+                        .clusters[c]
+                        .agent
+                        .windows
+                        .rows[w];
+                    if state.hosts[h].id != host
+                        || window.id != global
+                        || !window.retired
+                        || surgeist_html::allow_focus_decision(
+                            Some(false),
+                            Some(window.transient_activation()),
+                        ) != surgeist_html::HtmlAllowFocusDecision::Denied
+                    {
+                        return Ok(false);
+                    }
+                    DomDialogFocusObservation::Denied
+                }
             };
             state.step(cancel)?;
             lease
                 .admit_hosted_runtime_work(1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
-            // No callback, attachment or conversion can invalidate this Host's
-            // immutable complete-lifetime restriction. The fixed actual result
+            // No callback or reentry occurs during the qualified observation.
+            // The original Source tail and watcher own retained Window custody;
+            // the immutable complete-Host restriction owns absence. The result
             // slot is admitted from construction, before the observation.
-            let RememberedFormation {
+            let FocusFormation {
                 preparation,
                 payload,
             } = formation;
-            state.focus.pending = Some(preparation.publish_known_none());
+            state.focus.pending = Some(
+                preparation
+                    .publish(observation)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?,
+            );
             drop(payload);
         }
         let HostedState { source, focus, .. } = &mut *state;
         lease
-            .accept_remembered_focus(request, source, &mut focus.pending, cancel)
+            .accept_dialog_focus(request, source, &mut focus.pending, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         Ok(true)
     }
