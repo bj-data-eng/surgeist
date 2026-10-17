@@ -2207,6 +2207,34 @@ pub surgeist_html::HtmlDecoding::Sync
 impl surgeist_html::HtmlDecoding
 pub fn surgeist_html::HtmlDecoding::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlDecoding::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlDesignModeAction
+pub surgeist_html::HtmlDesignModeAction::Complete
+pub surgeist_html::HtmlDesignModeAction::ReadActiveRange
+pub surgeist_html::HtmlDesignModeAction::ReadDocumentElement
+pub surgeist_html::HtmlDesignModeAction::ReadEnabled
+pub surgeist_html::HtmlDesignModeAction::ResetActiveRange
+pub surgeist_html::HtmlDesignModeAction::RunFocusingSteps
+pub surgeist_html::HtmlDesignModeAction::SetEnabled
+pub surgeist_html::HtmlDesignModeAction::SetEnabled::enabled: bool
+pub enum surgeist_html::HtmlDesignModeError
+pub surgeist_html::HtmlDesignModeError::Terminal
+pub surgeist_html::HtmlDesignModeError::WrongReply
+impl core::error::Error for surgeist_html::HtmlDesignModeError
+impl core::fmt::Display for surgeist_html::HtmlDesignModeError
+pub fn surgeist_html::HtmlDesignModeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlDesignModeInput
+pub surgeist_html::HtmlDesignModeInput::Invalid
+pub surgeist_html::HtmlDesignModeInput::Off
+pub surgeist_html::HtmlDesignModeInput::On
+impl surgeist_html::HtmlDesignModeInput
+pub const fn surgeist_html::HtmlDesignModeInput::from_utf16(value: &[u16]) -> Self
+pub enum surgeist_html::HtmlDesignModeReply
+pub surgeist_html::HtmlDesignModeReply::ActiveRange
+pub surgeist_html::HtmlDesignModeReply::Applied
+pub surgeist_html::HtmlDesignModeReply::DocumentElementPresent(bool)
+pub surgeist_html::HtmlDesignModeReply::Enabled(bool)
+pub surgeist_html::HtmlDesignModeReply::FocusingStepsCompleted
+pub surgeist_html::HtmlDesignModeReply::NoActiveRange
 pub enum surgeist_html::HtmlDetailsAttribute
 pub surgeist_html::HtmlDetailsAttribute::Name
 pub surgeist_html::HtmlDetailsAttribute::Open
@@ -4739,6 +4767,11 @@ impl<'a> surgeist_html::HtmlDeclarativeShadowRoot<'a>
 pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::contents(&self) -> &'a surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::host(&self) -> &'a surgeist_html::HtmlNodeId
 pub fn surgeist_html::HtmlDeclarativeShadowRoot<'a>::properties(&self) -> surgeist_html::HtmlShadowRootProperties
+pub struct surgeist_html::HtmlDesignModeCursor
+impl surgeist_html::HtmlDesignModeCursor
+pub const fn surgeist_html::HtmlDesignModeCursor::action(&self) -> surgeist_html::HtmlDesignModeAction
+pub const fn surgeist_html::HtmlDesignModeCursor::new(input: surgeist_html::HtmlDesignModeInput) -> Self
+pub fn surgeist_html::HtmlDesignModeCursor::reply(&mut self, reply: surgeist_html::HtmlDesignModeReply) -> core::result::Result<(), surgeist_html::HtmlDesignModeError>
 pub struct surgeist_html::HtmlDetailsName
 impl surgeist_html::HtmlDetailsName
 pub fn surgeist_html::HtmlDetailsName::into_attribute(self) -> surgeist_html::Attribute

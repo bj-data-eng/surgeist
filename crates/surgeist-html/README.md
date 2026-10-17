@@ -105,6 +105,14 @@ resources, complete a suspended update or replace retained image history.
 queued toggle. It supplies values, not a DOM target, listener registry or event
 execution; Runtime owns the task tracker and real dispatch.
 
+`HtmlDesignModeInput` recognizes ASCII-insensitive on/off without trimming.
+`HtmlDesignModeCursor` orders enablement, the actual active-range read/reset,
+current document-element lookup and the genuine focusing call. A proven null
+active range skips only reset, preserving the focusing tail. The adapter owns
+Range identity, writes, Source publication and child custody; unavailable facts
+leave the exact action pending. The immutable construction owner retains its
+initial-false design-mode state.
+
 `HtmlDialogCursor` orders Dialog methods and ordinary lifecycle hooks. Its
 standard null-source showModal protocol distinguishes initial InvalidState
 guards from normal post-dispatch returns. It requires the completed open hook
