@@ -180,14 +180,14 @@ fn show_modal_watcher_refusal_and_lease_reacquisition_preserve_prefix_and_settle
         )
         .unwrap();
     assert!(
-        matches!(progress,DomSourceDriveProgress::Pending{request:DomSourceRequest::Dialog(request),reason:crate::DomSourceUnavailable::Dialog(HtmlDialogAction::SetModal)} if request.action()==HtmlDialogAction::SetModal)
+        matches!(progress,DomSourceDriveProgress::Pending{request:DomSourceRequest::Dialog(request),reason:crate::DomSourceUnavailable::Dialog(HtmlDialogAction::RememberFocusedElement)} if request.action()==HtmlDialogAction::RememberFocusedElement)
     );
     let snapshot = session.snapshot();
     let dialog = snapshot.node(subject).unwrap().as_dialog().unwrap();
     let id = dialog.close_watcher().unwrap();
     assert_eq!(id.global(), top.global());
     assert_eq!(id.subject(), subject);
-    assert!(!dialog.is_modal());
+    assert!(dialog.is_modal());
     let state = owner.borrow();
     let window = &state.hosts[0].top_levels[0]
         .group
@@ -212,6 +212,220 @@ fn show_modal_watcher_refusal_and_lease_reacquisition_preserve_prefix_and_settle
             .unwrap(),
         Some(task)
     );
+}
+
+#[test]
+fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_without_dispatch() {
+    let (mut session, top, _, subject) = fixture();
+    let mut registry = dispatcher::<usize>();
+    registry
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut usize, _| {
+                *calls += 1;
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
+    let before = begin(&mut session, subject);
+    let mut calls = 0;
+    dispatch(&mut session, &before, &mut registry, &mut calls);
+    let hosted = session.hosted_execution();
+    let tasks = session.element_task_execution();
+    let owner = hosted.state().unwrap();
+    let (watcher, original) = {
+        let mut dom = session.dom();
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(before.operation(), source_limits(), &cancel())
+            .unwrap();
+        let queued = pending(&mut lease);
+        assert!(matches!(
+            queued.action(),
+            HtmlDialogAction::QueueToggle { .. }
+        ));
+        tasks.queue_dialog(&mut lease, &queued, &cancel()).unwrap();
+        let setup = pending(&mut lease);
+        assert_eq!(setup.action(), HtmlDialogAction::EstablishCloseWatcher);
+        assert!(
+            hosted
+                .service_dialog_watcher(&mut lease, &setup, &cancel())
+                .unwrap()
+        );
+        let state = owner.borrow();
+        let window = original_window(&state, top.global());
+        assert_eq!(window.groups.len(), 1);
+        assert_eq!(window.groups[0].members.len(), 1);
+        let record = &window.groups[0].members[0];
+        let id = record.borrow().id;
+        assert_eq!(record.borrow().phase, WatcherPhase::Registering);
+        assert!(
+            !lease
+                .snapshot()
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .has_close_watcher()
+        );
+        (id, Rc::downgrade(record))
+    };
+    let task = tasks
+        .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.dialog_toggle().unwrap().id().target(), subject);
+    assert_eq!(task.queue_association().unwrap().global(), top.global());
+    assert_eq!(task.queue_association().unwrap().document(), top.document());
+    // Queue tracker + Source start2, AddOpen attribute + Document open list2,
+    // watcher Element state1, and mandatory Source marker close1 admit the
+    // actual existing prefix. The coherent modal phase adds two more outputs:
+    // Dialog ElementState and DocumentState (raw/blocking/generated-UA input).
+    // Apply this caller cap only after real queue preadmission and setup.
+    const PREFIX_AND_CLOSE: usize = 2 + 2 + 1 + 1;
+    let base = source_limits();
+    let bounded = DomSourceLimits::new(
+        base.retained_bytes(),
+        base.retained_string_code_units(),
+        base.work(),
+        base.phase_publications(),
+        PREFIX_AND_CLOSE,
+        base.published_native_identities(),
+        base.nested_operations(),
+    );
+    let mut refused_stamp = None;
+    for _ in 0..2 {
+        let refused = session.source_execution().resume(
+            &mut session.dom(),
+            before.operation(),
+            bounded,
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        );
+        assert!(
+            matches!(
+                refused,
+                Err(crate::DomSourceRuntimeError::Dom(
+                    DomError::SourceOutputLimit
+                ))
+            ),
+            "derived prefix cap must refuse the actual modal publication: {refused:?}"
+        );
+        let snapshot = session.snapshot();
+        let node = snapshot.node(subject).unwrap();
+        let dialog = node.as_dialog().unwrap();
+        assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
+        assert_eq!(dialog.close_watcher(), Some(watcher));
+        assert!(!dialog.is_modal());
+        assert_eq!(
+            snapshot.incomplete_source_operation(),
+            Some(before.operation())
+        );
+        assert!(matches!(
+            snapshot.document(top.document()).unwrap().top_layer(),
+            Err(DomError::IncompleteSourceOperation)
+        ));
+        if let Some(stamp) = refused_stamp {
+            assert_eq!(snapshot.stamp(), stamp);
+        } else {
+            refused_stamp = Some(snapshot.stamp());
+        }
+        let status = session.dom().pending_source_edit().unwrap();
+        assert_eq!(status.operation(), before.operation());
+        assert_eq!(status.cleanup_cause(), None);
+        assert_eq!(status.phase(), DomSourcePhase::DialogService);
+        assert_eq!(calls, 1);
+        assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+        assert_eq!(
+            tasks
+                .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+                .unwrap(),
+            Some(task)
+        );
+        let state = owner.borrow();
+        let window = original_window(&state, top.global());
+        assert_eq!(window.groups.len(), 1);
+        assert_eq!(window.groups[0].members.len(), 1);
+        assert!(window.custody.is_empty());
+        let record = original
+            .upgrade()
+            .expect("actual original Window must retain its published watcher");
+        assert!(Rc::ptr_eq(&window.groups[0].members[0], &record));
+        assert_eq!(record.borrow().id, watcher);
+        assert_eq!(record.borrow().phase, WatcherPhase::Registered);
+    }
+    let canceled = session.source_execution().resume(
+        &mut session.dom(),
+        before.operation(),
+        source_limits(),
+        &mut DomSourceServices {
+            execution_scope: None,
+            style_policy: &mut |_| None,
+            url: None,
+        },
+        &AtomicBool::new(true),
+    );
+    assert!(matches!(
+        canceled,
+        Err(crate::DomSourceRuntimeError::Dom(DomError::Cancelled))
+    ));
+    assert_eq!(session.snapshot().stamp(), refused_stamp.unwrap());
+    drop(hosted);
+    let next = session
+        .source_execution()
+        .resume(
+            &mut session.dom(),
+            before.operation(),
+            source_limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(next,DomSourceDriveProgress::Pending{request:DomSourceRequest::Dialog(request),reason:crate::DomSourceUnavailable::Dialog(HtmlDialogAction::RememberFocusedElement)} if request.operation()==before.operation() && request.subject()==subject && request.action()==HtmlDialogAction::RememberFocusedElement)
+    );
+    let snapshot = session.snapshot();
+    let dialog = snapshot.node(subject).unwrap().as_dialog().unwrap();
+    assert!(dialog.is_modal());
+    assert_eq!(dialog.close_watcher(), Some(watcher));
+    assert_ne!(snapshot.stamp(), refused_stamp.unwrap());
+    assert_eq!(
+        snapshot.incomplete_source_operation(),
+        Some(before.operation())
+    );
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().cleanup_cause(),
+        None
+    );
+    assert_eq!(calls, 1);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    assert_eq!(
+        tasks
+            .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        Some(task)
+    );
+    let state = owner.borrow();
+    let window = original_window(&state, top.global());
+    let record = original.upgrade().unwrap();
+    assert!(Rc::ptr_eq(&window.groups[0].members[0], &record));
+    assert_eq!(record.borrow().id, watcher);
+    assert_eq!(record.borrow().phase, WatcherPhase::Registered);
+    assert!(window.custody.is_empty());
 }
 
 fn work_limit(work: u64) -> DomSourceLimits {

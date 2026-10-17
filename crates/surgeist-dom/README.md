@@ -1028,11 +1028,13 @@ retirement/reuse, disposed authority or a stale canonical basis still refuses.
 Future mutable focus adapters require their actual source and scope revisions.
 
 Show then captures the receiver's current node-Document in its original
-continuation. When the ancestry query's then-current Document has a known empty
-raw top layer, the Auto and Hint popover lists are empty and the endpoint is
-null. Hide rechecks the captured Document's exact identity and known empty
-state before advancing to RunDialogFocusingSteps. An unavailable or nonempty
-raw layer leaves the corresponding popover action pending. These checks use
+continuation. The ancestry query reads that Document's qualified raw top layer
+and the members' actual popover visibility. The admitted common state proves
+hidden, so both Auto and Hint showing lists are empty and the endpoint is null.
+Hide rechecks the captured Document and that proof before advancing to
+RunDialogFocusingSteps. Nonpopover top-layer entries do not prevent it.
+Unavailable history or unqualified nonhidden state leaves the corresponding
+action pending. These checks use
 canonical Document state independently of the Host's headless focus proof;
 they perform no popover dispatch or focus movement.
 
@@ -1059,14 +1061,15 @@ effects. Queued delivery cannot bypass an unfinished synchronous tail.
 Show completion requires the actual producer Complete branch, including the
 proven negative allow-focus path above.
 
-`DomSourceEdit::close_dialog(receiver, result)` represents the standard nonmodal
+`DomSourceEdit::close_dialog(receiver, result)` represents the standard
 close method with its actual null source. An omitted result preserves returnValue;
 a supplied empty string writes empty. The original HTML cursor orders authentic
 noncancelable beforetoggle, the postcallback open read, toggle publication,
 complete open-removal/watcher hooks and result/request-state updates. A surviving
 callback that removes open supplies the genuine early return. Known previous-focus
-absence reaches actual final Close task publication; unsupported modal or focus
-restoration work retains its precise action wait. Method Complete requires the
+absence reaches actual final Close task publication. Modal Close requests deferred
+top-layer removal and clears the modal flag; unsupported focus restoration
+retains its precise action wait. Method Complete requires the
 real QueueClose acknowledgment.
 
 `DomSourceEdit::request_close_dialog(receiver, result)` represents standard
@@ -1101,9 +1104,35 @@ ShowModal prefix. Initial invalid-state checks precede real cancelable
 beforetoggle; after an uncanceled event it checks current open, connection and
 popover-showing state without repeating the activity guard. Genuine canceled
 and post-event early-return branches can complete. The positive prefix queues
-the actual toggle and adds open through its complete ordinary hooks. An actual
-valid watcher then advances to the unsupported `SetModal` wait. This prefix
-does not set modal state, block a Document or add a top-layer entry.
+the actual toggle and adds open through its complete ordinary hooks. After the
+valid watcher assertion, one callback-free canonical phase sets the modal flag,
+establishes Document blocking through raw membership, and adds the Dialog to the
+top layer if it is absent. That phase publishes before the remembered-focus
+observation. An already-raw Dialog takes the source's literal skip-Add branch,
+including when pending removal. Supported remembered-focus and empty-popover
+branches reach the genuine `RunDialogFocusingSteps` wait. The operation remains
+incomplete there; modal publication does not certify focusing or full ShowModal
+completion.
+
+`DomDocument::top_layer()` borrows immutable raw membership, pending removals
+and the Document stamp. Its allocation-free `ua_rules()` projection emits the
+universal UA-important `overlay:none` baseline, followed by exact-Element
+UA-important `overlay:auto` inputs in raw order for members not pending removal.
+These are canonical producer declarations for downstream Style collection and
+cascade. They do not establish computed overlay values or rendering. The getter
+requires a complete Source basis and qualified Document history; an unfinished
+ShowModal therefore cannot use it or semantic capture to bypass that guard.
+An earlier complete snapshot retains its historical lists and inputs.
+
+Raw membership and ordered pending removals share the canonical Document owner.
+Requesting removal retains raw membership and removes the dynamic auto input;
+re-adding a pending member removes both entries before appending it at the top.
+Immediate source removal clears both lists and the input. Ordinary removal,
+adoption and destruction use the same cleanup against the old Document; fresh
+clone/import initializes independent nonmodal state. Manually removing `open`
+does not stand in for Close and can leave modal/raw blocking state. Actual
+rendering-checkpoint removal still requires separately qualified rendering and
+computed-style evidence, which this surface does not admit.
 
 The watcher assertion observes the published canonical prefix. If a callback
 adopted the receiver into a connected inactive Document, its completed open hook
@@ -1137,7 +1166,7 @@ Successful Toggle dispatch clears the surviving Dialog's current tracker;
 Close dispatch does not clear it or repeat method effects. Real receiver
 retirement during beforetoggle preserves the started dispatcher and authentic
 receipt, then yields `SourceReceiverRetired` at ReadOpen rather than a synthetic
-absent-open return. Internal Close callers with nonnull source, modal execution,
+absent-open return. Internal Close callers with nonnull source, complete modal execution,
 positive focusing, platform close requests and general popover
 processing remain separate contributions.
 
@@ -1484,11 +1513,13 @@ follows actual shadow-including documents independently of node-document ownersh
 It rebuilds the other canonical supplements alongside those flat facts.
 
 Initial captures and Slot reconstruction both qualify each represented Document's
-actual managed raw top layer. A known-empty layer supplies known unblocked state,
-including for supplemental Documents whose ordinary trees are only partially
-captured. Unavailable or nonempty layers retain unavailable blocking facts in
-this bounded profile. No absence is inferred from captured children or Dialog
-attributes. Initial captures supply these Document facts without certifying any
+actual managed raw top layer. The last actual HTML Dialog is the blocking subject,
+independently of its `open`, modal flag or pending-removal state. A qualified layer
+without a Dialog supplies known unblocked state, including for supplemental
+Documents whose ordinary trees are only partially captured. Unavailable history
+or a blocker absent from the capture's subject map retains unavailable blocking
+facts. No absence is inferred from captured children or Dialog attributes.
+Initial captures supply these Document facts without certifying any
 flat-node relation; Slot supplementation supplies the actual flat records needed
 for connected inherited inertness. Own inert can succeed independently. Detached
 subjects remain known flat-excluded, with inherited inert ancestry unavailable

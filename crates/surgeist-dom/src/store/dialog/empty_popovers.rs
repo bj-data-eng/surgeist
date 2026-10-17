@@ -19,7 +19,7 @@ impl Draft {
             .ok_or(DomError::UnavailableCreation)
     }
 
-    pub(super) fn dialog_method_known_empty_top_layer(
+    pub(super) fn dialog_method_known_empty_popovers(
         &self,
         document: DocumentId,
         cancel: &AtomicBool,
@@ -31,10 +31,26 @@ impl Draft {
         if !matches!(&node.kind, DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        Ok(matches!(
-            node.interactive_document.as_ref(),
-            Some(DocumentInteractiveState::Known { top_layer, .. }) if top_layer.is_empty()
-        ))
+        let Some(DocumentInteractiveState::Known { top_layer, .. }) =
+            node.interactive_document.as_ref()
+        else {
+            return Ok(false);
+        };
+        // The Auto/Hint lists filter actual showing popovers. Current admitted
+        // HTML common state proves hidden independently of authored popover text;
+        // ordinary raw modal Dialogs therefore do not enter either showing list.
+        for member in top_layer {
+            self.source_step(cancel)?;
+            let element = self.element(*member)?;
+            if element
+                .common_state()
+                .html()
+                .is_some_and(|state| !state.popover_is_hidden())
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 

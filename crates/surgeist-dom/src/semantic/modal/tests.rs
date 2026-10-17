@@ -61,11 +61,11 @@ fn inertness(capture: &DomHtmlCapture, node: NodeId) -> HtmlSemanticFact {
 }
 
 #[test]
-fn actual_unavailable_and_nonempty_raw_history_stay_missing_in_both_contexts() {
+fn unavailable_history_stays_missing_and_actual_raw_dialog_blocks_in_both_contexts() {
     for disposition in 0..3 {
         let (mut source, document, dialog) = fixture();
-        // Mutate only an exclusively owned private fixture. These are negative
-        // canonical histories, not a public top-layer setter or modal success.
+        // Mutate only an exclusively owned private fixture: unavailable history
+        // and a positive raw blocker, without a public setter or modal success.
         let node = Arc::get_mut(&mut source.state).unwrap().slots[document.node().slot]
             .node
             .as_mut()
@@ -75,6 +75,7 @@ fn actual_unavailable_and_nonempty_raw_history_stay_missing_in_both_contexts() {
             1 => Some(DocumentInteractiveState::Known {
                 open_dialogs: Vec::new(),
                 top_layer: vec![dialog],
+                pending_top_layer_removals: Vec::new(),
             }),
             _ => None,
         };
@@ -83,16 +84,29 @@ fn actual_unavailable_and_nonempty_raw_history_stay_missing_in_both_contexts() {
             .with_slot_semantics(slot_limits(), &AtomicBool::new(false))
             .unwrap();
         for captured in [initial, supplemented] {
-            assert_eq!(
-                inertness(&captured, document.node()),
-                HtmlSemanticFact::Inertness(HtmlSemanticValue::Missing(
-                    HtmlSemanticMissing::ModalBlocking(captured.subject(document.node()).unwrap())
-                ))
-            );
-            assert_eq!(
-                captured.context.inert().unwrap().documents()[0].blocking(),
-                &HtmlDocumentModalBlocking::Unavailable
-            );
+            if disposition == 1 {
+                assert_eq!(
+                    inertness(&captured, document.node()),
+                    HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+                );
+                assert_eq!(
+                    captured.context.inert().unwrap().documents()[0].blocking(),
+                    &HtmlDocumentModalBlocking::BlockedBy(captured.subject(dialog).unwrap())
+                );
+            } else {
+                assert_eq!(
+                    inertness(&captured, document.node()),
+                    HtmlSemanticFact::Inertness(HtmlSemanticValue::Missing(
+                        HtmlSemanticMissing::ModalBlocking(
+                            captured.subject(document.node()).unwrap()
+                        )
+                    ))
+                );
+                assert_eq!(
+                    captured.context.inert().unwrap().documents()[0].blocking(),
+                    &HtmlDocumentModalBlocking::Unavailable
+                );
+            }
         }
     }
 }
@@ -121,6 +135,7 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
         .interactive_document = Some(DocumentInteractiveState::Known {
         open_dialogs: Vec::new(),
         top_layer: vec![omitted],
+        pending_top_layer_removals: Vec::new(),
     });
     // Deliberately partial, but real, Document-only producer coverage. Omitting
     // the second Document's member does not qualify its raw list as empty.

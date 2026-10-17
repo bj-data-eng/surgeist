@@ -24,10 +24,27 @@ pub(super) fn with_facts(
         }
         // This is the complete canonical managed list, even when the semantic
         // capture contains only a supplemental portion of this Document's tree.
-        // Neither open attributes nor missing captured members establish absence.
+        // Neither open/modal flags, pending removal nor missing captured members
+        // replace the source's last actual HTML Dialog in raw order.
         let blocking = match node.node.interactive_document.as_ref() {
-            Some(DocumentInteractiveState::Known { top_layer, .. }) if top_layer.is_empty() => {
-                HtmlDocumentModalBlocking::Unblocked
+            Some(DocumentInteractiveState::Known { top_layer, .. }) => {
+                let mut blocking = HtmlDocumentModalBlocking::Unblocked;
+                for member in top_layer.iter().rev() {
+                    control.charge(1)?;
+                    if source.node(*member)?.as_dialog().is_none() {
+                        continue;
+                    }
+                    blocking = HtmlDocumentModalBlocking::Unavailable;
+                    for mapped in entries {
+                        control.charge(1)?;
+                        if mapped.node == *member {
+                            blocking = HtmlDocumentModalBlocking::BlockedBy(mapped.subject.clone());
+                            break;
+                        }
+                    }
+                    break;
+                }
+                blocking
             }
             _ => HtmlDocumentModalBlocking::Unavailable,
         };

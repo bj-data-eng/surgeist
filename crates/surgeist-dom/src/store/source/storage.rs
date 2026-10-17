@@ -295,10 +295,12 @@ fn state_usage(
             if let Some(crate::dialog::DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,
+                pending_top_layer_removals,
             }) = &node.interactive_document
             {
                 payload.bank::<NodeId>(open_dialogs.capacity())?;
                 payload.bank::<NodeId>(top_layer.capacity())?;
+                payload.bank::<NodeId>(pending_top_layer_removals.capacity())?;
             }
             if let Some(document) = &node.base_document {
                 payload.bank::<NodeId>(document.render_blocking.capacity())?;

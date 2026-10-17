@@ -444,12 +444,17 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     let reached_hook = op.draft.document_fully_active(document, cancel)?
                         && op.draft.shadow_connected(frame.subject, cancel)?;
-                    let method_occurrences = if op.is_show_modal_method() { 0 } else { 2 };
+                    let active_hook = reached_hook && original_window_active;
+                    let structural_modal = op.is_show_modal_method() && active_hook;
+                    let method_occurrences = if op.is_show_modal_method() {
+                        2 * u64::from(structural_modal)
+                    } else {
+                        2
+                    };
                     op.draft.admit_dialog_occurrences(
                         method_occurrences + u64::from(reached_hook),
                         cancel,
                     )?;
-                    let active_hook = reached_hook && original_window_active;
                     let future_outputs = if op.is_show_modal_method() && !reached_hook {
                         // Actual inactive hook: open attribute, then own marker
                         // release. This prefix has no remembered-focus write.
@@ -457,7 +462,27 @@ impl<'dom> DomSourceLease<'dom> {
                     } else {
                         3 + usize::from(active_hook)
                     };
-                    (3 + u64::from(active_hook), future_outputs)
+                    let modal_outputs = if structural_modal {
+                        let raw = match op.draft.node(document)?.interactive_document.as_ref() {
+                            Some(crate::dialog::DocumentInteractiveState::Known {
+                                top_layer,
+                                ..
+                            }) => top_layer,
+                            _ => return Err(DomError::DialogDocumentStateUnavailable),
+                        };
+                        let mut contains = false;
+                        for member in raw {
+                            op.draft.source_step(cancel)?;
+                            contains |= *member == frame.subject;
+                        }
+                        1 + usize::from(!contains)
+                    } else {
+                        0
+                    };
+                    (
+                        3 + u64::from(active_hook) + u64::from(structural_modal),
+                        future_outputs + modal_outputs,
+                    )
                 }
             };
             if op

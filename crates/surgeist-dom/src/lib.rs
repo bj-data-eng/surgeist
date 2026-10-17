@@ -148,6 +148,7 @@ mod snapshot;
 mod source;
 mod store;
 mod style;
+mod top_layer;
 pub use source::*;
 mod svg_script;
 mod template;
@@ -245,6 +246,7 @@ pub use surgeist_html::{
 pub use svg_script::{DomSvgScript, DomSvgScriptOrigin};
 pub use template::{DomTemplate, DomTemplateDocumentRole, DomTemplatePatch};
 pub use textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};
+pub use top_layer::{DomDocumentTopLayer, DomTopLayerUaRule};
 pub use view_transition::{
     CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
     DomPreparedViewTransitionRules, DomPreparedViewTransitionSheet, DomViewTransition,

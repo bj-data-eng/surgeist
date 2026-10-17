@@ -303,9 +303,11 @@ trees complete. Template closure includes actual contents, hosts, role/cache and
 documents; establish inert roles before ordinary cache links rather than using
 plain-fragment unhosted defaults. Slot supplements feed stored assignment to
 directionality and fresh flat facts to inertness, preserving actual related
-documents. Initial and Slot contexts share canonical modal-fact formation:
-known-empty raw layers establish unblocked Documents independently of ordinary
-capture completeness; unavailable or nonempty layers remain unavailable. Initial
+documents. Initial and Slot contexts share canonical modal-fact formation: select
+the last actual HTML Dialog in raw top-layer order independently of open/modal/
+pending state. Qualified lists without a Dialog establish unblocked Documents
+independently of ordinary capture completeness; unavailable history or an unmapped
+blocker stays unavailable. Initial
 partial facts establish no flat-node relation. Missing live-control/fallback
 facts remain unavailable; detached flat exclusion does not establish empty inert
 ancestry. Preserve producer

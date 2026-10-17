@@ -146,6 +146,10 @@ pub enum DomError {
     MarqueeInapplicable,
     DialogInapplicable,
     DialogDocumentStateUnavailable,
+    TopLayerAlreadyActive {
+        subject: NodeId,
+        document: DocumentId,
+    },
     DialogProcessingUnavailable {
         action: surgeist_html::HtmlDialogAction,
     },
@@ -1613,6 +1617,7 @@ impl Draft {
                                 Interactive::Known {
                                     open_dialogs,
                                     top_layer,
+                                    pending_top_layer_removals,
                                 } => Interactive::Known {
                                     open_dialogs: source::initial::map_keys(
                                         open_dialogs,
@@ -1621,6 +1626,11 @@ impl Draft {
                                     )?,
                                     top_layer: source::initial::map_keys(
                                         top_layer, initial, cancelled,
+                                    )?,
+                                    pending_top_layer_removals: source::initial::map_keys(
+                                        pending_top_layer_removals,
+                                        initial,
+                                        cancelled,
                                     )?,
                                 },
                                 Interactive::Unavailable => Interactive::Unavailable,
@@ -2624,9 +2634,16 @@ impl Draft {
                             Interactive::Known {
                                 open_dialogs,
                                 top_layer,
+                                pending_top_layer_removals,
                             } => Interactive::Known {
                                 open_dialogs: map_ids(open_dialogs, &id, budget, cancelled)?,
                                 top_layer: map_ids(top_layer, &id, budget, cancelled)?,
+                                pending_top_layer_removals: map_ids(
+                                    pending_top_layer_removals,
+                                    &id,
+                                    budget,
+                                    cancelled,
+                                )?,
                             },
                             Interactive::Unavailable => Interactive::Unavailable,
                         })

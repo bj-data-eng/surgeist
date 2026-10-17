@@ -214,7 +214,7 @@ fn start(session: &mut DomSession, subject: NodeId) -> DomSourceEventRequest {
         other => panic!("standard ShowModal must reach actual beforetoggle: {other:?}"),
     }
 }
-fn assert_modal_prefix(
+fn assert_remembered_focus_wait(
     progress: DomSourceDriveProgress,
     operation: DomSourceOperationId,
     subject: NodeId,
@@ -222,14 +222,16 @@ fn assert_modal_prefix(
     match progress {
         DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Dialog(request),
-            reason: DomSourceUnavailable::Dialog(HtmlDialogAction::SetModal),
+            reason: DomSourceUnavailable::Dialog(HtmlDialogAction::RememberFocusedElement),
         } => {
             assert_eq!(request.operation(), operation);
             assert_eq!(request.subject(), subject);
-            assert_eq!(request.action(), HtmlDialogAction::SetModal);
+            assert_eq!(request.action(), HtmlDialogAction::RememberFocusedElement);
             request
         }
-        other => panic!("only the original unsupported modal action may remain: {other:?}"),
+        other => {
+            panic!("the original host's unobserved remembered focus must remain pending: {other:?}")
+        }
     }
 }
 fn assert_open_nonmodal(session: &DomSession, subject: NodeId, watched: bool) {
@@ -239,6 +241,23 @@ fn assert_open_nonmodal(session: &DomSession, subject: NodeId, watched: bool) {
     let dialog = node.as_dialog().unwrap();
     assert!(!dialog.is_modal());
     assert_eq!(dialog.has_close_watcher(), watched);
+    assert_eq!(
+        node.as_element()
+            .unwrap()
+            .common_state()
+            .html()
+            .unwrap()
+            .previously_focused_element(),
+        None
+    );
+}
+fn assert_open_modal(session: &DomSession, subject: NodeId) {
+    let snapshot = session.snapshot();
+    let node = snapshot.node(subject).unwrap();
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
+    let dialog = node.as_dialog().unwrap();
+    assert!(dialog.is_modal());
+    assert!(dialog.has_close_watcher());
     assert_eq!(
         node.as_element()
             .unwrap()
@@ -288,7 +307,7 @@ fn toggle_task(session: &DomSession, subject: NodeId, top: DomHostedTopLevel) ->
 }
 
 #[test]
-fn active_show_modal_publishes_open_and_real_watcher_then_retains_original_set_modal() {
+fn active_show_modal_publishes_structural_phase_then_waits_for_unobserved_remembered_focus() {
     let (mut session, top, _, subject) = fixture();
     drop(complete(apply(
         &mut session,
@@ -335,12 +354,20 @@ fn active_show_modal_publishes_open_and_real_watcher_then_retains_original_set_m
         None
     );
     drop(receipt);
-    let pending = assert_modal_prefix(
+    let pending = assert_remembered_focus_wait(
         resume(&mut session, request.operation()).unwrap(),
         request.operation(),
         subject,
     );
-    assert_open_nonmodal(&session, subject, true);
+    assert_open_modal(&session, subject);
+    assert!(matches!(
+        session
+            .snapshot()
+            .document(top.document())
+            .unwrap()
+            .top_layer(),
+        Err(DomError::IncompleteSourceOperation)
+    ));
     let watcher = session
         .snapshot()
         .node(subject)
@@ -367,7 +394,7 @@ fn active_show_modal_publishes_open_and_real_watcher_then_retains_original_set_m
     let stamp = session.snapshot().stamp();
     drop(session.source_execution());
     assert_eq!(
-        assert_modal_prefix(
+        assert_remembered_focus_wait(
             resume(&mut session, request.operation()).unwrap(),
             request.operation(),
             subject
@@ -377,7 +404,7 @@ fn active_show_modal_publishes_open_and_real_watcher_then_retains_original_set_m
     assert_eq!(session.snapshot().stamp(), stamp);
     assert_eq!(toggle_task(&session, subject, top), task);
     assert_eq!(calls, 1);
-    assert_open_nonmodal(&session, subject, true);
+    assert_open_modal(&session, subject);
 }
 
 #[test]
@@ -894,12 +921,12 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
     );
     assert!(refused.is_err());
     assert_eq!(calls, 1);
-    assert_modal_prefix(
+    assert_remembered_focus_wait(
         resume(&mut session, request.operation()).unwrap(),
         request.operation(),
         subject,
     );
-    assert_open_nonmodal(&session, subject, true);
+    assert_open_modal(&session, subject);
     toggle_task(&session, subject, top);
     assert_eq!(
         session

@@ -15,6 +15,7 @@ mod empty_popovers;
 mod request_close_tests;
 #[cfg(test)]
 mod show_modal_tests;
+mod top_layer;
 
 #[derive(Clone, Copy)]
 pub(super) enum MethodState {
@@ -82,6 +83,13 @@ pub(in crate::store) struct PendingDialog {
     pub invocation: Option<source::Invocation>,
 }
 
+#[derive(Clone, Copy)]
+enum DialogList {
+    Open,
+    Raw,
+    Pending,
+}
+
 impl Draft {
     pub(super) fn dialog_method_boundary(
         &mut self,
@@ -99,6 +107,9 @@ impl Draft {
             invocation: source::Invocation::Unissued,
             locals: input.locals(),
         });
+        if frame.cursor.action() == Action::SetModal {
+            return self.dialog_modal_phase(frame, cancel);
+        }
         if matches!(frame.state, MethodState::AwaitingAttributeHooks) {
             self.run_effects(limits, cancel)?;
             frame
@@ -147,7 +158,14 @@ impl Draft {
                     frame.state = MethodState::Ready;
                     Reply::Applied
                 }
-                Action::ClearModal if !self.dialog_state(key)?.is_modal() => Reply::Applied,
+                Action::ClearModal => {
+                    self.set_dialog_modal(key, false, cancel)?;
+                    Reply::Applied
+                }
+                Action::RequestTopLayerRemoval => {
+                    self.request_top_layer_removal(key, cancel)?;
+                    Reply::Applied
+                }
                 Action::WriteReturnValue => {
                     let MethodInput::Close(Some(result)) = input else {
                         return Err(DomError::InvalidSourceOperation);
@@ -207,7 +225,7 @@ impl Draft {
                     // This algorithm reads the receiver's then-current Document,
                     // independently of the show-local Document captured above.
                     let document = self.dialog_method_node_document(key, cancel)?;
-                    if !self.dialog_method_known_empty_top_layer(document, cancel)? {
+                    if !self.dialog_method_known_empty_popovers(document, cancel)? {
                         self.dialog_method = Some(frame);
                         return Err(DomError::DialogProcessingUnavailable { action });
                     }
@@ -236,7 +254,7 @@ impl Draft {
                         return Err(DomError::DialogProcessingUnavailable { action });
                     };
                     if popover_endpoint.is_some()
-                        || !self.dialog_method_known_empty_top_layer(document, cancel)?
+                        || !self.dialog_method_known_empty_popovers(document, cancel)?
                     {
                         self.dialog_method = Some(frame);
                         return Err(DomError::DialogProcessingUnavailable { action });
@@ -476,28 +494,48 @@ impl Draft {
         drop(formation);
         self.source_admit(0, cancel)
     }
-    fn dialog_list(&self, document: Key, top_layer: bool) -> Result<&[Key], DomError> {
+    fn dialog_list(&self, document: Key, list: DialogList) -> Result<&[Key], DomError> {
         match self.node(document)?.interactive_document.as_ref() {
             Some(DocumentInteractiveState::Known {
                 open_dialogs,
-                top_layer: layer,
-            }) => Ok(if top_layer { layer } else { open_dialogs }),
+                top_layer,
+                pending_top_layer_removals,
+            }) => Ok(match list {
+                DialogList::Open => open_dialogs,
+                DialogList::Raw => top_layer,
+                DialogList::Pending => pending_top_layer_removals,
+            }),
             Some(DocumentInteractiveState::Unavailable) => {
                 Err(DomError::DialogDocumentStateUnavailable)
             }
             None => Err(DomError::WrongNodeKind),
         }
     }
+    fn dialog_list_mut(&mut self, document: Key, list: DialogList) -> &mut Vec<Key> {
+        let Some(DocumentInteractiveState::Known {
+            open_dialogs,
+            top_layer,
+            pending_top_layer_removals,
+        }) = self.node_mut(document).interactive_document.as_mut()
+        else {
+            unreachable!("qualified Document list")
+        };
+        match list {
+            DialogList::Open => open_dialogs,
+            DialogList::Raw => top_layer,
+            DialogList::Pending => pending_top_layer_removals,
+        }
+    }
     fn dialog_list_contains(
         &self,
         document: Key,
         member: Key,
-        top_layer: bool,
+        list: DialogList,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
-        let list = self.dialog_list(document, top_layer)?;
-        for candidate in list {
+        let members = self.dialog_list(document, list)?;
+        for candidate in members {
             self.source_step(cancel)?;
             if *candidate == member {
                 return Ok(true);
@@ -509,36 +547,29 @@ impl Draft {
         &mut self,
         document: Key,
         member: Key,
-        top_layer: bool,
+        list: DialogList,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let mut index = 0;
         loop {
             self.source_step(cancel)?;
-            let len = self.dialog_list(document, top_layer)?.len();
+            let len = self.dialog_list(document, list)?.len();
             if index >= len {
                 break;
             }
             self.source_step(cancel)?;
-            let list = self.dialog_list(document, top_layer)?;
-            if list[index] != member {
+            let members = self.dialog_list(document, list)?;
+            if members[index] != member {
                 index += 1;
                 continue;
             }
             // Preadmit the bounded structural movement before Vec::remove.
             // No callback or reentry occurs between admission and that effect.
-            for _ in index + 1..list.len() {
+            for _ in index + 1..members.len() {
                 self.source_step(cancel)?;
             }
             check_cancel(cancel)?;
-            let Some(DocumentInteractiveState::Known {
-                open_dialogs,
-                top_layer: layer,
-            }) = self.node_mut(document).interactive_document.as_mut()
-            else {
-                unreachable!("qualified Document lists")
-            };
-            if top_layer { layer } else { open_dialogs }.remove(index);
+            self.dialog_list_mut(document, list).remove(index);
         }
         Ok(())
     }
@@ -612,34 +643,27 @@ impl Draft {
         member: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.dialog_list_contains(document, member, false, cancel)? {
+        if self.dialog_list_contains(document, member, DialogList::Open, cancel)? {
             return Ok(());
         }
+        self.dialog_list_append(document, member, DialogList::Open, cancel)
+    }
+    fn dialog_list_append(
+        &mut self,
+        document: Key,
+        member: Key,
+        list: DialogList,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        let (length, capacity) = match self.node(document)?.interactive_document.as_ref() {
-            Some(DocumentInteractiveState::Known { open_dialogs, .. }) => {
-                (open_dialogs.len(), open_dialogs.capacity())
-            }
-            Some(DocumentInteractiveState::Unavailable) => {
-                return Err(DomError::DialogDocumentStateUnavailable);
-            }
-            None => return Err(DomError::WrongNodeKind),
-        };
+        self.dialog_list(document, list)?;
+        let members = self.dialog_list_mut(document, list);
+        let (length, capacity) = (members.len(), members.capacity());
         let admitted = self.source_reserve_amount::<Key>(length, capacity, 1, cancel)?;
-        let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
-            self.node_mut(document).interactive_document.as_mut()
-        else {
-            unreachable!("qualified native Document list")
-        };
-        source::reserve_bank(open_dialogs, 1, admitted)?;
+        source::reserve_bank(self.dialog_list_mut(document, list), 1, admitted)?;
         self.source_admit(0, cancel)?;
         self.source_step(cancel)?;
-        let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
-            self.node_mut(document).interactive_document.as_mut()
-        else {
-            unreachable!("qualified list")
-        };
-        open_dialogs.push(member);
+        self.dialog_list_mut(document, list).push(member);
         self.source_admit(0, cancel)
     }
     pub(super) fn dialog_hook_effect(
@@ -665,22 +689,35 @@ impl Draft {
                 Action::ReadWatcherPresent => {
                     Reply::WatcherPresent(self.dialog_state(key)?.has_close_watcher())
                 }
-                Action::ReadTopLayerContains => Reply::TopLayerContains(
-                    self.dialog_list_contains(self.node(key)?.document, key, true, cancel)?,
-                ),
+                Action::ReadTopLayerContains => {
+                    Reply::TopLayerContains(self.dialog_list_contains(
+                        self.node(key)?.document,
+                        key,
+                        DialogList::Raw,
+                        cancel,
+                    )?)
+                }
                 Action::AddOpenDialog => {
                     self.dialog_list_add(self.node(key)?.document, key, cancel)?;
                     Reply::Applied
                 }
                 Action::RemoveOpenDialog => {
-                    self.dialog_list_remove(self.node(key)?.document, key, false, cancel)?;
+                    self.dialog_list_remove(
+                        self.node(key)?.document,
+                        key,
+                        DialogList::Open,
+                        cancel,
+                    )?;
                     Reply::Applied
                 }
                 Action::RemoveTopLayerImmediately => {
-                    self.dialog_list_remove(self.node(key)?.document, key, true, cancel)?;
+                    self.remove_top_layer_immediately(key, cancel)?;
                     Reply::Applied
                 }
-                Action::ClearModal if !self.dialog_state(key)?.is_modal() => Reply::Applied,
+                Action::ClearModal => {
+                    self.set_dialog_modal(key, false, cancel)?;
+                    Reply::Applied
+                }
                 Action::ClearCloseWatcher => {
                     self.set_dialog_watcher(key, None, cancel)?;
                     Reply::Applied
@@ -804,7 +841,7 @@ mod tests {
             // This exercises the actual canonical list owner independently of
             // setup eligibility; no fake Global/activity/watcher is supplied.
             draft.dialog_list_add(doc, first, &cancel).unwrap();
-            let original = draft.dialog_list(doc, false).unwrap().as_ptr();
+            let original = draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr();
             let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
             let replacement = 2 * size_of::<Key>();
             let exact = base + replacement;
@@ -826,8 +863,11 @@ mod tests {
                         limit: exact - 1
                     }
                 );
-                assert_eq!(draft.dialog_list(doc, false).unwrap(), [first]);
-                assert_eq!(draft.dialog_list(doc, false).unwrap().as_ptr(), original);
+                assert_eq!(draft.dialog_list(doc, DialogList::Open).unwrap(), [first]);
+                assert_eq!(
+                    draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr(),
+                    original
+                );
                 draft.source_limits = Some(generous);
                 draft.dialog_list_add(doc, second, &cancel).unwrap();
             } else {
@@ -842,13 +882,19 @@ mod tests {
             assert_eq!(open_dialogs.as_slice(), [first, second]);
             let backing = open_dialogs.as_ptr();
             draft.dialog_list_add(doc, first, &cancel).unwrap();
-            assert_eq!(draft.dialog_list(doc, false).unwrap(), [first, second]);
-            assert_eq!(draft.dialog_list(doc, false).unwrap().as_ptr(), backing);
+            assert_eq!(
+                draft.dialog_list(doc, DialogList::Open).unwrap(),
+                [first, second]
+            );
+            assert_eq!(
+                draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr(),
+                backing
+            );
             draft.source_limits = Some(generous);
             draft
                 .remove_attribute(first, None, &"open".into(), dom.limits, &cancel)
                 .unwrap();
-            assert_eq!(draft.dialog_list(doc, false).unwrap(), [second]);
+            assert_eq!(draft.dialog_list(doc, DialogList::Open).unwrap(), [second]);
             assert_eq!(
                 draft.element(first).unwrap().attribute(&"open".into()),
                 None

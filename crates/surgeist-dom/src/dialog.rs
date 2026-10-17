@@ -4,32 +4,19 @@
 //! the original Source hooks. Modal state remains separately qualified.
 use crate::{DocumentString, DomNode, NodeId};
 
-/// Qualification of the actual null/false service slots through the complete
-/// admitted transition set. This is private state, not a public fresh descriptor
-/// and not permission to acknowledge an external service action.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ClosedDialogServices;
-impl ClosedDialogServices {
-    fn from_fresh(_: surgeist_html::HtmlDialogFreshState) -> Self {
-        Self
-    }
-    fn from_parsed<'a>(
-        disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
-    ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
-        match disposition {
-            surgeist_html_parser::HtmlParseDialogDisposition::Closed => Ok(Self),
-            surgeist_html_parser::HtmlParseDialogDisposition::Unavailable(missing) => Err(missing),
-        }
-    }
-    const fn is_modal(self) -> bool {
-        false
+fn require_closed_parsed_dialog<'a>(
+    disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
+) -> Result<(), surgeist_html_parser::HtmlParseDialogMissing<'a>> {
+    match disposition {
+        surgeist_html_parser::HtmlParseDialogDisposition::Closed => Ok(()),
+        surgeist_html_parser::HtmlParseDialogDisposition::Unavailable(missing) => Err(missing),
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DomDialogState {
     return_value: DocumentString,
-    services: ClosedDialogServices,
+    pub(crate) is_modal: bool,
     pub(crate) request_return_value: Option<DocumentString>,
     pub(crate) request_source: Option<NodeId>,
     pub(crate) force_watcher_enabled: bool,
@@ -81,7 +68,7 @@ impl DomDialogState {
         let fresh = surgeist_html::HtmlDialogFreshState::fresh();
         Self {
             return_value: fresh.return_value().into(),
-            services: ClosedDialogServices::from_fresh(fresh),
+            is_modal: false,
             request_return_value: None,
             request_source: None,
             force_watcher_enabled: false,
@@ -95,10 +82,10 @@ impl DomDialogState {
         return_value: DocumentString,
         disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
     ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
-        let services = ClosedDialogServices::from_parsed(disposition)?;
+        require_closed_parsed_dialog(disposition)?;
         Ok(Self {
             return_value,
-            services,
+            is_modal: false,
             request_return_value: None,
             request_source: None,
             force_watcher_enabled: false,
@@ -112,7 +99,7 @@ impl DomDialogState {
     pub(crate) fn with_return_value(&self, return_value: DocumentString) -> Self {
         Self {
             return_value,
-            services: self.services,
+            is_modal: self.is_modal,
             request_return_value: self.request_return_value.clone(),
             request_source: self.request_source,
             force_watcher_enabled: self.force_watcher_enabled,
@@ -123,7 +110,7 @@ impl DomDialogState {
     pub(crate) fn with_request_return_value(&self, value: Option<DocumentString>) -> Self {
         Self {
             return_value: self.return_value.clone(),
-            services: self.services,
+            is_modal: self.is_modal,
             request_return_value: value,
             request_source: self.request_source,
             force_watcher_enabled: self.force_watcher_enabled,
@@ -139,7 +126,7 @@ impl DomDialogState {
         )
     }
     pub(crate) const fn is_modal(&self) -> bool {
-        self.services.is_modal()
+        self.is_modal
     }
     pub(crate) const fn has_close_watcher(&self) -> bool {
         self.watcher.is_some()
@@ -207,6 +194,7 @@ pub(crate) enum DocumentInteractiveState<K> {
     Known {
         open_dialogs: Vec<K>,
         top_layer: Vec<K>,
+        pending_top_layer_removals: Vec<K>,
     },
     Unavailable,
 }
@@ -217,16 +205,18 @@ impl<K> DocumentInteractiveState<K> {
     pub(crate) fn from_parsed<'a>(
         disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
     ) -> Result<Self, surgeist_html_parser::HtmlParseDialogMissing<'a>> {
-        ClosedDialogServices::from_parsed(disposition)?;
+        require_closed_parsed_dialog(disposition)?;
         Ok(Self::Known {
             open_dialogs: Vec::new(),
             top_layer: Vec::new(),
+            pending_top_layer_removals: Vec::new(),
         })
     }
     pub(crate) fn native_closed() -> Self {
         Self::Known {
             open_dialogs: Vec::new(),
             top_layer: Vec::new(),
+            pending_top_layer_removals: Vec::new(),
         }
     }
 }

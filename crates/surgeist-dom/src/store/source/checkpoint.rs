@@ -360,9 +360,12 @@ impl DraftNode {
                         Interactive::Known {
                             open_dialogs,
                             top_layer,
+                            pending_top_layer_removals,
                         } => Interactive::Known {
                             open_dialogs: a.copy(open_dialogs, cancel)?,
                             top_layer: a.copy(top_layer, cancel)?,
+                            pending_top_layer_removals: a
+                                .copy(pending_top_layer_removals, cancel)?,
                         },
                         Interactive::Unavailable => Interactive::Unavailable,
                     })
@@ -576,10 +579,12 @@ impl Draft {
             if let Some(crate::dialog::DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,
+                pending_top_layer_removals,
             }) = &node.interactive_document
             {
                 add(open_dialogs.capacity(), size_of::<Key>())?;
                 add(top_layer.capacity(), size_of::<Key>())?;
+                add(pending_top_layer_removals.capacity(), size_of::<Key>())?;
             }
             if let Some(d) = &node.base_document {
                 add(d.render_blocking.capacity(), size_of::<Key>())?;

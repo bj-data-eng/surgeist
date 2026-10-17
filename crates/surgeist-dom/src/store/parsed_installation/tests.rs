@@ -881,12 +881,14 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
             let Some(DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,
+                pending_top_layer_removals,
             }) = &node.interactive_document
             else {
                 panic!("each actual new root/inert Document has original qualified history");
             };
             assert!(open_dialogs.is_empty());
             assert!(top_layer.is_empty());
+            assert!(pending_top_layer_removals.is_empty());
         }
         if let DomNodeKind::Element(element) = &node.kind
             && let Some(dialog) = element.dialog_state()

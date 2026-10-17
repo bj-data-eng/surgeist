@@ -140,11 +140,12 @@ retired/reused Host, disposed authority or stale canonical basis still refuses.
 Future mutable adapters must validate their actual source and scope revisions.
 
 The following Document capture and popover steps run in DOM's original Source
-continuation. A known empty canonical raw top layer establishes empty Auto and
-Hint lists; DOM retains the actual captured Document and null endpoint, then
-rechecks that Document before completing the empty hide step. Such Show paths
-wait at RunDialogFocusingSteps. Unknown or nonempty state retains its precise
-popover wait. Headlessness alone supplies no top-layer evidence.
+continuation. Qualified canonical raw membership and actual hidden popover state
+establish empty Auto and Hint showing lists; nonpopover members do not prevent
+this proof. DOM retains the actual captured Document and null endpoint, then
+rechecks that proof before completing the empty hide step. Such Show paths wait at
+RunDialogFocusingSteps. Unknown history or unqualified nonhidden state retains
+the precise popover wait. Headlessness alone supplies no top-layer evidence.
 
 For the focusing action, Runtime qualifies the receiver's current canonical
 Document independently from its original execution scope and queued-task
@@ -305,7 +306,8 @@ current open read. A surviving callback that removes open supplies the genuine
 early return. The method publishes the toggle, runs complete open-removal hooks,
 applies only a supplied result, clears actual request-close slots and reads
 canonical previous focus. Known absence reaches real Close task publication.
-Unsupported modal or positive restoration work stays at its exact pending action.
+Modal Close requests canonical deferred top-layer removal and clears the modal
+flag. Unsupported positive restoration stays at its exact pending action.
 The method completes only after its actual final QueueClose acknowledgment;
 subsequent notification delivery has independent task custody.
 
@@ -349,9 +351,13 @@ settlement and reports the native failure. It does not turn cancellation into
 an outer early return or manufacture Applied after a failed nested Close.
 
 `show_modal_dialog(receiver)` reuses the same Source driver, dispatcher, element
-task queue and watcher setup. Its bounded positive prefix stops at `SetModal`
-after actual open hooks and a valid watcher assertion; it supplies no modal,
-blocking, top-layer or focus effects. Canceled and post-event early returns use
+task queue and watcher setup. After actual open hooks and a valid watcher
+assertion, DOM publishes the coherent modal/raw-top-layer phase and its generated
+UA overlay input before observing remembered focus. With actual remembered-focus
+absence and empty showing-popover lists, it reaches the genuine focusing wait.
+This producer publication supplies no computed-style or rendered result and does
+not complete ShowModal. Source-completeness guards continue to protect ordinary
+top-layer views and semantic captures. Canceled and post-event early returns use
 the actual producer result. Callback adoption into a connected inactive Document
 can finish the open hook without a watcher. DOM publishes that real prefix and
 returns the selected typed invariant failure, preserving the original task
