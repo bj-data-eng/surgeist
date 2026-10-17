@@ -1075,3 +1075,30 @@ Document does not write a viewport designation. The current-standard comparison
 selects no replacement HTML edition. The witness's original legal headers and
 [WebKit attribution](../licenses/webkit/NOTICE.md#fresh-document-focus-initialization)
 cover its documentation excerpts; no browser source is compiled or linked.
+
+## Focus algorithm editorial gaps
+
+[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects four
+bounded interpretations of the pinned HTML focus algorithms:
+
+- A known-null currently focused area has no anchor for the delegating shadow
+  host's ancestor fast path. Continue with the actual focus delegate and original
+  trigger. Unknown or unrepresentable observations do not become null.
+- A known absent traversable or known-null currently focused area yields an empty
+  current focus chain. Only a nonnull actual area enters the focus-chain algorithm.
+- For each reached new-chain focusable-area entry, establish its Document from
+  the actual anchor after earlier callbacks: an Element anchor's current node
+  Document, or the Document anchor itself. Retain this exact local through the
+  comparison, original Window Navigation flag write and designation.
+- Select focus/blur event targets by exclusive entry classification: Element
+  itself, else Document's actual relevant Global, else null. Classify the entry,
+  independently of its DOM anchor, and preserve related-target and event order.
+
+The [pinned browser evidence](webkit-focus-editorial-evidence--73aa6c89e2cb.md)
+corroborates per-Document state and separate Element/Window dispatch. WebKit's
+nullable stored-pointer shadow fast path is not the HTML system-focus-qualified
+current-area algorithm. These interpretations fill the identified source gaps;
+they do not adopt a competing focus store, claim an upstream erratum, or replace
+the pinned edition. The dated current-standard comparison records the same gaps.
+Original legal material is covered by the
+[WebKit attribution](../licenses/webkit/NOTICE.md#focus-editorial-gap-evidence).

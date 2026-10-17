@@ -186,3 +186,12 @@ headers at the existing WebKit pin. The [native determination](SOURCE-EDITIONS.m
 selects known-null for fresh native Documents while preserving unknown imported
 history and the separate system-focus contract. It does not establish a complete
 native focus producer.
+
+## Focus algorithm editorial evidence
+
+The [bounded focus witness](webkit-focus-editorial-evidence--73aa6c89e2cb.md)
+retains exact Document, Element and FocusController excerpts with original legal
+headers. The [selected interpretations](SOURCE-EDITIONS.md#focus-algorithm-editorial-gaps)
+resolve nullable area/chain inputs, the per-entry Document and exclusive event
+target selection. Browser stored focus and actual system-focus routing remain
+distinct. The evidence supplies no native positive-focus capability.

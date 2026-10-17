@@ -232,3 +232,20 @@ All three fenced headers and source excerpts match their pinned originals.
 Document.cpp reuses its existing identical legal header. Added Markdown headings
 and provenance labels do not alter the copied material. These documentation
 excerpts are not compiled, linked or adapted into the Rust implementation.
+
+## Focus editorial-gap evidence
+
+The [focus witness](../../references/webkit-focus-editorial-evidence--73aa6c89e2cb.md)
+retains exact excerpts at immutable revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`, with every complete original legal
+header. Document.cpp reuses its existing identical header. No source is compiled,
+linked or adapted into Surgeist by this documentation retention.
+
+| Original source and retained coverage | Exact local legal material |
+| --- | --- |
+| Source/WebCore/dom/Document.cpp: lines 6630–6682 and 6716–6748 | [Document.cpp header](document-cpp-license-header.txt); [GNU Library GPL version 2 or later](LICENSE-LGPL-2.txt) |
+| Source/WebCore/dom/Element.cpp: lines 4323–4335 | [Element.cpp header](element-cpp-license-header.txt); [GNU Library GPL version 2 or later](LICENSE-LGPL-2.txt) |
+| Source/WebCore/page/FocusController.cpp: complete dispatch helper, lines 409–441 | [Exact two-clause notice](focus-controller-cpp-bsd-2-clause.txt), Copyright (C) 2006, 2007, 2013 Apple Inc. and Copyright (C) 2008 Nuanti Ltd. |
+
+The FocusController notice retains its original trailing whitespace verbatim,
+as does its fenced copy; Markdown headings and provenance labels are additions.

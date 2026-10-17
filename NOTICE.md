@@ -356,7 +356,7 @@ authorship and status remain intact; no endorsement is implied.
 ### WebKit implementation references
 
 The reference collection retains selected WebKit source files as readable
-implementation evidence for CSSOM, text, effects, layout, content parsing, style, transitions, contextual lengths, animation, accessibility, intrinsic color analysis and native Document focus initialization. The
+implementation evidence for CSSOM, text, effects, layout, content parsing, style, transitions, contextual lengths, animation, accessibility, intrinsic color analysis, native Document focus initialization and focus-algorithm source interpretation. The
 [contrast-color witness](references/webkit-contrast-color--73aa6c89e2cb--6592a4862701.md)
 preserves its [file-specific BSD notices](licenses/webkit/NOTICE.md#contrast-color-source-witnesses). These are documentation copies,
 not compiled or linked dependencies. Each retained file preserves its original
