@@ -139,6 +139,214 @@ fn serviced(progress: DomSourceEventServiceProgress) -> DomEventDispatchReceipt 
     }
 }
 
+fn pending_dialog_service(
+    progress: DomSourceDriveProgress,
+    subject: NodeId,
+    expected: HtmlDialogAction,
+) -> DomSourceOperationId {
+    match progress {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Dialog(dialog),
+            reason: DomSourceUnavailable::Dialog(action),
+        } => {
+            assert_eq!(dialog.subject(), subject);
+            assert_eq!(dialog.action(), expected);
+            assert_eq!(action, expected);
+            dialog.operation()
+        }
+        other => panic!("the original Dialog service must remain pending: {other:?}"),
+    }
+}
+
+fn show_publishes_open_and_retains_queued_task(
+    mut session: DomSession,
+    subject: NodeId,
+    next: HtmlDialogAction,
+    association: Option<(DomHostedGlobalId, DocumentId)>,
+) {
+    struct Context {
+        owner: DomManipulationRuntime,
+        beforetoggle_calls: usize,
+        toggle_calls: usize,
+    }
+    impl DomManipulationEventContext for Context {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.owner
+        }
+    }
+    let cancel = AtomicBool::new(false);
+    let mut listeners = dispatcher();
+    listeners
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |dom, _, context: &mut Context, _| {
+                context.beforetoggle_calls += 1;
+                let mut batch = DomBatch::new();
+                batch.set_attribute(subject, "data-beforetoggle", "kept");
+                dom.apply(batch, &AtomicBool::new(false)).unwrap();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    listeners
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::Toggle,
+            DomEventCallback::new(|_, _, context: &mut Context, _| {
+                context.toggle_calls += 1;
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let mut context = Context {
+        owner: session.dom_manipulation_execution(),
+        beforetoggle_calls: 0,
+        toggle_calls: 0,
+    };
+    let request = request(&mut session, subject);
+    assert_eq!(request.old_state(), HtmlDialogState::Closed);
+    assert_eq!(request.new_state(), HtmlDialogState::Open);
+    assert_eq!(request.source(), None);
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &request,
+                &mut listeners,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    drop(receipt);
+    let before_addition = session.snapshot();
+    assert_eq!(
+        before_addition
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into()),
+        None
+    );
+    let progress = resume(&mut session, request.operation());
+    let published = session.snapshot();
+    // HTML877d Show step 6 adds the ordinary empty attribute. Its hook must
+    // finish, or park at its own watcher, before Show can remember focus.
+    assert_eq!(
+        published.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert_eq!(
+        pending_dialog_service(progress, subject, next),
+        request.operation()
+    );
+    assert_ne!(published.stamp(), before_addition.stamp());
+    assert_eq!(
+        published
+            .node(subject)
+            .unwrap()
+            .attribute(&"data-beforetoggle".into()),
+        Some(&"kept".into())
+    );
+    assert_eq!(
+        published.incomplete_source_operation(),
+        Some(request.operation())
+    );
+    assert_eq!(context.owner.pending_tasks().unwrap(), 1);
+    let task = context.owner.pending_task(0).unwrap().unwrap();
+    let dialog = task.dialog().expect("the actual Show toggle task");
+    assert_eq!(dialog.id().target(), subject);
+    assert_eq!(dialog.old_state(), HtmlDialogState::Closed);
+    assert_eq!(dialog.new_state(), HtmlDialogState::Open);
+    assert_eq!(dialog.source(), None);
+    assert_eq!(
+        dialog
+            .queue_association()
+            .map(|queue| (queue.global(), queue.document())),
+        association
+    );
+    let tracker = published
+        .node(subject)
+        .unwrap()
+        .as_dialog()
+        .unwrap()
+        .toggle_task_tracker()
+        .unwrap();
+    assert_eq!(tracker.task(), dialog.id());
+    assert_eq!(tracker.old_state(), HtmlDialogState::Closed);
+
+    assert_eq!(
+        pending_dialog_service(resume(&mut session, request.operation()), subject, next),
+        request.operation()
+    );
+    assert_eq!(context.beforetoggle_calls, 1);
+    assert_eq!(context.owner.pending_tasks().unwrap(), 1);
+    assert_eq!(context.owner.pending_task(0).unwrap(), Some(task));
+    let retried = session.snapshot();
+    assert_eq!(retried.stamp(), published.stamp());
+    assert_eq!(
+        retried
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .toggle_task_tracker(),
+        Some(tracker)
+    );
+    assert_eq!(
+        retried.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert!(matches!(
+        DomManipulationRuntime::run_next(
+            &mut session.dom(),
+            &mut listeners,
+            &mut context,
+            DomManipulationRunLimits {
+                dispatch: dispatch_limits(),
+                source: source_limits()
+            },
+            &cancel,
+        ),
+        Err(DomManipulationRuntimeError::Dom(
+            DomError::SourceOperationPending
+        ))
+    ));
+    assert_eq!(context.toggle_calls, 0);
+    assert_eq!(context.beforetoggle_calls, 1);
+    assert_eq!(context.owner.pending_task(0).unwrap(), Some(task));
+    assert_eq!(session.snapshot().stamp(), published.stamp());
+    assert_eq!(
+        before_addition
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into()),
+        None
+    );
+    // No focus value, watcher reply or completed Show is supplied by this test.
+}
+
+#[test]
+fn native_show_publishes_empty_open_before_waiting_for_remembered_focus() {
+    let (session, subject) = fixture(session_limits());
+    assert_eq!(session.snapshot().relevant_global(subject).unwrap(), None);
+    show_publishes_open_and_retains_queued_task(
+        session,
+        subject,
+        HtmlDialogAction::RememberFocusedElement,
+        None,
+    );
+}
+
 #[test]
 fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running_tail() {
     let cancel = AtomicBool::new(false);
@@ -543,6 +751,152 @@ fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
     let children = snapshot.node(html).unwrap().children();
     assert_eq!(children.len(), 2);
     (session, top, children[1])
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_show_publishes_empty_open_before_waiting_for_close_watcher() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let subject = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(
+        session.snapshot().node(subject).unwrap().parent(),
+        Some(body)
+    );
+    assert_eq!(
+        session.snapshot().relevant_global(subject).unwrap(),
+        Some(top.global())
+    );
+    // HTML877d's open-change guard passes for this genuinely connected,
+    // fully active Document; setup reaches the watcher before Show step 7.
+    show_publishes_open_and_retains_queued_task(
+        session,
+        subject,
+        HtmlDialogAction::EstablishCloseWatcher,
+        Some((top.global(), top.document())),
+    );
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_source_open_attribute_publishes_hook_prefix_before_waiting_for_close_watcher() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let subject = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    let original = session.snapshot();
+    assert_eq!(
+        original.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    assert_eq!(
+        original.relevant_global(subject).unwrap(),
+        Some(top.global())
+    );
+    assert_eq!(original.node(subject).unwrap().parent(), Some(body));
+    let progress = {
+        let mut policy = |_: &DomStyleSource| None;
+        session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::set_attribute(subject, "open", ""),
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+    };
+    // The ordinary attribute request owns the nested hook independently of
+    // Show. HTML877d setup adds the open-list entry before its watcher wait.
+    let operation =
+        pending_dialog_service(progress, subject, HtmlDialogAction::EstablishCloseWatcher);
+    let published = session.snapshot();
+    assert_ne!(published.stamp(), original.stamp());
+    assert_eq!(
+        published.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert_eq!(published.incomplete_source_operation(), Some(operation));
+    assert!(
+        !published
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert_eq!(
+        session
+            .dom_manipulation_execution()
+            .pending_tasks()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        pending_dialog_service(
+            resume(&mut session, operation),
+            subject,
+            HtmlDialogAction::EstablishCloseWatcher
+        ),
+        operation
+    );
+    let retried = session.snapshot();
+    assert_eq!(retried.stamp(), published.stamp());
+    assert_eq!(
+        retried.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert_eq!(retried.incomplete_source_operation(), Some(operation));
+    assert_eq!(
+        session
+            .dom_manipulation_execution()
+            .pending_tasks()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        original.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    // No beforetoggle or toggle queue belongs to direct attribute addition,
+    // and no watcher completion is fabricated here.
 }
 
 #[cfg(any(
