@@ -323,6 +323,172 @@ fn adopted_empty_contents_still_cannot_be_destroyed_and_capture_keeps_actual_rel
 }
 
 #[test]
+fn populated_owned_contents_remain_indestructible_after_actual_adoption_and_emptying() {
+    let mut dom = dom();
+    let (document, template, fragment, inert) = setup(&mut dom);
+    let mut b = DomBatch::new();
+    let text = b.create_text(inert, "preserved text");
+    let comment = b.create_comment(inert, "preserved comment");
+    b.insert_before(&text, fragment, None);
+    b.insert_before(&comment, fragment, None);
+    let other = b.create_document();
+    let receiver = b.create_element(&other, "receiver");
+    let commit = apply(&mut dom, b);
+    let text = commit.created(&text).unwrap().unwrap();
+    let comment = commit.created(&comment).unwrap().unwrap();
+    let other = commit.document(&other).unwrap();
+    let receiver = commit.created(&receiver).unwrap().unwrap();
+    let populated = dom.snapshot();
+    assert_eq!(
+        populated.node(fragment).unwrap().children(),
+        &[text, comment]
+    );
+
+    // #1232's native ownership rule follows the actual Template host, not
+    // child count, ordinary parentage, or current node-document equality.
+    let transferred_children = [text, comment];
+    for empty in [false, true] {
+        if empty {
+            let mut b = DomBatch::new();
+            b.adopt(fragment, other);
+            apply(&mut dom, b);
+            let adopted = dom.snapshot();
+            assert_eq!(
+                adopted.node(fragment).unwrap().owner_document(),
+                Some(other)
+            );
+            assert_eq!(
+                adopted.node(fragment).unwrap().fragment_host(),
+                Some(template)
+            );
+            assert_eq!(adopted.node(fragment).unwrap().children(), &[text, comment]);
+            assert_eq!(
+                adopted.node(template).unwrap().owner_document(),
+                Some(document)
+            );
+            let mut b = DomBatch::new();
+            // Inserting a Fragment transfers its real children; the owned root
+            // itself remains parentless and retains its genuine Template host.
+            b.insert_before(fragment, receiver, None);
+            apply(&mut dom, b);
+        }
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let expected_document = if empty { other } else { inert };
+        let expected_children: &[NodeId] = if empty { &[] } else { &[text, comment] };
+        assert_eq!(contents(&before, template), fragment);
+        assert_eq!(before.node(fragment).unwrap().children(), expected_children);
+        assert_eq!(before.node(fragment).unwrap().parent(), None);
+        assert_eq!(
+            before.node(fragment).unwrap().fragment_host(),
+            Some(template)
+        );
+        assert_eq!(
+            before.node(fragment).unwrap().owner_document(),
+            Some(expected_document)
+        );
+
+        let mut b = DomBatch::new();
+        b.destroy(fragment);
+        assert_eq!(
+            dom.apply(b, &cancel()).unwrap_err(),
+            DomError::InvalidDestruction
+        );
+        let after = dom.snapshot();
+        assert_eq!(after.stamp(), before.stamp());
+        assert_eq!(dom.usage(), usage);
+        let history = dom.changes_since(before.stamp()).unwrap();
+        assert_eq!(history.from(), before.stamp());
+        assert_eq!(history.to(), before.stamp());
+        assert!(history.changes().is_empty());
+        assert_eq!(contents(&after, template), fragment);
+        assert_eq!(
+            after.node(fragment).unwrap().fragment_host(),
+            Some(template)
+        );
+        assert_eq!(after.node(fragment).unwrap().parent(), None);
+        assert_eq!(
+            after.node(fragment).unwrap().host_including_parent(),
+            Some(template)
+        );
+        assert_eq!(
+            after.node(fragment).unwrap().owner_document(),
+            Some(expected_document)
+        );
+        assert_eq!(after.node(fragment).unwrap().children(), expected_children);
+        assert_eq!(
+            after.node(template).unwrap().owner_document(),
+            Some(document)
+        );
+        assert_eq!(
+            after
+                .document(document)
+                .unwrap()
+                .associated_inert_template_document(),
+            Some(inert)
+        );
+        for id in [
+            document.node(),
+            inert.node(),
+            other.node(),
+            template,
+            fragment,
+            receiver,
+            text,
+            comment,
+        ] {
+            assert!(
+                after.node(id).is_ok(),
+                "direct destroy must not retire {id:?}"
+            );
+        }
+        for child in [text, comment] {
+            assert_eq!(
+                after.node(child).unwrap().parent(),
+                Some(if empty { receiver } else { fragment })
+            );
+            assert_eq!(
+                after.node(child).unwrap().owner_document(),
+                Some(expected_document)
+            );
+        }
+        assert_eq!(
+            after.node(receiver).unwrap().children(),
+            if empty {
+                &transferred_children[..]
+            } else {
+                &[]
+            }
+        );
+        assert_eq!(
+            after.node(text).unwrap().data(),
+            Some(&DocumentString::from("preserved text"))
+        );
+        assert_eq!(
+            after.node(comment).unwrap().data(),
+            Some(&DocumentString::from("preserved comment"))
+        );
+    }
+    // The original populated history retains the same full identities and
+    // original inert node Document after the real transfer and both refusals.
+    assert_eq!(contents(&populated, template), fragment);
+    assert_eq!(
+        populated.node(fragment).unwrap().fragment_host(),
+        Some(template)
+    );
+    assert_eq!(
+        populated.node(fragment).unwrap().owner_document(),
+        Some(inert)
+    );
+    assert_eq!(
+        populated.node(fragment).unwrap().children(),
+        &[text, comment]
+    );
+    assert_eq!(populated.node(text).unwrap().parent(), Some(fragment));
+    assert_eq!(populated.node(comment).unwrap().parent(), Some(fragment));
+}
+
+#[test]
 fn shallow_and_deep_import_preserve_both_lists_and_use_copy_contents_documents() {
     let mut source = dom();
     let (d, t, f, i) = setup(&mut source);
