@@ -118,6 +118,10 @@ pub(super) struct FinishedTasks {
     pub next: u64,
     pub cancellations: Vec<(u64, NodeId)>,
 }
+pub(in crate::store) enum CompletionAdmission {
+    Live,
+    Skipped(crate::DomSelectTaskCompletion),
+}
 struct SelectContinuation {
     after: SelectAfter,
     acknowledge: bool,
@@ -348,42 +352,12 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<crate::DomSelectTaskCompletion, DomError> {
         self.require_source_idle()?;
-        check_cancel(cancel)?;
-        let auth = &task.authorization;
-        if auth.id.owner != self.owner {
-            return Err(DomError::ForeignOwner);
-        }
-        if auth.status() == 2 {
-            // Retirement resolves the canonical obligation. Reporting its old
-            // intention still requires caller admission and exact-generation
-            // revalidation, without touching any replacement slot occupant.
-            if limits.work == 0 {
-                return Err(DomError::SelectWorkLimit { limit: 0 });
-            }
-            admit(
-                size_of::<crate::DomSelectTaskCompletion>(),
-                limits.scratch,
-                DomResource::SelectScratch,
-            )?;
-            if self.snapshot().node(auth.target).is_ok() {
-                return Err(DomError::InvalidNativeTask);
-            }
-            check_cancel(cancel)?;
-            auth.consume();
-            return Ok(crate::DomSelectTaskCompletion {
-                outcome: crate::DomSelectTaskOutcome::SkippedTargetDestroyed,
-                changes: None,
-            });
-        }
-        if auth.status() != 0
-            || !self
-                .active_task
-                .upgrade()
-                .is_some_and(|a| Arc::ptr_eq(&a, auth))
-            || !matches!(self.state.native_tasks.first(),Some(Task::Update{serial,target}) if *serial==auth.id.serial && *target==auth.target)
+        if let CompletionAdmission::Skipped(completion) =
+            self.admit_select_completion(task, limits, cancel)?
         {
-            return Err(DomError::InvalidNativeTask);
+            return Ok(completion);
         }
+        let auth = &task.authorization;
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         draft.select_scratch_limit = limits.scratch;
         draft.select_work_limit = limits.work;
@@ -399,6 +373,69 @@ impl Dom {
             outcome: crate::DomSelectTaskOutcome::Updated,
             changes: Some(commit.changes),
         })
+    }
+    pub(in crate::store) fn admit_select_completion(
+        &self,
+        task: &crate::DomSelectTask,
+        limits: crate::DomNativeCheckpointLimits,
+        cancel: &AtomicBool,
+    ) -> Result<CompletionAdmission, DomError> {
+        self.require_source_entry()?;
+        check_cancel(cancel)?;
+        let auth = &task.authorization;
+        if auth.id.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        if auth.status() == 2 {
+            self.require_source_idle()?;
+            // Retirement resolves the canonical obligation. Reporting its old
+            // intention still requires caller admission and exact-generation
+            // revalidation, without touching any replacement slot occupant.
+            if limits.work == 0 {
+                return Err(DomError::SelectWorkLimit { limit: 0 });
+            }
+            admit(
+                size_of::<crate::DomSelectTaskCompletion>(),
+                limits.scratch,
+                DomResource::SelectScratch,
+            )?;
+            if !matches!(
+                self.state.node(self.owner, auth.target),
+                Err(DomError::StaleNode)
+            ) {
+                return Err(DomError::InvalidNativeTask);
+            }
+            check_cancel(cancel)?;
+            auth.consume();
+            return Ok(CompletionAdmission::Skipped(
+                crate::DomSelectTaskCompletion {
+                    outcome: crate::DomSelectTaskOutcome::SkippedTargetDestroyed,
+                    changes: None,
+                },
+            ));
+        }
+        self.validate_pending_select_task(task)?;
+        Ok(CompletionAdmission::Live)
+    }
+    pub(in crate::store) fn validate_pending_select_task(
+        &self,
+        task: &crate::DomSelectTask,
+    ) -> Result<(), DomError> {
+        let auth = &task.authorization;
+        if auth.id.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        if auth.status() != 0
+            || !self
+                .active_task
+                .upgrade()
+                .is_some_and(|a| Arc::ptr_eq(&a, auth))
+            || !matches!(self.state.native_tasks.first(),Some(Task::Update{serial,target}) if *serial==auth.id.serial && *target==auth.target)
+            || self.state.node(self.owner, auth.target).is_err()
+        {
+            return Err(DomError::InvalidNativeTask);
+        }
+        Ok(())
     }
 }
 impl Draft {
@@ -2093,6 +2130,186 @@ mod tests {
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         assert_eq!(dom.pending_native_tasks(), 0);
         assert_eq!(dom.snapshot().node(option).unwrap().parent(), Some(select));
+    }
+    #[test]
+    fn canceled_prepared_ancestor_retirement_preserves_select_tasks_and_authority() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(policy(100000, 100000)).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let ancestor = setup.create_element_ns(&document, crate::Namespace::html(), "section");
+        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+        let a = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let b = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let survivor = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+        let x = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let y = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        setup.insert_before(&select, &ancestor, None);
+        setup.insert_before(&a, &select, None);
+        setup.insert_before(&b, &select, None);
+        setup.insert_before(&x, &survivor, None);
+        setup.insert_before(&y, &survivor, None);
+        let created = dom.apply(setup, &cancel).unwrap();
+        let document = created.document(&document).unwrap();
+        let ancestor = created.created(&ancestor).unwrap().unwrap();
+        let select = created.created(&select).unwrap().unwrap();
+        let a = created.created(&a).unwrap().unwrap();
+        let b = created.created(&b).unwrap().unwrap();
+        let survivor = created.created(&survivor).unwrap().unwrap();
+        let x = created.created(&x).unwrap().unwrap();
+        let y = created.created(&y).unwrap().unwrap();
+        let history_start = dom.snapshot().stamp();
+        let mut seed = DomBatch::new();
+        seed.detach(a); // S1
+        seed.detach(x); // T1
+        seed.insert_before(a, select, None);
+        seed.detach(a); // S2
+        seed.insert_before(x, survivor, None);
+        seed.detach(x); // T2
+        dom.apply(seed, &cancel).unwrap();
+        let checkpoint = crate::DomNativeCheckpointLimits::new(
+            100000,
+            100000,
+            crate::DomSlotQueryLimits::new(32, 64).unwrap(),
+        )
+        .unwrap();
+        let crate::DomNativeCheckpoint::Select(handed) =
+            dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+        else {
+            panic!("actual S1 handoff")
+        };
+        let before = dom.snapshot();
+        let original = before.state.native_tasks.clone();
+        assert_eq!(original.len(), 4);
+        for (row, expected) in original.iter().zip([select, survivor, select, survivor]) {
+            assert!(matches!(row, Task::Update { target, .. } if *target == expected));
+        }
+        let Task::Update { serial: first, .. } = original[0] else {
+            panic!("S1")
+        };
+        let Task::Update { serial: second, .. } = original[2] else {
+            panic!("S2")
+        };
+        assert_ne!(first, second);
+        assert_eq!(handed.operation().serial, first);
+        assert_eq!(handed.authorization.status(), 0);
+        let next = before.state.next_task;
+        let usage = dom.usage();
+        let history = dom.changes_since(history_start).unwrap();
+        let destroy = || {
+            let mut edit = DomBatch::new();
+            edit.destroy(ancestor);
+            edit
+        };
+        // Real source cleanup removes selected B before target cancellation,
+        // adding one S occurrence after S1/T1/S2/T2. Preparing the destruction
+        // performs and records that private work without publishing retirement.
+        let expected_cancellations: Vec<_> = [first, second, next]
+            .into_iter()
+            .map(|serial| DomChange::SelectTaskCancelled {
+                operation: crate::DomNativeTaskId {
+                    owner: dom.owner,
+                    serial,
+                },
+                select,
+                reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
+            })
+            .collect();
+        let prepared = dom.prepare(destroy(), &cancel).unwrap();
+        for id in [ancestor, select, b] {
+            assert!(matches!(
+                prepared.state.node(dom.owner, id),
+                Err(DomError::StaleNode)
+            ));
+            assert!(prepared.changes.contains(&DomChange::Destroyed(id)));
+        }
+        assert_eq!(prepared.state.native_tasks, vec![original[1], original[3]]);
+        assert_eq!(prepared.state.next_task, next + 1);
+        let cancellations: Vec<_> = prepared
+            .changes
+            .iter()
+            .filter(|change| matches!(change, DomChange::SelectTaskCancelled { .. }))
+            .copied()
+            .collect();
+        assert_eq!(cancellations, expected_cancellations);
+        assert_eq!(handed.authorization.status(), 0);
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            dom.publish(prepared, &cancel).unwrap_err(),
+            DomError::Cancelled
+        );
+        assert!(Arc::ptr_eq(&dom.state, &before.state));
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(dom.revision, before.revision);
+        assert_eq!(dom.usage(), usage);
+        assert_eq!(dom.state.native_tasks, original);
+        assert_eq!(dom.state.next_task, next);
+        assert_eq!(handed.authorization.status(), 0);
+        assert!(Arc::ptr_eq(
+            &dom.active_task.upgrade().unwrap(),
+            &handed.authorization
+        ));
+        let unchanged_history = dom.changes_since(history_start).unwrap();
+        assert_eq!(unchanged_history.from(), history.from());
+        assert_eq!(unchanged_history.to(), history.to());
+        assert_eq!(unchanged_history.changes(), history.changes());
+        for id in [document.node(), ancestor, select, a, b, survivor, x, y] {
+            assert!(dom.snapshot().node(id).is_ok());
+        }
+        assert_eq!(dom.snapshot().node(ancestor).unwrap().children(), &[select]);
+        assert_eq!(dom.snapshot().node(select).unwrap().children(), &[b]);
+
+        cancel.store(false, Ordering::Relaxed);
+        let retried = dom.prepare(destroy(), &cancel).unwrap();
+        let retried_cancellations: Vec<_> = retried
+            .changes
+            .iter()
+            .filter(|change| matches!(change, DomChange::SelectTaskCancelled { .. }))
+            .copied()
+            .collect();
+        assert_eq!(retried_cancellations, expected_cancellations);
+        let committed = dom.publish(retried, &cancel).unwrap();
+        let published_cancellations: Vec<_> = committed
+            .changes()
+            .changes()
+            .iter()
+            .filter(|change| matches!(change, DomChange::SelectTaskCancelled { .. }))
+            .copied()
+            .collect();
+        assert_eq!(published_cancellations, expected_cancellations);
+        assert_eq!(dom.state.native_tasks, vec![original[1], original[3]]);
+        assert_eq!(dom.state.next_task, next + 1);
+        assert_eq!(handed.authorization.status(), 2);
+        assert_eq!(before.state.native_tasks, original);
+        assert_eq!(before.state.next_task, next);
+        for id in [ancestor, select, b] {
+            assert!(before.node(id).is_ok());
+            assert!(handed.source().node(id).is_ok());
+            assert!(matches!(dom.snapshot().node(id), Err(DomError::StaleNode)));
+        }
+        for expected in [original[1], original[3]] {
+            let crate::DomNativeCheckpoint::Select(task) =
+                dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+            else {
+                panic!("surviving T occurrence")
+            };
+            let Task::Update { serial, target } = expected else {
+                panic!("T")
+            };
+            assert_eq!((task.operation().serial, task.select()), (serial, target));
+            dom.complete_select_task(&task, checkpoint, &cancel)
+                .unwrap();
+        }
+        assert_eq!(dom.pending_native_tasks(), 0);
+        let before_skip = dom.snapshot();
+        assert_eq!(
+            dom.complete_select_task(&handed, checkpoint, &cancel)
+                .unwrap()
+                .outcome(),
+            crate::DomSelectTaskOutcome::SkippedTargetDestroyed
+        );
+        assert_eq!(dom.snapshot().stamp(), before_skip.stamp());
+        assert_eq!(handed.authorization.status(), 1);
     }
     #[test]
     fn ordinary_effect_bank_is_registered_before_select_is_reached() {

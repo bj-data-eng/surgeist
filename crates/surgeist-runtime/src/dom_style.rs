@@ -1741,6 +1741,9 @@ pub(crate) struct StyleSourceGuard {
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
 }
 impl StyleSourceGuard {
+    pub(crate) fn reserve_cleanup(&self, cancel: &AtomicBool) -> Result<(), DomStyleRuntimeError> {
+        DomStyleRuntime::reserve_root_cleanup(&self.state, cancel)
+    }
     pub(crate) fn flush(
         &self,
         lease: &mut DomSourceLease<'_>,
@@ -1959,14 +1962,13 @@ impl DomStyleRuntime {
             .roots
             .retain(|root| !matches!(snapshot.node(root.node), Err(DomError::StaleNode)));
     }
-    pub(crate) fn prepare_source(
+    pub(crate) fn qualify_source(
         &self,
         dom: &DomEventDom<'_>,
-        cancel: &AtomicBool,
     ) -> Result<StyleSourceGuard, DomStyleRuntimeError> {
-        let state = self.qualified(dom)?;
-        Self::reserve_root_cleanup(&state, cancel)?;
-        Ok(StyleSourceGuard { state })
+        Ok(StyleSourceGuard {
+            state: self.qualified(dom)?,
+        })
     }
     /// Execute the actual networking FIFO head. The actual task never leaves
     /// its session bank; all owner borrows end before entering caller work.

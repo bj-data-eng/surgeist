@@ -908,3 +908,156 @@ fn observation_resume_preserves_reserved_close_before_and_after_receipt_acceptan
     assert!(dom.pending_source_edit().is_none());
     assert_eq!(dom.snapshot().stamp(), stamp);
 }
+
+#[test]
+fn retired_select_skip_requires_idle_even_inside_actual_beforetoggle_dispatch_reentry() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, executor, document, dialog, _) = fixture();
+    dom.set_limits(
+        dom.limits
+            .with_select_processing(16, 4_000_000, 10_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+
+    let mut setup = DomBatch::new();
+    let select = setup.create_element_ns(document, crate::Namespace::html(), "select");
+    let option = setup.create_element_ns(document, crate::Namespace::html(), "option");
+    let other = setup.create_element_ns(document, crate::Namespace::html(), "option");
+    setup.insert_before(&option, &select, None);
+    setup.insert_before(&other, &select, None);
+    let created = dom.apply(setup, &cancel).unwrap();
+    let select = created.created(&select).unwrap().unwrap();
+    let option = created.created(&option).unwrap().unwrap();
+    let mut removal = DomBatch::new();
+    removal.detach(option);
+    dom.apply(removal, &cancel).unwrap();
+    let checkpoint = crate::DomNativeCheckpointLimits::new(
+        4_000_000,
+        10_000_000,
+        crate::DomSlotQueryLimits::new(128, 128).unwrap(),
+    )
+    .unwrap();
+    let crate::DomNativeCheckpoint::Select(issued) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("real issued Select intention")
+    };
+    assert_eq!(issued.select(), select);
+    let historical = issued.source().clone();
+    let mut retirement = DomBatch::new();
+    retirement.destroy(select);
+    let retired = dom.apply(retirement, &cancel).unwrap();
+    assert!(retired.changes().changes().iter().any(|change| matches!(
+        change,
+        DomChange::SelectTaskCancelled {
+            operation, select: target,
+            reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
+        } if *operation == issued.operation() && *target == select
+    )));
+    assert_eq!(issued.authorization.status(), 2);
+    assert_eq!(dom.pending_native_tasks(), 0);
+
+    let before = dom.snapshot();
+    let event = request(&mut dom, dialog);
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    // Positive control: this exact real dispatcher scope admits a callback's
+    // ordinary atomic entry. The empty callback publishes no fabricated effect.
+    dom.apply(DomBatch::new(), &cancel).unwrap();
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        event.operation()
+    );
+    assert!(!dom.pending_source_edit().unwrap().has_published());
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    // require_source_entry alone succeeds here. A retirement report instead
+    // requires source-idle and must not consume its once-only authority.
+    assert!(matches!(
+        dom.begin_select_completion(
+            &issued,
+            checkpoint,
+            DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
+            &cancel,
+        ),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert!(matches!(
+        dom.complete_select_task(&issued, checkpoint, &cancel),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert_eq!(issued.authorization.status(), 2);
+    assert_eq!(dom.pending_native_tasks(), 0);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        event.operation()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    // Finish the actual trusted-executor protocol after leaving dispatch.
+    // Canceling Show's genuine beforetoggle returns before any open/focus/task
+    // effect; no synthetic receipt, flag setter or live service is substituted.
+    drop(scope);
+    let mut permit = Some(permit);
+    let mut publication = Some(
+        executor
+            .seal_completed(&dom, &mut permit, DomSourceEventOutcome::Canceled, &cancel)
+            .unwrap(),
+    );
+    assert!(permit.is_none());
+    {
+        let mut lease = dom
+            .resume_source_edit(event.operation(), limits(), &cancel)
+            .unwrap();
+        lease
+            .accept_source_event(&event, &mut publication, &cancel)
+            .unwrap();
+        assert!(publication.is_none());
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(issued.authorization.status(), 2);
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(
+        dom.snapshot()
+            .node(dialog)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
+
+    let completion = match dom
+        .begin_select_completion(
+            &issued,
+            checkpoint,
+            DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
+            &cancel,
+        )
+        .unwrap()
+    {
+        crate::DomSelectCompletionStart::Skipped(completion) => completion,
+        crate::DomSelectCompletionStart::Source(_) => panic!("retirement is not Source execution"),
+    };
+    assert_eq!(
+        completion.outcome(),
+        crate::DomSelectTaskOutcome::SkippedTargetDestroyed
+    );
+    assert!(completion.changes().is_none());
+    assert_eq!(issued.authorization.status(), 1);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(dom.pending_native_tasks(), 0);
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(historical.node(select).is_ok());
+    assert!(matches!(
+        dom.snapshot().node(select),
+        Err(DomError::StaleNode)
+    ));
+    assert!(matches!(
+        dom.begin_select_completion(&issued, checkpoint, limits(), &cancel),
+        Err(DomError::InvalidNativeTask)
+    ));
+}

@@ -18,9 +18,10 @@ use crate::element_tasks::{DomElementTaskRuntime, DomElementTaskRuntimeError};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DomError, DomNativeCheckpointLimits, DomNativeHtmlInstallError, DomNativeHtmlInstallTarget,
-    DomSelectTask, DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits,
-    DomSourceNativeHtmlInstallLimits, DomSourceOperationId, DomSourceProgress, DomSourceRequest,
-    DomStyleInlineCspObservation, DomStyleSource,
+    DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion, DomSourceCompletion,
+    DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceNativeHtmlInstallLimits,
+    DomSourceOperationId, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation,
+    DomStyleSource,
 };
 
 /// Borrowed services for the reached requests of one actual Source operation.
@@ -81,6 +82,19 @@ pub enum DomSourceDriveProgress {
         /// Actual missing service.
         reason: DomSourceUnavailable,
     },
+}
+
+/// Canonical retirement or live Source progress for one authorized Select task.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Return the original Source progress inline without a new fallible allocation after canonical publication"
+)]
+#[derive(Debug)]
+pub enum DomSelectCompletionProgress {
+    /// The canonical owner consumed the exact historical retirement outcome.
+    Skipped(DomSelectTaskCompletion),
+    /// The live task entered its original Source continuation.
+    Source(DomSourceDriveProgress),
 }
 
 /// Refusal preserves the original canonical operation and family-owned results.
@@ -203,13 +217,21 @@ impl DomSourceRuntime {
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
     ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
+        let guard = self.qualify_source_owners(dom)?;
+        guard.reserve_cleanup(cancel)?;
+        Ok(guard)
+    }
+    fn qualify_source_owners(
+        &self,
+        dom: &DomEventDom<'_>,
+    ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
         self.element_tasks
             .validate_view(dom)
             .map_err(DomSourceRuntimeError::ElementTasks)?;
         self.hosted
             .validate_view(dom)
             .map_err(DomSourceRuntimeError::Hosted)?;
-        Ok(self.styles.prepare_source(dom, cancel)?)
+        Ok(self.styles.qualify_source(dom)?)
     }
     /// Execute exactly one requested edit through the original Source engine.
     pub fn apply(
@@ -348,17 +370,26 @@ impl DomSourceRuntime {
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
-        let guard = self.prepare(dom, cancel)?;
-        if let Some(scope) = services.execution_scope {
-            self.hosted
-                .qualify_execution_scope(scope)
-                .map_err(DomSourceRuntimeError::Hosted)?;
-        }
+    ) -> Result<DomSelectCompletionProgress, DomSourceRuntimeError> {
+        // Validate every original Session binding before canonical consumption.
+        // Cleanup admission and optional services belong only to a live Source.
+        let guard = self.qualify_source_owners(dom)?;
         let progress = {
-            let mut lease = dom
+            let mut lease = match dom
                 .raw_mut()
-                .begin_select_completion(task, checkpoint, limits, cancel)?;
+                .begin_select_completion(task, checkpoint, limits, cancel)?
+            {
+                DomSelectCompletionStart::Skipped(completion) => {
+                    return Ok(DomSelectCompletionProgress::Skipped(completion));
+                }
+                DomSelectCompletionStart::Source(lease) => lease,
+            };
+            guard.reserve_cleanup(cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .qualify_execution_scope(scope)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             if let Some(scope) = services.execution_scope {
                 self.hosted
                     .bind_execution_scope(&mut lease, scope, true, cancel)
@@ -382,6 +413,7 @@ impl DomSourceRuntime {
             services,
             cancel,
         )
+        .map(DomSelectCompletionProgress::Source)
     }
     /// Resume Select processing with the same actual task authorization.
     pub fn resume_select(

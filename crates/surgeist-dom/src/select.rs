@@ -191,6 +191,12 @@ impl DomSelectTaskCompletion {
         self.changes.as_ref()
     }
 }
+/// Canonical admission of an issued Select intention. A retired target reports
+/// its historical skip directly; a live target executes through its Source root.
+pub enum DomSelectCompletionStart<'a> {
+    Skipped(DomSelectTaskCompletion),
+    Source(crate::DomSourceLease<'a>),
+}
 /// Actual per-turn processing and Slot output admission. Select task capacity
 /// remains the owner's independently configured pending-operation bound.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

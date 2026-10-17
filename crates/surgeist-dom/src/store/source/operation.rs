@@ -2870,31 +2870,18 @@ impl Operation {
     }
 }
 impl Dom {
-    fn validate_style_select(&self, task: &crate::DomSelectTask) -> Result<(), DomError> {
-        let auth = &task.authorization;
-        if auth.id.owner != self.owner {
-            return Err(DomError::ForeignOwner);
-        }
-        if auth.status() != 0
-            || !self
-                .active_task
-                .upgrade()
-                .is_some_and(|a| Arc::ptr_eq(&a, auth))
-            || !matches!(self.state.native_tasks.first(), Some(select::Task::Update {serial,target}) if *serial == auth.id.serial && *target == auth.target)
-        {
-            return Err(DomError::InvalidNativeTask);
-        }
-        Ok(())
-    }
     pub fn begin_select_completion(
         &mut self,
         task: &crate::DomSelectTask,
         checkpoint: crate::DomNativeCheckpointLimits,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceLease<'_>, DomError> {
-        self.require_source_entry()?;
-        self.validate_style_select(task)?;
+    ) -> Result<crate::DomSelectCompletionStart<'_>, DomError> {
+        if let select::CompletionAdmission::Skipped(completion) =
+            self.admit_select_completion(task, checkpoint, cancel)?
+        {
+            return Ok(crate::DomSelectCompletionStart::Skipped(completion));
+        }
         let mut lease = self.begin_source_root(
             OperationRoot::SelectCompletion(task.select()),
             Arc::new(BatchIdentity),
@@ -2909,7 +2896,7 @@ impl Dom {
             target: task.select(),
         });
         lease.select_authorization = Some(task.authorization.clone());
-        Ok(lease)
+        Ok(crate::DomSelectCompletionStart::Source(lease))
     }
     pub fn resume_select_completion(
         &mut self,
@@ -2918,7 +2905,7 @@ impl Dom {
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
-        self.validate_style_select(task)?;
+        self.validate_pending_select_task(task)?;
         let op = self
             .source_operation
             .as_ref()

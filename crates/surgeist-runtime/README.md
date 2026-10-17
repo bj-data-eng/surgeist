@@ -22,6 +22,13 @@ operation; the Style handle retains CSSOM resources, notifications and readback.
 `try_shutdown` returns the whole session while mandatory work remains. Dropping
 it abandons execution without delivering callbacks or claiming completion.
 
+`DomSourceRuntime::complete_select` preserves canonical DOM retirement skips in
+`DomSelectCompletionProgress::Skipped`. It validates the actual Session owners
+before consumption, and a retired task needs no live Style services or execution
+scope. Live work returns `Source` with the ordinary drive progress; a pending
+operation resumes through `resume_select`. Neither entry drains the native task
+queue or creates a second task loop.
+
 The native dispatcher handles actual Details and Dialog toggles, Dialog method
 beforetoggle events and queued Close notifications, including Global capture for
 hosted Documents. One element-task owner retains both DOM-manipulation and

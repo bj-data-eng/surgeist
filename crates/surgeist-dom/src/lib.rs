@@ -216,8 +216,9 @@ pub use registry::{DomRegistry, DomRegistryId};
 pub use script::DomHtmlScript;
 pub use select::{
     DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,
-    DomSelect, DomSelectState, DomSelectTask, DomSelectTaskCancellationReason,
-    DomSelectTaskCompletion, DomSelectTaskOutcome, DomSelectedcontent,
+    DomSelect, DomSelectCompletionStart, DomSelectState, DomSelectTask,
+    DomSelectTaskCancellationReason, DomSelectTaskCompletion, DomSelectTaskOutcome,
+    DomSelectedcontent,
 };
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,

@@ -897,3 +897,638 @@ fn initial_and_slot_capture_keep_actual_option_flags_and_select_form_association
         assert_eq!(owner.owner(), Some(&c.subject(form).unwrap()));
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+enum ImplicitOptionRemoval {
+    InsertIntoAnotherParent,
+    AdoptIntoAnotherDocument,
+    ReplaceChild,
+}
+
+fn implicit_option_removal_queues_the_original_select(route: ImplicitOptionRemoval) {
+    let mut f = fixture(false, true);
+    let mut setup = DomBatch::new();
+    let other_document = setup.create_document();
+    let parking = setup.create_element_ns(f.doc, Namespace::html(), "div");
+    let replacement = setup.create_element_ns(f.doc, Namespace::html(), "span");
+    let survivor = setup.create_element_ns(f.doc, Namespace::html(), "select");
+    let survivor_option = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    let survivor_second = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    setup.insert_before(&survivor_option, &survivor, None);
+    setup.insert_before(&survivor_second, &survivor, None);
+    let created = apply(&mut f.dom, setup);
+    let other_document = created.document(&other_document).unwrap();
+    let parking = created.created(&parking).unwrap().unwrap();
+    let replacement = created.created(&replacement).unwrap().unwrap();
+    let survivor = created.created(&survivor).unwrap().unwrap();
+    let survivor_option = created.created(&survivor_option).unwrap().unwrap();
+    let remove = |edit: &mut DomBatch| match route {
+        ImplicitOptionRemoval::InsertIntoAnotherParent => {
+            edit.insert_before(f.a, parking, None);
+        }
+        ImplicitOptionRemoval::AdoptIntoAnotherDocument => {
+            edit.adopt(f.a, other_document);
+        }
+        ImplicitOptionRemoval::ReplaceChild => {
+            edit.replace_child(replacement, f.select, f.a);
+        }
+    };
+    // HTML877d's Option removal steps capture the old Select. The enclosing
+    // insertion/adoption/replacement must finish those steps before continuing;
+    // neither the new parent nor the new node document replaces that operand.
+    let mut edit = DomBatch::new();
+    remove(&mut edit); // S1
+    edit.detach(survivor_option); // T1
+    if matches!(route, ImplicitOptionRemoval::ReplaceChild) {
+        edit.replace_child(f.a, f.select, replacement);
+    } else {
+        edit.insert_before(f.a, f.select, None);
+    }
+    // Replacement restores A before selected B. The Option setter asks for
+    // normalization, which keeps the last selected Option (B). The index setter
+    // selects only A, establishing the actual second selected-Option removal.
+    if matches!(route, ImplicitOptionRemoval::ReplaceChild) {
+        edit.set_select_selected_index(f.select, 0);
+    } else {
+        edit.set_option_selected(f.a, true);
+    }
+    remove(&mut edit); // S2, a distinct occurrence even with the same target
+    apply(&mut f.dom, edit);
+    assert_eq!(f.dom.pending_native_tasks(), 3, "{route:?}");
+    let queued = f.dom.snapshot();
+    assert!(selected(&queued, f.b));
+    assert_eq!(
+        queued.node(f.a).unwrap().parent(),
+        match route {
+            ImplicitOptionRemoval::InsertIntoAnotherParent => Some(parking),
+            ImplicitOptionRemoval::AdoptIntoAnotherDocument
+            | ImplicitOptionRemoval::ReplaceChild => None,
+        }
+    );
+    assert_eq!(
+        queued.node(f.a).unwrap().owner_document(),
+        match route {
+            ImplicitOptionRemoval::AdoptIntoAnotherDocument => Some(other_document),
+            ImplicitOptionRemoval::InsertIntoAnotherParent
+            | ImplicitOptionRemoval::ReplaceChild => Some(f.doc),
+        }
+    );
+
+    let first = task(&mut f.dom);
+    assert_eq!(first.select(), f.select, "{route:?}");
+    assert!(selected(first.source(), f.b));
+    // Change current state after handoff, then put actual author content into
+    // Selectedcontent. Executing S1 must clear it from the current no-selection
+    // state rather than clone B from the task's historical source snapshot.
+    let mut edit = DomBatch::new();
+    edit.set_select_selected_index(f.select, -1);
+    let manual = edit.create_text(f.doc, "author content");
+    edit.insert_before(&manual, f.content, None);
+    apply(&mut f.dom, edit);
+    assert_eq!(text(&f.dom.snapshot(), f.content), "author content".into());
+    assert_eq!(
+        f.dom
+            .complete_select_task(&first, checkpoint(), &cancel())
+            .unwrap()
+            .outcome(),
+        DomSelectTaskOutcome::Updated
+    );
+    assert!(
+        f.dom
+            .snapshot()
+            .node(f.content)
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+    assert!(selected(first.source(), f.b));
+    assert_eq!(f.dom.pending_native_tasks(), 2);
+
+    let middle = task(&mut f.dom);
+    assert_eq!(middle.select(), survivor, "{route:?}");
+    assert_ne!(middle.operation(), first.operation());
+    f.dom
+        .complete_select_task(&middle, checkpoint(), &cancel())
+        .unwrap();
+    let last = task(&mut f.dom);
+    assert_eq!(last.select(), f.select, "{route:?}");
+    assert_ne!(last.operation(), first.operation());
+    assert_ne!(last.operation(), middle.operation());
+    let mut edit = DomBatch::new();
+    edit.set_select_selected_index(f.select, 0);
+    apply(&mut f.dom, edit);
+    let before_last = f.dom.snapshot();
+    let content_text = before_last.node(f.content).unwrap().children()[0];
+    let mut edit = DomBatch::new();
+    edit.replace_data(content_text, 0, usize::MAX, "stale author content");
+    apply(&mut f.dom, edit);
+    assert_eq!(
+        text(&f.dom.snapshot(), f.content),
+        "stale author content".into()
+    );
+    f.dom
+        .complete_select_task(&last, checkpoint(), &cancel())
+        .unwrap();
+    assert_eq!(text(&f.dom.snapshot(), f.content), "B".into());
+    assert_eq!(text(&before_last, f.content), "B".into());
+    assert_eq!(f.dom.pending_native_tasks(), 0);
+}
+
+#[test]
+fn direct_insertion_removal_keeps_duplicate_captured_select_occurrences_in_fifo() {
+    implicit_option_removal_queues_the_original_select(
+        ImplicitOptionRemoval::InsertIntoAnotherParent,
+    );
+}
+
+#[test]
+fn option_adoption_removal_keeps_duplicate_captured_select_occurrences_in_fifo() {
+    implicit_option_removal_queues_the_original_select(
+        ImplicitOptionRemoval::AdoptIntoAnotherDocument,
+    );
+}
+
+#[test]
+fn replacement_removal_keeps_duplicate_captured_select_occurrences_in_fifo() {
+    implicit_option_removal_queues_the_original_select(ImplicitOptionRemoval::ReplaceChild);
+}
+
+#[test]
+fn ancestor_retirement_cancels_captured_select_occurrences_and_preserves_survivor_fifo() {
+    let mut f = fixture(false, false);
+    let mut setup = DomBatch::new();
+    let ancestor = setup.create_element_ns(f.doc, Namespace::html(), "section");
+    let survivor = setup.create_element_ns(f.doc, Namespace::html(), "select");
+    let a = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    let b = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    setup.insert_before(f.select, &ancestor, None);
+    setup.insert_before(&a, &survivor, None);
+    setup.insert_before(&b, &survivor, None);
+    let created = apply(&mut f.dom, setup);
+    let ancestor = created.created(&ancestor).unwrap().unwrap();
+    let survivor = created.created(&survivor).unwrap().unwrap();
+    let a = created.created(&a).unwrap().unwrap();
+    let mut edit = DomBatch::new();
+    edit.detach(f.a); // S1
+    edit.detach(a); // T1
+    edit.insert_before(f.a, f.select, None);
+    edit.detach(f.a); // S2
+    edit.insert_before(a, survivor, None);
+    edit.detach(a); // T2
+    apply(&mut f.dom, edit);
+    let handed = task(&mut f.dom);
+    let old = f.dom.snapshot();
+    let mut edit = DomBatch::new();
+    edit.destroy(ancestor);
+    let retired = apply(&mut f.dom, edit);
+    // #1239 policy A cancels S1, S2, then the additional S occurrence created
+    // by actual removal of selected B during subtree destruction cleanup.
+    let cancellations: Vec<_> = retired
+        .changes()
+        .changes()
+        .iter()
+        .filter_map(|change| {
+            if let DomChange::SelectTaskCancelled {
+                operation,
+                select,
+                reason: DomSelectTaskCancellationReason::TargetDestroyed,
+            } = change
+            {
+                Some((*operation, *select))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(cancellations.len(), 3);
+    assert!(cancellations.iter().all(|(_, target)| *target == f.select));
+    assert_eq!(cancellations[0].0, handed.operation());
+    assert_ne!(cancellations[0].0, cancellations[1].0);
+    assert_ne!(cancellations[1].0, cancellations[2].0);
+    assert_ne!(cancellations[0].0, cancellations[2].0);
+    for id in [ancestor, f.select, f.b, f.content] {
+        assert!(matches!(
+            f.dom.snapshot().node(id),
+            Err(DomError::StaleNode)
+        ));
+        assert!(
+            retired
+                .changes()
+                .changes()
+                .contains(&DomChange::Destroyed(id))
+        );
+        assert!(old.node(id).is_ok());
+        assert!(handed.source().node(id).is_ok());
+    }
+    assert_eq!(old.node(ancestor).unwrap().children(), &[f.select]);
+    assert_eq!(old.node(f.select).unwrap().parent(), Some(ancestor));
+    assert_eq!(f.dom.snapshot().node(f.a).unwrap().parent(), None);
+    assert_eq!(f.dom.pending_native_tasks(), 2);
+    let first_survivor = task(&mut f.dom);
+    assert_eq!(first_survivor.select(), survivor);
+    f.dom
+        .complete_select_task(&first_survivor, checkpoint(), &cancel())
+        .unwrap();
+    let second_survivor = task(&mut f.dom);
+    assert_eq!(second_survivor.select(), survivor);
+    assert_ne!(first_survivor.operation(), second_survivor.operation());
+    f.dom
+        .complete_select_task(&second_survivor, checkpoint(), &cancel())
+        .unwrap();
+    let before_skip = f.dom.snapshot();
+    assert_eq!(
+        f.dom
+            .complete_select_task(&handed, checkpoint(), &cancel())
+            .unwrap()
+            .outcome(),
+        DomSelectTaskOutcome::SkippedTargetDestroyed
+    );
+    assert_eq!(f.dom.snapshot().stamp(), before_skip.stamp());
+    assert_eq!(f.dom.pending_native_tasks(), 0);
+    assert_eq!(old.node(ancestor).unwrap().children(), &[f.select]);
+}
+
+fn select_completion_source_limits() -> DomSourceLimits {
+    DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
+}
+
+fn no_select_completion_source_budget() -> DomSourceLimits {
+    DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0)
+}
+
+#[test]
+fn retired_select_source_start_admits_skip_without_source_and_preserves_survivor_authority() {
+    let mut f = fixture(false, false);
+    let mut setup = DomBatch::new();
+    let survivor = setup.create_element_ns(f.doc, Namespace::html(), "select");
+    let a = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    let b = setup.create_element_ns(f.doc, Namespace::html(), "option");
+    setup.insert_before(&a, &survivor, None);
+    setup.insert_before(&b, &survivor, None);
+    let created = apply(&mut f.dom, setup);
+    let survivor = created.created(&survivor).unwrap().unwrap();
+    let a = created.created(&a).unwrap().unwrap();
+
+    let mut queue = DomBatch::new();
+    queue.detach(f.a); // The first captured Select, later retired.
+    queue.detach(a); // A distinct surviving FIFO obligation.
+    apply(&mut f.dom, queue);
+    let retired = task(&mut f.dom);
+    assert_eq!(retired.select(), f.select);
+    let historical = retired.source().clone();
+    let mut destroy = DomBatch::new();
+    destroy.destroy(f.select);
+    let destroyed = apply(&mut f.dom, destroy);
+    assert!(destroyed.changes().changes().iter().any(|change| matches!(
+        change,
+        DomChange::SelectTaskCancelled { operation, select,
+            reason: DomSelectTaskCancellationReason::TargetDestroyed }
+            if *operation == retired.operation() && *select == f.select
+    )));
+    assert_eq!(f.dom.pending_native_tasks(), 1);
+
+    // Keep an actual different head's permission alive while reporting the old
+    // canceled intention. Its exact authorization must remain usable afterward.
+    let issued_survivor = task(&mut f.dom);
+    assert_eq!(issued_survivor.select(), survivor);
+    let mut replacement = DomBatch::new();
+    let fresh = replacement.create_element_ns(f.doc, Namespace::html(), "select");
+    replacement.set_attribute(&fresh, "title", "replacement");
+    let created = apply(&mut f.dom, replacement);
+    let fresh = created.created(&fresh).unwrap().unwrap();
+    assert_ne!(fresh, f.select);
+    let before = f.dom.snapshot();
+    let usage = f.dom.usage();
+    assert!(matches!(before.node(f.select), Err(DomError::StaleNode)));
+
+    let work_zero =
+        DomNativeCheckpointLimits::new(4_000_000, 0, DomSlotQueryLimits::new(0, 0).unwrap())
+            .unwrap();
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &retired,
+            work_zero,
+            no_select_completion_source_budget(),
+            &cancel(),
+        ),
+        Err(DomError::SelectWorkLimit { limit: 0 })
+    ));
+    let scratch_zero =
+        DomNativeCheckpointLimits::new(0, 1, DomSlotQueryLimits::new(0, 0).unwrap()).unwrap();
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &retired,
+            scratch_zero,
+            no_select_completion_source_budget(),
+            &cancel(),
+        ),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SelectScratch,
+            limit: 0
+        })
+    ));
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &retired,
+            checkpoint(),
+            no_select_completion_source_budget(),
+            &AtomicBool::new(true),
+        ),
+        Err(DomError::Cancelled)
+    ));
+
+    let mut foreign = Dom::new(limits()).unwrap();
+    let foreign_before = foreign.snapshot();
+    assert!(matches!(
+        foreign.begin_select_completion(
+            &retired,
+            checkpoint(),
+            no_select_completion_source_budget(),
+            &cancel(),
+        ),
+        Err(DomError::ForeignOwner)
+    ));
+    assert!(matches!(
+        foreign.complete_select_task(&retired, checkpoint(), &cancel()),
+        Err(DomError::ForeignOwner)
+    ));
+    assert_eq!(foreign.snapshot().stamp(), foreign_before.stamp());
+    assert!(foreign.pending_source_edit().is_none());
+
+    // Zero Source allowances are intentional: a qualified retirement is not a
+    // live Source traversal and needs no Source lease, identity, phase or output.
+    let completion = match f
+        .dom
+        .begin_select_completion(
+            &retired,
+            checkpoint(),
+            no_select_completion_source_budget(),
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSelectCompletionStart::Skipped(completion) => completion,
+        DomSelectCompletionStart::Source(_) => panic!("retired target must not enter Source"),
+    };
+    assert_eq!(
+        completion.outcome(),
+        DomSelectTaskOutcome::SkippedTargetDestroyed
+    );
+    assert!(completion.changes().is_none());
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.usage(), usage);
+    assert_eq!(f.dom.pending_native_tasks(), 1);
+    assert!(f.dom.pending_source_edit().is_none());
+    assert_eq!(
+        f.dom.snapshot().node(fresh).unwrap().kind(),
+        before.node(fresh).unwrap().kind()
+    );
+    assert!(historical.node(f.select).is_ok());
+    assert!(retired.source().node(f.select).is_ok());
+
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &retired,
+            checkpoint(),
+            select_completion_source_limits(),
+            &cancel(),
+        ),
+        Err(DomError::InvalidNativeTask)
+    ));
+    assert!(matches!(
+        f.dom
+            .complete_select_task(&retired, checkpoint(), &cancel()),
+        Err(DomError::InvalidNativeTask)
+    ));
+    // Complete the originally handed-off survivor, not a replacement permission.
+    assert_eq!(
+        f.dom
+            .complete_select_task(&issued_survivor, checkpoint(), &cancel())
+            .unwrap()
+            .outcome(),
+        DomSelectTaskOutcome::Updated
+    );
+    assert_eq!(f.dom.pending_native_tasks(), 0);
+}
+
+#[test]
+fn direct_and_source_retirement_skip_fronts_share_once_only_authority() {
+    for report_through_source in [false, true] {
+        let mut f = fixture(false, false);
+        let mut queue = DomBatch::new();
+        queue.detach(f.a);
+        apply(&mut f.dom, queue);
+        let issued = task(&mut f.dom);
+        let mut destroy = DomBatch::new();
+        destroy.destroy(f.select);
+        apply(&mut f.dom, destroy);
+        let before = f.dom.snapshot();
+        let completion = if report_through_source {
+            match f
+                .dom
+                .begin_select_completion(
+                    &issued,
+                    checkpoint(),
+                    no_select_completion_source_budget(),
+                    &cancel(),
+                )
+                .unwrap()
+            {
+                DomSelectCompletionStart::Skipped(completion) => completion,
+                DomSelectCompletionStart::Source(_) => panic!("historical retirement"),
+            }
+        } else {
+            f.dom
+                .complete_select_task(&issued, checkpoint(), &cancel())
+                .unwrap()
+        };
+        assert_eq!(
+            completion.outcome(),
+            DomSelectTaskOutcome::SkippedTargetDestroyed
+        );
+        assert!(completion.changes().is_none());
+        assert!(matches!(
+            f.dom.begin_select_completion(
+                &issued,
+                checkpoint(),
+                select_completion_source_limits(),
+                &cancel(),
+            ),
+            Err(DomError::InvalidNativeTask)
+        ));
+        assert!(matches!(
+            f.dom.complete_select_task(&issued, checkpoint(), &cancel()),
+            Err(DomError::InvalidNativeTask)
+        ));
+        assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+        assert_eq!(f.dom.pending_native_tasks(), 0);
+        assert!(f.dom.pending_source_edit().is_none());
+    }
+}
+
+#[test]
+fn live_select_source_start_refusal_and_unstarted_cancel_keep_original_head_retryable() {
+    let mut f = fixture(false, true);
+    let mut queue = DomBatch::new();
+    queue.detach(f.a);
+    apply(&mut f.dom, queue);
+    let issued = task(&mut f.dom);
+    let before = f.dom.snapshot();
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &issued,
+            checkpoint(),
+            select_completion_source_limits(),
+            &AtomicBool::new(true),
+        ),
+        Err(DomError::Cancelled)
+    ));
+    assert!(
+        f.dom
+            .begin_select_completion(
+                &issued,
+                checkpoint(),
+                no_select_completion_source_budget(),
+                &cancel(),
+            )
+            .is_err()
+    );
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.pending_native_tasks(), 1);
+    assert!(f.dom.pending_source_edit().is_none());
+    {
+        let DomSelectCompletionStart::Source(mut lease) = f
+            .dom
+            .begin_select_completion(
+                &issued,
+                checkpoint(),
+                select_completion_source_limits(),
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("live target enters its original Source root")
+        };
+        lease.request_cancel();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.pending_native_tasks(), 1);
+    assert!(f.dom.pending_source_edit().is_none());
+    let same_head = task(&mut f.dom);
+    assert_eq!(same_head.operation(), issued.operation());
+    assert_eq!(same_head.select(), issued.select());
+    {
+        let DomSelectCompletionStart::Source(mut lease) = f
+            .dom
+            .begin_select_completion(
+                &issued,
+                checkpoint(),
+                select_completion_source_limits(),
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("original issued authority remains valid")
+        };
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    }
+    assert_eq!(f.dom.pending_native_tasks(), 0);
+    assert!(f.dom.pending_source_edit().is_none());
+    assert_eq!(text(&f.dom.snapshot(), f.content), "B".into());
+    assert!(matches!(
+        f.dom
+            .complete_select_task(&same_head, checkpoint(), &cancel()),
+        Err(DomError::InvalidNativeTask)
+    ));
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &issued,
+            checkpoint(),
+            select_completion_source_limits(),
+            &cancel(),
+        ),
+        Err(DomError::InvalidNativeTask)
+    ));
+}
+
+#[test]
+fn retired_select_skip_refuses_while_a_real_style_source_obligation_is_parked() {
+    let mut f = fixture(false, false);
+    let mut queue = DomBatch::new();
+    queue.detach(f.a);
+    apply(&mut f.dom, queue);
+    let issued = task(&mut f.dom);
+    let mut destroy = DomBatch::new();
+    destroy.destroy(f.select);
+    apply(&mut f.dom, destroy);
+
+    // This is an actual connected Style and actual unserviced CSP request.
+    // No fake receipt or arbitrary parked-source setter supplies exclusivity.
+    let mut setup = DomBatch::new();
+    let style = setup.create_element_ns(f.doc, Namespace::html(), "style");
+    setup.set_attribute(&style, "type", "text/plain");
+    let css = setup.create_text(f.doc, "a { color: red }");
+    setup.insert_before(&css, &style, None);
+    setup.insert_before(&style, f.doc, None);
+    let created = apply(&mut f.dom, setup);
+    let style = created.created(&style).unwrap().unwrap();
+    let css = created.created(&css).unwrap().unwrap();
+    // Type changes alone do not trigger HTML's Style update algorithm. A real
+    // child-data change after the type change supplies its children-changed hook.
+    let mut change_type = DomBatch::new();
+    change_type.set_attribute(style, "type", "text/css");
+    apply(&mut f.dom, change_type);
+    let source_operation;
+    {
+        let mut lease = f
+            .dom
+            .begin_source_edit(
+                DomSourceEdit::replace_data(css, 0, 0, "/* actual edit */"),
+                select_completion_source_limits(),
+                &cancel(),
+            )
+            .unwrap();
+        source_operation = lease.operation();
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("actual connected Style CSP boundary")
+        };
+        assert_eq!(
+            request.action(),
+            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        );
+    }
+    assert_eq!(
+        f.dom.pending_source_edit().unwrap().operation(),
+        source_operation
+    );
+    let before = f.dom.snapshot();
+    assert!(matches!(
+        f.dom.begin_select_completion(
+            &issued,
+            checkpoint(),
+            no_select_completion_source_budget(),
+            &cancel(),
+        ),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert!(matches!(
+        f.dom.complete_select_task(&issued, checkpoint(), &cancel()),
+        Err(DomError::SourceOperationPending)
+    ));
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        f.dom.pending_source_edit().unwrap().operation(),
+        source_operation
+    );
+    // End with that genuine service obligation still parked. This test does not
+    // invent a CSP receipt merely to clear it or pretend to prove reentrant idle.
+}

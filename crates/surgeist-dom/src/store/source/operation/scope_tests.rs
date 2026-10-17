@@ -182,9 +182,12 @@ fn actual_select_completion_captures_its_select_and_reuses_the_original_authoriz
     };
     assert_eq!(task.select(), select);
     {
-        let mut lease = dom
+        let crate::DomSelectCompletionStart::Source(mut lease) = dom
             .begin_select_completion(&task, checkpoint, limits(), &cancel)
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("live Select must enter Source");
+        };
         assert_eq!(
             lease.execution_entry_scope().unwrap(),
             DomSourceExecutionEntryScope::NativeEntry

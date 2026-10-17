@@ -228,8 +228,8 @@ pub use dom_lifecycle::{
     DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
 };
 pub use dom_source::{
-    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
-    DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
+    DomSelectCompletionProgress, DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError,
+    DomSourceServices, DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
 };
 pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,

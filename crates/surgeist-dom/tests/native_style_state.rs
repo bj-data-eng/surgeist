@@ -1492,9 +1492,12 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
         ))
     ));
     assert_eq!(dom.pending_native_tasks(), 1);
-    let mut lease = dom
+    let surgeist_dom::DomSelectCompletionStart::Source(mut lease) = dom
         .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
-        .unwrap();
+        .unwrap()
+    else {
+        panic!("live Select must enter Source");
+    };
     let source_operation = lease.operation();
     let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
         lease.advance(&cancel).unwrap()
@@ -1608,9 +1611,12 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     };
     let task_operation = task.operation();
     let before_source = dom.snapshot();
-    let mut lease = dom
+    let surgeist_dom::DomSelectCompletionStart::Source(mut lease) = dom
         .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
-        .unwrap();
+        .unwrap()
+    else {
+        panic!("live Select must enter Source");
+    };
     let operation = lease.operation();
     let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
         lease.advance(&cancel).unwrap()

@@ -476,6 +476,11 @@ failure preserves the head and permission, and dropping all handles permits
 reacquisition. Foreign owners and replay reject. Exact Select retirement runs
 cleanup first, cancels every captured occurrence with TargetDestroyed evidence,
 and allows one historical SkippedTargetDestroyed completion of an issued handle.
+`begin_select_completion` reports that same canonical skip through
+`DomSelectCompletionStart::Skipped` before admitting live-only Source work.
+A live target returns `Source` with its original lease; resuming uses that actual
+Source operation. Final publication refusal preserves the captured queue head
+and permission so raising the caller's limits can complete it exactly once.
 Detach/adopt preserve intentions. No browser event loop, picker or rendering
 resources are implied by these intrinsic checkpoints.
 
