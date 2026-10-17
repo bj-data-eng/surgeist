@@ -1650,3 +1650,242 @@ fn history_job_task_admission_refusal_retains_original_fifo_for_raised_limit_ret
     }
     assert_eq!(current.incomplete_source_operation(), None);
 }
+
+#[test]
+fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() {
+    struct Context {
+        details: DomDetailsRuntime,
+        hosted: HostedRuntime,
+        traversables: [DomHostedNavigableId; 2],
+        pumped: Vec<Result<DomHostedTaskProgress, DomHostedRuntimeError>>,
+    }
+    impl DomDetailsEventContext for Context {
+        fn details(&mut self) -> &mut DomDetailsRuntime {
+            &mut self.details
+        }
+    }
+    let mut session = session();
+    let mut hosted = session.hosted_execution();
+    let (first, second) = {
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel()).unwrap();
+        let first = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
+        let second = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
+        assert_eq!(first.host(), second.host());
+        (first, second)
+    };
+    let first_body = body(&session.snapshot(), first.document());
+    let second_body = body(&session.snapshot(), second.document());
+    let (_, siblings) = detached_siblings(&mut session, first.document());
+    complete_source_edit(
+        &mut session,
+        DomSourceEdit::insert_before(siblings[0], first_body, None),
+    );
+    pump_one_history(&mut session, first.navigable());
+    let established = session.snapshot();
+    let first_child = child_id(&established, siblings[0]);
+    let child = established.hosted_navigable(first_child).unwrap();
+    let child_document = child.active_document().unwrap();
+    let child_entry = child.active_entry();
+    let child_body = body(&established, child_document);
+    assert_eq!(
+        established
+            .document(child_document)
+            .unwrap()
+            .metadata()
+            .origin(),
+        established
+            .document(first.document())
+            .unwrap()
+            .metadata()
+            .origin()
+    );
+    assert_eq!(
+        established.hosted_entry(child_entry).unwrap().history(),
+        Some((1, 0))
+    );
+
+    complete_source_edit(
+        &mut session,
+        DomSourceEdit::insert_before(siblings[1], first_body, None),
+    );
+    let (_, other_containers) = detached_siblings(&mut session, second.document());
+    complete_source_edit(
+        &mut session,
+        DomSourceEdit::insert_before(other_containers[0], second_body, None),
+    );
+    let queued = session.snapshot();
+    let sibling = child_id(&queued, siblings[1]);
+    let other_child = child_id(&queued, other_containers[0]);
+    let sibling_view = queued.hosted_navigable(sibling).unwrap();
+    let other_view = queued.hosted_navigable(other_child).unwrap();
+    let sibling_entry = sibling_view.active_entry();
+    let other_entry = other_view.active_entry();
+    let sibling_document = sibling_view.active_document().unwrap();
+    let other_document = other_view.active_document().unwrap();
+    for entry in [sibling_entry, other_entry] {
+        assert_eq!(queued.hosted_entry(entry).unwrap().step(), None);
+        assert_eq!(queued.hosted_entry(entry).unwrap().history(), Some((0, 0)));
+    }
+    let mut context = Context {
+        details: session.details_execution(),
+        hosted: session.hosted_execution(),
+        traversables: [first.navigable(), second.navigable()],
+        pumped: Vec::new(),
+    };
+    let mut registry = DomEventDispatcher::<Context>::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 8,
+        nested_dispatches: 8,
+    })
+    .unwrap();
+    {
+        let mut dom = session.dom();
+        let mut batch = DomBatch::new();
+        let details = batch.create_element_ns(child_document, Namespace::html(), "details");
+        batch.insert_before(&details, child_body, None);
+        batch.set_attribute(&details, "open", "");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let details = commit.created(&details).unwrap().unwrap();
+        registry
+            .add_listener(
+                &dom,
+                details,
+                DomEventType::Toggle,
+                DomEventCallback::new(|dom, _, context: &mut Context, _| {
+                    for traversable in context.traversables {
+                        context
+                            .pumped
+                            .push(context.hosted.run_next(dom, traversable, &cancel()));
+                    }
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: false,
+                    once: true,
+                },
+            )
+            .unwrap();
+        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        let progress = DomDetailsRuntime::run_next(
+            &mut dom,
+            &mut registry,
+            &mut context,
+            DomEventDispatchLimits {
+                path_items: 128,
+                snapshot_listeners: 128,
+                failure_records: 32,
+                callbacks: 128,
+                work: 100_000,
+            },
+            &cancel(),
+        )
+        .unwrap();
+        let DomDetailsProgress::Complete { receipt, .. } = progress else {
+            panic!("the real child Details task and its checkpoint must complete")
+        };
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.failures().is_empty());
+    }
+    assert_eq!(context.pumped.len(), 2);
+    let first_operation = match &context.pumped[0] {
+        Ok(DomHostedTaskProgress::Pending {
+            operation,
+            reason: DomHostedTaskWait::CurrentTask,
+        }) => *operation,
+        other => {
+            panic!("same-origin child's running task must own its parent's actual loop: {other:?}")
+        }
+    };
+    let other_operation = match &context.pumped[1] {
+        Ok(DomHostedTaskProgress::Executed {
+            operation,
+            document,
+            global,
+            kind: DomHostedTaskKind::History,
+        }) if *document == second.document() && *global == second.global() => *operation,
+        other => panic!(
+            "another group in the same Host must execute its eligible History job: {other:?}"
+        ),
+    };
+    let after_callback = session.snapshot();
+    assert_eq!(
+        after_callback
+            .hosted_entry(first.entry())
+            .unwrap()
+            .nested_histories(),
+        &[first_child]
+    );
+    assert_eq!(
+        after_callback.hosted_entry(sibling_entry).unwrap().step(),
+        None
+    );
+    assert_eq!(
+        after_callback
+            .hosted_entry(sibling_entry)
+            .unwrap()
+            .history(),
+        Some((0, 0))
+    );
+    assert_eq!(
+        after_callback
+            .hosted_entry(second.entry())
+            .unwrap()
+            .nested_histories(),
+        &[other_child]
+    );
+    assert_eq!(
+        after_callback.hosted_entry(other_entry).unwrap().step(),
+        Some(0)
+    );
+    assert_eq!(
+        after_callback.hosted_entry(other_entry).unwrap().history(),
+        Some((0, 0))
+    );
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+
+    let (first_complete, first_jobs) = pump_one_history(&mut session, first.navigable());
+    assert_eq!(first_complete, first_operation);
+    for expected in [
+        (first.document(), first.global()),
+        (child_document, child.global()),
+        (sibling_document, sibling_view.global()),
+    ] {
+        assert_eq!(first_jobs.iter().filter(|job| **job == expected).count(), 1);
+    }
+    let (other_complete, other_jobs) = pump_one_history(&mut session, second.navigable());
+    assert_eq!(other_complete, other_operation);
+    assert_eq!(
+        other_jobs
+            .iter()
+            .filter(|job| **job == (other_document, other_view.global()))
+            .count(),
+        1
+    );
+    assert!(
+        !other_jobs.contains(&(second.document(), second.global())),
+        "callback's completed History body must not replay"
+    );
+    let current = session.snapshot();
+    assert_eq!(
+        current
+            .hosted_entry(first.entry())
+            .unwrap()
+            .nested_histories(),
+        &[first_child, sibling]
+    );
+    assert_eq!(
+        current
+            .hosted_entry(second.entry())
+            .unwrap()
+            .nested_histories(),
+        &[other_child]
+    );
+    for entry in [child_entry, sibling_entry, other_entry] {
+        assert_eq!(current.hosted_entry(entry).unwrap().history(), Some((1, 0)));
+        assert_eq!(current.hosted_entry(entry).unwrap().step(), Some(0));
+    }
+    assert_eq!(queued.hosted_entry(sibling_entry).unwrap().step(), None);
+    assert_eq!(queued.hosted_entry(other_entry).unwrap().step(), None);
+    assert_eq!(current.incomplete_source_operation(), None);
+}

@@ -1846,3 +1846,5 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
         None
     );
 }
+
+mod hosted_style_parent_tests;
