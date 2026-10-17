@@ -1552,6 +1552,212 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
 }
 
 #[test]
+fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_occurrence() {
+    use surgeist_dom::{
+        DomNativeCheckpoint, DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceLimits,
+        DomSourceProgress, DomStyleSheetAvailability,
+    };
+    let cancel = AtomicBool::new(false);
+    let checkpoint = DomNativeCheckpointLimits::new(
+        4_000_000,
+        10_000_000,
+        DomSlotQueryLimits::new(256, 1024).unwrap(),
+    )
+    .unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(256, 100_000, 1024, 0, 0, 16, 1_000_000)
+            .unwrap()
+            .with_select_processing(32, 4_000_000, 10_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let option = batch.create_element_ns(&document, Namespace::html(), "option");
+    batch.set_attribute(&option, "selected", "");
+    let original_style = batch.create_element_ns(&document, Namespace::html(), "style");
+    batch.set_attribute(&original_style, "type", "text/plain");
+    let text = batch.create_text(&document, "b { color: blue }");
+    batch.insert_before(&text, &original_style, None);
+    let other = batch.create_element_ns(&document, Namespace::html(), "option");
+    batch.insert_before(&original_style, &other, None);
+    let content = batch.create_element_ns(&document, Namespace::html(), "selectedcontent");
+    batch.insert_before(&option, &select, None);
+    batch.insert_before(&other, &select, None);
+    batch.insert_before(&content, &select, None);
+    batch.insert_before(&select, &document, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let select = commit.created(&select).unwrap().unwrap();
+    let option = commit.created(&option).unwrap().unwrap();
+    let original_style = commit.created(&original_style).unwrap().unwrap();
+    let content = commit.created(&content).unwrap().unwrap();
+    let mut batch = DomBatch::new();
+    // Two genuine selected-Option removals queue distinct FIFO occurrences.
+    // The remaining Option supplies the actual current selectedcontent source.
+    batch.detach(option);
+    batch.insert_before(option, select, None);
+    batch.detach(option);
+    batch.set_attribute(original_style, "type", "text/css");
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(dom.pending_native_tasks(), 2);
+    let DomNativeCheckpoint::Select(task) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("actual first Select occurrence");
+    };
+    let task_operation = task.operation();
+    let before_source = dom.snapshot();
+    let mut lease = dom
+        .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
+        .unwrap();
+    let operation = lease.operation();
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("actual copied Style CSP boundary");
+    };
+    assert_eq!(
+        request.action(),
+        surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+    );
+    assert_eq!(lease.status().published_phases(), 1);
+    let copied_style = request.source().element();
+    assert_ne!(copied_style, original_style);
+    let partial = lease.snapshot();
+    assert_eq!(partial.node(content).unwrap().children(), &[copied_style]);
+    assert_eq!(partial.node(copied_style).unwrap().parent(), Some(content));
+    drop(lease);
+    let partial_usage = dom.usage();
+    let already_published = dom.changes_since(before_source.stamp()).unwrap();
+    assert_eq!(already_published.to(), partial.stamp());
+    assert!(!already_published.changes().is_empty());
+    assert!(
+        already_published
+            .changes()
+            .contains(&surgeist_dom::DomChange::SourceOperation)
+    );
+    // Measure only the real already-published output, not a predicted queue
+    // tariff. This cap admits resume but no additional final output record.
+    let ordinary = source_limits();
+    let bounded = DomSourceLimits::new(
+        ordinary.retained_bytes(),
+        ordinary.retained_string_code_units(),
+        ordinary.work(),
+        ordinary.phase_publications(),
+        already_published.changes().len(),
+        ordinary.published_native_identities(),
+        ordinary.nested_operations(),
+    );
+    let mut lease = dom
+        .resume_select_completion(operation, &task, bounded, &cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(resumed)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("same published policy request");
+    };
+    assert_eq!(resumed.source().element(), copied_style);
+    assert_eq!(resumed.source().stamp(), request.source().stamp());
+    assert_eq!(resumed.source().ordinal(), request.source().ordinal());
+    lease
+        .accept_inline_csp(&resumed, &block(&resumed), &cancel)
+        .unwrap();
+    assert_eq!(
+        lease.advance(&cancel).unwrap_err(),
+        DomError::SourceOutputLimit
+    );
+    assert_eq!(lease.snapshot().stamp(), partial.stamp());
+    assert_eq!(
+        lease.snapshot().node(content).unwrap().children(),
+        &[copied_style]
+    );
+    assert_eq!(lease.status().published_phases(), 1);
+    drop(lease);
+    assert_eq!(dom.pending_native_tasks(), 2);
+    assert_eq!(dom.usage(), partial_usage);
+    assert_eq!(
+        dom.snapshot().nodes().collect::<Vec<_>>(),
+        partial.nodes().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        dom.snapshot().incomplete_source_operation(),
+        Some(operation)
+    );
+    assert!(
+        dom.changes_since(partial.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+    let mut lease = dom
+        .resume_select_completion(operation, &task, ordinary, &cancel)
+        .unwrap();
+    let done = match lease.advance(&cancel).unwrap() {
+        DomSourceProgress::Complete(done) => done,
+        DomSourceProgress::Request(DomSourceRequest::Style(retry)) => {
+            // The restored pending interpreter may expose its genuine CSP
+            // observation again; do not assume either replay or suppression.
+            assert_eq!(
+                retry.action(),
+                surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+            );
+            assert_eq!(retry.source().element(), copied_style);
+            assert_eq!(retry.source().stamp(), request.source().stamp());
+            assert_eq!(retry.source().ordinal(), request.source().ordinal());
+            lease
+                .accept_inline_csp(&retry, &block(&retry), &cancel)
+                .unwrap();
+            let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+                panic!("actual CSP observation must reach the original final completion");
+            };
+            done
+        }
+        other => panic!("same original completion or actual CSP retry required: {other:?}"),
+    };
+    assert_eq!(done.operation(), operation);
+    drop(lease);
+    // #1239 owns once-only queue completion. Refusing the final publication
+    // cannot consume permission while leaving its original head in the queue.
+    assert_eq!(
+        dom.pending_native_tasks(),
+        1,
+        "retry must remove only the captured head"
+    );
+    assert!(dom.pending_source_edit().is_none());
+    let complete = dom.snapshot();
+    assert_eq!(complete.incomplete_source_operation(), None);
+    assert_eq!(complete.node(content).unwrap().children(), &[copied_style]);
+    let style = complete.node(copied_style).unwrap().as_style().unwrap();
+    assert_eq!(
+        style.state().association_availability(),
+        DomStyleSheetAvailability::Established
+    );
+    assert!(style.sheet().unwrap().is_none());
+    let children = complete.node(copied_style).unwrap().children();
+    assert_eq!(children.len(), 1);
+    assert_eq!(
+        complete.node(children[0]).unwrap().data(),
+        Some(&"b { color: blue }".into())
+    );
+    assert_eq!(partial.node(content).unwrap().children(), &[copied_style]);
+    assert_eq!(task.operation(), task_operation);
+    assert!(matches!(
+        dom.complete_select_task(&task, checkpoint, &cancel),
+        Err(DomError::InvalidNativeTask)
+    ));
+    assert_eq!(dom.pending_native_tasks(), 1);
+    let DomNativeCheckpoint::Select(next) =
+        dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
+    else {
+        panic!("second actual FIFO occurrence remains available");
+    };
+    assert_eq!(next.select(), select);
+    assert_ne!(next.operation(), task_operation);
+    assert_eq!(dom.pending_native_tasks(), 1);
+}
+
+#[test]
 fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() {
     use std::sync::Arc;
     use surgeist_css::{CssParserContext, CssUtf16InputLimits};
