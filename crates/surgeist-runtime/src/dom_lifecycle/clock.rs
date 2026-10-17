@@ -91,6 +91,80 @@ fn native_now() -> Result<Instant, Error> {
 mod tests {
     use super::*;
 
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "android",
+        target_os = "ios"
+    ))]
+    #[test]
+    fn first_document_creation_preserves_the_native_owners_epoch() {
+        use crate::{
+            DomDetailsRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
+            DomStyleRuntimeLimits,
+        };
+        use std::sync::atomic::AtomicBool;
+        use surgeist_dom::{Dom, DomHostedLimits, DomHostedRecordLimits, DomLimits};
+
+        let dom = Dom::new(DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000).unwrap())
+            .unwrap();
+        let mut session = DomSession::new(
+            dom,
+            DomSessionLimits {
+                style: DomStyleRuntimeLimits {
+                    roots: 4,
+                    completions: 32,
+                    reports: 32,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                    css_input: surgeist_css::CssUtf16InputLimits::default(),
+                },
+                details: DomDetailsRuntimeLimits {
+                    tasks: 32,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                hosted: DomHostedRuntimeLimits {
+                    canonical: DomHostedLimits::new(
+                        DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                        16_000_000,
+                        16_000_000,
+                        1_000_000,
+                    ),
+                    tasks: 32,
+                    storage_bytes: 16_000_000,
+                    scratch_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+            },
+        )
+        .unwrap();
+        assert_eq!(session.snapshot().nodes().count(), 0);
+        let cancel = AtomicBool::new(false);
+        let mut hosted = session.hosted_execution();
+        let owner = hosted.state().unwrap();
+        let before = {
+            let state = owner.borrow();
+            (state.source.id(), state.clock.epoch)
+        };
+
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let top = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+        let settings = hosted.settings(&dom, top.global(), &cancel).unwrap();
+        assert!(settings.environment_ready());
+        assert_eq!(settings.clock_source(), before.0);
+
+        // Document creation samples the established owner domain; it cannot
+        // establish or rebase the epoch shared by the owner's operations.
+        let after = {
+            let state = owner.borrow();
+            (state.source.id(), state.clock.epoch)
+        };
+        assert_eq!(after, before);
+    }
+
     #[test]
     fn native_nonisolated_clock_floors_to_literal_hundred_microsecond_boundaries() {
         for (nanoseconds, expected_microseconds) in [
