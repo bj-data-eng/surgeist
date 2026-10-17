@@ -10,6 +10,8 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::HtmlDialogAction;
 use surgeist_runtime::*;
+#[path = "dom_source_focus/empty_popovers.rs"]
+mod empty_popovers;
 #[path = "dom_source_focus/lifetime.rs"]
 mod lifetime;
 fn limits() -> DomSourceLimits {
