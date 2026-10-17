@@ -1013,7 +1013,12 @@ impl Dom {
         // This legacy policy controller supports the original single staged
         // Source recovery, but not event-observation reentry. Refuse before
         // traversing canonical banks without the observing owners' Work.
-        if self.source_reserved_closing()? != 0 {
+        if !self.source_parents.is_empty()
+            || self
+                .source_operation
+                .as_ref()
+                .is_some_and(|operation| operation.is_observing_event())
+        {
             return Err(DomError::SourceOperationPending);
         }
         if let Some(op) = &self.source_operation {
@@ -1220,15 +1225,12 @@ impl Dom {
         let changed = state != *self.state;
         state.units = candidate_units;
         let revision = if changed {
+            let protected = self.source_reserved_closing(cancelled)?;
             self.revision
                 .0
                 .checked_add(1)
                 .and_then(|next| next.checked_add(self.hosted_revisions))
-                .and_then(|next| {
-                    self.source_reserved_closing()
-                        .ok()
-                        .and_then(|closing| next.checked_add(closing))
-                })
+                .and_then(|next| next.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
             DomRevision(
                 self.revision

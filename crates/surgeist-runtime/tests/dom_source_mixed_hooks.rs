@@ -445,7 +445,7 @@ fn check_joined(fixture: &Fixture, original: &CssomSnapshot) -> (DomHostedNaviga
     );
     (id, document)
 }
-fn pump_one(fixture: &mut Fixture) -> Vec<DomHostedTaskProgress> {
+fn drain_hosted_fixture_until_idle(fixture: &mut Fixture) -> Vec<DomHostedTaskProgress> {
     let mut hosted = fixture.session.hosted_execution();
     let mut observations = Vec::new();
     for _ in 0..256 {
@@ -455,28 +455,28 @@ fn pump_one(fixture: &mut Fixture) -> Vec<DomHostedTaskProgress> {
                 fixture.top.navigable(),
                 &cancel(),
             )
-            .unwrap();
-        assert!(
-            !matches!(progress, DomHostedTaskProgress::Idle),
-            "an actual queued operation must not disappear"
-        );
-        let complete = matches!(progress, DomHostedTaskProgress::Complete { .. });
-        observations.push(progress);
-        if complete {
-            assert!(matches!(
-                hosted
-                    .run_next(
-                        &mut fixture.session.dom(),
-                        fixture.top.navigable(),
-                        &cancel()
-                    )
-                    .unwrap(),
-                DomHostedTaskProgress::Idle
-            ));
+            .unwrap_or_else(|error| {
+                panic!("native fixture work refused after {observations:?}: {error:?}")
+            });
+        // This fixture starts only its one child request/removal. A captured
+        // History completion does not finish the retained destruction wrapper;
+        // actual FIFO idle establishes that both owners have settled.
+        if matches!(progress, DomHostedTaskProgress::Idle) {
+            assert!(
+                !observations.is_empty(),
+                "actual queued work must not disappear"
+            );
+            assert!(
+                observations
+                    .iter()
+                    .any(|step| matches!(step, DomHostedTaskProgress::Complete { .. })),
+                "actual work must complete before idle: {observations:?}"
+            );
             return observations;
         }
+        observations.push(progress);
     }
-    panic!("actual FIFO operation did not complete in 256 advances: {observations:?}")
+    panic!("actual native fixture queue did not reach idle in 256 advances: {observations:?}")
 }
 struct Networking {
     styles: DomStyleRuntime,
@@ -587,7 +587,7 @@ fn removal_complete(fixture: &Fixture, id: DomHostedNavigableId, old_cssom: &Css
     );
 }
 fn settle_removal(fixture: &mut Fixture, id: DomHostedNavigableId, document: DocumentId) {
-    let observations = pump_one(fixture);
+    let observations = drain_hosted_fixture_until_idle(fixture);
     assert_eq!(
         observations
             .iter()
@@ -788,7 +788,7 @@ fn mixed_insertion_keeps_published_stylesheet_through_child_url_wait_registry_re
         "acknowledged Style/CSP work must not replay"
     );
     let (id, document) = check_joined(&fixture, &original);
-    let history = pump_one(&mut fixture);
+    let history = drain_hosted_fixture_until_idle(&mut fixture);
     assert!(history.iter().any(|step| matches!(step, DomHostedTaskProgress::Executed { document: actual, kind: DomHostedTaskKind::History, .. } if *actual == document)));
     deliver_load(&mut fixture);
     assert_eq!(before.node(fixture.root).unwrap().parent(), None);
@@ -839,7 +839,7 @@ fn inserted() -> (Fixture, CssomSnapshot, DomHostedNavigableId, DocumentId) {
         ]
     );
     let (id, document) = check_joined(&fixture, &original);
-    pump_one(&mut fixture);
+    drain_hosted_fixture_until_idle(&mut fixture);
     deliver_load(&mut fixture);
     (fixture, original, id, document)
 }
@@ -882,7 +882,25 @@ fn mixed_removal_reaches_iframe_destruction_admission_before_the_sibling_stylesh
             .owner
             .is_some()
     );
-    assert!(!removed_prefix.hosted_navigable(id).unwrap().is_retiring());
+    // The Source tail has not finished its removal hook. Structural identity
+    // and the external CSSOM owner remain readable; a current composed graph
+    // read must not certify either active or retiring state at this boundary.
+    assert!(matches!(
+        removed_prefix.hosted_navigable(id),
+        Err(DomHostedError::Dom(DomError::IncompleteSourceOperation))
+    ));
+    assert_eq!(
+        removed_prefix
+            .node(fixture.iframe)
+            .unwrap()
+            .owner_document(),
+        Some(fixture.top.document())
+    );
+    assert!(!before.hosted_navigable(id).unwrap().is_retiring());
+    assert_eq!(
+        before.hosted_navigable(id).unwrap().active_document(),
+        Some(document)
+    );
     assert!(matches!(
         removed_prefix
             .node(fixture.style)
@@ -990,7 +1008,7 @@ fn ordinary_mixed_insert_and_remove_batches_discard_prior_staged_changes_and_pub
         request.operation(),
     );
     let (id, document) = check_joined(&fixture, &original);
-    pump_one(&mut fixture);
+    drain_hosted_fixture_until_idle(&mut fixture);
     deliver_load(&mut fixture);
     let established = fixture.session.snapshot();
     let associated = sheet(&established, fixture.style).unwrap();

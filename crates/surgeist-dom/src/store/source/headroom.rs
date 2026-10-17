@@ -22,6 +22,22 @@ pub(in crate::store) enum Kind {
     SetDisabled,
 }
 
+// Canonical publication stops in the supported Dialog domain. The final
+// publication also carries requestClose's final force-enabled reset.
+pub(in crate::store) const FINAL_PUBLICATION: u64 = 1;
+pub(in crate::store) fn dialog_close(watcher: bool) -> u64 {
+    // Toggle tracker, optional watcher stop, Close queue/open removal, final.
+    2 + u64::from(watcher) + FINAL_PUBLICATION
+}
+pub(in crate::store) fn dialog_show(watcher: bool, modal: bool) -> u64 {
+    // Toggle tracker, open insertion, optional watcher/modal prefix, final.
+    2 + u64::from(watcher) + u64::from(modal) + FINAL_PUBLICATION
+}
+pub(in crate::store) fn request_close() -> u64 {
+    // Request slots are published before the original watcher's Close action.
+    1 + dialog_close(true)
+}
+
 #[derive(Debug)]
 pub(in crate::store) struct Reservation {
     pub remaining_phases: u64,
@@ -127,7 +143,7 @@ impl Scan {
         }
         let remaining_phases = self
             .phases
-            .checked_add(1)
+            .checked_add(FINAL_PUBLICATION)
             .ok_or(DomError::RepresentationExhausted)?;
         if self.phases != 0 {
             draft.source_step(cancel)?;
@@ -138,10 +154,12 @@ impl Scan {
             if required > limits.phases {
                 return Err(DomError::SourcePublicationLimit);
             }
+            let protected = dom.source_reserved_closing(cancel)?;
             dom.revision
                 .0
                 .checked_add(remaining_phases)
                 .and_then(|revision| revision.checked_add(dom.hosted_revisions))
+                .and_then(|revision| revision.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
         }
         Ok(Reservation { remaining_phases })
@@ -200,9 +218,19 @@ impl Draft {
                 if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }))
                 && let Some(scan) = &mut restore.draft.source_headroom
             {
+                let stopped = if matches!(
+                    &result,
+                    Err(DomError::DialogProcessingUnavailable {
+                        action: surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }
+                    })
+                ) {
+                    request_close() - FINAL_PUBLICATION
+                } else {
+                    1
+                };
                 scan.phases = scan
                     .phases
-                    .checked_add(1)
+                    .checked_add(stopped)
                     .ok_or(DomError::RepresentationExhausted)?;
                 scan.dialog_wait = true;
             }

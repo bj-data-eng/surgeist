@@ -980,8 +980,8 @@ has no unpublished Draft and does not mark the snapshot incomplete. Dropping
 its lease retains the exposed request even before the first tree publication.
 Each outstanding ancestor constrains real nested work and retained storage.
 Publication, identity and output counters remain owned by each original
-operation; callback edits preserve its reserved closing revision without
-pretending that it published those edits.
+operation; callback edits preserve its remaining mandatory publication revisions
+without pretending that it published those edits.
 If a pending child exhausts an observing ancestor's allowance, retain that
 ancestor's issued event request and use `raise_source_event_limits` to raise
 its policy monotonically. This does not execute the parent or replace the top

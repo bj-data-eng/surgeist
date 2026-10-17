@@ -441,6 +441,7 @@ impl Dom {
             .checked_add(size_of::<crate::store::dispatch::CustodyBank>())
             .ok_or(DomError::RepresentationExhausted)?;
         let custody_bytes = self.source_owner_custody_bytes()?;
+        let protected = self.source_reserved_closing(cancel)?;
         let dispatch = &self.dispatch_custody;
         let op = self
             .source_operation
@@ -468,8 +469,11 @@ impl Dom {
                 .checked_add(
                     op.headroom
                         .as_ref()
-                        .map_or(1, |headroom| headroom.remaining_phases),
+                        .ok_or(DomError::InvalidSourceOperation)?
+                        .remaining_phases,
                 )
+                .and_then(|revision| revision.checked_add(self.hosted_revisions))
+                .and_then(|revision| revision.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
         }
         let previous = op.draft.source_limits.replace(effective);
@@ -840,9 +844,15 @@ impl Operation {
                     .ok_or(DomError::StyleProtocol)?,
             )
         };
-        let reservation =
+        let mut reservation =
             self.draft
                 .admit_source_command_headroom(dom, entry, self.phases, cancel)?;
+        // A reread of the current segment cannot discard a tail already owed
+        // by this original operation. The queue fence later refines the bound
+        // after the authentic callback result and actual current guards.
+        if let Some(owed) = &self.headroom {
+            reservation.remaining_phases = reservation.remaining_phases.max(owed.remaining_phases);
+        }
         self.headroom = Some(reservation);
         self.command_admitted = true;
         Ok(())
@@ -1250,14 +1260,12 @@ impl Operation {
             return Err(DomError::SourcePublicationLimit.into());
         }
         if changed {
+            let protected = dom.source_reserved_closing(cancel)?;
             dom.revision
                 .0
                 .checked_add(remaining)
-                .and_then(|next| {
-                    dom.source_reserved_closing()
-                        .ok()
-                        .and_then(|closing| next.checked_add(closing))
-                })
+                .and_then(|next| next.checked_add(dom.hosted_revisions))
+                .and_then(|next| next.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
         }
         let outputs = self
@@ -2171,6 +2179,11 @@ impl DomSourceLease<'_> {
                         op.started = started;
                         return Err(error);
                     }
+                    // The preceding external receipt is now canonical. Keep
+                    // it on failed publication, but never replay it as child
+                    // work after this successful phase transition.
+                    op.receipt = None;
+                    op.owner_binding = None;
                     let child = op.child.as_ref().ok_or(DomError::HostedSourceUnavailable)?;
                     return Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(
                         child.request.clone(),
@@ -2200,7 +2213,7 @@ impl DomSourceLease<'_> {
                     // The real current command has drained. Excess conservative
                     // capacity is released while one actual final close remains.
                     if let Some(headroom) = &mut op.headroom {
-                        headroom.remaining_phases = 1;
+                        headroom.remaining_phases = headroom::FINAL_PUBLICATION;
                     }
 
                     if !matches!(

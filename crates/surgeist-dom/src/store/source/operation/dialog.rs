@@ -228,6 +228,9 @@ impl Operation {
     pub(in crate::store) fn id(&self) -> DomSourceOperationId {
         self.id
     }
+    pub(in crate::store) fn is_observing_event(&self) -> bool {
+        matches!(self.draft, OperationDraft::Observed(_))
+    }
     pub(in crate::store) fn has_event_tail(&self) -> bool {
         self.event_exposed && self.observation().is_none()
     }
@@ -373,19 +376,46 @@ impl Operation {
             kind,
             frame,
         } = firing;
+        // Before exposing a callback, protect every publication it can leave
+        // mandatory, including a watcher the callback may establish or replace.
+        let possible = match (kind, frame.as_ref().map(|frame| frame.locals)) {
+            (
+                DomSourceEventKind::BeforeToggle,
+                Some(crate::store::dialog::MethodLocals::Show { .. }),
+            ) => headroom::dialog_show(true, self.is_show_modal_method()),
+            (DomSourceEventKind::BeforeToggle, Some(crate::store::dialog::MethodLocals::Close)) => {
+                headroom::dialog_close(true)
+            }
+            (
+                DomSourceEventKind::Cancel,
+                Some(crate::store::dialog::MethodLocals::RequestClose { .. }),
+            ) if self.request_close.is_some() => headroom::dialog_close(true),
+            (DomSourceEventKind::Toggle | DomSourceEventKind::Close, None)
+                if matches!(self.commands, OperationRoot::DialogTask(_)) =>
+            {
+                headroom::FINAL_PUBLICATION
+            }
+            _ => return Err(DomError::InvalidSourceEvent),
+        };
+        let remaining = self.headroom.as_ref().map_or(possible, |reservation| {
+            possible.max(reservation.remaining_phases)
+        });
+        // Caller phase policy can be raised on resume. Observation needs its
+        // closing minimum; the actual queue/publication gates admit the reached
+        // tail. Fixed canonical revision credit, unlike policy, remains whole.
         let close = self
             .phases
-            .checked_add(1)
+            .checked_add(headroom::FINAL_PUBLICATION)
             .ok_or(DomError::RepresentationExhausted)?;
         if close > self.limits.phases {
             return Err(DomError::SourcePublicationLimit);
         }
+        let protected = dom.source_reserved_closing(cancel)?;
         dom.revision
             .0
             .checked_add(dom.hosted_revisions)
-            .and_then(|revision| {
-                revision.checked_add(dom.source_reserved_closing().ok()?.checked_add(1)?)
-            })
+            .and_then(|revision| revision.checked_add(protected))
+            .and_then(|revision| revision.checked_add(remaining))
             .ok_or(DomError::RevisionExhausted)?;
         let executor = dom
             .source_event_executor
@@ -468,6 +498,9 @@ impl Operation {
             inputs,
         };
         self.draft = OperationDraft::Observed(observation);
+        self.headroom = Some(headroom::Reservation {
+            remaining_phases: remaining,
+        });
         self.event_exposed = true;
         self.event_work = Arc::downgrade(&request.work);
         drop(formation); // Work is now owned by the admitted observation.
@@ -685,7 +718,7 @@ impl Dom {
             if limits.phases
                 < operation
                     .phases
-                    .checked_add(1)
+                    .checked_add(headroom::FINAL_PUBLICATION)
                     .ok_or(DomError::RepresentationExhausted)?
             {
                 return Err(DomError::SourcePublicationLimit);
@@ -1127,17 +1160,30 @@ impl Dom {
         )?;
         Ok(draft)
     }
-    pub(in crate::store) fn source_reserved_closing(&self) -> Result<u64, DomError> {
-        // Only actual Observed owners enter source_parents; execution always
-        // resumes the top, so no parent can transition while retained there.
-        u64::try_from(self.source_parents.len())
-            .map_err(|_| DomError::RepresentationExhausted)?
-            .checked_add(u64::from(
-                self.source_operation
-                    .as_ref()
-                    .is_some_and(|operation| operation.observation().is_some()),
-            ))
-            .ok_or(DomError::RepresentationExhausted)
+    pub(in crate::store) fn source_reserved_closing(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<u64, DomError> {
+        check_cancel(cancel)?;
+        let mut remaining = 0u64;
+        // These are the actual retained original operations, not a count of
+        // observers. Rebase and parent moves preserve each operation's credit.
+        for operation in self.source_observers() {
+            operation
+                .observation()
+                .expect("observer")
+                .request
+                .work
+                .step_own(cancel)?;
+            let reserved = operation
+                .headroom
+                .as_ref()
+                .ok_or(DomError::InvalidSourceOperation)?;
+            remaining = remaining
+                .checked_add(reserved.remaining_phases)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(remaining)
     }
 }
 impl DomSourceLease<'_> {
@@ -1560,3 +1606,6 @@ mod dispatch_hosted_read_tests;
 
 #[cfg(test)]
 mod task_disposition_tests;
+
+#[cfg(test)]
+mod headroom_tests;

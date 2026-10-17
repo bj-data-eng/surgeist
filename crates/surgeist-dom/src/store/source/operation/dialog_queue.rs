@@ -387,7 +387,7 @@ impl<'dom> DomSourceLease<'dom> {
                 prepared.changes.push(DomChange::SourceOperation);
             }
             let (required_phases, future_outputs) = match (plan.info, locals) {
-                (DomDialogTaskInfo::Close(_), _) => (2, 1),
+                (DomDialogTaskInfo::Close(_), _) => (1 + headroom::FINAL_PUBLICATION, 1),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Close) => {
                     let state = op.draft.dialog_state(subject)?;
                     let watcher = state.watcher.is_some();
@@ -453,7 +453,7 @@ impl<'dom> DomSourceLease<'dom> {
                         false
                     };
                     (
-                        3 + u64::from(watcher),
+                        headroom::dialog_close(watcher),
                         2 + usize::from(member)
                             + usize::from(watcher || changed_result || modal)
                             // A watcher stop publishes open-list removal first.
@@ -523,7 +523,7 @@ impl<'dom> DomSourceLease<'dom> {
                         0
                     };
                     (
-                        3 + u64::from(active_hook) + u64::from(structural_modal),
+                        headroom::dialog_show(active_hook, structural_modal),
                         future_outputs + modal_outputs
                             // Autofocus history is a distinct canonical domain,
                             // possibly on a different captured top Document.
@@ -538,17 +538,13 @@ impl<'dom> DomSourceLease<'dom> {
             {
                 return Err(DomError::SourcePublicationLimit);
             }
+            let protected = self.dom.source_reserved_closing(cancel)?;
             self.dom
                 .revision
                 .0
                 .checked_add(required_phases)
                 .and_then(|revision| revision.checked_add(self.dom.hosted_revisions))
-                .and_then(|revision| {
-                    self.dom
-                        .source_reserved_closing()
-                        .ok()
-                        .and_then(|closing| revision.checked_add(closing))
-                })
+                .and_then(|revision| revision.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
             let outputs = op
                 .outputs
