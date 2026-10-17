@@ -498,7 +498,7 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
 }
 
 #[test]
-fn active_dialog_open_still_refuses_genuine_unimplemented_setup_atomically() {
+fn active_dialog_open_requires_eventful_watcher_without_atomic_publication() {
     let mut fixture = HostedFixture::active();
     let doc = fixture.top.document();
     let node = create(&mut fixture, doc, "dialog");
@@ -511,8 +511,9 @@ fn active_dialog_open_still_refuses_genuine_unimplemented_setup_atomically() {
     batch.set_attribute(node, "open", "");
     assert_eq!(
         fixture.session.dom().apply(batch, &cancel()).unwrap_err(),
-        DomError::DialogProcessingUnavailable {
-            action: HtmlDialogAction::AddOpenDialog
+        DomError::NeedsEventfulOperation {
+            subject: Some(node),
+            action: HtmlDialogAction::EstablishCloseWatcher
         }
     );
     assert_eq!(fixture.session.snapshot().stamp(), before.stamp());
