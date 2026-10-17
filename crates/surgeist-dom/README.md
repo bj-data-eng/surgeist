@@ -1039,12 +1039,19 @@ canonical Document state independently of the Host's headless focus proof;
 they perform no popover dispatch or focus movement.
 
 At RunDialogFocusingSteps, the allow-focus decision reads the receiver's
-then-current Document. An explicitly retired hosted Document has no browsing
-context, so feature permission is denied. If its actual original Window remains
-in Runtime's watcher custody, that Window's constructor-owned never-activated
-state supplies the second negative input. The shared HTML rule then returns
-before focus-target selection or focus effects. The original affine receipt
-acknowledges this proven denial and lets Show reach its actual Complete branch.
+then-current Document. It checks browsing-context presence and full activity
+before consulting that Document's actual focus-without-user-activation policy.
+A denied feature then requires the actual current Window's activation state.
+Runtime's constructor-owned never-activated state supplies false activation,
+so the shared HTML rule returns before focus-target selection or focus effects.
+The original affine receipt acknowledges this proven denial and lets Show or
+ShowModal reach its actual Complete branch. A permitted feature returns allowed
+before reading activation; positive focusing remains unavailable.
+
+An explicitly retired hosted Document has no browsing context, so feature
+permission is denied without evaluating policy. Its historical original Window
+can still supply its actual activation state while retained in watcher custody.
+This historical path remains distinct from the live current-Document qualification.
 The receiver's original Global still owns any previously queued task; adoption
 does not substitute it for the current Document's Window.
 
@@ -1110,9 +1117,10 @@ establishes Document blocking through raw membership, and adds the Dialog to the
 top layer if it is absent. That phase publishes before the remembered-focus
 observation. An already-raw Dialog takes the source's literal skip-Add branch,
 including when pending removal. Supported remembered-focus and empty-popover
-branches reach the genuine `RunDialogFocusingSteps` wait. The operation remains
-incomplete there; modal publication does not certify focusing or full ShowModal
-completion.
+branches reach `RunDialogFocusingSteps`. Proven allow-focus denial can complete
+the method without selecting or moving focus. Unknown inputs or positive
+focusing retain the genuine wait and incomplete Source marker; structural modal
+publication alone does not certify completion.
 
 `DomDocument::top_layer()` borrows immutable raw membership, pending removals
 and the Document stamp. Its allocation-free `ua_rules()` projection emits the
@@ -1271,7 +1279,8 @@ lookups also retain historical identity. The corresponding methods on the curren
 `Dom` owner check the live issuer, identity and association before execution.
 Native Frame/Iframe Source hooks create initial children and retain their actual
 parent/container relationships and queued history work in this same owner.
-Runtime computes the selected initial fullscreen Permissions Policy; required
+Runtime computes the selected initial fullscreen and focus-without-user-activation
+Permissions Policy; required
 qualified URL observations remain explicit external inputs. Child entry target
 names preserve absent, supplied-empty and exact supplied values. The fixed
 top-level target name remains supplied-empty. Iframe creation consumes its

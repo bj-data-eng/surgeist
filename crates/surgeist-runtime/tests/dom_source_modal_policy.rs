@@ -324,7 +324,8 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 0, 0),
+            // The hosted child has one actual complete-empty Global registry.
+            HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 1, 0),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &cancel(),
         )

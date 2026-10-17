@@ -379,7 +379,9 @@ impl<'dom> DomSourceLease<'dom> {
             let (required_phases, future_outputs) = match (plan.info, frame.locals) {
                 (DomDialogTaskInfo::Close(_), _) => (2, 1),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Close) => {
-                    let watcher = op.draft.dialog_state(frame.subject)?.watcher.is_some();
+                    let state = op.draft.dialog_state(frame.subject)?;
+                    let watcher = state.watcher.is_some();
+                    let modal = state.is_modal();
                     op.draft
                         .admit_dialog_occurrences(u64::from(watcher), cancel)?;
                     let document = op.draft.node(frame.subject)?.document;
@@ -414,9 +416,40 @@ impl<'dom> DomSourceLease<'dom> {
                         }
                         _ => false,
                     };
+                    let request_changes_pending = if modal {
+                        op.draft.source_step(cancel)?;
+                        let Some(crate::dialog::DocumentInteractiveState::Known {
+                            top_layer,
+                            pending_top_layer_removals,
+                            ..
+                        }) = op.draft.node(document)?.interactive_document.as_ref()
+                        else {
+                            return Err(DomError::DialogDocumentStateUnavailable);
+                        };
+                        let mut raw = false;
+                        for item in top_layer {
+                            op.draft.source_step(cancel)?;
+                            raw |= *item == frame.subject;
+                        }
+                        let mut pending = false;
+                        if raw {
+                            for item in pending_top_layer_removals {
+                                op.draft.source_step(cancel)?;
+                                pending |= *item == frame.subject;
+                            }
+                        }
+                        raw && !pending
+                    } else {
+                        false
+                    };
                     (
                         3 + u64::from(watcher),
-                        2 + usize::from(member) + usize::from(watcher || changed_result),
+                        2 + usize::from(member)
+                            + usize::from(watcher || changed_result || modal)
+                            // A watcher stop publishes open-list removal first.
+                            // Without that stop the same Document row coalesces
+                            // with its ordinary open-list change when present.
+                            + usize::from(request_changes_pending && (watcher || !member)),
                     )
                 }
                 (

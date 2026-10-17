@@ -141,12 +141,132 @@ fn fixture() -> (
         panic!("policy")
     };
     let publication = source
-        .seal_permissions_policy(request, DomFullscreenInherited::Enabled, &c)
+        .seal_permissions_policy(
+            request,
+            DomInitialPermissionsPolicy::new(
+                DomPermissionsPolicyValue::Enabled,
+                DomPermissionsPolicyValue::Enabled,
+            ),
+            &c,
+        )
         .unwrap();
     (dom, source, lease, Some(publication))
 }
 fn used(source: &DomHostedSource) -> usize {
     source.limits().retained_bytes() - source.remaining_bytes().unwrap()
+}
+
+#[test]
+fn complete_policy_receipt_preserves_independent_values_and_atomic_constructor_custody() {
+    use DomPermissionsPolicyValue::{Disabled, Enabled};
+    // This tests the original trusted policy-publication/constructor boundary,
+    // not Runtime's policy evaluator or a completed Window/focusing service.
+    for (fullscreen, focus) in [
+        (Enabled, Enabled),
+        (Enabled, Disabled),
+        (Disabled, Enabled),
+        (Disabled, Disabled),
+    ] {
+        let (mut dom, mut source, mut lease, _) = fixture();
+        let policy = DomInitialPermissionsPolicy::new(fullscreen, focus);
+        assert_eq!(policy.inherited_fullscreen(), fullscreen);
+        assert_eq!(policy.inherited_focus_without_user_activation(), focus);
+        assert_eq!(policy.profile(), DomInitialPermissionsPolicyProfile::FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial);
+        let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap() else {
+            panic!("original Policy phase");
+        };
+        assert_eq!(request.profile(), policy.profile());
+        let mut publication = Some(
+            source
+                .seal_permissions_policy(request, policy, &cancel())
+                .unwrap(),
+        );
+        let stamp = dom.snapshot().stamp();
+        let revision = source.revision().unwrap();
+        assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+        assert_eq!(
+            lease.accept_permissions_policy(
+                &mut dom,
+                &mut source,
+                &mut publication,
+                &AtomicBool::new(true)
+            ),
+            Err(DomHostedError::Dom(DomError::Cancelled))
+        );
+        assert_eq!(publication.as_ref().unwrap().policy, policy);
+        assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+        assert_eq!(source.revision().unwrap(), revision);
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        lease
+            .accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel())
+            .unwrap();
+        assert!(publication.is_none());
+        assert_eq!(
+            dom.hosted_operation(lease.operation).unwrap().policy,
+            Some(policy)
+        );
+        assert_eq!(
+            lease.accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel()),
+            Err(DomHostedError::WrongPhase)
+        );
+        let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+            panic!("actual constructor phase");
+        };
+        let global = source.issue_global(request, &cancel()).unwrap();
+        let mut execution = Some(
+            source
+                .seal_native_execution(request, global, 100, &cancel())
+                .unwrap(),
+        );
+        lease
+            .accept_publication(&mut dom, &mut source, &mut execution, &cancel())
+            .unwrap();
+        let DomHostedCreationStep::MakeActive(request) = lease.step(&dom).unwrap() else {
+            panic!("constructed, not yet active Document");
+        };
+        let document = request.document();
+        assert_eq!(
+            dom.snapshot()
+                .document(document)
+                .unwrap()
+                .metadata()
+                .initial_permissions_policy(),
+            Some(policy)
+        );
+        let staged = Draft::new(&dom, Arc::new(BatchIdentity), &cancel()).unwrap();
+        assert_eq!(
+            staged.document_fully_active(staged.resolve(document.into()).unwrap(), &cancel()),
+            Err(DomError::HostedSourceUnavailable)
+        );
+    }
+}
+
+#[test]
+fn foreign_complete_policy_receipt_cannot_partially_install_either_feature() {
+    let (mut dom, mut source, mut lease, mut original) = fixture();
+    let (_other_dom, _other_source, _other_lease, mut foreign) = fixture();
+    let stamp = dom.snapshot().stamp();
+    let revision = source.revision().unwrap();
+    assert_eq!(
+        lease.accept_permissions_policy(&mut dom, &mut source, &mut foreign, &cancel()),
+        Err(DomHostedError::WrongPhase)
+    );
+    assert!(foreign.is_some());
+    assert!(original.is_some());
+    assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(source.revision().unwrap(), revision);
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut original, &cancel())
+        .unwrap();
+    assert!(original.is_none());
+    assert_eq!(
+        dom.hosted_operation(lease.operation).unwrap().policy,
+        Some(DomInitialPermissionsPolicy::new(
+            DomPermissionsPolicyValue::Enabled,
+            DomPermissionsPolicyValue::Enabled
+        ))
+    );
 }
 
 #[test]

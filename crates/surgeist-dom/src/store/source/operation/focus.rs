@@ -59,25 +59,88 @@ impl Operation {
         let Some(association) = environment.hosted.as_ref() else {
             return Ok(None);
         };
-        if !matches!(
+        let retired = matches!(
             association.phase,
             crate::hosted::DocumentPhase::Retired { .. }
-        ) {
+        );
+        // The exact allowed-to-use order is BC, fully active, then inherited
+        // permission. A constructed/incomplete association supplies no activity
+        // answer; unknown state cannot establish denial.
+        if environment.browsing_context() == surgeist_html::HtmlBrowsingContextPresence::Present {
+            if !matches!(
+                association.phase,
+                crate::hosted::DocumentPhase::InitialEntry { .. }
+            ) {
+                return Ok(None);
+            }
+            if self.draft.document_fully_active(document, cancel)? {
+                self.draft.source_step(cancel)?;
+                if association.policy.inherited_focus_without_user_activation()
+                    == crate::DomPermissionsPolicyValue::Enabled
+                {
+                    // Permission grants allow-focus before activation. The
+                    // positive focusing algorithm remains a genuine wait.
+                    return Ok(None);
+                }
+            }
+        } else if !retired {
             return Ok(None);
         }
-        // Explicit retirement establishes null browsing context/feature denial.
-        // Its original Global is historical: live Global validation would
-        // incorrectly turn the required negative observation into execution.
+        // Explicit retirement names a historical Window; current denial names
+        // the live association. Producer validation preserves that distinction.
         let document = self
             .draft
             .published_id(document)
             .map(DocumentId)
             .ok_or(DomError::UnavailableCreation)?;
-        Ok(Some(FocusQualification::RetiredDocument {
-            document,
-            global: association.global,
-            host: association.host,
+        Ok(Some(if retired {
+            FocusQualification::RetiredDocument {
+                document,
+                global: association.global,
+                host: association.host,
+            }
+        } else {
+            FocusQualification::DeniedDocument {
+                document,
+                global: association.global,
+                host: association.host,
+            }
         }))
+    }
+    fn validate_focus_producer(
+        &self,
+        qualification: FocusQualification,
+        source: &DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let host = qualification.host();
+        if host.source != source.id() {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        let observation = source.observe();
+        observation
+            .validate(
+                source.id(),
+                crate::hosted::Role::Host,
+                host.slot,
+                host.generation,
+            )
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        if let FocusQualification::DeniedDocument { global, .. } = qualification {
+            self.draft.source_step(cancel)?;
+            if global.source != source.id() {
+                return Err(DomError::HostedSourceUnavailable);
+            }
+            observation
+                .validate(
+                    source.id(),
+                    crate::hosted::Role::Global,
+                    global.slot,
+                    global.generation,
+                )
+                .map_err(|_| DomError::HostedSourceUnavailable)?;
+        }
+        Ok(())
     }
     pub(super) fn apply_dialog_focus(
         &mut self,
@@ -129,19 +192,7 @@ impl DomSourceLease<'_> {
         let Some(qualification) = op.focus_qualification(request, cancel)? else {
             return Ok(None);
         };
-        let host = qualification.host();
-        if host.source != source.id() {
-            return Err(DomError::HostedSourceUnavailable);
-        }
-        source
-            .observe()
-            .validate(
-                source.id(),
-                crate::hosted::Role::Host,
-                host.slot,
-                host.generation,
-            )
-            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        op.validate_focus_producer(qualification, source, cancel)?;
         if op
             .phases
             .checked_add(1)
@@ -194,16 +245,7 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation);
         }
-        let host = actual.qualification.host();
-        source
-            .observe()
-            .validate(
-                source.id(),
-                crate::hosted::Role::Host,
-                host.slot,
-                host.generation,
-            )
-            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        op.validate_focus_producer(actual.qualification, source, cancel)?;
         self.dom.admit_source_owner_payload(cancel)?;
         let op = self
             .dom

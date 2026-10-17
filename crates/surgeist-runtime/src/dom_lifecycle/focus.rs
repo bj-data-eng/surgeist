@@ -169,32 +169,6 @@ impl HostedRuntime {
                 {
                     return Ok(false);
                 }
-            } else {
-                // A borrowed coarse availability check avoids forming a result
-                // for native/no-Global or active-permission-unknown Documents.
-                // The original DOM preparation below qualifies actual Retired
-                // state and supplies the authoritative original Window identity.
-                lease
-                    .admit_hosted_runtime_work(1, cancel)
-                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
-                state.step(cancel)?;
-                let snapshot = lease.snapshot();
-                let document = snapshot
-                    .node(request.subject())
-                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
-                    .owner_document()
-                    .ok_or(DomHostedRuntimeError::Binding)?;
-                let environment = snapshot
-                    .document(document)
-                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
-                    .metadata()
-                    .document_environment();
-                if !environment.has_ever_had_navigable()
-                    || environment.browsing_context()
-                        != surgeist_html::HtmlBrowsingContextPresence::Absent
-                {
-                    return Ok(false);
-                }
             }
             let retained = state.source_retained_bytes(lease, cancel)?;
             let temporary = size_of::<FocusFormation>();
@@ -224,6 +198,67 @@ impl HostedRuntime {
             };
             let observation = match formation.preparation.target() {
                 DomDialogFocusTarget::RememberedHost(_) => DomDialogFocusObservation::KnownNone,
+                DomDialogFocusTarget::DeniedDocumentWindow {
+                    document,
+                    global,
+                    host,
+                } => {
+                    // This qualification belongs to the current live Document,
+                    // independently of the queue Global or remembered Host.
+                    let (gh, gt, gc, g) = match state.find_global(global, cancel, || {
+                        lease
+                            .admit_hosted_runtime_work(1, cancel)
+                            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+                    }) {
+                        Ok(location) => location,
+                        Err(DomHostedRuntimeError::TargetNotFound) => return Ok(false),
+                        Err(error) => return Err(error),
+                    };
+                    let live = &state.hosts[gh].top_levels[gt]
+                        .group
+                        .as_ref()
+                        .expect("actual live group")
+                        .clusters[gc]
+                        .agent
+                        .globals[g];
+                    if state.hosts[gh].id != host
+                        || live.settings.document != Some(document)
+                        || live.id != global
+                    {
+                        return Err(DomHostedRuntimeError::Binding);
+                    }
+                    let (h, t, c, w) = match state.find_window(global, cancel, || {
+                        lease
+                            .admit_hosted_runtime_work(1, cancel)
+                            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+                    }) {
+                        Ok(location) => location,
+                        Err(DomHostedRuntimeError::Binding) => return Ok(false),
+                        Err(error) => return Err(error),
+                    };
+                    if (h, t, c) != (gh, gt, gc) {
+                        return Err(DomHostedRuntimeError::Binding);
+                    }
+                    let window = &state.hosts[h].top_levels[t]
+                        .group
+                        .as_ref()
+                        .expect("actual live group")
+                        .clusters[c]
+                        .agent
+                        .windows
+                        .rows[w];
+                    if window.id != global || window.retired {
+                        return Ok(false);
+                    }
+                    if surgeist_html::allow_focus_decision(
+                        Some(false),
+                        Some(window.transient_activation()),
+                    ) != surgeist_html::HtmlAllowFocusDecision::Denied
+                    {
+                        return Ok(false);
+                    }
+                    DomDialogFocusObservation::Denied
+                }
                 DomDialogFocusTarget::RetiredDocumentWindow { global, host, .. } => {
                     let location = match state.find_window(global, cancel, || {
                         lease

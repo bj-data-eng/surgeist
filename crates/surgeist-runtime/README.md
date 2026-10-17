@@ -31,20 +31,22 @@ independent user-interaction tasks without a toggle tracker or coalescing.
 
 Nonmodal Show queues its actual toggle, publishes `open=""` through ordinary
 hooks, and consumes qualified focus and popover observations. The sealed headless
-Host can supply actual remembered-focus absence. A known empty top layer advances
-the popover steps; proven negative allow-focus can complete Show without focus
+Host can supply actual remembered-focus absence. Qualified raw members' actual
+hidden popover state advances the empty popover steps; proven negative allow-focus
+can complete Show or ShowModal without focus
 movement. Unknown or unsupported actual inputs retain their precise action wait.
 The standard nonmodal Close method dispatches genuine noncancelable beforetoggle,
 rebases its open read after callbacks, runs full open-removal/watcher hooks, applies
 a supplied return value and queues its independent Close notification when previous
-focus is absent. Modal work and positive focus restoration remain unavailable.
+focus is absent. Modal Close requests deferred top-layer removal and clears its
+modal flag. Positive focus restoration remains unavailable.
 
 Source edits establish and destroy watchers through the original Window manager.
 Execution retirement preserves that Window while a watcher or its unsettled
 canonical publication needs it; later open removal can finish cleanup on the
 surviving inactive Dialog. An unfinished synchronous method tail prevents queued
-delivery. Positive focus, modal operations, general request-close, platform close
-requests and nonempty popover processing remain separate contributions. See
+delivery. Positive focus, broader modal services, platform close requests and
+nonempty popover processing remain separate contributions. See
 [DOM orchestration](docs/explanation.md#dom-orchestration) for creation, teardown,
 custody and capability limits.
 

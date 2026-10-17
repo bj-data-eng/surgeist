@@ -554,7 +554,7 @@ impl HostedRuntime {
         &self,
         child_request: &DomHostedChildRequest,
         request: &surgeist_dom::DomHostedPolicyRequest,
-        inherited: surgeist_dom::DomFullscreenInherited,
+        inherited: surgeist_dom::DomInitialPermissionsPolicy,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -1427,7 +1427,7 @@ mod url_configuration_tests {
                     .initial_permissions_policy()
                     .unwrap()
                     .inherited_fullscreen(),
-                surgeist_dom::DomFullscreenInherited::Enabled
+                surgeist_dom::DomPermissionsPolicyValue::Enabled
             );
         }
         assert_eq!(

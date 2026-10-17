@@ -154,7 +154,7 @@ fn child_document(snapshot: &DomSnapshot, container: NodeId) -> DocumentId {
     document
 }
 
-fn fullscreen(snapshot: &DomSnapshot, document: DocumentId) -> DomFullscreenInherited {
+fn fullscreen(snapshot: &DomSnapshot, document: DocumentId) -> DomPermissionsPolicyValue {
     let policy = snapshot
         .document(document)
         .unwrap()
@@ -163,7 +163,7 @@ fn fullscreen(snapshot: &DomSnapshot, document: DocumentId) -> DomFullscreenInhe
         .expect("actual constructor-computed policy");
     assert_eq!(
         policy.profile(),
-        DomInitialPermissionsPolicyProfile::FullscreenSelfOpaqueInitial
+        DomInitialPermissionsPolicyProfile::FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial
     );
     policy.inherited_fullscreen()
 }
@@ -175,7 +175,7 @@ fn no_opener_top_and_same_opaque_default_iframe_have_actual_enabled_policy() {
     let before = session.snapshot();
     assert_eq!(
         fullscreen(&before, top.document()),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     let container = detached_container(&mut session, top.document(), "iframe", &[]);
     let detached = session.snapshot();
@@ -187,10 +187,13 @@ fn no_opener_top_and_same_opaque_default_iframe_have_actual_enabled_policy() {
         current.document(child).unwrap().metadata().origin(),
         before.document(top.document()).unwrap().metadata().origin()
     );
-    assert_eq!(fullscreen(&current, child), DomFullscreenInherited::Enabled);
+    assert_eq!(
+        fullscreen(&current, child),
+        DomPermissionsPolicyValue::Enabled
+    );
     assert_eq!(
         fullscreen(&before, top.document()),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     assert_eq!(
         detached
@@ -205,7 +208,7 @@ fn no_opener_top_and_same_opaque_default_iframe_have_actual_enabled_policy() {
 
 #[test]
 fn raw_directives_follow_literal_last_entry_ascii_and_allowfullscreen_outcomes() {
-    use DomFullscreenInherited::{Disabled, Enabled};
+    use DomPermissionsPolicyValue::{Disabled, Enabled};
     // Expected values are literal PP source outcomes. Feature recognition is
     // exact; only quoted self/src keywords use ASCII-insensitive comparison.
     for (allow, allow_fullscreen, expected) in [
@@ -277,7 +280,7 @@ fn raw_directives_follow_literal_last_entry_ascii_and_allowfullscreen_outcomes()
 
 #[test]
 fn sandbox_origin_is_fresh_and_wildcard_does_not_merge_declared_with_child_origin() {
-    use DomFullscreenInherited::{Disabled, Enabled};
+    use DomPermissionsPolicyValue::{Disabled, Enabled};
     for (sandbox, allow, allow_fullscreen, same_origin, expected) in [
         (None, None, false, true, Enabled),
         (Some(""), None, false, false, Disabled),
@@ -352,7 +355,10 @@ fn actual_frame_ignores_iframe_allow_sandbox_and_srcdoc_attributes() {
         current.document(child).unwrap().metadata().origin(),
         before.document(top.document()).unwrap().metadata().origin()
     );
-    assert_eq!(fullscreen(&current, child), DomFullscreenInherited::Enabled);
+    assert_eq!(
+        fullscreen(&current, child),
+        DomPermissionsPolicyValue::Enabled
+    );
     assert_eq!(
         current
             .node(container)
@@ -365,14 +371,17 @@ fn actual_frame_ignores_iframe_allow_sandbox_and_srcdoc_attributes() {
 }
 
 #[test]
-fn disabled_parent_blocks_wildcards_before_the_separate_src_processing_request() {
+fn both_disabled_parent_blocks_wildcards_before_the_separate_src_processing_request() {
     let mut session = session();
     let top = top_level(&mut session);
     let parent_container = detached_container(
         &mut session,
         top.document(),
         "iframe",
-        &[("allow", "fullscreen 'none'")],
+        &[(
+            "allow",
+            "fullscreen 'none'; focus-without-user-activation 'none'",
+        )],
     );
     let parent_node = body(&session.snapshot(), top.document());
     completed_insert(&mut session, parent_container, parent_node);
@@ -380,14 +389,26 @@ fn disabled_parent_blocks_wildcards_before_the_separate_src_processing_request()
     let parent_document = child_document(&before, parent_container);
     assert_eq!(
         fullscreen(&before, parent_document),
-        DomFullscreenInherited::Disabled
+        DomPermissionsPolicyValue::Disabled
+    );
+    assert_eq!(
+        before
+            .document(parent_document)
+            .unwrap()
+            .metadata()
+            .initial_permissions_policy()
+            .unwrap(),
+        DomInitialPermissionsPolicy::new(
+            DomPermissionsPolicyValue::Disabled,
+            DomPermissionsPolicyValue::Disabled
+        )
     );
     let container = detached_container(
         &mut session,
         parent_document,
         "iframe",
         &[
-            ("allow", "fullscreen *"),
+            ("allow", "fullscreen *; focus-without-user-activation *"),
             ("allowfullscreen", ""),
             ("src", "unobserved-target"),
         ],
@@ -408,13 +429,114 @@ fn disabled_parent_blocks_wildcards_before_the_separate_src_processing_request()
     let child = child_document(&current, container);
     assert_eq!(
         fullscreen(&current, child),
-        DomFullscreenInherited::Disabled
+        DomPermissionsPolicyValue::Disabled
+    );
+    assert_eq!(
+        current
+            .document(child)
+            .unwrap()
+            .metadata()
+            .initial_permissions_policy()
+            .unwrap(),
+        DomInitialPermissionsPolicy::new(
+            DomPermissionsPolicyValue::Disabled,
+            DomPermissionsPolicyValue::Disabled
+        )
     );
     assert!(current.incomplete_source_operation().is_some());
     assert_eq!(
         fullscreen(&before, parent_document),
-        DomFullscreenInherited::Disabled
+        DomPermissionsPolicyValue::Disabled
     );
+}
+
+#[test]
+fn mixed_parent_denial_still_reaches_the_shared_declared_origin_before_child_publication() {
+    use DomPermissionsPolicyValue::{Disabled, Enabled};
+    for (allow, expected) in [
+        (
+            "fullscreen 'none'",
+            DomInitialPermissionsPolicy::new(Disabled, Enabled),
+        ),
+        (
+            "focus-without-user-activation 'none'",
+            DomInitialPermissionsPolicy::new(Enabled, Disabled),
+        ),
+    ] {
+        let mut session = session();
+        let top = top_level(&mut session);
+        let parent_container =
+            detached_container(&mut session, top.document(), "iframe", &[("allow", allow)]);
+        let destination = body(&session.snapshot(), top.document());
+        completed_insert(&mut session, parent_container, destination);
+        let before = session.snapshot();
+        let parent = child_document(&before, parent_container);
+        assert_eq!(
+            before
+                .document(parent)
+                .unwrap()
+                .metadata()
+                .initial_permissions_policy()
+                .unwrap(),
+            expected
+        );
+        let container = detached_container(
+            &mut session,
+            parent,
+            "iframe",
+            &[
+                ("allow", "fullscreen *; focus-without-user-activation *"),
+                ("allowfullscreen", ""),
+                ("src", "unobserved-target"),
+            ],
+        );
+        let result = insert_without_url(&mut session, container, body(&before, parent)).unwrap();
+        let operation = match result {
+            DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::HostedChild(request),
+                reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
+            } => {
+                assert_eq!(request.container(), container);
+                request.operation()
+            }
+            other => panic!(
+                "the enabled parent feature must reach the shared declared-origin URL before later src processing: {other:?}"
+            ),
+        };
+        let current = session.snapshot();
+        assert_eq!(current.incomplete_source_operation(), Some(operation));
+        assert_eq!(
+            current
+                .node(container)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .child_navigable(),
+            Some(None)
+        );
+        assert_eq!(
+            current
+                .document(parent)
+                .unwrap()
+                .metadata()
+                .initial_permissions_policy()
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            before
+                .document(parent)
+                .unwrap()
+                .metadata()
+                .initial_permissions_policy()
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            session.dom().pending_source_edit().unwrap().operation(),
+            operation
+        );
+    }
 }
 
 #[test]
@@ -445,7 +567,10 @@ fn present_srcdoc_uses_parent_origin_before_truthful_unsupported_navigation_tail
         );
         let current = session.snapshot();
         let child = child_document(&current, container);
-        assert_eq!(fullscreen(&current, child), DomFullscreenInherited::Enabled);
+        assert_eq!(
+            fullscreen(&current, child),
+            DomPermissionsPolicyValue::Enabled
+        );
         assert_eq!(
             current.document(child).unwrap().metadata().origin(),
             before.document(top.document()).unwrap().metadata().origin()
@@ -490,7 +615,7 @@ fn present_empty_src_is_not_missing_policy_evidence_even_with_wildcard() {
     );
     assert_eq!(
         fullscreen(&current, top.document()),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
 }
 
@@ -622,7 +747,10 @@ fn qualified_fixed_parse_failure_falls_back_to_parent_origin_and_completes_blank
         assert_eq!(stages, expected);
         let current = session.snapshot();
         let child = child_document(&current, container);
-        assert_eq!(fullscreen(&current, child), DomFullscreenInherited::Enabled);
+        assert_eq!(
+            fullscreen(&current, child),
+            DomPermissionsPolicyValue::Enabled
+        );
         assert_eq!(
             current.document(child).unwrap().metadata().origin(),
             before.document(top.document()).unwrap().metadata().origin()
@@ -693,7 +821,7 @@ fn parsed_absolute_about_blank_has_new_opaque_declared_origin_not_parent_origin(
     let child = child_document(&current, container);
     assert_eq!(
         fullscreen(&current, child),
-        DomFullscreenInherited::Disabled
+        DomPermissionsPolicyValue::Disabled
     );
     assert_eq!(
         current.document(child).unwrap().metadata().origin(),
@@ -794,15 +922,15 @@ fn prebound_blob_entry_environment_supplies_shared_or_unequal_actual_opaque_orig
         assert_eq!(
             fullscreen(&current, child),
             if shared_environment {
-                DomFullscreenInherited::Enabled
+                DomPermissionsPolicyValue::Enabled
             } else {
-                DomFullscreenInherited::Disabled
+                DomPermissionsPolicyValue::Disabled
             }
         );
         assert!(current.incomplete_source_operation().is_some());
         assert_eq!(
             fullscreen(&before, top.document()),
-            DomFullscreenInherited::Enabled
+            DomPermissionsPolicyValue::Enabled
         );
     }
 }
@@ -887,7 +1015,7 @@ fn unavailable_qualified_producer_preserves_request_until_actual_failure_observa
     let current = session.snapshot();
     assert_eq!(
         fullscreen(&current, child_document(&current, container)),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     assert_eq!(current.incomplete_source_operation(), None);
     assert_eq!(
@@ -987,7 +1115,7 @@ fn stale_external_revision_refuses_without_default_policy_then_same_source_resum
     let current = session.snapshot();
     assert_eq!(
         fullscreen(&current, child_document(&current, container)),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     assert_eq!(current.incomplete_source_operation(), None);
     assert_eq!(
@@ -1020,7 +1148,10 @@ fn parent_active_origin_restriction_precedes_srcdoc_and_is_inherited_by_frame() 
         );
         let before = session.snapshot();
         let parent = child_document(&before, parent_container);
-        assert_eq!(fullscreen(&before, parent), DomFullscreenInherited::Enabled);
+        assert_eq!(
+            fullscreen(&before, parent),
+            DomPermissionsPolicyValue::Enabled
+        );
         let container = detached_container(
             &mut session,
             parent,
@@ -1056,9 +1187,12 @@ fn parent_active_origin_restriction_precedes_srcdoc_and_is_inherited_by_frame() 
         );
         assert_eq!(
             fullscreen(&current, child),
-            DomFullscreenInherited::Disabled
+            DomPermissionsPolicyValue::Disabled
         );
-        assert_eq!(fullscreen(&before, parent), DomFullscreenInherited::Enabled);
+        assert_eq!(
+            fullscreen(&before, parent),
+            DomPermissionsPolicyValue::Enabled
+        );
     }
 }
 
@@ -1079,9 +1213,9 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
         let before = session.snapshot();
         let child = child_document(&before, container);
         let expected = if initially_enabled {
-            DomFullscreenInherited::Enabled
+            DomPermissionsPolicyValue::Enabled
         } else {
-            DomFullscreenInherited::Disabled
+            DomPermissionsPolicyValue::Disabled
         };
         assert_eq!(fullscreen(&before, child), expected);
         let original_origin = before.document(child).unwrap().metadata().origin().clone();
@@ -1299,7 +1433,10 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
         current.node(container).unwrap().owner_document(),
         Some(b.document())
     );
-    assert_eq!(fullscreen(&current, child), DomFullscreenInherited::Enabled);
+    assert_eq!(
+        fullscreen(&current, child),
+        DomPermissionsPolicyValue::Enabled
+    );
     assert_eq!(
         current.document(child).unwrap().metadata().origin(),
         &current_inputs.target
@@ -1345,7 +1482,7 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
     );
     assert_eq!(
         fullscreen(&first, first_child),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     let mut policy = |_: &DomStyleSource| None;
     let detached = session.source_execution().apply(
@@ -1424,7 +1561,7 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
     );
     assert_eq!(
         fullscreen(&first, first_child),
-        DomFullscreenInherited::Enabled
+        DomPermissionsPolicyValue::Enabled
     );
     assert_eq!(edited.node(container).unwrap().parent(), None);
     assert_eq!(

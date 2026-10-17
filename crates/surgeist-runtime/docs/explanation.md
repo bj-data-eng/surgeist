@@ -143,7 +143,7 @@ The following Document capture and popover steps run in DOM's original Source
 continuation. Qualified canonical raw membership and actual hidden popover state
 establish empty Auto and Hint showing lists; nonpopover members do not prevent
 this proof. DOM retains the actual captured Document and null endpoint, then
-rechecks that proof before completing the empty hide step. Such Show paths wait at
+rechecks that proof before completing the empty hide step. Such Show paths reach
 RunDialogFocusingSteps. Unknown history or unqualified nonhidden state retains
 the precise popover wait. Headlessness alone supplies no top-layer evidence.
 
@@ -156,6 +156,17 @@ that precise negative allow-focus result through the same affine focus bridge;
 accepted denial completes the focusing action without moving focus. Missing
 Window state remains unavailable. The live execution checks for retired Globals
 are preserved.
+
+For a current live Document, DOM qualifies allowed-to-use in source order:
+browsing context, full activity, then its actual focus-without-user-activation
+policy. Runtime reads the current associated Window's activation only after
+permission is known false. This Window may differ from the method's original
+queue Global or remembered-focus Host. Live roles and the exact canonical basis
+qualify the new receipt; the retired-Window path keeps its historical checks.
+Enabled permission skips the activation read and still needs positive focusing.
+Unknown permission stays unavailable even when activation is known false.
+Forming this qualification consumes the existing finite temporary/header and
+work allowance; refusal retains the original operation and no phantom result.
 
 Each admitted native Window starts never activated. The current HTML event
 surface admits load, error, toggle, beforetoggle and close; physical Window input and
@@ -239,8 +250,12 @@ OS entropy call.
 
 Connected native Frame/Iframe hooks use the same Source driver to create an
 initial child and queue its history attachment. Runtime computes the initial
-Permissions Policy for the selected fullscreen-only profile from the actual
-parent, container, sandbox and origin inputs. Reached URL parsing and origin
+Permissions Policy for the fixed fullscreen and focus-without-user-activation
+profile, both with default allowlist `'self'`, from actual parent, container,
+sandbox and origin inputs. The complete two-feature value publishes once;
+neither feature can install independently. The one parser retains each exact
+feature's last declaration, and `allowfullscreen` supplies only fullscreen's
+legacy fallback. Reached URL parsing and origin
 facts require an independently configured `DomSourceUrlService`; unavailable
 facts park the original operation. This does not implement general navigation
 or resource loading. Frame and Iframe creation preserve their distinct sandbox
@@ -354,9 +369,11 @@ an outer early return or manufacture Applied after a failed nested Close.
 task queue and watcher setup. After actual open hooks and a valid watcher
 assertion, DOM publishes the coherent modal/raw-top-layer phase and its generated
 UA overlay input before observing remembered focus. With actual remembered-focus
-absence and empty showing-popover lists, it reaches the genuine focusing wait.
-This producer publication supplies no computed-style or rendered result and does
-not complete ShowModal. Source-completeness guards continue to protect ordinary
+absence and empty showing-popover lists, it reaches allow-focus qualification.
+A real inherited denial and the actual Window's false activation complete the
+method before focus-target selection. Other inputs retain their genuine focusing
+wait. The structural publication supplies no computed-style or rendered result;
+completion requires the actual producer terminal branch. Source-completeness guards protect ordinary
 top-layer views and semantic captures. Canceled and post-event early returns use
 the actual producer result. Callback adoption into a connected inactive Document
 can finish the open hook without a watcher. DOM publishes that real prefix and

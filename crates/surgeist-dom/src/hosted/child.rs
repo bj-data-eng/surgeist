@@ -195,7 +195,7 @@ pub struct DomHostedEmbedderPolicyInputs {
     pub(crate) kind: DomHostedEmbedderKind,
     pub(crate) parent_document: DomDocumentStamp,
     pub(crate) parent_origin: crate::DomOpaqueOrigin,
-    pub(crate) parent_fullscreen: DomFullscreenInherited,
+    pub(crate) parent_policy: DomInitialPermissionsPolicy,
     pub(crate) parent_sandbox: surgeist_html::HtmlSandboxFlags,
     pub(crate) embedder_sandbox: surgeist_html::HtmlSandboxFlags,
     pub(crate) sandbox: Option<crate::DocumentString>,
@@ -215,8 +215,8 @@ impl DomHostedEmbedderPolicyInputs {
     pub fn parent_origin(&self) -> &crate::DomOpaqueOrigin {
         &self.parent_origin
     }
-    pub fn parent_fullscreen(&self) -> DomFullscreenInherited {
-        self.parent_fullscreen
+    pub fn parent_policy(&self) -> DomInitialPermissionsPolicy {
+        self.parent_policy
     }
     pub fn parent_sandbox_flags(&self) -> surgeist_html::HtmlSandboxFlags {
         self.parent_sandbox

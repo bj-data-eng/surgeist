@@ -225,28 +225,42 @@ impl fmt::Display for DomHostedError {
 }
 impl std::error::Error for DomHostedError {}
 
-/// The initial inherited result; it does not establish platform fullscreen support.
+/// One actual inherited result in the selected initial Permissions Policy roster.
+/// This is report data, not authority to install policy or execute a feature.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomFullscreenInherited {
+pub enum DomPermissionsPolicyValue {
     Enabled,
     Disabled,
 }
 /// The selected fixed native Permissions Policy roster and origin profile.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomInitialPermissionsPolicyProfile {
-    FullscreenSelfOpaqueInitial,
+    FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial,
 }
-/// Actual initial inherited value, with empty declared/reporting maps by representation.
+/// Complete initial inherited values, with empty declared/reporting maps by representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomInitialPermissionsPolicy {
-    pub(crate) inherited: DomFullscreenInherited,
+    fullscreen: DomPermissionsPolicyValue,
+    focus_without_user_activation: DomPermissionsPolicyValue,
 }
 impl DomInitialPermissionsPolicy {
-    pub const fn inherited_fullscreen(self) -> DomFullscreenInherited {
-        self.inherited
+    pub const fn new(
+        fullscreen: DomPermissionsPolicyValue,
+        focus_without_user_activation: DomPermissionsPolicyValue,
+    ) -> Self {
+        Self {
+            fullscreen,
+            focus_without_user_activation,
+        }
+    }
+    pub const fn inherited_fullscreen(self) -> DomPermissionsPolicyValue {
+        self.fullscreen
+    }
+    pub const fn inherited_focus_without_user_activation(self) -> DomPermissionsPolicyValue {
+        self.focus_without_user_activation
     }
     pub const fn profile(self) -> DomInitialPermissionsPolicyProfile {
-        DomInitialPermissionsPolicyProfile::FullscreenSelfOpaqueInitial
+        DomInitialPermissionsPolicyProfile::FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial
     }
 }
 
@@ -1162,7 +1176,7 @@ impl DomHostedPolicyRequest {
         &self.origin
     }
     pub const fn profile(&self) -> DomInitialPermissionsPolicyProfile {
-        DomInitialPermissionsPolicyProfile::FullscreenSelfOpaqueInitial
+        DomInitialPermissionsPolicyProfile::FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial
     }
     pub fn parent_document(&self) -> Option<crate::DocumentId> {
         self.request.parent.map(|parent| parent.document.document())
@@ -1224,7 +1238,7 @@ impl DomHostedFinishLoadingRequest {
 pub struct DomHostedPolicyPublication {
     pub(crate) key: RequestKey,
     pub(crate) revision: DomHostedSourceRevision,
-    pub(crate) inherited: DomFullscreenInherited,
+    pub(crate) policy: DomInitialPermissionsPolicy,
 }
 #[derive(Debug)]
 pub(crate) enum PublicationValue {
@@ -1304,14 +1318,14 @@ impl DomHostedSource {
     pub fn seal_permissions_policy(
         &self,
         request: &DomHostedPolicyRequest,
-        inherited: DomFullscreenInherited,
+        policy: DomInitialPermissionsPolicy,
         cancel: &AtomicBool,
     ) -> Result<DomHostedPolicyPublication, DomHostedError> {
         let revision = self.validate_request(&request.request, cancel)?;
         Ok(DomHostedPolicyPublication {
             key: request.request.key,
             revision,
-            inherited,
+            policy,
         })
     }
     pub fn issue_global(

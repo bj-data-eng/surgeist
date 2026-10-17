@@ -542,6 +542,12 @@ existing HTML edition. The selected native feature roster and opaque-origin
 projection are recorded separately in #1218. This does not select response
 policies, reporting, arbitrary-origin introspection or general navigation.
 The existing pinned Fullscreen definition supplies its feature and default.
+For #1225's deliberate focus-policy extension, the same bounded reference also
+retains HTML `877d6146487f` raw line 3029: `focus-without-user-activation` has
+default allowlist `'self'`. Its allowed-to-use and allow-focus algorithms remain
+in the existing embedded-element and host-fact conversions. This adds a clause
+from the existing HTML pin, not a new edition or a broader policy profile by
+source conversion alone; the consuming implementation owns its selected roster.
 
 ### Native hosted lifecycle and clock
 

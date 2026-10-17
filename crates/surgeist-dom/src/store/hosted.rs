@@ -563,9 +563,7 @@ impl DomHostedCreationLease {
             .hosted_operations
             .get_mut(self.operation)
             .expect("validated original operation");
-        pending.policy = Some(DomInitialPermissionsPolicy {
-            inherited: current.inherited,
-        });
+        pending.policy = Some(current.policy);
         pending.phase = next;
         permit.commit();
         publication.take();

@@ -13,6 +13,12 @@ pub enum DomDialogFocusTarget {
         global: DomHostedGlobalId,
         host: DomHostedHostId,
     },
+    /// Actual current live Window whose ordered allowed-to-use check is false.
+    DeniedDocumentWindow {
+        document: DocumentId,
+        global: DomHostedGlobalId,
+        host: DomHostedHostId,
+    },
 }
 /// Closed observations supported by the corresponding trusted producer role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +37,11 @@ pub(crate) enum FocusQualification {
         global: DomHostedGlobalId,
         host: DomHostedHostId,
     },
+    DeniedDocument {
+        document: DocumentId,
+        global: DomHostedGlobalId,
+        host: DomHostedHostId,
+    },
 }
 impl FocusQualification {
     pub(crate) const fn target(self) -> DomDialogFocusTarget {
@@ -45,11 +56,22 @@ impl FocusQualification {
                 global,
                 host,
             },
+            Self::DeniedDocument {
+                document,
+                global,
+                host,
+            } => DomDialogFocusTarget::DeniedDocumentWindow {
+                document,
+                global,
+                host,
+            },
         }
     }
     pub(crate) const fn host(self) -> DomHostedHostId {
         match self {
-            Self::Remembered { host, .. } | Self::RetiredDocument { host, .. } => host,
+            Self::Remembered { host, .. }
+            | Self::RetiredDocument { host, .. }
+            | Self::DeniedDocument { host, .. } => host,
         }
     }
 }
@@ -82,7 +104,8 @@ impl DomDialogFocusPreparation {
                 FocusQualification::Remembered { .. },
                 DomDialogFocusObservation::KnownNone
             ) | (
-                FocusQualification::RetiredDocument { .. },
+                FocusQualification::RetiredDocument { .. }
+                    | FocusQualification::DeniedDocument { .. },
                 DomDialogFocusObservation::Denied
             )
         ) {

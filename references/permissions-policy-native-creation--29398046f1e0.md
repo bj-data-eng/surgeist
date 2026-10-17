@@ -1,16 +1,23 @@
 # Permissions Policy: initial native Document creation
 
-Bounded Markdown conversion of the clauses used by [#1218](https://github.com/bj-data-eng/surgeist/issues/1218), prepared 16 October 2026. Product decisions and the admitted implementation domain belong to that issue. This reference does not select response-policy processing, reporting, script introspection or general navigation.
+Bounded Markdown conversion of the clauses used by [#1218](https://github.com/bj-data-eng/surgeist/issues/1218) and the focus-policy extension under [#1225](https://github.com/bj-data-eng/surgeist/issues/1225). Product decisions and the admitted implementation domain belong to those issues. This reference does not select response-policy processing, reporting, script introspection or general navigation.
 
 ## Source basis and attribution
 
 - Permissions Policy Editor's Draft, W3C Web Application Security Working Group, editors Ian Clelland and Ari Chivukula. Immutable [index.bs](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/index.bs), commit `29398046f1e0cb45c091adda853df74925dc740a` (22 September 2026), 78,906 bytes, SHA-256 `51a87c5f4008510e501b5a4fe553baf8271e0e3af6ce6e8feece987639794c9a`. The original is retained with the hosted-policy investigation capture. The repository's [license declaration at that pin](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/LICENSE.md) licenses reports under the [W3C Software and Document License, 2015](../licenses/w3c/software-license-2015.txt) and identifies the [W3C CLA](https://www.w3.org/community/about/agreements/cla/) for specification contributions.
 - HTML `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete captured HTML SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. [Origin definitions](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#origin): original raw lines 64314–64328 and 64370–64397. Copyright © WHATWG (Apple, Google, Mozilla, Microsoft); prose is [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with the [exact WHATWG license](../licenses/whatwg/LICENSE).
 - The selected feature's definition and default are already converted in [Fullscreen, Permissions Policy Integration](fullscreen--7c38d773117aa1e6bfa13754afe77483f40c908f--7d8cd68e63c0.md#permissions-policy-integration). That source defines `fullscreen` with default allowlist `'self'`.
+- HTML at the same immutable revision defines the [focus feature](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#focus-without-user-activation-feature) in original raw line 3029. Its definition is retained below under the same WHATWG attribution and license as the origin definitions. The [allow-focus algorithm](html-language-host-facts--877d6146487f--2dd822df9d5e.md#allow-focus-steps) and [allowed-to-use algorithm](html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#allowed-to-use) remain in their existing conversions.
 
 This software or document includes material copied from or derived from [Permissions Policy](https://github.com/w3c/webappsec-permissions-policy/blob/29398046f1e0cb45c091adda853df74925dc740a/index.bs). Copyright © 2026 W3C® (MIT, ERCIM, Keio, Beihang). The linked full W3C license and its warranty disclaimer apply. No endorsement is implied.
 
 Conversion: manually convert the selected Bikeshed prose and algorithms into Markdown; resolve markup into readable names, normalize whitespace, and retain algorithm ordering, conditions and literal keywords. Definition lists become paragraphs. The original numbered algorithm entries all use `1.`; normal Markdown numbering is retained. The selected clauses contain no complex tables or diagrams. Sections below identify exact source spans. Editorial scope notes are explicitly marked. This is a bounded conversion, not the complete specification or a newly rendered upstream edition.
+
+## Focus feature definition
+
+Source: HTML `877d6146487f15b15bc8dd0e3c625063a37b456a`, raw line 3029, policy-controlled features. Bounded conversion added 17 October 2026; markup and whitespace are normalized and unrelated feature definitions and browser-support annotations are omitted.
+
+The policy-controlled feature `focus-without-user-activation` has default allowlist `'self'`.
 
 ## Features and policy records
 

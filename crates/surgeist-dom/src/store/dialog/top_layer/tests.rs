@@ -189,7 +189,20 @@ fn manual_open_removal_preserves_modal_raw_but_request_and_real_removal_clear_th
     let first = staged.resolve(ids[0].into()).unwrap();
     staged.request_top_layer_removal(first, &cancel()).unwrap();
     staged.set_dialog_modal(first, false, &cancel()).unwrap();
-    publish(&mut dom, &staged);
+    let structural = publish(&mut dom, &staged);
+    assert_eq!(structural.changes().changes().len(), 2);
+    assert!(
+        structural
+            .changes()
+            .changes()
+            .contains(&DomChange::ElementState(ids[0]))
+    );
+    assert!(
+        structural
+            .changes()
+            .changes()
+            .contains(&DomChange::DocumentInteractiveState(document))
+    );
     assert!(
         !dom.snapshot()
             .node(ids[0])

@@ -501,7 +501,7 @@ impl DomSourceLease<'_> {
             kind,
             parent_document: request.document,
             parent_origin: parent.origin().clone(),
-            parent_fullscreen: parent_association.policy.inherited,
+            parent_policy: parent_association.policy,
             parent_sandbox,
             embedder_sandbox: own_sandbox,
             sandbox: sandbox.cloned(),
@@ -975,9 +975,7 @@ impl DomSourceLease<'_> {
         let Phase::Creating(inner) = &mut op.child.as_mut().expect("validated child").phase else {
             unreachable!("exact phase retained")
         };
-        inner.policy = Some(DomInitialPermissionsPolicy {
-            inherited: current.inherited,
-        });
+        inner.policy = Some(current.policy);
         inner.phase = canonical::CreationPhase::Execution(DomHostedExecutionRequest {
             request: next,
             origin: inner.origin.clone(),

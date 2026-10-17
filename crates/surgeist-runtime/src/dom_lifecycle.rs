@@ -1214,7 +1214,10 @@ fn drive_creation(
                         source
                             .seal_permissions_policy(
                                 request,
-                                surgeist_dom::DomFullscreenInherited::Enabled,
+                                surgeist_dom::DomInitialPermissionsPolicy::new(
+                                    surgeist_dom::DomPermissionsPolicyValue::Enabled,
+                                    surgeist_dom::DomPermissionsPolicyValue::Enabled,
+                                ),
                                 cancel,
                             )
                             .map_err(DomHostedRuntimeError::Dom)?,

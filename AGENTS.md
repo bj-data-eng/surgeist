@@ -174,7 +174,8 @@ Runtime's `DomSession` owns the canonical DOM, Style resources, shared element
 tasks and native hosted lifecycle through weak execution permissions.
 Its bounded hosted surface creates initial no-opener top-levels and native
 Frame/Iframe initial children with real Global/settings/agent state. Runtime
-computes the selected initial fullscreen Permissions Policy from actual inputs
+computes the selected initial fullscreen and focus-without-user-activation
+Permissions Policy from actual inputs
 and qualified URL observations. Its shared native task loop drives queued history and recursive
 destruction through the original Global tasks. DOM
 owns controlled associations and the actual complete-empty Global registry;

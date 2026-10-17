@@ -349,6 +349,13 @@ raw lines 64314–64328 and 64370–64397. Changes by Surgeist on 2026-10-16:
 bounded selection, manual Markdown conversion, normalized markup/whitespace,
 links and explicit editorial consequences. No endorsement is implied.
 
+On 2026-10-17, the same reference added the policy-controlled
+`focus-without-user-activation` feature definition and its `'self'` default from
+raw line 3029 of that exact snapshot. Changes are bounded selection, manual
+Markdown conversion and normalized markup/whitespace, omitting unrelated
+features and browser-support annotations. The existing allow-focus and
+allowed-to-use conversions remain separately linked; no source edition changed.
+
 The existing exact [LICENSE](LICENSE) supplies Creative Commons Attribution 4.0
 International terms for this specification prose. Its BSD 3-Clause provision
 applies only to portions incorporated into code. W3C policy material is identified

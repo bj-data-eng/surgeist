@@ -6,7 +6,7 @@ use crate::{
 };
 use std::error::Error;
 type Failure = Box<dyn Error>;
-const RUNTIME_VISITS: u64 = 20;
+const RUNTIME_VISITS: u64 = 19;
 
 struct Parked {
     session: DomSession,
@@ -356,12 +356,12 @@ fn assert_real_shape(case: &Parked) {
     assert_eq!(b.clusters[0].agent.windows.rows.len(), 1);
     assert_eq!(b.clusters[0].agent.windows.rows[0].id, case.current_global);
     assert!(b.clusters[0].agent.windows.rows[0].retired);
-    // Independent service tariff for this real shape: availability1; retained
+    // Independent service tariff for this real shape: retained
     // owner traversal Host1 + A(comp/cluster/Window/Global/settings=5)
     // + B(comp/cluster/Window/watcher-group/original-member-record-body=5);
-    // find B(host1+A3+B3=7); actual observation1. Total1+11+7+1=20,
+    // find B(host1+A3+B3=7); actual observation1. Total11+7+1=19,
     // independently counting the same original Rc record body exactly once.
-    assert_eq!(RUNTIME_VISITS, 1 + (1 + 5 + 5) + (1 + 3 + 3) + 1);
+    assert_eq!(RUNTIME_VISITS, (1 + 5 + 5) + (1 + 3 + 3) + 1);
     let snapshot = case.session.snapshot();
     assert_eq!(
         snapshot.node(case.subject).unwrap().owner_document(),
@@ -621,7 +621,7 @@ fn pruned_original_window_does_not_become_a_negative_focus_observation() {
 }
 
 #[test]
-fn denial_hosted_formation_storage_scratch_and_twenty_visits_admit_exactly() {
+fn denial_hosted_formation_storage_scratch_and_nineteen_visits_admit_exactly() {
     for kind in 0..3 {
         let mut case = parked(10_000_000, None, false, true).unwrap();
         assert_real_shape(&case);
@@ -787,7 +787,7 @@ fn exhausted(error: &(dyn Error + 'static), cap: u64) -> bool {
 #[test]
 fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
     // Calibrate only setup and canonical preparation/relative retention. All
-    // actual new Runtime visits remain the independently derived literal20.
+    // actual new Runtime visits remain the independently derived literal19.
     let mut low = 0;
     let mut high = 10_000_000;
     while low < high {

@@ -2,7 +2,7 @@
 //! No request, identity, policy phase or positive policy value is fabricated.
 use super::*;
 use surgeist_dom::{
-    DomFullscreenInherited, DomHostedPolicyPublication, DomResource, DomSourceUrlObservation,
+    DomHostedPolicyPublication, DomPermissionsPolicyValue, DomResource, DomSourceUrlObservation,
     DomSourceUrlOrigin, DomSourceUrlRequest,
 };
 use surgeist_html::DocumentString;
@@ -201,7 +201,7 @@ impl Pending {
             .accept_hosted_child_policy(&mut state.source, &self.child, publication, cancel)
     }
 
-    fn finish(&mut self, expected: DomFullscreenInherited) {
+    fn finish(&mut self, expected: DomPermissionsPolicyValue) {
         let mut observe = |_: &DomSourceUrlRequest, _: &AtomicBool| {
             panic!("a still-qualified accepted reply must not be requested again")
         };
@@ -238,15 +238,19 @@ impl Pending {
             .unwrap()
             .active_document()
             .unwrap();
+        let policy = snapshot
+            .document(document)
+            .unwrap()
+            .metadata()
+            .initial_permissions_policy()
+            .unwrap();
+        assert_eq!(policy.inherited_fullscreen(), expected);
+        // This fixture has no sandbox and no focus directive: the actual
+        // opaque child shares its parent's origin independently of the URL
+        // reply used to match fullscreen's explicit 'src' declaration.
         assert_eq!(
-            snapshot
-                .document(document)
-                .unwrap()
-                .metadata()
-                .initial_permissions_policy()
-                .unwrap()
-                .inherited_fullscreen(),
-            expected
+            policy.inherited_focus_without_user_activation(),
+            DomPermissionsPolicyValue::Enabled
         );
         assert_eq!(snapshot.incomplete_source_operation(), None);
     }
@@ -329,7 +333,10 @@ fn foreign_policy_request_issuer_and_publication_preserve_both_real_candidates()
         assert!(matches!(
             state_a.source.seal_permissions_policy(
                 request_b,
-                DomFullscreenInherited::Enabled,
+                surgeist_dom::DomInitialPermissionsPolicy::new(
+                    DomPermissionsPolicyValue::Enabled,
+                    DomPermissionsPolicyValue::Disabled
+                ),
                 &cancel
             ),
             Err(DomHostedError::ForeignSource)
@@ -376,8 +383,8 @@ fn foreign_policy_request_issuer_and_publication_preserve_both_real_candidates()
     b.accept_policy(&mut publication_b, &cancel).unwrap();
     assert!(publication_a.is_none());
     assert!(publication_b.is_none());
-    a.finish(DomFullscreenInherited::Enabled);
-    b.finish(DomFullscreenInherited::Enabled);
+    a.finish(DomPermissionsPolicyValue::Enabled);
+    b.finish(DomPermissionsPolicyValue::Enabled);
 }
 
 #[test]
@@ -400,7 +407,7 @@ fn cancelled_policy_accept_keeps_candidate_then_success_is_single_use() {
         Err(DomHostedError::WrongPhase)
     );
     assert!(publication.is_none());
-    pending.finish(DomFullscreenInherited::Enabled);
+    pending.finish(DomPermissionsPolicyValue::Enabled);
 }
 
 #[test]
@@ -465,7 +472,7 @@ fn real_issuer_revision_change_rejects_policy_candidate_until_actual_reseal() {
     pending.assert_pending_policy();
     // The Runtime row no longer owns the deliberately retained old candidate;
     // the original driver evaluates and seals a fresh qualified publication.
-    pending.finish(DomFullscreenInherited::Enabled);
+    pending.finish(DomPermissionsPolicyValue::Enabled);
     assert_eq!(address(&publication), original);
 }
 
@@ -498,7 +505,7 @@ fn real_url_stage_outcome_origin_pairings_reject_before_policy_and_then_complete
         .accept_url(&issued, &mut value, &AtomicBool::new(false))
         .unwrap();
     assert!(value.is_none());
-    empty.finish(DomFullscreenInherited::Enabled);
+    empty.finish(DomPermissionsPolicyValue::Enabled);
 
     let mut parsed = Pending::new("about:blank");
     let pp = parsed.issue(DomSourceUrlStage::IframeDeclaredOrigin);
@@ -545,7 +552,7 @@ fn real_url_stage_outcome_origin_pairings_reject_before_policy_and_then_complete
         .accept_url(&src, &mut value, &AtomicBool::new(false))
         .unwrap();
     assert!(value.is_none());
-    parsed.finish(DomFullscreenInherited::Disabled);
+    parsed.finish(DomPermissionsPolicyValue::Disabled);
 }
 
 #[test]
@@ -594,8 +601,8 @@ fn foreign_superseded_and_duplicate_url_responses_do_not_replace_original_slot()
     b.accept_url(&issued_b, &mut b_value, &AtomicBool::new(false))
         .unwrap();
     assert!(b_value.is_none());
-    a.finish(DomFullscreenInherited::Enabled);
-    b.finish(DomFullscreenInherited::Enabled);
+    a.finish(DomPermissionsPolicyValue::Enabled);
+    b.finish(DomPermissionsPolicyValue::Enabled);
 }
 
 #[test]
@@ -696,5 +703,5 @@ fn url_cancel_work_and_bytes_refusals_keep_phase_candidate_and_retry_custody() {
     }
     assert_eq!(address(&large), large_address);
     assert_eq!(pending.accepted_revision(), Some(pending.revision.clone()));
-    pending.finish(DomFullscreenInherited::Enabled);
+    pending.finish(DomPermissionsPolicyValue::Enabled);
 }

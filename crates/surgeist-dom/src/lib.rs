@@ -175,11 +175,11 @@ pub use host::{
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
 pub use hosted::{
-    DomFullscreenInherited, DomHostedBrowsingContextId, DomHostedChildHistoryPublication,
-    DomHostedChildHistoryRequest, DomHostedChildPreparation, DomHostedChildRemovalHandoff,
-    DomHostedChildRemovalPublication, DomHostedChildRemovalRequest, DomHostedChildRequest,
-    DomHostedChildStep, DomHostedCreation, DomHostedCreationLease, DomHostedCreationPublication,
-    DomHostedCreationStep, DomHostedDestructionInvocation, DomHostedDestructionInvocationRequest,
+    DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,
+    DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,
+    DomHostedChildRemovalRequest, DomHostedChildRequest, DomHostedChildStep, DomHostedCreation,
+    DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
+    DomHostedDestructionInvocation, DomHostedDestructionInvocationRequest,
     DomHostedDestructionLease, DomHostedDestructionPublication, DomHostedDestructionRequest,
     DomHostedDestructionStep, DomHostedDocumentDestructionProof, DomHostedEmbedderKind,
     DomHostedEmbedderPolicyInputs, DomHostedEntry, DomHostedEntryId, DomHostedEntryInitialization,
@@ -191,7 +191,7 @@ pub use hosted::{
     DomHostedPreparedChild, DomHostedPreparedTopLevel, DomHostedQueuedHistory,
     DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
     DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
-    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
+    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};

@@ -505,7 +505,7 @@ contains material derived from W3C Permissions Policy commit
 `29398046f1e0cb45c091adda853df74925dc740a`, with the original source identity,
 copyright and [W3C attribution and modification notice](licenses/w3c/NOTICE.md#initial-permissions-policy-creation).
 The existing complete [W3C Software and Document License, 2015](licenses/w3c/software-license-2015.txt)
-accompanies that material. HTML opaque-origin definitions retain their separate
+accompanies that material. HTML opaque-origin and focus-feature definitions retain their separate
 [WHATWG license and attribution](licenses/whatwg/NOTICE.md#permissions-policy-opaque-origin-definitions--2026-10-16).
 This is implementation-support source material, not a complete policy engine.
 
