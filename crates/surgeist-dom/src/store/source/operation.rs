@@ -2235,18 +2235,23 @@ impl DomSourceLease<'_> {
                         op.context = None;
                     }
                     if op.index == op.commands.len() || op.cancelled {
-                        if let Some(select) = &mut op.select
-                            && (!op.cancelled || op.started)
-                            && !select.finished
-                        {
+                        // Complete fallible installation output before touching
+                        // tentative Select finalization. These are distinct
+                        // named roots, not two completion phases of one root.
+                        let installation_output = op.installation_output(self.dom, cancel)?;
+                        let select_finished = op.select.is_some() && (!op.cancelled || op.started);
+                        if select_finished {
+                            let select = op.select.as_ref().expect("actual Select root");
                             if !matches!(op.draft.native_tasks.first(), Some(select::Pending::Update {serial:Some(serial),target}) if *serial==select.operation.serial && op.draft.resolve(select.target.into()).is_ok_and(|key|key==*target))
                             {
                                 return Err(DomError::InvalidNativeTask);
                             }
                             op.draft.native_tasks.remove(0);
-                            select.finished = true;
                         }
-                        let installation_output = op.installation_output(self.dom, cancel)?;
+                        // FIFO removal is tentative until every final output
+                        // and canonical publication succeeds. A refusal restores
+                        // the Draft checkpoint; no independent finished flag may
+                        // outlive that rollback and suppress removal on retry.
                         let commit = match op.publication(
                             self.dom,
                             false,
@@ -2281,7 +2286,7 @@ impl DomSourceLease<'_> {
                             drop(payload); // The completed result now owns the real bank.
                             result
                         });
-                        if op.select.as_ref().is_some_and(|s| s.finished) {
+                        if select_finished {
                             self.select_authorization
                                 .as_ref()
                                 .expect("Select permission")
@@ -2856,7 +2861,6 @@ impl Operation {
 struct SelectRoot {
     operation: crate::DomNativeTaskId,
     target: NodeId,
-    finished: bool,
 }
 impl Operation {
     pub(in crate::store) fn allows_select_checkpoint(&self, serial: u64, target: NodeId) -> bool {
@@ -2903,7 +2907,6 @@ impl Dom {
         op.select = Some(SelectRoot {
             operation: task.operation(),
             target: task.select(),
-            finished: false,
         });
         lease.select_authorization = Some(task.authorization.clone());
         Ok(lease)
