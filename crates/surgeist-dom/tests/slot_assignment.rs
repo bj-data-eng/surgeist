@@ -938,3 +938,328 @@ fn slot_checkpoint(
         other => panic!("expected reached Slot marker, got {other:?}"),
     }
 }
+
+#[test]
+fn owned_subtree_retirement_cancels_multiple_slots_without_reordering_surviving_recipients() {
+    let mut f = fixture(HtmlSlotAssignment::Manual, false);
+    let mut b = DomBatch::new();
+    let victim = b.create_element_ns(f.document, Namespace::html(), "div");
+    b.insert_before(&victim, f.top, None);
+    let root = b.attach_shadow(&victim, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let a = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let z = b.create_element_ns(f.document, Namespace::html(), "slot");
+    b.insert_before(&a, &root, None);
+    b.insert_before(&z, &root, None);
+    let c = apply(&mut f.dom, b);
+    let victim = c.created(&victim).unwrap().unwrap();
+    let root = c.created(&root).unwrap().unwrap();
+    let a = c.created(&a).unwrap().unwrap();
+    let z = c.created(&z).unwrap().unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+
+    // Actual fallback insertions signal empty slots; actual reassignment signals
+    // S1. First-signal order deliberately differs from tree/destruction order.
+    let mut b = DomBatch::new();
+    let live_fallback = b.create_comment(f.document, "live");
+    b.insert_before(&live_fallback, f.s2, None);
+    let z_fallback = b.create_comment(f.document, "Z");
+    b.insert_before(&z_fallback, z, None);
+    b.assign_slot(f.s1, Vec::new());
+    let a_fallback = b.create_comment(f.document, "A");
+    b.insert_before(&a_fallback, a, None);
+    let duplicate = b.create_comment(f.document, "second Z signal");
+    b.insert_before(&duplicate, z, None);
+    let c = apply(&mut f.dom, b);
+    let z_fallback = c.created(&z_fallback).unwrap().unwrap();
+    let a_fallback = c.created(&a_fallback).unwrap().unwrap();
+    let duplicate = c.created(&duplicate).unwrap().unwrap();
+    let old = f.dom.snapshot();
+    assert_eq!(old.pending_slot_signals(), &[f.s2, z, f.s1, a]);
+
+    let mut b = DomBatch::new();
+    b.detach(victim);
+    b.destroy(victim);
+    let c = apply(&mut f.dom, b);
+    let now = f.dom.snapshot();
+    assert_eq!(now.pending_slot_signals(), &[f.s2, f.s1]);
+    for slot in [a, z] {
+        assert!(
+            c.changes()
+                .changes()
+                .contains(&DomChange::SlotSignalCancelled {
+                    slot,
+                    reason: DomSlotSignalCancellationReason::Destroyed,
+                })
+        );
+    }
+    for slot in [f.s2, f.s1] {
+        assert!(
+            !c.changes()
+                .changes()
+                .contains(&DomChange::SlotSignalCancelled {
+                    slot,
+                    reason: DomSlotSignalCancellationReason::Destroyed,
+                })
+        );
+        assert!(now.slot(slot).is_ok());
+    }
+    for id in [victim, root, a, z, a_fallback, z_fallback, duplicate] {
+        assert_eq!(now.node(id).unwrap_err(), DomError::StaleNode);
+        assert!(old.node(id).is_ok());
+    }
+    assert_eq!(old.pending_slot_signals(), &[f.s2, z, f.s1, a]);
+    // Cancellation is not delivery: the next genuine checkpoint transfers only
+    // the surviving intentions, in their original relative order.
+    let next = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+    assert_eq!(next.targets(), &[f.s2, f.s1]);
+    assert_eq!(old.pending_slot_signals(), &[f.s2, z, f.s1, a]);
+}
+
+#[test]
+fn subtree_slot_retirement_clears_multiple_empty_list_inverses_but_preserves_live_target() {
+    let mut f = fixture(HtmlSlotAssignment::Named, false);
+    let mut b = DomBatch::new();
+    let wrapper = b.create_element_ns(f.document, Namespace::html(), "section");
+    let a = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let z = b.create_element_ns(f.document, Namespace::html(), "slot");
+    b.set_attribute(&a, "name", "a");
+    b.set_attribute(&z, "name", "z");
+    b.insert_before(&a, &wrapper, None);
+    b.insert_before(&z, &wrapper, None);
+    b.insert_before(&wrapper, f.r1, None);
+    let first = b.create_element_ns(f.document, Namespace::html(), "span");
+    let second = b.create_element_ns(f.document, Namespace::html(), "span");
+    let third = b.create_element_ns(f.document, Namespace::html(), "span");
+    for (node, name) in [(&first, "a"), (&second, "a"), (&third, "z")] {
+        b.set_attribute(node, "slot", name);
+        b.insert_before(node, f.h1, None);
+    }
+    let c = apply(&mut f.dom, b);
+    let wrapper = c.created(&wrapper).unwrap().unwrap();
+    let a = c.created(&a).unwrap().unwrap();
+    let z = c.created(&z).unwrap().unwrap();
+    let first = c.created(&first).unwrap().unwrap();
+    let second = c.created(&second).unwrap().unwrap();
+    let third = c.created(&third).unwrap().unwrap();
+    let assigned = f.dom.snapshot();
+    assert_eq!(assigned.slot(a).unwrap().assigned_nodes(), &[first, second]);
+    assert_eq!(assigned.slot(z).unwrap().assigned_nodes(), &[third]);
+    let mut b = DomBatch::new();
+    b.set_attribute(a, "name", "no-a-match");
+    b.set_attribute(z, "name", "no-z-match");
+    apply(&mut f.dom, b);
+    let mut b = DomBatch::new();
+    b.detach(wrapper);
+    apply(&mut f.dom, b);
+    let old = f.dom.snapshot();
+    for slot in [a, z] {
+        assert!(old.slot(slot).unwrap().assigned_nodes().is_empty());
+        assert!(old.pending_slot_signals().contains(&slot));
+    }
+    for (node, slot) in [(first, a), (second, a), (third, z), (f.x, f.s1)] {
+        assert_eq!(
+            old.node(node).unwrap().stored_assigned_slot().unwrap(),
+            Some(slot)
+        );
+        assert_eq!(old.node(node).unwrap().parent(), Some(f.h1));
+    }
+
+    // #1237 requires finding surviving inverses independently of the now-empty
+    // stored lists, for every exact Slot retired inside the owned subtree.
+    let mut b = DomBatch::new();
+    b.destroy(wrapper);
+    let c = apply(&mut f.dom, b);
+    let now = f.dom.snapshot();
+    for node in [first, second, third] {
+        assert_eq!(
+            now.node(node).unwrap().stored_assigned_slot().unwrap(),
+            None
+        );
+        assert!(
+            c.changes()
+                .changes()
+                .contains(&DomChange::StoredAssignedSlot(node))
+        );
+    }
+    assert_eq!(
+        now.node(f.x).unwrap().stored_assigned_slot().unwrap(),
+        Some(f.s1)
+    );
+    assert!(
+        !c.changes()
+            .changes()
+            .contains(&DomChange::StoredAssignedSlot(f.x))
+    );
+    assert_eq!(now.slot(f.s1).unwrap().assigned_nodes(), &[f.x]);
+    for slot in [a, z] {
+        assert_eq!(now.node(slot).unwrap_err(), DomError::StaleNode);
+        assert!(
+            c.changes()
+                .changes()
+                .contains(&DomChange::SlotSignalCancelled {
+                    slot,
+                    reason: DomSlotSignalCancellationReason::Destroyed,
+                })
+        );
+        assert!(old.slot(slot).unwrap().assigned_nodes().is_empty());
+    }
+    for (node, slot) in [(first, a), (second, a), (third, z)] {
+        assert_eq!(
+            old.node(node).unwrap().stored_assigned_slot().unwrap(),
+            Some(slot)
+        );
+    }
+    assert_eq!(assigned.slot(a).unwrap().assigned_nodes(), &[first, second]);
+    assert_eq!(assigned.slot(z).unwrap().assigned_nodes(), &[third]);
+
+    // New allocations cannot revive either retired full identity or acquire its
+    // cleared inverses. Public NodeIds intentionally expose no arena-slot index.
+    let mut b = DomBatch::new();
+    let replacement_a = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let replacement_z = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let c = apply(&mut f.dom, b);
+    let replacement_a = c.created(&replacement_a).unwrap().unwrap();
+    let replacement_z = c.created(&replacement_z).unwrap().unwrap();
+    for replacement in [replacement_a, replacement_z] {
+        assert_ne!(replacement, a);
+        assert_ne!(replacement, z);
+        assert!(
+            f.dom
+                .snapshot()
+                .slot(replacement)
+                .unwrap()
+                .assigned_nodes()
+                .is_empty()
+        );
+    }
+    for node in [first, second, third] {
+        assert_eq!(
+            f.dom
+                .snapshot()
+                .node(node)
+                .unwrap()
+                .stored_assigned_slot()
+                .unwrap(),
+            None
+        );
+    }
+    let mut b = DomBatch::new();
+    for node in [first, second, third] {
+        b.set_attribute(node, "slot", "");
+    }
+    apply(&mut f.dom, b);
+    let mutated = f.dom.snapshot();
+    assert_eq!(
+        mutated.slot(f.s1).unwrap().assigned_nodes(),
+        &[f.x, first, second, third]
+    );
+    for node in [first, second, third] {
+        assert_eq!(
+            mutated.node(node).unwrap().stored_assigned_slot().unwrap(),
+            Some(f.s1)
+        );
+        assert_eq!(old.node(node).unwrap().parent(), Some(f.h1));
+    }
+    for slot in [a, z] {
+        assert_eq!(mutated.node(slot).unwrap_err(), DomError::StaleNode);
+    }
+}
+
+#[test]
+fn authored_display_none_and_contents_preserve_canonical_shadow_slot_and_flat_relations() {
+    let mut f = fixture(HtmlSlotAssignment::Manual, false);
+    let initial = f.dom.snapshot();
+    let flat = initial.flat_tree(f.document, queries(), &cancel()).unwrap();
+    let mut captures = vec![(initial, flat)];
+    // #1236's DOM-only invariant: authored display input does not rewrite the
+    // canonical tree. This does not parse CSS or certify #172 box suppression.
+    for value in ["display:none", "display:contents"] {
+        let before = f.dom.snapshot().stamp();
+        let mut b = DomBatch::new();
+        b.set_attribute(f.h1, "style", value);
+        b.set_attribute(f.s1, "style", value);
+        apply(&mut f.dom, b);
+        let snapshot = f.dom.snapshot();
+        assert_ne!(snapshot.stamp(), before);
+        let flat = snapshot
+            .flat_tree(f.document, queries(), &cancel())
+            .unwrap();
+        assert_eq!(flat.source().stamp(), snapshot.stamp());
+        assert_eq!(
+            flat.source().document(f.document).unwrap().stamp(),
+            snapshot.document(f.document).unwrap().stamp()
+        );
+        captures.push((snapshot, flat));
+    }
+    for ((snapshot, flat), style) in
+        captures
+            .iter()
+            .zip([None, Some("display:none"), Some("display:contents")])
+    {
+        for node in [f.h1, f.s1] {
+            assert_eq!(
+                snapshot
+                    .node(node)
+                    .unwrap()
+                    .attribute(&"style".into())
+                    .cloned(),
+                style.map(DocumentString::from)
+            );
+        }
+        assert_eq!(
+            snapshot.node(f.top).unwrap().parent(),
+            Some(f.document.node())
+        );
+        assert_eq!(snapshot.node(f.h1).unwrap().parent(), Some(f.top));
+        assert_eq!(snapshot.node(f.h1).unwrap().children(), &[f.x]);
+        assert_eq!(snapshot.node(f.x).unwrap().parent(), Some(f.h1));
+        assert_eq!(snapshot.node(f.r1).unwrap().parent(), None);
+        assert_eq!(snapshot.node(f.r1).unwrap().children(), &[f.s1]);
+        assert_eq!(snapshot.node(f.s1).unwrap().parent(), Some(f.r1));
+        assert_eq!(snapshot.node(f.s1).unwrap().children(), &[f.fallback]);
+        assert_eq!(
+            snapshot.node(f.h1).unwrap().hosted_shadow_root(),
+            Some(f.r1)
+        );
+        assert_eq!(snapshot.node(f.r1).unwrap().shadow_host(), Some(f.h1));
+        for node in [f.top, f.h1, f.r1, f.s1, f.x, f.fallback] {
+            assert_eq!(
+                snapshot.node(node).unwrap().owner_document(),
+                Some(f.document)
+            );
+        }
+        assert_eq!(snapshot.slot(f.s1).unwrap().manual_assignments(), &[f.x]);
+        assert_eq!(snapshot.slot(f.s1).unwrap().assigned_nodes(), &[f.x]);
+        assert_eq!(
+            snapshot.node(f.x).unwrap().stored_assigned_slot().unwrap(),
+            Some(f.s1)
+        );
+        assert_eq!(
+            snapshot
+                .node(f.x)
+                .unwrap()
+                .assigned_slot(&cancel())
+                .unwrap(),
+            Some(f.s1)
+        );
+        assert_eq!(flat.document(), f.document);
+        for (node, relation) in [
+            (f.top, DomFlatRelation::Root),
+            (f.h1, DomFlatRelation::Parent(f.top)),
+            (f.s1, DomFlatRelation::Parent(f.h1)),
+            (f.x, DomFlatRelation::Parent(f.s1)),
+            (f.r1, DomFlatRelation::Excluded),
+            (f.fallback, DomFlatRelation::Excluded),
+        ] {
+            assert_eq!(flat.relation(node).unwrap(), relation);
+        }
+    }
+    assert_ne!(
+        captures[0].1.source().stamp(),
+        captures[1].1.source().stamp()
+    );
+    assert_ne!(
+        captures[1].1.source().stamp(),
+        captures[2].1.source().stamp()
+    );
+}

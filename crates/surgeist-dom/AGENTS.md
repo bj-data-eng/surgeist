@@ -219,9 +219,11 @@ ShadowRoot uses the same NodeId/State/Draft/ticket owner as ordinary nodes.
 Keep reciprocal host/root links separate from ordinary parents; roots remain
 parentless DocumentFragment subtypes. Native attach consumes actual HTML shadow
 properties and custom-name grammar; DOM owns its short valid-host-name clause.
-Require mode, source defaults for other native options, actual null registry and
-false declarative/internals/keep-null state. Never fabricate declarative reuse,
-custom registry/definition objects or Slot state. Direct root adopt/import/destroy
+Require mode, source defaults for other native options, the host's actual canonical
+null or qualified Global registry binding and false declarative/internals/keep-null
+state. Retained registry identity after hosted teardown does not grant execution.
+Never fabricate declarative reuse, custom definitions/execution or Slot state.
+Direct root adopt/import/destroy
 retain their typed rejections. Fragment-operand insertion transfers children;
 replacement internally adopts the supplied root first, so root and host node
 documents can differ. Do not impose permanent same-document equality. Adoption,

@@ -815,9 +815,10 @@ using HTML's actual custom-name grammar. `DomShadowRootInit::new(mode)` requires
 open or closed mode and selects named assignment plus false delegates-focus,
 clonable and serializable defaults. Actual `HtmlShadowRootProperties` can select
 all five values. The native root stores false declarative/available-to-internals/
-keep-registry-null flags and a known-null registry. Duplicate native attachment
-rejects; there is no fabricated registry object, custom definition, declarative
-toggle, focus execution or serialization capability.
+keep-registry-null flags and retains the host's actual canonical registry binding:
+null or a qualified Global registry, including after hosted teardown. Duplicate
+native attachment rejects. Custom definitions and execution, declarative reuse,
+focus execution and serialization remain unavailable.
 
 A root has a non-null reciprocal host relation and no ordinary parent. Its
 children are the ordinary children of its own separate tree. `hosted_shadow_root`
