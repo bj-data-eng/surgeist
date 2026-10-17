@@ -213,3 +213,22 @@ compile or link these files into Surgeist. The
 [selected product metric](../../references/SOURCE-EDITIONS.md#contrastcolor-metric-and-bounded-browser-evidence)
 uses this bounded evidence while explicitly distinguishing the local finite-Y
 clamp, white ties and numerical representation from browser behavior.
+
+## Fresh Document focus initialization
+
+The [focus-initialization witness](../../references/webkit-document-focus-initialization--73aa6c89e2cb.md)
+retains bounded excerpts at immutable revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Each original header states GNU
+Library General Public License version 2 or later; the complete
+[version 2 text](LICENSE-LGPL-2.txt) remains included.
+
+| Original source and retained coverage | Exact local legal header |
+| --- | --- |
+| Source/WebCore/dom/Document.h: focusedElement readback and member, lines 1009 and 2367 | [Document.h header](document-h-license-header.txt) |
+| Source/WebCore/dom/Document.cpp: complete constructor, lines 677–766 | [Existing Document.cpp header](document-cpp-license-header.txt) |
+| Source/WTF/wtf/RefPtr.h: default and null constructors, lines 94–95 | [RefPtr.h header](refptr-h-license-header.txt) |
+
+All three fenced headers and source excerpts match their pinned originals.
+Document.cpp reuses its existing identical legal header. Added Markdown headings
+and provenance labels do not alter the copied material. These documentation
+excerpts are not compiled, linked or adapted into the Rust implementation.

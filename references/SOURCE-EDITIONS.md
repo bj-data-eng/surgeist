@@ -1057,3 +1057,21 @@ native failed-assertion disposition; the source comparison does not supply one.
 The [catalog entry](SOURCE-CATALOG.md#dialog-modal-assertion-comparison--2026-10-17)
 and [conversion record](CONVERSION-REPORT.md#dialog-modal-assertion-comparison--2026-10-17)
 identify the bounded transcription and its limits.
+
+## Fresh native Document focus initialization
+
+[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects a
+known-null focused-area designation for fresh native closed and hosted-initial
+Documents. The pinned HTML focus model permits a null designation in its
+currently-focused-area resolver but does not state a fresh initialization.
+The [pinned WebKit witness](webkit-document-focus-initialization--73aa6c89e2cb.md)
+corroborates the explicit native choice through Document's member declaration,
+complete constructor and RefPtr's default-null initialization. This is a bounded
+native qualification, not a missing HTML normative default.
+
+Null designation, viewport designation, unavailable imported history and absent
+system focus remain distinct. Resolving null designation to the candidate
+Document does not write a viewport designation. The current-standard comparison
+selects no replacement HTML edition. The witness's original legal headers and
+[WebKit attribution](../licenses/webkit/NOTICE.md#fresh-document-focus-initialization)
+cover its documentation excerpts; no browser source is compiled or linked.

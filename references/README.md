@@ -177,3 +177,12 @@ distinguishes the normative radix-10 formatting from Note 2's informative
 recommendation, deliberately selected as mandatory Surgeist digit-choice
 policy. The original draft header and Ecma legal terms remain explicit.
 This selects no JavaScript runtime, rolling edition or Range implementation.
+
+## Native Document focus initialization evidence
+
+The [fresh-focus witness](webkit-document-focus-initialization--73aa6c89e2cb.md)
+retains bounded Document and RefPtr source excerpts with their complete legal
+headers at the existing WebKit pin. The [native determination](SOURCE-EDITIONS.md#fresh-native-document-focus-initialization)
+selects known-null for fresh native Documents while preserving unknown imported
+history and the separate system-focus contract. It does not establish a complete
+native focus producer.
