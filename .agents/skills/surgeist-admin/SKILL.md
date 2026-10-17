@@ -9,16 +9,19 @@ Use [Surgeist Coordination](https://github.com/users/bj-data-eng/projects/1) as
 the single progress record for completed work and actionable future work in
 `bj-data-eng/surgeist`. The coordinator owns issue and Project updates within the
 user's authority. This convention grants no implementation, issue-creation,
-closure, commit, publication, or cleanup authority. Preserve user pauses.
+closure, commit, publication, or cleanup authority. Honor execution pauses under
+[Pause And Resume](#pause-and-resume).
 Use PISCT's focused skills for engineering and review.
 
 ## Work And Ownership
 
 An issue states the outcome, acceptance criteria, ownership boundaries, and
-relevant sources. Use module → crate contributions → bounded properties or tasks
-where that grouping fits the work. Own shared capabilities once and link
-dependent work to that owner. Native parent-child relationships describe scope;
-blocking dependencies describe execution order. Keep both acyclic. Completing a
+relevant sources. State project decisions and requirements directly in issue
+bodies and comments; do not attribute them to "the user" or narrate the chat
+instructions that established them. Use module → crate contributions → bounded
+properties or tasks where that grouping fits the work. Own shared capabilities
+once and link dependent work to that owner. Native parent-child relationships
+describe scope; blocking dependencies describe execution order. Keep both acyclic. Completing a
 leaf does not certify the enclosing contribution or module.
 
 Issue decomposition and relationships describe the current working organization.
@@ -36,7 +39,7 @@ progress; an empty active view does not establish absence. Reference material
 supports acceptance criteria without automatically becoming another issue.
 
 Use the existing fields when useful: Crates, Feature Group, Boundary, Priority,
-Plan, and Needs. Assign Feature Group explicitly, not from GitHub author identity.
+and Plan. Assign Feature Group explicitly, not from GitHub author identity.
 Boundary distinguishes Root-owned, Crate-owned, Cross-crate, and
 Upstream-blocked work. Keep requirement coverage and consequential decisions
 with their owning issue or tracked source. Do not build a parallel progress
@@ -131,11 +134,18 @@ shared files by age, prefix, or extension, or purge history as incidental cleanu
 
 ## Pause And Resume
 
+Execution pauses and resume instructions are local session state, separate from
+the Project's product progress record. Keep them only in local handoffs under
+ignored `tmp/`. Never publish execution pause notices or paused-work status in
+GitHub issues, comments, Project fields, or other GitHub records. Do not change
+issue or Project status to represent an execution pause. These rules do not
+affect technical requirements for paused animations or other modeled states.
+
 On pause, stop or account for owned workers/processes through PISCT process
-handling. Keep one current handoff at a stable entry point. Replace superseded
-checkpoint wording rather than appending a running transcript. Move a completed
-work narrative into clearly historical material only while a concrete consumer
-still needs it; otherwise retire it within cleanup authority. Leave enough
+handling. Keep one current local handoff at a stable entry point. Replace
+superseded checkpoint wording rather than appending a running transcript. Move a
+completed work narrative into clearly historical material only while a concrete
+consumer still needs it; otherwise retire it within cleanup authority. Leave enough
 current information to continue: the relevant issue,
 blocker or next action, outstanding checks, consequential decisions, and active
 ownership or needed working material. Preserve unfinished edits and inputs;

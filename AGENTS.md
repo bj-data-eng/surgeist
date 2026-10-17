@@ -213,8 +213,8 @@ not establish completion of those broader contracts.
 The remaining downstream owners are planned: `surgeist-selectors` for matching
 and specificity, `surgeist-cascade` for precedence and rollback, and
 `surgeist-style` for rule collection, inheritance, substitution, computed values
-and invalidation. HTML-owned work precedes DOM, then the downstream CSS crates,
-as directed by the user. DOM integration follows availability of both producers;
+and invalidation. The implementation order is HTML-owned work, then DOM, then
+the downstream CSS crates. DOM integration follows availability of both producers;
 do not encode that scheduling choice as blanket blocking dependencies. Manifests
 and source establish the implemented workspace and current capabilities.
 

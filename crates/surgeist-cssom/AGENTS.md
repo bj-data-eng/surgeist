@@ -3,8 +3,7 @@
 Apply the root repository guide and focused PISCT skills. This crate owns live
 authored CSS state, its CSS integration adapter, immutable captures and atomic
 publication. CSS owns syntax/value grammar, contextual admission and formatting.
-The user authorized the CSSOM adapter ownership exception. This crate does not
-own root bindings, evaluation, cascade, layout or scheduling.
+This crate does not own root bindings, evaluation, cascade, layout or scheduling.
 
 The intentional public front door is `src/lib.rs`; `README.md` records lifecycle,
 quotas, source guards, current edit scope and downstream coverage. Integration
