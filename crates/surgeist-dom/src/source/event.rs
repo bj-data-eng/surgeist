@@ -21,6 +21,8 @@ pub struct DomSourceEventId {
 pub enum DomSourceEventKind {
     /// Synchronous beforetoggle with the reached method’s actual cancelability.
     BeforeToggle,
+    /// Synchronous plain cancel fired by the actual original watcher request.
+    Cancel,
     /// A queued Dialog toggle task with mandatory canonical tracker cleanup.
     Toggle,
     /// Plain queued close notification, without ToggleEvent data.
@@ -122,6 +124,7 @@ impl DomSourceToggleEvent {
 pub(crate) enum DomSourceEventPayload {
     Toggle(DomSourceToggleEvent),
     Close,
+    Cancel,
 }
 /// Immutable actual method/task event data, not dispatch or reply authority.
 /// ToggleEvent data exists only for beforetoggle and toggle; Close is plain.
@@ -150,7 +153,7 @@ impl DomSourceEventRequest {
     pub fn toggle_event(&self) -> Option<DomSourceToggleEvent> {
         match self.work.payload {
             DomSourceEventPayload::Toggle(payload) => Some(payload),
-            DomSourceEventPayload::Close => None,
+            DomSourceEventPayload::Close | DomSourceEventPayload::Cancel => None,
         }
     }
     pub fn cancelable(&self) -> bool {

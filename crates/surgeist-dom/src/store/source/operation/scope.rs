@@ -121,6 +121,7 @@ impl OperationRoot {
             | Command::SetCustomValidity { node, .. }
             | Command::ShowDialog { node }
             | Command::CloseDialog { node, .. }
+            | Command::RequestCloseDialog { node, .. }
             | Command::SetDialogReturnValue { node, .. }
             | Command::SetNonce { node, .. }
             | Command::SetMarqueeRunning { node, .. }

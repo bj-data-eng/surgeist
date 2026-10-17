@@ -961,7 +961,9 @@ Document lists. `DomDialog::close_watcher` observes the stored optional watcher
 identity; historical snapshots retain their captured association. Runtime owns
 the actual Window manager and its watcher objects. Ordinary atomic edits refuse
 a reached watcher service with `NeedsEventfulOperation` before publication.
-Tracker, modal and request-close state retain their own source-defined rules.
+Tracker and modal state retain their own source-defined rules. Request-close
+readbacks retain the actual nullable request result/source and force-enable flag
+at the snapshot's revision; they grant no current invocation authority.
 
 `DomSourceEdit::show_dialog` starts the shared HTML Show cursor and can expose
 its actual cancelable beforetoggle request. A bound event executor acknowledges
@@ -1067,6 +1069,40 @@ absence reaches actual final Close task publication; unsupported modal or focus
 restoration work retains its precise action wait. Method Complete requires the
 real QueueClose acknowledgment.
 
+`DomSourceEdit::request_close_dialog(receiver, result)` represents standard
+requestClose with its null source. Closed, disconnected or inactive receivers
+return at their actual source guards. Otherwise the original Source continuation
+captures the real watcher, enables it for the request and writes the nullable
+request operands before invoking the watcher. The watcher fires an actual
+cancelable plain `cancel` event. A normal watcher result always precedes the
+literal final force=false write, including genuine cancellation. Cancellation
+does not clear the request slots or undo callback edits.
+
+Source retains both HTML cursors and invokes the existing Close frame when the
+watcher's current guards permit it. At that call it captures the then-current
+request operands, so reentrant requests can affect the supplied Close result.
+A reentrant request which observes running cancel returns without running another
+cancel action, then performs its own literal force=false. The outer request's
+fresh enabled check can consequently skip Close. Omitted and supplied-empty
+request values remain distinct throughout.
+
+Runtime retains each started invocation's exact original watcher record after
+manager membership removal. Guard reset, reached activation consumption and
+invocation settlement complete through action-qualified affine receipts. Lease
+drop, cancellation or admission refusal preserves the original mandatory tail.
+A retired receiver cannot receive the final force write: the owner retains its
+authentic stopped action and any real cleanup, exposes `PendingCleanup` with a
+typed cause while settlement remains, then clears the canonical incomplete-source
+marker and returns the native failure. A surviving receiver receives final false.
+Neither path fabricates a normal nested Close return or event receipt.
+
+The `dispatch_relevant_global`, `dispatch_global_document` and
+`dispatch_document_fully_active` fronts qualify current hosted reads during an
+actual active Source event scope. They validate the original executor and
+published observer chain, charge its Source work and preserve the incomplete
+marker. Outside that scope they require a completed Source basis; an unfinished
+nonobserving operation cannot use them to bypass ordinary completeness guards.
+
 Dialog toggles use the DOM-manipulation task source and its tracker. Close
 notifications are separate user-interaction tasks, with no toggle tracker or
 coalescing. Runtime's one element-task owner selects the actual source explicitly;
@@ -1076,7 +1112,7 @@ Close dispatch does not clear it or repeat method effects. Real receiver
 retirement during beforetoggle preserves the started dispatcher and authentic
 receipt, then yields `SourceReceiverRetired` at ReadOpen rather than a synthetic
 absent-open return. Internal Close callers with nonnull source, modal operations,
-positive focusing, request-close, platform close requests and general popover
+positive focusing, platform close requests and general popover
 processing remain separate contributions.
 
 A started dispatcher registers its actual Node invocation targets through

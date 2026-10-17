@@ -171,6 +171,8 @@ pub enum DomEventType {
     BeforeToggle,
     /// The plain user-interaction Dialog close notification.
     Close,
+    /// The plain Dialog close-watcher cancel event.
+    Cancel,
 }
 impl DomEventType {
     /// Exact source event type spelling.
@@ -181,6 +183,7 @@ impl DomEventType {
             Self::Toggle => "toggle",
             Self::BeforeToggle => "beforetoggle",
             Self::Close => "close",
+            Self::Cancel => "cancel",
         }
     }
 }
@@ -505,8 +508,10 @@ impl<C> DomEventDispatcher<C> {
                     .map_err(DomEventDispatchError::Dom)?;
             }
             DomEventTarget::Global(global) => {
+                // Public registration is a synchronous noncancellable call.
+                let synchronous = AtomicBool::new(false);
                 dom.raw()
-                    .global_document(global)
+                    .dispatch_global_document(global, &synchronous)
                     .map_err(DomEventDispatchError::Hosted)?;
             }
         }
@@ -601,6 +606,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &NativeDomEvent,
         limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         match event.0.status.get() {
             Status::Ready => (),
@@ -614,7 +620,7 @@ impl<C> DomEventDispatcher<C> {
                 DomEventResource::PendingEvents,
             ));
         }
-        let mut budget = Budget::new(limits);
+        let mut budget = Budget::new(limits, cancel);
         let snapshot = dom.snapshot();
         if dom.source_dispatch_blocker().is_some() {
             return Err(DomEventDispatchError::Dom(
@@ -719,6 +725,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &NativeDomEvent,
         limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         match event.0.status.get() {
             Status::Running => return Err(DomEventDispatchError::AlreadyDispatching),
@@ -743,7 +750,7 @@ impl<C> DomEventDispatcher<C> {
         if !Rc::ptr_eq(&dispatch._reservation.0, &self.owner) {
             return Err(DomEventDispatchError::WrongContinuation);
         }
-        let mut budget = Budget::new(limits);
+        let mut budget = Budget::new(limits, cancel);
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
@@ -765,7 +772,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &NativeDomEvent,
         mut dispatch: Dispatch,
-        mut budget: Budget,
+        mut budget: Budget<'_>,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         let custody = event
             .0
@@ -851,7 +858,7 @@ impl<C> DomEventDispatcher<C> {
         context: &mut C,
         event: &NativeDomEvent,
         dispatch: &mut Dispatch,
-        budget: &mut Budget,
+        budget: &mut Budget<'_>,
     ) -> Result<(), RunStop> {
         let count = dispatch.path.len();
         while dispatch.invoke < count * 2 {
@@ -1032,6 +1039,9 @@ enum EventData {
     StyleLoad,
     StyleError,
     DialogClose,
+    DialogCancel {
+        cancelable: bool,
+    },
     DetailsToggle(DomToggleEvent),
     DialogToggle(DomToggleEvent),
     DialogBeforeToggle {
@@ -1059,6 +1069,7 @@ impl Event {
             EventData::StyleLoad => DomEventType::Load,
             EventData::StyleError => DomEventType::Error,
             EventData::DialogClose => DomEventType::Close,
+            EventData::DialogCancel { .. } => DomEventType::Cancel,
             EventData::DetailsToggle(_) | EventData::DialogToggle(_) => DomEventType::Toggle,
             EventData::DialogBeforeToggle { .. } => DomEventType::BeforeToggle,
         }
@@ -1345,6 +1356,10 @@ impl NativeDomEvent {
         )
     }
 
+    pub(crate) fn dialog_cancel(target: NodeId, cancelable: bool) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::DialogCancel { cancelable })
+    }
+
     pub(crate) fn dialog_close(target: NodeId) -> NativeDomEventOwner {
         NativeDomEventOwner::new(target, EventData::DialogClose)
     }
@@ -1395,7 +1410,10 @@ impl NativeDomEvent {
             EventData::DetailsToggle(payload)
             | EventData::DialogToggle(payload)
             | EventData::DialogBeforeToggle { payload, .. } => Some(payload),
-            EventData::StyleLoad | EventData::StyleError | EventData::DialogClose => None,
+            EventData::StyleLoad
+            | EventData::StyleError
+            | EventData::DialogClose
+            | EventData::DialogCancel { .. } => None,
         }
     }
     /// Current shadow-adjusted target; cleanup clears shadow-internal targets.
@@ -1421,7 +1439,7 @@ impl NativeDomEvent {
             EventData::DialogBeforeToggle {
                 cancelable: true,
                 ..
-            }
+            } | EventData::DialogCancel { cancelable: true }
         )
     }
     /// Source default: these events are noncomposed.
@@ -1597,7 +1615,7 @@ struct Dispatch {
     clear_target: bool,
 }
 impl Dispatch {
-    fn prepare_failure_bank(&mut self, budget: &mut Budget) -> Result<(), DomEventResource> {
+    fn prepare_failure_bank(&mut self, budget: &mut Budget<'_>) -> Result<(), DomEventResource> {
         let requested = budget.limits.failure_records;
         if requested <= self.failures.capacity() {
             return Ok(());
@@ -1644,7 +1662,7 @@ fn listener_target_active(
     dom: &Dom,
     custody: &DomDispatchCustody,
     item: PathItem,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<bool, RunStop> {
     budget.tick()?;
     let snapshot = dom.snapshot();
@@ -1659,6 +1677,8 @@ fn listener_target_active(
             )
             .map_err(|error| RunStop::HostedAuthority(error.into()))?
             .document(),
+        // Historical association is used only to reach the negative activity
+        // check. Positive eligibility below still qualifies current authority.
         DomEventTarget::Global(global) => snapshot
             .global_document(global)
             .map_err(RunStop::HostedAuthority)?,
@@ -1676,8 +1696,8 @@ fn listener_target_active(
     }
     // This current capture supplies negative activity evidence only. Positive
     // eligibility additionally requires the actual issuer-qualified owner.
-    if !document
-        .is_fully_active()
+    if !dom
+        .dispatch_document_fully_active(document.id(), budget.cancel)
         .map_err(RunStop::HostedAuthority)?
     {
         return Ok(false);
@@ -1685,13 +1705,13 @@ fn listener_target_active(
     budget.tick()?;
     let global = match item.invocation {
         DomEventTarget::Node(_) => dom
-            .relevant_global(document.id().node())
+            .dispatch_relevant_global(document.id().node(), budget.cancel)
             .map_err(RunStop::HostedAuthority)?
             .ok_or(RunStop::HostedAuthority(DomHostedError::StaleIdentity))?,
         DomEventTarget::Global(global) => global,
     };
     let current = dom
-        .global_document(global)
+        .dispatch_global_document(global, budget.cancel)
         .map_err(RunStop::HostedAuthority)?;
     if current != document.id() {
         return Err(RunStop::HostedAuthority(DomHostedError::StaleIdentity));
@@ -1721,14 +1741,16 @@ fn dispatch_ready(
     }
     Ok(())
 }
-struct Budget {
+struct Budget<'a> {
+    cancel: &'a AtomicBool,
     limits: DomEventDispatchLimits,
     work: u64,
     callbacks: usize,
 }
-impl Budget {
-    fn new(limits: DomEventDispatchLimits) -> Self {
+impl<'a> Budget<'a> {
+    fn new(limits: DomEventDispatchLimits, cancel: &'a AtomicBool) -> Self {
         Self {
+            cancel,
             limits,
             work: 0,
             callbacks: 0,
@@ -1742,13 +1764,13 @@ impl Budget {
         Ok(())
     }
 }
-fn source_tick(budget: &mut Budget) -> Result<(), DomEventDispatchError> {
+fn source_tick(budget: &mut Budget<'_>) -> Result<(), DomEventDispatchError> {
     budget.tick().map_err(DomEventDispatchError::Admission)
 }
 fn root(
     snapshot: &DomSnapshot,
     mut node: NodeId,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<NodeId, DomEventDispatchError> {
     loop {
         source_tick(budget)?;
@@ -1766,7 +1788,7 @@ fn shadow_including_ancestor(
     snapshot: &DomSnapshot,
     ancestor: NodeId,
     mut node: NodeId,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<bool, DomEventDispatchError> {
     loop {
         source_tick(budget)?;
@@ -1797,7 +1819,7 @@ fn build_path(
     snapshot: &DomSnapshot,
     original: NodeId,
     event_type: DomEventType,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<Vec<PathItem>, DomEventDispatchError> {
     snapshot
         .node(original)
@@ -1862,7 +1884,7 @@ fn build_path(
             {
                 source_tick(budget)?;
                 Some(
-                    dom.relevant_global(node)
+                    dom.dispatch_relevant_global(node, budget.cancel)
                         .map_err(DomEventDispatchError::Hosted)?
                         .ok_or(DomEventDispatchError::UnsupportedDocumentParent)?,
                 )

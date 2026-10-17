@@ -349,6 +349,13 @@ impl<'dom> DomSourceLease<'dom> {
             }
             let frame = op.draft.dialog_method.expect("qualified Dialog frame");
             if let DomDialogTaskInfo::Toggle(info) = plan.info {
+                if let Some(value) = &op.draft.dialog_state(frame.subject)?.request_return_value {
+                    let mut payload = storage::Payload::default();
+                    payload.string(value)?;
+                    if let Some(formation) = &formation {
+                        formation.retain_payload(payload, cancel)?;
+                    }
+                }
                 let mut state = op.draft.dialog_state(frame.subject)?.clone();
                 state.toggle_tracker = Some(crate::dialog::DomDialogToggleTracker {
                     task: info.id,
@@ -390,11 +397,8 @@ impl<'dom> DomSourceLease<'dom> {
                         }
                         _ => false,
                     };
-                    let changed_result = match &op.commands[op.index] {
-                        Command::CloseDialog {
-                            result: Some(result),
-                            ..
-                        } => {
+                    let changed_result = match op.active_close_result() {
+                        Some(result) => {
                             let old = op.draft.dialog_state(frame.subject)?.return_value();
                             let mut same = old.len() == result.len();
                             if same {
@@ -415,6 +419,10 @@ impl<'dom> DomSourceLease<'dom> {
                         2 + usize::from(member) + usize::from(watcher || changed_result),
                     )
                 }
+                (
+                    DomDialogTaskInfo::Toggle(_),
+                    crate::store::dialog::MethodLocals::RequestClose { .. },
+                ) => return Err(DomError::InvalidSourceOperation),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Show { .. }) => {
                     let document = op.draft.node(frame.subject)?.document;
                     let original_window_active = match self

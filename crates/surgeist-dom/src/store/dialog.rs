@@ -11,6 +11,8 @@ use surgeist_html::{
     HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
 };
 mod empty_popovers;
+#[cfg(test)]
+mod request_close_tests;
 
 #[derive(Clone, Copy)]
 pub(super) enum MethodState {
@@ -32,16 +34,21 @@ pub(super) enum MethodLocals {
         popover_endpoint: Option<NodeId>,
     },
     Close,
+    RequestClose {
+        watcher: Option<crate::DomCloseWatcherId>,
+    },
 }
 #[derive(Clone, Copy)]
 pub(super) enum MethodInput<'a> {
     Show,
     Close(Option<&'a DocumentString>),
+    RequestClose(Option<&'a DocumentString>),
 }
 impl MethodInput<'_> {
     fn operation(self) -> Operation {
         match self {
             Self::Show => Operation::Show,
+            Self::RequestClose(_) => Operation::RequestClose,
             Self::Close(result) => Operation::Close {
                 result_present: result.is_some(),
             },
@@ -54,6 +61,7 @@ impl MethodInput<'_> {
                 popover_endpoint: None,
             },
             Self::Close(_) => MethodLocals::Close,
+            Self::RequestClose(_) => MethodLocals::RequestClose { watcher: None },
         }
     }
 }
@@ -140,9 +148,37 @@ impl Draft {
                     self.set_dialog_return_value(key, result, limits, cancel)?;
                     Reply::Applied
                 }
-                // These original request-close slots are genuinely null in the
-                // admitted native state; no positive request-close is implied.
-                Action::ClearRequestCloseReturnValue | Action::ClearRequestCloseSource => {
+                Action::ReadConnected => Reply::Connected(self.shadow_connected(key, cancel)?),
+                Action::ReadFullyActive => Reply::FullyActive(
+                    self.document_fully_active(self.node(key)?.document, cancel)?,
+                ),
+                Action::CaptureCloseWatcher => {
+                    let watcher = self
+                        .dialog_state(key)?
+                        .watcher
+                        .ok_or(DomError::InvalidSourceOperation)?;
+                    frame.locals = MethodLocals::RequestClose {
+                        watcher: Some(watcher),
+                    };
+                    Reply::Applied
+                }
+                Action::SetForceCloseWatcherEnabled(value) => {
+                    self.set_dialog_request_flag(key, value, cancel)?;
+                    Reply::Applied
+                }
+                Action::WriteRequestCloseReturnValue => {
+                    let MethodInput::RequestClose(value) = input else {
+                        return Err(DomError::InvalidSourceOperation);
+                    };
+                    self.set_dialog_request_return_value(key, value, limits, cancel)?;
+                    Reply::Applied
+                }
+                Action::WriteNullRequestCloseSource | Action::ClearRequestCloseSource => {
+                    self.set_dialog_request_source_null(key, cancel)?;
+                    Reply::Applied
+                }
+                Action::ClearRequestCloseReturnValue => {
+                    self.set_dialog_request_return_value(key, None, limits, cancel)?;
                     Reply::Applied
                 }
                 Action::ReadPreviousFocusPresent => Reply::PreviousFocusPresent(
@@ -232,6 +268,28 @@ impl Draft {
             DomNodeKind::Element(element) if element.dialog_state().is_some()))
     }
 
+    pub(in crate::store) fn admit_dialog_state_copy(
+        &self,
+        key: Key,
+        formation: Option<&source::formation::Formation>,
+        keep_return: bool,
+        keep_request: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(formation) = formation {
+            let state = self.dialog_state(key)?;
+            let mut payload = source::storage::Payload::default();
+            payload.add_bytes(size_of::<DomDialogState>())?;
+            if keep_return {
+                payload.string(state.return_value())?;
+            }
+            if keep_request && let Some(value) = &state.request_return_value {
+                payload.string(value)?;
+            }
+            formation.retain_payload(payload, cancel)?;
+        }
+        Ok(())
+    }
     pub(super) fn set_dialog_return_value(
         &mut self,
         key: Key,
@@ -266,9 +324,7 @@ impl Draft {
         // Arc::make_mut. Preadmit the complete new occurrence while old state and
         // any source operands remain live, before the Arc payload allocation.
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(formation) = &formation {
-            formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
-        }
+        self.admit_dialog_state_copy(key, formation.as_ref(), false, true, cancel)?;
         self.source_step(cancel)?;
         let value = source::formation::share(value, formation.as_ref(), cancel)?;
         self.source_step(cancel)?;
@@ -276,6 +332,89 @@ impl Draft {
         self.element_mut(key).set_dialog_state(next);
         self.units = units;
         // Canonical Draft storage now owns the admitted occurrence.
+        drop(formation);
+        self.source_admit(0, cancel)?;
+        self.source_admit_units(0, cancel)
+    }
+
+    pub(in crate::store) fn set_dialog_request_flag(
+        &mut self,
+        key: Key,
+        value: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self.dialog_state(key)?.force_watcher_enabled == value {
+            return Ok(());
+        }
+        let formation = source::formation::Formation::new(self, cancel)?;
+        self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
+        let mut next = self.dialog_state(key)?.clone();
+        next.force_watcher_enabled = value;
+        self.element_mut(key).set_dialog_state(next);
+        drop(formation);
+        self.source_admit(0, cancel)
+    }
+    pub(in crate::store) fn set_dialog_request_source_null(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self.dialog_state(key)?.request_source.is_none() {
+            return Ok(());
+        }
+        let formation = source::formation::Formation::new(self, cancel)?;
+        self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
+        let mut next = self.dialog_state(key)?.clone();
+        next.request_source = None;
+        self.element_mut(key).set_dialog_state(next);
+        drop(formation);
+        self.source_admit(0, cancel)
+    }
+    pub(in crate::store) fn set_dialog_request_return_value(
+        &mut self,
+        key: Key,
+        value: Option<&DocumentString>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let old = self.dialog_state(key)?.request_return_value.as_ref();
+        let equal = match (old, value) {
+            (None, None) => true,
+            (Some(old), Some(value)) => {
+                let mut equal = old.len() == value.len();
+                if equal {
+                    for (a, b) in old.code_units().iter().zip(value.code_units()) {
+                        self.source_step(cancel)?;
+                        if a != b {
+                            equal = false;
+                            break;
+                        }
+                    }
+                }
+                equal
+            }
+            _ => false,
+        };
+        if equal {
+            return Ok(());
+        }
+        let units = self
+            .units
+            .checked_sub(old.map_or(0, DocumentString::len))
+            .and_then(|n| n.checked_add(value.map_or(0, DocumentString::len)))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        self.admit_dialog_state_copy(key, formation.as_ref(), true, false, cancel)?;
+        let value = value
+            .map(|value| source::formation::share(value, formation.as_ref(), cancel))
+            .transpose()?;
+        let next = self.dialog_state(key)?.with_request_return_value(value);
+        self.element_mut(key).set_dialog_state(next);
+        self.units = units;
         drop(formation);
         self.source_admit(0, cancel)?;
         self.source_admit_units(0, cancel)
@@ -291,9 +430,7 @@ impl Draft {
         // The initial rebase owns the current state occurrences, but this
         // replacement creates another immutable body before the old one drops.
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(formation) = &formation {
-            formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
-        }
+        self.admit_dialog_state_copy(key, formation.as_ref(), false, true, cancel)?;
         self.source_step(cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.toggle_tracker = None;
@@ -314,9 +451,7 @@ impl Draft {
             return Ok(());
         }
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(formation) = &formation {
-            formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
-        }
+        self.admit_dialog_state_copy(key, formation.as_ref(), false, true, cancel)?;
         self.source_step(cancel)?;
         let mut state = self.dialog_state(key)?.clone();
         state.watcher = watcher;

@@ -120,6 +120,9 @@ pub(crate) fn family_payload(
         NativeFamily::Dialog(state) => {
             payload.add_bytes(size_of::<crate::dialog::DomDialogState>())?;
             payload.string(state.return_value())?;
+            if let Some(value) = &state.request_return_value {
+                payload.string(value)?;
+            }
         }
         NativeFamily::Style(_) => payload.add_bytes(size_of::<crate::DomStyleState>())?,
         NativeFamily::Canvas(state) => {
@@ -371,7 +374,11 @@ pub(in crate::store) fn commands(
                 }
                 payload.string(qualified_name)?;
             }
-            Command::CloseDialog {
+            Command::RequestCloseDialog {
+                result: Some(value),
+                ..
+            }
+            | Command::CloseDialog {
                 result: Some(value),
                 ..
             }

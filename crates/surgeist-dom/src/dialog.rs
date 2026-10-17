@@ -1,7 +1,7 @@
 //! Canonical Dialog state with actual optional task and watcher associations.
 //!
 //! Native Window-manager receipts establish or clear watcher identities through
-//! the original Source hooks. Modal/request-close state remains a closed proof.
+//! the original Source hooks. Modal state remains separately qualified.
 use crate::{DocumentString, DomNode, NodeId};
 
 /// Qualification of the actual null/false service slots through the complete
@@ -24,15 +24,15 @@ impl ClosedDialogServices {
     const fn is_modal(self) -> bool {
         false
     }
-    const fn force_watcher_enabled(self) -> bool {
-        false
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DomDialogState {
     return_value: DocumentString,
     services: ClosedDialogServices,
+    pub(crate) request_return_value: Option<DocumentString>,
+    pub(crate) request_source: Option<NodeId>,
+    pub(crate) force_watcher_enabled: bool,
     pub(crate) watcher: Option<DomCloseWatcherId>,
     pub(crate) toggle_tracker: Option<DomDialogToggleTracker>,
 }
@@ -44,10 +44,15 @@ pub struct DomCloseWatcherId {
     pub(crate) occurrence: u64,
     pub(crate) target: NodeId,
     pub(crate) global: crate::DomHostedGlobalId,
+    pub(crate) window_document: crate::DocumentId,
 }
 impl DomCloseWatcherId {
     pub const fn subject(self) -> NodeId {
         self.target
+    }
+    /// Original Window associated Document established with this actual watcher.
+    pub const fn window_document(self) -> crate::DocumentId {
+        self.window_document
     }
     pub const fn global(self) -> crate::DomHostedGlobalId {
         self.global
@@ -77,6 +82,9 @@ impl DomDialogState {
         Self {
             return_value: fresh.return_value().into(),
             services: ClosedDialogServices::from_fresh(fresh),
+            request_return_value: None,
+            request_source: None,
+            force_watcher_enabled: false,
             toggle_tracker: None,
             watcher: None,
         }
@@ -91,6 +99,9 @@ impl DomDialogState {
         Ok(Self {
             return_value,
             services,
+            request_return_value: None,
+            request_source: None,
+            force_watcher_enabled: false,
             toggle_tracker: None,
             watcher: None,
         })
@@ -102,9 +113,30 @@ impl DomDialogState {
         Self {
             return_value,
             services: self.services,
+            request_return_value: self.request_return_value.clone(),
+            request_source: self.request_source,
+            force_watcher_enabled: self.force_watcher_enabled,
             toggle_tracker: self.toggle_tracker,
             watcher: self.watcher,
         }
+    }
+    pub(crate) fn with_request_return_value(&self, value: Option<DocumentString>) -> Self {
+        Self {
+            return_value: self.return_value.clone(),
+            services: self.services,
+            request_return_value: value,
+            request_source: self.request_source,
+            force_watcher_enabled: self.force_watcher_enabled,
+            watcher: self.watcher,
+            toggle_tracker: self.toggle_tracker,
+        }
+    }
+    pub(crate) fn units(&self) -> Option<usize> {
+        self.return_value.len().checked_add(
+            self.request_return_value
+                .as_ref()
+                .map_or(0, DocumentString::len),
+        )
     }
     pub(crate) const fn is_modal(&self) -> bool {
         self.services.is_modal()
@@ -151,18 +183,16 @@ impl<'a> DomDialog<'a> {
     pub fn has_close_watcher(self) -> bool {
         self.state().has_close_watcher()
     }
-    /// Known actual null. Request-close execution is not admitted by this domain.
+    /// Actual nullable request argument at this immutable revision.
     pub fn request_close_return_value(self) -> Option<&'a DocumentString> {
-        let _ = self.state().services;
-        None
+        self.state().request_return_value.as_ref()
     }
-    /// Known actual null, not an unavailable identity or a replacement generation.
+    /// Actual nullable request source at this immutable revision.
     pub fn request_close_source(self) -> Option<NodeId> {
-        let _ = self.state().services;
-        None
+        self.state().request_source
     }
     pub fn force_close_watcher_enabled(self) -> bool {
-        self.state().services.force_watcher_enabled()
+        self.state().force_watcher_enabled
     }
 }
 

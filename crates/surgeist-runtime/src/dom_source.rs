@@ -446,6 +446,11 @@ impl DomSourceRuntime {
                         reason: DomSourceUnavailable::Event,
                     });
                 }
+                DomSourceProgress::Request(DomSourceRequest::CloseWatcher(request)) => {
+                    self.hosted
+                        .service_close_watcher_request(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                }
                 DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
                     if matches!(
                         request.action(),

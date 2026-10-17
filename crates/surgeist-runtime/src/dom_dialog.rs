@@ -306,6 +306,9 @@ impl State {
                         payload.new_state(),
                     )
                 }
+                surgeist_dom::DomSourceEventKind::Cancel => {
+                    NativeDomEvent::dialog_cancel(request.subject(), request.cancelable())
+                }
                 surgeist_dom::DomSourceEventKind::Close => {
                     NativeDomEvent::dialog_close(request.subject())
                 }
@@ -589,9 +592,9 @@ impl SourceEventRuntime {
             let outcome = {
                 let _scope = scope;
                 if event.has_started() {
-                    dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch)
+                    dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch, cancel)
                 } else {
-                    dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch)
+                    dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch, cancel)
                 }
             }
             .map_err(DomSourceEventRuntimeError::Dispatch)?;
@@ -642,6 +645,7 @@ impl SourceEventRuntime {
                         }
                         surgeist_dom::DomSourceEventKind::Toggle => DomEventType::Toggle,
                         surgeist_dom::DomSourceEventKind::Close => DomEventType::Close,
+                        surgeist_dom::DomSourceEventKind::Cancel => DomEventType::Cancel,
                     }
             {
                 return Err(DomSourceEventRuntimeError::Protocol);

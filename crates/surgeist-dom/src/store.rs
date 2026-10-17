@@ -109,6 +109,12 @@ pub enum DomError {
         subject: NodeId,
         action: surgeist_html::HtmlDialogAction,
     },
+    SourceCloseWatcherReceiverRetired {
+        operation: crate::DomSourceOperationId,
+        subject: NodeId,
+        action: surgeist_html::HtmlCloseWatcherRequestAction,
+    },
+    CloseWatcherProtocol(surgeist_html::HtmlCloseWatcherRequestError),
     SourceEventExecutorUnavailable,
     DialogInvalidState,
     NeedsEventfulOperation {
@@ -1112,7 +1118,12 @@ impl Dom {
             }
         }
         check_cancel(cancelled)?;
-        draft.finish(self, cancelled)
+        let mut prepared = draft.finish(self, cancelled)?;
+        // An ordinary callback batch does not complete its observing Source.
+        // Keep that owner's already-published marker and closing obligation;
+        // only its original Source publication can advance or clear the marker.
+        prepared.state.incomplete_source = self.state.incomplete_source;
+        Ok(prepared)
     }
     fn publish(
         &mut self,
@@ -2280,6 +2291,15 @@ impl Draft {
             Command::SetCustomValidity { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
+            }
+            Command::RequestCloseDialog { node, result } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::RequestClose(result.as_ref()),
+                    limits,
+                    cancelled,
+                )?;
             }
             Command::CloseDialog { node, result } => {
                 let key = self.resolve(node.clone())?;

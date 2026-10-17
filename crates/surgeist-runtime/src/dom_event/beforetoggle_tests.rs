@@ -96,7 +96,13 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
         assert!(!event.default_prevented());
         let receipt = complete(
             registry
-                .dispatch(&mut f.dom, &mut log, &event, limits())
+                .dispatch(
+                    &mut f.dom,
+                    &mut log,
+                    &event,
+                    limits(),
+                    &AtomicBool::new(false),
+                )
                 .unwrap(),
         );
         assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
@@ -143,7 +149,13 @@ fn noncancelable_details_toggle_ignores_prevention_and_keeps_exact_payload() {
     let mut log = Vec::new();
     let receipt = complete(
         registry
-            .dispatch(&mut f.dom, &mut log, &event, limits())
+            .dispatch(
+                &mut f.dom,
+                &mut log,
+                &event,
+                limits(),
+                &AtomicBool::new(false),
+            )
             .unwrap(),
     );
     assert_eq!(receipt.callbacks(), 1);
@@ -189,7 +201,8 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
                 DomEventDispatchLimits {
                     callbacks: 1,
                     ..limits()
-                }
+                },
+                &AtomicBool::new(false)
             )
             .unwrap(),
         DomEventDispatchOutcome::Retained(DomEventResource::Callbacks)
@@ -205,7 +218,8 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
                 DomEventDispatchLimits {
                     callbacks: 0,
                     ..limits()
-                }
+                },
+                &AtomicBool::new(false)
             )
             .unwrap(),
         DomEventDispatchOutcome::Retained(DomEventResource::Callbacks)
@@ -214,7 +228,13 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
     assert!(event.default_prevented());
     let receipt = complete(
         registry
-            .resume(&mut f.dom, &mut log, &event, limits())
+            .resume(
+                &mut f.dom,
+                &mut log,
+                &event,
+                limits(),
+                &AtomicBool::new(false),
+            )
             .unwrap(),
     );
     assert_eq!(receipt.callbacks(), 3);
@@ -268,7 +288,13 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
         let mut log = Vec::new();
         let receipt = complete(
             registry
-                .dispatch(&mut f.dom, &mut log, &event, limits())
+                .dispatch(
+                    &mut f.dom,
+                    &mut log,
+                    &event,
+                    limits(),
+                    &AtomicBool::new(false),
+                )
                 .unwrap(),
         );
         assert_eq!(receipt.callbacks(), 3);

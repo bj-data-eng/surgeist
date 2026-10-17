@@ -1,5 +1,6 @@
 //! Real Source hooks, original Window membership and affine-effect retries.
 mod close;
+mod request;
 use super::*;
 use crate::{
     DomElementTaskRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel, DomSession,
@@ -258,7 +259,7 @@ fn refused_watcher_acceptance_retries_same_real_registration_without_replay() {
         };
         cancel.store(true, Ordering::Relaxed);
         assert!(matches!(
-            hosted.accept_watcher(&mut lease, &request, location, &cancel),
+            hosted.accept_watcher(&mut lease, &request, &location, &cancel),
             Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                 DomError::Cancelled
             )))
@@ -529,7 +530,10 @@ fn actual_member_replacement_peak_one_short_refuses_before_registration_and_retr
         // Current retained bytes already include the old one-row backing.
         // The owning call forms an actual group candidate header and a separate
         // full two-row replacement before moving either old member.
-        let exact = base + size_of::<WatcherGroup>() + 2 * size_of::<Watcher>();
+        let replacement_overlap = 2 * size_of::<Rc<RefCell<Watcher>>>();
+        let exact = base
+            + size_of::<WatcherGroup>()
+            + replacement_overlap.max(watcher_body_bytes() + size_of::<Rc<RefCell<Watcher>>>());
         limits.storage_bytes = exact - usize::from(short);
         hosted
             .set_limits(&mut session.dom(), limits, &cancel)
@@ -560,7 +564,7 @@ fn actual_member_replacement_peak_one_short_refuses_before_registration_and_retr
         };
         assert_eq!(counts(&hosted), (1, 1, 2));
         hosted
-            .accept_watcher(&mut lease, &request, location, &cancel)
+            .accept_watcher(&mut lease, &request, &location, &cancel)
             .unwrap();
         let settlement = hosted.prepare_watcher_settlement(&lease, &cancel).unwrap();
         let result = lease.advance(&cancel).unwrap();
@@ -682,6 +686,7 @@ fn actual_created_hook_repeats_same_exposed_identity_before_real_watcher_service
             .rows[0]
             .groups[0]
             .members[0]
+            .borrow()
             .phase,
         WatcherPhase::Registered
     );
@@ -709,7 +714,7 @@ fn refused_final_association_publication_retains_actual_receipt_and_same_registr
         .unwrap()
         .unwrap();
     hosted
-        .accept_watcher(&mut lease, &request, location, &cancel)
+        .accept_watcher(&mut lease, &request, &location, &cancel)
         .unwrap();
     let id = location.get(&mut owner.borrow_mut()).id;
     let prefix = lease.snapshot();
@@ -817,13 +822,15 @@ fn retired_window_settlement_work_is_admitted_before_source_close_and_pruning() 
         .unwrap()
         .unwrap();
     hosted
-        .accept_watcher(&mut lease, &request, location, &cancel)
+        .accept_watcher(&mut lease, &request, &location, &cancel)
         .unwrap();
     let before = lease.snapshot();
-    // One host/composition/cluster/window/group/member, with a retired top:
-    // 7 current header visits; future first-pass headers+retain moves11;
-    // second-pass host/composition/cluster pruning3. No composition tail rows.
-    const REQUIRED: u64 = 21;
+    // Membership/group are already physically removed; one HookRemoval stays
+    // in custody. Current scans visit host/composition/cluster/Window4 and
+    // second-pass host/composition2 =6. Prepaid finish visits are first-pass
+    // headers/window retain6 + custody predicate/drop2 + second-pass host/
+    // composition/cluster pruning3 =11. No composition tail rows: total17.
+    const REQUIRED: u64 = 17;
     let first_cap = {
         let mut state = owner.borrow_mut();
         let cap = state.work + REQUIRED - 1;
@@ -1293,6 +1300,7 @@ fn adopted_dialog_uses_original_window_and_old_or_foreign_requests_cannot_remove
                 .rows[w]
                 .groups[0]
                 .members[0]
+                .borrow()
                 .id,
             new_id
         );
@@ -1364,9 +1372,46 @@ fn adopted_dialog_uses_original_window_and_old_or_foreign_requests_cannot_remove
     assert_eq!(counts(&hosted), (1, 0, 0));
 }
 
-// The removal service has no storage formation: its entire real Runtime
-// traversal tariff is independently visible from this single-owner fixture.
-const ONE_MEMBER_REMOVAL_STEPS: u64 = 21;
+// Prepare1 + retry6 + Window lookup4 + retained8 + selection2 + custody
+// growth1 + membership predicates/moves4 + transition1. Source's independent
+// payload-admission producer join is calibrated separately below.
+const ONE_MEMBER_REMOVAL_STEPS: u64 = 27;
+fn removal_retention_work() -> u64 {
+    let (mut session, _, _, subject) = fixture();
+    apply(
+        &mut session,
+        DomSourceEdit::set_attribute(subject, "open", ""),
+    );
+    let hosted = session.hosted_execution();
+    let owner = hosted.state().unwrap();
+    let source = &owner.borrow().source;
+    let cancel = AtomicBool::new(false);
+    let mut dom = session.dom();
+    let mut lease = dom
+        .raw_mut()
+        .begin_source_edit(
+            DomSourceEdit::remove_attribute(subject, "open"),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let request = pending(&mut lease);
+    let _preparation = lease
+        .prepare_dialog_watcher(&request, source, &cancel)
+        .unwrap()
+        .unwrap();
+    let before = lease.status().spent_work();
+    let guard = lease
+        .retain_hosted_runtime_payload(source, size_of::<WatcherCustody>(), &cancel)
+        .unwrap();
+    let mut bank = Vec::<WatcherCustody>::new();
+    bank.try_reserve_exact(1).unwrap();
+    assert_eq!(bank.capacity(), 1);
+    let work = lease.status().spent_work() - before;
+    drop(bank);
+    drop(guard);
+    work
+}
 fn work_limit(work: u64) -> DomSourceLimits {
     let limits = source_limits();
     DomSourceLimits::new(
@@ -1402,10 +1447,9 @@ fn removal_scaffold_work() -> u64 {
 #[test]
 fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect() {
     let scaffold = removal_scaffold_work();
-    // Exact prepare1 + retry host/composition/cluster/Window/group/member6;
-    // Window lookup host/composition/cluster/Window4; retained host/composition/
-    // cluster/Window/group + two Global Settings field visits7;
-    // selected group/member2 + actual removal transition1 = 21.
+    // The independently listed Runtime tariff excludes the Source producer's
+    // payload-admission join, which owns its own canonical storage scans.
+    let retention = removal_retention_work();
     for short in [true, false] {
         let (mut session, _, _, subject) = fixture();
         let cancel = AtomicBool::new(false);
@@ -1423,7 +1467,7 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
             .unwrap();
         let hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
-        let cap = scaffold + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
+        let cap = scaffold + retention + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
         let request = {
             let mut dom = session.dom();
             let mut lease = dom
@@ -1459,6 +1503,7 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
                     .rows[0]
                     .groups[0]
                     .members[0];
+                let watcher = watcher.borrow();
                 assert_eq!(watcher.phase, WatcherPhase::Registered);
                 assert_eq!(watcher.id, id);
                 assert!(watcher.publication.is_none());
@@ -1503,7 +1548,7 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
             WatcherPhase::Removing
         );
         replacement
-            .accept_watcher(&mut lease, &request, location, &cancel)
+            .accept_watcher(&mut lease, &request, &location, &cancel)
             .unwrap();
         let settlement = replacement
             .prepare_watcher_settlement(&lease, &cancel)
@@ -1534,10 +1579,19 @@ struct AncestorRemoval {
     setup_error: Option<DomError>,
     unexpected: Option<String>,
     result: Option<Result<Option<WatcherLocation>, DomHostedRuntimeError>>,
+    producer_only: bool,
+    producer_succeeded: bool,
 }
 fn ancestor_removal_attempt(
     cap: u64,
     service: bool,
+) -> (DomSession, Option<DomSourceEventRequest>, AncestorRemoval) {
+    ancestor_removal_mode(cap, service, false)
+}
+fn ancestor_removal_mode(
+    cap: u64,
+    service: bool,
+    producer_only: bool,
 ) -> (DomSession, Option<DomSourceEventRequest>, AncestorRemoval) {
     let (mut session, top, body, parent) = fixture();
     let cancel = AtomicBool::new(false);
@@ -1563,6 +1617,8 @@ fn ancestor_removal_attempt(
         setup_error: None,
         unexpected: None,
         result: None,
+        producer_only,
+        producer_succeeded: false,
     };
     let mut listeners = dispatcher();
     listeners
@@ -1586,6 +1642,34 @@ fn ancestor_removal_attempt(
                 };
                 match lease.advance(&AtomicBool::new(false)) {
                     Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(request))) => {
+                        if context.producer_only {
+                            let owner = context.hosted.state().unwrap();
+                            let state = owner.borrow();
+                            let producer = (|| -> Result<(), DomError> {
+                                let _preparation = lease
+                                    .prepare_dialog_watcher(
+                                        &request,
+                                        &state.source,
+                                        &AtomicBool::new(false),
+                                    )?
+                                    .unwrap();
+                                let guard = lease.retain_hosted_runtime_payload(
+                                    &state.source,
+                                    size_of::<WatcherCustody>(),
+                                    &AtomicBool::new(false),
+                                )?;
+                                let mut bank = Vec::<WatcherCustody>::new();
+                                bank.try_reserve_exact(1).unwrap();
+                                assert_eq!(bank.capacity(), 1);
+                                drop(bank);
+                                drop(guard);
+                                Ok(())
+                            })();
+                            match producer {
+                                Ok(()) => context.producer_succeeded = true,
+                                Err(error) => context.setup_error = Some(error),
+                            }
+                        }
                         if context.service {
                             context.result = Some(context.hosted.install_dialog_watcher(
                                 &mut lease,
@@ -1688,8 +1772,35 @@ fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_eff
             .request
             .is_none()
     );
+    // Independently bound only the canonical producer preparation/retention
+    // join in this real observing-parent shape. No Runtime service or manager
+    // effect runs while selecting its minimum, so the Runtime oracle stays the
+    // explicit 26 visits/predicates/moves above.
+    let mut producer_low = scaffold;
+    let mut producer_high = source_limits().work();
+    assert!(
+        ancestor_removal_mode(producer_high, false, true)
+            .2
+            .producer_succeeded
+    );
+    while producer_low < producer_high {
+        let middle = producer_low + (producer_high - producer_low) / 2;
+        if ancestor_removal_mode(middle, false, true)
+            .2
+            .producer_succeeded
+        {
+            producer_high = middle;
+        } else {
+            producer_low = middle + 1;
+        }
+    }
+    assert!(
+        !ancestor_removal_mode(producer_low - 1, false, true)
+            .2
+            .producer_succeeded
+    );
     for short in [true, false] {
-        let cap = scaffold + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
+        let cap = producer_low + (ONE_MEMBER_REMOVAL_STEPS - 1) - u64::from(short);
         let (mut session, outer, mut context) = ancestor_removal_attempt(cap, true);
         let outer = outer.expect("real retained observing parent");
         let request = context.request.take().expect("actual child Destroy Hook");
@@ -1729,6 +1840,7 @@ fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_eff
                     .rows[0]
                     .groups[0]
                     .members[0]
+                    .borrow()
                     .phase,
                 WatcherPhase::Registered
             );
@@ -1772,7 +1884,7 @@ fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_eff
                 .unwrap();
             assert_eq!(location.get(&mut owner.borrow_mut()).id, id);
             hosted
-                .accept_watcher(&mut lease, &request, location, &AtomicBool::new(false))
+                .accept_watcher(&mut lease, &request, &location, &AtomicBool::new(false))
                 .unwrap();
             let settlement = hosted
                 .prepare_watcher_settlement(&lease, &AtomicBool::new(false))
@@ -1819,7 +1931,7 @@ fn second_registration_fixture() -> (DomSession, NodeId) {
         .unwrap();
     (session, second)
 }
-fn registration_producer_work() -> (u64, u64, u64, u64) {
+fn registration_producer_work() -> (u64, u64, u64, u64, u64) {
     let (mut session, second) = second_registration_fixture();
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -1853,12 +1965,21 @@ fn registration_producer_work() -> (u64, u64, u64, u64) {
     };
     let candidate_work = lease.status().spent_work();
     let replacement_guard = lease
-        .retain_hosted_runtime_payload(source, 2 * size_of::<Watcher>(), &cancel)
+        .retain_hosted_runtime_payload(source, 2 * size_of::<Rc<RefCell<Watcher>>>(), &cancel)
         .unwrap();
-    let mut replacement = Vec::<Watcher>::new();
+    let mut replacement = Vec::<Rc<RefCell<Watcher>>>::new();
     replacement.try_reserve_exact(2).unwrap();
     assert_eq!(replacement.capacity(), 2);
     let replacement_work = lease.status().spent_work();
+    let body_guard = lease
+        .retain_hosted_runtime_payload(source, watcher_body_bytes(), &cancel)
+        .unwrap();
+    let mut body = Vec::<u8>::new();
+    body.try_reserve_exact(watcher_body_bytes()).unwrap();
+    assert_eq!(body.capacity(), watcher_body_bytes());
+    let body_work = lease.status().spent_work();
+    drop(body);
+    drop(body_guard);
     drop(replacement);
     drop(replacement_guard);
     drop(candidate);
@@ -1868,11 +1989,12 @@ fn registration_producer_work() -> (u64, u64, u64, u64) {
         prepared - scaffold,
         candidate_work - prepared,
         replacement_work - candidate_work,
+        body_work - replacement_work,
     )
 }
 #[test]
 fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_replaces_it() {
-    let (scaffold, prepare, candidate, replacement) = registration_producer_work();
+    let (scaffold, prepare, candidate, replacement, body) = registration_producer_work();
     for short in [true, false] {
         let (mut session, second) = second_registration_fixture();
         let cancel = AtomicBool::new(false);
@@ -1888,16 +2010,18 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
             .rows[0]
             .groups[0]
             .members[0]
+            .borrow()
             .id;
-        // Six retry rows, four Window lookup rows and seven retained visits.
+        // Six retry rows, four Window lookup rows and eight retained visits
+        // (including the newly allocated original record body).
         // This full one-member bank then needs entry1 + actual member move1.
         // Short leaves only1 for that2-step movement precharge, before the
         // replacement allocation/admission. Exact also admits the independent
         // producer replacement join and final registration transition1.
         let cap = if short {
-            scaffold + prepare + candidate + 17 + 1
+            scaffold + prepare + candidate + 18 + 1
         } else {
-            scaffold + prepare + candidate + replacement + 17 + 2 + 1
+            scaffold + prepare + candidate + replacement + body + 18 + 2 + 1
         };
         let mut dom = session.dom();
         let mut lease = dom
@@ -1932,8 +2056,8 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
                 .members;
             assert_eq!(members.len(), 1);
             assert_eq!(members.capacity(), 1);
-            assert_eq!(members[0].id, first);
-            assert_eq!(members[0].phase, WatcherPhase::Registered);
+            assert_eq!(members[0].borrow().id, first);
+            assert_eq!(members[0].borrow().phase, WatcherPhase::Registered);
         } else {
             let location = result.unwrap().unwrap();
             let mut state = owner.borrow_mut();
@@ -1949,7 +2073,7 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
                 .members;
             assert_eq!(members.len(), 2);
             assert_eq!(members.capacity(), 2);
-            assert_eq!(members[0].id, first);
+            assert_eq!(members[0].borrow().id, first);
             assert_eq!(location.get(&mut state).phase, WatcherPhase::Registering);
             assert!(location.get(&mut state).publication.is_some());
         }

@@ -184,11 +184,12 @@ manager effect.
 Retiring execution removes the live Global without clearing the surviving
 Dialog's watcher. Open removal and source-required tree cleanup can therefore
 destroy it on the retained original Window even after the Document becomes
-inactive. A retired Window releases when its watcher and publication custody is
-empty; the existing host lifecycle then permits composition cleanup. Watcher
-registration and destruction supply no focus service, request-close invocation
-or platform close-request processing.
-An actual canceled event returns normally even if its callback
+inactive. A retired Window releases when its watcher, publication and started-invocation
+custody is empty; the existing host lifecycle then permits composition cleanup.
+Watcher registration and destruction supply no focus service or platform
+close-request processing. A started invocation and actual pending hook removal
+retain the same original record independently of manager membership.
+Show's canceled beforetoggle returns normally even if its callback
 retired the receiver; an uncanceled read of that retired receiver is a typed
 Source failure.
 
@@ -312,11 +313,40 @@ If the original receiver is actually retired during beforetoggle, the dispatcher
 finishes its retained path and authentic receipt before the method reports
 `SourceReceiverRetired` at its required ReadOpen. Retirement is not an absent-open
 result or cancellation. Detach, adoption and failed destruction retain their
-ordinary source checks. This bounded method has no later arbitrary callback
-boundary; broader started actions with unsettled cleanup require their own
-original-operation failure continuation before admission. Internal command or
-watcher Close callers with nonnull source, source retargeting and their additional
-lifetime requirements remain contribution work.
+ordinary source checks. Internal command or watcher Close callers with nonnull
+source, source retargeting and their additional lifetime requirements remain
+contribution work.
+
+`request_close_dialog(receiver, result)` runs standard null-source requestClose
+through the same Source owner. Current open, connectedness and Document activity
+guards precede force-enable and nullable request-slot publication. Source retains
+the outer Dialog and called watcher cursors; Runtime supplies the original
+Window's actual membership, enabled/running state, activity and history effects.
+Plain Cancel dispatch uses the shared dispatcher, with its actual cancelability
+and retained path/receipt. Runtime releases its mutable borrows before listeners.
+Its current hosted reads use DOM's qualified dispatch fronts while the actual
+Source event scope is active. The published request state remains marked
+incomplete; ordinary complete-source reads retain their guards. Dispatch resumes
+with the current caller's cancellation input and the original Source accounting.
+
+Each Window owns bounded invocation and pending-removal custody referencing the
+same actual watcher records as its manager groups. Physical membership removal
+does not destroy a started invocation. A reentrant request can return while the
+outer cancel action still runs; it owns no reset obligation for that outer guard.
+After authentic cancel return, only the owning invocation resets its guard.
+Cancellation consumes history-action activation through a qualified canonical
+capture: a real null Window navigable returns early; otherwise the actual
+shadow-including descendant Window closure receives its timestamp assignments.
+Never-activated timestamps do not by themselves establish an empty operation.
+
+An uncanceled watcher rechecks current guards and removes membership before
+Source invokes the existing Close frame with freshly captured request operands.
+The watcher invocation settles before the outer literal force=false write.
+If the receiver retired, started events and incurred cleanup still finish against
+their original records. Source retains the genuine stopped action, exposes typed
+pending cleanup, clears its canonical incomplete marker at actual terminal
+settlement and reports the native failure. It does not turn cancellation into
+an outer early return or manufacture Applied after a failed nested Close.
 
 At task completion, the native loop checks the canonical checkpoint state.
 Pending Slot work cannot be delivered by this bounded contribution: it retains

@@ -197,7 +197,7 @@ impl Draft {
                 }
             })();
             if matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
-                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action))
+                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }))
                 && let Some(scan) = &mut restore.draft.source_headroom
             {
                 scan.phases = scan

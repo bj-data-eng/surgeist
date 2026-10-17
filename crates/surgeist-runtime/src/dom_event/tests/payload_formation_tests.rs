@@ -40,6 +40,7 @@ fn retained_failure() -> (
                     callbacks: 1,
                     work: 100_000,
                 },
+                &AtomicBool::new(false)
             )
             .unwrap(),
         DomEventDispatchOutcome::Retained(DomEventResource::Callbacks)
@@ -90,7 +91,13 @@ fn lowered_path_policy_keeps_actual_frozen_storage_and_admits_failure_bank_overl
     assert_eq!(formation.full, expected_source + scope_bytes);
     let receipt = complete(
         dispatcher
-            .resume(&mut fixture.dom, &mut calls, &event, retry())
+            .resume(
+                &mut fixture.dom,
+                &mut calls,
+                &event,
+                retry(),
+                &AtomicBool::new(false),
+            )
             .unwrap(),
     );
     assert_eq!(calls, [0, 1, 2, 3]);
@@ -130,6 +137,7 @@ fn failure_copy_work_refusal_preserves_original_banks_and_cursor_for_no_replay_r
                 &mut calls,
                 &event,
                 DomEventDispatchLimits { work, ..retry() },
+                &AtomicBool::new(false)
             ),
             Err(DomEventDispatchError::Admission(DomEventResource::Work))
         ));
@@ -151,7 +159,13 @@ fn failure_copy_work_refusal_preserves_original_banks_and_cursor_for_no_replay_r
     }
     let receipt = complete(
         dispatcher
-            .resume(&mut fixture.dom, &mut calls, &event, retry())
+            .resume(
+                &mut fixture.dom,
+                &mut calls,
+                &event,
+                retry(),
+                &AtomicBool::new(false),
+            )
             .unwrap(),
     );
     assert_eq!(calls, [0, 1, 2, 3]);

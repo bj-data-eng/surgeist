@@ -152,7 +152,13 @@ fn dispatch_hosted(kind: DomEventType) {
     let mut seen = Vec::new();
     let receipt = complete(
         listeners
-            .dispatch(session.dom().raw_mut(), &mut seen, &event, limits())
+            .dispatch(
+                session.dom().raw_mut(),
+                &mut seen,
+                &event,
+                limits(),
+                &AtomicBool::new(false),
+            )
             .unwrap(),
     );
     let mut path = vec![target_endpoint, ancestor, document];

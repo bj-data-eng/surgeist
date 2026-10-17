@@ -9,13 +9,18 @@ impl Operation {
         matches!(
             self.receipt,
             Some(
-                Receipt::Watcher { applied: true, .. } | Receipt::DialogFocus { applied: true, .. }
+                Receipt::Watcher { applied: true, .. }
+                    | Receipt::DialogFocus { applied: true, .. }
+                    | Receipt::CloseWatcher { applied: true, .. }
             )
         )
     }
     pub(super) fn restore_external_receipt(&mut self, value: bool) {
-        if let Some(Receipt::Watcher { applied, .. } | Receipt::DialogFocus { applied, .. }) =
-            &mut self.receipt
+        if let Some(
+            Receipt::Watcher { applied, .. }
+            | Receipt::DialogFocus { applied, .. }
+            | Receipt::CloseWatcher { applied, .. },
+        ) = &mut self.receipt
         {
             *applied = value;
         }
@@ -136,6 +141,7 @@ impl DomSourceLease<'_> {
                 occurrence: hook.ordinal,
                 target: request.subject,
                 global,
+                window_document: document,
             }
         } else {
             let watcher = op

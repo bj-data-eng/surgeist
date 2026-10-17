@@ -4,6 +4,7 @@ mod dialog;
 pub(crate) mod dialog_queue;
 mod focus;
 pub(in crate::store) mod hosted;
+mod request_close;
 mod scope;
 #[cfg(test)]
 mod scope_tests;
@@ -65,6 +66,8 @@ pub(in crate::store) struct Operation {
     event_exposed: bool,
     event_work: std::sync::Weak<crate::source::event::EventWork>,
     dialog_queue: Option<crate::DomElementTaskId>,
+    request_close: Option<request_close::Call>,
+    request_close_result: Option<DocumentString>,
     cancelled: bool,
     phases: u64,
     headroom: Option<headroom::Reservation>,
@@ -87,6 +90,10 @@ pub(in crate::store) struct Operation {
     canonical_aux_bytes: usize,
 }
 enum Receipt {
+    CloseWatcher {
+        publication: crate::DomCloseWatcherRequestPublication,
+        applied: bool,
+    },
     DialogFocus {
         publication: crate::DomDialogFocusPublication,
         applied: bool,
@@ -322,6 +329,8 @@ impl Dom {
             event_exposed: false,
             event_work: std::sync::Weak::new(),
             dialog_queue: None,
+            request_close: None,
+            request_close_result: None,
             cancelled: false,
             phases: 0,
             headroom: None,
@@ -644,10 +653,16 @@ impl Operation {
             operation: self.id,
             published: self.published,
             cancelled: self.cancelled,
+            cleanup: self.request_close.and_then(|call| call.failure),
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
             parent: None,
-            phase: if self.draft.dialog_method.is_some()
+            phase: if self
+                .request_close
+                .is_some_and(|call| call.failure.is_some())
+            {
+                crate::DomSourcePhase::PendingCleanup
+            } else if self.draft.dialog_method.is_some()
                 || self.draft.pending_dialog_hook().is_some()
             {
                 crate::DomSourcePhase::DialogService
@@ -732,6 +747,13 @@ impl Operation {
                 })
                 .ok_or(DomError::RepresentationExhausted)?;
         }
+        if let Some(value) = &self.request_close_result {
+            let mut payload = storage::Payload::default();
+            payload.string(value)?;
+            bytes = bytes
+                .checked_add(payload.bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
         Ok(bytes)
     }
     fn refresh_admission(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -757,6 +779,13 @@ impl Operation {
         if let Some(Receipt::Inline { units: policy, .. }) = &self.receipt {
             units = units
                 .checked_add(*policy)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(value) = &self.request_close_result {
+            let mut payload = storage::Payload::default();
+            payload.string(value)?;
+            units = units
+                .checked_add(payload.units)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         self.draft.source_other_units = units;
@@ -1114,7 +1143,20 @@ impl Operation {
         self.refresh_admission(cancel)?;
         self.draft.prepare_transition_phase(cancel)?;
         let mut prepared = self.draft.finish(dom, cancel)?;
-        prepared.state.incomplete_source = incomplete.then_some(self.id);
+        let incomplete_owner = if incomplete {
+            Some(self.id)
+        } else {
+            let mut owner = None;
+            for parent in dom.source_parents.iter().rev() {
+                self.draft.source_step(cancel)?;
+                if parent.published {
+                    owner = Some(parent.id);
+                    break;
+                }
+            }
+            owner
+        };
+        prepared.state.incomplete_source = incomplete_owner;
         if prepared.state.incomplete_source != dom.state.incomplete_source {
             formation::reserve(
                 &mut prepared.changes,
@@ -1576,7 +1618,7 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody;
         let result = self.advance_operation(&mut op, cancel);
-        if matches!(&result, Ok(DomSourceProgress::Complete(_))) {
+        if self.complete || matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
         } else {
             self.dom.source_operation = Some(op);
@@ -1667,6 +1709,12 @@ impl DomSourceLease<'_> {
             )));
         }
         loop {
+            if op.request_close.is_some()
+                && !op.request_close.as_ref().is_some_and(|call| call.nested)
+                && let Some(progress) = self.advance_request_close(op, cancel)?
+            {
+                return Ok(progress);
+            }
             op.refresh_admission(cancel)?;
             if op.published
                 && !op.started
@@ -1715,11 +1763,18 @@ impl DomSourceLease<'_> {
                 } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if let Some(frame) = op.draft.dialog_method {
-                    let input = match &op.commands[op.index] {
-                        Command::CloseDialog { result, .. } => {
-                            crate::store::dialog::MethodInput::Close(result.as_ref())
+                    let input = if op.request_close.as_ref().is_some_and(|call| call.nested) {
+                        crate::store::dialog::MethodInput::Close(op.request_close_result.as_ref())
+                    } else {
+                        match &op.commands[op.index] {
+                            Command::RequestCloseDialog { result, .. } => {
+                                crate::store::dialog::MethodInput::RequestClose(result.as_ref())
+                            }
+                            Command::CloseDialog { result, .. } => {
+                                crate::store::dialog::MethodInput::Close(result.as_ref())
+                            }
+                            _ => crate::store::dialog::MethodInput::Show,
                         }
-                        _ => crate::store::dialog::MethodInput::Show,
                     };
                     op.draft
                         .dialog_method_boundary(frame.subject, input, self.dom.limits, cancel)
@@ -1742,6 +1797,23 @@ impl DomSourceLease<'_> {
                         op.restore_external_receipt(external_applied);
                     }
                     return observed;
+                }
+                Err(DomError::DialogProcessingUnavailable {
+                    action:
+                        surgeist_html::HtmlDialogAction::RequestWatcherClose {
+                            require_history_action_activation,
+                        },
+                }) => {
+                    let started_call =
+                        self.begin_request_close(op, require_history_action_activation, cancel);
+                    if let Err(error) = started_call {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        return Err(error);
+                    }
+                    drop(checkpoint);
+                    continue;
                 }
                 Err(DomError::DialogProcessingUnavailable { action })
                     if op.draft.pending_dialog(action).is_some() =>
@@ -1862,6 +1934,17 @@ impl DomSourceLease<'_> {
                     if op.draft.dialog_method.is_some() {
                         continue;
                     }
+                    if op.request_close.as_ref().is_some_and(|call| call.nested) {
+                        let call = op.request_close.as_mut().expect("nested original call");
+                        call.nested = false;
+                        call.cursor
+                            .reply(surgeist_html::HtmlCloseWatcherRequestReply::Applied)
+                            .map_err(DomError::CloseWatcherProtocol)?;
+                        op.draft.dialog_method = Some(call.outer);
+                        op.request_close_result = None;
+                        op.receipt = None;
+                        continue;
+                    }
                     // The real current command has drained. Excess conservative
                     // capacity is released while one actual final close remains.
                     if let Some(headroom) = &mut op.headroom {
@@ -1870,7 +1953,11 @@ impl DomSourceLease<'_> {
 
                     if !matches!(
                         op.receipt,
-                        Some(Receipt::Watcher { .. } | Receipt::DialogFocus { .. })
+                        Some(
+                            Receipt::Watcher { .. }
+                                | Receipt::DialogFocus { .. }
+                                | Receipt::CloseWatcher { .. }
+                        )
                     ) {
                         op.receipt = None;
                         op.request = None;
@@ -2404,6 +2491,9 @@ impl DomSourceLease<'_> {
 }
 impl Operation {
     fn apply_receipt(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if matches!(self.receipt, Some(Receipt::CloseWatcher { .. })) {
+            return self.apply_close_watcher_receipt(cancel);
+        }
         if let Some(Receipt::DialogFocus {
             publication,
             applied,
@@ -2442,7 +2532,9 @@ impl Operation {
             return Err(DomError::StyleProtocol);
         }
         let reply = match self.receipt.as_ref().expect("actual retained receipt") {
-            Receipt::Watcher { .. } | Receipt::DialogFocus { .. } => {
+            Receipt::Watcher { .. }
+            | Receipt::DialogFocus { .. }
+            | Receipt::CloseWatcher { .. } => {
                 unreachable!("external receipt handled above")
             }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
@@ -2649,6 +2741,8 @@ impl Dom {
                 event_exposed: false,
                 event_work: std::sync::Weak::new(),
                 dialog_queue: None,
+                request_close: None,
+                request_close_result: None,
                 cancelled: false,
                 phases: 0,
                 headroom: None,
@@ -4984,7 +5078,9 @@ pub(in crate::store) mod accounting_tests {
                     panic!("Slot assignment fixture has no navigable-container hooks")
                 }
                 Ok(DomSourceProgress::Request(
-                    DomSourceRequest::Event(_) | DomSourceRequest::Dialog(_),
+                    DomSourceRequest::Event(_)
+                    | DomSourceRequest::Dialog(_)
+                    | DomSourceRequest::CloseWatcher(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")
                 }

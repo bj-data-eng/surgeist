@@ -20,7 +20,12 @@ pub(crate) use url::UrlBasis;
 pub use url::{
     DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest, DomSourceUrlStage,
 };
-pub use watcher::{DomDialogWatcherPreparation, DomDialogWatcherPublication};
+pub use watcher::{
+    DomCloseWatcherHistoryWindows, DomCloseWatcherRequestPreparation,
+    DomCloseWatcherRequestPublication, DomDialogWatcherPreparation, DomDialogWatcherPublication,
+    DomSourceCleanupCause, DomSourceCloseWatcherInvocationId, DomSourceCloseWatcherRequest,
+    DomSourceCloseWatcherStep, DomSourceStoppedAction,
+};
 
 /// Absolute finite admission for one composed source operation. Resuming does
 /// not reset work or publication/output counters. CSS and CSSOM retain their
@@ -97,6 +102,8 @@ pub enum DomSourcePhase {
     EventReceiptAccepted,
     /// A genuine Dialog action waiting for its qualified external service.
     DialogService,
+    /// Actual original invocation cleanup remains after a native failure.
+    PendingCleanup,
 }
 /// Actual publication status; structural snapshots remain readable while source
 /// hooks are incomplete, and dependent semantic reads reject that state.
@@ -105,12 +112,17 @@ pub struct DomSourceStatus {
     pub(crate) operation: DomSourceOperationId,
     pub(crate) published: bool,
     pub(crate) cancelled: bool,
+    pub(crate) cleanup: Option<DomSourceCleanupCause>,
     pub(crate) work: u64,
     pub(crate) phases: u64,
     pub(crate) parent: Option<DomSourceOperationId>,
     pub(crate) phase: DomSourcePhase,
 }
 impl DomSourceStatus {
+    /// Exact original native failure while actual invocation cleanup is pending.
+    pub const fn cleanup_cause(self) -> Option<DomSourceCleanupCause> {
+        self.cleanup
+    }
     /// The actual retained parent operation, if this is a nested edit.
     pub fn parent_operation(self) -> Option<DomSourceOperationId> {
         self.parent
@@ -142,6 +154,7 @@ pub enum DomSourceRequest {
     HostedChild(crate::DomHostedChildRequest),
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
+    CloseWatcher(DomSourceCloseWatcherRequest),
 }
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -215,6 +228,16 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// Request to close this Dialog with the standard null source.
+    pub fn request_close_dialog(node: NodeId, result: Option<DocumentString>) -> Self {
+        Self {
+            command: Command::RequestCloseDialog {
+                node: node.into(),
+                result,
+            },
+        }
+    }
+
     /// Invoke the standard nonmodal close method with its null source. Omitted
     /// result preserves returnValue; supplied empty is a real empty value.
     pub fn close_dialog(node: NodeId, result: Option<DocumentString>) -> Self {

@@ -532,6 +532,23 @@ impl PartialEq for Graph {
 }
 impl Eq for Graph {}
 impl Graph {
+    /// Window.navigable is selected from actual active Document equality.
+    pub(in crate::store) fn active_navigable_for_document_with(
+        &self,
+        document: DocumentId,
+        mut step: impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<Option<DomHostedNavigableId>, DomHostedError> {
+        for row in &self.navigables {
+            step()?;
+            if let Some(row) = row {
+                let active = self.entry_with(row.active, &mut step)?.document;
+                if active == Some(document) {
+                    return Ok(Some(row.id));
+                }
+            }
+        }
+        Ok(None)
+    }
     pub(crate) fn navigable(&self, id: DomHostedNavigableId) -> Result<&Navigable, DomHostedError> {
         self.navigable_with(id, || Ok(()))
     }

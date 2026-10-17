@@ -1257,6 +1257,82 @@ impl Dom {
     }
 }
 
+impl Dom {
+    /// Current Global association for an actual native dispatcher. An unfinished
+    /// Source requires its exact active dispatch scope; snapshots stay incomplete.
+    pub fn dispatch_relevant_global(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
+        let _work = self.dispatch_hosted_read_work(cancel)?;
+        let global = self.snapshot().relevant_global(node)?;
+        if let Some(global) = global {
+            self.dispatch_global_document_current(global)?;
+        }
+        Ok(global)
+    }
+    /// Current issuer/role-qualified Document of a dispatcher Global endpoint.
+    pub fn dispatch_global_document(
+        &self,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<DocumentId, DomHostedError> {
+        let _work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_global_document_current(global)
+    }
+    fn dispatch_global_document_current(
+        &self,
+        global: DomHostedGlobalId,
+    ) -> Result<DocumentId, DomHostedError> {
+        let snapshot = self.snapshot();
+        let document = snapshot.global_document(global)?;
+        let environment = snapshot
+            .document(document)?
+            .metadata()
+            .document_environment();
+        environment
+            .hosted
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?
+            .validate_live()?;
+        Ok(document)
+    }
+    /// Fresh activity for an actual dispatcher endpoint. Only canonical closed
+    /// or retired state proves false; positive state validates its real issuer.
+    pub fn dispatch_document_fully_active(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomHostedError> {
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        let DomNodeKind::Document(metadata) = &self.state.node(self.owner, document.node())?.kind
+        else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let Some(association) = environment.hosted.as_ref() else {
+            return Ok(false);
+        };
+        if matches!(association.phase, DocumentPhase::Retired { .. }) {
+            return Ok(false);
+        }
+        association.validate_live()?;
+        let DocumentPhase::InitialEntry { navigable, .. } = association.phase else {
+            return Err(DomHostedError::IncompleteOperation);
+        };
+        let graph = self
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        captured_fully_active(graph, document, navigable, || match &work {
+            Some(work) => work.step(cancel).map_err(Into::into),
+            None => check_cancel(cancel).map_err(Into::into),
+        })
+    }
+}
+
 impl Draft {
     pub(super) fn document_fully_active(
         &self,

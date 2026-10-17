@@ -79,7 +79,7 @@ impl NativeFamily {
             }
         }
         match self {
-            Self::Dialog(state) => Some(state.return_value().len()),
+            Self::Dialog(state) => state.units(),
             Self::Fieldset(state) => Some(state.control.message.len()),
             Self::Button(state) => Some(state.control.message.len()),
             Self::Input(state) => state.units(),

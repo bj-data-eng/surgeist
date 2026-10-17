@@ -1481,9 +1481,9 @@ impl DomElementTaskRuntime {
             };
             let _scope = scope;
             let outcome = if event.has_started() {
-                dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch)
+                dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch, cancel)
             } else {
-                dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch)
+                dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch, cancel)
             };
             let mut owner = state.borrow_mut();
             owner

@@ -147,8 +147,8 @@ fn close_at_removal(
 #[test]
 fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operation_finishes() {
     // Calibrate only the genuine event/QueueToggle/RemoveOpen prefix. No
-    // watcher service has run. The independent single-member service tariff is
-    // the same 21 actual visits detailed in the ordinary removal fixture.
+    // watcher service has run. Leave less than the independently counted27
+    // Runtime/preparation steps; actual Source payload admission is additional.
     let scaffold = close_at_removal(source_limits().work(), false).4;
     let cap = scaffold + ONE_MEMBER_REMOVAL_STEPS - 1;
     let (mut session, subject, id, request, spent) = close_at_removal(cap, true);
@@ -192,6 +192,7 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
             .rows[0]
             .groups[0]
             .members[0];
+        let watcher = watcher.borrow();
         assert_eq!(watcher.id, id);
         assert_eq!(watcher.phase, WatcherPhase::Registered);
         assert!(watcher.publication.is_none());
@@ -208,6 +209,21 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
             .unwrap(),
         0
     );
+    let original_record = {
+        let state = owner.borrow();
+        Rc::downgrade(
+            &state.hosts[0].top_levels[0]
+                .group
+                .as_ref()
+                .unwrap()
+                .clusters[0]
+                .agent
+                .windows
+                .rows[0]
+                .groups[0]
+                .members[0],
+        )
+    };
     // Reacquire the original owner and raise the same cumulative Source policy;
     // no callback, QueueToggle publication or result input is recreated.
     let replacement = session.hosted_execution();
@@ -222,7 +238,7 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
             .unwrap();
         assert_eq!(location.get(&mut owner.borrow_mut()).id, id);
         replacement
-            .accept_watcher(&mut lease, &request, location, &cancel)
+            .accept_watcher(&mut lease, &request, &location, &cancel)
             .unwrap();
         let settlement = replacement
             .prepare_watcher_settlement(&lease, &cancel)
@@ -231,9 +247,27 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
         assert_eq!(close.action(), HtmlDialogAction::QueueClose);
         assert_eq!(close.operation(), request.operation());
         settlement.finish(&lease.snapshot());
-        // Reaching QueueClose stages the method tail. The original manager
-        // retains its Removing member until actual canonical publication.
-        assert_eq!(counts(&replacement), (1, 1, 1));
+        // Physical membership is already gone; only the original pending
+        // HookRemoval custody survives until canonical slot publication.
+        assert_eq!(counts(&replacement), (1, 0, 0));
+        {
+            let state = owner.borrow();
+            let window = &state.hosts[0].top_levels[0]
+                .group
+                .as_ref()
+                .unwrap()
+                .clusters[0]
+                .agent
+                .windows
+                .rows[0];
+            assert_eq!(window.custody.len(), 1);
+            let WatcherCustody::HookRemoval(record) = &window.custody[0] else {
+                panic!("real Hook removal must retain the original record");
+            };
+            assert_eq!(record.borrow().id, id);
+            assert!(Rc::ptr_eq(record, &location.record));
+            assert!(Rc::ptr_eq(record, &original_record.upgrade().unwrap()));
+        }
         assert_eq!(location.get(&mut owner.borrow_mut()).id, id);
         assert_eq!(
             location.get(&mut owner.borrow_mut()).phase,
@@ -248,6 +282,11 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
             &DocumentString::from("original result")
         );
         assert_eq!(dialog.toggle_task_tracker().unwrap().task(), toggle.id());
+        drop(location);
+        assert!(
+            original_record.upgrade().is_some(),
+            "actual Window custody retains the original without the installer handle"
+        );
         tasks.queue_dialog(&mut lease, &close, &cancel).unwrap();
         // Match the next real driver iteration after the queue publication:
         // preadmit settlement, advance the same method, then observe its state.
@@ -260,6 +299,22 @@ fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operati
         ));
         settlement.finish(&lease.snapshot());
         assert_eq!(counts(&replacement), (1, 0, 0));
+        assert!(
+            owner.borrow().hosts[0].top_levels[0]
+                .group
+                .as_ref()
+                .unwrap()
+                .clusters[0]
+                .agent
+                .windows
+                .rows[0]
+                .custody
+                .is_empty()
+        );
+        assert!(
+            original_record.upgrade().is_none(),
+            "real final publication releases the last original owner"
+        );
         let current = lease.snapshot();
         let dialog = current.node(subject).unwrap().as_dialog().unwrap();
         assert_eq!(dialog.close_watcher(), None);

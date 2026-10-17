@@ -2099,9 +2099,9 @@ impl DomStyleRuntime {
                             }
                         }
                         let outcome = if event.has_started() {
-                            dispatcher.resume(dom.raw_mut(), context, &event, limits)
+                            dispatcher.resume(dom.raw_mut(), context, &event, limits, cancel)
                         } else {
-                            dispatcher.dispatch(dom.raw_mut(), context, &event, limits)
+                            dispatcher.dispatch(dom.raw_mut(), context, &event, limits, cancel)
                         }
                         .map_err(DomStyleRuntimeError::Dispatch)?;
                         match outcome {
@@ -3137,7 +3137,8 @@ mod tests {
                     }
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::Event(_)
-                        | surgeist_dom::DomSourceRequest::Dialog(_),
+                        | surgeist_dom::DomSourceRequest::Dialog(_)
+                        | surgeist_dom::DomSourceRequest::CloseWatcher(_),
                     ) => {
                         panic!("Style fixture cannot request a Dialog service")
                     }

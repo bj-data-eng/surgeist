@@ -1,11 +1,14 @@
 //! The original NativeAgent's retained Window and close-watcher managers.
 use super::*;
 use surgeist_dom::{
-    DomCloseWatcherId, DomDialogWatcherPublication, DomHostedRuntimeRetention, DomSnapshot,
-    DomSourceDialogRequest, DomSourceLease, NodeId,
+    DomCloseWatcherId, DomCloseWatcherRequestPublication, DomDialogWatcherPublication,
+    DomHostedRuntimeRetention, DomSnapshot, DomSourceCloseWatcherInvocationId,
+    DomSourceCloseWatcherRequest, DomSourceCloseWatcherStep, DomSourceDialogRequest,
+    DomSourceLease, NodeId,
 };
 use surgeist_html::{
-    HtmlCloseWatcherManager, HtmlCloseWatcherPlacement, HtmlCloseWatcherState, HtmlDialogAction,
+    HtmlCloseWatcherManager, HtmlCloseWatcherPlacement, HtmlCloseWatcherRequestAction,
+    HtmlCloseWatcherRequestReply, HtmlCloseWatcherState, HtmlDialogAction,
 };
 
 pub(super) struct WindowBank {
@@ -37,13 +40,50 @@ pub(super) struct NativeWindow {
     manager: HtmlCloseWatcherManager,
     groups: Vec<WatcherGroup>,
     groups_payload: Option<DomHostedRuntimeRetention>,
+    custody: Vec<WatcherCustody>,
+    custody_payload: Option<DomHostedRuntimeRetention>,
+    last_history_action_activation: NativeWindowActivation,
 }
+#[derive(Clone, Copy)]
 enum NativeWindowActivation {
     NeverActivated,
 }
 struct WatcherGroup {
-    members: Vec<Watcher>,
+    members: Vec<Rc<RefCell<Watcher>>>,
     payload: Option<DomHostedRuntimeRetention>,
+}
+enum WatcherCustody {
+    HookRemoval(Rc<RefCell<Watcher>>),
+    Invocation(InvocationCustody),
+}
+impl WatcherCustody {
+    fn record(&self) -> &Rc<RefCell<Watcher>> {
+        match self {
+            Self::HookRemoval(record) => record,
+            Self::Invocation(invocation) => &invocation.body.record,
+        }
+    }
+}
+struct InvocationCustody {
+    // Deallocate the actual boxed body before releasing its relative debit.
+    body: Box<WatcherInvocation>,
+    _payload: DomHostedRuntimeRetention,
+}
+struct WatcherInvocation {
+    // Only the immutable original method identity belongs in this binding.
+    // The actual watcher identity is retained by the original shared record.
+    binding: DomSourceCloseWatcherInvocationId,
+    record: Rc<RefCell<Watcher>>,
+    running_guard: bool,
+    pending: Option<PendingWatcherAction>,
+}
+struct PendingWatcherAction {
+    occurrence: u64,
+    step: DomSourceCloseWatcherStep,
+    publication: Option<DomCloseWatcherRequestPublication>,
+}
+fn invocation_body_bytes() -> usize {
+    size_of::<WatcherInvocation>()
 }
 struct Watcher {
     id: DomCloseWatcherId,
@@ -52,9 +92,11 @@ struct Watcher {
     state: HtmlCloseWatcherState,
     actions: DialogActions,
     phase: WatcherPhase,
+    // The actual Rc allocation (body, RefCell and two reference counts),
+    // independently of all membership/invocation handle banks.
+    _body: DomHostedRuntimeRetention,
 }
-// Actual closed source actions bound to the exact Dialog generation. No
-// invocation entry point or successful callback is installed by this unit.
+// Actual closed source actions bound to the exact Dialog generation.
 struct DialogActions {
     cancel_event: DialogCancelAction,
     close: DialogCloseAction,
@@ -93,6 +135,9 @@ impl NativeWindow {
             manager: HtmlCloseWatcherManager::fresh(),
             groups: Vec::new(),
             groups_payload: None,
+            custody: Vec::new(),
+            custody_payload: None,
+            last_history_action_activation: NativeWindowActivation::NeverActivated,
         }
     }
     pub(super) fn transient_activation(&self) -> bool {
@@ -100,8 +145,15 @@ impl NativeWindow {
             NativeWindowActivation::NeverActivated => false,
         }
     }
+    fn history_action_activation(&self) -> bool {
+        match (self.activation, self.last_history_action_activation) {
+            (NativeWindowActivation::NeverActivated, NativeWindowActivation::NeverActivated) => {
+                false
+            }
+        }
+    }
     pub(super) fn needed(&self) -> bool {
-        !self.groups.is_empty()
+        !self.groups.is_empty() || !self.custody.is_empty()
     }
     pub(super) fn retained_bytes(
         &self,
@@ -115,6 +167,14 @@ impl NativeWindow {
             .capacity()
             .checked_mul(size_of::<WatcherGroup>())
             .ok_or(DomHostedRuntimeError::Admission)?;
+        bytes = bytes
+            .checked_add(
+                self.custody
+                    .capacity()
+                    .checked_mul(size_of::<WatcherCustody>())
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+            )
+            .ok_or(DomHostedRuntimeError::Admission)?;
         for group in &self.groups {
             spend(work, limit, cancel)?;
             admit()?;
@@ -123,10 +183,48 @@ impl NativeWindow {
                     group
                         .members
                         .capacity()
-                        .checked_mul(size_of::<Watcher>())
+                        .checked_mul(size_of::<Rc<RefCell<Watcher>>>())
                         .ok_or(DomHostedRuntimeError::Admission)?,
                 )
                 .ok_or(DomHostedRuntimeError::Admission)?;
+            for _ in &group.members {
+                spend(work, limit, cancel)?;
+                admit()?;
+                bytes = bytes
+                    .checked_add(watcher_body_bytes())
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+            }
+        }
+        for (index, custody) in self.custody.iter().enumerate() {
+            spend(work, limit, cancel)?;
+            admit()?;
+            if matches!(custody, WatcherCustody::Invocation(_)) {
+                spend(work, limit, cancel)?;
+                admit()?;
+                bytes = bytes
+                    .checked_add(invocation_body_bytes())
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+            }
+            let mut represented = false;
+            for group in &self.groups {
+                spend(work, limit, cancel)?;
+                admit()?;
+                for member in &group.members {
+                    spend(work, limit, cancel)?;
+                    admit()?;
+                    represented |= Rc::ptr_eq(member, custody.record());
+                }
+            }
+            for previous in &self.custody[..index] {
+                spend(work, limit, cancel)?;
+                admit()?;
+                represented |= Rc::ptr_eq(previous.record(), custody.record());
+            }
+            if !represented {
+                bytes = bytes
+                    .checked_add(watcher_body_bytes())
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+            }
         }
         Ok(bytes)
     }
@@ -257,27 +355,16 @@ impl HostedState {
         Err(DomHostedRuntimeError::Binding)
     }
 }
-#[derive(Clone, Copy)]
+fn watcher_body_bytes() -> usize {
+    size_of::<RefCell<Watcher>>() + 2 * size_of::<usize>()
+}
+#[derive(Clone)]
 struct WatcherLocation {
-    host: usize,
-    composition: usize,
-    cluster: usize,
-    window: usize,
-    group: usize,
-    member: usize,
+    record: Rc<RefCell<Watcher>>,
 }
 impl WatcherLocation {
-    fn get(self, state: &mut HostedState) -> &mut Watcher {
-        &mut state.hosts[self.host].top_levels[self.composition]
-            .group
-            .as_mut()
-            .expect("pinned group")
-            .clusters[self.cluster]
-            .agent
-            .windows
-            .rows[self.window]
-            .groups[self.group]
-            .members[self.member]
+    fn get<'a>(&'a self, _state: &mut HostedState) -> std::cell::RefMut<'a, Watcher> {
+        self.record.borrow_mut()
     }
 }
 impl HostedRuntime {
@@ -290,21 +377,21 @@ impl HostedRuntime {
         let Some(location) = self.install_dialog_watcher(lease, request, cancel)? else {
             return Ok(false);
         };
-        self.accept_watcher(lease, request, location, cancel)?;
+        self.accept_watcher(lease, request, &location, cancel)?;
         Ok(true)
     }
     fn accept_watcher(
         &self,
         lease: &mut DomSourceLease<'_>,
         request: &DomSourceDialogRequest,
-        location: WatcherLocation,
+        location: &WatcherLocation,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let watcher = location.get(&mut state);
+        let mut watcher = location.get(&mut state);
         lease
             .accept_dialog_watcher(request, &mut watcher.publication, cancel)
             .map_err(canonical)
@@ -328,56 +415,66 @@ impl HostedRuntime {
         else {
             return Ok(None);
         };
-        // Retry actual effects before preparing another registration/removal.
+        // A refused affine acceptance retains the exact effect in its actual
+        // original record, whether membership still exists or was removed.
         let HostedState {
             hosts,
             work,
             limits,
             ..
         } = &mut *state;
-        for (h, host) in hosts.iter_mut().enumerate() {
+        for host in hosts.iter() {
             spend(work, limits.work, cancel)?;
             lease
                 .admit_hosted_runtime_work(1, cancel)
                 .map_err(canonical)?;
-            for (t, composition) in host.top_levels.iter_mut().enumerate() {
+            for composition in &host.top_levels {
                 spend(work, limits.work, cancel)?;
                 lease
                     .admit_hosted_runtime_work(1, cancel)
                     .map_err(canonical)?;
-                if let Some(group) = &mut composition.group {
-                    for (c, cluster) in group.clusters.iter_mut().enumerate() {
+                if let Some(group) = &composition.group {
+                    for cluster in &group.clusters {
                         spend(work, limits.work, cancel)?;
                         lease
                             .admit_hosted_runtime_work(1, cancel)
                             .map_err(canonical)?;
-                        for (w, window) in cluster.agent.windows.rows.iter_mut().enumerate() {
+                        for window in &cluster.agent.windows.rows {
                             spend(work, limits.work, cancel)?;
                             lease
                                 .admit_hosted_runtime_work(1, cancel)
                                 .map_err(canonical)?;
-                            for (g, group) in window.groups.iter_mut().enumerate() {
+                            for group in &window.groups {
                                 spend(work, limits.work, cancel)?;
                                 lease
                                     .admit_hosted_runtime_work(1, cancel)
                                     .map_err(canonical)?;
-                                for (m, watcher) in group.members.iter_mut().enumerate() {
+                                for record in &group.members {
                                     spend(work, limits.work, cancel)?;
                                     lease
                                         .admit_hosted_runtime_work(1, cancel)
                                         .map_err(canonical)?;
-                                    if watcher.request == *request
-                                        && watcher.phase != WatcherPhase::Registered
+                                    let row = record.borrow();
+                                    if row.request == *request
+                                        && row.phase != WatcherPhase::Registered
                                     {
                                         return Ok(Some(WatcherLocation {
-                                            host: h,
-                                            composition: t,
-                                            cluster: c,
-                                            window: w,
-                                            group: g,
-                                            member: m,
+                                            record: record.clone(),
                                         }));
                                     }
+                                }
+                            }
+                            for custody in &window.custody {
+                                spend(work, limits.work, cancel)?;
+                                lease
+                                    .admit_hosted_runtime_work(1, cancel)
+                                    .map_err(canonical)?;
+                                if let WatcherCustody::HookRemoval(record) = custody
+                                    && record.borrow().request == *request
+                                {
+                                    return Ok(Some(WatcherLocation {
+                                        record: record.clone(),
+                                    }));
                                 }
                             }
                         }
@@ -427,137 +524,559 @@ impl HostedRuntime {
             .agent
             .windows
             .rows[w];
-        let (group_index, member_index) =
-            if request.action() == HtmlDialogAction::EstablishCloseWatcher {
-                let new_group = window.manager.establishment(window.groups.len())
-                    == HtmlCloseWatcherPlacement::NewGroup;
-                let group_index = if new_group {
-                    window.groups.len()
-                } else {
-                    window.groups.len() - 1
-                };
-                let added = if new_group {
-                    lease
-                        .admit_hosted_runtime_work(growth_steps(&window.groups)?, cancel)
-                        .map_err(canonical)?;
-                    grow(
-                        &mut window.groups,
-                        &mut window.groups_payload,
-                        retained,
-                        *limits,
-                        work,
-                        |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
-                        cancel,
-                    )?
-                } else {
-                    0
-                };
-                let forming = size_of::<WatcherGroup>();
-                if retained
-                    .checked_add(added)
-                    .and_then(|n| n.checked_add(forming))
-                    .is_none_or(|n| n > limits.storage_bytes)
-                {
-                    return Err(DomHostedRuntimeError::Admission);
-                }
-                let candidate_payload = lease
-                    .retain_hosted_runtime_payload(source, forming, cancel)
-                    .map_err(canonical)?;
-                let mut fresh = WatcherGroup {
-                    members: Vec::new(),
-                    payload: None,
-                };
-                let group = if new_group {
-                    &mut fresh
-                } else {
-                    window
-                        .groups
-                        .last_mut()
-                        .ok_or(DomHostedRuntimeError::Protocol)?
-                };
+        let record = if request.action() == HtmlDialogAction::EstablishCloseWatcher {
+            let new_group = window.manager.establishment(window.groups.len())
+                == HtmlCloseWatcherPlacement::NewGroup;
+            let added = if new_group {
                 lease
-                    .admit_hosted_runtime_work(growth_steps(&group.members)?, cancel)
+                    .admit_hosted_runtime_work(growth_steps(&window.groups)?, cancel)
                     .map_err(canonical)?;
                 grow(
-                    &mut group.members,
-                    &mut group.payload,
-                    retained
-                        .checked_add(added)
-                        .and_then(|n| n.checked_add(forming))
-                        .ok_or(DomHostedRuntimeError::Admission)?,
+                    &mut window.groups,
+                    &mut window.groups_payload,
+                    retained,
+                    *limits,
+                    work,
+                    |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
+                    cancel,
+                )?
+            } else {
+                0
+            };
+            let forming = size_of::<WatcherGroup>();
+            if retained
+                .checked_add(added)
+                .and_then(|n| n.checked_add(forming))
+                .is_none_or(|n| n > limits.storage_bytes)
+            {
+                return Err(DomHostedRuntimeError::Admission);
+            }
+            let candidate_payload = lease
+                .retain_hosted_runtime_payload(source, forming, cancel)
+                .map_err(canonical)?;
+            let mut fresh = WatcherGroup {
+                members: Vec::new(),
+                payload: None,
+            };
+            let group = if new_group {
+                &mut fresh
+            } else {
+                window
+                    .groups
+                    .last_mut()
+                    .ok_or(DomHostedRuntimeError::Protocol)?
+            };
+            lease
+                .admit_hosted_runtime_work(growth_steps(&group.members)?, cancel)
+                .map_err(canonical)?;
+            let member_added = grow(
+                &mut group.members,
+                &mut group.payload,
+                retained
+                    .checked_add(added)
+                    .and_then(|n| n.checked_add(forming))
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+                *limits,
+                work,
+                |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
+                cancel,
+            )?;
+            spend(work, limits.work, cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(canonical)?;
+            if retained
+                .checked_add(added)
+                .and_then(|n| n.checked_add(member_added))
+                .and_then(|n| n.checked_add(forming))
+                .and_then(|n| n.checked_add(watcher_body_bytes()))
+                .is_none_or(|n| n > limits.storage_bytes)
+            {
+                return Err(DomHostedRuntimeError::Admission);
+            }
+            let body = lease
+                .retain_hosted_runtime_payload(source, watcher_body_bytes(), cancel)
+                .map_err(canonical)?;
+            let publication = preparation.publish();
+            let record = Rc::new(RefCell::new(Watcher {
+                id,
+                request: request.clone(),
+                publication: Some(publication),
+                state: HtmlCloseWatcherState::fresh(),
+                actions: DialogActions {
+                    cancel_event: DialogCancelAction::DispatchCancel {
+                        subject: id.subject(),
+                    },
+                    close: DialogCloseAction::Close {
+                        subject: id.subject(),
+                    },
+                    enabled: DialogEnabledRead::Dialog {
+                        subject: id.subject(),
+                    },
+                },
+                phase: WatcherPhase::Registering,
+                _body: body,
+            }));
+            group.members.push(record.clone());
+            if !fresh.members.is_empty() {
+                window.groups.push(fresh);
+            }
+            drop(candidate_payload);
+            record
+        } else {
+            let mut found = None;
+            for group in &window.groups {
+                spend(work, limits.work, cancel)?;
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(canonical)?;
+                for record in &group.members {
+                    spend(work, limits.work, cancel)?;
+                    lease
+                        .admit_hosted_runtime_work(1, cancel)
+                        .map_err(canonical)?;
+                    if record.borrow().id == id {
+                        found = Some(record.clone());
+                    }
+                }
+            }
+            // Watcher Close destroys membership before the nested ordinary
+            // Close Hook. That Hook still operates on this same original.
+            for custody in &window.custody {
+                spend(work, limits.work, cancel)?;
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(canonical)?;
+                if custody.record().borrow().id == id {
+                    found = Some(custody.record().clone());
+                }
+            }
+            let record = found.ok_or(DomHostedRuntimeError::Protocol)?;
+            if !record.borrow().actions.matches(id.subject()) {
+                return Err(DomHostedRuntimeError::Binding);
+            }
+            lease
+                .admit_hosted_runtime_work(growth_steps(&window.custody)?, cancel)
+                .map_err(canonical)?;
+            grow(
+                &mut window.custody,
+                &mut window.custody_payload,
+                retained,
+                *limits,
+                work,
+                |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
+                cancel,
+            )?;
+            let movements = membership_removal_steps(window, id)?;
+            for _ in 0..movements {
+                spend(work, limits.work, cancel)?;
+            }
+            lease
+                .admit_hosted_runtime_work(movements, cancel)
+                .map_err(canonical)?;
+            // This original-record transition remains real work, separately
+            // from the already prepaid membership predicates and moves.
+            spend(work, limits.work, cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(canonical)?;
+            let mut row = record.borrow_mut();
+            row.request = request.clone();
+            row.publication = Some(preparation.publish());
+            row.phase = WatcherPhase::Removing;
+            drop(row);
+            window
+                .custody
+                .push(WatcherCustody::HookRemoval(record.clone()));
+            remove_membership(window, id);
+            record
+        };
+        Ok(Some(WatcherLocation { record }))
+    }
+
+    /// Fulfil one Source-selected watcher effect. The language cursors remain
+    /// exclusively in Source; this bank holds only original native records and
+    /// affine publications of effects that really happened.
+    pub(crate) fn service_close_watcher_request(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        request: &DomSourceCloseWatcherRequest,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let history = if request.step()
+            == DomSourceCloseWatcherStep::Action(
+                HtmlCloseWatcherRequestAction::ConsumeHistoryActionActivation,
+            ) {
+            Some(
+                lease
+                    .close_watcher_history_windows(request, &state.source, cancel)
+                    .map_err(canonical)?,
+            )
+        } else {
+            None
+        };
+        if state.dom != lease.snapshot().owner() {
+            return Err(DomHostedRuntimeError::Binding);
+        }
+        let preparation = lease
+            .prepare_close_watcher_request(request, &state.source, cancel)
+            .map_err(canonical)?;
+        let id = request.watcher();
+        let (h, t, c, w) = state.find_window(id.global(), cancel, || {
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(canonical)
+        })?;
+        let HostedState {
+            hosts,
+            children,
+            destruction,
+            work,
+            limits,
+            ..
+        } = &mut *state;
+        let retained = native_retained_bytes(
+            hosts,
+            children,
+            destruction,
+            work,
+            limits.work,
+            cancel,
+            || {
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(canonical)
+            },
+        )?;
+        if let Some(capture) = &history {
+            // The Source-owned capture is the actual W.navigable/top/active
+            // Window closure. NeverActivated does not bypass this formation.
+            if capture.window_navigable().is_none() && !capture.windows().is_empty() {
+                return Err(DomHostedRuntimeError::Protocol);
+            }
+            // Resolve every real Window and prepay the second read-only bank
+            // walk and write before any timestamp changes. Both walks see the
+            // exact same callback-free native banks.
+            for global in capture.windows() {
+                let mut second_walk = 0usize;
+                state.find_window(*global, cancel, || {
+                    second_walk = second_walk
+                        .checked_add(1)
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                    lease
+                        .admit_hosted_runtime_work(1, cancel)
+                        .map_err(canonical)
+                })?;
+                // find_window has charged the actual validation walk. The
+                // callback-free assignment below traverses that same prefix
+                // again, then performs one timestamp write. Admit both before
+                // any Window timestamp changes.
+                let assignment = second_walk
+                    .checked_add(1)
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+                for _ in 0..assignment {
+                    state.step(cancel)?;
+                }
+                lease
+                    .admit_hosted_runtime_work(assignment, cancel)
+                    .map_err(canonical)?;
+            }
+        }
+        let HostedState {
+            hosts,
+            source,
+            work,
+            limits,
+            ..
+        } = &mut *state;
+        let window = &mut hosts[h].top_levels[t]
+            .group
+            .as_mut()
+            .ok_or(DomHostedRuntimeError::Protocol)?
+            .clusters[c]
+            .agent
+            .windows
+            .rows[w];
+        let mut index = None;
+        let mut original = None;
+        for (position, custody) in window.custody.iter().enumerate() {
+            spend(work, limits.work, cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(canonical)?;
+            if let WatcherCustody::Invocation(invocation) = custody
+                && invocation.body.binding == request.invocation()
+            {
+                if invocation.body.record.borrow().id != id
+                    || invocation.body.binding.operation() != request.operation()
+                {
+                    return Err(DomHostedRuntimeError::Binding);
+                }
+                index = Some(position);
+            }
+            if custody.record().borrow().id == id {
+                original = Some(custody.record().clone());
+            }
+        }
+        for group in &window.groups {
+            spend(work, limits.work, cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(canonical)?;
+            for record in &group.members {
+                spend(work, limits.work, cancel)?;
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(canonical)?;
+                if record.borrow().id == id {
+                    original = Some(record.clone());
+                }
+            }
+        }
+        let index = match index {
+            Some(index) => index,
+            None => {
+                let record = original.ok_or(DomHostedRuntimeError::Binding)?;
+                if !record.borrow().actions.matches(id.subject()) {
+                    return Err(DomHostedRuntimeError::Binding);
+                }
+                lease
+                    .admit_hosted_runtime_work(growth_steps(&window.custody)?, cancel)
+                    .map_err(canonical)?;
+                let added = grow(
+                    &mut window.custody,
+                    &mut window.custody_payload,
+                    retained,
                     *limits,
                     work,
                     |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
                     cancel,
                 )?;
+                let body_bytes = invocation_body_bytes();
+                if body_bytes > limits.scratch_bytes
+                    || retained
+                        .checked_add(added)
+                        .and_then(|bytes| bytes.checked_add(body_bytes))
+                        .is_none_or(|bytes| bytes > limits.storage_bytes)
+                {
+                    return Err(DomHostedRuntimeError::Admission);
+                }
                 spend(work, limits.work, cancel)?;
                 lease
                     .admit_hosted_runtime_work(1, cancel)
                     .map_err(canonical)?;
-                let member_index = group.members.len();
-                let publication = preparation.publish();
-                group.members.push(Watcher {
-                    id,
-                    request: request.clone(),
-                    publication: Some(publication),
-                    state: HtmlCloseWatcherState::fresh(),
-                    actions: DialogActions {
-                        cancel_event: DialogCancelAction::DispatchCancel {
-                            subject: id.subject(),
-                        },
-                        close: DialogCloseAction::Close {
-                            subject: id.subject(),
-                        },
-                        enabled: DialogEnabledRead::Dialog {
-                            subject: id.subject(),
-                        },
-                    },
-                    phase: WatcherPhase::Registering,
+                let payload = lease
+                    .retain_hosted_runtime_payload(source, body_bytes, cancel)
+                    .map_err(canonical)?;
+                let body = Box::new(WatcherInvocation {
+                    binding: request.invocation(),
+                    record,
+                    running_guard: false,
+                    pending: None,
                 });
-                if !fresh.members.is_empty() {
-                    window.groups.push(fresh);
+                let index = window.custody.len();
+                window
+                    .custody
+                    .push(WatcherCustody::Invocation(InvocationCustody {
+                        body,
+                        _payload: payload,
+                    }));
+                index
+            }
+        };
+        if request.step() == DomSourceCloseWatcherStep::SettleInvocation {
+            let steps = window
+                .custody
+                .len()
+                .checked_sub(index)
+                .ok_or(DomHostedRuntimeError::Protocol)?;
+            for _ in 0..steps {
+                spend(work, limits.work, cancel)?;
+            }
+            lease
+                .admit_hosted_runtime_work(steps, cancel)
+                .map_err(canonical)?;
+        }
+        let WatcherCustody::Invocation(custody) = &mut window.custody[index] else {
+            return Err(DomHostedRuntimeError::Protocol);
+        };
+        let invocation = &mut custody.body;
+        if let Some(pending) = &mut invocation.pending {
+            if pending.occurrence != request.current_occurrence() || pending.step != request.step()
+            {
+                return Err(DomHostedRuntimeError::Protocol);
+            }
+            lease
+                .accept_close_watcher_request(request, &mut pending.publication, cancel)
+                .map_err(canonical)?;
+            invocation.pending = None;
+        } else {
+            let record = invocation.record.clone();
+            let owns_running_guard = invocation.running_guard;
+            let publication = match request.step() {
+                DomSourceCloseWatcherStep::SettleInvocation => {
+                    if owns_running_guard {
+                        return Err(DomHostedRuntimeError::Protocol);
+                    }
+                    preparation.publish_settled().map_err(canonical)?
                 }
-                drop(candidate_payload);
-                (group_index, member_index)
-            } else {
-                let mut found = None;
-                for (g, group) in window.groups.iter().enumerate() {
-                    spend(work, limits.work, cancel)?;
-                    lease
-                        .admit_hosted_runtime_work(1, cancel)
-                        .map_err(canonical)?;
-                    for (m, watcher) in group.members.iter().enumerate() {
-                        spend(work, limits.work, cancel)?;
-                        lease
-                            .admit_hosted_runtime_work(1, cancel)
-                            .map_err(canonical)?;
-                        if watcher.id == id && watcher.phase == WatcherPhase::Registered {
-                            found = Some((g, m));
+                DomSourceCloseWatcherStep::Action(action) => {
+                    use HtmlCloseWatcherRequestAction as A;
+                    use HtmlCloseWatcherRequestReply as R;
+                    let reply = match action {
+                        A::ReadActive => {
+                            let mut active = false;
+                            for group in &window.groups {
+                                spend(work, limits.work, cancel)?;
+                                lease
+                                    .admit_hosted_runtime_work(1, cancel)
+                                    .map_err(canonical)?;
+                                for member in &group.members {
+                                    spend(work, limits.work, cancel)?;
+                                    lease
+                                        .admit_hosted_runtime_work(1, cancel)
+                                        .map_err(canonical)?;
+                                    active |= Rc::ptr_eq(member, &record);
+                                }
+                            }
+                            R::Active(active)
+                        }
+                        A::ReadEnabled => R::Enabled(
+                            lease
+                                .close_watcher_enabled(request, source, cancel)
+                                .map_err(canonical)?,
+                        ),
+                        A::ReadRunningCancelAction => {
+                            R::RunningCancelAction(record.borrow().state.running_cancel_action())
+                        }
+                        A::ReadWindowFullyActive => R::WindowFullyActive(
+                            lease
+                                .close_watcher_window_fully_active(request, source, cancel)
+                                .map_err(canonical)?,
+                        ),
+                        A::ReadManagerGroups => R::ManagerGroups {
+                            groups: window.groups.len(),
+                            allowed_groups: std::num::NonZeroUsize::new(
+                                window.manager.allowed_groups(),
+                            )
+                            .ok_or(DomHostedRuntimeError::Protocol)?,
+                        },
+                        A::ReadHistoryActionActivation => {
+                            R::HistoryActionActivation(window.history_action_activation())
+                        }
+                        A::SetRunningCancelAction(running) => {
+                            spend(work, limits.work, cancel)?;
+                            lease
+                                .admit_hosted_runtime_work(1, cancel)
+                                .map_err(canonical)?;
+                            if running == owns_running_guard {
+                                return Err(DomHostedRuntimeError::Protocol);
+                            }
+                            let mut row = record.borrow_mut();
+                            if running {
+                                row.state.begin_cancel_action()
+                            } else {
+                                row.state.finish_cancel_action()
+                            }
+                            .map_err(|_| DomHostedRuntimeError::Protocol)?;
+                            R::Applied
+                        }
+                        A::DestroyMembership => {
+                            let steps = membership_removal_steps(window, id)?;
+                            for _ in 0..steps {
+                                spend(work, limits.work, cancel)?;
+                            }
+                            lease
+                                .admit_hosted_runtime_work(steps, cancel)
+                                .map_err(canonical)?;
+                            remove_membership(window, id);
+                            R::Applied
+                        }
+                        A::ConsumeHistoryActionActivation => R::Applied,
+                        A::CaptureWindow
+                        | A::RunCancelAction { .. }
+                        | A::RunCloseAction
+                        | A::Complete(_) => {
+                            return Err(DomHostedRuntimeError::Protocol);
+                        }
+                    };
+                    preparation.publish_reply(reply).map_err(canonical)?
+                }
+            };
+            let WatcherCustody::Invocation(custody) = &mut window.custody[index] else {
+                return Err(DomHostedRuntimeError::Protocol);
+            };
+            let invocation = &mut custody.body;
+            if let DomSourceCloseWatcherStep::Action(
+                HtmlCloseWatcherRequestAction::SetRunningCancelAction(running),
+            ) = request.step()
+            {
+                invocation.running_guard = running;
+            }
+            invocation.pending = Some(PendingWatcherAction {
+                occurrence: request.current_occurrence(),
+                step: request.step(),
+                publication: Some(publication),
+            });
+            if let Some(capture) = &history {
+                for global in capture.windows() {
+                    'find: for host in hosts.iter_mut() {
+                        for composition in &mut host.top_levels {
+                            if let Some(group) = &mut composition.group {
+                                for cluster in &mut group.clusters {
+                                    for target in &mut cluster.agent.windows.rows {
+                                        if target.id == *global {
+                                            target.last_history_action_activation =
+                                                target.activation;
+                                            break 'find;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                let (g, m) = found.ok_or(DomHostedRuntimeError::Protocol)?;
-                spend(work, limits.work, cancel)?;
-                let watcher = &mut window.groups[g].members[m];
-                if watcher.state.running_cancel_action() || !watcher.actions.matches(id.subject()) {
-                    return Err(DomHostedRuntimeError::Binding);
-                }
-                lease
-                    .admit_hosted_runtime_work(1, cancel)
-                    .map_err(canonical)?;
-                watcher.request = request.clone();
-                watcher.publication = Some(preparation.publish());
-                watcher.phase = WatcherPhase::Removing;
-                (g, m)
+            }
+            let window = &mut hosts[h].top_levels[t]
+                .group
+                .as_mut()
+                .expect("pinned original group")
+                .clusters[c]
+                .agent
+                .windows
+                .rows[w];
+            let WatcherCustody::Invocation(custody) = &mut window.custody[index] else {
+                return Err(DomHostedRuntimeError::Protocol);
             };
-        Ok(Some(WatcherLocation {
-            host: h,
-            composition: t,
-            cluster: c,
-            window: w,
-            group: group_index,
-            member: member_index,
-        }))
+            let invocation = &mut custody.body;
+            let publication = &mut invocation
+                .pending
+                .as_mut()
+                .expect("retained actual effect")
+                .publication;
+            lease
+                .accept_close_watcher_request(request, publication, cancel)
+                .map_err(canonical)?;
+            invocation.pending = None;
+        }
+        let window = &mut hosts[h].top_levels[t]
+            .group
+            .as_mut()
+            .expect("pinned original group")
+            .clusters[c]
+            .agent
+            .windows
+            .rows[w];
+        if request.step() == DomSourceCloseWatcherStep::SettleInvocation {
+            // The exact row splice was prepaid before affine acceptance.
+            // No callback, allocation or fallible cleanup occurs here.
+            window.custody.remove(index);
+        }
+        Ok(())
     }
 
     /// Pin and prepay real scans/readback/splices before advance can close child.
@@ -630,6 +1149,15 @@ impl HostedRuntime {
                                         .ok_or(DomHostedRuntimeError::Admission)?,
                                 )
                                 .ok_or(DomHostedRuntimeError::Admission)?;
+                            steps = steps
+                                .checked_add(
+                                    window
+                                        .custody
+                                        .len()
+                                        .checked_mul(2)
+                                        .ok_or(DomHostedRuntimeError::Admission)?,
+                                )
+                                .ok_or(DomHostedRuntimeError::Admission)?;
                             for group in &window.groups {
                                 spend(work, limits.work, cancel)?;
                                 lease
@@ -691,6 +1219,46 @@ impl HostedRuntime {
         Ok(WatcherSettlement { owner })
     }
 }
+fn published_slot(
+    snapshot: &DomSnapshot,
+    id: DomCloseWatcherId,
+) -> Option<Option<DomCloseWatcherId>> {
+    match snapshot.node(id.subject()) {
+        Ok(node) => node.as_dialog().map(|dialog| dialog.close_watcher()),
+        Err(surgeist_dom::DomError::StaleNode) => Some(None),
+        Err(_) => None,
+    }
+}
+fn membership_removal_steps(
+    window: &NativeWindow,
+    _id: DomCloseWatcherId,
+) -> Result<usize, DomHostedRuntimeError> {
+    let mut steps = window
+        .groups
+        .len()
+        .checked_mul(2)
+        .ok_or(DomHostedRuntimeError::Admission)?;
+    for group in &window.groups {
+        steps = steps
+            .checked_add(
+                group
+                    .members
+                    .len()
+                    .checked_mul(2)
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+            )
+            .ok_or(DomHostedRuntimeError::Admission)?;
+        // Every possible group splice is included above, independently of
+        // whether membership had already been removed by watcher Close.
+    }
+    Ok(steps)
+}
+fn remove_membership(window: &mut NativeWindow, id: DomCloseWatcherId) {
+    for group in &mut window.groups {
+        group.members.retain(|record| record.borrow().id != id);
+    }
+    window.groups.retain(|group| !group.members.is_empty());
+}
 pub(crate) struct WatcherSettlement {
     owner: Rc<RefCell<HostedState>>,
 }
@@ -706,38 +1274,26 @@ impl WatcherSettlement {
                         let agent = &mut cluster.agent;
                         for window in &mut agent.windows.rows {
                             for group in &mut window.groups {
-                                group.members.retain_mut(|watcher| {
-                                    if watcher.phase == WatcherPhase::Registered
-                                        || watcher.publication.is_some()
+                                for record in &group.members {
+                                    let mut watcher = record.borrow_mut();
+                                    if watcher.phase == WatcherPhase::Registering
+                                        && watcher.publication.is_none()
+                                        && published_slot(snapshot, watcher.id)
+                                            == Some(Some(watcher.id))
                                     {
-                                        return true;
+                                        watcher.phase = WatcherPhase::Registered;
                                     }
-                                    debug_assert!(!watcher.state.running_cancel_action());
-                                    debug_assert!(watcher.actions.matches(watcher.id.subject()));
-                                    let slot = match snapshot.node(watcher.id.subject()) {
-                                        Ok(node) => {
-                                            node.as_dialog().map(|dialog| dialog.close_watcher())
-                                        }
-                                        Err(surgeist_dom::DomError::StaleNode) => Some(None),
-                                        Err(_) => None,
-                                    };
-                                    match watcher.phase {
-                                        WatcherPhase::Registering
-                                            if slot == Some(Some(watcher.id)) =>
-                                        {
-                                            watcher.phase = WatcherPhase::Registered;
-                                            true
-                                        }
-                                        WatcherPhase::Removing
-                                            if slot
-                                                .is_some_and(|slot| slot != Some(watcher.id)) =>
-                                        {
-                                            false
-                                        }
-                                        _ => true,
-                                    }
-                                });
+                                }
                             }
+                            window.custody.retain(|custody| match custody {
+                                WatcherCustody::Invocation(_) => true,
+                                WatcherCustody::HookRemoval(record) => {
+                                    let watcher = record.borrow();
+                                    watcher.publication.is_some()
+                                        || !published_slot(snapshot, watcher.id)
+                                            .is_some_and(|slot| slot != Some(watcher.id))
+                                }
+                            });
                             window.groups.retain(|group| !group.members.is_empty());
                         }
                         agent
