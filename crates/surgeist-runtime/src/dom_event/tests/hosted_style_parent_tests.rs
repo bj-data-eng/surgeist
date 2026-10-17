@@ -12,7 +12,7 @@
 
 use super::*;
 use crate::{
-    DomDetailsRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
+    DomHostedRuntimeLimits, DomManipulationRuntimeLimits, DomSession, DomSessionLimits,
     DomStyleRuntimeLimits,
 };
 use surgeist_dom::{DomHostedLimits, DomHostedRecordLimits};
@@ -66,7 +66,7 @@ fn hosted_session() -> DomSession {
                 work: 1_000_000,
                 css_input: surgeist_css::CssUtf16InputLimits::default(),
             },
-            details: DomDetailsRuntimeLimits {
+            dom_manipulation: DomManipulationRuntimeLimits {
                 tasks: 32,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,

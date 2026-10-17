@@ -14,7 +14,7 @@ pub(super) struct Pending<K> {
     target: K,
     old: HtmlDetailsState,
     new: HtmlDetailsState,
-    queue_association: Option<crate::details::DomDetailsQueueAssociation>,
+    queue_association: Option<crate::details::DomElementTaskAssociation>,
 }
 impl<K> Pending<K> {
     pub(in crate::store) fn is_unissued(&self) -> bool {
@@ -56,11 +56,11 @@ pub(super) fn draft_formed(
     Ok(out)
 }
 impl Draft {
-    fn details_queue_association(
+    pub(in crate::store) fn element_task_association(
         &self,
         target: Key,
         cancel: &AtomicBool,
-    ) -> Result<Option<crate::details::DomDetailsQueueAssociation>, DomError> {
+    ) -> Result<Option<crate::details::DomElementTaskAssociation>, DomError> {
         let Some(global) = self.node(target)?.relevant_global else {
             return Ok(None);
         };
@@ -87,7 +87,7 @@ impl Draft {
         association
             .validate_live()
             .map_err(|_| DomError::HostedSourceUnavailable)?;
-        Ok(Some(crate::details::DomDetailsQueueAssociation {
+        Ok(Some(crate::details::DomElementTaskAssociation {
             global,
             document,
         }))
@@ -161,7 +161,7 @@ impl Draft {
             .map_err(|_| DomError::AllocationFailed)?;
         self.source_admit(0, cancel)?;
         self.headroom_details_issue(cancel)?;
-        let queue_association = self.details_queue_association(target, cancel)?;
+        let queue_association = self.element_task_association(target, cancel)?;
         self.details_intentions.push(Pending {
             serial: None,
             target,

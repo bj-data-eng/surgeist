@@ -65,7 +65,7 @@ impl Draft {
         }
     }
 
-    fn dialog_state(&self, key: Key) -> Result<&DomDialogState, DomError> {
+    pub(in crate::store) fn dialog_state(&self, key: Key) -> Result<&DomDialogState, DomError> {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Err(DomError::DialogInapplicable);
         };
@@ -123,6 +123,28 @@ impl Draft {
         drop(formation);
         self.source_admit(0, cancel)?;
         self.source_admit_units(0, cancel)
+    }
+
+    pub(in crate::store) fn clear_dialog_toggle_tracker(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        self.dialog_state(key)?;
+        // The initial rebase owns the current state occurrences, but this
+        // replacement creates another immutable body before the old one drops.
+        let formation = source::formation::Formation::new(self, cancel)?;
+        if let Some(formation) = &formation {
+            formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
+        }
+        self.source_step(cancel)?;
+        let mut next = self.dialog_state(key)?.clone();
+        next.toggle_tracker = None;
+        self.element_mut(key).set_dialog_state(next);
+        // The Draft now owns the replacement; its normal recount takes over.
+        drop(formation);
+        self.source_admit(0, cancel)
     }
 
     fn dialog_list(&self, document: Key, top_layer: bool) -> Result<&[Key], DomError> {
@@ -417,6 +439,116 @@ mod tests {
         assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
     }
+    #[test]
+    fn source_tracker_clear_admits_candidate_body_before_replacing_state() {
+        let cancel = AtomicBool::new(false);
+        for short in [true, false] {
+            let (mut dom, dialog) = fixture();
+            let mut batch = DomBatch::new();
+            batch.set_dialog_return_value(dialog, "retained");
+            dom.apply(batch, &cancel).unwrap();
+            let before = dom.snapshot();
+            let batch = DomBatch::new();
+            let generous =
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+            let (mut draft, _, _) = Draft::new_source(
+                &dom,
+                batch.owner.clone(),
+                &batch.commands,
+                generous,
+                &cancel,
+            )
+            .unwrap();
+            let key = draft.resolve(dialog.into()).unwrap();
+            let original = draft.dialog_state(key).unwrap() as *const DomDialogState;
+            let original_units = draft.units;
+            let original_work = draft.source_work.load(Ordering::Relaxed);
+            let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+            // Canonical and Source Draft state already exist. The helper adds
+            // exactly one candidate immutable body; its string clone shares
+            // existing backing. No task/tracker or completed Show is invented.
+            let exact = base + size_of::<DomDialogState>();
+            let tight = exact - usize::from(short);
+            draft.source_limits = Some(crate::DomSourceLimits::new(
+                tight, 100_000, 10_000_000, 16, 4096, 4096, 1,
+            ));
+            let result = draft.clear_dialog_toggle_tracker(key, &cancel);
+            if short {
+                assert_eq!(
+                    result.unwrap_err(),
+                    DomError::ResourceLimit {
+                        resource: DomResource::SourceRetainedBytes,
+                        limit: tight,
+                    }
+                );
+                assert!(std::ptr::eq(draft.dialog_state(key).unwrap(), original));
+                assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+                draft.source_limits = Some(crate::DomSourceLimits::new(
+                    exact, 100_000, 10_000_000, 16, 4096, 4096, 1,
+                ));
+                draft.clear_dialog_toggle_tracker(key, &cancel).unwrap();
+            } else {
+                result.unwrap();
+            }
+            assert!(!std::ptr::eq(draft.dialog_state(key).unwrap(), original));
+            assert_eq!(draft.dialog_state(key).unwrap().toggle_tracker, None);
+            assert_eq!(
+                draft.dialog_state(key).unwrap().return_value().code_units(),
+                [114, 101, 116, 97, 105, 110, 101, 100]
+            );
+            assert_eq!(draft.units, original_units);
+            assert!(draft.source_work.load(Ordering::Relaxed) > original_work);
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+            assert_eq!(
+                draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes,
+                base,
+                "the transferred replacement has the original retained shape"
+            );
+            assert_eq!(dom.snapshot().stamp(), before.stamp());
+            assert_eq!(
+                before
+                    .node(dialog)
+                    .unwrap()
+                    .as_dialog()
+                    .unwrap()
+                    .return_value()
+                    .code_units(),
+                [114, 101, 116, 97, 105, 110, 101, 100]
+            );
+        }
+    }
+
+    #[test]
+    fn cancelled_source_tracker_clear_preserves_original_state_for_same_draft_retry() {
+        let cancel = AtomicBool::new(false);
+        let (dom, dialog) = fixture();
+        let before = dom.snapshot();
+        let batch = DomBatch::new();
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+        let (mut draft, _, _) =
+            Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
+        let key = draft.resolve(dialog.into()).unwrap();
+        let original = draft.dialog_state(key).unwrap() as *const DomDialogState;
+        let original_units = draft.units;
+        assert_eq!(
+            draft.clear_dialog_toggle_tracker(key, &AtomicBool::new(true)),
+            Err(DomError::Cancelled)
+        );
+        assert!(std::ptr::eq(draft.dialog_state(key).unwrap(), original));
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        draft.clear_dialog_toggle_tracker(key, &cancel).unwrap();
+        assert!(!std::ptr::eq(draft.dialog_state(key).unwrap(), original));
+        assert_eq!(draft.dialog_state(key).unwrap().toggle_tracker, None);
+        assert!(draft.dialog_state(key).unwrap().return_value().is_empty());
+        assert_eq!(draft.units, original_units);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+    }
+
     #[test]
     fn equal_source_value_admits_each_comparison_without_mutation_or_custody() {
         let cancel = AtomicBool::new(false);

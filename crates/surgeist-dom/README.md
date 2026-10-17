@@ -758,9 +758,10 @@ identity and states. The transfer batch retains its historical source snapshot;
 consuming iteration yields records retaining their operation, target and states.
 A consumer must validate each exact target against a fresh current snapshot before
 execution. DOM does not coalesce tasks or fire ToggleEvents. Runtime's shared
-`DomSession` owns the bounded Details task tracker, coalescing and native event
-dispatch. Its controlled ingestion admits the actual pending bank before taking
-custody; a session-bound caller cannot bypass that handoff with a raw transfer.
+`DomSession` owns the shared DOM manipulation task bank, concrete Details tracker,
+coalescing and native event dispatch. Its controlled ingestion admits the actual
+pending bank before taking custody; a session-bound caller cannot bypass that
+handoff with a raw transfer.
 Tasks retain their original queued Document and hosted Global across adoption,
 while dispatch uses the current tree's parent path. Standalone DOM consumers can
 still use the raw transfer API; prior nonempty external transfers prevent later
@@ -981,9 +982,12 @@ They preserve pending obligations for later service.
 Canceling beforetoggle is a normal HTML return, distinct from canceling the
 Source operation. If the callback retires the receiver, genuine event
 cancellation completes without reading it again. An uncanceled post-event read
-instead reports the original receiver's retirement. QueueToggle and later
-unavailable services preserve the actual Show cursor; this bounded entry does
-not complete positive Show, Close, modal, focus, watcher or popover processing.
+instead reports the original receiver's retirement. QueueToggle publishes the
+real task and canonical tracker through the original bound DOM-manipulation
+owner. Its exact publication is accepted once; refusal retains it for retry
+without queueing again. Show then remains Pending at AddOpen, and queued delivery
+cannot bypass that unfinished synchronous tail. This bounded entry does not
+complete positive Show, Close, modal, focus, watcher or popover processing.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

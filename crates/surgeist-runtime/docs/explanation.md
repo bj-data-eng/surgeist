@@ -70,18 +70,18 @@ acknowledgement errors.
 
 ## DOM orchestration
 
-`DomSession` owns the original canonical `Dom`, CSSOM resources, Details task
-state, Source event continuations and native hosted lifecycle. Its explicit
+`DomSession` owns the original canonical `Dom`, CSSOM resources, DOM manipulation
+task state, Source event continuations and native hosted lifecycle. Its explicit
 `DomSessionLimits` admits each domain's actual storage and work.
 `source_execution()`, `style_execution()`,
-`details_execution()` and `hosted_execution()` return weak permissions into
-that same session. Dropping or
-reacquiring a permission preserves the original resources, queues and spent work.
+`dom_manipulation_execution()` and `hosted_execution()` return weak permissions into
+that same session. Dropping or reacquiring a permission preserves the original
+resources, queues and spent work.
 The scoped `DomEventDom` view permits canonical edits without exposing a
 replaceable mutable owner or its source issuer. Session construction refuses
-prebound Style custody and prior nonempty standalone Details transfers whose
-external task custody it cannot recover. An already bound Source event executor
-also refuses Session construction.
+prebound Style custody, an already bound DOM-manipulation task source and prior
+nonempty standalone Details transfers whose external task custody it cannot
+recover. An already bound Source event executor also refuses Session construction.
 
 DOM owns each source operation's identity and published continuation. Runtime
 drives one edit or named feature operation through that same canonical engine.
@@ -101,9 +101,11 @@ across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
 Callbacks can make ordinary edits or start nested Source work under the exact
 event scope. An unfinished nested operation blocks the outer dispatch until the
-child is serviced; completed callbacks are not replayed. Initial uncanceled Show
-can remain Pending at QueueToggle because later Dialog services are not yet
-implemented. An actual canceled event returns normally even if its callback
+child is serviced; completed callbacks are not replayed. Uncanceled Show queues
+its actual null-source toggle task and publishes the canonical tracker before
+remaining Pending at AddOpen. The queued task cannot run through this unfinished
+synchronous tail. This bounded publication does not establish completed Show or
+its event delivery. An actual canceled event returns normally even if its callback
 retired the receiver; an uncanceled read of that retired receiver is a typed
 Source failure.
 
@@ -186,14 +188,42 @@ or expired live issuer does not supply that proof. Resource-bearing edits still
 need their actual composed service, including removal of an associated Style
 sheet through the Source driver.
 
-Details ingestion admits the actual canonical pending intentions before taking
-custody. Tasks preserve their original queued Document and Global across target
-adoption; dispatch builds its path from the current tree. At task completion,
-the native loop checks the canonical checkpoint state. Pending Slot work cannot
-be delivered by this bounded contribution: it retains the started task and its
-delivered-event progress with `CheckpointUnavailable`. An actually empty bank
+Configure the shared task owner's count, storage and cumulative work through
+`DomSessionLimits::dom_manipulation`. Each `run_next` also receives explicit
+`DomManipulationRunLimits`: dispatcher limits bound event delivery, and Source
+limits bound Dialog's canonical cleanup continuation. Replacing a weak execution
+permission resets neither domain. The queued-task cleanup uses the original
+Source engine and reserves its closing revision before callbacks can run.
+
+Details and Dialog toggle tasks share one DOM-manipulation task bank. Details
+ingestion admits the actual canonical pending intentions before taking custody;
+Dialog queue publication joins through its exact Source continuation. Their
+concrete event payloads and family trackers remain distinct. Coalescing removes
+the tracked task and appends its replacement at the current queue tail, retaining
+the first old state and latest new state. Tasks preserve their original queued
+Document and Global across target adoption; dispatch builds its path from the
+current tree. After dispatch, the surviving Dialog's current tracker is cleared
+even when a callback replaced it; that clear does not remove the newer queued
+task. A retired target never redirects cleanup to a replacement generation.
+At task completion, the native loop checks the canonical checkpoint state.
+Pending Slot work cannot be delivered by this bounded contribution: it retains
+the started task and its delivered-event progress with `CheckpointUnavailable`. An actually empty bank
 can complete the native checkpoint. This does not implement mutation observers,
 JavaScript jobs or Slot delivery.
+
+The canonical DOM holds a weak binding to the actual task owner. Its live
+storage projection remains part of every applicable Source admission after the
+creating operation closes. Shared event and path backing stays charged until
+its actual last observer releases it; removing a task row alone does not release
+that backing. Canonical dispatch custody is counted once in Source admission,
+while Runtime's own storage limit covers its full retained payload. Transferred
+caller-owned diagnostic receipts retain their existing ownership boundary.
+
+A retry prices the event's actual retained path, scope and listener state along
+with any replacement failure bank. Lowering a new path limit does not shrink an
+already captured path. Growing a retained bank admits the old and new backing
+together before callbacks resume. A refused attempt preserves the original
+event and delivered progress for a later policy raise.
 
 Hosted dispatch admission checks the current association before starting. Each
 listener then uses its current target's actual node Document: known inactive
@@ -217,8 +247,9 @@ These operations implement bounded native orchestration. A retained sheet or
 completed canonical edit does not establish fetched-resource completion,
 nonempty-media evaluation, rendering readiness, browser event-loop integration
 or JavaScript execution. The [Style](../src/dom_style.rs),
-[event](../src/dom_event.rs) and [Details](../src/dom_details.rs) modules define
-their admitted operations and typed unavailable states; the
+[event](../src/dom_event.rs) and
+[DOM manipulation task](../src/dom_manipulation.rs) modules define their admitted
+operations and typed unavailable states; the
 [hosted lifecycle](../src/dom_lifecycle.rs) owns native creation and teardown. The
 [DOM owner](../../surgeist-dom/README.md) defines canonical source continuations.
 

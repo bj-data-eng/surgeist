@@ -42,7 +42,7 @@ fn session_limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: surgeist_css::CssUtf16InputLimits::default(),
         },
-        details: DomDetailsRuntimeLimits {
+        dom_manipulation: DomManipulationRuntimeLimits {
             tasks: 8,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -499,6 +499,755 @@ fn hosted_uncanceled_resume_publishes_toggle_tracker_on_original_global_then_par
     assert_eq!(observed.0, 1);
     // This pending synchronous Source tail is not permission to pump the
     // queued event, acknowledge AddOpen, or claim completed Show.
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
+    let cancel = AtomicBool::new(false);
+    let dom = Dom::new(
+        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
+            .unwrap()
+            .with_dispatch_custody(
+                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+            )
+            .with_details_toggle_intentions(8)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut session = DomSession::new(dom, session_limits()).unwrap();
+    let mut hosted = session.hosted_execution();
+    let top = {
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        hosted.create_top_level(&mut dom, host, &cancel).unwrap()
+    };
+    let snapshot = session.snapshot();
+    assert!(
+        snapshot
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        snapshot.global_document(top.global()).unwrap(),
+        top.document()
+    );
+    let html = snapshot.node(top.document().node()).unwrap().children()[0];
+    let children = snapshot.node(html).unwrap().children();
+    assert_eq!(children.len(), 2);
+    (session, top, children[1])
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_delivery() {
+    struct Context {
+        owner: DomManipulationRuntime,
+        beforetoggle_calls: usize,
+        toggle_calls: usize,
+        callback_edits: Vec<Result<DomCommit, DomError>>,
+    }
+    impl DomManipulationEventContext for Context {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.owner
+        }
+    }
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let (a, b, subject) = {
+        let mut batch = DomBatch::new();
+        let a = batch.create_element_ns(top.document(), Namespace::html(), "details");
+        let b = batch.create_element_ns(top.document(), Namespace::html(), "details");
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        for node in [&a, &b, &dialog] {
+            batch.insert_before(node, body, None);
+        }
+        let commit = session.dom().apply(batch, &cancel).unwrap();
+        (
+            commit.created(&a).unwrap().unwrap(),
+            commit.created(&b).unwrap().unwrap(),
+            commit.created(&dialog).unwrap().unwrap(),
+        )
+    };
+    let mut context = Context {
+        owner: session.dom_manipulation_execution(),
+        beforetoggle_calls: 0,
+        toggle_calls: 0,
+        callback_edits: Vec::new(),
+    };
+    let mut batch = DomBatch::new();
+    batch.set_attribute(a, "open", "");
+    session.dom().apply(batch, &cancel).unwrap();
+    assert_eq!(
+        context.owner.ingest(&mut session.dom(), &cancel).unwrap(),
+        1
+    );
+    let original_a = context.owner.pending_task(0).unwrap().unwrap();
+    assert!(matches!(original_a, DomManipulationTask::Details(_)));
+    assert_eq!(original_a.id().target(), a);
+
+    let mut listeners = dispatcher();
+    listeners
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |dom, _, context: &mut Context, _| {
+                context.beforetoggle_calls += 1;
+                let mut batch = DomBatch::new();
+                batch.set_attribute(b, "open", "");
+                batch.set_attribute(subject, "data-callback", "kept");
+                context
+                    .callback_edits
+                    .push(dom.apply(batch, &AtomicBool::new(false)));
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    for target in [a, b, subject] {
+        listeners
+            .add_listener(
+                &session.dom(),
+                target,
+                DomEventType::Toggle,
+                DomEventCallback::new(|_, _, context: &mut Context, _| {
+                    context.toggle_calls += 1;
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+    let request = request(&mut session, subject);
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &request,
+                &mut listeners,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    assert_eq!(context.beforetoggle_calls, 1);
+    assert_eq!(context.callback_edits.len(), 1);
+    assert!(context.callback_edits[0].is_ok());
+    let callback_snapshot = session.snapshot();
+    match resume(&mut session, request.operation()) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Dialog(dialog),
+            reason: DomSourceUnavailable::Dialog(action),
+        } => {
+            assert_eq!(dialog.operation(), request.operation());
+            assert_eq!(dialog.subject(), subject);
+            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
+            assert_eq!(action, HtmlDialogAction::AddOpen);
+        }
+        other => panic!("actual queueing must leave Show at AddOpen: {other:?}"),
+    }
+    assert_eq!(context.owner.pending_tasks().unwrap(), 3);
+    let pending = (0..3)
+        .map(|index| context.owner.pending_task(index).unwrap().unwrap())
+        .collect::<Vec<_>>();
+    // Both notifications were queued before Dialog's task. B's raw intention
+    // arose during the authentic callback and must join A in this same bank.
+    assert_eq!(
+        pending
+            .iter()
+            .map(|task| task.id().target())
+            .collect::<Vec<_>>(),
+        [a, b, subject]
+    );
+    assert_eq!(pending[0], original_a);
+    for task in &pending[..2] {
+        let details = task.details().expect("the preceding actual Details task");
+        assert_eq!(details.event().old_state().as_str(), "closed");
+        assert_eq!(details.event().new_state().as_str(), "open");
+    }
+    let dialog_task = pending[2].dialog().expect("the actual Dialog task");
+    assert_eq!(dialog_task.old_state(), HtmlDialogState::Closed);
+    assert_eq!(dialog_task.new_state(), HtmlDialogState::Open);
+    assert_eq!(dialog_task.source(), None);
+    for task in &pending {
+        let association = task
+            .queue_association()
+            .expect("the actual hosted queue association");
+        assert_eq!(association.global(), top.global());
+        assert_eq!(association.document(), top.document());
+    }
+    let queued_snapshot = session.snapshot();
+    let tracker = queued_snapshot
+        .node(subject)
+        .unwrap()
+        .as_dialog()
+        .unwrap()
+        .toggle_task_tracker()
+        .unwrap();
+    assert_eq!(tracker.task(), dialog_task.id());
+    assert_eq!(tracker.old_state(), HtmlDialogState::Closed);
+    assert_ne!(queued_snapshot.stamp(), callback_snapshot.stamp());
+    assert_eq!(
+        queued_snapshot
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into()),
+        None
+    );
+    assert_eq!(
+        queued_snapshot
+            .node(subject)
+            .unwrap()
+            .attribute(&"data-callback".into()),
+        Some(&"kept".into())
+    );
+    assert!(matches!(
+        DomManipulationRuntime::run_next(
+            &mut session.dom(),
+            &mut listeners,
+            &mut context,
+            DomManipulationRunLimits {
+                dispatch: dispatch_limits(),
+                source: source_limits()
+            },
+            &cancel,
+        ),
+        Err(DomManipulationRuntimeError::Dom(
+            DomError::SourceOperationPending
+        ))
+    ));
+    assert_eq!(context.toggle_calls, 0);
+    assert_eq!(context.beforetoggle_calls, 1);
+    assert_eq!(session.snapshot().stamp(), queued_snapshot.stamp());
+    assert_eq!(
+        session.snapshot().incomplete_source_operation(),
+        Some(request.operation())
+    );
+    assert_eq!(context.owner.pending_tasks().unwrap(), 3);
+    assert_eq!(
+        (0..3)
+            .map(|index| context.owner.pending_task(index).unwrap().unwrap())
+            .collect::<Vec<_>>(),
+        pending
+    );
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption() {
+    struct Context {
+        calls: usize,
+        edits: Vec<Result<DomCommit, DomError>>,
+        path: Vec<DomEventTarget>,
+    }
+    let cancel = AtomicBool::new(false);
+    let (mut session, first, first_body) = hosted_queue_fixture();
+    let second = session
+        .hosted_execution()
+        .create_top_level(&mut session.dom(), first.host(), &cancel)
+        .unwrap();
+    let initial = session.snapshot();
+    let html = initial.node(second.document().node()).unwrap().children()[0];
+    let children = initial.node(html).unwrap().children();
+    assert_eq!(children.len(), 2);
+    let second_body = children[1];
+    assert!(
+        initial
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_ne!(first.global(), second.global());
+    let subject = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(first.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, first_body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    let original = session.snapshot();
+    assert_eq!(
+        original.node(subject).unwrap().owner_document(),
+        Some(first.document())
+    );
+    assert_eq!(
+        original.relevant_global(subject).unwrap(),
+        Some(first.global())
+    );
+    let mut listeners = dispatcher();
+    listeners
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                context.calls += 1;
+                context.path = event.composed_path().collect();
+                let mut batch = DomBatch::new();
+                batch.adopt(subject, second.document());
+                batch.insert_before(subject, second_body, None);
+                context
+                    .edits
+                    .push(dom.apply(batch, &AtomicBool::new(false)));
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let request = request(&mut session, subject);
+    let mut context = Context {
+        calls: 0,
+        edits: Vec::new(),
+        path: Vec::new(),
+    };
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &request,
+                &mut listeners,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    assert_eq!(context.calls, 1);
+    assert_eq!(context.edits.len(), 1);
+    assert!(context.edits[0].is_ok());
+    assert_eq!(
+        context.path.last(),
+        Some(&DomEventTarget::Global(first.global()))
+    );
+    let adopted = session.snapshot();
+    assert_eq!(
+        adopted.node(subject).unwrap().owner_document(),
+        Some(second.document())
+    );
+    assert_eq!(adopted.node(subject).unwrap().parent(), Some(second_body));
+    match resume(&mut session, request.operation()) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Dialog(dialog),
+            reason: DomSourceUnavailable::Dialog(action),
+        } => {
+            assert_eq!(dialog.operation(), request.operation());
+            assert_eq!(dialog.subject(), subject);
+            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
+            assert_eq!(action, HtmlDialogAction::AddOpen);
+        }
+        other => panic!("adopted Dialog queueing must retain Show at AddOpen: {other:?}"),
+    }
+    let owner = session.dom_manipulation_execution();
+    assert_eq!(owner.pending_tasks().unwrap(), 1);
+    let task = owner
+        .pending_task(0)
+        .unwrap()
+        .unwrap()
+        .dialog()
+        .expect("the actual queued Dialog");
+    assert_eq!(task.id().target(), subject);
+    assert_eq!(task.old_state(), HtmlDialogState::Closed);
+    assert_eq!(task.new_state(), HtmlDialogState::Open);
+    assert_eq!(task.source(), None);
+    let association = task
+        .queue_association()
+        .expect("the original hosted queue association");
+    assert_eq!(association.global(), first.global());
+    assert_eq!(association.document(), first.document());
+    assert_ne!(association.document(), second.document());
+    let queued = session.snapshot();
+    assert_eq!(
+        queued.node(subject).unwrap().owner_document(),
+        Some(second.document())
+    );
+    assert_eq!(queued.node(subject).unwrap().parent(), Some(second_body));
+    assert_eq!(
+        queued.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    let tracker = queued
+        .node(subject)
+        .unwrap()
+        .as_dialog()
+        .unwrap()
+        .toggle_task_tracker()
+        .unwrap();
+    assert_eq!(tracker.task(), task.id());
+    assert_eq!(tracker.old_state(), HtmlDialogState::Closed);
+    assert_eq!(
+        queued.incomplete_source_operation(),
+        Some(request.operation())
+    );
+    assert_eq!(context.calls, 1);
+    assert_eq!(
+        original.node(subject).unwrap().owner_document(),
+        Some(first.document())
+    );
+    // Adoption happened before queue capture. This does not claim dispatch or
+    // the still-unreachable queue-then-adopt execution path behind AddOpen.
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_survives_limit_raise()
+{
+    struct Context {
+        source: DomSourceRuntime,
+        requests: Vec<DomSourceEventRequest>,
+        calls: Vec<&'static str>,
+        edits: Vec<Result<DomCommit, DomError>>,
+    }
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let (grandparent, parent, child, details) = {
+        let mut batch = DomBatch::new();
+        let grandparent = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        let parent = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        let child = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        let details = batch.create_element_ns(top.document(), Namespace::html(), "details");
+        for node in [&grandparent, &parent, &child, &details] {
+            batch.insert_before(node, body, None);
+        }
+        let commit = session.dom().apply(batch, &cancel).unwrap();
+        (
+            commit.created(&grandparent).unwrap().unwrap(),
+            commit.created(&parent).unwrap().unwrap(),
+            commit.created(&child).unwrap().unwrap(),
+            commit.created(&details).unwrap().unwrap(),
+        )
+    };
+    let mut listeners = dispatcher();
+    for (subject, next, label) in [(grandparent, parent, "G"), (parent, child, "P")] {
+        listeners
+            .add_listener(
+                &session.dom(),
+                subject,
+                DomEventType::BeforeToggle,
+                DomEventCallback::new(move |dom, _, context: &mut Context, _| {
+                    context.calls.push(label);
+                    let mut policy = |_: &DomStyleSource| None;
+                    let progress = context
+                        .source
+                        .apply(
+                            dom,
+                            DomSourceEdit::show_dialog(next),
+                            source_limits(),
+                            &mut DomSourceServices {
+                                style_policy: &mut policy,
+                                url: None,
+                            },
+                            &AtomicBool::new(false),
+                        )
+                        .unwrap();
+                    let DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Event(request),
+                        reason: DomSourceUnavailable::Event,
+                    } = progress
+                    else {
+                        panic!(
+                            "the real nested Show must issue its own beforetoggle: {progress:?}"
+                        );
+                    };
+                    context.requests.push(request);
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+    listeners
+        .add_listener(
+            &session.dom(),
+            child,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                context.calls.push("C");
+                let mut batch = DomBatch::new();
+                batch.set_attribute(details, "open", "");
+                context
+                    .edits
+                    .push(dom.apply(batch, &AtomicBool::new(false)));
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let grandparent_request = request(&mut session, grandparent);
+    let mut context = Context {
+        source: session.source_execution(),
+        requests: Vec::new(),
+        calls: Vec::new(),
+        edits: Vec::new(),
+    };
+    let permission = session.source_execution();
+    let grandparent_progress = permission
+        .service_event(
+            &mut session.dom(),
+            &grandparent_request,
+            &mut listeners,
+            &mut context,
+            service_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let parent_request = context.requests.pop().expect("G's genuine child request");
+    assert_eq!(parent_request.subject(), parent);
+    assert_eq!(
+        parent_request.parent_operation(),
+        Some(grandparent_request.operation())
+    );
+    assert!(matches!(
+        grandparent_progress,
+        DomSourceEventServiceProgress::Retained {
+            dispatch: DomEventDispatchOutcome::RetainedSourceOperation(operation)
+        } if operation == parent_request.operation()
+    ));
+    let parent_progress = permission
+        .service_event(
+            &mut session.dom(),
+            &parent_request,
+            &mut listeners,
+            &mut context,
+            service_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let child_request = context.requests.pop().expect("P's genuine child request");
+    assert_eq!(child_request.subject(), child);
+    assert_eq!(
+        child_request.parent_operation(),
+        Some(parent_request.operation())
+    );
+    assert!(matches!(
+        parent_progress,
+        DomSourceEventServiceProgress::Retained {
+            dispatch: DomEventDispatchOutcome::RetainedSourceOperation(operation)
+        } if operation == child_request.operation()
+    ));
+    let child_receipt = serviced(
+        permission
+            .service_event(
+                &mut session.dom(),
+                &child_request,
+                &mut listeners,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(child_receipt.callbacks(), 1);
+    assert!(child_receipt.failures().is_empty());
+    assert!(child_receipt.default_prevented());
+    assert_eq!(context.calls, ["G", "P", "C"]);
+    assert_eq!(context.edits.len(), 1);
+    assert!(context.edits[0].is_ok());
+    context.edits.clear();
+    let child_operation = child_request.operation();
+    let DomSourceDriveProgress::Complete(child_done) = resume(&mut session, child_operation) else {
+        panic!("authentically canceled C must reach its producer's normal Complete");
+    };
+    assert_eq!(child_done.operation(), child_operation);
+    assert!(!child_done.cancellation_requested());
+    drop(child_done);
+    drop(child_receipt);
+    drop(child_request);
+    let resumed_parent = session.dom().pending_source_edit().unwrap();
+    assert_eq!(resumed_parent.operation(), parent_request.operation());
+    assert_eq!(
+        resumed_parent.parent_operation(),
+        Some(grandparent_request.operation())
+    );
+    let owner = session.dom_manipulation_execution();
+    // C produced an intention, not an executable task or a forged transfer.
+    // Its actual operation and observations have closed before queue intake.
+    assert_eq!(owner.pending_tasks().unwrap(), 0);
+    assert_eq!(
+        session
+            .snapshot()
+            .node(details)
+            .unwrap()
+            .attribute(&"open".into()),
+        Some(&"".into())
+    );
+    let parent_receipt = serviced(
+        permission
+            .service_event(
+                &mut session.dom(),
+                &parent_request,
+                &mut listeners,
+                &mut context,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(parent_receipt.callbacks(), 1);
+    assert!(parent_receipt.failures().is_empty());
+    assert!(!parent_receipt.default_prevented());
+    drop(parent_receipt);
+    match resume(&mut session, parent_request.operation()) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Dialog(dialog),
+            reason: DomSourceUnavailable::Dialog(action),
+        } => {
+            assert_eq!(dialog.operation(), parent_request.operation());
+            assert_eq!(dialog.subject(), parent);
+            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
+            assert_eq!(action, HtmlDialogAction::AddOpen);
+        }
+        other => panic!("P's authentic queue publication must stop at AddOpen: {other:?}"),
+    }
+    assert_eq!(owner.pending_tasks().unwrap(), 2);
+    let pending = [
+        owner.pending_task(0).unwrap().unwrap(),
+        owner.pending_task(1).unwrap().unwrap(),
+    ];
+    let details_task = pending[0]
+        .details()
+        .expect("C's real Details intention joined first");
+    assert_eq!(details_task.id().target(), details);
+    assert_eq!(details_task.event().old_state().as_str(), "closed");
+    assert_eq!(details_task.event().new_state().as_str(), "open");
+    let dialog_task = pending[1]
+        .dialog()
+        .expect("P's real Dialog task appended second");
+    assert_eq!(dialog_task.id().target(), parent);
+    assert_eq!(dialog_task.old_state(), HtmlDialogState::Closed);
+    assert_eq!(dialog_task.new_state(), HtmlDialogState::Open);
+    assert_eq!(dialog_task.source(), None);
+    for task in pending {
+        let association = task
+            .queue_association()
+            .expect("actual original hosted association");
+        assert_eq!(association.global(), top.global());
+        assert_eq!(association.document(), top.document());
+    }
+    let queued = session.snapshot();
+    let tracker = queued
+        .node(parent)
+        .unwrap()
+        .as_dialog()
+        .unwrap()
+        .toggle_task_tracker()
+        .unwrap();
+    assert_eq!(tracker.task(), dialog_task.id());
+    assert_eq!(tracker.old_state(), HtmlDialogState::Closed);
+    assert_eq!(queued.node(parent).unwrap().attribute(&"open".into()), None);
+    assert!(
+        !queued
+            .node(grandparent)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert!(
+        !queued
+            .node(child)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    let parent_status = session.dom().pending_source_edit().unwrap();
+    assert_eq!(parent_status.operation(), parent_request.operation());
+    assert_eq!(
+        parent_status.parent_operation(),
+        Some(grandparent_request.operation())
+    );
+    assert_eq!(parent_status.phase(), DomSourcePhase::DialogService);
+    assert_eq!(context.calls, ["G", "P", "C"]);
+    assert!(context.requests.is_empty());
+
+    // This is a genuine monotonic readmission of the original lower observer.
+    // It proves coexistence/retention, not a measured or one-short byte bound.
+    let original_limits = source_limits();
+    assert_eq!(original_limits.retained_bytes(), 32_000_000);
+    let raised = DomSourceLimits::new(
+        64_000_000,
+        original_limits.retained_string_code_units(),
+        original_limits.work(),
+        original_limits.phase_publications(),
+        original_limits.output_records(),
+        original_limits.published_native_identities(),
+        original_limits.nested_operations(),
+    );
+    permission
+        .raise_event_limits(&mut session.dom(), &grandparent_request, raised, &cancel)
+        .unwrap();
+    assert_eq!(session.snapshot().stamp(), queued.stamp());
+    let after_raise = session.dom().pending_source_edit().unwrap();
+    assert_eq!(after_raise.operation(), parent_status.operation());
+    assert_eq!(
+        after_raise.parent_operation(),
+        parent_status.parent_operation()
+    );
+    assert_eq!(after_raise.phase(), DomSourcePhase::DialogService);
+    assert_eq!(owner.pending_tasks().unwrap(), 2);
+    assert_eq!(
+        [
+            owner.pending_task(0).unwrap().unwrap(),
+            owner.pending_task(1).unwrap().unwrap()
+        ],
+        pending
+    );
+    assert_eq!(
+        session
+            .snapshot()
+            .node(parent)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .toggle_task_tracker(),
+        Some(tracker)
+    );
+    assert_eq!(context.calls, ["G", "P", "C"]);
+    // P remains unfinished and G remains its original retained observer. No
+    // ordinary intake, task pump, queue-only root or fabricated Show completion
+    // was used; the task bank was created only after C actually completed.
 }
 
 #[test]

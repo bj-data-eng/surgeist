@@ -16,6 +16,14 @@ pub struct DomSourceEventId {
     pub(crate) operation: DomSourceOperationId,
     pub(crate) occurrence: u64,
 }
+/// Exact native event firing clause admitted by the original Source engine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceEventKind {
+    /// The synchronous cancelable Show beforetoggle observation.
+    BeforeToggle,
+    /// A queued Dialog toggle task with mandatory canonical tracker cleanup.
+    Toggle,
+}
 /// The original event's completed cancelation outcome, attested by its executor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceEventOutcome {
@@ -35,6 +43,7 @@ pub(crate) struct EventWork {
     pub(crate) identity: DomSourceEventId,
     pub(crate) parent: Option<DomSourceOperationId>,
     pub(crate) subject: NodeId,
+    pub(crate) kind: DomSourceEventKind,
     pub(crate) old: HtmlDialogState,
     pub(crate) new: HtmlDialogState,
     pub(crate) cancelable: bool,
@@ -95,6 +104,10 @@ pub struct DomSourceEventRequest {
     pub(crate) work: Arc<EventWork>,
 }
 impl DomSourceEventRequest {
+    /// Actual producer firing clause, independent of payload state spellings.
+    pub fn kind(&self) -> DomSourceEventKind {
+        self.work.kind
+    }
     pub fn operation(&self) -> DomSourceOperationId {
         self.work.identity.operation
     }

@@ -47,7 +47,7 @@ fn session() -> DomSession {
                 work: 1_000_000,
                 css_input: CssUtf16InputLimits::default(),
             },
-            details: DomDetailsRuntimeLimits {
+            dom_manipulation: DomManipulationRuntimeLimits {
                 tasks: 32,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
@@ -301,15 +301,15 @@ fn single_subtree_insertion_creates_both_sibling_children_before_source_completi
 #[test]
 fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop() {
     struct Context {
-        details: DomDetailsRuntime,
+        dom_manipulation: DomManipulationRuntime,
         source: DomSourceRuntime,
         root: NodeId,
         parent: NodeId,
         returned: Vec<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
     }
-    impl DomDetailsEventContext for Context {
-        fn details(&mut self) -> &mut DomDetailsRuntime {
-            &mut self.details
+    impl DomManipulationEventContext for Context {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.dom_manipulation
         }
     }
     let mut session = session();
@@ -317,7 +317,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
     let parent = body(&session.snapshot(), top.document());
     let (root, siblings) = detached_siblings(&mut session, top.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         source: session.source_execution(),
         root,
         parent,
@@ -364,23 +364,34 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                 },
             )
             .unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let progress = DomDetailsRuntime::run_next(
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let progress = DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            DomEventDispatchLimits {
-                path_items: 128,
-                snapshot_listeners: 128,
-                failure_records: 32,
-                callbacks: 128,
-                work: 100_000,
+            crate::DomManipulationRunLimits {
+                dispatch: DomEventDispatchLimits {
+                    path_items: 128,
+                    snapshot_listeners: 128,
+                    failure_records: 32,
+                    callbacks: 128,
+                    work: 100_000,
+                },
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
             },
             &cancel(),
         )
         .unwrap();
         match progress {
-            DomDetailsProgress::Complete { receipt, .. } => {
+            DomManipulationProgress::Complete { receipt, .. } => {
                 assert_eq!(receipt.callbacks(), 1);
                 assert!(receipt.failures().is_empty());
             }
@@ -395,7 +406,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         Ok(DomSourceDriveProgress::Complete(_))
     ));
     assert_sibling_children(&session.snapshot(), top, siblings);
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
     assert_eq!(session.snapshot().incomplete_source_operation(), None);
     assert_eq!(session.snapshot().incomplete_hosted_operation(), None);
 }
@@ -1665,14 +1676,14 @@ fn history_job_task_admission_refusal_retains_original_fifo_for_raised_limit_ret
 #[test]
 fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() {
     struct Context {
-        details: DomDetailsRuntime,
+        dom_manipulation: DomManipulationRuntime,
         hosted: HostedRuntime,
         traversables: [DomHostedNavigableId; 2],
         pumped: Vec<Result<DomHostedTaskProgress, DomHostedRuntimeError>>,
     }
-    impl DomDetailsEventContext for Context {
-        fn details(&mut self) -> &mut DomDetailsRuntime {
-            &mut self.details
+    impl DomManipulationEventContext for Context {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.dom_manipulation
         }
     }
     let mut session = session();
@@ -1739,7 +1750,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         assert_eq!(queued.hosted_entry(entry).unwrap().history(), Some((0, 0)));
     }
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         hosted: session.hosted_execution(),
         traversables: [first.navigable(), second.navigable()],
         pumped: Vec::new(),
@@ -1777,22 +1788,33 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
                 },
             )
             .unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let progress = DomDetailsRuntime::run_next(
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let progress = DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            DomEventDispatchLimits {
-                path_items: 128,
-                snapshot_listeners: 128,
-                failure_records: 32,
-                callbacks: 128,
-                work: 100_000,
+            crate::DomManipulationRunLimits {
+                dispatch: DomEventDispatchLimits {
+                    path_items: 128,
+                    snapshot_listeners: 128,
+                    failure_records: 32,
+                    callbacks: 128,
+                    work: 100_000,
+                },
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
             },
             &cancel(),
         )
         .unwrap();
-        let DomDetailsProgress::Complete { receipt, .. } = progress else {
+        let DomManipulationProgress::Complete { receipt, .. } = progress else {
             panic!("the real child Details task and its checkpoint must complete")
         };
         assert_eq!(receipt.callbacks(), 1);
@@ -1853,7 +1875,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         after_callback.hosted_entry(other_entry).unwrap().history(),
         Some((0, 0))
     );
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
 
     let (first_complete, first_jobs) = pump_one_history(&mut session, first.navigable());
     assert_eq!(first_complete, first_operation);

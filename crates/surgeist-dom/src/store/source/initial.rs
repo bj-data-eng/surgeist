@@ -325,7 +325,7 @@ impl Draft {
         retained.append(command_payload)?;
         retained.add_bytes(dom.history_bytes)?;
         retained.add_bytes(dom.source_retained_stack_bytes()?)?;
-        retained.add_bytes(dom.style_cssom_custody_bytes()?)?;
+        retained.add_bytes(dom.source_owner_custody_bytes()?)?;
         retained.add_bytes(dom.source_dispatch_custody_bytes(|| initial.step(cancel))?)?;
         retained.add_bytes(owner_bytes)?;
         retained.bank::<Command>(command_capacity)?;

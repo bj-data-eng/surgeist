@@ -195,7 +195,9 @@ impl HostedRuntime {
                 } else {
                     match initiating.current {
                         Some(records::CurrentTask::Destroy { document, .. })
-                        | Some(records::CurrentTask::Details { document, .. }) => Some(document),
+                        | Some(records::CurrentTask::DomManipulation { document, .. }) => {
+                            Some(document)
+                        }
                         _ => None,
                     }
                 };

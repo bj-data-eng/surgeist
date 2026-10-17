@@ -3,7 +3,6 @@
 //! The canonical owner retains the command, hook cursor and acknowledged tail.
 //! This weak permission routes actual yielded requests; it owns neither tree nor
 //! resources and cannot accept an arbitrary sequence of commands.
-use crate::dom_details::{DomDetailsRuntime, DomDetailsRuntimeError};
 use crate::dom_dialog::{
     DomSourceEventRuntimeError, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
     SourceEventRuntime,
@@ -11,6 +10,7 @@ use crate::dom_dialog::{
 use crate::dom_event::DomEventDispatcher;
 use crate::dom_event::DomEventDom;
 use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime, HostedSourceProgress};
+use crate::dom_manipulation::{DomManipulationRuntime, DomManipulationRuntimeError};
 use crate::dom_style::{
     DomStyleRuntime, DomStyleRuntimeError, DomStyleServiceProgress, DomStyleUnavailable,
     StyleSourceGuard,
@@ -85,7 +85,7 @@ pub enum DomSourceRuntimeError {
     /// The original Style resource or processing owner refused its step.
     Style(DomStyleRuntimeError),
     /// The original bound Details owner is unavailable or foreign.
-    Details(DomDetailsRuntimeError),
+    DomManipulation(DomManipulationRuntimeError),
     /// The original hosted owner is unavailable or foreign.
     Hosted(DomHostedRuntimeError),
     /// The named native installation refused its actual input or target.
@@ -102,7 +102,7 @@ impl std::error::Error for DomSourceRuntimeError {
             Self::SourceEvent(error) => Some(error),
             Self::Dom(error) => Some(error),
             Self::Style(error) => Some(error),
-            Self::Details(error) => Some(error),
+            Self::DomManipulation(error) => Some(error),
             Self::Hosted(error) => Some(error),
             Self::NativeInstallation(error) => Some(error),
         }
@@ -124,7 +124,7 @@ impl From<DomStyleRuntimeError> for DomSourceRuntimeError {
 /// neither extracts the canonical owner nor releases its resources or cursor.
 pub struct DomSourceRuntime {
     styles: DomStyleRuntime,
-    details: DomDetailsRuntime,
+    dom_manipulation: DomManipulationRuntime,
     hosted: HostedRuntime,
     events: SourceEventRuntime,
 }
@@ -136,13 +136,13 @@ impl std::fmt::Debug for DomSourceRuntime {
 impl DomSourceRuntime {
     pub(crate) fn new(
         styles: DomStyleRuntime,
-        details: DomDetailsRuntime,
+        dom_manipulation: DomManipulationRuntime,
         hosted: HostedRuntime,
         events: SourceEventRuntime,
     ) -> Self {
         Self {
             styles,
-            details,
+            dom_manipulation,
             hosted,
             events,
         }
@@ -195,9 +195,9 @@ impl DomSourceRuntime {
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
     ) -> Result<StyleSourceGuard, DomSourceRuntimeError> {
-        self.details
+        self.dom_manipulation
             .validate_view(dom)
-            .map_err(DomSourceRuntimeError::Details)?;
+            .map_err(DomSourceRuntimeError::DomManipulation)?;
         self.hosted
             .validate_view(dom)
             .map_err(DomSourceRuntimeError::Hosted)?;
@@ -215,22 +215,20 @@ impl DomSourceRuntime {
         let guard = self.prepare(dom, cancel)?;
         let progress = {
             let mut lease = dom.begin_source_edit(edit, limits, cancel)?;
-            drive_lease(
+            self.drive_lease(
                 &guard,
-                &self.hosted,
                 &mut lease,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
         };
-        finish_or_supply(
+        self.finish_or_supply(
             dom,
             DriveRoot {
                 limits,
                 select: None,
             },
             guard,
-            &self.hosted,
             progress,
             services,
             cancel,
@@ -248,22 +246,20 @@ impl DomSourceRuntime {
         let guard = self.prepare(dom, cancel)?;
         let progress = {
             let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
-            drive_lease(
+            self.drive_lease(
                 &guard,
-                &self.hosted,
                 &mut lease,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
         };
-        finish_or_supply(
+        self.finish_or_supply(
             dom,
             DriveRoot {
                 limits,
                 select: None,
             },
             guard,
-            &self.hosted,
             progress,
             services,
             cancel,
@@ -286,22 +282,20 @@ impl DomSourceRuntime {
                 .raw_mut()
                 .begin_native_installation(target, fragment, budgets, cancel)
                 .map_err(DomSourceRuntimeError::NativeInstallation)?;
-            drive_lease(
+            self.drive_lease(
                 &guard,
-                &self.hosted,
                 &mut lease,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
         };
-        finish_or_supply(
+        self.finish_or_supply(
             dom,
             DriveRoot {
                 limits,
                 select: None,
             },
             guard,
-            &self.hosted,
             progress,
             services,
             cancel,
@@ -322,22 +316,20 @@ impl DomSourceRuntime {
             let mut lease = dom
                 .raw_mut()
                 .begin_select_completion(task, checkpoint, limits, cancel)?;
-            drive_lease(
+            self.drive_lease(
                 &guard,
-                &self.hosted,
                 &mut lease,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
         };
-        finish_or_supply(
+        self.finish_or_supply(
             dom,
             DriveRoot {
                 limits,
                 select: Some(task),
             },
             guard,
-            &self.hosted,
             progress,
             services,
             cancel,
@@ -358,22 +350,20 @@ impl DomSourceRuntime {
             let mut lease = dom
                 .raw_mut()
                 .resume_select_completion(operation, task, limits, cancel)?;
-            drive_lease(
+            self.drive_lease(
                 &guard,
-                &self.hosted,
                 &mut lease,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
         };
-        finish_or_supply(
+        self.finish_or_supply(
             dom,
             DriveRoot {
                 limits,
                 select: Some(task),
             },
             guard,
-            &self.hosted,
             progress,
             services,
             cancel,
@@ -381,52 +371,69 @@ impl DomSourceRuntime {
     }
 }
 
-fn drive_lease(
-    guard: &StyleSourceGuard,
-    hosted: &HostedRuntime,
-    lease: &mut DomSourceLease<'_>,
-    url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
-    cancel: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
-    loop {
-        guard.flush(lease, cancel)?;
-        match lease.advance(cancel)? {
-            DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
-                return Ok(DomSourceDriveProgress::Pending {
-                    request: DomSourceRequest::Event(request),
-                    reason: DomSourceUnavailable::Event,
-                });
-            }
-            DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
-                let reason = DomSourceUnavailable::Dialog(request.action());
-                return Ok(DomSourceDriveProgress::Pending {
-                    request: DomSourceRequest::Dialog(request),
-                    reason,
-                });
-            }
-            DomSourceProgress::Complete(done) => return Ok(DomSourceDriveProgress::Complete(done)),
-            DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
-                match hosted
-                    .service_source_child(lease, &request, url_revision, cancel)
-                    .map_err(DomSourceRuntimeError::Hosted)?
-                {
-                    HostedSourceProgress::Serviced => {}
-                    HostedSourceProgress::Url(stage) => {
-                        return Ok(DomSourceDriveProgress::Pending {
-                            request: DomSourceRequest::HostedChild(request),
-                            reason: DomSourceUnavailable::Url(stage),
-                        });
+impl DomSourceRuntime {
+    fn drive_lease(
+        &self,
+        guard: &StyleSourceGuard,
+        lease: &mut DomSourceLease<'_>,
+        url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        loop {
+            guard.flush(lease, cancel)?;
+            match lease.advance(cancel)? {
+                DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Event(request),
+                        reason: DomSourceUnavailable::Event,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
+                    if matches!(
+                        request.action(),
+                        surgeist_html::HtmlDialogAction::QueueToggle {
+                            source: surgeist_html::HtmlDialogEventSource::Null,
+                            ..
+                        }
+                    ) {
+                        self.dom_manipulation
+                            .queue_dialog(lease, &request, cancel)
+                            .map_err(DomSourceRuntimeError::DomManipulation)?;
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::Dialog(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Dialog(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Complete(done) => {
+                    return Ok(DomSourceDriveProgress::Complete(done));
+                }
+                DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
+                    match self
+                        .hosted
+                        .service_source_child(lease, &request, url_revision, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        HostedSourceProgress::Serviced => {}
+                        HostedSourceProgress::Url(stage) => {
+                            return Ok(DomSourceDriveProgress::Pending {
+                                request: DomSourceRequest::HostedChild(request),
+                                reason: DomSourceUnavailable::Url(stage),
+                            });
+                        }
                     }
                 }
-            }
-            DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
-                match guard.service(lease, request, cancel)? {
-                    DomStyleServiceProgress::Serviced => {}
-                    DomStyleServiceProgress::Pending { request, reason } => {
-                        return Ok(DomSourceDriveProgress::Pending {
-                            request: DomSourceRequest::Style(request),
-                            reason: DomSourceUnavailable::Style(reason),
-                        });
+                DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+                    match guard.service(lease, request, cancel)? {
+                        DomStyleServiceProgress::Serviced => {}
+                        DomStyleServiceProgress::Pending { request, reason } => {
+                            return Ok(DomSourceDriveProgress::Pending {
+                                request: DomSourceRequest::Style(request),
+                                reason: DomSourceUnavailable::Style(reason),
+                            });
+                        }
                     }
                 }
             }
@@ -439,106 +446,106 @@ struct DriveRoot<'a> {
     select: Option<&'a DomSelectTask>,
 }
 
-fn finish_or_supply(
-    dom: &mut DomEventDom<'_>,
-    root: DriveRoot<'_>,
-    guard: StyleSourceGuard,
-    hosted: &HostedRuntime,
-    mut progress: DomSourceDriveProgress,
-    services: &mut DomSourceServices<'_>,
-    cancel: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
-    let DriveRoot { limits, select } = root;
-    loop {
-        match progress {
-            DomSourceDriveProgress::Complete(_) => {
-                guard.finish(&dom.snapshot());
-                return Ok(progress);
-            }
-            DomSourceDriveProgress::Pending {
-                request: DomSourceRequest::Style(request),
-                reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
-            } => {
-                // The prior lease and every RefCell/CSSOM borrow ended before
-                // this actual external observation supplier is entered.
-                let Some(observation) = (services.style_policy)(request.source()) else {
-                    return Ok(DomSourceDriveProgress::Pending {
-                        request: DomSourceRequest::Style(request),
-                        reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
-                    });
-                };
-                let operation = request.source().operation();
-                let mut lease = if let Some(task) = select {
-                    dom.raw_mut()
-                        .resume_select_completion(operation, task, limits, cancel)?
-                } else {
-                    dom.resume_source_edit(operation, limits, cancel)?
-                };
-                lease.accept_inline_csp(&request, &observation, cancel)?;
-                progress = drive_lease(
-                    &guard,
-                    hosted,
-                    &mut lease,
-                    services.url.as_ref().map(|service| service.revision),
-                    cancel,
-                )?;
-            }
-            DomSourceDriveProgress::Pending {
-                request: DomSourceRequest::HostedChild(child),
-                reason: DomSourceUnavailable::Url(stage),
-            } => {
-                let Some(service) = services.url.as_mut() else {
-                    return Ok(DomSourceDriveProgress::Pending {
-                        request: DomSourceRequest::HostedChild(child),
-                        reason: DomSourceUnavailable::Url(stage),
-                    });
-                };
-                let operation = child.operation();
-                let issued = {
+impl DomSourceRuntime {
+    fn finish_or_supply(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        root: DriveRoot<'_>,
+        guard: StyleSourceGuard,
+        mut progress: DomSourceDriveProgress,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        let DriveRoot { limits, select } = root;
+        loop {
+            match progress {
+                DomSourceDriveProgress::Complete(_) => {
+                    guard.finish(&dom.snapshot());
+                    return Ok(progress);
+                }
+                DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Style(request),
+                    reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+                } => {
+                    // The prior lease and every RefCell/CSSOM borrow ended before
+                    // this actual external observation supplier is entered.
+                    let Some(observation) = (services.style_policy)(request.source()) else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::Style(request),
+                            reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+                        });
+                    };
+                    let operation = request.source().operation();
                     let mut lease = if let Some(task) = select {
                         dom.raw_mut()
                             .resume_select_completion(operation, task, limits, cancel)?
                     } else {
                         dom.resume_source_edit(operation, limits, cancel)?
                     };
-                    lease.source_url_request(&child, stage, service.revision, cancel)?
-                };
-                // Both exclusive owners and all issuer/store/RefCell guards are
-                // released before calling the external producer. A rejected
-                // not-yet-admitted candidate may drop; an accepted candidate
-                // belongs to the canonical operation's charged response slot.
-                hosted
-                    .admit_url_observation(&issued, cancel)
-                    .map_err(DomSourceRuntimeError::Hosted)?;
-                let Some(observation) =
-                    (service.observe)(&issued, cancel).map_err(DomSourceRuntimeError::Hosted)?
-                else {
-                    return Ok(DomSourceDriveProgress::Pending {
-                        request: DomSourceRequest::HostedChild(child),
-                        reason: DomSourceUnavailable::Url(stage),
-                    });
-                };
-                let mut lease = if let Some(task) = select {
-                    dom.raw_mut()
-                        .resume_select_completion(operation, task, limits, cancel)?
-                } else {
-                    dom.resume_source_edit(operation, limits, cancel)?
-                };
-                lease.accept_source_url_observation(
-                    &child,
-                    &issued,
-                    &mut Some(observation),
-                    cancel,
-                )?;
-                progress = drive_lease(
-                    &guard,
-                    hosted,
-                    &mut lease,
-                    services.url.as_ref().map(|service| service.revision),
-                    cancel,
-                )?;
+                    lease.accept_inline_csp(&request, &observation, cancel)?;
+                    progress = self.drive_lease(
+                        &guard,
+                        &mut lease,
+                        services.url.as_ref().map(|service| service.revision),
+                        cancel,
+                    )?;
+                }
+                DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::HostedChild(child),
+                    reason: DomSourceUnavailable::Url(stage),
+                } => {
+                    let Some(service) = services.url.as_mut() else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::HostedChild(child),
+                            reason: DomSourceUnavailable::Url(stage),
+                        });
+                    };
+                    let operation = child.operation();
+                    let issued = {
+                        let mut lease = if let Some(task) = select {
+                            dom.raw_mut()
+                                .resume_select_completion(operation, task, limits, cancel)?
+                        } else {
+                            dom.resume_source_edit(operation, limits, cancel)?
+                        };
+                        lease.source_url_request(&child, stage, service.revision, cancel)?
+                    };
+                    // Both exclusive owners and all issuer/store/RefCell guards are
+                    // released before calling the external producer. A rejected
+                    // not-yet-admitted candidate may drop; an accepted candidate
+                    // belongs to the canonical operation's charged response slot.
+                    self.hosted
+                        .admit_url_observation(&issued, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                    let Some(observation) = (service.observe)(&issued, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    else {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::HostedChild(child),
+                            reason: DomSourceUnavailable::Url(stage),
+                        });
+                    };
+                    let mut lease = if let Some(task) = select {
+                        dom.raw_mut()
+                            .resume_select_completion(operation, task, limits, cancel)?
+                    } else {
+                        dom.resume_source_edit(operation, limits, cancel)?
+                    };
+                    lease.accept_source_url_observation(
+                        &child,
+                        &issued,
+                        &mut Some(observation),
+                        cancel,
+                    )?;
+                    progress = self.drive_lease(
+                        &guard,
+                        &mut lease,
+                        services.url.as_ref().map(|service| service.revision),
+                        cancel,
+                    )?;
+                }
+                other => return Ok(other),
             }
-            other => return Ok(other),
         }
     }
 }
@@ -569,7 +576,7 @@ mod tests {
                     work: 100_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                details: crate::DomDetailsRuntimeLimits {
+                dom_manipulation: crate::DomManipulationRuntimeLimits {
                     tasks: 8,
                     storage_bytes: 1_000_000,
                     work: 100_000,

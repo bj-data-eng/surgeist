@@ -296,7 +296,11 @@ fn input_image_disabled_history_observes_absent_empty_and_changed_reentry_after_
         );
         assert_eq!(current.incomplete_source_operation(), None);
         assert_eq!(
-            fixture.session.details_execution().pending_tasks().unwrap(),
+            fixture
+                .session
+                .dom_manipulation_execution()
+                .pending_tasks()
+                .unwrap(),
             0
         );
         assert!(matches!(
@@ -478,7 +482,11 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
         no_dialog_services(&current, node);
         assert_eq!(current.incomplete_source_operation(), None);
         assert_eq!(
-            fixture.session.details_execution().pending_tasks().unwrap(),
+            fixture
+                .session
+                .dom_manipulation_execution()
+                .pending_tasks()
+                .unwrap(),
             0
         );
         assert_eq!(old.node(node).unwrap().parent(), None);

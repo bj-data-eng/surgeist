@@ -170,12 +170,12 @@ checked bidirectional identity maps, and invokes producer queries with explicit
 availability and finite capture limits. Host association and node-document
 membership are independent; supplemental association closure does not certify
 unrelated tree completeness.
-Runtime's `DomSession` owns the canonical DOM, Style resources, Details tasks and
-native hosted lifecycle through weak execution permissions. Its bounded hosted
-surface creates initial no-opener top-levels and native Frame/Iframe initial
-children with real Global/settings/agent state. Runtime computes the selected
-initial fullscreen Permissions Policy from actual inputs and qualified URL
-observations. Its shared native task loop drives queued history and recursive
+Runtime's `DomSession` owns the canonical DOM, Style resources, shared DOM
+manipulation tasks and native hosted lifecycle through weak execution permissions.
+Its bounded hosted surface creates initial no-opener top-levels and native
+Frame/Iframe initial children with real Global/settings/agent state. Runtime
+computes the selected initial fullscreen Permissions Policy from actual inputs
+and qualified URL observations. Its shared native task loop drives queued history and recursive
 destruction through the original Global tasks. DOM
 owns controlled associations and the actual complete-empty Global registry;
 Semantics owns registry formation and lookup. Snapshot Global/Document identity

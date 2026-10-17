@@ -367,7 +367,7 @@ struct HostedState {
     creation: Option<Creation>,
     children: Vec<child::Creation>,
     destruction: destruction::State,
-    details: Option<crate::dom_details::DomDetailsRuntime>,
+    dom_manipulation: Option<crate::dom_manipulation::DomManipulationRuntime>,
 }
 impl HostedOwner {
     pub(crate) fn admit_initial_headers(
@@ -399,7 +399,7 @@ impl HostedOwner {
                 creation: None,
                 children: Vec::new(),
                 destruction: destruction::State::new(),
-                details: None,
+                dom_manipulation: None,
             })),
         })
     }
@@ -1420,22 +1420,22 @@ impl HostedOwner {
 }
 
 impl HostedRuntime {
-    pub(crate) fn ingest_details(
+    pub(crate) fn ingest_dom_manipulation(
         &self,
-        details: &crate::dom_details::DomDetailsRuntime,
+        dom_manipulation: &crate::dom_manipulation::DomManipulationRuntime,
         dom: &mut DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<usize, crate::dom_details::DomDetailsRuntimeError> {
+    ) -> Result<usize, crate::dom_manipulation::DomManipulationRuntimeError> {
         let owner = self
             .state()
-            .map_err(crate::dom_details::DomDetailsRuntimeError::Hosted)?;
+            .map_err(crate::dom_manipulation::DomManipulationRuntimeError::Hosted)?;
         let state = owner
             .try_borrow()
-            .map_err(|_| crate::dom_details::DomDetailsRuntimeError::Busy)?;
+            .map_err(|_| crate::dom_manipulation::DomManipulationRuntimeError::Busy)?;
         state
             .qualify(dom)
-            .map_err(crate::dom_details::DomDetailsRuntimeError::Hosted)?;
-        details.ingest_source(dom, &state.source, cancel)
+            .map_err(crate::dom_manipulation::DomManipulationRuntimeError::Hosted)?;
+        dom_manipulation.ingest_source(dom, &state.source, cancel)
     }
 }
 
@@ -1487,11 +1487,11 @@ impl Drop for NativeTaskRunning {
     }
 }
 impl HostedRuntime {
-    pub(crate) fn enter_details(
+    pub(crate) fn enter_dom_manipulation(
         &self,
         dom: &DomEventDom<'_>,
-        association: surgeist_dom::DomDetailsQueueAssociation,
-        task: crate::dom_details::DomDetailsTaskId,
+        association: surgeist_dom::DomElementTaskAssociation,
+        task: crate::dom_manipulation::DomManipulationTaskId,
         retired_target: bool,
         cancel: &AtomicBool,
     ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
@@ -1515,7 +1515,7 @@ impl HostedRuntime {
         let mut event_loop = loop_owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let current = records::CurrentTask::Details { task, document };
+        let current = records::CurrentTask::DomManipulation { task, document };
         if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
             return Err(DomHostedRuntimeError::Busy);
         }
@@ -1597,8 +1597,11 @@ impl HostedRuntime {
 }
 
 impl HostedOwner {
-    pub(crate) fn bind_details(&self, details: crate::dom_details::DomDetailsRuntime) {
-        self.state.borrow_mut().details = Some(details);
+    pub(crate) fn bind_dom_manipulation(
+        &self,
+        dom_manipulation: crate::dom_manipulation::DomManipulationRuntime,
+    ) {
+        self.state.borrow_mut().dom_manipulation = Some(dom_manipulation);
     }
 }
 
@@ -1710,7 +1713,9 @@ impl HostedRuntime {
 ))]
 mod constructor_settings_tests {
     use super::*;
-    use crate::{DomDetailsRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits};
+    use crate::{
+        DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits,
+    };
     use surgeist_css::CssUtf16InputLimits;
     use surgeist_dom::{DomHostedRecordLimits, DomLimits};
 
@@ -1745,7 +1750,7 @@ mod constructor_settings_tests {
                     work: 1_000_000,
                     css_input: CssUtf16InputLimits::default(),
                 },
-                details: DomDetailsRuntimeLimits {
+                dom_manipulation: DomManipulationRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 16_000_000,
                     work: 1_000_000,

@@ -368,6 +368,55 @@ impl SourceEventOwner {
     }
 }
 impl SourceEventRuntime {
+    pub(crate) fn task_dispatch_scope(
+        &self,
+        dom: &DomEventDom<'_>,
+        request: &DomSourceEventRequest,
+        permit: &mut Option<DomSourceEventDispatchPermit>,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomSourceEventDispatchGuard, DomSourceEventRuntimeError> {
+        let original = self
+            .state
+            .upgrade()
+            .ok_or(DomSourceEventRuntimeError::ExpiredOwner)?;
+        let state = original
+            .try_borrow()
+            .map_err(|_| DomSourceEventRuntimeError::Busy)?;
+        if state.owner != dom.owner() {
+            return Err(DomSourceEventRuntimeError::ForeignOwner);
+        }
+        if permit.is_none() {
+            *permit = Some(state.executor.begin_dispatch(dom.raw(), request, cancel)?);
+        }
+        Ok(state.executor.enter_dispatch(
+            dom.raw(),
+            permit.as_ref().expect("actual task permit"),
+            cancel,
+        )?)
+    }
+    pub(crate) fn seal_task_dispatch(
+        &self,
+        dom: &DomEventDom<'_>,
+        permit: &mut Option<DomSourceEventDispatchPermit>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventPublication, DomSourceEventRuntimeError> {
+        let original = self
+            .state
+            .upgrade()
+            .ok_or(DomSourceEventRuntimeError::ExpiredOwner)?;
+        let state = original
+            .try_borrow()
+            .map_err(|_| DomSourceEventRuntimeError::Busy)?;
+        if state.owner != dom.owner() {
+            return Err(DomSourceEventRuntimeError::ForeignOwner);
+        }
+        Ok(state.executor.seal_completed(
+            dom.raw(),
+            permit,
+            DomSourceEventOutcome::NotCanceled,
+            cancel,
+        )?)
+    }
     pub(crate) fn raise_event_runtime_limits(
         &self,
         dom: &DomEventDom<'_>,
@@ -475,19 +524,15 @@ impl SourceEventRuntime {
             let (event, scope) = {
                 let mut state = original.borrow_mut();
                 state.step(1, cancel)?;
-                let maximum = NativeDomEventOwner::maximum_payload_bytes(limits.dispatch).ok_or(
-                    DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
-                )?;
-                let source_maximum =
-                    NativeDomEventOwner::maximum_source_payload_bytes(limits.dispatch)
-                        .ok_or(DomSourceEventRuntimeError::Admission(
-                            DomSourceEventResource::StorageBytes,
-                        ))?
-                        .max(job.borrow().event.retained_source_payload_bytes().ok_or(
-                            DomSourceEventRuntimeError::Admission(
-                                DomSourceEventResource::StorageBytes,
-                            ),
-                        )?);
+                let formation = job
+                    .borrow()
+                    .event
+                    .dispatch_formation(limits.dispatch)
+                    .ok_or(DomSourceEventRuntimeError::Admission(
+                        DomSourceEventResource::StorageBytes,
+                    ))?;
+                let maximum = formation.full;
+                let source_maximum = formation.source;
                 let previous = job.borrow().payload_reserved;
                 if maximum > previous {
                     state.admit(maximum - previous, cancel)?;

@@ -24,7 +24,7 @@ fn limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: CssUtf16InputLimits::default(),
         },
-        details: DomDetailsRuntimeLimits {
+        dom_manipulation: DomManipulationRuntimeLimits {
             tasks: 32,
             storage_bytes: 16_000_000,
             work: 1_000_000,

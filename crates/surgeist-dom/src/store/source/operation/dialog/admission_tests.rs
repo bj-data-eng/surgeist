@@ -3,7 +3,11 @@
 use super::tests::{fixture, limits, request};
 use super::*;
 
-fn update_limits(dom: &mut Dom, request: &DomSourceEventRequest, limits: DomSourceLimits) {
+pub(super) fn update_limits(
+    dom: &mut Dom,
+    request: &DomSourceEventRequest,
+    limits: DomSourceLimits,
+) {
     drop(
         dom.resume_source_edit(request.operation(), limits, &AtomicBool::new(false))
             .unwrap(),

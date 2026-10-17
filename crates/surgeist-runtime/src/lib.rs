@@ -166,11 +166,11 @@ mod command;
 mod coord;
 mod descriptor;
 mod diagnostic;
-mod dom_details;
 mod dom_dialog;
 mod dom_event;
 mod dom_host;
 mod dom_lifecycle;
+mod dom_manipulation;
 mod dom_source;
 mod dom_style;
 mod effect;
@@ -208,10 +208,6 @@ pub use descriptor::{
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
-pub use dom_details::{
-    DomDetailsEventContext, DomDetailsProgress, DomDetailsRuntime, DomDetailsRuntimeError,
-    DomDetailsRuntimeLimits, DomDetailsTask, DomDetailsTaskId,
-};
 pub use dom_dialog::{
     DomSourceEventResource, DomSourceEventRuntimeError, DomSourceEventRuntimeLimits,
     DomSourceEventServiceLimits, DomSourceEventServiceProgress,
@@ -230,6 +226,11 @@ pub use dom_lifecycle::{
     DomHostedDestructionQueued, DomHostedHistoryEntry, DomHostedRuntimeError,
     DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind, DomHostedTaskProgress,
     DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
+};
+pub use dom_manipulation::{
+    DomDetailsTask, DomManipulationEventContext, DomManipulationProgress, DomManipulationRunLimits,
+    DomManipulationRuntime, DomManipulationRuntimeError, DomManipulationRuntimeLimits,
+    DomManipulationTask, DomManipulationTaskId,
 };
 pub use dom_source::{
     DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,

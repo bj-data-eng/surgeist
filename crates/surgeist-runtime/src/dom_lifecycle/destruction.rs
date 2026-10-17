@@ -946,19 +946,19 @@ impl HostedState {
             document: info.document,
         };
         if !event_loop.executing
-            && let Some(records::CurrentTask::Details { task, .. }) = event_loop.current
+            && let Some(records::CurrentTask::DomManipulation { task, .. }) = event_loop.current
         {
             let details = self
-                .details
+                .dom_manipulation
                 .as_ref()
                 .ok_or(DomHostedRuntimeError::Protocol)?;
             details
                 .ingest_source(dom, &self.source, cancel)
-                .map_err(details_error)?;
+                .map_err(manipulation_error)?;
             details
                 .cancel_document(dom, info.document, cancel)
-                .map_err(details_error)?;
-            if !details.has_task(task).map_err(details_error)? {
+                .map_err(manipulation_error)?;
+            if !details.has_task(task).map_err(manipulation_error)? {
                 checkpoint(dom, &mut self.work, self.limits.work, cancel)?;
                 event_loop.current = None;
                 event_loop.checkpoints = event_loop.next_checkpoint;
@@ -1010,15 +1010,15 @@ impl HostedState {
         );
         if !complete {
             let details = self
-                .details
+                .dom_manipulation
                 .as_ref()
                 .ok_or(DomHostedRuntimeError::Protocol)?;
             details
                 .ingest_source(dom, &self.source, cancel)
-                .map_err(details_error)?;
+                .map_err(manipulation_error)?;
             if details
                 .cancel_document(dom, info.document, cancel)
-                .map_err(details_error)?
+                .map_err(manipulation_error)?
             {
                 return Ok(DomHostedTaskProgress::Pending {
                     operation: info.operation,
@@ -1141,8 +1141,10 @@ fn checkpoint(
     }
     Ok(())
 }
-fn details_error(error: crate::dom_details::DomDetailsRuntimeError) -> DomHostedRuntimeError {
-    use crate::dom_details::DomDetailsRuntimeError as Error;
+fn manipulation_error(
+    error: crate::dom_manipulation::DomManipulationRuntimeError,
+) -> DomHostedRuntimeError {
+    use crate::dom_manipulation::DomManipulationRuntimeError as Error;
     match error {
         Error::Hosted(error) => error,
         Error::Dom(error) => DomHostedRuntimeError::Dom(error.into()),
@@ -1152,7 +1154,8 @@ fn details_error(error: crate::dom_details::DomDetailsRuntimeError) -> DomHosted
         Error::Binding
         | Error::OutOfOrderTransfer
         | Error::PretransferredSession
-        | Error::Dispatch(_) => DomHostedRuntimeError::Protocol,
+        | Error::Dispatch(_)
+        | Error::SourceEvent(_) => DomHostedRuntimeError::Protocol,
     }
 }
 /// One actual Document/Global generation's cleanup evidence. A reserved row is
@@ -1420,7 +1423,7 @@ impl State {
 mod completion_retention_tests {
     use super::*;
     use crate::{
-        DomDetailsRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
+        DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
         DomSourceServices, DomStyleRuntimeLimits,
     };
     use surgeist_dom::{
@@ -1447,7 +1450,7 @@ mod completion_retention_tests {
                     work: 4_000_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                details: DomDetailsRuntimeLimits {
+                dom_manipulation: DomManipulationRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 32_000_000,
                     work: 4_000_000,

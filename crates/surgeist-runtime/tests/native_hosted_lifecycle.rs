@@ -33,7 +33,7 @@ fn limits() -> DomSessionLimits {
             work: 1_000_000,
             css_input: CssUtf16InputLimits::default(),
         },
-        details: DomDetailsRuntimeLimits {
+        dom_manipulation: DomManipulationRuntimeLimits {
             tasks: 32,
             storage_bytes: 16_000_000,
             work: 1_000_000,
@@ -101,12 +101,12 @@ struct Observation {
     bubbles: bool,
 }
 struct Context {
-    details: DomDetailsRuntime,
+    dom_manipulation: DomManipulationRuntime,
     seen: Vec<Observation>,
 }
-impl DomDetailsEventContext for Context {
-    fn details(&mut self) -> &mut DomDetailsRuntime {
-        &mut self.details
+impl DomManipulationEventContext for Context {
+    fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+        &mut self.dom_manipulation
     }
 }
 fn registry() -> DomEventDispatcher<Context> {
@@ -153,10 +153,21 @@ fn run_details(
     context: &mut Context,
 ) {
     let mut dom = session.dom();
-    match DomDetailsRuntime::run_next(&mut dom, registry, context, event_limits(), &cancel())
-        .unwrap()
+    match DomManipulationRuntime::run_next(
+        &mut dom,
+        registry,
+        context,
+        crate::DomManipulationRunLimits {
+            dispatch: event_limits(),
+            source: surgeist_dom::DomSourceLimits::new(
+                16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+            ),
+        },
+        &cancel(),
+    )
+    .unwrap()
     {
-        DomDetailsProgress::Complete { receipt, .. } => assert!(receipt.failures().is_empty()),
+        DomManipulationProgress::Complete { receipt, .. } => assert!(receipt.failures().is_empty()),
         other => panic!("actual Toggle task must dispatch: {other:?}"),
     }
 }
@@ -362,7 +373,7 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
     let top = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -390,7 +401,13 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
         let mut batch = DomBatch::new();
         batch.set_attribute(target, "open", "");
         dom.apply(batch, &cancel()).unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
         target
     };
     run_details(&mut session, &mut registry, &mut context);
@@ -423,7 +440,7 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
         assert_eq!(payload.old_state(), "closed");
         assert_eq!(payload.new_state(), "open");
     }
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -496,7 +513,7 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
     let first_body = body(&session.snapshot(), first.document());
     let second_body = body(&session.snapshot(), second.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -529,8 +546,14 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         batch.set_attribute(&details, "open", "");
         let commit = dom.apply(batch, &cancel()).unwrap();
         let target = commit.created(&details).unwrap().unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         let association = queued.queue_association().unwrap();
         assert_eq!(association.global(), first.global());
         assert_eq!(association.document(), first.document());
@@ -538,14 +561,25 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         batch.adopt(target, second.document());
         batch.insert_before(target, second_body, None);
         dom.apply(batch, &cancel()).unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
         assert_eq!(
-            context.details.pending_task(0).unwrap().unwrap().id(),
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            context
+                .dom_manipulation
+                .pending_task(0)
+                .unwrap()
+                .unwrap()
+                .id(),
             queued.id()
         );
         assert_eq!(
             context
-                .details
+                .dom_manipulation
                 .pending_task(0)
                 .unwrap()
                 .unwrap()
@@ -572,7 +606,7 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         context.seen[1].current,
         Some(DomEventTarget::Node(second.document().node()))
     );
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
     let hosted = session.hosted_execution();
     let dom = session.dom();
     assert_eq!(
@@ -674,7 +708,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
     let first_body = body(&session.snapshot(), first.document());
     let second_body = body(&session.snapshot(), second.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -703,8 +737,14 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
             "target",
             false,
         );
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         let association = queued.queue_association().unwrap();
         assert_eq!(association.global(), first.global());
         assert_eq!(association.document(), first.document());
@@ -712,8 +752,14 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         batch.adopt(target, second.document());
         batch.insert_before(target, second_body, None);
         dom.apply(batch, &cancel()).unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
-        let after = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            0
+        );
+        let after = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         assert_eq!(after.id(), queued.id());
         assert_eq!(after.queue_association(), Some(association));
         target
@@ -727,24 +773,29 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         assert_eq!(queued.host(), first.host());
         assert_eq!(queued.navigable(), first.navigable());
         assert_eq!(queued.traversable(), first.navigable());
-        assert_eq!(context.details.pending_tasks().unwrap(), 1);
+        assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 1);
         assert!(
             matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
             DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
         );
         assert!(matches!(
-            DomDetailsRuntime::run_next(
+            DomManipulationRuntime::run_next(
                 &mut dom,
                 &mut registry,
                 &mut context,
-                event_limits(),
+                crate::DomManipulationRunLimits {
+                    dispatch: event_limits(),
+                    source: surgeist_dom::DomSourceLimits::new(
+                        16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
+                    )
+                },
                 &cancel()
             )
             .unwrap(),
-            DomDetailsProgress::Empty
+            DomManipulationProgress::Empty
         ));
     }
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
     assert!(context.seen.is_empty());
     let snapshot = session.snapshot();
     assert!(
@@ -831,7 +882,7 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
     );
     let parent = body(&snapshot, second.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -849,7 +900,13 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
         batch.insert_before(&details, parent, None);
         batch.set_attribute(&details, "open", "");
         dom.apply(batch, &cancel()).unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
     }
     run_details(&mut session, &mut registry, &mut context);
     assert_eq!(context.seen.len(), 1);
@@ -858,7 +915,7 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
         context.seen[0].current,
         Some(DomEventTarget::Global(second.global()))
     );
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
 }
 
 #[test]
@@ -867,7 +924,7 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
     let top = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -898,43 +955,54 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
             "target",
             false,
         );
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         assert_eq!(queued.queue_association().unwrap().global(), top.global());
         (slot, target, queued)
     };
     for _ in 0..2 {
         let mut dom = session.dom();
         assert!(matches!(
-            DomDetailsRuntime::run_next(
+            DomManipulationRuntime::run_next(
                 &mut dom,
                 &mut registry,
                 &mut context,
-                event_limits(),
+                crate::DomManipulationRunLimits {
+                    dispatch: event_limits(),
+                    source: surgeist_dom::DomSourceLimits::new(
+                        16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
+                    )
+                },
                 &cancel()
             ),
-            Err(DomDetailsRuntimeError::Hosted(
+            Err(DomManipulationRuntimeError::Hosted(
                 DomHostedRuntimeError::CheckpointUnavailable
             ))
         ));
         assert_eq!(context.seen.len(), 1);
         assert_eq!(context.seen[0].target, Some(target));
         assert_eq!(context.seen[0].payload.unwrap().new_state(), "open");
-        let retained = context.details.pending_task(0).unwrap().unwrap();
+        let retained = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         assert_eq!(retained.id(), queued.id());
         assert_eq!(retained.queue_association(), queued.queue_association());
         assert_eq!(dom.snapshot().pending_slot_signals(), &[slot]);
     }
     let session = match session.try_shutdown() {
         DomShutdownOutcome::Pending { session, reason } => {
-            assert_eq!(reason, DomShutdownReason::DetailsTask(queued.id()));
+            assert_eq!(reason, DomShutdownReason::DomManipulationTask(queued.id()));
             session
         }
         DomShutdownOutcome::Complete => {
             panic!("undelivered Slot checkpoint retains the original task")
         }
     };
-    assert_eq!(context.details.pending_tasks().unwrap(), 1);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 1);
     assert_eq!(context.seen.len(), 1);
     assert!(
         session
@@ -1404,7 +1472,7 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     let first_body = body(&session.snapshot(), first.document());
     let second_body = body(&session.snapshot(), second.document());
     let mut context = Context {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         seen: Vec::new(),
     };
     let mut registry = registry();
@@ -1416,8 +1484,14 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         batch.set_attribute(&details, "open", "");
         let commit = dom.apply(batch, &cancel()).unwrap();
         let target = commit.created(&details).unwrap().unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         let association = queued.queue_association().unwrap();
         assert_eq!(association.document(), first.document());
         assert_eq!(association.global(), first.global());
@@ -1425,7 +1499,13 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         batch.adopt(target, second.document());
         batch.insert_before(target, second_body, None);
         dom.apply(batch, &cancel()).unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 0);
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            0
+        );
         for (recipient, label, capture) in [
             (
                 DomEventTarget::Global(first.global()),
@@ -1482,8 +1562,8 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         Some(second.document())
     );
     assert!(before.node(target).unwrap().is_connected());
-    assert_eq!(context.details.pending_tasks().unwrap(), 1);
-    let retained = context.details.pending_task(0).unwrap().unwrap();
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 1);
+    let retained = context.dom_manipulation.pending_task(0).unwrap().unwrap();
     assert_eq!(retained.id(), queued.id());
     assert_eq!(retained.queue_association(), queued.queue_association());
     // DOM's null-BC parent branch cannot supply fresh closed-native authority:
@@ -1492,28 +1572,38 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     {
         let mut dom = session.dom();
         assert!(matches!(
-            DomDetailsRuntime::run_next(
+            DomManipulationRuntime::run_next(
                 &mut dom,
                 &mut registry,
                 &mut context,
-                event_limits(),
+                crate::DomManipulationRunLimits {
+                    dispatch: event_limits(),
+                    source: surgeist_dom::DomSourceLimits::new(
+                        16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
+                    )
+                },
                 &cancel()
             ),
-            Err(DomDetailsRuntimeError::Dispatch(
+            Err(DomManipulationRuntimeError::Dispatch(
                 DomEventDispatchError::Hosted(DomHostedError::StaleIdentity)
             ))
         ));
     }
     assert!(context.seen.is_empty());
     assert_eq!(session.snapshot().stamp(), before.stamp());
-    assert_eq!(context.details.pending_tasks().unwrap(), 1);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 1);
     assert_eq!(
-        context.details.pending_task(0).unwrap().unwrap().id(),
+        context
+            .dom_manipulation
+            .pending_task(0)
+            .unwrap()
+            .unwrap()
+            .id(),
         queued.id()
     );
     assert_eq!(
         context
-            .details
+            .dom_manipulation
             .pending_task(0)
             .unwrap()
             .unwrap()
@@ -1525,7 +1615,7 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
 #[test]
 fn destination_retired_in_global_capture_prevents_later_callbacks_without_replaying_capture() {
     struct RetireContext {
-        details: DomDetailsRuntime,
+        dom_manipulation: DomManipulationRuntime,
         hosted: HostedRuntime,
         destination: DomHostedTopLevel,
         seen: Vec<&'static str>,
@@ -1533,9 +1623,9 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         destruction: Vec<Result<DomHostedDestructionQueued, DomHostedRuntimeError>>,
         settlement: Vec<Result<DomHostedTaskProgress, DomHostedRuntimeError>>,
     }
-    impl DomDetailsEventContext for RetireContext {
-        fn details(&mut self) -> &mut DomDetailsRuntime {
-            &mut self.details
+    impl DomManipulationEventContext for RetireContext {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.dom_manipulation
         }
     }
     let mut session = session();
@@ -1544,7 +1634,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     let first_body = body(&session.snapshot(), first.document());
     let second_body = body(&session.snapshot(), second.document());
     let mut context = RetireContext {
-        details: session.details_execution(),
+        dom_manipulation: session.dom_manipulation_execution(),
         hosted: session.hosted_execution(),
         destination: second,
         seen: Vec::new(),
@@ -1566,8 +1656,14 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         batch.set_attribute(&details, "open", "");
         let commit = dom.apply(batch, &cancel()).unwrap();
         let target = commit.created(&details).unwrap().unwrap();
-        assert_eq!(context.details.ingest(&mut dom, &cancel()).unwrap(), 1);
-        let queued = context.details.pending_task(0).unwrap().unwrap();
+        assert_eq!(
+            context
+                .dom_manipulation
+                .ingest(&mut dom, &cancel())
+                .unwrap(),
+            1
+        );
+        let queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
         assert_eq!(
             queued.queue_association().unwrap().document(),
             first.document()
@@ -1633,11 +1729,16 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     };
     let result = {
         let mut dom = session.dom();
-        DomDetailsRuntime::run_next(
+        DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            event_limits(),
+            crate::DomManipulationRunLimits {
+                dispatch: event_limits(),
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
+            },
             &cancel(),
         )
     };
@@ -1678,7 +1779,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         context.observed[0].toggle_event().unwrap().new_state(),
         "open"
     );
-    if let Ok(DomDetailsProgress::Complete { receipt, .. }) = &result {
+    if let Ok(DomManipulationProgress::Complete { receipt, .. }) = &result {
         assert_eq!(receipt.callbacks(), 1);
         assert!(receipt.failures().is_empty());
     }
@@ -1687,17 +1788,22 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     // invoke that capture again or reach later ineligible recipients.
     {
         let mut dom = session.dom();
-        let _retry = DomDetailsRuntime::run_next(
+        let _retry = DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            event_limits(),
+            crate::DomManipulationRunLimits {
+                dispatch: event_limits(),
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
+            },
             &cancel(),
         );
     }
     assert_eq!(context.seen, ["destination-global"]);
     assert_eq!(context.observed.len(), 1);
-    if let Some(retained) = context.details.pending_task(0).unwrap() {
+    if let Some(retained) = context.dom_manipulation.pending_task(0).unwrap() {
         assert_eq!(retained.id(), queued.id());
         assert_eq!(retained.queue_association(), queued.queue_association());
     }
@@ -1706,14 +1812,14 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
 #[test]
 fn adopted_target_retirement_delivers_once_using_its_active_destination_document() {
     struct DestroyTargetContext {
-        details: DomDetailsRuntime,
+        dom_manipulation: DomManipulationRuntime,
         target: NodeId,
         seen: Vec<&'static str>,
         applied: Vec<Result<DomCommit, DomError>>,
     }
-    impl DomDetailsEventContext for DestroyTargetContext {
-        fn details(&mut self) -> &mut DomDetailsRuntime {
-            &mut self.details
+    impl DomManipulationEventContext for DestroyTargetContext {
+        fn dom_manipulation(&mut self) -> &mut DomManipulationRuntime {
+            &mut self.dom_manipulation
         }
     }
     let mut session = session();
@@ -1721,7 +1827,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     let second = create(&mut session);
     let first_body = body(&session.snapshot(), first.document());
     let second_body = body(&session.snapshot(), second.document());
-    let mut details = session.details_execution();
+    let mut details = session.dom_manipulation_execution();
     let (target, queued) = {
         let mut dom = session.dom();
         let mut batch = DomBatch::new();
@@ -1744,7 +1850,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         (target, queued)
     };
     let mut context = DestroyTargetContext {
-        details,
+        dom_manipulation: details,
         target,
         seen: Vec::new(),
         applied: Vec::new(),
@@ -1808,16 +1914,21 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
             .is_fully_active()
             .unwrap()
     );
-    let still_queued = context.details.pending_task(0).unwrap().unwrap();
+    let still_queued = context.dom_manipulation.pending_task(0).unwrap().unwrap();
     assert_eq!(still_queued.id(), queued.id());
     assert_eq!(still_queued.queue_association(), queued.queue_association());
     let progress = {
         let mut dom = session.dom();
-        DomDetailsRuntime::run_next(
+        DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            event_limits(),
+            crate::DomManipulationRunLimits {
+                dispatch: event_limits(),
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
+            },
             &cancel(),
         )
         .unwrap()
@@ -1826,7 +1937,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     // not stale-node absence or its original queue Document. The destination
     // Document remains active, so its applicable once listener still runs.
     match progress {
-        DomDetailsProgress::Complete {
+        DomManipulationProgress::Complete {
             task,
             receipt,
             displaced_owner: None,
@@ -1856,26 +1967,31 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         retired.global_document(second.global()).unwrap(),
         second.document()
     );
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
     assert!(
         !registry.remove_listener(target_once),
         "the actual once invocation consumed registration"
     );
     let next = {
         let mut dom = session.dom();
-        DomDetailsRuntime::run_next(
+        DomManipulationRuntime::run_next(
             &mut dom,
             &mut registry,
             &mut context,
-            event_limits(),
+            crate::DomManipulationRunLimits {
+                dispatch: event_limits(),
+                source: surgeist_dom::DomSourceLimits::new(
+                    16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
+                ),
+            },
             &cancel(),
         )
         .unwrap()
     };
-    assert!(matches!(next, DomDetailsProgress::Empty));
+    assert!(matches!(next, DomManipulationProgress::Empty));
     assert_eq!(context.seen, ["destination-global", "destroyed-target"]);
     assert_eq!(context.applied.len(), 1);
-    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert_eq!(context.dom_manipulation.pending_tasks().unwrap(), 0);
 }
 
 fn pump_destruction(

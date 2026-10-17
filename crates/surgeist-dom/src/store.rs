@@ -29,6 +29,7 @@ mod import;
 mod input;
 mod input_processing;
 mod installation;
+mod manipulation;
 mod meta;
 mod navigable;
 mod output;
@@ -833,6 +834,7 @@ fn discard_history(mut history: Option<Box<HistoryEntry>>) {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
+    manipulation_tasks: Option<std::sync::Weak<crate::manipulation::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
     owner: DomOwnerId,
     revision: DomRevision,
@@ -845,9 +847,12 @@ pub struct Dom {
     active_task: std::sync::Weak<crate::select::Authorization>,
     source_operation: Option<Box<source::operation::Operation>>,
     next_source_operation: u64,
-    #[expect(
-        clippy::vec_box,
-        reason = "Retained parents move the original operation boxes and pop restores the same owner without fallible reboxing"
+    #[cfg_attr(
+        not(test),
+        expect(
+            clippy::vec_box,
+            reason = "Retained parents move the original operation boxes and pop restores the same owner without fallible reboxing"
+        )
     )]
     pub(in crate::store) source_parents: Vec<Box<source::operation::Operation>>,
     source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
@@ -875,6 +880,7 @@ impl Dom {
     ) -> Result<Self, DomError> {
         Ok(Self {
             dispatch_custody: dispatch::CustodyBank::default(),
+            manipulation_tasks: None,
             owner: DomOwnerId::allocate()?,
             revision: DomRevision(0),
             limits,
@@ -1108,6 +1114,14 @@ impl Dom {
         prepared: Prepared,
         cancelled: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
+        let publication = self.prepare_publication(prepared, cancelled)?;
+        Ok(self.publish_prepared(publication))
+    }
+    fn prepare_publication(
+        &mut self,
+        prepared: Prepared,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedPublication, DomError> {
         check_cancel(cancelled)?;
         let Prepared {
             retirements,
@@ -1219,6 +1233,42 @@ impl Dom {
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
+        Ok(PreparedPublication {
+            state,
+            changed,
+            revision,
+            entry,
+            retirement_publication,
+            retired_authority,
+            owner,
+            created,
+            documents,
+            transition_ids,
+            record_ids,
+            from,
+            to,
+            changes,
+            _formation: formation,
+        })
+    }
+    fn publish_prepared(&mut self, publication: PreparedPublication) -> DomCommit {
+        let PreparedPublication {
+            state,
+            changed,
+            revision,
+            entry,
+            retirement_publication,
+            retired_authority,
+            owner,
+            created,
+            documents,
+            transition_ids,
+            record_ids,
+            from,
+            to,
+            changes,
+            _formation,
+        } = publication;
         if changed {
             self.state = state;
             // Exact generation retirement releases canonical custody. Detach,
@@ -1241,14 +1291,14 @@ impl Dom {
             auth.destroy_if_pending();
             self.active_task = std::sync::Weak::new();
         }
-        Ok(DomCommit {
+        DomCommit {
             owner,
             created,
             documents,
             transition_ids,
             record_ids,
             changes: DomChanges { from, to, changes },
-        })
+        }
     }
     fn trim_history(&mut self) {
         let mut entries = 0usize;
@@ -1430,6 +1480,23 @@ struct Draft {
     insertion_trace: Option<tree::InsertionTrace>,
     #[cfg(test)]
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
+}
+pub(crate) struct PreparedPublication {
+    state: Arc<State>,
+    changed: bool,
+    revision: DomRevision,
+    entry: Option<Box<HistoryEntry>>,
+    retirement_publication: dispatch::PublicationPlan,
+    retired_authority: Option<Arc<crate::select::Authorization>>,
+    owner: Arc<BatchIdentity>,
+    created: Vec<Option<NodeId>>,
+    documents: Vec<bool>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
+    from: DomStamp,
+    to: DomStamp,
+    changes: Arc<[DomChange]>,
+    _formation: Option<source::formation::Formation>,
 }
 struct Prepared {
     retirements: Vec<dispatch::Retirement>,

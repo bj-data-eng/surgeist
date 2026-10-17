@@ -35,16 +35,16 @@ pub struct DomDetailsToggleIntention {
     pub(crate) target: NodeId,
     pub(crate) old: HtmlDetailsState,
     pub(crate) new: HtmlDetailsState,
-    pub(crate) queue_association: Option<DomDetailsQueueAssociation>,
+    pub(crate) queue_association: Option<DomElementTaskAssociation>,
 }
 /// The actual relevant Global and its associated Document at queueing time.
 /// Adoption and later execution never rebind these task inputs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomDetailsQueueAssociation {
+pub struct DomElementTaskAssociation {
     pub(crate) global: crate::hosted::DomHostedGlobalId,
     pub(crate) document: crate::DocumentId,
 }
-impl DomDetailsQueueAssociation {
+impl DomElementTaskAssociation {
     pub const fn global(self) -> crate::hosted::DomHostedGlobalId {
         self.global
     }
@@ -53,7 +53,7 @@ impl DomDetailsQueueAssociation {
     }
 }
 impl DomDetailsToggleIntention {
-    pub fn queue_association(&self) -> Option<DomDetailsQueueAssociation> {
+    pub fn queue_association(&self) -> Option<DomElementTaskAssociation> {
         self.queue_association
     }
     pub fn operation(&self) -> DomDetailsToggleIntentionId {

@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn first_document_creation_preserves_the_native_owners_epoch() {
         use crate::{
-            DomDetailsRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
+            DomHostedRuntimeLimits, DomManipulationRuntimeLimits, DomSession, DomSessionLimits,
             DomStyleRuntimeLimits,
         };
         use std::sync::atomic::AtomicBool;
@@ -142,7 +142,7 @@ mod tests {
                     work: 1_000_000,
                     css_input: surgeist_css::CssUtf16InputLimits::default(),
                 },
-                details: DomDetailsRuntimeLimits {
+                dom_manipulation: DomManipulationRuntimeLimits {
                     tasks: 32,
                     storage_bytes: 16_000_000,
                     work: 1_000_000,
@@ -393,8 +393,8 @@ mod tests {
         mod phases {
             use super::*;
             use crate::{
-                DomDetailsRuntimeLimits, DomHostedRuntimeError, DomHostedRuntimeLimits,
-                DomHostedTopLevel, DomSession, DomSessionLimits, DomSourceDriveProgress,
+                DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTopLevel,
+                DomManipulationRuntimeLimits, DomSession, DomSessionLimits, DomSourceDriveProgress,
                 DomSourceRuntimeError, DomSourceServices, DomStyleRuntimeLimits, HostedRuntime,
             };
             use surgeist_dom::{
@@ -438,7 +438,7 @@ mod tests {
                             work: 4_000_000,
                             css_input: surgeist_css::CssUtf16InputLimits::default(),
                         },
-                        details: DomDetailsRuntimeLimits {
+                        dom_manipulation: DomManipulationRuntimeLimits {
                             tasks: 32,
                             storage_bytes: 32_000_000,
                             work: 4_000_000,

@@ -1,6 +1,7 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
 mod dialog;
+pub(crate) mod dialog_queue;
 pub(in crate::store) mod hosted;
 use super::*;
 use crate::source::*;
@@ -10,17 +11,11 @@ use surgeist_html::{HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Rep
 
 // One public edit stays inline through admission. Named operations retain their
 // own original controllers. Only owner-local engine tests supply command lists.
-#[cfg_attr(
-    not(test),
-    expect(
-        clippy::large_enum_variant,
-        reason = "The single original Command stays inline in the admitted boxed operation; boxing it would allocate before initial source admission"
-    )
-)]
 enum OperationRoot {
     Edit([Command; 1]),
     NativeInstallation,
     SelectCompletion,
+    DialogToggleTask(crate::DomDialogToggleTaskInfo),
     #[cfg(test)]
     Commands(Vec<Command>),
 }
@@ -38,7 +33,7 @@ impl std::ops::Deref for OperationRoot {
     fn deref(&self) -> &[Command] {
         match self {
             Self::Edit(commands) => commands,
-            Self::NativeInstallation | Self::SelectCompletion => &[],
+            Self::NativeInstallation | Self::SelectCompletion | Self::DialogToggleTask(_) => &[],
             #[cfg(test)]
             Self::Commands(commands) => commands,
         }
@@ -61,6 +56,7 @@ pub(in crate::store) struct Operation {
     published: bool,
     event_exposed: bool,
     event_work: std::sync::Weak<crate::source::event::EventWork>,
+    dialog_queue: Option<crate::DomManipulationTaskId>,
     cancelled: bool,
     phases: u64,
     headroom: Option<headroom::Reservation>,
@@ -104,6 +100,7 @@ pub struct DomSourceLease<'a> {
     id: DomSourceOperationId,
     complete: bool,
     select_authorization: Option<Arc<crate::select::Authorization>>,
+    task_authorization: Option<Arc<crate::manipulation::Binding>>,
 }
 impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
@@ -145,8 +142,9 @@ impl Dom {
             .find(|entry| entry.root() == root)
             .map(DomStyleCssomRoot::duplicate))
     }
-    pub(in crate::store) fn style_cssom_custody_bytes(&self) -> Result<usize, DomError> {
-        self.style_cssom_roots
+    pub(in crate::store) fn source_owner_custody_bytes(&self) -> Result<usize, DomError> {
+        let style = self
+            .style_cssom_roots
             .capacity()
             .checked_mul(size_of::<DomStyleCssomRoot>())
             .and_then(|n| n.checked_add(size_of::<Vec<DomStyleCssomRoot>>()))
@@ -157,6 +155,9 @@ impl Dom {
                         .checked_mul(DomStyleCssomRoot::retained_owner_bytes())?,
                 )
             })
+            .ok_or(DomError::RepresentationExhausted)?;
+        style
+            .checked_add(crate::manipulation::retained(&self.manipulation_tasks)?)
             .ok_or(DomError::RepresentationExhausted)
     }
     pub(in crate::store) fn require_sync_source_idle(&self) -> Result<(), DomError> {
@@ -289,6 +290,7 @@ impl Dom {
             published: false,
             event_exposed: false,
             event_work: std::sync::Weak::new(),
+            dialog_queue: None,
             cancelled: false,
             phases: 0,
             headroom: None,
@@ -311,7 +313,7 @@ impl Dom {
             canonical_aux_bytes,
         });
         let admitted = (|| {
-            op.custody_bytes = self.style_cssom_custody_bytes()?;
+            op.custody_bytes = self.source_owner_custody_bytes()?;
             op.refresh_admission(cancel)
         })();
         if let Err(error) = admitted {
@@ -331,6 +333,7 @@ impl Dom {
             id,
             complete: false,
             select_authorization: None,
+            task_authorization: None,
         })
     }
     pub fn resume_source_edit(
@@ -345,6 +348,11 @@ impl Dom {
             .is_some_and(|o| o.select.is_some())
         {
             return Err(DomError::InvalidNativeTask);
+        }
+        if self.source_operation.as_ref().is_some_and(|operation| {
+            matches!(operation.commands, OperationRoot::DialogToggleTask(_))
+        }) {
+            return Err(DomError::InvalidSourceOperation);
         }
         self.resume_source_permission(id, limits, cancel)
     }
@@ -377,6 +385,7 @@ impl Dom {
                 id,
                 complete: false,
                 select_authorization: None,
+                task_authorization: None,
             });
         }
         self.admit_source_resume(id, limits, cancel)?;
@@ -385,12 +394,14 @@ impl Dom {
             .source_retained_stack_bytes()?
             .checked_add(size_of::<crate::store::dispatch::CustodyBank>())
             .ok_or(DomError::RepresentationExhausted)?;
+        let custody_bytes = self.source_owner_custody_bytes()?;
         let dispatch = &self.dispatch_custody;
         let op = self
             .source_operation
             .as_mut()
             .filter(|o| o.id == id)
             .ok_or(DomError::InvalidSourceOperation)?;
+        op.custody_bytes = custody_bytes;
         // Bounds are absolute; original spent work never resets on resume.
         if limits.work < op.draft.source_work.load(Ordering::Relaxed)
             || limits.phases
@@ -440,6 +451,7 @@ impl Dom {
             id,
             complete: false,
             select_authorization: None,
+            task_authorization: None,
         })
     }
 }
@@ -1273,6 +1285,7 @@ impl Operation {
         let permit = hosted
             .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
             .transpose()?;
+        let owner_custody = dom.source_owner_custody_bytes()?;
         let commit = dom.publish(prepared, cancel)?;
         self.draft.dispatch_retirements.clear();
         if let Some(permit) = permit {
@@ -1283,9 +1296,7 @@ impl Operation {
         }
         // Retirement only removes entries; capacity is retained and this cannot
         // overflow after the same table was admitted before publication.
-        self.custody_bytes = size_of::<Vec<DomStyleCssomRoot>>()
-            + dom.style_cssom_roots.capacity() * size_of::<DomStyleCssomRoot>()
-            + dom.style_cssom_roots.len() * DomStyleCssomRoot::retained_owner_bytes();
+        self.custody_bytes = owner_custody;
         self.canonical_storage = canonical_storage;
         self.canonical_history_bytes = canonical_history_bytes;
         self.draft
@@ -1386,6 +1397,17 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation);
         }
+        if self.dom.source_operation.as_ref().is_some_and(|operation| {
+            matches!(operation.commands, OperationRoot::DialogToggleTask(_))
+        }) && !self.task_authorization.as_ref().is_some_and(|binding| {
+            self.dom
+                .manipulation_tasks
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
+        }) {
+            return Err(DomError::InvalidSourceOperation);
+        }
         // Independent public capabilities may commit concurrently. Keep the
         // exact owner locked from receipt validation through canonical source
         // publication; this segment executes no external callbacks.
@@ -1446,6 +1468,11 @@ impl DomSourceLease<'_> {
         op: &mut Operation,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
+        if !op.event_exposed
+            && let OperationRoot::DialogToggleTask(task) = op.commands
+        {
+            return op.observe_dialog_task(self.dom, task, cancel);
+        }
         if op.cancelled && !op.published && !op.event_exposed {
             // No canonical phase or external effect occurred. Return the actual
             // current stamp directly; a second Draft/candidate would only copy
@@ -2373,6 +2400,7 @@ impl Dom {
                 published: false,
                 event_exposed: false,
                 event_work: std::sync::Weak::new(),
+                dialog_queue: None,
                 cancelled: false,
                 phases: 0,
                 headroom: None,
@@ -2391,7 +2419,7 @@ impl Dom {
                 canonical_storage,
                 canonical_history_bytes: self.history_bytes,
                 command_storage: storage::Payload::default(),
-                custody_bytes: self.style_cssom_custody_bytes().map_err(Error::Target)?,
+                custody_bytes: self.source_owner_custody_bytes().map_err(Error::Target)?,
                 canonical_aux_bytes,
             });
             operation.refresh_admission(cancel).map_err(Error::Target)?;
@@ -2413,6 +2441,7 @@ impl Dom {
             id,
             complete: false,
             select_authorization: None,
+            task_authorization: None,
         })
     }
 }

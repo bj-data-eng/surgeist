@@ -119,10 +119,18 @@ impl Usage {
         Ok(())
     }
 }
+struct DialogFiring {
+    subject: NodeId,
+    old: surgeist_html::HtmlDialogState,
+    new: surgeist_html::HtmlDialogState,
+    cancelable: bool,
+    kind: DomSourceEventKind,
+    cursor: Option<HtmlDialogCursor>,
+}
 pub(super) struct ShowObservation {
     request: DomSourceEventRequest,
     owner: Arc<BatchIdentity>,
-    cursor: HtmlDialogCursor,
+    cursor: Option<HtmlDialogCursor>,
     pub(super) usage: Usage,
     limits: DomSourceLimits,
     accepted: Option<DomSourceEventOutcome>,
@@ -255,6 +263,57 @@ impl Operation {
         {
             return Err(DomError::InvalidSourceEvent);
         }
+        let cursor = self
+            .draft
+            .dialog_show
+            .ok_or(DomError::InvalidSourceEvent)?
+            .cursor;
+        self.observe_dialog_event(
+            dom,
+            DialogFiring {
+                subject,
+                old,
+                new,
+                cancelable,
+                kind: DomSourceEventKind::BeforeToggle,
+                cursor: Some(cursor),
+            },
+            cancel,
+        )
+    }
+    pub(super) fn observe_dialog_task(
+        &mut self,
+        dom: &mut Dom,
+        task: crate::DomDialogToggleTaskInfo,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomError> {
+        self.observe_dialog_event(
+            dom,
+            DialogFiring {
+                subject: task.id().target(),
+                old: task.old_state(),
+                new: task.new_state(),
+                cancelable: false,
+                kind: DomSourceEventKind::Toggle,
+                cursor: None,
+            },
+            cancel,
+        )
+    }
+    fn observe_dialog_event(
+        &mut self,
+        dom: &mut Dom,
+        firing: DialogFiring,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomError> {
+        let DialogFiring {
+            subject,
+            old,
+            new,
+            cancelable,
+            kind,
+            cursor,
+        } = firing;
         let close = self
             .phases
             .checked_add(1)
@@ -291,6 +350,7 @@ impl Operation {
                 },
                 parent: dom.source_parents.last().map(|parent| parent.id),
                 subject,
+                kind,
                 old,
                 new,
                 cancelable,
@@ -304,11 +364,7 @@ impl Operation {
             }),
         };
         let limits = self.limits;
-        let cursor = self
-            .draft
-            .dialog_show
-            .ok_or(DomError::InvalidSourceEvent)?
-            .cursor;
+
         let receiver =
             dom.register_dispatch_custody_with_formation(&[subject], formation.as_ref(), cancel)?;
         let usage = Usage {
@@ -345,6 +401,32 @@ impl Operation {
     }
 }
 impl Dom {
+    pub(in crate::store) fn admit_manipulation_payload(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.source_operation.is_none() && self.source_parents.is_empty() {
+            return Ok(());
+        }
+        let total = self.source_observation_total(storage::Payload::default(), cancel)?;
+        self.admit_source_observers(total, cancel)?;
+        let custody = self.source_owner_custody_bytes()?;
+        let Some(operation) = self.source_operation.as_mut() else {
+            return Ok(());
+        };
+        if operation.observation().is_some() {
+            return Ok(());
+        }
+        let old = operation.custody_bytes;
+        let old_other = operation.draft.source_other_bytes;
+        operation.custody_bytes = custody;
+        if let Err(error) = operation.refresh_admission(cancel) {
+            operation.custody_bytes = old;
+            operation.draft.source_other_bytes = old_other;
+            return Err(error);
+        }
+        Ok(())
+    }
     /// Actual unfinished top which prevents an unrelated dispatcher invocation.
     /// Event reentry is permitted only by the exact live affine scope.
     pub fn source_dispatch_blocker(&self) -> Option<DomSourceOperationId> {
@@ -530,7 +612,7 @@ impl Dom {
         payload.append(self.source_observation_payload(cancel)?)?;
         payload.append(extra)?;
         payload.add_bytes(self.history_bytes)?;
-        payload.add_bytes(self.style_cssom_custody_bytes()?)?;
+        payload.add_bytes(self.source_owner_custody_bytes()?)?;
         payload.add_bytes(
             self.source_dispatch_custody_bytes(|| self.step_source_observers(cancel))?,
         )?;
@@ -996,6 +1078,30 @@ impl DomSourceLease<'_> {
         candidate.work.stage.store(3, Ordering::Relaxed);
         Ok(())
     }
+    fn advance_dialog_task_observation(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .filter(|operation| operation.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let observation = operation
+            .observation()
+            .ok_or(DomError::InvalidSourceEvent)?;
+        let subject = observation.request.subject();
+        self.dom.source_event_step(&observation.request, cancel)?;
+        if matches!(
+            self.dom
+                .dispatch_custody_association(&observation.receiver, 0, subject)?,
+            crate::DomDispatchAssociation::Retired(_)
+        ) {
+            return self.finish_show_noop(false, cancel);
+        }
+        self.rebase_dialog_observation(None, cancel)
+    }
     pub(super) fn advance_show_observation(
         &mut self,
         cancel: &AtomicBool,
@@ -1023,6 +1129,10 @@ impl DomSourceLease<'_> {
         // dispatch and its consumed receipt are never replayed.
         let outcome = observation.accepted.expect("accepted event");
         let mut cursor = observation.cursor;
+        if cursor.is_none() {
+            return self.advance_dialog_task_observation(cancel);
+        }
+        let mut cursor = cursor.take().expect("Show cursor");
         self.dom.source_event_step(&observation.request, cancel)?;
         cursor
             .reply(HtmlDialogReply::EventCanceled(
@@ -1070,6 +1180,23 @@ impl DomSourceLease<'_> {
                 });
             }
         }
+        self.rebase_dialog_observation(Some(cursor), cancel)
+    }
+    fn rebase_dialog_observation(
+        &mut self,
+        cursor: Option<HtmlDialogCursor>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, DomError> {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .filter(|operation| operation.id == self.id)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let observation = operation
+            .observation()
+            .ok_or(DomError::InvalidSourceEvent)?;
+        let subject = observation.request.subject();
         let owner = observation.owner.clone();
         let work = observation.usage.work.clone();
         let limits = self.dom.source_rebase_limits(observation.limits, cancel)?;
@@ -1083,11 +1210,17 @@ impl DomSourceLease<'_> {
             cancel,
         )?;
         let key = draft.resolve(subject.into())?;
-        draft.dialog_show = Some(crate::store::dialog::ShowFrame {
-            subject: key,
-            cursor,
-        });
-        let custody_bytes = self.dom.style_cssom_custody_bytes()?;
+        if let Some(cursor) = cursor {
+            draft.dialog_show = Some(crate::store::dialog::ShowFrame {
+                subject: key,
+                cursor,
+            });
+        } else {
+            // HTML's post-dispatch instruction clears CURRENT tracker, even if
+            // a reentrant queue replaced the dispatched task. No task is removed.
+            draft.clear_dialog_toggle_tracker(key, cancel)?;
+        }
+        let custody_bytes = self.dom.source_owner_custody_bytes()?;
         let mut operation = self.dom.source_operation.take().expect("retained observer");
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
         let OperationDraft::Observed(observation) = old else {
@@ -1153,3 +1286,6 @@ mod tests;
 
 #[cfg(test)]
 mod admission_tests;
+
+#[cfg(test)]
+mod manipulation_tests;

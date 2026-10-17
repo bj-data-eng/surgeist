@@ -25,9 +25,6 @@ impl ClosedDialogServices {
     const fn is_modal(self) -> bool {
         false
     }
-    const fn has_tracker(self) -> bool {
-        false
-    }
     const fn has_watcher(self) -> bool {
         false
     }
@@ -40,6 +37,23 @@ impl ClosedDialogServices {
 pub(crate) struct DomDialogState {
     return_value: DocumentString,
     services: ClosedDialogServices,
+    pub(crate) toggle_tracker: Option<DomDialogToggleTracker>,
+}
+/// Historical canonical identity and first state of the currently tracked task.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDialogToggleTracker {
+    pub(crate) task: crate::DomManipulationTaskId,
+    pub(crate) old: surgeist_html::HtmlDialogState,
+}
+impl DomDialogToggleTracker {
+    /// Exact actual task identity; this observation grants no execution right.
+    pub const fn task(self) -> crate::DomManipulationTaskId {
+        self.task
+    }
+    /// First old state preserved by coalescing.
+    pub const fn old_state(self) -> surgeist_html::HtmlDialogState {
+        self.old
+    }
 }
 impl DomDialogState {
     /// Called only by the actual native Element initialization owner. Existing
@@ -49,6 +63,7 @@ impl DomDialogState {
         Self {
             return_value: fresh.return_value().into(),
             services: ClosedDialogServices::from_fresh(fresh),
+            toggle_tracker: None,
         }
     }
     /// Transfers the original controller's current state, never native fresh
@@ -61,6 +76,7 @@ impl DomDialogState {
         Ok(Self {
             return_value,
             services,
+            toggle_tracker: None,
         })
     }
     pub(crate) fn return_value(&self) -> &DocumentString {
@@ -70,6 +86,7 @@ impl DomDialogState {
         Self {
             return_value,
             services: self.services,
+            toggle_tracker: self.toggle_tracker,
         }
     }
     pub(crate) const fn is_modal(&self) -> bool {
@@ -105,7 +122,11 @@ impl<'a> DomDialog<'a> {
         self.state().is_modal()
     }
     pub fn has_toggle_task_tracker(self) -> bool {
-        self.state().services.has_tracker()
+        self.state().toggle_tracker.is_some()
+    }
+    /// Current canonical tracker at this historical snapshot revision.
+    pub fn toggle_task_tracker(self) -> Option<DomDialogToggleTracker> {
+        self.state().toggle_tracker
     }
     pub fn has_close_watcher(self) -> bool {
         self.state().has_close_watcher()

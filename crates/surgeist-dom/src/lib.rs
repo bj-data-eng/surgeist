@@ -115,6 +115,10 @@ mod batch;
 mod button;
 mod control;
 mod details;
+mod manipulation;
+pub use manipulation::{
+    DomManipulationTaskId, DomManipulationTaskRetention, DomManipulationTaskSource,
+};
 mod dialog;
 mod dispatch;
 mod document;
@@ -153,10 +157,10 @@ mod view_transition;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use details::{
-    DomDetails, DomDetailsQueueAssociation, DomDetailsToggleCancellationReason,
-    DomDetailsToggleIntention, DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
+    DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
+    DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
 };
-pub use dialog::DomDialog;
+pub use dialog::{DomDialog, DomDialogToggleTracker};
 pub use dispatch::{DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits};
 pub use document::DomNativeInputPlatform;
 pub use document::{
@@ -224,6 +228,10 @@ pub use slot::{
 pub use snapshot::{
     DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTreeOrder,
     DomTreeScope,
+};
+pub use store::source::operation::dialog_queue::{
+    DomDialogToggleQueueCommit, DomDialogToggleQueuePlan, DomDialogToggleQueuePublication,
+    DomDialogToggleTask, DomDialogToggleTaskInfo,
 };
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
