@@ -1,5 +1,6 @@
-//! The original Session dispatches actual Source beforetoggle requests. These
-//! native no-global fixtures test the event bridge, not modal or hosted Show.
+//! The original Session dispatches actual Source beforetoggle requests. Closed
+//! native fixtures and the separate real hosted constructor test their admitted
+//! boundaries without claiming completed modal or hosted Show services.
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -314,6 +315,190 @@ fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_rep
         snapshot.node(subject).unwrap().attribute(&"open".into()),
         None
     );
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_uncanceled_resume_publishes_toggle_tracker_on_original_global_then_parks_at_add_open() {
+    let cancel = AtomicBool::new(false);
+    // The same public constructor used by native_hosted_lifecycle establishes
+    // the actual Global/settings/agent/window loop; no native Document is
+    // converted to hosted state by a fixture flag.
+    let dom = Dom::new(
+        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
+            .unwrap()
+            .with_dispatch_custody(
+                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+            ),
+    )
+    .unwrap();
+    let mut session = DomSession::new(dom, session_limits()).unwrap();
+    let mut hosted = session.hosted_execution();
+    let top = {
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let top = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+        assert_eq!(top.host(), host);
+        top
+    };
+    let constructed = session.snapshot();
+    assert!(
+        constructed
+            .document(top.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        constructed.global_document(top.global()).unwrap(),
+        top.document()
+    );
+    let settings = hosted
+        .settings(&session.dom(), top.global(), &cancel)
+        .unwrap();
+    assert_eq!(settings.document().id(), top.document());
+    assert!(settings.environment_ready());
+    let html = constructed.node(top.document().node()).unwrap().children()[0];
+    let children = constructed.node(html).unwrap().children();
+    assert_eq!(children.len(), 2);
+    let body = children[1];
+    let subject = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(
+        session.snapshot().relevant_global(subject).unwrap(),
+        Some(top.global())
+    );
+    let mut listeners = dispatcher();
+    listeners
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(
+                move |dom, _, observed: &mut (usize, Vec<DomEventTarget>), event| {
+                    observed.0 += 1;
+                    observed.1 = event.composed_path().collect();
+                    let mut batch = DomBatch::new();
+                    batch.set_attribute(subject, "data-hosted-callback", "kept");
+                    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+                    Ok(())
+                },
+            ),
+            DomEventListenerOptions {
+                capture: false,
+                once: false,
+            },
+        )
+        .unwrap();
+    let request = request(&mut session, subject);
+    // Pinned HTML877d Show step 5 queues closed -> open with a null source;
+    // this remains distinct from future nonnull-source/Close coverage.
+    assert_eq!(request.old_state(), HtmlDialogState::Closed);
+    assert_eq!(request.new_state(), HtmlDialogState::Open);
+    assert_eq!(request.source(), None);
+    let mut observed = (0, Vec::new());
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &request,
+                &mut listeners,
+                &mut observed,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    assert_eq!(observed.0, 1);
+    assert_eq!(
+        observed.1,
+        [
+            DomEventTarget::Node(subject),
+            DomEventTarget::Node(body),
+            DomEventTarget::Node(html),
+            DomEventTarget::Node(top.document().node()),
+            DomEventTarget::Global(top.global()),
+        ]
+    );
+    let callback_snapshot = session.snapshot();
+    assert!(
+        !callback_snapshot
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    match resume(&mut session, request.operation()) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Dialog(dialog),
+            reason: DomSourceUnavailable::Dialog(action),
+        } => {
+            assert_eq!(dialog.operation(), request.operation());
+            assert_eq!(dialog.subject(), subject);
+            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
+            assert_eq!(action, HtmlDialogAction::AddOpen);
+        }
+        other => {
+            panic!("hosted queue publication must retain its original Show at AddOpen: {other:?}")
+        }
+    }
+    let snapshot = session.snapshot();
+    assert_ne!(snapshot.stamp(), callback_snapshot.stamp());
+    assert!(
+        snapshot
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert_eq!(
+        snapshot.incomplete_source_operation(),
+        Some(request.operation())
+    );
+    assert_eq!(
+        snapshot.node(subject).unwrap().owner_document(),
+        Some(top.document())
+    );
+    assert_eq!(
+        snapshot.global_document(top.global()).unwrap(),
+        top.document()
+    );
+    assert_eq!(
+        snapshot
+            .node(subject)
+            .unwrap()
+            .attribute(&"data-hosted-callback".into()),
+        Some(&"kept".into())
+    );
+    assert_eq!(
+        snapshot.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    assert_eq!(observed.0, 1);
+    // This pending synchronous Source tail is not permission to pump the
+    // queued event, acknowledge AddOpen, or claim completed Show.
 }
 
 #[test]
