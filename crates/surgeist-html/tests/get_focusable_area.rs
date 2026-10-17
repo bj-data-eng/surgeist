@@ -299,3 +299,38 @@ fn genuine_existing_children_complete_before_parent_accepts_their_nullable_retur
     );
     complete(&mut parent, O::Null);
 }
+
+#[test]
+fn candidate_document_from_real_current_area_does_not_enter_area_anchor_projection() {
+    use surgeist_html::{
+        HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
+        HtmlCurrentlyFocusedAreaOutcome as CO, HtmlCurrentlyFocusedAreaReply as CR,
+        HtmlFocusedAreaKind,
+    };
+
+    // HTML877d raw59751–59758 returns the candidate Document when its
+    // designation is null. It does not create a viewport or a focusable area.
+    // The selected #1220 shadow-branch interpretation sends that Document to
+    // real delegation without the area-only DOM-anchor/ancestor fast path.
+    let mut current = CC::new();
+    assert_eq!(current.action(), CA::ReadSystemFocus);
+    current.reply(CR::SystemFocus(true)).unwrap();
+    assert_eq!(current.action(), CA::CaptureTraversableActiveDocument);
+    current.reply(CR::Applied).unwrap();
+    assert_eq!(current.action(), CA::ReadLoopFocusedArea);
+    current
+        .reply(CR::LoopFocusedArea(HtmlFocusedAreaKind::Null))
+        .unwrap();
+    assert_eq!(current.action(), CA::ReadResultFocusedArea);
+    current.reply(CR::ResultFocusedAreaPresent(false)).unwrap();
+    assert_eq!(current.action(), CA::Complete(CO::CandidateDocument));
+
+    let mut parent = delegating_shadow();
+    assert_eq!(parent.action(), A::RunCurrentlyFocusedArea);
+    let present = match current.action() {
+        CA::Complete(CO::CandidateDocument) => true,
+        other => panic!("expected the actual completed Document result: {other:?}"),
+    };
+    parent.reply(R::CurrentlyFocusedAreaPresent(present)).unwrap();
+    assert_ne!(parent.action(), A::CaptureCurrentAreaAnchor);
+}
