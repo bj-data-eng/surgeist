@@ -2332,6 +2332,7 @@ fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_rea
             DomSourceEdit::insert_before(style, parent, None),
             DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },

@@ -6,12 +6,14 @@ mod agent;
 mod child;
 mod clock;
 mod destruction;
+mod focus;
 mod history;
 mod policy;
 mod records;
 mod uuid;
 mod watcher;
 pub(crate) use child::SourceProgress as HostedSourceProgress;
+pub use focus::DomSourceExecutionScope;
 
 use crate::dom_event::DomEventDom;
 use std::cell::RefCell;
@@ -364,6 +366,7 @@ struct HostedState {
     clock: clock::Clock,
     limits: DomHostedRuntimeLimits,
     hosts: Vec<records::Host>,
+    focus: focus::FocusState,
     work: u64,
     creation: Option<Creation>,
     children: Vec<child::Creation>,
@@ -389,6 +392,13 @@ impl HostedOwner {
             .register_hosted_source(limits.canonical, &AtomicBool::new(false))
             .map_err(DomHostedRuntimeError::Dom)?;
         let clock = clock::Clock::new(source.id());
+        let focus_header = source
+            .retain_runtime_payload(
+                dom,
+                focus::FocusState::header_bytes(),
+                &AtomicBool::new(false),
+            )
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         Ok(Self {
             state: Rc::new(RefCell::new(HostedState {
                 dom: dom.owner(),
@@ -396,6 +406,7 @@ impl HostedOwner {
                 clock,
                 limits,
                 hosts: Vec::new(),
+                focus: focus::FocusState::new(focus_header),
                 work: 0,
                 creation: None,
                 children: Vec::new(),
@@ -505,8 +516,15 @@ impl HostedState {
             },
         )
     }
-    fn reserve_host(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
+    fn reserve_host(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
         self.step(cancel)?;
+        self.source
+            .admit_runtime_work(dom.raw(), 1, cancel)
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         if self.hosts.len() >= self.limits.canonical.records().hosts() {
             return Err(DomHostedRuntimeError::Admission);
         }
@@ -518,7 +536,19 @@ impl HostedState {
             .len()
             .checked_add(1)
             .ok_or(DomHostedRuntimeError::Admission)?;
-        let old = self.retained_bytes(cancel)?;
+        let old = native_retained_bytes(
+            &self.hosts,
+            &self.children,
+            &self.destruction,
+            &mut self.work,
+            self.limits.work,
+            cancel,
+            || {
+                self.source
+                    .admit_runtime_work(dom.raw(), 1, cancel)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+            },
+        )?;
         let requested = count
             .checked_mul(size_of::<records::Host>())
             .ok_or(DomHostedRuntimeError::Admission)?;
@@ -529,9 +559,16 @@ impl HostedState {
         {
             return Err(DomHostedRuntimeError::Admission);
         }
+        let mut guard = self
+            .source
+            .retain_runtime_payload(dom.raw_mut(), requested, cancel)
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         // Prepay every actual move before replacement publication.
         for _ in 0..self.hosts.len() {
             self.step(cancel)?;
+            self.source
+                .admit_runtime_work(dom.raw(), 1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         }
         let mut replacement = Vec::new();
         replacement
@@ -548,8 +585,18 @@ impl HostedState {
         {
             return Err(DomHostedRuntimeError::Admission);
         }
+        if actual > requested {
+            guard
+                .absorb(
+                    self.source
+                        .retain_runtime_payload(dom.raw_mut(), actual - requested, cancel)
+                        .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?,
+                )
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+        }
         replacement.append(&mut self.hosts);
         self.hosts = replacement;
+        self.focus.host_backing = Some(guard);
         Ok(())
     }
 }
@@ -675,6 +722,27 @@ impl HostedRuntime {
         dom: &mut DomEventDom<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomHostedHostId, DomHostedRuntimeError> {
+        self.create_host_with_focus(dom, focus::HostFocusDisposition::ExternalUnobserved, cancel)
+    }
+    /// Create a sealed native Host whose complete lifetime excludes content
+    /// system focus, including every future admitted top-level and child.
+    pub fn create_headless_host(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHostId, DomHostedRuntimeError> {
+        self.create_host_with_focus(
+            dom,
+            focus::HostFocusDisposition::HeadlessNoContentSystemFocus,
+            cancel,
+        )
+    }
+    fn create_host_with_focus(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        focus: focus::HostFocusDisposition,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHostId, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -683,7 +751,7 @@ impl HostedRuntime {
         if state.creation.is_some() {
             return Err(DomHostedRuntimeError::OperationPending);
         }
-        state.reserve_host(cancel)?;
+        state.reserve_host(dom, cancel)?;
         let id = state
             .source
             .issue_host(cancel)
@@ -692,6 +760,7 @@ impl HostedRuntime {
         state.hosts.push(records::Host {
             id,
             top_levels: Vec::new(),
+            focus,
         });
         Ok(id)
     }

@@ -299,3 +299,5 @@ pub use task::{
 pub const fn crate_name() -> &'static str {
     "surgeist-runtime"
 }
+
+pub use dom_lifecycle::DomSourceExecutionScope;

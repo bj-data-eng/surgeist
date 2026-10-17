@@ -218,13 +218,14 @@ impl Draft {
         scan.qualify(self, dom, phases, cancel)
     }
 
-    pub(in crate::store) fn admit_dialog_hook_occurrence(
+    pub(in crate::store) fn admit_dialog_occurrences(
         &self,
+        count: u64,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.source_invocation
-            .checked_add(1)
+            .checked_add(count)
             .ok_or(DomError::RepresentationExhausted)?;
         Ok(())
     }
@@ -943,7 +944,7 @@ mod dialog_occurrence_tests {
         let stamp = dom.snapshot().stamp();
         for value in [u64::MAX - 1, u64::MAX] {
             draft.source_invocation = value;
-            let result = draft.admit_dialog_hook_occurrence(&cancel);
+            let result = draft.admit_dialog_occurrences(1, &cancel);
             if value == u64::MAX {
                 assert_eq!(result, Err(DomError::RepresentationExhausted));
             } else {
@@ -955,7 +956,7 @@ mod dialog_occurrence_tests {
         draft.source_invocation = 0;
         cancel.store(true, Ordering::Relaxed);
         assert_eq!(
-            draft.admit_dialog_hook_occurrence(&cancel),
+            draft.admit_dialog_occurrences(1, &cancel),
             Err(DomError::Cancelled)
         );
         assert_eq!(draft.source_invocation, 0);

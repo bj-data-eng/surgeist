@@ -386,6 +386,7 @@ fn install(
         source,
         DomSourceNativeHtmlInstallLimits::new(limits, source_limits()),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: None,
         },

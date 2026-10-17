@@ -1616,6 +1616,16 @@ impl DomSession {
     pub fn hosted_execution(&self) -> crate::dom_lifecycle::HostedRuntime {
         self.hosted.execution()
     }
+    /// Weak scope permission for one actual Host of this original Session.
+    pub fn source_execution_scope(
+        &self,
+        host: surgeist_dom::DomHostedHostId,
+        cancel: &AtomicBool,
+    ) -> Result<crate::dom_lifecycle::DomSourceExecutionScope, crate::DomHostedRuntimeError> {
+        self.hosted
+            .execution()
+            .execution_scope(&self.dom, host, cancel)
+    }
     /// Permission to execute one source operation through the original family owners.
     pub fn source_execution(&self) -> crate::dom_source::DomSourceRuntime {
         crate::dom_source::DomSourceRuntime::new(
@@ -2383,6 +2393,7 @@ mod tests {
                     DomSourceEdit::insert_before(later, container, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2398,6 +2409,7 @@ mod tests {
                     DomSourceEdit::insert_before(earlier, container, Some(later)),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2413,6 +2425,7 @@ mod tests {
                     DomSourceEdit::insert_before(isolated, shadow, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2453,6 +2466,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2483,6 +2497,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2568,6 +2583,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2607,6 +2623,7 @@ mod tests {
                     DomSourceEdit::set_attribute(style, "title", title.clone()),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2622,6 +2639,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2701,6 +2719,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2749,6 +2768,7 @@ mod tests {
                             edit,
                             source_limits(),
                             &mut DomSourceServices {
+                                execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None,
                             },
@@ -2841,6 +2861,7 @@ mod tests {
                     DomSourceEdit::insert_before(style, container, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2894,6 +2915,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -2921,6 +2943,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2938,6 +2961,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -2988,6 +3012,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None
                 },
@@ -3032,6 +3057,7 @@ mod tests {
                     operation,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -3221,6 +3247,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -3406,6 +3433,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |source| {
                         observed = Some((
                             source.base_url().clone(),
@@ -3536,6 +3564,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -3612,6 +3641,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -3695,6 +3725,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -3734,6 +3765,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
                 },
@@ -3858,6 +3890,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None
                 },
@@ -3885,6 +3918,7 @@ mod tests {
                     pending,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4083,6 +4117,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4114,6 +4149,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4301,6 +4337,7 @@ mod tests {
                     DomSourceEdit::detach(target),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4318,6 +4355,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4412,6 +4450,7 @@ mod tests {
                             edit,
                             source_limits(),
                             &mut DomSourceServices {
+                                execution_scope: None,
                                 style_policy: &mut |source| {
                                     *seen =
                                         observer.snapshot(root).is_ok_and(|value| value.is_some());
@@ -4511,6 +4550,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -4530,6 +4570,7 @@ mod tests {
                     DomSourceEdit::detach(host),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4546,6 +4587,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4819,6 +4861,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -4854,6 +4897,7 @@ mod tests {
                     operation,
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
@@ -5001,6 +5045,7 @@ mod replacement_test {
                 edit,
                 DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096, 1),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |source| {
                         Some(DomStyleInlineCspObservation::complete_empty(source, 1))
                     },

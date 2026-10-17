@@ -141,9 +141,21 @@ pub struct DomSourceDialogRequest {
     pub(crate) operation: DomSourceOperationId,
     pub(crate) subject: NodeId,
     pub(crate) action: HtmlDialogAction,
-    pub(crate) hook: Option<super::watcher::HookOccurrence>,
+    pub(crate) occurrence: Option<super::watcher::DialogOccurrence>,
 }
 impl DomSourceDialogRequest {
+    pub(crate) fn hook(&self) -> Option<super::watcher::HookOccurrence> {
+        match self.occurrence {
+            Some(super::watcher::DialogOccurrence::Hook(value)) => Some(value),
+            _ => None,
+        }
+    }
+    pub(crate) fn show(&self) -> Option<super::watcher::HookOccurrence> {
+        match self.occurrence {
+            Some(super::watcher::DialogOccurrence::Show(value)) => Some(value),
+            _ => None,
+        }
+    }
     pub fn operation(&self) -> DomSourceOperationId {
         self.operation
     }

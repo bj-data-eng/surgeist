@@ -5,11 +5,19 @@ use crate::{
 };
 use surgeist_html::{HtmlDialogAction, HtmlDialogReply};
 impl Operation {
-    pub(super) fn watcher_receipt_applied(&self) -> bool {
-        matches!(self.receipt, Some(Receipt::Watcher { applied: true, .. }))
+    pub(super) fn external_receipt_applied(&self) -> bool {
+        matches!(
+            self.receipt,
+            Some(
+                Receipt::Watcher { applied: true, .. }
+                    | Receipt::RememberedFocus { applied: true, .. }
+            )
+        )
     }
-    pub(super) fn restore_watcher_receipt(&mut self, value: bool) {
-        if let Some(Receipt::Watcher { applied, .. }) = &mut self.receipt {
+    pub(super) fn restore_external_receipt(&mut self, value: bool) {
+        if let Some(Receipt::Watcher { applied, .. } | Receipt::RememberedFocus { applied, .. }) =
+            &mut self.receipt
+        {
             *applied = value;
         }
     }
@@ -18,7 +26,7 @@ impl Operation {
         &self,
         request: &DomSourceDialogRequest,
     ) -> Result<crate::store::dialog::HookFrame, DomError> {
-        if request.operation != self.id || request.hook.is_none() {
+        if request.operation != self.id || request.hook().is_none() {
             return Err(DomError::InvalidSourceOperation);
         }
         let Some(select::Effect::DialogHook(frame)) =
@@ -26,7 +34,7 @@ impl Operation {
         else {
             return Err(DomError::InvalidSourceOperation);
         };
-        let hook = request.hook.expect("qualified hook");
+        let hook = request.hook().expect("qualified hook");
         if hook.command != self.index
             || !matches!(frame.invocation, Invocation::Exposed(actual) if actual == hook.ordinal)
             || self.draft.published_id(frame.subject) != Some(request.subject)
@@ -122,7 +130,7 @@ impl DomSourceLease<'_> {
             if !op.draft.document_fully_active(document_key, cancel)? {
                 return Ok(None);
             }
-            let hook = request.hook.expect("qualified occurrence");
+            let hook = request.hook().expect("qualified occurrence");
             DomCloseWatcherId {
                 operation: op.id,
                 command: hook.command,
@@ -201,11 +209,29 @@ impl DomSourceLease<'_> {
         steps: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let op = self
-            .dom
-            .source_operation
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        if self.complete
+            || self
+                .dom
+                .source_operation
+                .as_ref()
+                .is_none_or(|operation| operation.id != self.id)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.dom.admit_hosted_runtime_work(steps, cancel)
+    }
+}
+
+impl Dom {
+    pub(in crate::store) fn admit_hosted_runtime_work(
+        &self,
+        steps: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(op) = self.source_operation.as_ref() else {
+            check_cancel(cancel)?;
+            return Ok(());
+        };
         for _ in 0..steps {
             if let Some(work) = op.observed_event_work() {
                 work.step(cancel)?;

@@ -1215,6 +1215,7 @@ impl DomSourceLease<'_> {
                 subject: key,
                 cursor,
                 state: crate::store::dialog::ShowState::Ready,
+                invocation: Invocation::Unissued,
             });
         } else {
             // HTML's post-dispatch instruction clears CURRENT tracker, even if

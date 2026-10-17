@@ -1918,7 +1918,7 @@ impl DomHostedSource {
 #[cfg(test)]
 mod tests;
 
-/// Relative Source projection of actual original Window/watcher allocations.
+/// Relative Source projection of actual original Host/Window/focus/watcher allocations.
 /// This weak storage observation grants no execution authority and cannot keep
 /// a disposed issuer alive. Drop represented backing before this guard.
 #[derive(Debug)]

@@ -111,6 +111,7 @@ fn insert_without_url(
         DomSourceEdit::insert_before(container, parent, None),
         source_limits(),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: None,
         },
@@ -568,6 +569,7 @@ fn insert_with_url(
         DomSourceEdit::insert_before(container, parent, None),
         source_limits(),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: Some(DomSourceUrlService { revision, observe }),
         },
@@ -871,6 +873,7 @@ fn unavailable_qualified_producer_preserves_request_until_actual_failure_observa
             operation,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
                     revision: &inputs.revision,
@@ -970,6 +973,7 @@ fn stale_external_revision_refuses_without_default_policy_then_same_source_resum
             operation,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
                     revision: &inputs.revision,
@@ -1102,6 +1106,7 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
                 DomSourceEdit::set_attribute(container, name, value),
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -1171,6 +1176,7 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
         DomSourceEdit::adopt(container, a.document().node()),
         source_limits(),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: None,
         },
@@ -1276,6 +1282,7 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
             operation,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
                     revision: &current_inputs.revision,
@@ -1346,6 +1353,7 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
         DomSourceEdit::detach(container),
         source_limits(),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: None,
         },

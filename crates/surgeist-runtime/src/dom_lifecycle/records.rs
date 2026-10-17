@@ -15,6 +15,7 @@ use surgeist_dom::{
 pub(super) struct Host {
     pub id: DomHostedHostId,
     pub top_levels: Vec<Composition>,
+    pub focus: super::focus::HostFocusDisposition,
 }
 pub(super) struct Composition {
     pub group: Option<Group>,

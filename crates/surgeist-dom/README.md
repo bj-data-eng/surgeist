@@ -94,9 +94,9 @@ HTML custom names establish Undefined state through shared rules. Common state
 includes the actual empty reaction queue/unset click flag, and HTML-only common
 state with a nullable canonical `NodeId` for previous focus. Native and cloned
 elements start null; parsed installation maps the report's actual null-only
-state. Current operations preserve that value, and remembered-focus execution
-still requires its qualified host observation. Internals/popover fields retain
-their closed values.
+state. Attribute edits, detach and adoption preserve the value. Remembered-focus
+execution consumes its qualified Source observation, described below.
+Internals/popover fields retain their closed values.
 Special built-ins lacking their actual family adapter reject atomically with
 `NativeInitializationRequired` carrying the exact HTML-owned requirement. SVG
 lowercase script has its actual native state; uppercase Script is ordinary SVG.
@@ -993,14 +993,37 @@ real task and canonical tracker through the original bound DOM-manipulation
 owner. Its exact publication is accepted once; refusal retains it for retry
 without queueing again. Show adds `open=""` through the ordinary attribute hooks
 and publishes the reached prefix. An inactive or disconnected receiver then
-waits at RememberFocusedElement. A connected, fully active receiver enters its
+reaches RememberFocusedElement. A connected, fully active receiver enters its
 Document's open-dialog list and requests EstablishCloseWatcher. Runtime's Source
 driver registers the actual watcher and accepts its exact result through the
-original Source receipt; Show then waits at RememberFocusedElement. Direct
+original Source receipt; Show then requests RememberFocusedElement. Direct
 Source attribute and tree operations use the same hook and retained suffix.
 Without the actual service, the request remains pending. Registration uses the
 Dialog's original relevant Global, independently of its current node-Document;
 adoption does not substitute a new Window.
+
+Each Source operation retains its actual entry scope outside the mutable Draft.
+Hosted entries preserve their original Global and optional Host association;
+they cannot fall back to native binding when that association is unavailable.
+A native entry may receive one explicit Host binding from the original trusted
+issuer before its first advance. Advancing without one seals it unbound, and
+resume cannot change that choice. Nested roots select independently. The
+read-only `DomSourceExecutionEntryScope` observation grants no execution or
+publication authority.
+
+At RememberFocusedElement, the original trusted Host producer prepares an
+operation/action/occurrence-qualified observation against the actual canonical
+basis and original live Host identity. Runtime's sealed headless Host can attest known
+absence; missing or unsupported observations leave the request pending. Accepted
+absence writes null to the shared common HTML state and acknowledges the cursor
+once, before yielding CaptureNodeDocument. Retained publication custody survives
+refusal and retry without sampling again. An already-null slot remains a
+semantic no-op. No current positive focused-Element producer or arbitrary DOM
+focus setter is exposed. Inactivity, no Global and surface selection alone
+cannot establish absence. The headless proof covers the complete admitted Host
+lifetime, so unrelated issuer progress does not invalidate it. Actual Host
+retirement/reuse, disposed authority or a stale canonical basis still refuses.
+Future mutable focus adapters require their actual source and scope revisions.
 
 Open removal and source-required tree cleanup destroy the actual watcher before
 clearing the canonical association. This cleanup remains available after hosted

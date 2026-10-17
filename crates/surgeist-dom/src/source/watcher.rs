@@ -5,6 +5,11 @@ pub(crate) struct HookOccurrence {
     pub(crate) command: usize,
     pub(crate) ordinal: u64,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DialogOccurrence {
+    Hook(HookOccurrence),
+    Show(HookOccurrence),
+}
 /// Exact source-qualified manager effect. The trusted owner performs the real
 /// callback-free registration/removal before publishing this capability.
 #[derive(Debug)]

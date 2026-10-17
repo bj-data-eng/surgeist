@@ -104,14 +104,40 @@ event scope. An unfinished nested operation blocks the outer dispatch until the
 child is serviced; completed callbacks are not replayed. Uncanceled Show queues
 its actual null-source toggle task and publishes the canonical tracker before
 adding `open=""` through the ordinary DOM attribute hooks. The reached prefix
-publishes before the next service. An inactive or disconnected receiver waits at
+publishes before the next service. An inactive or disconnected receiver reaches
 RememberFocusedElement. A connected, fully active receiver enters its Document's
 open-dialog list and establishes a close watcher through the actual original
-Window manager before reaching that same focus wait. Direct Source attribute
+Window manager before requesting that same focus observation. Direct Source attribute
 and tree edits retain the same watcher hook and remaining source steps. Ordinary
 atomic edits refuse the service boundary with `NeedsEventfulOperation` and no
 publication. The queued task cannot run through an unfinished synchronous tail.
 These publications do not establish completed Show or its event delivery.
+
+The original Source operation retains its entry execution scope independently
+of later node-Document changes. A hosted entry captures its original Global and
+Host association; an unavailable association does not become a native entry.
+For a native entry without a Global, obtain a weak `DomSourceExecutionScope`
+through `DomSession::source_execution_scope` and supply it in
+`DomSourceServices::execution_scope` at entry. The first advance seals an
+unbound native entry. Resume cannot add or replace its scope: a supplied scope
+must match the retained original, while `None` preserves that binding. Nested
+operations select their own scope rather than inheriting a parent's proof.
+
+`HostedRuntime::create_headless_host` establishes an immutable complete-Host
+restriction excluding HTML content system focus throughout its admitted
+lifetime, including later top-levels and children. Its actual producer can
+therefore establish that no Element is focused. Ordinary Hosts have no focus
+observation yet. Native Window focus, UiSurface selections, inactivity and
+missing hosting are not substitutes for this proof. A headless entry's known
+absence writes null to the canonical common HTML state through the original
+Source receipt, then Show waits at CaptureNodeDocument. Refused acceptance or
+publication retains the observed result without sampling again. Saving null
+over an already-null slot creates no artificial DOM revision. This observation
+supplies neither a positive focused Element nor focus movement. Exact live
+issuer/Host identity and the enforced lifetime restriction qualify this producer;
+unrelated issuer progress does not invalidate its immutable absence fact. A
+retired/reused Host, disposed authority or stale canonical basis still refuses.
+Future mutable adapters must validate their actual source and scope revisions.
 
 Each native Agent owns its Window records separately from execution Globals.
 The Window manager retains actual ordered watcher groups and Dialog-bound action

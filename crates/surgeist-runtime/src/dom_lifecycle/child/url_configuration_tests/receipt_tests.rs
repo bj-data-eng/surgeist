@@ -51,6 +51,7 @@ impl Pending {
                 DomSourceEdit::insert_before(iframe, body, None),
                 source_limits(20_000_000),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
                 },
@@ -212,6 +213,7 @@ impl Pending {
                 self.child.operation(),
                 source_limits(20_000_000),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| None,
                     url: Some(DomSourceUrlService {
                         revision: &self.revision,

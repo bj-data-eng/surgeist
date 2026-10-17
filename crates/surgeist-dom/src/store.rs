@@ -847,13 +847,6 @@ pub struct Dom {
     active_task: std::sync::Weak<crate::select::Authorization>,
     source_operation: Option<Box<source::operation::Operation>>,
     next_source_operation: u64,
-    #[cfg_attr(
-        not(test),
-        expect(
-            clippy::vec_box,
-            reason = "Retained parents move the original operation boxes and pop restores the same owner without fallible reboxing"
-        )
-    )]
     pub(in crate::store) source_parents: Vec<Box<source::operation::Operation>>,
     source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
     style_cssom_roots: Vec<crate::style::DomStyleCssomRoot>,

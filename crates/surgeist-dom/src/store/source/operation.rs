@@ -2,12 +2,17 @@
 //! all mandatory continuation and acknowledged external publication stays in Dom.
 mod dialog;
 pub(crate) mod dialog_queue;
+mod focus;
 pub(in crate::store) mod hosted;
+mod scope;
+#[cfg(test)]
+mod scope_tests;
 mod watcher;
 use super::Invocation;
 use super::*;
 use crate::source::*;
 use crate::style::*;
+use scope::EntryScope;
 use surgeist_cssom::{CssomCommit, CssomPublication, CssomSheetTicket, CssomSnapshot};
 use surgeist_html::{HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Reply};
 
@@ -16,7 +21,7 @@ use surgeist_html::{HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Rep
 enum OperationRoot {
     Edit([Command; 1]),
     NativeInstallation,
-    SelectCompletion,
+    SelectCompletion(NodeId),
     DialogToggleTask(crate::DomDialogToggleTaskInfo),
     #[cfg(test)]
     Commands(Vec<Command>),
@@ -35,7 +40,7 @@ impl std::ops::Deref for OperationRoot {
     fn deref(&self) -> &[Command] {
         match self {
             Self::Edit(commands) => commands,
-            Self::NativeInstallation | Self::SelectCompletion | Self::DialogToggleTask(_) => &[],
+            Self::NativeInstallation | Self::SelectCompletion(_) | Self::DialogToggleTask(_) => &[],
             #[cfg(test)]
             Self::Commands(commands) => commands,
         }
@@ -50,6 +55,7 @@ impl<'a> IntoIterator for &'a OperationRoot {
 }
 pub(in crate::store) struct Operation {
     id: DomSourceOperationId,
+    entry_scope: EntryScope,
     limits: DomSourceLimits,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
@@ -80,11 +86,11 @@ pub(in crate::store) struct Operation {
     custody_bytes: usize,
     canonical_aux_bytes: usize,
 }
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Exclusive fully admitted parked CSP/publication evidence transfers allocation-free after source publication; boxing adds an allocation at that recovery boundary"
-)]
 enum Receipt {
+    RememberedFocus {
+        publication: crate::DomRememberedFocusPublication,
+        applied: bool,
+    },
     Watcher {
         request: DomSourceDialogRequest,
         watcher: crate::DomCloseWatcherId,
@@ -294,8 +300,19 @@ impl Dom {
             owner: self.owner,
             serial: self.next_source_operation,
         };
+        let entry_scope = match EntryScope::capture(self, commands.entry_receiver(), &draft, cancel)
+        {
+            Ok(scope) => scope,
+            Err(error) => {
+                if nested {
+                    self.source_operation = self.source_parents.pop();
+                }
+                return Err(error);
+            }
+        };
         let mut op = Box::new(Operation {
             id,
+            entry_scope,
             limits: original_limits,
             draft: dialog::OperationDraft::Segment(draft),
             commands,
@@ -1218,15 +1235,20 @@ impl Operation {
                 operation: self.id,
                 subject,
                 action: pending.action,
-                hook: pending
-                    .invocation
-                    .map(|invocation| crate::source::watcher::HookOccurrence {
+                occurrence: pending.invocation.map(|invocation| {
+                    let occurrence = crate::source::watcher::HookOccurrence {
                         command: self.index,
                         ordinal: match invocation {
                             Invocation::Unissued => self.draft.source_invocation,
                             Invocation::Exposed(ordinal) => ordinal,
                         },
-                    }),
+                    };
+                    if pending.action == surgeist_html::HtmlDialogAction::RememberFocusedElement {
+                        crate::source::watcher::DialogOccurrence::Show(occurrence)
+                    } else {
+                        crate::source::watcher::DialogOccurrence::Hook(occurrence)
+                    }
+                }),
             })
         } else {
             None
@@ -1401,27 +1423,36 @@ impl Operation {
         self.draft.cancelled_images = None;
         if let Some(next) = issued_next {
             self.draft.source_invocation = next;
-            match &mut self
-                .draft
-                .effects
-                .last_mut()
-                .expect("exposed actual frame")
-                .effect
-            {
-                select::Effect::Style(actual) => {
-                    actual.invocation =
-                        Invocation::Exposed(source.as_ref().expect("issued Style source").ordinal)
+            if let Some(occurrence) = dialog.as_ref().and_then(|request| request.show()) {
+                self.draft
+                    .dialog_show
+                    .as_mut()
+                    .expect("exposed actual Show")
+                    .invocation = Invocation::Exposed(occurrence.ordinal);
+            } else {
+                match &mut self
+                    .draft
+                    .effects
+                    .last_mut()
+                    .expect("exposed actual frame")
+                    .effect
+                {
+                    select::Effect::Style(actual) => {
+                        actual.invocation = Invocation::Exposed(
+                            source.as_ref().expect("issued Style source").ordinal,
+                        )
+                    }
+                    select::Effect::DialogHook(actual) => {
+                        actual.invocation = Invocation::Exposed(
+                            dialog
+                                .as_ref()
+                                .and_then(|request| request.hook())
+                                .expect("issued Hook request")
+                                .ordinal,
+                        )
+                    }
+                    _ => unreachable!("qualified external invocation"),
                 }
-                select::Effect::DialogHook(actual) => {
-                    actual.invocation = Invocation::Exposed(
-                        dialog
-                            .as_ref()
-                            .and_then(|request| request.hook)
-                            .expect("issued Hook request")
-                            .ordinal,
-                    )
-                }
-                _ => unreachable!("qualified external invocation"),
             }
         }
         if let Some(source) = source {
@@ -1470,6 +1501,12 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation);
         }
+        self.dom
+            .source_operation
+            .as_mut()
+            .expect("qualified original operation")
+            .entry_scope
+            .seal();
         if self.dom.source_operation.as_ref().is_some_and(|operation| {
             matches!(operation.commands, OperationRoot::DialogToggleTask(_))
         }) && !self.task_authorization.as_ref().is_some_and(|binding| {
@@ -1631,7 +1668,7 @@ impl DomSourceLease<'_> {
             let checkpoint = op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?;
             let started = op.started;
             let command_index = op.index;
-            let watcher_applied = op.watcher_receipt_applied();
+            let external_applied = op.external_receipt_applied();
             let result = (|| {
                 if op.receipt.is_some() {
                     op.apply_receipt(cancel)?;
@@ -1685,7 +1722,7 @@ impl DomSourceLease<'_> {
                     let observed = op.observe_show(self.dom, subject, action, cancel);
                     if observed.is_err() {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                     }
                     return observed;
                 }
@@ -1707,13 +1744,13 @@ impl DomSourceLease<'_> {
                                 operation: op.id,
                                 subject,
                                 action,
-                                hook: None,
+                                occurrence: None,
                             },
                         )));
                     }
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1728,7 +1765,7 @@ impl DomSourceLease<'_> {
                         Ok(published) => published,
                         Err(error) => {
                             checkpoint.restore(&mut op.draft);
-                            op.restore_watcher_receipt(watcher_applied);
+                            op.restore_external_receipt(external_applied);
                             op.started = started;
                             return Err(error);
                         }
@@ -1746,7 +1783,7 @@ impl DomSourceLease<'_> {
                 | Err(DomError::StyleDisabledCompositionRequired) => {
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1757,7 +1794,7 @@ impl DomSourceLease<'_> {
                         op.publication(self.dom, true, PublicationTarget::Style(frame), cancel)
                     {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                         op.started = started;
                         return Err(e);
                     }
@@ -1775,7 +1812,7 @@ impl DomSourceLease<'_> {
                 Err(DomError::HostedCompositionRequired) => {
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1785,7 +1822,7 @@ impl DomSourceLease<'_> {
                         op.publication(self.dom, true, PublicationTarget::None, cancel)
                     {
                         checkpoint.restore(&mut op.draft);
-                        op.restore_watcher_receipt(watcher_applied);
+                        op.restore_external_receipt(external_applied);
                         op.started = started;
                         return Err(error);
                     }
@@ -1796,7 +1833,7 @@ impl DomSourceLease<'_> {
                 }
                 Err(e) => {
                     checkpoint.restore(&mut op.draft);
-                    op.restore_watcher_receipt(watcher_applied);
+                    op.restore_external_receipt(external_applied);
                     op.started = started;
                     return Err(e);
                 }
@@ -1810,7 +1847,10 @@ impl DomSourceLease<'_> {
                         headroom.remaining_phases = 1;
                     }
 
-                    if !matches!(op.receipt, Some(Receipt::Watcher { .. })) {
+                    if !matches!(
+                        op.receipt,
+                        Some(Receipt::Watcher { .. } | Receipt::RememberedFocus { .. })
+                    ) {
                         op.receipt = None;
                         op.request = None;
                         op.owner_binding = None;
@@ -1843,7 +1883,7 @@ impl DomSourceLease<'_> {
                             Ok(published) => published.commit,
                             Err(error) => {
                                 checkpoint.restore(&mut op.draft);
-                                op.restore_watcher_receipt(watcher_applied);
+                                op.restore_external_receipt(external_applied);
                                 op.started = started;
                                 op.index = command_index;
                                 return Err(error);
@@ -2343,6 +2383,21 @@ impl DomSourceLease<'_> {
 }
 impl Operation {
     fn apply_receipt(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(Receipt::RememberedFocus {
+            publication,
+            applied,
+        }) = &self.receipt
+        {
+            if *applied {
+                return Ok(());
+            }
+            let request = publication.request.clone();
+            self.apply_remembered_focus(&request, cancel)?;
+            if let Some(Receipt::RememberedFocus { applied, .. }) = &mut self.receipt {
+                *applied = true;
+            }
+            return Ok(());
+        }
         if let Some(Receipt::Watcher {
             request,
             watcher,
@@ -2366,7 +2421,9 @@ impl Operation {
             return Err(DomError::StyleProtocol);
         }
         let reply = match self.receipt.as_ref().expect("actual retained receipt") {
-            Receipt::Watcher { .. } => unreachable!("watcher handled above"),
+            Receipt::Watcher { .. } | Receipt::RememberedFocus { .. } => {
+                unreachable!("external receipt handled above")
+            }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
             Receipt::Cssom { revision, sheet } => {
                 let old = self.draft.element(frame.key)?.style_state().expect("Style");
@@ -2449,7 +2506,7 @@ impl Dom {
         self.require_source_entry()?;
         self.validate_style_select(task)?;
         let mut lease = self.begin_source_root(
-            OperationRoot::SelectCompletion,
+            OperationRoot::SelectCompletion(task.select()),
             Arc::new(BatchIdentity),
             limits,
             cancel,
@@ -2557,8 +2614,11 @@ impl Dom {
                 )
                 .ok_or(DomError::RepresentationExhausted)
                 .map_err(Error::Target)?;
+            let entry_scope = EntryScope::capture(self, Some(parent), &staged.draft, cancel)
+                .map_err(Error::Target)?;
             let mut operation = Box::new(Operation {
                 id,
+                entry_scope,
                 limits: original_limits,
                 draft: dialog::OperationDraft::Segment(staged.draft),
                 commands: OperationRoot::NativeInstallation,

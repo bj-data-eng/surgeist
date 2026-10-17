@@ -94,6 +94,7 @@ fn request(session: &mut DomSession, subject: NodeId) -> DomSourceEventRequest {
             DomSourceEdit::show_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -117,6 +118,7 @@ fn resume(session: &mut DomSession, operation: DomSourceOperationId) -> DomSourc
             operation,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -841,6 +843,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
                 DomSourceEdit::set_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -887,6 +890,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
             operation,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None
             },
@@ -1361,6 +1365,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
                             DomSourceEdit::show_dialog(next),
                             source_limits(),
                             &mut DomSourceServices {
+                                execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None,
                             },
@@ -1828,6 +1833,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
                             DomSourceEdit::set_attribute(subject, "open", ""),
                             source_limits(),
                             &mut DomSourceServices {
+                                execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None
                             },
@@ -1901,6 +1907,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
                         DomSourceEdit::show_dialog(second),
                         source_limits(),
                         &mut DomSourceServices {
+                            execution_scope: None,
                             style_policy: &mut policy,
                             url: None,
                         },
@@ -2125,6 +2132,7 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -2173,6 +2181,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
                     DomSourceEdit::show_dialog(second),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
                     },
@@ -2601,6 +2610,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
                         DomSourceEdit::show_dialog(second),
                         source_limits(),
                         &mut DomSourceServices {
+                            execution_scope: None,
                             style_policy: &mut policy,
                             url: None,
                         },
@@ -2809,6 +2819,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
                 source_limits(),
             ),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -2864,6 +2875,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
             done.operation(),
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None
             },
@@ -2932,6 +2944,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
                 DomSourceEdit::set_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -3055,6 +3068,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
                 DomSourceEdit::remove_attribute(subject, "open"),
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },

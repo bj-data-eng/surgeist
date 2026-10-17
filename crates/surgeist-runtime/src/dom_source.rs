@@ -26,6 +26,8 @@ use surgeist_dom::{
 /// Borrowed services for the reached requests of one actual Source operation.
 /// These references own no resource, response slot, issuer or operation cursor.
 pub struct DomSourceServices<'a> {
+    /// Optional exact Session/Host permission, bound only at fresh Source entry.
+    pub execution_scope: Option<&'a crate::DomSourceExecutionScope>,
     /// Actual CSP observation supplier; absence remains an unavailable policy.
     pub style_policy: &'a mut dyn FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
     /// Independently configured URL/origin observation service, if available.
@@ -213,8 +215,18 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
         let progress = {
             let mut lease = dom.begin_source_edit(edit, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             self.drive_lease(
                 &guard,
                 &mut lease,
@@ -244,8 +256,18 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
         let progress = {
             let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             self.drive_lease(
                 &guard,
                 &mut lease,
@@ -276,12 +298,22 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
         let limits = budgets.source();
         let progress = {
             let mut lease = dom
                 .raw_mut()
                 .begin_native_installation(target, fragment, budgets, cancel)
                 .map_err(DomSourceRuntimeError::NativeInstallation)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             self.drive_lease(
                 &guard,
                 &mut lease,
@@ -312,10 +344,20 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
         let progress = {
             let mut lease = dom
                 .raw_mut()
                 .begin_select_completion(task, checkpoint, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             self.drive_lease(
                 &guard,
                 &mut lease,
@@ -346,10 +388,20 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
         let progress = {
             let mut lease = dom
                 .raw_mut()
                 .resume_select_completion(operation, task, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
             self.drive_lease(
                 &guard,
                 &mut lease,
@@ -415,6 +467,14 @@ impl DomSourceRuntime {
                         .hosted
                         .service_dialog_watcher(lease, &request, cancel)
                         .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    if request.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement
+                        && self
+                            .hosted
+                            .service_remembered_focus(lease, &request, cancel)
+                            .map_err(DomSourceRuntimeError::Hosted)?
                     {
                         continue;
                     }
@@ -621,6 +681,7 @@ mod tests {
                 DomSourceEdit::create_document(),
                 limits,
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| panic!("Document creation has no inline CSS request"),
                     url: None,
                 },
@@ -641,6 +702,7 @@ mod tests {
                 DomSourceEdit::create_text(id.node(), "exact text"),
                 limits,
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| panic!("Text creation has no inline CSS request"),
                     url: None,
                 },

@@ -141,6 +141,7 @@ fn drive(
             edit,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -462,6 +463,7 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
                 },
@@ -501,6 +503,7 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
                 operation,
                 source_limits(),
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None
                 },

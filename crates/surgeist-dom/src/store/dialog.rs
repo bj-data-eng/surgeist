@@ -21,6 +21,7 @@ pub(super) struct ShowFrame {
     pub subject: Key,
     pub cursor: HtmlDialogCursor,
     pub state: ShowState,
+    pub invocation: source::Invocation,
 }
 #[derive(Clone, Copy)]
 pub(super) struct HookFrame {
@@ -48,6 +49,7 @@ impl Draft {
             subject: key,
             cursor: HtmlDialogCursor::new(Operation::Show),
             state: ShowState::Ready,
+            invocation: source::Invocation::Unissued,
         });
         if matches!(frame.state, ShowState::AwaitingOpenHooks) {
             self.run_effects(limits, cancel)?;
@@ -327,7 +329,8 @@ impl Draft {
                 self.dialog_show.map(|frame| PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
-                    invocation: None,
+                    invocation: (frame.cursor.action() == Action::RememberFocusedElement)
+                        .then_some(frame.invocation),
                 })
             })
             .filter(|pending| pending.action == action)

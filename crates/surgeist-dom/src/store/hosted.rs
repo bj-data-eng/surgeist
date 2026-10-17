@@ -1746,3 +1746,18 @@ impl DomHostedSource {
         Ok(retained)
     }
 }
+
+impl crate::DomHostedSource {
+    /// Admit actual source-issued Runtime Host work on the original counters.
+    /// Independent calls with no active Source have no Source work domain.
+    pub fn admit_runtime_work(
+        &self,
+        dom: &Dom,
+        steps: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        dom.validate_hosted_source(self)
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        dom.admit_hosted_runtime_work(steps, cancel)
+    }
+}

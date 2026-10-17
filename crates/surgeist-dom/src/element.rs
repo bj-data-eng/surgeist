@@ -639,6 +639,12 @@ impl DomElement {
     pub(crate) fn is_html_script(&self) -> bool {
         matches!(self.family, NativeFamily::Script)
     }
+    pub(crate) fn remember_no_focused_element(&mut self) {
+        self.common
+            .html_mut()
+            .expect("qualified native Dialog")
+            .remember_focused_element(None);
+    }
     /// Actual current common values with canonical element references.
     pub fn common_state(&self) -> HtmlCommonState<crate::NodeId> {
         self.common

@@ -1516,6 +1516,7 @@ mod completion_retention_tests {
                     edit,
                     DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096, 1),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
                     },

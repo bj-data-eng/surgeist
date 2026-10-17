@@ -1,6 +1,10 @@
 //! One requested canonical edit and its retained source continuation.
 pub(crate) mod event;
+mod focus;
+mod scope;
 mod url;
+pub use focus::{DomRememberedFocusPreparation, DomRememberedFocusPublication};
+pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;

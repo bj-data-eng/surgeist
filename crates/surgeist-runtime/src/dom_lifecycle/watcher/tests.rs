@@ -103,6 +103,7 @@ fn apply(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceCompletion {
             edit,
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -900,6 +901,7 @@ fn show_event(
             DomSourceEdit::show_dialog(subject),
             limits,
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -977,6 +979,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
                     request.operation(),
                     bounded,
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
                     },
@@ -1027,6 +1030,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
                 request.operation(),
                 exact,
                 &mut DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
@@ -1124,6 +1128,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
                     DomSourceEdit::set_attribute(child, "open", ""),
                     source_limits(),
                     &mut DomSourceServices {
+                        execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
                     },
@@ -1180,6 +1185,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
             },
@@ -1602,6 +1608,7 @@ fn ancestor_removal_attempt(
         DomSourceEdit::show_dialog(parent),
         work_limit(cap),
         &mut DomSourceServices {
+            execution_scope: None,
             style_policy: &mut policy,
             url: None,
         },

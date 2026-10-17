@@ -692,6 +692,7 @@ mod tests {
                 let mut source = session.source_execution();
                 let mut policy = |_: &surgeist_dom::DomStyleSource| None;
                 let mut services = DomSourceServices {
+                    execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 };
