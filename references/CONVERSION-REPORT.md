@@ -1069,3 +1069,27 @@ source-code incorporation under the distinct BSD 3-Clause provision.
 This adds one partial source identity: 391 = 260 full + 102 partial + 29 metadata-only.
 Earlier totals remain historical. Extraction fidelity does not establish a URL
 parser, record truth, comparison correctness or child-lifecycle acceptance.
+
+## Close-watcher cancel result — 2026-10-17
+
+The [bounded cancellation reference](html-close-watcher-cancel-result--877d6146487f.md)
+reuses complete HTML877d, original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+It selects the complete cancel-action item at raw61982–61988, request-to-close
+algorithm and note at raw62024–62047, close algorithm at raw62050–62058, and
+Dialog cancel callback at raw46630–46632. Manual Markdown conversion adds
+headings, attribution, source links and related-reference navigation, normalizes
+source whitespace and renders the original list boundaries. The source's
+contradictory `false` remains literal; the separate implementation determination
+belongs to #1225.
+
+Source order, branches, callback polarity and the complete selected text were
+reviewed against the retained raw source. UTF-8/LF, whitespace and local paths
+were checked. This is a readable bounded transcription, with no claim of original
+HTML markup or byte identity, full close-watcher coverage, rendering equivalence
+or implementation correctness. The unchanged complete
+[WHATWG license](../licenses/whatwg/LICENSE) and
+[modification notice](../licenses/whatwg/NOTICE.md#close-watcher-cancel-result--2026-10-17)
+cover the material. No source scripts or renderer ran and no asset was added.
+This is another representation of the existing HTML identity; totals remain
+391 = 260 full + 102 partial + 29 metadata-only.

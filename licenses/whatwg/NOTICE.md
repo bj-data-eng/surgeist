@@ -503,3 +503,22 @@ records the exact spans and fidelity bounds. Editorial implementation
 qualifications remain separate from literal source. No endorsement, replacement
 URL specification, parser or whole-browser conformance is implied. Surgeist's
 own license remains unchanged.
+
+## Close-watcher cancel result — 2026-10-17
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [bounded cancellation reference](../../references/html-close-watcher-cancel-result--877d6146487f.md)
+reuses HTML snapshot `877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original
+SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+The unchanged complete [LICENSE](LICENSE) supplies CC BY 4.0 terms for prose
+and the separate BSD 3-Clause provision for portions incorporated into code.
+
+Changes by Surgeist on 17 October 2026: bounded offline selection, manual
+Markdown conversion, headings, whitespace normalization, list formatting,
+attribution, immutable source links and related-reference navigation. The
+contradictory source boolean is retained, with the implementation determination
+linked separately. The [conversion record](../../references/CONVERSION-REPORT.md#close-watcher-cancel-result--2026-10-17)
+states coverage and fidelity limits. No source script ran; no endorsement,
+replacement standard or browser-conformance claim is implied. Surgeist's own
+license remains unchanged.

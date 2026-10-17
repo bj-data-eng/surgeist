@@ -666,3 +666,12 @@ and unchanged complete local license cover this reference. Specification prose
 uses CC BY 4.0; BSD 3-Clause applies only to portions incorporated into code.
 This selection adds no URL parser, dependency, JavaScript runtime or change to
 Surgeist's own license.
+
+## Close-watcher cancellation source
+
+The [bounded HTML cancellation reference](references/html-close-watcher-cancel-result--877d6146487f.md)
+retains selected clauses from the existing immutable HTML877d edition under the
+[WHATWG attribution and modification notice](licenses/whatwg/NOTICE.md#close-watcher-cancel-result--2026-10-17)
+and unchanged complete local license. Specification prose uses CC BY 4.0;
+source-code incorporation uses the separate BSD 3-Clause provision. The literal
+source and its separately linked implementation determination remain distinct.

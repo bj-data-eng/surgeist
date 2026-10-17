@@ -1007,3 +1007,19 @@ from the literal URL algorithms and does not certify implementation completion.
 The [conversion report](CONVERSION-REPORT.md#url-equality-and-serialization--2026-10-16)
 and [WHATWG attribution](../licenses/whatwg/NOTICE.md#url-equality-and-serialization--2026-10-16)
 record the bounded extraction and unchanged full license.
+
+## Close-watcher cancel result
+
+The [bounded cancellation reference](html-close-watcher-cancel-result--877d6146487f.md)
+retains the cancel-action contract, complete request-to-close and close
+algorithms, and Dialog's supplied cancel callback from the existing HTML877d
+edition. The literal source's contradictory final `false` in the descriptive
+cancel-action item remains visible. [Issue #1225](https://github.com/bj-data-eng/surgeist/issues/1225)
+owns the narrow correction to `true`, based on the same edition's actual
+callbacks and the pinned DOM event-return rules; no new edition or browser
+override is selected. This interpretation does not establish a completed
+request-close implementation.
+
+The [conversion record](CONVERSION-REPORT.md#close-watcher-cancel-result--2026-10-17)
+and [WHATWG notice](../licenses/whatwg/NOTICE.md#close-watcher-cancel-result--2026-10-17)
+identify the bounded selection and existing license.
