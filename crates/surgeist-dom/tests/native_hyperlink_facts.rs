@@ -25,12 +25,18 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 fn revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 5, 7, 11)
 }
-fn record(revision: &HtmlBaseFactsRevision, spelling: &str, blank: bool) -> HtmlBaseUrlRecord {
+fn record(
+    revision: &HtmlBaseFactsRevision,
+    spelling: &str,
+    blank: bool,
+    fragment_delimiter_offset: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         spelling.into(),
         HtmlBaseUrlScheme::Other,
         blank,
+        fragment_delimiter_offset,
     )
     .unwrap()
 }
@@ -44,9 +50,10 @@ fn environment(
     revision: &HtmlBaseFactsRevision,
     base_spelling: &str,
     outcomes: Vec<(DocumentString, HtmlEncodingUrlParseOutcome)>,
+    fragment_delimiter_offset: Option<usize>,
 ) -> Environment {
-    let fallback = record(revision, "about:blank", true);
-    let base = record(revision, base_spelling, false);
+    let fallback = record(revision, "about:blank", true, None);
+    let base = record(revision, base_spelling, false, fragment_delimiter_offset);
     let encoding = HtmlBaseEncoding::fresh();
     let base_facts = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
@@ -156,8 +163,8 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
     for tag in ["a", "area"] {
         let mut f = pair(tag);
         let revision = revision();
-        let old_url = record(&revision, "https://old.test/opaque-result", false);
-        let new_url = record(&revision, "https://new.test/opaque-result", false);
+        let old_url = record(&revision, "https://old.test/opaque-result", false, None);
+        let new_url = record(&revision, "https://new.test/opaque-result", false, None);
         let first = environment(
             &revision,
             "https://first.test/base/",
@@ -165,6 +172,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
                 "same".into(),
                 HtmlEncodingUrlParseOutcome::Parsed(old_url.clone()),
             )],
+            None,
         );
         let second = environment(
             &revision,
@@ -173,6 +181,7 @@ fn equal_href_after_adoption_preserves_history_without_requiring_the_new_context
                 "changed".into(),
                 HtmlEncodingUrlParseOutcome::Parsed(new_url.clone()),
             )],
+            None,
         );
         bind_base(&mut f.dom, f.first, f.first_base, &first);
         bind_base(&mut f.dom, f.second, f.second_base, &second);
@@ -277,8 +286,8 @@ fn clone_parses_copied_href_in_its_destination_instead_of_copying_source_record_
     for tag in ["a", "area"] {
         let mut f = pair(tag);
         let revision = revision();
-        let source_url = record(&revision, "https://equal-spelling.test/result", false);
-        let target_url = record(&revision, "https://equal-spelling.test/result", false);
+        let source_url = record(&revision, "https://equal-spelling.test/result", false, None);
+        let target_url = record(&revision, "https://equal-spelling.test/result", false, None);
         assert_ne!(source_url, target_url);
         let raw = DocumentString::from_utf16(vec![9, 0xd800, 0, 0xdc00, 32]);
         let first = environment(
@@ -288,6 +297,7 @@ fn clone_parses_copied_href_in_its_destination_instead_of_copying_source_record_
                 raw.clone(),
                 HtmlEncodingUrlParseOutcome::Parsed(source_url.clone()),
             )],
+            None,
         );
         let second = environment(
             &revision,
@@ -296,6 +306,7 @@ fn clone_parses_copied_href_in_its_destination_instead_of_copying_source_record_
                 raw.clone(),
                 HtmlEncodingUrlParseOutcome::Parsed(target_url.clone()),
             )],
+            None,
         );
         bind_base(&mut f.dom, f.first, f.first_base, &first);
         bind_base(&mut f.dom, f.second, f.second_base, &second);
@@ -330,8 +341,8 @@ fn exact_utf16_success_failure_empty_and_absent_href_have_distinct_history_and_a
     for tag in ["a", "area"] {
         let mut f = pair(tag);
         let revision = revision();
-        let parsed_url = record(&revision, "https://literal.test/success", false);
-        let empty_url = record(&revision, "https://literal.test/present-empty", false);
+        let parsed_url = record(&revision, "https://literal.test/success", false, None);
+        let empty_url = record(&revision, "https://literal.test/present-empty", false, None);
         let raw = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
         let failure_raw = DocumentString::from_utf16(vec![0xd800, 9, 0xdc00]);
         let missing_raw = DocumentString::from_utf16(vec![0xd801, 0, 0xdc00]);
@@ -349,6 +360,7 @@ fn exact_utf16_success_failure_empty_and_absent_href_have_distinct_history_and_a
                     HtmlEncodingUrlParseOutcome::Parsed(empty_url.clone()),
                 ),
             ],
+            None,
         );
         let fresh = f.dom.snapshot();
         assert!(link(&fresh, f.hyperlink).url().is_none());

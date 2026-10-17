@@ -2,10 +2,15 @@
 //!
 //! Native global and clock records describe the selected Rust execution domain;
 //! they do not acknowledge ECMAScript realm construction or JS execution.
+mod agent;
+mod child;
 mod clock;
 mod destruction;
+mod history;
+mod policy;
 mod records;
 mod uuid;
+pub(crate) use child::SourceProgress as HostedSourceProgress;
 
 use crate::dom_event::DomEventDom;
 use std::cell::RefCell;
@@ -15,9 +20,9 @@ use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use surgeist_dom::{
     Dom, DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
-    DomHostedEntryId, DomHostedError, DomHostedGlobalId, DomHostedHostId, DomHostedLimits,
-    DomHostedNavigableId, DomHostedPolicyPublication, DomHostedPreparedTopLevel, DomHostedSource,
-    DomHostedTopLevelPreparation, DomOwnerId,
+    DomHostedEntryId, DomHostedEntryInitialization, DomHostedError, DomHostedGlobalId,
+    DomHostedHostId, DomHostedLimits, DomHostedNavigableId, DomHostedPolicyPublication,
+    DomHostedPreparedTopLevel, DomHostedSource, DomHostedTopLevelPreparation, DomOwnerId,
 };
 
 /// Finite native orchestration bounds, separate from canonical DOM admission.
@@ -72,6 +77,8 @@ pub enum DomHostedRuntimeError {
     Inactive,
     /// Actual native checkpoint work remains unsupported or source-pending.
     CheckpointUnavailable,
+    /// The reached URL stage has no available qualified observation.
+    UrlUnavailable,
 }
 impl fmt::Display for DomHostedRuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -124,21 +131,111 @@ impl DomHostedTopLevel {
         self.document
     }
 }
-/// A phase outcome from the original retained lifecycle operation.
+/// Observation that the actual named destruction invocation handed off its
+/// queued work. It carries no task, execution, source or completion authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomHostedProgress {
-    /// The exact original host/operation remains owned by the session.
+pub struct DomHostedDestructionQueued {
+    host: DomHostedHostId,
+    navigable: DomHostedNavigableId,
+    traversable: DomHostedNavigableId,
+    operation: surgeist_dom::DomHostedOperationId,
+}
+impl DomHostedDestructionQueued {
+    /// Original actual Host membership.
+    pub const fn host(self) -> DomHostedHostId {
+        self.host
+    }
+    /// Exact named target of this destruction invocation.
+    pub const fn navigable(self) -> DomHostedNavigableId {
+        self.navigable
+    }
+    /// Actual original traversal queue, independent from later unlinking.
+    pub const fn traversable(self) -> DomHostedNavigableId {
+        self.traversable
+    }
+    /// Canonical operation retaining this invocation's original Work.
+    pub const fn operation(self) -> surgeist_dom::DomHostedOperationId {
+        self.operation
+    }
+}
+
+/// Actual native task body advanced by the hosted lifecycle owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomHostedTaskKind {
+    /// The original Global's source-selected History update job.
+    History,
+    /// The original Global's lifecycle destruction continuation.
+    Destruction,
+}
+
+/// A retained queue head cannot presently execute its exact next step.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomHostedTaskWait {
+    /// The shared native loop still owns another task or its checkpoint.
+    CurrentTask,
+    /// The actual task Document is inactive but has not been destroyed.
+    Inactive,
+    /// The invocation's captured descendant completion dependencies remain.
+    Descendants,
+    /// Actual native checkpoint work remains, including pending Slot signals.
+    CheckpointUnavailable,
+    /// A genuinely unfinished synchronous Source hook still owns its tail.
+    SourceTail,
+}
+
+/// Observation of actual queued execution, distinct from Source edit completion.
+/// These scalar observations retain no queue, task, cursor or mutable owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomHostedTaskProgress {
+    /// This qualified traversable has no remaining queued execution obligation.
+    Idle,
+    /// The same original operation and queue head remain retained.
     Pending {
-        /// Host whose original lifecycle operation remains retained.
-        host: DomHostedHostId,
+        /// Actual canonical lifecycle operation owning this continuation.
+        operation: surgeist_dom::DomHostedOperationId,
+        /// The precise reached wait, without acknowledging its work.
+        reason: DomHostedTaskWait,
     },
-    /// All initial top-level phases completed.
-    Created(DomHostedTopLevel),
-    /// Actual queued parent-global destruction and final cleanup completed.
-    Destroyed {
-        /// Exact navigable retired by the completed cleanup.
-        navigable: DomHostedNavigableId,
+    /// One actual native task body and its checkpoint completed.
+    Executed {
+        /// Original canonical lifecycle operation.
+        operation: surgeist_dom::DomHostedOperationId,
+        /// Original task Document, independent of later node adoption.
+        document: surgeist_dom::DocumentId,
+        /// Actual original native Global.
+        global: DomHostedGlobalId,
+        /// The body that actually ran.
+        kind: DomHostedTaskKind,
     },
+    /// A captured History obligation settled from actual same-generation
+    /// Document destruction, without executing its body or writing History.
+    CanceledDocumentDestroyed {
+        /// Original canonical lifecycle operation.
+        operation: surgeist_dom::DomHostedOperationId,
+        /// Actual destroyed task Document.
+        document: surgeist_dom::DocumentId,
+        /// Original Global whose task was not executed.
+        global: DomHostedGlobalId,
+    },
+    /// The original queued continuation finished all its actual obligations.
+    Complete {
+        /// Actual completed canonical lifecycle operation.
+        operation: surgeist_dom::DomHostedOperationId,
+    },
+}
+
+impl DomHostedTaskProgress {
+    /// The actual original operation owning this outcome; an idle queue has no
+    /// operation to acknowledge, resume or compare with a later FIFO task.
+    pub const fn operation(self) -> Option<surgeist_dom::DomHostedOperationId> {
+        match self {
+            Self::Idle => None,
+            Self::Pending { operation, .. }
+            | Self::Executed { operation, .. }
+            | Self::CanceledDocumentDestroyed { operation, .. }
+            | Self::Complete { operation } => Some(operation),
+        }
+    }
 }
 
 /// Current associated-Document capture of the actual native settings object.
@@ -152,6 +249,8 @@ pub struct DomHostedSettings {
     time_origin: clock::CoarsenedSample,
     creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
     top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
+    top_level_origin: surgeist_dom::DomOpaqueOrigin,
+    cross_site: bool,
 }
 impl DomHostedSettings {
     /// Native Global whose actual settings were read.
@@ -201,13 +300,19 @@ impl DomHostedSettings {
     pub fn top_level_creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
         &self.top_level_creation_url
     }
+    /// Original top-level origin passed to this actual Settings constructor.
+    /// This does not change when the top traversable's active entry changes.
+    pub fn top_level_origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+        &self.top_level_origin
+    }
     /// Group mode none does not provide cross-origin isolation.
     pub const fn cross_origin_isolated(&self) -> bool {
         false
     }
-    /// This actual no-parent top-level context is not a cross-site descendant.
+    /// Cross-site ancestry computed from this capture's actual canonical
+    /// parent active-Document chain, not a Global's creation-time mirror.
     pub const fn cross_site(&self) -> bool {
-        false
+        self.cross_site
     }
 }
 
@@ -220,6 +325,7 @@ pub struct DomHostedHistoryEntry {
     origin: surgeist_dom::DomOpaqueOrigin,
     key: [u16; 36],
     id: [u16; 36],
+    step: Option<u64>,
 }
 impl DomHostedHistoryEntry {
     /// Exact canonical history-entry identity.
@@ -242,9 +348,9 @@ impl DomHostedHistoryEntry {
     pub fn id(&self) -> &[u16; 36] {
         &self.id
     }
-    /// Initialization assigned this actual top-level entry's step to zero.
-    pub const fn step(&self) -> u64 {
-        0
+    /// Actual assigned step; None is the initial entry's source-defined Pending.
+    pub const fn step(&self) -> Option<u64> {
+        self.step
     }
 }
 
@@ -259,7 +365,8 @@ struct HostedState {
     hosts: Vec<records::Host>,
     work: u64,
     creation: Option<Creation>,
-    destruction: Option<destruction::Destruction>,
+    children: Vec<child::Creation>,
+    destruction: destruction::State,
     details: Option<crate::dom_details::DomDetailsRuntime>,
 }
 impl HostedOwner {
@@ -290,7 +397,8 @@ impl HostedOwner {
                 hosts: Vec::new(),
                 work: 0,
                 creation: None,
-                destruction: None,
+                children: Vec::new(),
+                destruction: destruction::State::new(),
                 details: None,
             })),
         })
@@ -322,6 +430,7 @@ struct Creation {
     composition: usize,
     preparation: Option<DomHostedTopLevelPreparation>,
     prepared: Option<DomHostedPreparedTopLevel>,
+    context: Option<records::BrowsingContext>,
     sample: Option<clock::Sample>,
     lease: Option<DomHostedCreationLease>,
     policy: Option<DomHostedPolicyPublication>,
@@ -330,6 +439,7 @@ struct Creation {
     entry: Option<DomHostedEntryId>,
     navigable: Option<DomHostedNavigableId>,
     uuids: Option<uuid::HistoryUuids>,
+    entry_initialization: Option<DomHostedEntryInitialization>,
     finished_sample: Option<clock::CoarsenedSample>,
 }
 impl Creation {
@@ -339,6 +449,7 @@ impl Creation {
             composition,
             preparation: None,
             prepared: None,
+            context: None,
             sample: None,
             lease: None,
             policy: None,
@@ -347,6 +458,7 @@ impl Creation {
             entry: None,
             navigable: None,
             uuids: None,
+            entry_initialization: None,
             finished_sample: None,
         }
     }
@@ -363,7 +475,14 @@ impl HostedState {
         Ok(())
     }
     fn retained_bytes(&mut self, cancel: &AtomicBool) -> Result<usize, DomHostedRuntimeError> {
-        native_retained_bytes(&self.hosts, &mut self.work, self.limits.work, cancel)
+        native_retained_bytes(
+            &self.hosts,
+            &self.children,
+            &self.destruction,
+            &mut self.work,
+            self.limits.work,
+            cancel,
+        )
     }
     fn reserve_host(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
         self.step(cancel)?;
@@ -462,6 +581,53 @@ impl HostedState {
         Ok(())
     }
 }
+impl HostedState {
+    fn find_global(
+        &mut self,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<(usize, usize, usize, usize), DomHostedRuntimeError> {
+        for h in 0..self.hosts.len() {
+            self.step(cancel)?;
+            for t in 0..self.hosts[h].top_levels.len() {
+                self.step(cancel)?;
+                let clusters = self.hosts[h].top_levels[t]
+                    .group
+                    .as_ref()
+                    .map_or(0, |group| group.clusters.len());
+                for c in 0..clusters {
+                    self.step(cancel)?;
+                    let count = self.hosts[h].top_levels[t]
+                        .group
+                        .as_ref()
+                        .ok_or(DomHostedRuntimeError::Protocol)?
+                        .clusters[c]
+                        .agent
+                        .globals
+                        .len();
+                    for g in 0..count {
+                        self.step(cancel)?;
+                        let group = self.hosts[h].top_levels[t]
+                            .group
+                            .as_ref()
+                            .ok_or(DomHostedRuntimeError::Protocol)?;
+                        let record = &group.clusters[c].agent.globals[g];
+                        if record.id == global {
+                            if record.context.group_root != group.context
+                                || record.context.global != Some(global)
+                            {
+                                return Err(DomHostedRuntimeError::Protocol);
+                            }
+                            return Ok((h, t, c, g));
+                        }
+                    }
+                }
+            }
+        }
+        Err(DomHostedRuntimeError::TargetNotFound)
+    }
+}
+
 impl HostedRuntime {
     pub(crate) fn validate_view(&self, dom: &DomEventDom<'_>) -> Result<(), DomHostedRuntimeError> {
         let state = self.state()?;
@@ -488,7 +654,7 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        if state.creation.is_some() || state.destruction.is_some() {
+        if state.creation.is_some() {
             return Err(DomHostedRuntimeError::OperationPending);
         }
         state.reserve_host(cancel)?;
@@ -523,36 +689,29 @@ impl HostedRuntime {
             .raw()
             .global_document(global)
             .map_err(DomHostedRuntimeError::Dom)?;
-        for h in 0..state.hosts.len() {
-            state.step(cancel)?;
-            for t in 0..state.hosts[h].top_levels.len() {
-                state.step(cancel)?;
-                let Some(native) = state.hosts[h].top_levels[t]
-                    .group
-                    .as_ref()
-                    .and_then(|g| g.cluster.as_ref())
-                    .and_then(|c| c.agent.global.as_ref())
-                else {
-                    continue;
-                };
-                if native.id != global {
-                    continue;
-                }
-                if native.settings.document != Some(document) {
-                    return Err(DomHostedRuntimeError::Protocol);
-                }
-                return Ok(DomHostedSettings {
-                    snapshot,
-                    global,
-                    document,
-                    ready: native.settings.ready,
-                    time_origin: native.settings.navigation_start,
-                    creation_url: native.settings.creation_url.clone(),
-                    top_level_creation_url: native.settings.top_level_creation_url.clone(),
-                });
-            }
+        let cross_site = state.capture_cross_site(dom, document, cancel)?;
+        let (h, t, c, g) = state.find_global(global, cancel)?;
+        let native = &state.hosts[h].top_levels[t]
+            .group
+            .as_ref()
+            .ok_or(DomHostedRuntimeError::Protocol)?
+            .clusters[c]
+            .agent
+            .globals[g];
+        if native.settings.document != Some(document) {
+            return Err(DomHostedRuntimeError::Protocol);
         }
-        Err(DomHostedRuntimeError::TargetNotFound)
+        Ok(DomHostedSettings {
+            snapshot,
+            global,
+            document,
+            ready: native.settings.ready,
+            time_origin: native.settings.navigation_start,
+            creation_url: native.settings.creation_url.clone(),
+            top_level_creation_url: native.settings.top_level_creation_url.clone(),
+            top_level_origin: native.settings.top_level_origin.clone(),
+            cross_site,
+        })
     }
     /// Read the live original active/current-entry relation.
     pub fn top_level(
@@ -580,23 +739,28 @@ impl HostedRuntime {
                     .group
                     .as_ref()
                     .ok_or(DomHostedRuntimeError::Protocol)?;
-                let native = group
-                    .cluster
-                    .as_ref()
-                    .and_then(|c| c.agent.global.as_ref())
-                    .ok_or(DomHostedRuntimeError::Protocol)?;
-                let document = dom
+                let native = group.global().ok_or(DomHostedRuntimeError::Protocol)?;
+                let canonical = dom
                     .raw()
-                    .global_document(native.id)
+                    .hosted_navigable(navigable)
                     .map_err(DomHostedRuntimeError::Dom)?;
-                if document != top.entry.document {
+                let document = canonical
+                    .active_document()
+                    .ok_or(DomHostedRuntimeError::Inactive)?;
+                if canonical.parent().is_some()
+                    || dom
+                        .raw()
+                        .global_document(native.id)
+                        .map_err(DomHostedRuntimeError::Dom)?
+                        != document
+                {
                     return Err(DomHostedRuntimeError::Protocol);
                 }
                 return Ok(DomHostedTopLevel {
                     host: host.id,
                     context: group.context,
                     navigable,
-                    entry: top.entry.id,
+                    entry: canonical.current_entry(),
                     global: native.id,
                     document,
                 });
@@ -605,8 +769,46 @@ impl HostedRuntime {
         Err(DomHostedRuntimeError::TargetNotFound)
     }
 }
+fn native_task_count(
+    hosts: &[records::Host],
+    work: &mut u64,
+    limit: u64,
+    cancel: &AtomicBool,
+) -> Result<usize, DomHostedRuntimeError> {
+    let mut count = 0usize;
+    for host in hosts {
+        spend(work, limit, cancel)?;
+        for record in &host.top_levels {
+            spend(work, limit, cancel)?;
+            if let Some(group) = &record.group {
+                spend(work, limit, cancel)?;
+                count = count
+                    .checked_add(group.traversal.rows.len())
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+                for cluster in &group.clusters {
+                    spend(work, limit, cancel)?;
+                    count = count
+                        .checked_add(
+                            cluster
+                                .agent
+                                .event_loop
+                                .try_borrow()
+                                .map_err(|_| DomHostedRuntimeError::Busy)?
+                                .navigation
+                                .len(),
+                        )
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                }
+            }
+        }
+    }
+    Ok(count)
+}
+
 fn native_retained_bytes(
     hosts: &Vec<records::Host>,
+    children: &Vec<child::Creation>,
+    destruction: &destruction::State,
     work: &mut u64,
     limit: u64,
     cancel: &AtomicBool,
@@ -618,6 +820,17 @@ fn native_retained_bytes(
                 .checked_mul(size_of::<records::Host>())
                 .ok_or(DomHostedRuntimeError::Admission)?,
         )
+        .ok_or(DomHostedRuntimeError::Admission)?;
+    bytes = bytes
+        .checked_add(
+            children
+                .capacity()
+                .checked_mul(size_of::<child::Creation>())
+                .ok_or(DomHostedRuntimeError::Admission)?,
+        )
+        .ok_or(DomHostedRuntimeError::Admission)?;
+    bytes = bytes
+        .checked_add(destruction.retained_bytes(work, limit, cancel)?)
         .ok_or(DomHostedRuntimeError::Admission)?;
     for host in hosts {
         spend(work, limit, cancel)?;
@@ -631,42 +844,72 @@ fn native_retained_bytes(
             .ok_or(DomHostedRuntimeError::Admission)?;
         for record in &host.top_levels {
             spend(work, limit, cancel)?;
-            if let Some(cluster) = record.group.as_ref().and_then(|g| g.cluster.as_ref()) {
-                if let Some(global) = &cluster.agent.global {
-                    spend(work, limit, cancel)?;
-                    spend(work, limit, cancel)?;
-                    bytes = bytes
-                        .checked_add(settings_url_payload_bytes(
-                            &global.settings.creation_url,
-                            &global.settings.top_level_creation_url,
-                        )?)
-                        .ok_or(DomHostedRuntimeError::Admission)?;
-                }
-                let event_loop = cluster
-                    .agent
-                    .event_loop
-                    .try_borrow()
-                    .map_err(|_| DomHostedRuntimeError::Busy)?;
+            if let Some(group) = &record.group {
                 bytes = bytes
-                    .checked_add(size_of::<RefCell<records::WindowLoop>>())
-                    .and_then(|n| {
-                        n.checked_add(
-                            event_loop
-                                .navigation
-                                .capacity()
-                                .checked_mul(size_of::<records::DestroyTask>())?,
-                        )
-                    })
+                    .checked_add(
+                        group
+                            .completions
+                            .capacity()
+                            .checked_mul(size_of::<destruction::Completion>())
+                            .ok_or(DomHostedRuntimeError::Admission)?,
+                    )
                     .ok_or(DomHostedRuntimeError::Admission)?;
-                for task in &event_loop.navigation {
+                bytes = bytes
+                    .checked_add(
+                        group
+                            .traversal
+                            .rows
+                            .capacity()
+                            .checked_mul(size_of::<history::Queued>())
+                            .ok_or(DomHostedRuntimeError::Admission)?,
+                    )
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+                bytes = bytes
+                    .checked_add(
+                        group
+                            .clusters
+                            .capacity()
+                            .checked_mul(size_of::<records::OriginCluster>())
+                            .ok_or(DomHostedRuntimeError::Admission)?,
+                    )
+                    .ok_or(DomHostedRuntimeError::Admission)?;
+                for cluster in &group.clusters {
                     spend(work, limit, cancel)?;
                     bytes = bytes
                         .checked_add(
-                            task.captured_children
+                            cluster
+                                .agent
+                                .globals
                                 .capacity()
-                                .checked_mul(size_of::<DomHostedNavigableId>())
+                                .checked_mul(size_of::<records::Global>())
                                 .ok_or(DomHostedRuntimeError::Admission)?,
                         )
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                    for global in &cluster.agent.globals {
+                        spend(work, limit, cancel)?;
+                        spend(work, limit, cancel)?;
+                        bytes = bytes
+                            .checked_add(settings_url_payload_bytes(
+                                &global.settings.creation_url,
+                                &global.settings.top_level_creation_url,
+                            )?)
+                            .ok_or(DomHostedRuntimeError::Admission)?;
+                    }
+                    let event_loop = cluster
+                        .agent
+                        .event_loop
+                        .try_borrow()
+                        .map_err(|_| DomHostedRuntimeError::Busy)?;
+                    bytes = bytes
+                        .checked_add(size_of::<RefCell<records::WindowLoop>>())
+                        .and_then(|n| {
+                            n.checked_add(
+                                event_loop
+                                    .navigation
+                                    .capacity()
+                                    .checked_mul(size_of::<records::NavigationTask>())?,
+                            )
+                        })
                         .ok_or(DomHostedRuntimeError::Admission)?;
                 }
             }
@@ -761,7 +1004,15 @@ fn drive_creation(
             // inline owner storage was admitted before host identity issuance.
             host.group = Some(records::Group {
                 context: preparation.browsing_context(),
-                cluster: None,
+                clusters: Vec::new(),
+                traversal: history::Traversal::new(),
+                completions: Vec::new(),
+            });
+            creation.context = Some(records::BrowsingContext {
+                id: preparation.browsing_context(),
+                group_root: preparation.browsing_context(),
+                creator: None,
+                global: None,
             });
             creation.preparation = Some(preparation);
         }
@@ -818,27 +1069,19 @@ fn drive_creation(
                 if group.context != request.browsing_context() {
                     return Err(DomHostedRuntimeError::Protocol);
                 }
-                spend(work, limit, cancel)?;
-                if let Some(cluster) = &group.cluster {
-                    if cluster.origin != *request.origin() {
-                        return Err(DomHostedRuntimeError::Protocol);
-                    }
-                } else {
-                    if retained_before
-                        .checked_add(size_of::<RefCell<records::WindowLoop>>())
-                        .is_none_or(|n| n > storage_limit)
-                    {
-                        return Err(DomHostedRuntimeError::Admission);
-                    }
-                    retained_added = size_of::<RefCell<records::WindowLoop>>();
-                    group.cluster = Some(records::OriginCluster {
-                        origin: request.origin().clone(),
-                        agent: records::NativeAgent {
-                            event_loop: Rc::new(RefCell::new(records::WindowLoop::new())),
-                            global: None,
-                        },
-                    });
-                }
+                let (cluster_index, added) = agent::ensure_cluster(
+                    group,
+                    request.origin(),
+                    retained_before
+                        .checked_add(retained_added)
+                        .ok_or(DomHostedRuntimeError::Admission)?,
+                    limits,
+                    work,
+                    cancel,
+                )?;
+                retained_added = retained_added
+                    .checked_add(added)
+                    .ok_or(DomHostedRuntimeError::Admission)?;
                 let sample = creation
                     .sample
                     .as_ref()
@@ -856,12 +1099,28 @@ fn drive_creation(
                     );
                 }
                 let global = creation.global.expect("original issued Global");
-                let agent = &mut group
-                    .cluster
-                    .as_mut()
-                    .expect("actual opaque-key cluster")
-                    .agent;
-                if agent.global.is_none() {
+                let agent = &mut group.clusters[cluster_index].agent;
+                let mut installed = false;
+                for value in &agent.globals {
+                    spend(work, limit, cancel)?;
+                    if value.id == global {
+                        installed = true;
+                        break;
+                    }
+                }
+                if !installed {
+                    let bank_added = agent::reserve_global(
+                        agent,
+                        retained_before
+                            .checked_add(retained_added)
+                            .ok_or(DomHostedRuntimeError::Admission)?,
+                        limits,
+                        work,
+                        cancel,
+                    )?;
+                    retained_added = retained_added
+                        .checked_add(bank_added)
+                        .ok_or(DomHostedRuntimeError::Admission)?;
                     spend(work, limit, cancel)?;
                     spend(work, limit, cancel)?;
                     let payload = settings_url_payload_bytes(
@@ -875,7 +1134,20 @@ fn drive_creation(
                     {
                         return Err(DomHostedRuntimeError::Admission);
                     }
-                    agent.global = Some(records::Global {
+                    let context = creation
+                        .context
+                        .as_ref()
+                        .ok_or(DomHostedRuntimeError::Protocol)?;
+                    if context.id != request.browsing_context()
+                        || context.creator.is_some()
+                        || context.group_root != group.context
+                    {
+                        return Err(DomHostedRuntimeError::Protocol);
+                    }
+                    let mut context = creation.context.take().expect("validated original BC");
+                    context.global = Some(global);
+                    agent.globals.push(records::Global {
+                        context,
                         id: global,
                         settings: records::Settings {
                             navigation_start: sample,
@@ -883,6 +1155,7 @@ fn drive_creation(
                             ready: false,
                             creation_url: request.creation_url().clone(),
                             top_level_creation_url: request.top_level_creation_url().clone(),
+                            top_level_origin: request.top_level_origin().clone(),
                         },
                     });
                 }
@@ -899,8 +1172,7 @@ fn drive_creation(
                 let native = host
                     .group
                     .as_mut()
-                    .and_then(|group| group.cluster.as_mut())
-                    .and_then(|cluster| cluster.agent.global.as_mut())
+                    .and_then(records::Group::global_mut)
                     .ok_or(DomHostedRuntimeError::Protocol)?;
                 if native.id != request.global() {
                     return Err(DomHostedRuntimeError::Protocol);
@@ -922,8 +1194,7 @@ fn drive_creation(
                 let native = host
                     .group
                     .as_ref()
-                    .and_then(|group| group.cluster.as_ref())
-                    .and_then(|cluster| cluster.agent.global.as_ref())
+                    .and_then(records::Group::global)
                     .ok_or(DomHostedRuntimeError::Protocol)?;
                 let original = native.settings.navigation_start;
                 if native.id != request.global()
@@ -958,7 +1229,10 @@ fn drive_creation(
             }
             DomHostedCreationStep::InitialEntry(request) => {
                 policy_phase = false;
-                if creation.uuids.is_none() && host.top.is_none() {
+                if creation.uuids.is_none()
+                    && creation.entry_initialization.is_none()
+                    && creation.publication.is_none()
+                {
                     spend(work, limit, cancel)?;
                     uuid::HistoryUuids::sample(&mut creation.uuids, cancel)?;
                 }
@@ -978,44 +1252,50 @@ fn drive_creation(
                 }
                 let entry = creation.entry.expect("original issued entry");
                 let navigable = creation.navigable.expect("original issued navigable");
-                if host.top.is_none() {
-                    let origin = host
-                        .group
-                        .as_ref()
-                        .and_then(|group| group.cluster.as_ref())
-                        .ok_or(DomHostedRuntimeError::Protocol)?
-                        .origin
-                        .clone();
-                    host.top = Some(records::Top {
-                        id: navigable,
-                        closing: false,
-                        entry: records::Entry {
-                            id: entry,
-                            document: request.document(),
-                            origin,
-                            uuids: creation
-                                .uuids
-                                .take()
-                                .ok_or(DomHostedRuntimeError::Protocol)?,
-                        },
-                    });
+                if creation.entry_initialization.is_none() && creation.publication.is_none() {
+                    let values = creation
+                        .uuids
+                        .take()
+                        .ok_or(DomHostedRuntimeError::Protocol)?;
+                    creation.entry_initialization =
+                        Some(DomHostedEntryInitialization::new(values.key, values.id));
                 }
                 if creation.publication.is_none() {
                     creation.publication = Some(
                         source
-                            .seal_initial_entry(request, entry, navigable, cancel)
+                            .seal_initial_entry(
+                                request,
+                                entry,
+                                navigable,
+                                &mut creation.entry_initialization,
+                                cancel,
+                            )
                             .map_err(DomHostedRuntimeError::Dom)?,
                     );
+                }
+                let group = host.group.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
+                match group.traversal.traversable {
+                    Some(original) if original != navigable => {
+                        return Err(DomHostedRuntimeError::Protocol);
+                    }
+                    None => group.traversal.traversable = Some(navigable),
+                    _ => {}
+                }
+                if host.top.is_none() {
+                    host.top = Some(records::Top {
+                        id: navigable,
+                        closing: false,
+                    });
                 }
             }
             DomHostedCreationStep::Complete(document) => {
                 let top = host.top.as_ref().ok_or(DomHostedRuntimeError::Protocol)?;
-                if top.entry.document != document {
-                    return Err(DomHostedRuntimeError::Protocol);
-                }
                 let complete = lease
                     .finish(dom.raw_mut(), source, cancel)
                     .map_err(DomHostedRuntimeError::Dom)?;
+                if complete.document() != document || complete.navigable() != top.id {
+                    return Err(DomHostedRuntimeError::Protocol);
+                }
                 return Ok(DomHostedTopLevel {
                     host: complete.host(),
                     context: complete.browsing_context(),
@@ -1047,13 +1327,13 @@ impl HostedRuntime {
         dom: &mut DomEventDom<'_>,
         host: DomHostedHostId,
         cancel: &AtomicBool,
-    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        if state.creation.is_some() || state.destruction.is_some() {
+        if state.creation.is_some() {
             return Err(DomHostedRuntimeError::OperationPending);
         }
         let mut found = None;
@@ -1076,21 +1356,17 @@ impl HostedRuntime {
     }
     /// Resume the original retained lifecycle operation. No permission owns or
     /// extracts its phase cursor, actual objects, issuer or canonical DOM.
-    pub fn resume(
+    pub fn resume_top_level_creation(
         &mut self,
         dom: &mut DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        if state.creation.is_some() {
-            state.resume_creation(dom, cancel)
-        } else {
-            state.resume_destruction(dom, cancel)
-        }
+        state.resume_creation(dom, cancel)
     }
 }
 impl HostedState {
@@ -1098,7 +1374,7 @@ impl HostedState {
         &mut self,
         dom: &mut DomEventDom<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomHostedProgress, DomHostedRuntimeError> {
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
         let retained_before = self.retained_bytes(cancel)?;
         let Self {
             source,
@@ -1127,7 +1403,7 @@ impl HostedState {
         // Only actual canonical finish closes the operation. Public identity
         // observations cannot steal this cursor or acknowledge its phases.
         *creation = None;
-        Ok(DomHostedProgress::Created(top))
+        Ok(top)
     }
 }
 impl HostedOwner {
@@ -1136,7 +1412,10 @@ impl HostedOwner {
             .state
             .try_borrow()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        Ok(state.creation.is_some() || state.destruction.is_some() || !state.hosts.is_empty())
+        Ok(state.creation.is_some()
+            || !state.children.is_empty()
+            || state.destruction.pending()
+            || !state.hosts.is_empty())
     }
 }
 
@@ -1222,72 +1501,59 @@ impl HostedRuntime {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
         let document = association.document();
-        for h in 0..state.hosts.len() {
-            state.step(cancel)?;
-            for t in 0..state.hosts[h].top_levels.len() {
-                state.step(cancel)?;
-                let Some(cluster) = state.hosts[h].top_levels[t]
-                    .group
-                    .as_ref()
-                    .and_then(|g| g.cluster.as_ref())
-                else {
-                    continue;
-                };
-                let Some(global) = &cluster.agent.global else {
-                    continue;
-                };
-                if global.id != association.global() {
-                    continue;
-                }
-                if global.settings.document != Some(document) || !global.settings.ready {
-                    return Err(DomHostedRuntimeError::Inactive);
-                }
-                let loop_owner = cluster.agent.event_loop.clone();
-                let mut event_loop = loop_owner
-                    .try_borrow_mut()
-                    .map_err(|_| DomHostedRuntimeError::Busy)?;
-                let current = records::CurrentTask::Details { task, document };
-                if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
-                    return Err(DomHostedRuntimeError::Busy);
-                }
-                let fresh = event_loop.current.is_none();
-                if fresh && !retired_target {
-                    let snapshot = dom.snapshot();
-                    if dom
-                        .raw()
-                        .global_document(association.global())
-                        .map_err(DomHostedRuntimeError::Dom)?
-                        != document
-                    {
-                        return Err(DomHostedRuntimeError::Binding);
-                    }
-                    if !snapshot
-                        .document(document)
-                        .map_err(|e| DomHostedRuntimeError::Dom(e.into()))?
-                        .is_fully_active()
-                        .map_err(DomHostedRuntimeError::Dom)?
-                    {
-                        return Err(DomHostedRuntimeError::Inactive);
-                    }
-                }
-                if fresh {
-                    state.step(cancel)?;
-                    event_loop.next_checkpoint = event_loop
-                        .checkpoints
-                        .checked_add(1)
-                        .ok_or(DomHostedRuntimeError::Admission)?;
-                    event_loop.current = Some(current);
-                }
-                event_loop.executing = true;
-                drop(event_loop);
-                return Ok(NativeTaskRunning {
-                    state: Rc::downgrade(&owner),
-                    event_loop: loop_owner,
-                    complete: false,
-                });
+        let (h, t, c, g) = state.find_global(association.global(), cancel)?;
+        let cluster = &state.hosts[h].top_levels[t]
+            .group
+            .as_ref()
+            .ok_or(DomHostedRuntimeError::Protocol)?
+            .clusters[c];
+        let global = &cluster.agent.globals[g];
+        if global.settings.document != Some(document) || !global.settings.ready {
+            return Err(DomHostedRuntimeError::Inactive);
+        }
+        let loop_owner = cluster.agent.event_loop.clone();
+        let mut event_loop = loop_owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let current = records::CurrentTask::Details { task, document };
+        if event_loop.executing || event_loop.current.is_some_and(|old| old != current) {
+            return Err(DomHostedRuntimeError::Busy);
+        }
+        let fresh = event_loop.current.is_none();
+        if fresh && !retired_target {
+            let snapshot = dom.snapshot();
+            if dom
+                .raw()
+                .global_document(association.global())
+                .map_err(DomHostedRuntimeError::Dom)?
+                != document
+            {
+                return Err(DomHostedRuntimeError::Binding);
+            }
+            if !snapshot
+                .document(document)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
+                .is_fully_active()
+                .map_err(DomHostedRuntimeError::Dom)?
+            {
+                return Err(DomHostedRuntimeError::Inactive);
             }
         }
-        Err(DomHostedRuntimeError::TargetNotFound)
+        if fresh {
+            state.step(cancel)?;
+            event_loop.next_checkpoint = event_loop
+                .checkpoints
+                .checked_add(1)
+                .ok_or(DomHostedRuntimeError::Admission)?;
+            event_loop.current = Some(current);
+        }
+        event_loop.executing = true;
+        drop(event_loop);
+        Ok(NativeTaskRunning {
+            state: Rc::downgrade(&owner),
+            event_loop: loop_owner,
+            complete: false,
+        })
     }
 }
 
@@ -1306,31 +1572,15 @@ impl HostedRuntime {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
         let state = &mut *state;
-        let retained = native_retained_bytes(&state.hosts, &mut state.work, limits.work, cancel)?;
-        let mut tasks = 0usize;
-        for h in 0..state.hosts.len() {
-            spend(&mut state.work, limits.work, cancel)?;
-            for t in 0..state.hosts[h].top_levels.len() {
-                spend(&mut state.work, limits.work, cancel)?;
-                if let Some(cluster) = state.hosts[h].top_levels[t]
-                    .group
-                    .as_ref()
-                    .and_then(|g| g.cluster.as_ref())
-                {
-                    tasks = tasks
-                        .checked_add(
-                            cluster
-                                .agent
-                                .event_loop
-                                .try_borrow()
-                                .map_err(|_| DomHostedRuntimeError::Busy)?
-                                .navigation
-                                .len(),
-                        )
-                        .ok_or(DomHostedRuntimeError::Admission)?;
-                }
-            }
-        }
+        let retained = native_retained_bytes(
+            &state.hosts,
+            &state.children,
+            &state.destruction,
+            &mut state.work,
+            limits.work,
+            cancel,
+        )?;
+        let tasks = native_task_count(&state.hosts, &mut state.work, limits.work, cancel)?;
         spend(&mut state.work, limits.work, cancel)?;
         if retained > limits.storage_bytes || tasks > limits.tasks || state.work > limits.work {
             return Err(DomHostedRuntimeError::Admission);
@@ -1366,7 +1616,7 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        if state.creation.is_some() || state.destruction.is_some() {
+        if state.creation.is_some() {
             return Err(DomHostedRuntimeError::OperationPending);
         }
         let mut found = None;
@@ -1415,45 +1665,36 @@ impl HostedRuntime {
         {
             return Err(DomHostedRuntimeError::Admission);
         }
-        for h in 0..state.hosts.len() {
+        let record = dom
+            .raw()
+            .hosted_entry(entry)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        let document = record.document().ok_or(DomHostedRuntimeError::Inactive)?;
+        for _ in 0..72 {
             state.step(cancel)?;
-            for t in 0..state.hosts[h].top_levels.len() {
-                state.step(cancel)?;
-                let Some(top) = &state.hosts[h].top_levels[t].top else {
-                    continue;
-                };
-                if top.entry.id != entry {
-                    continue;
-                }
-                for _ in 0..72 {
-                    state.step(cancel)?;
-                }
-                let record = &state.hosts[h].top_levels[t];
-                let top = record.top.as_ref().expect("matched real entry");
-                let global = record
-                    .group
-                    .as_ref()
-                    .and_then(|g| g.cluster.as_ref())
-                    .and_then(|c| c.agent.global.as_ref())
-                    .ok_or(DomHostedRuntimeError::Protocol)?;
-                if dom
-                    .raw()
-                    .global_document(global.id)
-                    .map_err(DomHostedRuntimeError::Dom)?
-                    != top.entry.document
-                {
-                    return Err(DomHostedRuntimeError::Binding);
-                }
-                return Ok(DomHostedHistoryEntry {
-                    entry,
-                    document: top.entry.document,
-                    origin: top.entry.origin.clone(),
-                    key: top.entry.uuids.key,
-                    id: top.entry.uuids.id,
-                });
-            }
         }
-        Err(DomHostedRuntimeError::TargetNotFound)
+        let global = dom
+            .raw()
+            .relevant_global(document.node())
+            .map_err(DomHostedRuntimeError::Dom)?
+            .ok_or(DomHostedRuntimeError::Binding)?;
+        state.find_global(global, cancel)?;
+        if dom
+            .raw()
+            .global_document(global)
+            .map_err(DomHostedRuntimeError::Dom)?
+            != document
+        {
+            return Err(DomHostedRuntimeError::Binding);
+        }
+        Ok(DomHostedHistoryEntry {
+            entry,
+            document,
+            origin: record.origin().clone(),
+            key: *record.navigation_key(),
+            id: *record.navigation_id(),
+            step: record.step(),
+        })
     }
 }
 
@@ -1519,10 +1760,54 @@ mod constructor_settings_tests {
             state.reserve_composition(0, &cancel).unwrap();
             state.retained_bytes(&cancel).unwrap()
         };
-        limits.storage_bytes = before_loop + size_of::<RefCell<records::WindowLoop>>();
+        limits.storage_bytes = before_loop;
         hosted.set_limits(&mut dom, limits, &cancel).unwrap();
         assert!(matches!(
             hosted.create_top_level(&mut dom, host, &cancel),
+            Err(DomHostedRuntimeError::Admission)
+        ));
+        // Form the real agent banks with ample admission, without constructing
+        // Settings. This isolates URL payload refusal from allocator capacity.
+        limits.storage_bytes = 16_000_000;
+        hosted.set_limits(&mut dom, limits, &cancel).unwrap();
+        {
+            let mut state = owner.borrow_mut();
+            let DomHostedCreationStep::NativeExecution(request) = state
+                .creation
+                .as_ref()
+                .unwrap()
+                .lease
+                .as_ref()
+                .unwrap()
+                .step(dom.raw())
+                .unwrap()
+            else {
+                panic!("the real constructor must retain its Execution request")
+            };
+            let origin = request.origin().clone();
+            let retained = state.retained_bytes(&cancel).unwrap();
+            {
+                let HostedState { hosts, work, .. } = &mut *state;
+                agent::ensure_cluster(
+                    hosts[0].top_levels[0].group.as_mut().unwrap(),
+                    &origin,
+                    retained,
+                    limits,
+                    work,
+                    &cancel,
+                )
+                .unwrap();
+            }
+            let retained = state.retained_bytes(&cancel).unwrap();
+            let HostedState { hosts, work, .. } = &mut *state;
+            let native_agent =
+                &mut hosts[0].top_levels[0].group.as_mut().unwrap().clusters[0].agent;
+            agent::reserve_global(native_agent, retained, limits, work, &cancel).unwrap();
+        }
+        limits.storage_bytes = owner.borrow_mut().retained_bytes(&cancel).unwrap();
+        hosted.set_limits(&mut dom, limits, &cancel).unwrap();
+        assert!(matches!(
+            hosted.resume_top_level_creation(&mut dom, &cancel),
             Err(DomHostedRuntimeError::Admission)
         ));
         let (operation, creation_url, top_url, exact, spent) = {
@@ -1548,12 +1833,12 @@ mod constructor_settings_tests {
                     .group
                     .as_ref()
                     .unwrap()
-                    .cluster
-                    .as_ref()
+                    .clusters
+                    .first()
                     .unwrap()
                     .agent
-                    .global
-                    .is_none()
+                    .globals
+                    .is_empty()
             );
             (
                 request.operation(),
@@ -1566,7 +1851,7 @@ mod constructor_settings_tests {
         limits.storage_bytes = exact - 1;
         hosted.set_limits(&mut dom, limits, &cancel).unwrap();
         assert!(matches!(
-            hosted.resume(&mut dom, &cancel),
+            hosted.resume_top_level_creation(&mut dom, &cancel),
             Err(DomHostedRuntimeError::Admission)
         ));
         {
@@ -1596,13 +1881,11 @@ mod constructor_settings_tests {
         );
         assert_eq!(owner.borrow().limits.storage_bytes, exact - 1);
         assert!(matches!(
-            hosted.resume(&mut dom, &cancelled),
+            hosted.resume_top_level_creation(&mut dom, &cancelled),
             Err(DomHostedRuntimeError::Cancelled)
         ));
         hosted.set_limits(&mut dom, limits, &cancel).unwrap();
-        let DomHostedProgress::Created(top) = hosted.resume(&mut dom, &cancel).unwrap() else {
-            panic!("exact admitted payload must finish the retained constructor")
-        };
+        let top = hosted.resume_top_level_creation(&mut dom, &cancel).unwrap();
         let settings = hosted.settings(&dom, top.global(), &cancel).unwrap();
         assert_eq!(settings.creation_url(), &creation_url);
         assert_eq!(settings.top_level_creation_url(), &top_url);

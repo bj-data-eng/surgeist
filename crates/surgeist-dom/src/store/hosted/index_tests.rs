@@ -56,7 +56,7 @@ impl Fixture {
         let cancel = cancellation();
         let prefix = self.source.prepare_top_level(self.host, &cancel).unwrap();
         let work = prefix.work;
-        let operation = self.source.begin_operation(&work, 10, &cancel).unwrap();
+        let operation = self.source.begin_operation(&work, 10, 0, &cancel).unwrap();
         let mut request = Request {
             key: RequestKey {
                 operation,
@@ -65,6 +65,7 @@ impl Fixture {
             host: prefix.host,
             context: prefix.context,
             work: work.clone(),
+            parent: None,
         };
         advance(&self.source, &mut request);
         let origin = self
@@ -76,7 +77,8 @@ impl Fixture {
             .origin()
             .clone();
         let inputs =
-            crate::document::HostedDocumentInputs::form(&self.source, &work, &cancel).unwrap();
+            crate::document::HostedDocumentInputs::form(&self.source, &work, &origin, &cancel)
+                .unwrap();
         let execution = DomHostedExecutionRequest {
             request,
             origin,

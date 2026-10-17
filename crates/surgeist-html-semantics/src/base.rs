@@ -69,6 +69,7 @@ struct UrlRecord {
     serialization: DocumentString,
     scheme: HtmlBaseUrlScheme,
     about_blank: bool,
+    fragment_delimiter_offset: Option<usize>,
     retained: HtmlBaseRetainedStorageUsage,
 }
 /// An actual external record observation. Equality is record identity, not text.
@@ -76,13 +77,27 @@ struct UrlRecord {
 #[derive(Clone, Debug)]
 pub struct HtmlBaseUrlRecord(Arc<UrlRecord>);
 impl HtmlBaseUrlRecord {
+    /// Observes one actual URL record and its complete serialization.
+    ///
+    /// The same record's serializer must attest `fragment_delimiter_offset`:
+    /// `None` means its fragment is null; `Some(offset)` identifies the UTF-16
+    /// offset of the `#` appended immediately before its non-null fragment.
+    /// An empty fragment still has a delimiter. This need not be the first
+    /// number sign: an externally produced opaque path can contain one too.
+    /// No fragment state is inferred from the serialization's spelling.
     pub fn observed(
         revision: HtmlBaseFactsRevision,
         serialization: DocumentString,
         scheme: HtmlBaseUrlScheme,
         matches_about_blank: bool,
+        fragment_delimiter_offset: Option<usize>,
     ) -> Result<Self, HtmlBaseFactsError> {
         if matches_about_blank && scheme != HtmlBaseUrlScheme::Other {
+            return Err(HtmlBaseFactsError::ContradictoryObservation);
+        }
+        if fragment_delimiter_offset
+            .is_some_and(|offset| serialization.code_units().get(offset) != Some(&u16::from(b'#')))
+        {
             return Err(HtmlBaseFactsError::ContradictoryObservation);
         }
         let retained = Self::observed_storage_usage(&serialization)?;
@@ -91,6 +106,7 @@ impl HtmlBaseUrlRecord {
             serialization,
             scheme,
             about_blank: matches_about_blank,
+            fragment_delimiter_offset,
             retained,
         })))
     }
@@ -120,6 +136,54 @@ impl HtmlBaseUrlRecord {
     }
     pub fn serialization(&self) -> &DocumentString {
         &self.0.serialization
+    }
+    /// The attested delimiter offset in this record's complete serialization,
+    /// or known-null fragment. This does not parse or scan the serialization.
+    pub fn fragment_delimiter_offset(&self) -> Option<usize> {
+        self.0.fragment_delimiter_offset
+    }
+    /// URL-standard value equality with both fragments excluded, using the
+    /// same-record serializer boundaries supplied at observation.
+    ///
+    /// Comparison is exact: queries, percent-escape spelling, path spaces and
+    /// any number signs before the attested delimiter remain significant.
+    /// This allocates no strings and does not compare record identities or
+    /// qualify their producers, revisions or Document associations.
+    ///
+    /// `step` admits each record's fixed boundary/length read, then each actual
+    /// UTF-16 operand read separately, before that read occurs. Equal prefixes
+    /// of length `n` take `2 + 2*n` successful admissions. Length or unit
+    /// mismatch stops comparison; an admission error is returned unchanged,
+    /// never converted to inequality. Callers retain their cumulative budget
+    /// and cancellation state in this closure.
+    pub fn equals_excluding_fragments_with<E>(
+        &self,
+        other: &Self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        let left_len = self
+            .0
+            .fragment_delimiter_offset
+            .unwrap_or(self.0.serialization.code_units().len());
+        step()?;
+        let right_len = other
+            .0
+            .fragment_delimiter_offset
+            .unwrap_or(other.0.serialization.code_units().len());
+        if left_len != right_len {
+            return Ok(false);
+        }
+        for index in 0..left_len {
+            step()?;
+            let left = self.0.serialization.code_units()[index];
+            step()?;
+            let right = other.0.serialization.code_units()[index];
+            if left != right {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
     pub fn revision(&self) -> &HtmlBaseFactsRevision {
         &self.0.revision
@@ -928,6 +992,7 @@ mod tests {
             .into(),
             HtmlBaseUrlScheme::Other,
             blank,
+            if blank { Some(13) } else { None },
         )
         .unwrap()
     }
@@ -941,6 +1006,7 @@ mod tests {
             "https://creator.test/".into(),
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         for facts in [
@@ -1015,9 +1081,14 @@ mod tests {
     #[test]
     fn no_observation_formation_charges_one_real_header_and_exact_retained_units() {
         let r = revision();
-        let url =
-            HtmlBaseUrlRecord::observed(r.clone(), "X".into(), HtmlBaseUrlScheme::Other, false)
-                .unwrap();
+        let url = HtmlBaseUrlRecord::observed(
+            r.clone(),
+            "X".into(),
+            HtmlBaseUrlScheme::Other,
+            false,
+            None,
+        )
+        .unwrap();
         let facts =
             HtmlBaseDocumentFacts::new(r, Some(url), HtmlAboutBaseUrl::KnownNull, false, None)
                 .unwrap();

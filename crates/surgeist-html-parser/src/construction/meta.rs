@@ -671,6 +671,7 @@ mod tests {
                 "https://example.test/".into(),
                 crate::HtmlBaseUrlScheme::Other,
                 false,
+                None,
             )
             .unwrap();
             let encoding = crate::HtmlBaseEncoding::fresh();

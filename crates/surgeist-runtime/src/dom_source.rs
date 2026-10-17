@@ -5,7 +5,7 @@
 //! resources and cannot accept an arbitrary sequence of commands.
 use crate::dom_details::{DomDetailsRuntime, DomDetailsRuntimeError};
 use crate::dom_event::DomEventDom;
-use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime};
+use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime, HostedSourceProgress};
 use crate::dom_style::{
     DomStyleRuntime, DomStyleRuntimeError, DomStyleServiceProgress, DomStyleUnavailable,
     StyleSourceGuard,
@@ -18,19 +18,42 @@ use surgeist_dom::{
     DomStyleInlineCspObservation, DomStyleSource,
 };
 
+/// Borrowed services for the reached requests of one actual Source operation.
+/// These references own no resource, response slot, issuer or operation cursor.
+pub struct DomSourceServices<'a> {
+    /// Actual CSP observation supplier; absence remains an unavailable policy.
+    pub style_policy: &'a mut dyn FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+    /// Independently configured URL/origin observation service, if available.
+    pub url: Option<DomSourceUrlService<'a>>,
+}
+
+/// A reached URL response: `Ok(None)` is unavailable; `Err` refuses the step.
+pub type DomSourceUrlObservationResult =
+    Result<Option<surgeist_dom::DomSourceUrlObservation>, DomHostedRuntimeError>;
+
+/// A URL observer and its independently selected influencing configuration.
+/// The driver releases all canonical and Runtime borrows before observation.
+pub struct DomSourceUrlService<'a> {
+    /// Expected parse configuration, selected before receiving the observation.
+    pub revision: &'a surgeist_html_semantics::HtmlBaseFactsRevision,
+    /// Observes the issued inputs; None is unavailable, never URL parse failure.
+    pub observe: &'a mut dyn FnMut(
+        &surgeist_dom::DomSourceUrlRequest,
+        &AtomicBool,
+    ) -> DomSourceUrlObservationResult,
+}
+
 /// A missing service at the actual next request, without acknowledging it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceUnavailable {
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
+    /// A reached URL stage has no qualified observation yet.
+    Url(surgeist_dom::DomSourceUrlStage),
 }
 
 /// The requested operation returned, or its exact next request remains parked.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Transfer the already admitted Source completion after irreversible publication without another allocation or fallible custody handoff"
-)]
 pub enum DomSourceDriveProgress {
     /// The one command or named feature operation completed its mandatory hooks.
     Complete(DomSourceCompletion),
@@ -128,15 +151,32 @@ impl DomSourceRuntime {
         dom: &mut DomEventDom<'_>,
         edit: DomSourceEdit,
         limits: DomSourceLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
         let progress = {
             let mut lease = dom.begin_source_edit(edit, limits, cancel)?;
-            drive_lease(&guard, &mut lease, cancel)?
+            drive_lease(
+                &guard,
+                &self.hosted,
+                &mut lease,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
         };
-        finish_or_supply(dom, limits, None, guard, progress, policy, cancel)
+        finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            &self.hosted,
+            progress,
+            services,
+            cancel,
+        )
     }
     /// Resume the same operation without rebuilding acknowledged external work.
     pub fn resume(
@@ -144,15 +184,32 @@ impl DomSourceRuntime {
         dom: &mut DomEventDom<'_>,
         operation: DomSourceOperationId,
         limits: DomSourceLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
         let progress = {
             let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
-            drive_lease(&guard, &mut lease, cancel)?
+            drive_lease(
+                &guard,
+                &self.hosted,
+                &mut lease,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
         };
-        finish_or_supply(dom, limits, None, guard, progress, policy, cancel)
+        finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            &self.hosted,
+            progress,
+            services,
+            cancel,
+        )
     }
     /// Install one immutable native fragment using its original feature root.
     pub fn install_native_html(
@@ -161,7 +218,7 @@ impl DomSourceRuntime {
         target: DomNativeHtmlInstallTarget,
         fragment: &surgeist_html::HtmlFragment,
         budgets: DomSourceNativeHtmlInstallLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
@@ -171,9 +228,26 @@ impl DomSourceRuntime {
                 .raw_mut()
                 .begin_native_installation(target, fragment, budgets, cancel)
                 .map_err(DomSourceRuntimeError::NativeInstallation)?;
-            drive_lease(&guard, &mut lease, cancel)?
+            drive_lease(
+                &guard,
+                &self.hosted,
+                &mut lease,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
         };
-        finish_or_supply(dom, limits, None, guard, progress, policy, cancel)
+        finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            guard,
+            &self.hosted,
+            progress,
+            services,
+            cancel,
+        )
     }
     /// Complete the actual once-authorized Select task through its feature root.
     pub fn complete_select(
@@ -182,7 +256,7 @@ impl DomSourceRuntime {
         task: &DomSelectTask,
         checkpoint: DomNativeCheckpointLimits,
         limits: DomSourceLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
@@ -190,9 +264,26 @@ impl DomSourceRuntime {
             let mut lease = dom
                 .raw_mut()
                 .begin_select_completion(task, checkpoint, limits, cancel)?;
-            drive_lease(&guard, &mut lease, cancel)?
+            drive_lease(
+                &guard,
+                &self.hosted,
+                &mut lease,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
         };
-        finish_or_supply(dom, limits, Some(task), guard, progress, policy, cancel)
+        finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: Some(task),
+            },
+            guard,
+            &self.hosted,
+            progress,
+            services,
+            cancel,
+        )
     }
     /// Resume Select processing with the same actual task authorization.
     pub fn resume_select(
@@ -201,7 +292,7 @@ impl DomSourceRuntime {
         operation: DomSourceOperationId,
         task: &DomSelectTask,
         limits: DomSourceLimits,
-        policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         let guard = self.prepare(dom, cancel)?;
@@ -209,21 +300,54 @@ impl DomSourceRuntime {
             let mut lease = dom
                 .raw_mut()
                 .resume_select_completion(operation, task, limits, cancel)?;
-            drive_lease(&guard, &mut lease, cancel)?
+            drive_lease(
+                &guard,
+                &self.hosted,
+                &mut lease,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
         };
-        finish_or_supply(dom, limits, Some(task), guard, progress, policy, cancel)
+        finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                select: Some(task),
+            },
+            guard,
+            &self.hosted,
+            progress,
+            services,
+            cancel,
+        )
     }
 }
 
 fn drive_lease(
     guard: &StyleSourceGuard,
+    hosted: &HostedRuntime,
     lease: &mut DomSourceLease<'_>,
+    url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
     cancel: &AtomicBool,
 ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
     loop {
         guard.flush(lease, cancel)?;
         match lease.advance(cancel)? {
             DomSourceProgress::Complete(done) => return Ok(DomSourceDriveProgress::Complete(done)),
+            DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
+                match hosted
+                    .service_source_child(lease, &request, url_revision, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?
+                {
+                    HostedSourceProgress::Serviced => {}
+                    HostedSourceProgress::Url(stage) => {
+                        return Ok(DomSourceDriveProgress::Pending {
+                            request: DomSourceRequest::HostedChild(request),
+                            reason: DomSourceUnavailable::Url(stage),
+                        });
+                    }
+                }
+            }
             DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 match guard.service(lease, request, cancel)? {
                     DomStyleServiceProgress::Serviced => {}
@@ -239,15 +363,21 @@ fn drive_lease(
     }
 }
 
+struct DriveRoot<'a> {
+    limits: DomSourceLimits,
+    select: Option<&'a DomSelectTask>,
+}
+
 fn finish_or_supply(
     dom: &mut DomEventDom<'_>,
-    limits: DomSourceLimits,
-    select: Option<&DomSelectTask>,
+    root: DriveRoot<'_>,
     guard: StyleSourceGuard,
+    hosted: &HostedRuntime,
     mut progress: DomSourceDriveProgress,
-    mut policy: impl FnMut(&DomStyleSource) -> Option<DomStyleInlineCspObservation>,
+    services: &mut DomSourceServices<'_>,
     cancel: &AtomicBool,
 ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    let DriveRoot { limits, select } = root;
     loop {
         match progress {
             DomSourceDriveProgress::Complete(_) => {
@@ -260,7 +390,7 @@ fn finish_or_supply(
             } => {
                 // The prior lease and every RefCell/CSSOM borrow ended before
                 // this actual external observation supplier is entered.
-                let Some(observation) = policy(request.source()) else {
+                let Some(observation) = (services.style_policy)(request.source()) else {
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::Style(request),
                         reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
@@ -274,7 +404,68 @@ fn finish_or_supply(
                     dom.resume_source_edit(operation, limits, cancel)?
                 };
                 lease.accept_inline_csp(&request, &observation, cancel)?;
-                progress = drive_lease(&guard, &mut lease, cancel)?;
+                progress = drive_lease(
+                    &guard,
+                    hosted,
+                    &mut lease,
+                    services.url.as_ref().map(|service| service.revision),
+                    cancel,
+                )?;
+            }
+            DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::HostedChild(child),
+                reason: DomSourceUnavailable::Url(stage),
+            } => {
+                let Some(service) = services.url.as_mut() else {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::HostedChild(child),
+                        reason: DomSourceUnavailable::Url(stage),
+                    });
+                };
+                let operation = child.operation();
+                let issued = {
+                    let mut lease = if let Some(task) = select {
+                        dom.raw_mut()
+                            .resume_select_completion(operation, task, limits, cancel)?
+                    } else {
+                        dom.resume_source_edit(operation, limits, cancel)?
+                    };
+                    lease.source_url_request(&child, stage, service.revision, cancel)?
+                };
+                // Both exclusive owners and all issuer/store/RefCell guards are
+                // released before calling the external producer. A rejected
+                // not-yet-admitted candidate may drop; an accepted candidate
+                // belongs to the canonical operation's charged response slot.
+                hosted
+                    .admit_url_observation(&issued, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+                let Some(observation) =
+                    (service.observe)(&issued, cancel).map_err(DomSourceRuntimeError::Hosted)?
+                else {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::HostedChild(child),
+                        reason: DomSourceUnavailable::Url(stage),
+                    });
+                };
+                let mut lease = if let Some(task) = select {
+                    dom.raw_mut()
+                        .resume_select_completion(operation, task, limits, cancel)?
+                } else {
+                    dom.resume_source_edit(operation, limits, cancel)?
+                };
+                lease.accept_source_url_observation(
+                    &child,
+                    &issued,
+                    &mut Some(observation),
+                    cancel,
+                )?;
+                progress = drive_lease(
+                    &guard,
+                    hosted,
+                    &mut lease,
+                    services.url.as_ref().map(|service| service.revision),
+                    cancel,
+                )?;
             }
             other => return Ok(other),
         }
@@ -329,7 +520,10 @@ mod tests {
                 &mut session.dom(),
                 DomSourceEdit::create_document(),
                 limits,
-                |_| panic!("Document creation has no inline CSS request"),
+                &mut DomSourceServices {
+                    style_policy: &mut |_| panic!("Document creation has no inline CSS request"),
+                    url: None,
+                },
                 &cancel,
             )
             .unwrap()
@@ -346,7 +540,10 @@ mod tests {
                 &mut session.dom(),
                 DomSourceEdit::create_text(id.node(), "exact text"),
                 limits,
-                |_| panic!("Text creation has no inline CSS request"),
+                &mut DomSourceServices {
+                    style_policy: &mut |_| panic!("Text creation has no inline CSS request"),
+                    url: None,
+                },
                 &cancel,
             )
             .unwrap()

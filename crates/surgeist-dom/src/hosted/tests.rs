@@ -31,6 +31,88 @@ fn retained(source: &DomHostedSource) -> usize {
 }
 
 #[test]
+fn hosted_operation_issuance_keeps_the_callers_live_candidate_in_scratch() {
+    let c = cancellation();
+    let configured = limits(record_limits(1, 1));
+    // Observe only the original Vec's physical capacity. The expected scratch
+    // sum below is independently built from these concrete owner extents.
+    let capacity = {
+        let mut issuer = source(configured);
+        let work = issuer.work(&c).unwrap();
+        issuer.begin_operation(&work, 2, 0, &c).unwrap();
+        issuer.lock().unwrap().banks[Role::Operation.index()].capacity()
+    };
+    let caller = vec![0u8; 17];
+    let caller_bytes = size_of::<Vec<u8>>() + caller.capacity();
+    let replacement = size_of::<Vec<IdentitySlot>>() + capacity * size_of::<IdentitySlot>();
+    let exact = caller_bytes + replacement;
+    for allowance in [exact - 1, exact] {
+        let mut issuer = source(configured);
+        let host = issuer.issue_host(&c).unwrap();
+        let prefix = issuer.prepare_top_level(host, &c).unwrap();
+        let context = prefix.context;
+        let work = prefix.work;
+        let before = retained(&issuer);
+        let revision = issuer.revision().unwrap();
+        let spent = work.spent.load(Ordering::Relaxed);
+        issuer
+            .set_limits(
+                DomHostedLimits::new(
+                    configured.records(),
+                    configured.retained_bytes(),
+                    allowance,
+                    configured.work(),
+                ),
+                &c,
+            )
+            .unwrap();
+        let result = issuer.begin_operation(&work, 2, caller_bytes, &c);
+        if allowance < exact {
+            match result {
+                Err(DomHostedError::Limit {
+                    resource: DomHostedResource::ScratchBytes,
+                    limit,
+                }) if limit == allowance => {}
+                Ok(id) => panic!(
+                    "one-short scratch admitted issuer replacement: caller={caller_bytes}, replacement={replacement}, exact={exact}, operation={id:?}"
+                ),
+                Err(error) => {
+                    panic!("one-short issuer scratch returned an unrelated error: {error:?}")
+                }
+            }
+            assert_eq!(issuer.revision().unwrap(), revision);
+            assert_eq!(retained(&issuer), before);
+            let state = issuer.lock().unwrap();
+            assert!(state.banks[Role::Operation.index()].is_empty());
+            assert_eq!(state.reserved_revisions, 0);
+        } else {
+            let operation = result.unwrap();
+            assert_eq!(
+                issuer.lock().unwrap().banks[Role::Operation.index()].capacity(),
+                capacity
+            );
+            let request = Request {
+                key: RequestKey {
+                    operation,
+                    phase: 0,
+                },
+                host,
+                context,
+                work: work.clone(),
+                parent: None,
+            };
+            issuer
+                .permit(&request, issuer.revision().unwrap(), true, &c)
+                .unwrap()
+                .commit();
+            assert_eq!(issuer.lock().unwrap().reserved_revisions, 0);
+        }
+        assert!(work.spent.load(Ordering::Relaxed) > spent);
+        assert_eq!(caller, [0; 17]);
+    }
+}
+
+#[test]
 fn hosted_retirement_reuses_only_the_next_generation_and_never_wraps() {
     let cancel = cancellation();
     let mut source = source(limits(record_limits(1, 1)));
@@ -62,7 +144,7 @@ fn hosted_retirement_reuses_only_the_next_generation_and_never_wraps() {
     assert_ne!(next.slot, last.slot);
     assert_eq!(next.generation, 1);
     let state = source.lock().unwrap();
-    let retired = state.banks[Role::Host.index()][last.slot];
+    let retired = &state.banks[Role::Host.index()][last.slot];
     assert!(retired.retired);
     assert!(!retired.live);
     assert_eq!(retired.generation, u64::MAX);
@@ -230,7 +312,7 @@ fn hosted_fixed_owner_and_work_payload_have_exact_byte_boundaries() {
     let cancel = cancellation();
     let records = record_limits(1, 1);
     let fixed = size_of::<Shared>();
-    let work = size_of::<Work>() + size_of::<AtomicU64>();
+    let work = size_of::<Work>() + 2 * size_of::<AtomicU64>();
     let id = DomHostedSourceId {
         owner: DomOwnerId::allocate().unwrap(),
         serial: 0,
@@ -266,7 +348,7 @@ fn hosted_growth_counts_actual_spare_capacity_and_old_new_overlap() {
     }
     let old_bytes = capacity * size_of::<IdentitySlot>();
     let fixed = size_of::<Shared>();
-    let work = size_of::<Work>() + size_of::<AtomicU64>();
+    let work = size_of::<Work>() + 2 * size_of::<AtomicU64>();
     assert_eq!(retained(&source), fixed + old_bytes);
     let requested = (capacity + 1) * size_of::<IdentitySlot>();
     let refusal_limit = fixed + work + old_bytes + requested - 1;
@@ -400,7 +482,7 @@ fn begin_request(fixture: &mut IssuerFixture, revisions: u64) -> Request {
     let work = fixture.work().clone();
     let operation = fixture
         .source
-        .begin_operation(&work, revisions, &cancellation())
+        .begin_operation(&work, revisions, 0, &cancellation())
         .unwrap();
     Request {
         key: RequestKey {
@@ -410,6 +492,7 @@ fn begin_request(fixture: &mut IssuerFixture, revisions: u64) -> Request {
         host: fixture.host,
         context: fixture.context,
         work,
+        parent: None,
     }
 }
 
@@ -427,6 +510,7 @@ fn execution_request(fixture: &mut IssuerFixture) -> DomHostedExecutionRequest {
     let inputs = crate::document::HostedDocumentInputs::form(
         &fixture.source,
         &request.work,
+        &fixture.origin,
         &cancellation(),
     )
     .unwrap();
@@ -538,27 +622,57 @@ fn hosted_entry_sealing_checks_both_actual_creating_request_qualifications() {
     let mut fixture = issuer_fixture();
     let (_, prior_entry, prior_navigable) = completed_issuer_roles(&mut fixture);
     let request = entry_request(&mut fixture);
+    let navigation_key = (*b"00000000-0000-4000-8000-000000000001").map(u16::from);
+    let navigation_id = (*b"00000000-0000-4000-8000-000000000002").map(u16::from);
+    let mut initialization = Some(DomHostedEntryInitialization::new(
+        navigation_key,
+        navigation_id,
+    ));
     let revision = fixture.source.revision().unwrap();
     assert!(matches!(
-        fixture
-            .source
-            .seal_initial_entry(&request, prior_entry, prior_navigable, &cancel),
+        fixture.source.seal_initial_entry(
+            &request,
+            prior_entry,
+            prior_navigable,
+            &mut initialization,
+            &cancel,
+        ),
         Err(DomHostedError::StaleIdentity)
     ));
     assert_eq!(fixture.source.revision().unwrap(), revision);
+    assert_eq!(
+        initialization.as_ref().unwrap().navigation_key,
+        navigation_key
+    );
+    assert_eq!(
+        initialization.as_ref().unwrap().navigation_id,
+        navigation_id
+    );
     let entry = fixture.source.issue_entry(&request, &cancel).unwrap();
     let navigable = fixture.source.issue_navigable(&request, &cancel).unwrap();
     let revision = fixture.source.revision().unwrap();
     let bytes = retained(&fixture.source);
     for (entry, navigable) in [(prior_entry, navigable), (entry, prior_navigable)] {
         assert!(matches!(
-            fixture
-                .source
-                .seal_initial_entry(&request, entry, navigable, &cancel),
+            fixture.source.seal_initial_entry(
+                &request,
+                entry,
+                navigable,
+                &mut initialization,
+                &cancel
+            ),
             Err(DomHostedError::StaleIdentity)
         ));
         assert_eq!(fixture.source.revision().unwrap(), revision);
         assert_eq!(retained(&fixture.source), bytes);
+        assert_eq!(
+            initialization.as_ref().unwrap().navigation_key,
+            navigation_key
+        );
+        assert_eq!(
+            initialization.as_ref().unwrap().navigation_id,
+            navigation_id
+        );
     }
     assert_eq!(
         fixture.source.issue_entry(&request, &cancel),
@@ -570,13 +684,26 @@ fn hosted_entry_sealing_checks_both_actual_creating_request_qualifications() {
     );
     let publication = fixture
         .source
-        .seal_initial_entry(&request, entry, navigable, &cancel)
+        .seal_initial_entry(&request, entry, navigable, &mut initialization, &cancel)
         .unwrap();
-    assert_eq!(publication.key, request.request.key);
     assert!(
-        matches!(publication.value, PublicationValue::InitialEntry { entry: actual_entry, navigable: actual_nav }
-        if actual_entry == entry && actual_nav == navigable)
+        initialization.is_none(),
+        "successful sealing consumes the original input once"
     );
+    assert_eq!(publication.key, request.request.key);
+    let PublicationValue::InitialEntry {
+        entry: actual_entry,
+        navigable: actual_nav,
+        initialization: actual_initialization,
+        ..
+    } = publication.value
+    else {
+        panic!("actual entry publication");
+    };
+    assert_eq!(actual_entry, entry);
+    assert_eq!(actual_nav, navigable);
+    assert_eq!(actual_initialization.navigation_key, navigation_key);
+    assert_eq!(actual_initialization.navigation_id, navigation_id);
 }
 
 #[test]
@@ -669,7 +796,7 @@ fn hosted_mandatory_revision_headroom_survives_unrelated_issue_and_retirement() 
     let spent = fixture.work().spent.load(Ordering::Relaxed);
     let work = fixture.work().clone();
     assert_eq!(
-        fixture.source.begin_operation(&work, 1, &cancel),
+        fixture.source.begin_operation(&work, 1, 0, &cancel),
         Err(DomHostedError::RepresentationExhausted)
     );
     assert_eq!(fixture.work().spent.load(Ordering::Relaxed), spent);
@@ -684,7 +811,7 @@ fn hosted_failed_operation_reservation_keeps_first_stop_and_spent_work() {
     let bytes = retained(&fixture.source);
     let work = fixture.work().clone();
     assert_eq!(
-        fixture.source.begin_operation(&work, 3, &cancel),
+        fixture.source.begin_operation(&work, 3, 0, &cancel),
         Err(DomHostedError::RepresentationExhausted)
     );
     assert_eq!(fixture.source.lock().unwrap().reserved_revisions, 0);
@@ -718,7 +845,7 @@ fn hosted_record_refusal_rolls_back_reservation_but_not_original_work() {
     let work = fixture.work().clone();
     let spent = work.spent.load(Ordering::Relaxed);
     assert_eq!(
-        fixture.source.begin_operation(&work, 3, &cancel),
+        fixture.source.begin_operation(&work, 3, 0, &cancel),
         Err(DomHostedError::Limit {
             resource: DomHostedResource::Operations,
             limit: 0
@@ -1022,4 +1149,77 @@ fn hosted_destruction_preserves_the_original_prepublication_work_lane() {
     ));
     assert_eq!(fixture.source.revision().unwrap(), revision);
     assert_eq!(retained(&fixture.source), bytes);
+}
+
+#[test]
+fn hosted_queued_role_work_limits_change_only_after_every_original_work_accepts() {
+    let cancel = cancellation();
+    let mut source = source(limits(record_limits(1, 1)));
+    let first = source.work(&cancel).unwrap();
+    let first_operation = source.begin_operation(&first, 2, 0, &cancel).unwrap();
+    let second = source.work(&cancel).unwrap();
+    let second_operation = source.begin_operation(&second, 2, 0, &cancel).unwrap();
+    assert!(source.active_work.upgrade().is_none());
+    while second.spent.load(Ordering::Relaxed) <= first.spent.load(Ordering::Relaxed) + 1 {
+        second.step(&cancel).unwrap();
+    }
+    let first_spent = first.spent.load(Ordering::Relaxed);
+    let second_spent = second.spent.load(Ordering::Relaxed);
+    let original = source.limits();
+    let bytes = retained(&source);
+    let revision = source.revision().unwrap();
+    let with_work = |work| {
+        DomHostedLimits::new(
+            original.records(),
+            original.retained_bytes(),
+            original.scratch_bytes(),
+            work,
+        )
+    };
+
+    // The earlier row accepts this cap, but the later original Work refuses.
+    // Neither original counter may be updated on that partial validation path.
+    assert_eq!(
+        source.set_limits(with_work(second_spent - 1), &cancel),
+        Err(DomHostedError::WorkLimit {
+            limit: second_spent - 1,
+        })
+    );
+    assert_eq!(source.limits(), original);
+    assert_eq!(first.limit.load(Ordering::Relaxed), original.work());
+    assert_eq!(second.limit.load(Ordering::Relaxed), original.work());
+    assert_eq!(first.spent.load(Ordering::Relaxed), first_spent);
+    assert_eq!(second.spent.load(Ordering::Relaxed), second_spent);
+    assert_eq!(retained(&source), bytes);
+    assert_eq!(source.revision().unwrap(), revision);
+
+    source.set_limits(with_work(second_spent), &cancel).unwrap();
+    assert_eq!(first.limit.load(Ordering::Relaxed), second_spent);
+    assert_eq!(second.limit.load(Ordering::Relaxed), second_spent);
+    assert_eq!(
+        second.step(&cancel),
+        Err(DomHostedError::WorkLimit {
+            limit: second_spent
+        })
+    );
+    assert_eq!(second.spent.load(Ordering::Relaxed), second_spent);
+    source
+        .set_limits(with_work(second_spent + 1), &cancel)
+        .unwrap();
+    second.step(&cancel).unwrap();
+    assert_eq!(second.spent.load(Ordering::Relaxed), second_spent + 1);
+    assert_eq!(first.spent.load(Ordering::Relaxed), first_spent);
+    for operation in [first_operation, second_operation] {
+        source
+            .observe()
+            .validate(
+                operation.source,
+                Role::Operation,
+                operation.slot,
+                operation.generation,
+            )
+            .unwrap();
+    }
+    assert_eq!(retained(&source), bytes);
+    assert_eq!(source.revision().unwrap(), revision);
 }

@@ -8,12 +8,13 @@ fn limits() -> HtmlSemanticLimits {
 fn revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3)
 }
-fn url(revision: &HtmlBaseFactsRevision, text: &str) -> HtmlBaseUrlRecord {
+fn url(revision: &HtmlBaseFactsRevision, text: &str, fragment: Option<usize>) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         text.into(),
         HtmlBaseUrlScheme::Other,
         false,
+        fragment,
     )
     .unwrap()
 }
@@ -71,8 +72,8 @@ fn fixture(
         .unwrap();
     let current = revision();
     let historical = revision();
-    let fallback = url(&current, "https://example.test/fallback/");
-    let selected = url(&historical, "https://example.test/historical/");
+    let fallback = url(&current, "https://example.test/fallback/", None);
+    let selected = url(&historical, "https://example.test/historical/", None);
     let facts = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
             current.clone(),

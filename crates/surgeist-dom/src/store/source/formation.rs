@@ -55,6 +55,43 @@ impl Formation {
             work_limit: limits.work,
         }))
     }
+    /// A distinct temporary custody guard over these same actual live atoms.
+    /// No budget or spent-work counter is renewed.
+    pub(in crate::store) fn fork(&self) -> Self {
+        Self {
+            base: self.base,
+            limit: self.limit,
+            live: self.live.clone(),
+            own: Cell::new(0),
+            base_units: self.base_units,
+            unit_limit: self.unit_limit,
+            live_units: self.live_units.clone(),
+            own_units: Cell::new(0),
+            work: self.work.clone(),
+            work_limit: self.work_limit,
+        }
+    }
+    /// Transfer an already admitted synchronous candidate into its publication
+    /// owner without releasing its live debit between the two owners.
+    pub(in crate::store) fn absorb(&self, other: Self) {
+        assert!(
+            Arc::ptr_eq(&self.live, &other.live)
+                && Arc::ptr_eq(&self.live_units, &other.live_units),
+            "same original Source formation"
+        );
+        self.own.set(
+            self.own
+                .get()
+                .checked_add(other.own.replace(0))
+                .expect("already admitted simultaneous payload"),
+        );
+        self.own_units.set(
+            self.own_units
+                .get()
+                .checked_add(other.own_units.replace(0))
+                .expect("already admitted simultaneous units"),
+        );
+    }
     pub(crate) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)?;
         let next = self
@@ -69,6 +106,18 @@ impl Formation {
         }
         self.work.store(next, Ordering::Relaxed);
         Ok(())
+    }
+    pub(in crate::store) fn retained_byte_limit(&self) -> usize {
+        self.limit
+    }
+    pub(in crate::store) fn remaining_bytes(&self) -> Result<usize, DomError> {
+        self.limit
+            .checked_sub(self.base)
+            .and_then(|bytes| bytes.checked_sub(self.live.load(Ordering::Relaxed)))
+            .ok_or(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedBytes,
+                limit: self.limit,
+            })
     }
     pub(crate) fn retain_bytes(&self, bytes: usize, cancel: &AtomicBool) -> Result<(), DomError> {
         self.retain_payload(storage::Payload { bytes, units: 0 }, cancel)

@@ -513,6 +513,7 @@ fn associated_explicit_input_policy_is_reestablished_in_the_new_closed_environme
         "https://example.test/source/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     // Actual existing installation supplies a per-Document policy distinct

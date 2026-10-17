@@ -18,6 +18,7 @@ fn facts(
         text("about:blank", spare_fallback),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let parsed = HtmlBaseUrlRecord::observed(
@@ -25,6 +26,7 @@ fn facts(
         text("https://example.test/", spare_result),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -104,6 +106,7 @@ fn hyperlink_snapshot_footprint_keeps_only_selected_observation_and_is_not_seman
         text("https://base/", 23),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let result = HtmlBaseUrlRecord::observed(
@@ -111,6 +114,7 @@ fn hyperlink_snapshot_footprint_keeps_only_selected_observation_and_is_not_seman
         text("https://result/", 41),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -172,6 +176,7 @@ fn hyperlink_empty_bank_spare_capacity_is_counted() {
         "x".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -206,6 +211,7 @@ fn standalone_url_record_footprint_preserves_actual_spare_backing_without_bank()
             text("about:blank", spare),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap()
     };

@@ -28,12 +28,17 @@ fn revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 7, 11, 13)
 }
 
-fn record(revision: &HtmlBaseFactsRevision, spelling: &str) -> HtmlBaseUrlRecord {
+fn record(
+    revision: &HtmlBaseFactsRevision,
+    spelling: &str,
+    fragment_delimiter_offset: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         spelling.into(),
         HtmlBaseUrlScheme::Other,
         spelling == "about:blank",
+        fragment_delimiter_offset,
     )
     .unwrap()
 }
@@ -42,7 +47,7 @@ fn facts(
     revision: &HtmlBaseFactsRevision,
     observations: Vec<(DocumentString, HtmlBaseUrlRecord)>,
 ) -> (HtmlParseBaseFacts, HtmlBaseUrlRecord) {
-    let fallback = record(revision, "about:blank");
+    let fallback = record(revision, "about:blank", None);
     let encoding = HtmlBaseEncoding::fresh();
     let observations = observations
         .into_iter()
@@ -122,9 +127,9 @@ fn frozen(snapshot: &DomSnapshot, base: NodeId) -> DomFrozenBase<'_> {
 fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_changes() {
     let mut dom = owner();
     let revision = revision();
-    let first_record = record(&revision, "https://supplied.test/first/");
-    let second_record = record(&revision, "https://supplied.test/second/");
-    let latest_record = record(&revision, "https://supplied.test/latest/");
+    let first_record = record(&revision, "https://supplied.test/first/", None);
+    let second_record = record(&revision, "https://supplied.test/second/", None);
+    let latest_record = record(&revision, "https://supplied.test/latest/", None);
     let (facts, _) = facts(
         &revision,
         vec![
@@ -232,8 +237,8 @@ fn ordinary_document_first_base_ignores_shadow_and_template_and_defers_nonfirst_
 fn detached_and_adopted_base_preserves_frozen_document_until_a_new_actual_freeze() {
     let mut dom = owner();
     let revision = revision();
-    let from_first = record(&revision, "https://first.test/retained/");
-    let from_second = record(&revision, "https://second.test/new/");
+    let from_first = record(&revision, "https://first.test/retained/", None);
+    let from_second = record(&revision, "https://second.test/new/", None);
     let (first_facts, _) = facts(&revision, vec![("kept".into(), from_first.clone())]);
     let (second_facts, second_fallback) =
         facts(&revision, vec![("kept".into(), from_second.clone())]);
@@ -293,8 +298,8 @@ fn detached_and_adopted_base_preserves_frozen_document_until_a_new_actual_freeze
 fn exact_raw_utf16_observations_and_late_error_preserve_the_prior_frozen_record() {
     let mut dom = owner();
     let revision = revision();
-    let first_record = record(&revision, "https://literal.test/first/");
-    let next_record = record(&revision, "https://literal.test/next/");
+    let first_record = record(&revision, "https://literal.test/first/", None);
+    let next_record = record(&revision, "https://literal.test/next/", None);
     let raw = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
     let next_raw = DocumentString::from_utf16(vec![0xd800, 9, 0xdc00]);
     let missing_raw = DocumentString::from_utf16(vec![0xd801, 0, 0xdc00]);

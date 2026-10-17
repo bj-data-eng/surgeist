@@ -172,13 +172,16 @@ membership are independent; supplemental association closure does not certify
 unrelated tree completeness.
 Runtime's `DomSession` owns the canonical DOM, Style resources, Details tasks and
 native hosted lifecycle through weak execution permissions. Its bounded hosted
-surface creates initial no-opener top-levels with real Global/settings/agent
-state and drives no-child destruction through the original queued task. DOM
+surface creates initial no-opener top-levels and native Frame/Iframe initial
+children with real Global/settings/agent state. Runtime computes the selected
+initial fullscreen Permissions Policy from actual inputs and qualified URL
+observations. Its shared native task loop drives queued history and recursive
+destruction through the original Global tasks. DOM
 owns controlled associations and the actual complete-empty Global registry;
 Semantics owns registry formation and lookup. Snapshot Global/Document identity
 and activity observations remain historical; current DOM-owner fronts validate
 live issuer and role identities for execution. Native checkpoints retain pending
-Slot work without replay or fabricated delivery. Child/replacement lifecycle,
+Slot work without replay or fabricated delivery. General navigation/replacement,
 Slot delivery and broader modal/resource services remain contribution work; the
 [DOM README](crates/surgeist-dom/README.md) and
 [Runtime explanation](crates/surgeist-runtime/docs/explanation.md#dom-orchestration)

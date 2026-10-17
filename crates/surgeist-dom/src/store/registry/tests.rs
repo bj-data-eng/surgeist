@@ -48,7 +48,7 @@ fn registry_replacement_refuses_candidate_backing_above_scratch_even_when_produc
     let work = source.work(&cancel).unwrap();
     let mut old: Option<Arc<Bank>> = None;
     for _ in 0..required - 1 {
-        let (next, _) = Bank::form(old.as_deref(), owner, &source, &work, &cancel).unwrap();
+        let (next, _) = Bank::form(old.as_deref(), owner, &source, &work, None, &cancel).unwrap();
         old = Some(next);
     }
     let old = old.unwrap();
@@ -70,7 +70,7 @@ fn registry_replacement_refuses_candidate_backing_above_scratch_even_when_produc
         .unwrap();
     let retained_before = source.limits().retained_bytes() - source.remaining_bytes().unwrap();
     let spent_before = work.spent.load(Ordering::Relaxed);
-    match Bank::form(Some(&old), owner, &source, &work, &cancel) {
+    match Bank::form(Some(&old), owner, &source, &work, None, &cancel) {
         Err(DomHostedError::Limit {
             resource: DomHostedResource::ScratchBytes,
             limit,

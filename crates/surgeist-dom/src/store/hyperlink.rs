@@ -492,6 +492,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let env = HtmlBaseDocumentFacts::new(
@@ -510,6 +511,7 @@ mod tests {
             "https://example.test/".into(),
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         let bank = |capacity: usize| {
@@ -601,6 +603,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let encoding = HtmlBaseEncoding::fresh();

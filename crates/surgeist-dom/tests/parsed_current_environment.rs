@@ -72,6 +72,7 @@ fn installed_environment_accepts_exact_inputs_and_rejects_same_spelling_foreign_
         "https://example.test/current/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -115,6 +116,7 @@ fn installed_environment_accepts_exact_inputs_and_rejects_same_spelling_foreign_
         "https://example.test/current/next".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let facts = HtmlEncodingUrlParseFacts::new(
@@ -143,6 +145,7 @@ fn installed_environment_accepts_exact_inputs_and_rejects_same_spelling_foreign_
         url.serialization().clone(),
         HtmlBaseUrlScheme::Other,
         false,
+        url.fragment_delimiter_offset(),
     )
     .unwrap();
     for invalid in [

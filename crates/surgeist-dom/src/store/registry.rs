@@ -58,6 +58,7 @@ impl Bank {
         owner: DomOwnerId,
         source: &DomHostedSource,
         work: &Work,
+        formation: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<(Arc<Self>, DomRegistryId), DomHostedError> {
         work.step(cancel)?;
@@ -70,21 +71,56 @@ impl Bank {
             source.limits().records().registries(),
             DomHostedResource::Registries,
         )?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(size_of::<Record>(), cancel)?;
+        }
         let header = source.retain(size_of::<Record>(), cancel)?;
         let quota = source.retain_registry(cancel)?;
+        let hosted_allowance = source
+            .remaining_bytes()?
+            .min(source.limits().scratch_bytes());
+        let parent_allowance = formation
+            .map(|formation| formation.remaining_bytes())
+            .transpose()?;
+        let allowance =
+            parent_allowance.map_or(hosted_allowance, |bytes| bytes.min(hosted_allowance));
+        // The producer owns its private peak measurement. Reserve the supplied
+        // finite envelope before it forms anything, then transfer only the real
+        // returned graph extent when its temporary workspace has been dropped.
+        if let Some(formation) = formation {
+            formation.retain_bytes(allowance, cancel)?;
+        }
         let formed = HtmlCapture::complete_empty_global_registry_with(
             HtmlHostFactsRevision::fresh(),
-            source
-                .remaining_bytes()?
-                .min(source.limits().scratch_bytes()),
-            |amount| work.spend(amount, cancel),
+            allowance,
+            |amount| {
+                work.spend(amount, cancel)?;
+                if let Some(formation) = formation {
+                    for _ in 0..amount {
+                        formation.step(cancel)?;
+                    }
+                }
+                Ok::<_, DomHostedError>(())
+            },
         )
         .map_err(|error| match error {
             HtmlEmptyGlobalRegistryError::Interrupted(error) => error,
-            HtmlEmptyGlobalRegistryError::FormationBytes { limit, .. } => DomHostedError::Limit {
-                resource: DomHostedResource::RetainedBytes,
-                limit,
-            },
+            HtmlEmptyGlobalRegistryError::FormationBytes { limit, .. } => {
+                if parent_allowance.is_some_and(|bytes| bytes <= hosted_allowance) {
+                    DomError::ResourceLimit {
+                        resource: DomResource::SourceRetainedBytes,
+                        limit: formation
+                            .expect("actual parent envelope")
+                            .retained_byte_limit(),
+                    }
+                    .into()
+                } else {
+                    DomHostedError::Limit {
+                        resource: DomHostedResource::RetainedBytes,
+                        limit,
+                    }
+                }
+            }
             HtmlEmptyGlobalRegistryError::RepresentationExhausted => {
                 DomHostedError::RepresentationExhausted
             }
@@ -94,6 +130,14 @@ impl Bank {
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;
         let (capture, local) = formed.into_parts();
+        if let Some(formation) = formation {
+            formation.release_payload(source::storage::Payload {
+                bytes: allowance
+                    .checked_sub(payload_bytes)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                units: 0,
+            });
+        }
         let record = Arc::new(Record {
             capture,
             local,
@@ -116,6 +160,9 @@ impl Bank {
         let requested = backing
             .checked_add(size_of::<Self>())
             .ok_or(DomHostedError::RepresentationExhausted)?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(requested, cancel)?;
+        }
         let retained = source.retain(requested, cancel)?;
         let mut candidate = Self {
             owner,
@@ -141,6 +188,9 @@ impl Bank {
         let extra = actual
             .checked_sub(backing)
             .ok_or(DomHostedError::RepresentationExhausted)?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(extra, cancel)?;
+        }
         let extra_retained = source.retain(extra, cancel)?;
         // The exposed capacity check precedes every copy. The requested and
         // extra occurrences are combined without dropping either admission.
@@ -148,6 +198,14 @@ impl Bank {
         if let Some(old) = old {
             for record in &old.records {
                 work.step(cancel)?;
+                if let Some(formation) = formation {
+                    formation.retain_bytes(
+                        size_of::<Record>()
+                            .checked_add(record.payload_bytes)
+                            .ok_or(DomError::RepresentationExhausted)?,
+                        cancel,
+                    )?;
+                }
                 candidate.records.push(record.clone());
             }
         }

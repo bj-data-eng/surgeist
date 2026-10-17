@@ -652,12 +652,17 @@ fn url_limits(work: u64) -> DomLimits {
 fn url_revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3)
 }
-fn url_record(revision: &HtmlBaseFactsRevision, raw: &str) -> HtmlBaseUrlRecord {
+fn url_record(
+    revision: &HtmlBaseFactsRevision,
+    raw: &str,
+    fragment_delimiter_offset: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         raw.into(),
         HtmlBaseUrlScheme::Other,
         raw == "about:blank",
+        fragment_delimiter_offset,
     )
     .unwrap()
 }
@@ -734,7 +739,7 @@ fn refresh_url_substring_consumes_actual_failed_javascript_and_successful_observ
     dom.set_limits(url_limits(1_000_000)).unwrap();
     let revision = url_revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = url_record(&revision, "about:blank");
+    let fallback = url_record(&revision, "about:blank", None);
     bind_url_environment(
         &mut dom,
         document,
@@ -745,9 +750,10 @@ fn refresh_url_substring_consumes_actual_failed_javascript_and_successful_observ
         "javascript:0".into(),
         HtmlBaseUrlScheme::Javascript,
         false,
+        None,
     )
     .unwrap();
-    let target = url_record(&revision, "https://refresh.test/%EF%BF%BDx%EF%BF%BD");
+    let target = url_record(&revision, "https://refresh.test/%EF%BF%BDx%EF%BF%BD", None);
     let mut raw_units = "https://refresh.test/".encode_utf16().collect::<Vec<_>>();
     raw_units.extend_from_slice(&[0xd800, 120, 0xdc00]);
     let raw = DocumentString::from_utf16(raw_units);
@@ -812,7 +818,7 @@ fn refresh_lookup_missing_and_rebound_full_revision_refuse_atomically() {
     dom.set_limits(url_limits(1_000_000)).unwrap();
     let revision = url_revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = url_record(&revision, "about:blank");
+    let fallback = url_record(&revision, "about:blank", None);
     bind_url_environment(
         &mut dom,
         document,
@@ -836,7 +842,11 @@ fn refresh_lookup_missing_and_rebound_full_revision_refuse_atomically() {
         &revision,
         vec![HtmlEncodingUrlParseObservation::new(
             "https://refresh.test/".into(),
-            HtmlEncodingUrlParseOutcome::Parsed(url_record(&revision, "https://refresh.test/")),
+            HtmlEncodingUrlParseOutcome::Parsed(url_record(
+                &revision,
+                "https://refresh.test/",
+                None,
+            )),
         )],
     );
     bind_urls(&mut dom, document, &facts).unwrap();
@@ -855,7 +865,7 @@ fn refresh_lookup_missing_and_rebound_full_revision_refuse_atomically() {
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
     let newer = HtmlBaseFactsRevision::new(revision.producer().clone(), 1, 2, 4);
-    let newer_fallback = url_record(&newer, "about:blank");
+    let newer_fallback = url_record(&newer, "about:blank", None);
     bind_url_environment(
         &mut dom,
         document,
@@ -884,8 +894,8 @@ fn refresh_uses_current_first_base_and_refuses_foreign_encoding_and_equal_spelli
     dom.set_limits(url_limits(1_000_000)).unwrap();
     let revision = url_revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = url_record(&revision, "about:blank");
-    let selected = url_record(&revision, "https://base.test/");
+    let fallback = url_record(&revision, "about:blank", None);
+    let selected = url_record(&revision, "https://base.test/", None);
     let observation = HtmlBaseParseObservation::new(
         "base".into(),
         fallback.clone(),
@@ -915,7 +925,7 @@ fn refresh_uses_current_first_base_and_refuses_foreign_encoding_and_equal_spelli
             HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
-            url_record(&revision, "https://base.test/"),
+            url_record(&revision, "https://base.test/", None),
             encoding.clone(),
             revision.clone(),
             HtmlEncodingUrlFactsError::InputsMismatch,
@@ -955,7 +965,11 @@ fn refresh_uses_current_first_base_and_refuses_foreign_encoding_and_equal_spelli
         &revision,
         vec![HtmlEncodingUrlParseObservation::new(
             "target".into(),
-            HtmlEncodingUrlParseOutcome::Parsed(url_record(&revision, "https://base.test/target")),
+            HtmlEncodingUrlParseOutcome::Parsed(url_record(
+                &revision,
+                "https://base.test/target",
+                None,
+            )),
         )],
     );
     bind_urls(&mut dom, document, &facts).unwrap();
@@ -971,7 +985,7 @@ fn refresh_and_hyperlink_spend_one_cumulative_bank_allowance_and_rollback_at_eve
         dom.set_limits(url_limits(1_000_000)).unwrap();
         let revision = url_revision();
         let encoding = HtmlBaseEncoding::fresh();
-        let fallback = url_record(&revision, "about:blank");
+        let fallback = url_record(&revision, "about:blank", None);
         bind_url_environment(
             &mut dom,
             document,
@@ -983,7 +997,11 @@ fn refresh_and_hyperlink_spend_one_cumulative_bank_allowance_and_rollback_at_eve
             &revision,
             vec![HtmlEncodingUrlParseObservation::new(
                 "https://refresh.test/".into(),
-                HtmlEncodingUrlParseOutcome::Parsed(url_record(&revision, "https://refresh.test/")),
+                HtmlEncodingUrlParseOutcome::Parsed(url_record(
+                    &revision,
+                    "https://refresh.test/",
+                    None,
+                )),
             )],
         );
         bind_urls(&mut dom, document, &facts).unwrap();
@@ -1058,7 +1076,7 @@ fn successful_url_refresh_is_private_until_all_later_effects_complete() {
     dom.set_limits(url_limits(1_000_000)).unwrap();
     let revision = url_revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = url_record(&revision, "about:blank");
+    let fallback = url_record(&revision, "about:blank", None);
     bind_url_environment(
         &mut dom,
         document,
@@ -1070,7 +1088,11 @@ fn successful_url_refresh_is_private_until_all_later_effects_complete() {
         &revision,
         vec![HtmlEncodingUrlParseObservation::new(
             "https://refresh.test/".into(),
-            HtmlEncodingUrlParseOutcome::Parsed(url_record(&revision, "https://refresh.test/")),
+            HtmlEncodingUrlParseOutcome::Parsed(url_record(
+                &revision,
+                "https://refresh.test/",
+                None,
+            )),
         )],
     );
     bind_urls(&mut dom, document, &facts).unwrap();

@@ -20,6 +20,7 @@ fn url(revision: &HtmlBaseFactsRevision, spare: usize) -> HtmlBaseUrlRecord {
         padded("https://example.test/", spare),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap()
 }

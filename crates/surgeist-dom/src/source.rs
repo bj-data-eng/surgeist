@@ -1,9 +1,14 @@
 //! One requested canonical edit and its retained source continuation.
+mod url;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;
 use crate::{DocumentString, DomDocumentStamp, DomSnapshot, DomStyleRequest, Namespace, NodeId};
 use std::sync::Arc;
 use surgeist_css::CssViewTransitionIdent;
+pub(crate) use url::UrlBasis;
+pub use url::{
+    DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest, DomSourceUrlStage,
+};
 
 /// Absolute finite admission for one composed source operation. Resuming does
 /// not reset work or publication/output counters. CSS and CSSOM retain their
@@ -93,6 +98,7 @@ impl DomSourceStatus {
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
     Style(DomStyleRequest),
+    HostedChild(crate::DomHostedChildRequest),
 }
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -104,10 +110,6 @@ pub enum DomSourceOutput {
 }
 /// A service boundary or the completion of one requested source operation.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Mutually exclusive admitted source request and completion transfer without another publication allocation"
-)]
 pub enum DomSourceProgress {
     Request(DomSourceRequest),
     Complete(DomSourceCompletion),

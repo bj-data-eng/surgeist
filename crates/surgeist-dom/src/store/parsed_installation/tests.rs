@@ -388,6 +388,7 @@ fn environment(dom: &mut Dom) -> DomParsedDocumentEnvironment {
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     DomParsedDocumentEnvironment::headless(
@@ -704,6 +705,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -713,6 +715,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
         raw.clone().into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let facts = HtmlParseBaseFacts::new(

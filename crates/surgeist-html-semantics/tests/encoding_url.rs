@@ -10,6 +10,7 @@ fn context() -> (HtmlBaseFactsRevision, HtmlBaseUrlRecord, HtmlBaseEncoding) {
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     (revision, base, HtmlBaseEncoding::fresh())
@@ -38,6 +39,7 @@ fn borrowed_exact_units_distinguish_observed_failure_javascript_success_and_miss
         "javascript:0".into(),
         HtmlBaseUrlScheme::Javascript,
         false,
+        None,
     )
     .unwrap();
     let result = HtmlBaseUrlRecord::observed(
@@ -45,6 +47,7 @@ fn borrowed_exact_units_distinguish_observed_failure_javascript_success_and_miss
         "https://observed.test/%EF%BF%BDx%EF%BF%BD".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let mut raw = "https://observed.test/".encode_utf16().collect::<Vec<_>>();
@@ -109,6 +112,7 @@ fn opaque_context_and_complete_revision_are_checked_independently_from_text() {
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let raw = "https://[".encode_utf16().collect::<Vec<_>>();
@@ -220,6 +224,7 @@ fn selected_historical_base_identity_does_not_replace_current_full_revision() {
         "https://observed.test/current".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let bank = facts(

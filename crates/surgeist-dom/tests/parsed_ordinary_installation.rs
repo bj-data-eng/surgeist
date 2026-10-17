@@ -61,6 +61,7 @@ fn setup() -> (Dom, DomParsedDocumentEnvironment) {
         "https://example.test/ordinary/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let environment = DomParsedDocumentEnvironment::headless(
@@ -152,6 +153,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let encoding = HtmlBaseEncoding::fresh();
@@ -160,6 +162,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
             "https://example.test/exact".into(),
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         let base = HtmlParseBaseFacts::new(
@@ -299,6 +302,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
                 "about:blank".into(),
                 HtmlBaseUrlScheme::Other,
                 true,
+                None,
             )
             .unwrap()
         } else {
@@ -321,6 +325,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
                 "https://example.test/exact".into(),
                 HtmlBaseUrlScheme::Other,
                 false,
+                None,
             )
             .unwrap();
             assert_ne!(other, absolute);
@@ -536,17 +541,21 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
     let host = commit.created(&host).unwrap().unwrap();
     let first = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 5, 7, 11);
     let encoding = HtmlBaseEncoding::fresh();
-    let record = |revision: &HtmlBaseFactsRevision, text: &str, blank| {
+    let record = |revision: &HtmlBaseFactsRevision,
+                  text: &str,
+                  blank,
+                  fragment_delimiter_offset: Option<usize>| {
         HtmlBaseUrlRecord::observed(
             revision.clone(),
             text.into(),
             HtmlBaseUrlScheme::Other,
             blank,
+            fragment_delimiter_offset,
         )
         .unwrap()
     };
-    let old_blank = record(&first, "about:blank", true);
-    let old_base = record(&first, "https://old.test/base/", false);
+    let old_blank = record(&first, "about:blank", true, None);
+    let old_base = record(&first, "https://old.test/base/", false, None);
     let original = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
             first.clone(),
@@ -583,7 +592,7 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
     let current_facts = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
             current.clone(),
-            Some(record(&current, "about:blank", true)),
+            Some(record(&current, "about:blank", true, None)),
             HtmlAboutBaseUrl::KnownNull,
             false,
             Some(encoding.clone()),
@@ -641,7 +650,7 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
         let facts = HtmlParseBaseFacts::new(
             HtmlBaseDocumentFacts::new(
                 revision.clone(),
-                Some(record(&revision, "about:blank", true)),
+                Some(record(&revision, "about:blank", true, None)),
                 HtmlAboutBaseUrl::KnownNull,
                 false,
                 Some(encoding.clone()),
@@ -773,6 +782,7 @@ fn unused_captured_base_graph_is_retained_and_charged_once_with_actual_spare_bac
         DocumentString::from_utf16(blank),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let mut raw = Vec::with_capacity(32768);
@@ -2530,6 +2540,7 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
         "https://example.test/ordinary/sub/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let observation = HtmlBaseParseObservation::new(
@@ -2577,6 +2588,7 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
                 "https://example.test/ordinary/".into(),
                 HtmlBaseUrlScheme::Other,
                 false,
+                None,
             )
             .unwrap(),
             environment.encoding().clone(),
@@ -2653,6 +2665,7 @@ fn full_original_and_environment_backing_admit_exact_budget_and_refuse_one_byte_
         DocumentString::from_utf16(padded_url),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let mut label = Vec::with_capacity(1_000);
@@ -2846,6 +2859,7 @@ fn hyperlink_source_time_base_failed_parse_and_adoption_keep_the_actual_cache() 
         "https://example.test/ordinary/sub/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let early = HtmlBaseUrlRecord::observed(
@@ -2853,6 +2867,7 @@ fn hyperlink_source_time_base_failed_parse_and_adoption_keep_the_actual_cache() 
         "https://example.test/ordinary/early".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let limits = || HtmlBaseFactsLimits::new(8, 10_000, 100_000);
@@ -3223,6 +3238,7 @@ fn template_hyperlink_uses_its_actual_inert_document_facts_and_cannot_inherit_ou
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -3244,6 +3260,7 @@ fn template_hyperlink_uses_its_actual_inert_document_facts_and_cannot_inherit_ou
         "https://inert.example/x".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let observations = HtmlEncodingUrlParseFacts::new(
@@ -3369,19 +3386,20 @@ fn actual_general_clone_uses_its_own_href_observation_and_image_subject_identity
     dom.set_limits(dom.limits().with_base_processing(8, 100_000).unwrap())
         .unwrap();
     let revision = seed.url().revision().clone();
-    let url = |value: &str| {
+    let url = |value: &str, fragment_delimiter_offset: Option<usize>| {
         HtmlBaseUrlRecord::observed(
             revision.clone(),
             value.into(),
             HtmlBaseUrlScheme::Other,
             false,
+            fragment_delimiter_offset,
         )
         .unwrap()
     };
-    let old = url("https://example.test/old/");
-    let new = url("https://example.test/new/");
-    let old_x = url("https://example.test/old/x");
-    let new_x = url("https://example.test/new/x");
+    let old = url("https://example.test/old/", None);
+    let new = url("https://example.test/new/", None);
+    let old_x = url("https://example.test/old/x", None);
+    let new_x = url("https://example.test/new/x", None);
     let environment = DomParsedDocumentEnvironment::headless(
         seed.origin().clone(),
         old.clone(),

@@ -73,7 +73,12 @@ impl Draft {
         )
     }
     pub(super) fn source_storage_units(&self, cancel: &AtomicBool) -> Result<usize, DomError> {
-        let mut units = 0usize;
+        let mut units = self
+            .hosted_history
+            .as_ref()
+            .map(|g| g.payload(|| self.source_step(cancel)).map(|p| p.units))
+            .transpose()?
+            .unwrap_or(0);
         for node in self.existing.iter().chain(&self.created).flatten() {
             units = units
                 .checked_add(storage::node(node, || self.source_step(cancel))?.units)

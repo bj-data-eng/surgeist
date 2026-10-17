@@ -3,6 +3,25 @@
 //! The source issues provenance for an external owner. It does not implement an
 //! event loop, an agent, a clock or a second Document/activity table.
 
+mod destruction;
+pub use destruction::{
+    DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication, DomHostedDestructionInvocation,
+    DomHostedDestructionInvocationRequest,
+};
+mod child;
+pub use child::{
+    DomHostedChildHistoryRequest, DomHostedChildPreparation, DomHostedChildRemovalRequest,
+    DomHostedChildRequest, DomHostedChildStep, DomHostedEmbedderKind,
+    DomHostedEmbedderPolicyInputs, DomHostedPreparedChild,
+};
+mod queue;
+pub use queue::{
+    DomHostedChildHistoryPublication, DomHostedHistoryJobReceipt, DomHostedHistoryJobRequest,
+    DomHostedHistoryStep, DomHostedQueuedHistory,
+};
+mod history;
+pub use history::{DomHostedEntry, DomHostedEntryInitialization, DomHostedNavigable};
+
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -183,6 +202,7 @@ pub enum DomHostedError {
     PendingDocumentObligations,
     ClockRegression,
     InvalidClockSample,
+    InvalidEntryInitialization,
     RepresentationExhausted,
     AllocationFailed,
     Limit {
@@ -246,7 +266,7 @@ impl DomHostedMoment {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct IdentitySlot {
     generation: u64,
     live: bool,
@@ -254,6 +274,8 @@ struct IdentitySlot {
     phase: u64,
     issued: u8,
     creator: Option<RequestKey>,
+    work: Option<WorkObservation>,
+    reserved_revisions: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -299,11 +321,42 @@ pub(crate) struct Shared {
     registries: AtomicUsize,
 }
 
+/// Weak access to the actual counters owned by the original operation. These
+/// observations live in its existing issuer role rows, never in a second ledger.
+#[derive(Clone, Debug)]
+struct WorkObservation {
+    spent: Weak<AtomicU64>,
+    limit: Weak<AtomicU64>,
+}
+impl WorkObservation {
+    fn new(work: &Work) -> Self {
+        Self {
+            spent: Arc::downgrade(&work.spent),
+            limit: Arc::downgrade(&work.limit),
+        }
+    }
+    fn validate_limit(&self, limit: u64) -> Result<(), DomHostedError> {
+        if self
+            .spent
+            .upgrade()
+            .is_some_and(|spent| spent.load(Ordering::Relaxed) > limit)
+        {
+            return Err(DomHostedError::WorkLimit { limit });
+        }
+        Ok(())
+    }
+    fn set_limit(&self, limit: u64) {
+        if let Some(current) = self.limit.upgrade() {
+            current.store(limit, Ordering::Relaxed);
+        }
+    }
+}
+
 /// The one cumulative counter retained from preparation through completion.
 #[derive(Debug)]
 pub(crate) struct Work {
     pub(crate) spent: Arc<AtomicU64>,
-    limit: AtomicU64,
+    limit: Arc<AtomicU64>,
     _retained: Option<Retained>,
 }
 impl Work {
@@ -378,10 +431,26 @@ impl PartialEq for SourceObservation {
 impl Eq for SourceObservation {}
 
 impl DomHostedSource {
+    pub(crate) fn next_operation_slot(
+        &self,
+        work: &Work,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomHostedError> {
+        let state = self.lock()?;
+        let rows = &state.banks[Role::Operation.index()];
+        for (index, row) in rows.iter().enumerate() {
+            work.step(cancel)?;
+            if !row.live && !row.retired {
+                return Ok(index);
+            }
+        }
+        Ok(rows.len())
+    }
     pub(crate) fn begin_operation(
         &mut self,
         work: &Work,
         revisions: u64,
+        scratch_base: usize,
         cancel: &AtomicBool,
     ) -> Result<DomHostedOperationId, DomHostedError> {
         {
@@ -397,18 +466,84 @@ impl DomHostedSource {
                 .ok_or(DomHostedError::RepresentationExhausted)?;
             state.reserved_revisions = reserved;
         }
-        let issued = self.issue(Role::Operation, work, true, None, cancel);
+        let issued = self.issue(Role::Operation, work, true, None, scratch_base, cancel);
         match issued {
-            Ok((slot, generation)) => Ok(DomHostedOperationId {
-                source: self.id(),
-                slot,
-                generation,
-            }),
+            Ok((slot, generation)) => {
+                self.lock()?.banks[Role::Operation.index()][slot].reserved_revisions =
+                    revisions - 1;
+                Ok(DomHostedOperationId {
+                    source: self.id(),
+                    slot,
+                    generation,
+                })
+            }
             Err(error) => {
                 self.lock()?.reserved_revisions -= revisions;
                 Err(error)
             }
         }
+    }
+    /// Remaining revision credit owned by this exact original operation/phase.
+    /// Callers preflight canonical headroom before this metered issuer read.
+    pub(crate) fn operation_reserved_revisions(
+        &self,
+        request: &Request,
+        cancel: &AtomicBool,
+    ) -> Result<u64, DomHostedError> {
+        request.work.step(cancel)?;
+        if request.key.operation.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let state = self.lock()?;
+        let row = state.banks[Role::Operation.index()]
+            .get(request.key.operation.slot)
+            .filter(|row| {
+                row.live
+                    && row.generation == request.key.operation.generation
+                    && row.phase == request.key.phase
+            })
+            .ok_or(DomHostedError::WrongPhase)?;
+        Ok(row.reserved_revisions)
+    }
+    pub(crate) fn reserve_operation_revisions(
+        &self,
+        request: &Request,
+        additional: u64,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
+        request.work.step(cancel)?;
+        if request.key.operation.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let mut state = self.lock()?;
+        // An admitted C/H can still need bookkeeping after its original BC
+        // retires. Reserve only for the exact live operation and phase; this
+        // grants no current BC/Global execution authority. Keep qualification
+        // and credit mutation under this same issuer lock.
+        let operation = state.banks[Role::Operation.index()]
+            .get(request.key.operation.slot)
+            .filter(|row| {
+                row.live
+                    && row.generation == request.key.operation.generation
+                    && row.phase == request.key.phase
+            })
+            .ok_or(DomHostedError::WrongPhase)?;
+        let owned = operation
+            .reserved_revisions
+            .checked_add(additional)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        let reserved = state
+            .reserved_revisions
+            .checked_add(additional)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        state
+            .revision
+            .0
+            .checked_add(reserved)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        state.banks[Role::Operation.index()][request.key.operation.slot].reserved_revisions = owned;
+        state.reserved_revisions = reserved;
+        Ok(())
     }
     pub(crate) fn permit<'a>(
         &'a self,
@@ -433,9 +568,15 @@ impl DomHostedSource {
                     && slot.phase == request.key.phase
             })
             .ok_or(DomHostedError::WrongPhase)?;
+        let owned =
+            state.banks[Role::Operation.index()][request.key.operation.slot].reserved_revisions;
+        let consumed = if finish { owned } else { 1 };
+        if owned == 0 {
+            return Err(DomHostedError::WrongPhase);
+        }
         let reserved = state
             .reserved_revisions
-            .checked_sub(1)
+            .checked_sub(consumed)
             .ok_or(DomHostedError::WrongPhase)?;
         let next = state
             .revision
@@ -455,6 +596,7 @@ impl DomHostedSource {
             next,
             phase,
             finish,
+            consumed,
             retire: None,
         })
     }
@@ -534,12 +676,12 @@ impl DomHostedSource {
     }
     pub(crate) fn work(&self, cancel: &AtomicBool) -> Result<Arc<Work>, DomHostedError> {
         let retained = self.retain(
-            std::mem::size_of::<Work>() + std::mem::size_of::<AtomicU64>(),
+            std::mem::size_of::<Work>() + 2 * std::mem::size_of::<AtomicU64>(),
             cancel,
         )?;
         Ok(Arc::new(Work {
             spent: Arc::new(AtomicU64::new(0)),
-            limit: AtomicU64::new(self.limits.work),
+            limit: Arc::new(AtomicU64::new(self.limits.work)),
             _retained: Some(retained),
         }))
     }
@@ -560,10 +702,16 @@ impl DomHostedSource {
         work: &Work,
         consume_reserved: bool,
         request: Option<(RequestKey, u8)>,
+        scratch_base: usize,
         cancel: &AtomicBool,
     ) -> Result<(usize, u64), DomHostedError> {
         work.step(cancel)?;
         let limits = self.limits;
+        admit(
+            scratch_base,
+            limits.scratch_bytes,
+            DomHostedResource::ScratchBytes,
+        )?;
         let mut state = self.lock()?;
         if let Some((key, bit)) = request {
             let operation = state.banks[Role::Operation.index()]
@@ -574,7 +722,9 @@ impl DomHostedSource {
                         && slot.phase == key.phase
                 })
                 .ok_or(DomHostedError::WrongPhase)?;
-            if operation.issued & bit != 0 {
+            if operation.issued & bit != 0
+                || (consume_reserved && operation.reserved_revisions == 0)
+            {
                 return Err(DomHostedError::WrongPhase);
             }
         }
@@ -614,6 +764,9 @@ impl DomHostedSource {
             slot.phase = 0;
             slot.issued = 0;
             slot.creator = request.map(|(key, _)| key);
+            slot.reserved_revisions = 0;
+            slot.work = matches!(role, Role::BrowsingContext | Role::Operation)
+                .then(|| WorkObservation::new(work));
             (index, slot.generation)
         } else {
             let required = bank
@@ -627,6 +780,7 @@ impl DomHostedSource {
                 admit(
                     bytes
                         .checked_add(std::mem::size_of::<Vec<IdentitySlot>>())
+                        .and_then(|bytes| bytes.checked_add(scratch_base))
                         .ok_or(DomHostedError::RepresentationExhausted)?,
                     limits.scratch_bytes,
                     DomHostedResource::ScratchBytes,
@@ -651,6 +805,7 @@ impl DomHostedSource {
                 admit(
                     actual
                         .checked_add(std::mem::size_of::<Vec<IdentitySlot>>())
+                        .and_then(|bytes| bytes.checked_add(scratch_base))
                         .ok_or(DomHostedError::RepresentationExhausted)?,
                     limits.scratch_bytes,
                     DomHostedResource::ScratchBytes,
@@ -666,7 +821,7 @@ impl DomHostedSource {
                 )?;
                 for slot in &state.banks[role.index()] {
                     work.step(cancel)?;
-                    replacement.push(*slot);
+                    replacement.push(slot.clone());
                 }
                 let old_bytes = state.banks[role.index()]
                     .capacity()
@@ -686,13 +841,20 @@ impl DomHostedSource {
                 phase: 0,
                 issued: 0,
                 creator: request.map(|(key, _)| key),
+                work: matches!(role, Role::BrowsingContext | Role::Operation)
+                    .then(|| WorkObservation::new(work)),
+                reserved_revisions: 0,
             });
             (index, 1)
         };
         state.revision = DomHostedSourceRevision(next_revision);
         state.reserved_revisions = reserved;
         if let Some((key, bit)) = request {
-            state.banks[Role::Operation.index()][key.operation.slot].issued |= bit;
+            let operation = &mut state.banks[Role::Operation.index()][key.operation.slot];
+            operation.issued |= bit;
+            if consume_reserved {
+                operation.reserved_revisions -= 1;
+            }
         }
         Ok(result)
     }
@@ -756,7 +918,7 @@ impl DomHostedSource {
     /// operation; a later browsing-context creation owns a distinct work cursor.
     pub fn issue_host(&mut self, cancel: &AtomicBool) -> Result<DomHostedHostId, DomHostedError> {
         let work = self.work(cancel)?;
-        let (slot, generation) = self.issue(Role::Host, &work, false, None, cancel)?;
+        let (slot, generation) = self.issue(Role::Host, &work, false, None, 0, cancel)?;
         Ok(DomHostedHostId {
             source: self.id(),
             slot,
@@ -777,7 +939,8 @@ impl DomHostedSource {
         self.observe()
             .validate(host.source, Role::Host, host.slot, host.generation)?;
         let work = self.work(cancel)?;
-        let (slot, generation) = self.issue(Role::BrowsingContext, &work, false, None, cancel)?;
+        let (slot, generation) =
+            self.issue(Role::BrowsingContext, &work, false, None, 0, cancel)?;
         self.active_work = Arc::downgrade(&work);
         Ok(DomHostedTopLevelPreparation {
             host,
@@ -852,6 +1015,9 @@ impl DomHostedSource {
             for slot in &state.banks[role.index()] {
                 crate::store::check_cancel(cancel)?;
                 if slot.live {
+                    if let Some(work) = &slot.work {
+                        work.validate_limit(limits.work)?;
+                    }
                     live = live
                         .checked_add(1)
                         .ok_or(DomHostedError::RepresentationExhausted)?;
@@ -859,6 +1025,16 @@ impl DomHostedSource {
             }
             let (limit, resource) = role.bound(limits.records);
             admit(live, limit, resource)?;
+        }
+        // Every fallible check is complete before any original counter changes.
+        for bank in &state.banks {
+            for slot in bank {
+                if slot.live
+                    && let Some(work) = &slot.work
+                {
+                    work.set_limit(limits.work);
+                }
+            }
         }
         drop(state);
         if let Some(work) = work {
@@ -938,12 +1114,21 @@ pub(crate) struct RequestKey {
     pub(crate) operation: DomHostedOperationId,
     pub(crate) phase: u64,
 }
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ParentContext {
+    pub(crate) document: crate::DomDocumentStamp,
+    pub(crate) navigable: DomHostedNavigableId,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) container: crate::NodeId,
+    pub(crate) traversable: DomHostedNavigableId,
+}
 #[derive(Debug)]
 pub(crate) struct Request {
     pub(crate) key: RequestKey,
     pub(crate) host: DomHostedHostId,
     pub(crate) context: DomHostedBrowsingContextId,
     pub(crate) work: Arc<Work>,
+    pub(crate) parent: Option<ParentContext>,
 }
 macro_rules! request {
     ($name:ident, $description:literal, $($field:ident : $ty:ty),* $(,)?) => {
@@ -957,7 +1142,7 @@ macro_rules! request {
         }
     };
 }
-request!(DomHostedPolicyRequest, "The exact initial no-opener Permissions Policy phase.", origin: crate::DomOpaqueOrigin);
+request!(DomHostedPolicyRequest, "The exact source-qualified Permissions Policy phase.", origin: crate::DomOpaqueOrigin, embedder_policy:Option<Arc<DomHostedEmbedderPolicyInputs>>);
 request!(DomHostedExecutionRequest, "Creation of the actual native agent, loop, Global and settings.",
     origin: crate::DomOpaqueOrigin, inputs: crate::document::HostedDocumentInputs);
 request!(DomHostedMakeActiveRequest, "Make the actual Document/Global association active.",
@@ -968,25 +1153,38 @@ request!(DomHostedEntryRequest, "Actual initial entry, traversable and top-level
     document: crate::DocumentId, global: DomHostedGlobalId);
 
 impl DomHostedPolicyRequest {
+    pub fn embedder_policy(&self) -> Option<&DomHostedEmbedderPolicyInputs> {
+        self.embedder_policy.as_deref()
+    }
     pub fn target_origin(&self) -> &crate::DomOpaqueOrigin {
         &self.origin
     }
     pub const fn profile(&self) -> DomInitialPermissionsPolicyProfile {
         DomInitialPermissionsPolicyProfile::FullscreenSelfOpaqueInitial
     }
-    pub const fn parent_document(&self) -> Option<crate::DocumentId> {
-        None
+    pub fn parent_document(&self) -> Option<crate::DocumentId> {
+        self.request.parent.map(|parent| parent.document.document())
     }
-    pub const fn embedder(&self) -> Option<crate::NodeId> {
-        None
+    pub fn embedder(&self) -> Option<crate::NodeId> {
+        self.request.parent.map(|parent| parent.container)
     }
 }
 impl DomHostedExecutionRequest {
+    pub fn parent_global(&self) -> Option<DomHostedGlobalId> {
+        self.request.parent.map(|parent| parent.global)
+    }
+    pub fn top_level_origin(&self) -> &crate::DomOpaqueOrigin {
+        &self.inputs.0.top_origin
+    }
     pub fn creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
         self.inputs.url()
     }
     pub fn top_level_creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
-        self.inputs.url()
+        self.inputs
+            .0
+            .top_creation_url
+            .as_ref()
+            .unwrap_or_else(|| self.inputs.url())
     }
     pub fn base_document_facts(&self) -> &surgeist_html_semantics::HtmlBaseDocumentFacts {
         &self.inputs.0.facts
@@ -1037,6 +1235,8 @@ pub(crate) enum PublicationValue {
     InitialEntry {
         entry: DomHostedEntryId,
         navigable: DomHostedNavigableId,
+        initialization: DomHostedEntryInitialization,
+        _retained: Retained,
     },
 }
 /// One non-Clone original phase result. Successful acceptance consumes it once.
@@ -1123,6 +1323,7 @@ impl DomHostedSource {
             &request.request.work,
             true,
             Some((request.request.key, 1)),
+            0,
             cancel,
         )?;
         Ok(DomHostedGlobalId {
@@ -1214,6 +1415,7 @@ impl DomHostedSource {
             &request.request.work,
             true,
             Some((request.request.key, 1)),
+            0,
             cancel,
         )?;
         Ok(DomHostedEntryId {
@@ -1233,6 +1435,7 @@ impl DomHostedSource {
             &request.request.work,
             true,
             Some((request.request.key, 2)),
+            0,
             cancel,
         )?;
         Ok(DomHostedNavigableId {
@@ -1246,6 +1449,7 @@ impl DomHostedSource {
         request: &DomHostedEntryRequest,
         entry: DomHostedEntryId,
         navigable: DomHostedNavigableId,
+        initialization: &mut Option<DomHostedEntryInitialization>,
         cancel: &AtomicBool,
     ) -> Result<DomHostedCreationPublication, DomHostedError> {
         let revision = self.validate_request(&request.request, cancel)?;
@@ -1271,10 +1475,37 @@ impl DomHostedSource {
             navigable.generation,
             request.request.key,
         )?;
+        let input = initialization
+            .as_ref()
+            .ok_or(DomHostedError::MissingPublication)?;
+        for value in [&input.navigation_key, &input.navigation_id] {
+            for (index, unit) in value.iter().enumerate() {
+                request.request.work.step(cancel)?;
+                let valid = if [8, 13, 18, 23].contains(&index) {
+                    *unit == u16::from(b'-')
+                } else {
+                    matches!(*unit, 48..=57 | 97..=102)
+                };
+                if !valid
+                    || (index == 14 && *unit != u16::from(b'4'))
+                    || (index == 19 && !matches!(*unit, 56 | 57 | 97 | 98))
+                {
+                    return Err(DomHostedError::InvalidEntryInitialization);
+                }
+            }
+        }
+        let retained = self.retain(size_of::<DomHostedEntryInitialization>(), cancel)?;
         Ok(DomHostedCreationPublication {
             key: request.request.key,
             revision,
-            value: PublicationValue::InitialEntry { entry, navigable },
+            value: PublicationValue::InitialEntry {
+                entry,
+                navigable,
+                initialization: initialization
+                    .take()
+                    .expect("validated actual initial entry strings"),
+                _retained: retained,
+            },
         })
     }
 }
@@ -1285,10 +1516,11 @@ pub(crate) struct PhasePermit<'a> {
     next: u64,
     phase: u64,
     finish: bool,
+    consumed: u64,
     retire: Option<DomHostedCreation>,
 }
 impl PhasePermit<'_> {
-    pub(crate) fn retire_top_level(
+    pub(crate) fn retire_navigable(
         mut self,
         creation: DomHostedCreation,
     ) -> Result<Self, DomHostedError> {
@@ -1358,7 +1590,8 @@ impl PhasePermit<'_> {
             operation.phase = self.phase;
             operation.issued = 0;
         }
-        self.state.reserved_revisions -= 1;
+        self.state.banks[Role::Operation.index()][self.slot].reserved_revisions -= self.consumed;
+        self.state.reserved_revisions -= self.consumed;
         self.state.revision = DomHostedSourceRevision(self.next);
     }
 }
@@ -1427,7 +1660,9 @@ pub(crate) enum DocumentPhase {
         navigable: DomHostedNavigableId,
         loaded: DomHostedMoment,
     },
-    Retired,
+    Retired {
+        operation: DomHostedOperationId,
+    },
 }
 
 /// The one captured canonical association. Runtime's mutable objects are not
@@ -1456,15 +1691,8 @@ impl PartialEq for DocumentAssociation {
 }
 impl Eq for DocumentAssociation {}
 impl DocumentAssociation {
-    pub(crate) fn historical_fully_active(&self) -> Result<bool, DomHostedError> {
-        match self.phase {
-            DocumentPhase::InitialEntry { .. } => Ok(true),
-            DocumentPhase::Retired => Ok(false),
-            _ => Err(DomHostedError::IncompleteOperation),
-        }
-    }
     pub(crate) fn validate_current(&self) -> Result<DomHostedSourceRevision, DomHostedError> {
-        if self.phase == DocumentPhase::Retired {
+        if matches!(self.phase, DocumentPhase::Retired { .. }) {
             return Err(DomHostedError::StaleIdentity);
         }
         let source = self.global.source;
@@ -1544,11 +1772,55 @@ pub(crate) fn admit(
     }
 }
 
+/// Sealed observation of actual successful cleanup of this exact Document and
+/// Global generation. Duplicating evidence does not run or acknowledge a job.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DomHostedDocumentDestructionProof {
+    pub(crate) source: DomHostedSourceId,
+    pub(crate) document: crate::DocumentId,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) operation: DomHostedOperationId,
+}
+impl DomHostedDocumentDestructionProof {
+    pub fn document(&self) -> crate::DocumentId {
+        self.document
+    }
+    pub fn global(&self) -> DomHostedGlobalId {
+        self.global
+    }
+    pub(crate) fn validate(
+        &self,
+        source: &DomHostedSource,
+        document: crate::DocumentId,
+        global: DomHostedGlobalId,
+    ) -> Result<(), DomHostedError> {
+        source.revision()?;
+        if self.source != source.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        if self.document != document || self.global != global {
+            return Err(DomHostedError::WrongPhase);
+        }
+        Ok(())
+    }
+}
+
+/// The original invocation's captured child documents, independent from any
+/// later unlink or nulling of the current active DocumentState.
+#[derive(Debug)]
+pub(crate) struct CapturedChildren {
+    pub(crate) values: Vec<DomHostedCreation>,
+    pub(crate) _retained: Retained,
+}
+
 /// Borrowed source-qualified task/cleanup input for the actual no-child top level.
 #[derive(Debug)]
 pub struct DomHostedDestructionRequest {
     pub(crate) request: Request,
     pub(crate) creation: DomHostedCreation,
+    pub(crate) children: Arc<CapturedChildren>,
+    pub(crate) invocation: DomHostedOperationId,
+    pub(crate) traversable: DomHostedNavigableId,
 }
 impl DomHostedDestructionRequest {
     pub fn operation(&self) -> DomHostedOperationId {
@@ -1572,9 +1844,16 @@ impl DomHostedDestructionRequest {
     pub fn navigable(&self) -> DomHostedNavigableId {
         self.creation.navigable
     }
-    /// This constructor has no child-creation ingress; its captured child set is empty.
+    pub fn traversable(&self) -> DomHostedNavigableId {
+        self.traversable
+    }
     pub fn child_navigable_count(&self) -> usize {
-        0
+        self.children.values.len()
+    }
+    /// These are the exact created identities captured by this invocation, not
+    /// a later query of current active Documents after cleanup.
+    pub fn child_documents(&self) -> &[DomHostedCreation] {
+        &self.children.values
     }
 }
 #[derive(Debug)]
@@ -1594,8 +1873,12 @@ pub enum DomHostedDestructionStep<'a> {
 pub struct DomHostedDestructionLease {
     pub(crate) operation: DomHostedOperationId,
     pub(crate) completed: Option<DomHostedCreation>,
+    pub(crate) proof: Option<DomHostedDocumentDestructionProof>,
 }
 impl DomHostedDestructionLease {
+    pub fn destruction_proof(&self) -> Option<&DomHostedDocumentDestructionProof> {
+        self.proof.as_ref()
+    }
     pub fn operation(&self) -> DomHostedOperationId {
         self.operation
     }

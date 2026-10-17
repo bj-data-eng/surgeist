@@ -95,12 +95,43 @@ impl<'a> DomDocument<'a> {
     pub fn id(self) -> DocumentId {
         self.id
     }
+    /// The actual navigable association captured in this canonical snapshot.
+    /// Current execution additionally qualifies it through the owning Dom.
+    pub fn navigable(self) -> Option<crate::DomHostedNavigableId> {
+        match self
+            .metadata()
+            .document_environment()
+            .hosted
+            .as_ref()?
+            .phase
+        {
+            crate::hosted::DocumentPhase::InitialEntry { navigable, .. } => Some(navigable),
+            _ => None,
+        }
+    }
     /// Activity derived from this immutable snapshot's actual published
     /// association. Later issuer retirement never changes this historical read.
     pub fn is_fully_active(self) -> Result<bool, crate::hosted::DomHostedError> {
         self.snapshot.require_complete_source()?;
         match &self.metadata().document_environment().hosted {
-            Some(association) => association.historical_fully_active(),
+            Some(association) => match association.phase {
+                crate::hosted::DocumentPhase::InitialEntry { navigable, .. } => {
+                    let graph = self
+                        .snapshot
+                        .state
+                        .hosted_history
+                        .as_deref()
+                        .ok_or(crate::hosted::DomHostedError::UnsupportedProfile)?;
+                    crate::store::hosted::captured_fully_active(
+                        graph,
+                        self.id,
+                        navigable,
+                        || Ok(()),
+                    )
+                }
+                crate::hosted::DocumentPhase::Retired { .. } => Ok(false),
+                _ => Err(crate::hosted::DomHostedError::IncompleteOperation),
+            },
             None => Ok(false),
         }
     }
@@ -136,8 +167,8 @@ impl<'a> DomDocument<'a> {
 /// Exact store, document and revision qualification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDocumentStamp {
-    store: DomStamp,
-    document: DocumentId,
+    pub(crate) store: DomStamp,
+    pub(crate) document: DocumentId,
 }
 impl DomDocumentStamp {
     pub fn store(self) -> DomStamp {

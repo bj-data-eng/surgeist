@@ -155,6 +155,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let parsed = HtmlBaseUrlRecord::observed(
@@ -162,6 +163,7 @@ mod tests {
             "https://example.test/".into(),
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         let env = HtmlBaseDocumentFacts::new(

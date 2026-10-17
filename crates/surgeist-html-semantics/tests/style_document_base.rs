@@ -18,6 +18,7 @@ fn serialization_selection_preserves_missing_first_and_historical_frozen_record(
         "https://historical.example/base/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let first = HtmlDocumentFirstBase::Present(Some(&historical));

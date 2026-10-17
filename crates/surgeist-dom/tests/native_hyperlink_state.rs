@@ -33,12 +33,17 @@ fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
 fn revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3)
 }
-fn record(r: &HtmlBaseFactsRevision, s: &str) -> HtmlBaseUrlRecord {
+fn record(
+    r: &HtmlBaseFactsRevision,
+    s: &str,
+    fragment_delimiter_offset: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         r.clone(),
         s.into(),
         HtmlBaseUrlScheme::Other,
         s == "about:blank",
+        fragment_delimiter_offset,
     )
     .unwrap()
 }
@@ -122,7 +127,7 @@ fn detached_success_failure_empty_and_removal_retain_actual_nullable_cache_witho
     );
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = record(&r, "about:blank");
+    let fallback = record(&r, "about:blank", None);
     bind_base(
         &mut dom,
         doc,
@@ -133,6 +138,7 @@ fn detached_success_failure_empty_and_removal_retain_actual_nullable_cache_witho
         "data:text/plain,hello".into(),
         HtmlBaseUrlScheme::Data,
         false,
+        None,
     )
     .unwrap();
     let facts = href_facts(
@@ -192,8 +198,8 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
     let (mut dom, doc, root, a, _) = fixture();
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = record(&r, "about:blank");
-    let base_url = record(&r, "https://base.test/");
+    let fallback = record(&r, "about:blank", None);
+    let base_url = record(&r, "https://base.test/", None);
     let obs = HtmlBaseParseObservation::new(
         "base".into(),
         fallback.clone(),
@@ -216,7 +222,7 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
     b.insert_before(&base, root, None);
     let c = dom.apply(b, &cancel()).unwrap();
     let base = c.created(&base).unwrap().unwrap();
-    let url = record(&r, "https://base.test/result");
+    let url = record(&r, "https://base.test/result", None);
     let wrong = href_facts(&fallback, &encoding, &r, &[("target", Some(url.clone()))]);
     assert_eq!(
         bind(&mut dom, doc, &wrong).unwrap_err(),
@@ -232,8 +238,8 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
     .unwrap();
     set(&mut dom, a, "target").unwrap();
     let r2 = HtmlBaseFactsRevision::new(r.producer().clone(), 1, 20, 30);
-    let fallback2 = record(&r2, "about:blank");
-    let base2 = record(&r2, "https://second.test/");
+    let fallback2 = record(&r2, "about:blank", None);
+    let base2 = record(&r2, "https://second.test/", None);
     let obs = HtmlBaseParseObservation::new(
         "other".into(),
         fallback2.clone(),
@@ -274,7 +280,7 @@ fn current_document_base_selection_and_historical_frozen_revision_are_real_parse
         Some(&url)
     ); // equal skip uses no reachedparse allowance.
     dom.set_limits(policy(128, 1_000_000, 131072)).unwrap();
-    let url2 = record(&r2, "https://base.test/new");
+    let url2 = record(&r2, "https://base.test/new", None);
     let facts2 = href_facts(&base_url, &encoding, &r2, &[("next", Some(url2.clone()))]);
     bind(&mut dom, doc, &facts2).unwrap();
     set(&mut dom, a, "next").unwrap();
@@ -311,7 +317,7 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
     let before = dom.snapshot();
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = record(&r, "about:blank");
+    let fallback = record(&r, "about:blank", None);
     let facts = href_facts(&fallback, &encoding, &r, &[("x", None)]);
     assert_eq!(
         bind(&mut dom, doc, &facts).unwrap_err(),
@@ -336,7 +342,12 @@ fn binding_rejects_missing_stale_foreign_and_identity_mismatched_context_atomica
             HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
-            href_facts(&record(&r, "about:blank"), &encoding, &r, &[("x", None)]),
+            href_facts(
+                &record(&r, "about:blank", None),
+                &encoding,
+                &r,
+                &[("x", None)],
+            ),
             HtmlEncodingUrlFactsError::InputsMismatch,
         ),
         (
@@ -385,13 +396,13 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     let (mut dom, doc, _, a, _) = fixture();
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = record(&r, "about:blank");
+    let fallback = record(&r, "about:blank", None);
     bind_base(
         &mut dom,
         doc,
         &environment(&r, &encoding, &fallback, vec![]),
     );
-    let url = record(&r, "https://value.test/");
+    let url = record(&r, "https://value.test/", None);
     let mut raw_units = Vec::with_capacity(64);
     raw_units.extend("success".encode_utf16());
     let raw = DocumentString::from_utf16(raw_units);
@@ -478,8 +489,8 @@ fn native_authoring_installation_parses_real_copied_href_and_captures_nullable_h
     let (mut dom, doc, root, a, _) = fixture();
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();
-    let fallback = record(&r, "about:blank");
-    let url = record(&r, "https://installed.test/");
+    let fallback = record(&r, "about:blank", None);
+    let url = record(&r, "https://installed.test/", None);
     bind_base(
         &mut dom,
         doc,

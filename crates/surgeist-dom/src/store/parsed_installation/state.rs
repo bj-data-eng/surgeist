@@ -723,7 +723,7 @@ fn family(
         // not a null-content observation used to infer previous history.
         Requirement::HtmlFrame => NativeFamily::Frame,
         Requirement::KnownHtml(Element::Iframe) => {
-            NativeFamily::Iframe(surgeist_html::HtmlIframeInitialState::fresh())
+            NativeFamily::Iframe(crate::element::IframeState::fresh())
         }
         // No parser operation invokes Marquee's start/stop API or animation
         // resources; its initial on/index scalars remain unchanged.

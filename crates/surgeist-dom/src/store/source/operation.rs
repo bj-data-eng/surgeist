@@ -1,5 +1,6 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
+pub(in crate::store) mod hosted;
 use super::*;
 use crate::source::*;
 use crate::style::*;
@@ -64,6 +65,8 @@ pub(in crate::store) struct Operation {
     identities: u64,
     context: Option<(u64, Arc<DomStyleSource>)>,
     request: Option<DomStyleRequest>,
+    child: Option<hosted::Child>,
+    hosted_global: Option<(Key, crate::DomHostedGlobalId, Arc<crate::hosted::Work>)>,
     receipt: Option<Receipt>,
     owner_binding: Option<DomStyleCssomOwnerBinding>,
     historical: Vec<Option<NodeId>>,
@@ -227,6 +230,8 @@ impl Dom {
             identities: 0,
             context: None,
             request: None,
+            child: None,
+            hosted_global: None,
             receipt: None,
             owner_binding: None,
             historical: Vec::new(),
@@ -864,6 +869,26 @@ impl Operation {
         frame: Option<Frame>,
         cancel: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
+        self.publication_with_hosted(dom, incomplete, frame, None, cancel)
+            .map_err(|error| match error {
+                crate::hosted::DomHostedError::Dom(error) => error,
+                _ => {
+                    unreachable!("a segment without a hosted permit produces only canonical errors")
+                }
+            })
+    }
+    fn publication_with_hosted(
+        &mut self,
+        dom: &mut Dom,
+        incomplete: bool,
+        frame: Option<Frame>,
+        hosted: Option<(
+            &crate::DomHostedSource,
+            &crate::hosted::Request,
+            crate::DomHostedSourceRevision,
+        )>,
+        cancel: &AtomicBool,
+    ) -> Result<DomCommit, crate::hosted::DomHostedError> {
         // A proposed ordinal stays private through every fallible formation.
         // Only successful canonical publication/request exposure issues it.
         let issued_next = match frame.map(|frame| frame.invocation) {
@@ -891,6 +916,31 @@ impl Operation {
         let limits = self.draft.source_limits.expect("source limits");
         // Closing revision space is held before the first external phase, so a
         // later service cannot knowingly strand an already published command.
+        if let Some((key, global, work)) = &self.hosted_global {
+            let source = hosted
+                .map(|gate| gate.0)
+                .ok_or(DomError::HostedSourceUnavailable)?;
+            let document = DocumentId(match key {
+                Key::Existing(slot) => NodeId {
+                    owner: dom.owner,
+                    slot: *slot,
+                    generation: self.draft.generations[*slot],
+                },
+                Key::Created(index) => {
+                    prepared.allocation_ids[*index].ok_or(DomError::UnavailableCreation)?
+                }
+            });
+            prepared.state.hosted_globals =
+                Some(crate::store::hosted::GlobalDocumentIndex::establish(
+                    dom.state.hosted_globals.as_deref(),
+                    *global,
+                    document,
+                    source,
+                    work,
+                    prepared.formation.as_ref(),
+                    cancel,
+                )?);
+        }
         let units = prepared.state.units;
         prepared.state.units = dom.state.units;
         let changed = prepared.state != *dom.state;
@@ -904,14 +954,14 @@ impl Operation {
             u64::from(changed)
         };
         if incomplete && remaining == 0 {
-            return Err(DomError::StyleProtocol);
+            return Err(DomError::StyleProtocol.into());
         }
         let required_phases = self
             .phases
             .checked_add(remaining)
             .ok_or(DomError::RepresentationExhausted)?;
         if required_phases > limits.phases {
-            return Err(DomError::SourcePublicationLimit);
+            return Err(DomError::SourcePublicationLimit.into());
         }
         if changed {
             dom.revision
@@ -927,7 +977,7 @@ impl Operation {
             .checked_add(usize::from(incomplete))
             .is_none_or(|required| required > limits.outputs)
         {
-            return Err(DomError::SourceOutputLimit);
+            return Err(DomError::SourceOutputLimit.into());
         }
         let ids = std::mem::take(&mut prepared.allocation_ids);
         let count = ids
@@ -942,7 +992,7 @@ impl Operation {
             .checked_add(u64::try_from(count).map_err(|_| DomError::RepresentationExhausted)?)
             .ok_or(DomError::RepresentationExhausted)?;
         if identities > limits.identities {
-            return Err(DomError::SourceIdentityLimit);
+            return Err(DomError::SourceIdentityLimit.into());
         }
         let mut historical = Vec::new();
         formation::reserve(
@@ -994,7 +1044,7 @@ impl Operation {
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
                 if identities > limits.identities {
-                    return Err(DomError::SourceIdentityLimit);
+                    return Err(DomError::SourceIdentityLimit.into());
                 }
                 Some(DomStyleAssociationId {
                     element: source.element,
@@ -1023,6 +1073,32 @@ impl Operation {
         } else {
             None
         };
+        let child = if self.child.is_none() {
+            self.draft
+                .hosted_pending
+                .map(|hook| {
+                    hosted::Child::form(
+                        self,
+                        &prepared.state,
+                        &ids,
+                        DomStamp {
+                            owner: dom.owner,
+                            revision: DomRevision(
+                                dom.revision
+                                    .0
+                                    .checked_add(u64::from(changed))
+                                    .ok_or(DomError::RevisionExhausted)?,
+                            ),
+                        },
+                        hook,
+                        prepared.formation.as_ref(),
+                        cancel,
+                    )
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let canonical_storage = if changed {
             storage::state(&prepared.state, || self.draft.source_step(cancel))?
         } else {
@@ -1041,9 +1117,18 @@ impl Operation {
                 .as_ref()
                 .is_some_and(|headroom| headroom.remaining_phases == 0)
         {
-            return Err(DomError::StyleProtocol);
+            return Err(DomError::StyleProtocol.into());
         }
+        let permit = hosted
+            .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
+            .transpose()?;
         let commit = dom.publish(prepared, cancel)?;
+        if let Some(permit) = permit {
+            permit.commit();
+        }
+        if self.hosted_global.take().is_some() {
+            self.draft.hosted_globals = dom.state.hosted_globals.clone();
+        }
         // Retirement only removes entries; capacity is retained and this cannot
         // overflow after the same table was admitted before publication.
         self.custody_bytes = size_of::<Vec<DomStyleCssomRoot>>()
@@ -1106,6 +1191,11 @@ impl Operation {
             self.context = Some((source.ordinal, source));
         }
         self.request = request;
+        if let Some(child) = child {
+            self.draft.source_invocation = child.request.occurrence;
+            self.draft.hosted_pending = None;
+            self.child = Some(child);
+        }
         self.historical = historical;
         self.outputs = outputs;
         self.identities = identities;
@@ -1243,6 +1333,14 @@ impl DomSourceLease<'_> {
                 installation: None,
             }));
         }
+        if op.child.as_ref().is_some_and(hosted::Child::returned) {
+            op.child = None;
+        }
+        if let Some(child) = &op.child {
+            return Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(
+                child.request.clone(),
+            )));
+        }
         if let Some(request) = &op.request
             && op.receipt.is_none()
         {
@@ -1329,6 +1427,24 @@ impl DomSourceLease<'_> {
                         .expect("request formed before publication")
                         .clone();
                     return Ok(DomSourceProgress::Request(DomSourceRequest::Style(request)));
+                }
+                Err(DomError::HostedCompositionRequired) => {
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    op.started = true;
+                    if let Err(error) = op.publication(self.dom, true, None, cancel) {
+                        checkpoint.restore(&mut op.draft);
+                        op.started = started;
+                        return Err(error);
+                    }
+                    let child = op.child.as_ref().ok_or(DomError::HostedSourceUnavailable)?;
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(
+                        child.request.clone(),
+                    )));
                 }
                 Err(e) => {
                     checkpoint.restore(&mut op.draft);
@@ -2035,6 +2151,8 @@ impl Dom {
             identities: 0,
             context: None,
             request: None,
+            child: None,
+            hosted_global: None,
             receipt: None,
             owner_binding: None,
             historical: Vec::new(),
@@ -4346,6 +4464,9 @@ pub(in crate::store) mod accounting_tests {
                 }
                 Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
                     panic!("Slot assignment has no external Style work")
+                }
+                Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(_))) => {
+                    panic!("Slot assignment fixture has no navigable-container hooks")
                 }
                 Err(error) => Err(error),
             },

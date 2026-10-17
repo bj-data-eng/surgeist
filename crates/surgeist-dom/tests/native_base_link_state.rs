@@ -37,15 +37,23 @@ fn record(
     text: &str,
     scheme: HtmlBaseUrlScheme,
     blank: bool,
+    fragment_delimiter_offset: Option<usize>,
 ) -> HtmlBaseUrlRecord {
-    HtmlBaseUrlRecord::observed(r.clone(), text.into(), scheme, blank).unwrap()
+    HtmlBaseUrlRecord::observed(
+        r.clone(),
+        text.into(),
+        scheme,
+        blank,
+        fragment_delimiter_offset,
+    )
+    .unwrap()
 }
 fn facts(
     r: &HtmlBaseFactsRevision,
     raw: &str,
     outcome: HtmlBaseParseOutcome,
 ) -> (HtmlParseBaseFacts, HtmlBaseUrlRecord) {
-    let fallback = record(r, "about:blank", HtmlBaseUrlScheme::Other, true);
+    let fallback = record(r, "about:blank", HtmlBaseUrlScheme::Other, true, None);
     let encoding = HtmlBaseEncoding::fresh();
     let observation = HtmlBaseParseObservation::new(
         raw.into(),
@@ -93,7 +101,13 @@ fn actual_failure_forbidden_schemes_and_csp_block_select_fallback_without_respon
         let outcome = match branch {
             0 => HtmlBaseParseOutcome::Failure,
             1 => HtmlBaseParseOutcome::Parsed {
-                record: record(&r, "data:text/plain,x", HtmlBaseUrlScheme::Data, false),
+                record: record(
+                    &r,
+                    "data:text/plain,x",
+                    HtmlBaseUrlScheme::Data,
+                    false,
+                    None,
+                ),
                 base_allowed: HtmlBaseAllowed::Allowed,
             },
             2 => HtmlBaseParseOutcome::Parsed {
@@ -102,11 +116,18 @@ fn actual_failure_forbidden_schemes_and_csp_block_select_fallback_without_respon
                     "javascript:void 0",
                     HtmlBaseUrlScheme::Javascript,
                     false,
+                    None,
                 ),
                 base_allowed: HtmlBaseAllowed::Unavailable,
             },
             _ => HtmlBaseParseOutcome::Parsed {
-                record: record(&r, "https://blocked.test/", HtmlBaseUrlScheme::Other, false),
+                record: record(
+                    &r,
+                    "https://blocked.test/",
+                    HtmlBaseUrlScheme::Other,
+                    false,
+                    None,
+                ),
                 base_allowed: HtmlBaseAllowed::Blocked,
             },
         };
@@ -142,6 +163,7 @@ fn positive_native_response_reads_actual_script_results_and_identical_refreeze_i
         "https://allowed.test/a",
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     );
     let (facts, _) = facts(
         &r,
@@ -217,7 +239,13 @@ fn missing_csp_and_missing_observation_refuse_after_staging_without_partial_free
         let (mut dom, doc, parent, base) = fixture();
         let r = revision();
         let outcome = HtmlBaseParseOutcome::Parsed {
-            record: record(&r, "https://unknown.test/", HtmlBaseUrlScheme::Other, false),
+            record: record(
+                &r,
+                "https://unknown.test/",
+                HtmlBaseUrlScheme::Other,
+                false,
+                None,
+            ),
             base_allowed: HtmlBaseAllowed::Unavailable,
         };
         let (facts, _) = facts(&r, if available { "target" } else { "other" }, outcome);
@@ -282,6 +310,7 @@ fn environment_and_identity_qualification_refuse_mismatches_without_replacing_bi
             "https://wrong.test/",
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )),
         HtmlAboutBaseUrl::KnownNull,
         false,
@@ -338,6 +367,7 @@ fn aggregate_actual_observation_capacity_and_retained_units_have_exact_boundarie
         "https://allowed.test/a",
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     );
     let (facts, _) = facts(
         &r,
@@ -406,7 +436,13 @@ fn aggregate_actual_observation_capacity_and_retained_units_have_exact_boundarie
 fn new_qualified_observations_preserve_frozen_history_until_an_actual_refreeze() {
     let (mut dom, doc, parent, base) = fixture();
     let r = revision();
-    let first = record(&r, "https://first.test/", HtmlBaseUrlScheme::Other, false);
+    let first = record(
+        &r,
+        "https://first.test/",
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    );
     let (old, _) = facts(
         &r,
         "target",
@@ -424,6 +460,7 @@ fn new_qualified_observations_preserve_frozen_history_until_an_actual_refreeze()
         "https://second.test/",
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     );
     let (new, _) = facts(
         &next,
@@ -499,7 +536,13 @@ fn new_qualified_observations_preserve_frozen_history_until_an_actual_refreeze()
 fn clone_starts_unfrozen_then_real_removal_reveals_it_using_current_facts_and_reuse_is_fresh() {
     let (mut dom, doc, parent, base) = fixture();
     let r = revision();
-    let first = record(&r, "https://old.test/", HtmlBaseUrlScheme::Other, false);
+    let first = record(
+        &r,
+        "https://old.test/",
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    );
     let (old, _) = facts(
         &r,
         "target",
@@ -517,6 +560,7 @@ fn clone_starts_unfrozen_then_real_removal_reveals_it_using_current_facts_and_re
         "https://current.test/",
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     );
     let (new, _) = facts(
         &next,
@@ -607,6 +651,7 @@ fn native_immutable_installation_runs_fresh_base_and_link_hooks_atomically() {
         "https://installed.test/",
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     );
     let (facts, _) = facts(
         &r,
@@ -799,7 +844,13 @@ fn capture_rejects_differing_actual_document_revisions_in_the_producer_single_re
 fn csp_blocked_frozen_base_does_not_replace_the_independent_semantic_href_parse() {
     let (mut dom, doc, parent, base) = fixture();
     let r = revision();
-    let parsed = record(&r, "https://blocked.test/", HtmlBaseUrlScheme::Other, false);
+    let parsed = record(
+        &r,
+        "https://blocked.test/",
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    );
     let (facts, fallback) = facts(
         &r,
         "target",

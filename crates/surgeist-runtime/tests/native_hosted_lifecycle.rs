@@ -61,13 +61,9 @@ fn create(session: &mut DomSession) -> DomHostedTopLevel {
     let mut hosted = session.hosted_execution();
     let mut dom = session.dom();
     let host = hosted.create_host(&mut dom, &cancel()).unwrap();
-    match hosted.create_top_level(&mut dom, host, &cancel()).unwrap() {
-        DomHostedProgress::Created(top) => {
-            assert_eq!(top.host(), host);
-            top
-        }
-        other => panic!("ample admission must complete initial construction: {other:?}"),
-    }
+    let top = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
+    assert_eq!(top.host(), host);
+    top
 }
 fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
     let root = snapshot.node(document.node()).unwrap().children()[0];
@@ -327,7 +323,7 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
     assert_eq!(entry.entry(), top.entry());
     assert_eq!(entry.document(), top.document());
     assert_eq!(entry.origin(), metadata.origin());
-    assert_eq!(entry.step(), 0);
+    assert_eq!(entry.step(), Some(0));
     for value in [entry.key(), entry.id()] {
         assert_eq!(value.len(), 36);
         for (index, unit) in value.iter().copied().enumerate() {
@@ -425,12 +421,15 @@ fn zero_child_destruction_still_queues_and_survives_permission_drop_and_shutdown
     let top = create(&mut session);
     let historical = session.snapshot();
     let mut hosted = session.hosted_execution();
+    let queued;
     {
         let mut dom = session.dom();
-        assert!(
-            matches!(hosted.destroy_top_level(&mut dom, top.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host } if host == top.host())
-        );
+        queued = hosted
+            .destroy_top_level(&mut dom, top.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), top.host());
+        assert_eq!(queued.navigable(), top.navigable());
+        assert_eq!(queued.traversable(), top.navigable());
     }
     assert!(
         session
@@ -448,8 +447,10 @@ fn zero_child_destruction_still_queues_and_survives_permission_drop_and_shutdown
     let mut hosted = session.hosted_execution();
     {
         let mut dom = session.dom();
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == top.navigable()));
+        assert!(
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
+        );
     }
     let current = session.snapshot();
     assert!(current.node(top.document().node()).is_ok());
@@ -699,13 +700,17 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
     let mut hosted = session.hosted_execution();
     {
         let mut dom = session.dom();
-        assert!(
-            matches!(hosted.destroy_top_level(&mut dom, first.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host } if host == first.host())
-        );
+        let queued = hosted
+            .destroy_top_level(&mut dom, first.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), first.host());
+        assert_eq!(queued.navigable(), first.navigable());
+        assert_eq!(queued.traversable(), first.navigable());
         assert_eq!(context.details.pending_tasks().unwrap(), 1);
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == first.navigable()));
+        assert!(
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
+        );
         assert!(matches!(
             DomDetailsRuntime::run_next(
                 &mut dom,
@@ -755,27 +760,23 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
     let (first, second) = {
         let mut dom = session.dom();
         let host = hosted.create_host(&mut dom, &cancel()).unwrap();
-        let DomHostedProgress::Created(first) =
-            hosted.create_top_level(&mut dom, host, &cancel()).unwrap()
-        else {
-            panic!("first initial top-level must complete")
-        };
-        let DomHostedProgress::Created(second) =
-            hosted.create_top_level(&mut dom, host, &cancel()).unwrap()
-        else {
-            panic!("same Host must admit another initial top-level")
-        };
+        let first = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
+        let second = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
         assert_eq!(first.host(), host);
         assert_eq!(second.host(), host);
         assert_ne!(first.browsing_context(), second.browsing_context());
         assert_ne!(first.navigable(), second.navigable());
         assert_ne!(first.document(), second.document());
+        let queued = hosted
+            .destroy_top_level(&mut dom, first.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), first.host());
+        assert_eq!(queued.navigable(), first.navigable());
+        assert_eq!(queued.traversable(), first.navigable());
         assert!(
-            matches!(hosted.destroy_top_level(&mut dom, first.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host: pending } if pending == host)
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
         );
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == first.navigable()));
         assert_eq!(
             hosted
                 .top_level(&dom, second.navigable(), &cancel())
@@ -948,12 +949,16 @@ fn retired_document_refuses_environment_dependent_creation_but_keeps_intrinsic_t
     let mut hosted = session.hosted_execution();
     {
         let mut dom = session.dom();
+        let queued = hosted
+            .destroy_top_level(&mut dom, top.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), top.host());
+        assert_eq!(queued.navigable(), top.navigable());
+        assert_eq!(queued.traversable(), top.navigable());
         assert!(
-            matches!(hosted.destroy_top_level(&mut dom, top.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host } if host == top.host())
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
         );
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == top.navigable()));
     }
     let retired = session.snapshot();
     assert!(
@@ -1411,12 +1416,16 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     let mut hosted = session.hosted_execution();
     {
         let mut dom = session.dom();
+        let queued = hosted
+            .destroy_top_level(&mut dom, second.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), second.host());
+        assert_eq!(queued.navigable(), second.navigable());
+        assert_eq!(queued.traversable(), second.navigable());
         assert!(
-            matches!(hosted.destroy_top_level(&mut dom, second.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host } if host == second.host())
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
         );
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == second.navigable()));
     }
     let before = session.snapshot();
     assert!(
@@ -1486,7 +1495,8 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         destination: DomHostedTopLevel,
         seen: Vec<&'static str>,
         observed: Vec<NativeDomEvent>,
-        destruction: Vec<Result<DomHostedProgress, DomHostedRuntimeError>>,
+        destruction: Vec<Result<DomHostedDestructionQueued, DomHostedRuntimeError>>,
+        settlement: Vec<Result<DomHostedTaskProgress, DomHostedRuntimeError>>,
     }
     impl DomDetailsEventContext for RetireContext {
         fn details(&mut self) -> &mut DomDetailsRuntime {
@@ -1505,6 +1515,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         seen: Vec::new(),
         observed: Vec::new(),
         destruction: Vec::new(),
+        settlement: Vec::new(),
     };
     let mut registry = DomEventDispatcher::<RetireContext>::new(DomEventRegistryLimits {
         registrations: 32,
@@ -1543,13 +1554,14 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                         context.destination.navigable(),
                         &cancel(),
                     );
-                    let queued = matches!(first, Ok(DomHostedProgress::Pending { .. }));
-                    context.destruction.push(first);
-                    if queued {
-                        context
-                            .destruction
-                            .push(context.hosted.resume(dom, &cancel()));
+                    if let Ok(queued) = &first {
+                        context.settlement.push(pump_destruction(
+                            &mut context.hosted,
+                            dom,
+                            *queued,
+                        ));
                     }
+                    context.destruction.push(first);
                     Ok(())
                 }),
                 DomEventListenerOptions {
@@ -1596,12 +1608,14 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     };
     // Check the real nested operation OUTSIDE callbacks: panic capture cannot
     // hide an unsuccessful teardown or make the no-delivery oracle pass.
-    assert_eq!(context.destruction.len(), 2);
+    assert_eq!(context.destruction.len(), 1);
+    let destruction_queued = context.destruction[0].as_ref().unwrap();
+    assert_eq!(destruction_queued.host(), second.host());
+    assert_eq!(destruction_queued.navigable(), second.navigable());
+    assert_eq!(destruction_queued.traversable(), second.navigable());
+    assert_eq!(context.settlement.len(), 1);
     assert!(
-        matches!(&context.destruction[0], Ok(DomHostedProgress::Pending { host }) if *host == second.host())
-    );
-    assert!(
-        matches!(&context.destruction[1], Ok(DomHostedProgress::Destroyed { navigable }) if *navigable == second.navigable())
+        matches!(&context.settlement[0], Ok(DomHostedTaskProgress::Complete { operation }) if *operation == destruction_queued.operation())
     );
     let snapshot = session.snapshot();
     assert!(
@@ -1823,4 +1837,20 @@ fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
     assert_eq!(context.seen, ["destination-global"]);
     assert_eq!(context.applied.len(), 1);
     assert_eq!(context.details.pending_tasks().unwrap(), 0);
+}
+
+fn pump_destruction(
+    hosted: &mut HostedRuntime,
+    dom: &mut DomEventDom<'_>,
+    queued: DomHostedDestructionQueued,
+) -> Result<DomHostedTaskProgress, DomHostedRuntimeError> {
+    let mut last = DomHostedTaskProgress::Idle;
+    for _ in 0..256 {
+        last = hosted.run_next(dom, queued.traversable(), &cancel())?;
+        if matches!(last, DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
+        {
+            break;
+        }
+    }
+    Ok(last)
 }

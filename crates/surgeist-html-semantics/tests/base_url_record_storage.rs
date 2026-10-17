@@ -27,6 +27,7 @@ fn preformation_extent_matches_the_actual_retained_record() {
             serialization,
             HtmlBaseUrlScheme::Other,
             raw == "about:blank",
+            None,
         )
         .unwrap();
         assert_eq!(before, record.retained_storage_usage());
@@ -61,7 +62,8 @@ fn actual_spare_utf16_capacity_is_charged_without_retaining_or_replacing_the_inp
         extra * size_of::<u16>(),
     );
     let record =
-        HtmlBaseUrlRecord::observed(revision(), spare, HtmlBaseUrlScheme::Other, true).unwrap();
+        HtmlBaseUrlRecord::observed(revision(), spare, HtmlBaseUrlScheme::Other, true, None)
+            .unwrap();
     assert_eq!(record.retained_storage_usage(), usage);
     assert!(Arc::ptr_eq(
         record.serialization().shared_code_units(),
@@ -73,6 +75,7 @@ fn actual_spare_utf16_capacity_is_charged_without_retaining_or_replacing_the_inp
         record.serialization().clone(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     assert_ne!(record, independent);
@@ -84,7 +87,7 @@ fn measuring_storage_does_not_attest_url_truth_or_change_factory_validation() {
     let before = HtmlBaseUrlRecord::observed_storage_usage(&serialization).unwrap();
     for scheme in [HtmlBaseUrlScheme::Data, HtmlBaseUrlScheme::Javascript] {
         assert!(matches!(
-            HtmlBaseUrlRecord::observed(revision(), serialization.clone(), scheme, true),
+            HtmlBaseUrlRecord::observed(revision(), serialization.clone(), scheme, true, None),
             Err(HtmlBaseFactsError::ContradictoryObservation),
         ));
     }

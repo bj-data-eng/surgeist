@@ -1,14 +1,14 @@
-//! Actual records of the first no-opener native host composition.
+//! Actual native execution objects in each original browsing-context group.
 //!
-//! Each no-opener top-level's group, opaque-keyed cluster and native agent
-//! have the same lifetime in this scope, so they are owned inline. The
-//! source-issued Host identity qualifies this actual group; no second allocator
-//! fabricates group, agent or settings provenance.
-use super::{clock, uuid};
+//! A group owns its origin-keyed clusters, agents and window loops. Globals may
+//! retire independently; queued work retains the actual original group/loop
+//! after live top-level membership ends. All canonical roles use source-issued
+//! identities; these records do not mirror the canonical navigation graph.
+use super::clock;
 use crate::dom_details::DomDetailsTaskId;
 use std::{cell::RefCell, rc::Rc};
 use surgeist_dom::{
-    DocumentId, DomHostedBrowsingContextId, DomHostedEntryId, DomHostedGlobalId, DomHostedHostId,
+    DocumentId, DomHostedBrowsingContextId, DomHostedGlobalId, DomHostedHostId,
     DomHostedNavigableId, DomHostedOperationId, DomOpaqueOrigin,
 };
 
@@ -23,9 +23,32 @@ pub(super) struct Composition {
 
 pub(super) struct Group {
     pub context: DomHostedBrowsingContextId,
+    pub traversal: super::history::Traversal,
+    pub completions: Vec<super::destruction::Completion>,
     // This is also the group's historical origin->origin-keyed cluster entry.
     // The opaque identity is preserved even when requestsOAC is false.
-    pub cluster: Option<OriginCluster>,
+    pub clusters: Vec<OriginCluster>,
+}
+impl Group {
+    // The original top-level Global is installed first; children append to the
+    // same bank and their retirement preserves this first record's position.
+    pub fn global(&self) -> Option<&Global> {
+        self.clusters
+            .first()?
+            .agent
+            .globals
+            .first()
+            .filter(|global| global.context.id == self.context)
+    }
+    pub fn global_mut(&mut self) -> Option<&mut Global> {
+        let context = self.context;
+        self.clusters
+            .first_mut()?
+            .agent
+            .globals
+            .first_mut()
+            .filter(|global| global.context.id == context)
+    }
 }
 pub(super) struct OriginCluster {
     pub origin: DomOpaqueOrigin,
@@ -33,9 +56,16 @@ pub(super) struct OriginCluster {
 }
 pub(super) struct NativeAgent {
     pub event_loop: Rc<RefCell<WindowLoop>>,
-    pub global: Option<Global>,
+    pub globals: Vec<Global>,
+}
+pub(super) struct BrowsingContext {
+    pub id: DomHostedBrowsingContextId,
+    pub group_root: DomHostedBrowsingContextId,
+    pub creator: Option<DomHostedGlobalId>,
+    pub global: Option<DomHostedGlobalId>,
 }
 pub(super) struct Global {
+    pub context: BrowsingContext,
     pub id: DomHostedGlobalId,
     pub settings: Settings,
 }
@@ -48,23 +78,12 @@ pub(super) struct Settings {
     // associated Document rather than these historical creation inputs.
     pub creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
     pub top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
+    pub top_level_origin: DomOpaqueOrigin,
 }
 
 pub(super) struct Top {
     pub id: DomHostedNavigableId,
-    pub entry: Entry,
     pub closing: bool,
-    // First initialization installs the same actual entry as current+active;
-    // subsequent navigation/replacement is outside this admitted front.
-}
-pub(super) struct Entry {
-    pub id: DomHostedEntryId,
-    pub document: DocumentId,
-    pub origin: DomOpaqueOrigin,
-    pub uuids: uuid::HistoryUuids,
-    // Actual top-level initial history step is zero. Target name is empty;
-    // initiator/about-base/resource/persisted state are absent, nested history
-    // and scroll data are empty. There is no executable JS state API.
 }
 
 /// Actual task-source identity currently executing in this native window loop.
@@ -72,6 +91,11 @@ pub(super) struct Entry {
 pub(super) enum CurrentTask {
     Details {
         task: DomDetailsTaskId,
+        document: DocumentId,
+    },
+    History {
+        operation: DomHostedOperationId,
+        occurrence: u64,
         document: DocumentId,
     },
     Destroy {
@@ -85,7 +109,7 @@ pub(super) struct WindowLoop {
     pub executing: bool,
     pub next_checkpoint: u64,
     pub checkpoints: u64,
-    pub navigation: Vec<DestroyTask>,
+    pub navigation: Vec<NavigationTask>,
 }
 impl WindowLoop {
     pub fn new() -> Self {
@@ -105,14 +129,40 @@ pub(super) struct DestroyTask {
     pub operation: DomHostedOperationId,
     pub document: DocumentId,
     pub global: DomHostedGlobalId,
-    pub captured_children: Vec<DomHostedNavigableId>,
-    pub completed_children: usize,
     pub phase: DestroyPhase,
 }
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum DestroyPhase {
-    WaitChildren,
     Queued,
     Cleanup,
     CheckpointComplete,
+}
+
+/// Real navigation-and-traversal tasks share the original Global loop FIFO.
+/// A receipt marks an actual canonical History write; it survives a refused
+/// checkpoint and is settled exactly once without executing that write again.
+pub(super) enum NavigationTask {
+    Destroy(DestroyTask),
+    History(HistoryTask),
+}
+impl NavigationTask {
+    pub fn destroy_mut(&mut self) -> Option<&mut DestroyTask> {
+        match self {
+            Self::Destroy(task) => Some(task),
+            Self::History(_) => None,
+        }
+    }
+    pub fn destroy(&self) -> Option<&DestroyTask> {
+        match self {
+            Self::Destroy(task) => Some(task),
+            Self::History(_) => None,
+        }
+    }
+}
+pub(super) struct HistoryTask {
+    pub operation: DomHostedOperationId,
+    pub occurrence: u64,
+    pub document: DocumentId,
+    pub global: DomHostedGlobalId,
+    pub receipt: Option<surgeist_dom::DomHostedHistoryJobReceipt>,
 }

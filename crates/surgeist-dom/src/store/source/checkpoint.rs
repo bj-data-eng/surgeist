@@ -429,6 +429,7 @@ impl Draft {
             store: self.store,
             registries: self.registries.clone(),
             hosted_globals: self.hosted_globals.clone(),
+            hosted_history: self.hosted_history.clone(),
             hosted_owner: self.hosted_owner,
             basis: self.basis,
             source_limits: self.source_limits,
@@ -466,7 +467,9 @@ impl Draft {
                 .map(|v| v.checkpoint(&mut a, cancel))
                 .transpose()?,
             effects,
+            hosted_pending: self.hosted_pending,
             effects_running: false,
+            effect_floor: self.effect_floor,
             effect_bytes,
             effect_scoped: false,
             select_work: Cell::new(self.select_work.get()),
@@ -506,6 +509,9 @@ impl Draft {
     ) -> Result<usize, DomError> {
         let mut bytes = size_of::<Self>() + size_of::<AtomicU64>() + 3 * size_of::<AtomicUsize>();
         let mut payload = super::storage::Payload::default();
+        if let Some(history) = &self.hosted_history {
+            payload.append(history.payload(|| self.source_step(cancel))?)?;
+        }
         if let Some(index) = &self.hosted_globals {
             payload.add_bytes(index.retained_payload_bytes()?)?;
         }

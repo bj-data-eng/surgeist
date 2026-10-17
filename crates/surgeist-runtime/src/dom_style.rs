@@ -2172,7 +2172,8 @@ impl Drop for StyleTaskRunning {
 
 #[cfg(test)]
 use crate::{
-    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceUnavailable,
+    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
+    DomSourceUnavailable,
 };
 #[cfg(test)]
 use surgeist_dom::DomStyleInlineCspObservation;
@@ -2301,7 +2302,10 @@ mod tests {
                     &mut dom,
                     DomSourceEdit::insert_before(later, container, None),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -2313,7 +2317,10 @@ mod tests {
                     &mut dom,
                     DomSourceEdit::insert_before(earlier, container, Some(later)),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -2325,7 +2332,10 @@ mod tests {
                     &mut dom,
                     DomSourceEdit::insert_before(isolated, shadow, None),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -2358,7 +2368,16 @@ mod tests {
         );
         let edit = DomSourceEdit::insert_before(later, container, Some(earlier));
         let progress = source
-            .apply(&mut dom, edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
@@ -2379,7 +2398,16 @@ mod tests {
         assert_eq!(moved.sheets(), &[moved_id.clone(), earlier_id.clone()]);
         let edit = DomSourceEdit::insert_before(earlier_text, earlier, None);
         let progress = source
-            .apply(&mut dom, edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
@@ -2455,7 +2483,16 @@ mod tests {
         let style = setup.created(&style).unwrap().unwrap();
         let edit = DomSourceEdit::insert_before(style, document, None);
         let progress = source
-            .apply(&mut dom, edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         let DomSourceDriveProgress::Complete(_) = progress else {
             panic!("initial sheet");
@@ -2489,7 +2526,10 @@ mod tests {
                     &mut dom,
                     DomSourceEdit::set_attribute(style, "title", title.clone()),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -2497,7 +2537,16 @@ mod tests {
         ));
         let edit = DomSourceEdit::set_attribute(style, "media", "screen and (min-width: 2px)");
         let progress = source
-            .apply(&mut dom, edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
 
@@ -2567,7 +2616,16 @@ mod tests {
         let edit = DomSourceEdit::insert_before(style, document, None);
         let progress = context
             .source
-            .apply(&mut dom, edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         let DomSourceDriveProgress::Complete(_) = progress else {
             panic!("real no-import processing completes")
@@ -2606,7 +2664,16 @@ mod tests {
                     let edit = DomSourceEdit::detach(style);
                     let progress = context
                         .source
-                        .apply(dom, edit, source_limits(), policy, &cancel)
+                        .apply(
+                            dom,
+                            edit,
+                            source_limits(),
+                            &mut DomSourceServices {
+                                style_policy: &mut policy,
+                                url: None,
+                            },
+                            &cancel,
+                        )
                         .unwrap();
                     assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
                     Ok(())
@@ -2688,7 +2755,10 @@ mod tests {
                     &mut session.dom(),
                     DomSourceEdit::insert_before(style, container, None),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &AtomicBool::new(false)
                 )
                 .unwrap(),
@@ -2734,7 +2804,16 @@ mod tests {
         let mut source = session.source_execution();
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -2752,7 +2831,16 @@ mod tests {
         );
         let edit = DomSourceEdit::detach(a);
         source
-            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         let detached = permission.disabled(&session.dom(), a).unwrap();
         assert!(!detached.disabled());
@@ -2760,7 +2848,16 @@ mod tests {
         assert_eq!(detached.cssom_revision(), None);
         let edit = DomSourceEdit::destroy(a);
         source
-            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap();
         assert!(matches!(
             permission.disabled(&session.dom(), a),
@@ -2801,7 +2898,16 @@ mod tests {
         let style = setup.created(&style).unwrap().unwrap();
         let edit = DomSourceEdit::insert_before(style, container, None);
         assert!(matches!(
-            source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+            source.apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None
+                },
+                &cancel
+            ),
             Err(DomSourceRuntimeError::Style(
                 DomStyleRuntimeError::Admission
             ))
@@ -2840,7 +2946,10 @@ mod tests {
                     &mut session.dom(),
                     operation,
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -2911,6 +3020,9 @@ mod tests {
                             }
                             action => panic!("unexpected actual source request {action:?}"),
                         }
+                    }
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::HostedChild(_)) => {
+                        panic!("Style fixture cannot request a hosted child")
                     }
                     DomSourceProgress::Complete(_) => panic!("real pending source was expected"),
                 }
@@ -3013,7 +3125,16 @@ mod tests {
         let edit = DomSourceEdit::set_attribute(first, "title", "changed");
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -3193,12 +3314,15 @@ mod tests {
                 &mut session.dom(),
                 edit,
                 source_limits(),
-                |source| {
-                    observed = Some((
-                        source.base_url().clone(),
-                        source.document_metadata().url().clone(),
-                    ));
-                    policy(source)
+                &mut DomSourceServices {
+                    style_policy: &mut |source| {
+                        observed = Some((
+                            source.base_url().clone(),
+                            source.document_metadata().url().clone(),
+                        ));
+                        policy(source)
+                    },
+                    url: None,
                 },
                 &cancel,
             )
@@ -3316,7 +3440,16 @@ mod tests {
         let target = setup.created(&target).unwrap().unwrap();
         let edit = DomSourceEdit::insert_before(target, parent, None);
         let DomSourceDriveProgress::Complete(_) = source
-            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap()
         else {
             panic!("actual source completes");
@@ -3383,7 +3516,16 @@ mod tests {
         let edit = DomSourceEdit::set_attribute(target, "media", "screen and");
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -3457,7 +3599,16 @@ mod tests {
         let edit = DomSourceEdit::set_attribute(target, "title", "same-mode");
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -3487,7 +3638,16 @@ mod tests {
             request,
             reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
         } = source
-            .apply(&mut session.dom(), edit, source_limits(), |_| None, &cancel)
+            .apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap()
         else {
             panic!("real canonical pending source request");
@@ -3495,7 +3655,9 @@ mod tests {
         let original = styles.original().unwrap();
         let cap = original.borrow().roots[0].store.clone();
         let dom_stamp = session.snapshot().stamp();
-        let surgeist_dom::DomSourceRequest::Style(request) = request;
+        let surgeist_dom::DomSourceRequest::Style(request) = request else {
+            panic!("Style fixture cannot request a hosted child");
+        };
         let source_stamp = request.source().stamp();
         let before = cap.snapshot().unwrap();
         let mut batch = cap.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
@@ -3600,7 +3762,16 @@ mod tests {
         let target = setup.created(&target).unwrap().unwrap();
         let edit = DomSourceEdit::insert_before(target, parent, None);
         assert!(matches!(
-            source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+            source.apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None
+                },
+                &cancel
+            ),
             Err(DomSourceRuntimeError::Style(
                 DomStyleRuntimeError::Admission
             ))
@@ -3622,7 +3793,10 @@ mod tests {
                     &mut session.dom(),
                     pending,
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -3667,6 +3841,7 @@ mod tests {
                 "about:blank".into(),
                 HtmlBaseUrlScheme::Other,
                 true,
+                None,
             )
             .unwrap();
             surgeist_dom::DomParsedDocumentEnvironment::headless(
@@ -3812,7 +3987,16 @@ mod tests {
         let edit = DomSourceEdit::insert_before(host, parent, None);
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -3834,7 +4018,16 @@ mod tests {
         let edit = DomSourceEdit::insert_before(style, shadow, None);
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -4016,7 +4209,10 @@ mod tests {
                     &mut session.dom(),
                     DomSourceEdit::detach(target),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -4026,7 +4222,16 @@ mod tests {
         assert!(matches!(
             context
                 .source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -4115,9 +4320,13 @@ mod tests {
                             dom,
                             edit,
                             source_limits(),
-                            |source| {
-                                *seen = observer.snapshot(root).is_ok_and(|value| value.is_some());
-                                policy(source)
+                            &mut DomSourceServices {
+                                style_policy: &mut |source| {
+                                    *seen =
+                                        observer.snapshot(root).is_ok_and(|value| value.is_some());
+                                    policy(source)
+                                },
+                                url: None,
                             },
                             &cancel,
                         )
@@ -4206,7 +4415,16 @@ mod tests {
         let target = setup.created(&target).unwrap().unwrap();
         let edit = DomSourceEdit::insert_before(target, shadow, None);
         let DomSourceDriveProgress::Complete(_) = source
-            .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+            .apply(
+                &mut session.dom(),
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
             .unwrap()
         else {
             panic!("actual creation completes");
@@ -4220,7 +4438,10 @@ mod tests {
                     &mut session.dom(),
                     DomSourceEdit::detach(host),
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -4229,7 +4450,16 @@ mod tests {
         let edit = DomSourceEdit::destroy(host);
         assert!(matches!(
             source
-                .apply(&mut session.dom(), edit, source_limits(), policy, &cancel)
+                .apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                )
                 .unwrap(),
             DomSourceDriveProgress::Complete(_)
         ));
@@ -4493,7 +4723,16 @@ mod tests {
         let edit = DomSourceEdit::set_attribute(target, "title", "changed");
         assert!(
             matches!(
-                source.apply(&mut session.dom(), edit, source_limits(), policy, &cancel),
+                source.apply(
+                    &mut session.dom(),
+                    edit,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
+                    &cancel
+                ),
                 Err(DomSourceRuntimeError::Style(
                     DomStyleRuntimeError::Admission
                 ))
@@ -4523,7 +4762,10 @@ mod tests {
                     &mut session.dom(),
                     operation,
                     source_limits(),
-                    policy,
+                    &mut DomSourceServices {
+                        style_policy: &mut policy,
+                        url: None
+                    },
                     &cancel
                 )
                 .unwrap(),
@@ -4657,7 +4899,12 @@ mod replacement_test {
                 &mut dom,
                 edit,
                 DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096),
-                |source| Some(DomStyleInlineCspObservation::complete_empty(source, 1)),
+                &mut DomSourceServices {
+                    style_policy: &mut |source| {
+                        Some(DomStyleInlineCspObservation::complete_empty(source, 1))
+                    },
+                    url: None,
+                },
                 &cancel,
             )
             .unwrap()

@@ -959,6 +959,7 @@ pub(super) enum Effect {
     Post {
         list: ScratchVec<Key>,
         index: usize,
+        stage: u8,
     },
     Update {
         select: Key,
@@ -1064,9 +1065,10 @@ impl EffectFrame {
             Effect::Clear { target } => Effect::Clear { target: *target },
             Effect::Tree(frame) => Effect::Tree(frame.checkpoint(a, cancel)?),
             Effect::Clone(frame) => Effect::Clone(frame.checkpoint()),
-            Effect::Post { list, index } => Effect::Post {
+            Effect::Post { list, index, stage } => Effect::Post {
                 list: list.checkpoint(a, cancel)?,
                 index: *index,
+                stage: *stage,
             },
             Effect::Update {
                 select,
@@ -1192,6 +1194,38 @@ impl Draft {
         });
         Ok(())
     }
+    /// A constructor may append to the original effect stack while its caller
+    /// is parked. Drain only that constructor's new frames; the suspended root's
+    /// earlier frames remain in their original order for its own continuation.
+    pub(in crate::store) fn with_effect_scope<T, E>(
+        &mut self,
+        action: impl FnOnce(&mut Draft) -> Result<T, E>,
+    ) -> Result<T, E> {
+        struct Scope<'a> {
+            draft: &'a mut Draft,
+            floor: usize,
+            running: bool,
+            scoped: bool,
+        }
+        impl Drop for Scope<'_> {
+            fn drop(&mut self) {
+                self.draft.effect_floor = self.floor;
+                self.draft.effects_running = self.running;
+                self.draft.effect_scoped = self.scoped;
+            }
+        }
+        let floor = self.effect_floor;
+        let running = self.effects_running;
+        let scoped = self.effect_scoped;
+        self.effect_floor = self.effects.len();
+        let guard = Scope {
+            draft: self,
+            floor,
+            running,
+            scoped,
+        };
+        action(&mut *guard.draft)
+    }
     pub(super) fn run_effects(
         &mut self,
         limits: DomLimits,
@@ -1202,7 +1236,7 @@ impl Draft {
         }
         self.effects_running = true;
         let result = (|| {
-            while !self.effects.is_empty() {
+            while self.effects.len() > self.effect_floor {
                 // Cancellation must not consume an unfinished continuation.
                 check_cancel(cancel)?;
                 if self.effects.last().expect("nonempty effects").scoped {
@@ -1299,23 +1333,34 @@ impl Draft {
                     Effect::Clone(frame) => {
                         self.clone_effect(frame, scoped, payload, limits, cancel)?
                     }
-                    Effect::Post { list, index } => {
+                    Effect::Post { list, index, stage } => {
                         if let Some(&key) = list.get(index) {
+                            let connected = self.shadow_connected(key, cancel)?;
                             self.push_effect(
                                 Effect::Post {
                                     list,
-                                    index: index + 1,
+                                    index: if stage == 3 || !connected {
+                                        index + 1
+                                    } else {
+                                        index
+                                    },
+                                    stage: if stage == 3 || !connected {
+                                        0
+                                    } else {
+                                        stage + 1
+                                    },
                                 },
                                 scoped,
                                 cancel,
                             )?;
-                            if self.shadow_connected(key, cancel)? {
-                                self.navigable_post_connection_node(key, &mut || {
-                                    check_cancel(cancel)
-                                })?;
-                                self.script_post_connection(key, cancel)?;
-                                self.svg_script_post_connection(key, cancel)?;
-                                self.select_post_connection(key, limits, cancel)?;
+                            if connected {
+                                match stage {
+                                    0 => self.navigable_post_connection_node(key, cancel)?,
+                                    1 => self.script_post_connection(key, cancel)?,
+                                    2 => self.svg_script_post_connection(key, cancel)?,
+                                    3 => self.select_post_connection(key, limits, cancel)?,
+                                    _ => return Err(DomError::HostedSourceUnavailable),
+                                }
                             }
                         }
                     }
@@ -1448,8 +1493,10 @@ impl Draft {
                     }
                 }
             }
-            self.effect_bytes = 0;
-            self.effects = Vec::new();
+            if self.effects.is_empty() {
+                self.effect_bytes = 0;
+                self.effects = Vec::new();
+            }
             Ok(())
         })();
         self.effects_running = false;
@@ -2089,5 +2136,83 @@ mod tests {
         })
         .join()
         .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod effect_scope_tests {
+    use super::*;
+    fn fixture() -> (Dom, Draft, Key, Key, Key, Key) {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(32, 4096, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let root = batch.create_element(&document, "root");
+        let outer = batch.create_element(&document, "outer");
+        let inner = batch.create_element(&document, "inner");
+        let first = batch.create_text(&document, "A");
+        let second = batch.create_text(&document, "B");
+        batch.insert_before(&root, &document, None);
+        batch.insert_before(&outer, &root, None);
+        batch.insert_before(&inner, &root, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let key = |ticket: &crate::CreatedNode| {
+            Key::Existing(commit.created(ticket).unwrap().unwrap().slot)
+        };
+        let (outer, inner, first, second) = (key(&outer), key(&inner), key(&first), key(&second));
+        let draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        (dom, draft, outer, inner, first, second)
+    }
+    #[test]
+    fn nested_constructor_effects_preserve_the_parked_root_order() {
+        let (dom, mut draft, outer, inner, first, second) = fixture();
+        let cancel = AtomicBool::new(false);
+        draft
+            .push_effect(
+                Effect::Tree(super::super::tree::Frame::ReplaceAll {
+                    key: outer,
+                    replacement: Some(first),
+                    inserted: false,
+                }),
+                false,
+                &cancel,
+            )
+            .unwrap();
+        draft
+            .with_effect_scope(|draft| draft.pre_insert(second, inner, None, dom.limits, &cancel))
+            .unwrap();
+        assert!(draft.node(outer).unwrap().children.is_empty());
+        assert_eq!(draft.node(inner).unwrap().children.as_slice(), &[second]);
+        draft.run_effects(dom.limits, &cancel).unwrap();
+        assert_eq!(draft.node(outer).unwrap().children.as_slice(), &[first]);
+        assert_eq!(draft.node(inner).unwrap().children.as_slice(), &[second]);
+        assert!(draft.effects.is_empty());
+    }
+    #[test]
+    fn cancelled_constructor_scope_restores_the_original_root_continuation() {
+        let (dom, mut draft, outer, inner, first, second) = fixture();
+        let cancel = AtomicBool::new(false);
+        draft
+            .push_effect(
+                Effect::Tree(super::super::tree::Frame::ReplaceAll {
+                    key: outer,
+                    replacement: Some(first),
+                    inserted: false,
+                }),
+                false,
+                &cancel,
+            )
+            .unwrap();
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            draft.with_effect_scope(
+                |draft| draft.pre_insert(second, inner, None, dom.limits, &cancel)
+            ),
+            Err(DomError::Cancelled)
+        );
+        cancel.store(false, Ordering::Relaxed);
+        draft.run_effects(dom.limits, &cancel).unwrap();
+        assert_eq!(draft.node(outer).unwrap().children.as_slice(), &[first]);
+        assert!(draft.node(inner).unwrap().children.is_empty());
     }
 }

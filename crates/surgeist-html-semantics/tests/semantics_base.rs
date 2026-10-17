@@ -18,7 +18,7 @@ use surgeist_html_semantics::{HtmlHostFactsRevision, select_frozen_base};
 fn base_observation_access_preserves_exact_inputs_and_owner_qualification() {
     let producer = HtmlBaseProducerId::fresh();
     let revision = revision(&producer, 1);
-    let fallback = url(&revision, "https://example.test/");
+    let fallback = url(&revision, "https://example.test/", None);
     let encoding = HtmlBaseEncoding::fresh();
     let raw = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
     let observation = HtmlBaseParseObservation::new(
@@ -46,7 +46,7 @@ fn base_observation_access_preserves_exact_inputs_and_owner_qualification() {
     let observation = &facts.observations()[0];
     assert_eq!(observation.raw().code_units(), [0xd800, 0, 0xdc00]);
     assert!(observation.inputs_match(&fallback, &encoding, &revision));
-    let equal_text = url(&revision, "https://example.test/");
+    let equal_text = url(&revision, "https://example.test/", None);
     assert!(!observation.inputs_match(&equal_text, &encoding, &revision));
     assert!(!observation.inputs_match(&fallback, &HtmlBaseEncoding::fresh(), &revision));
     assert!(matches!(
@@ -62,7 +62,7 @@ fn base_observation_access_preserves_exact_inputs_and_owner_qualification() {
 #[test]
 fn frozen_base_selection_keeps_scheme_csp_order_and_borrowed_record() {
     let revision = revision(&HtmlBaseProducerId::fresh(), 1);
-    let fallback = url(&revision, "https://example.test/fallback/");
+    let fallback = url(&revision, "https://example.test/fallback/", None);
     for (scheme, allowed, response, missing) in [
         (
             HtmlBaseUrlScheme::Data,
@@ -100,9 +100,14 @@ fn frozen_base_selection_keeps_scheme_csp_order_and_borrowed_record() {
             HtmlBaseUrlScheme::Javascript => "javascript:void(0)",
             HtmlBaseUrlScheme::Other => "https://example.test/parsed/",
         };
-        let record =
-            HtmlBaseUrlRecord::observed(revision.clone(), serialization.into(), scheme, false)
-                .unwrap();
+        let record = HtmlBaseUrlRecord::observed(
+            revision.clone(),
+            serialization.into(),
+            scheme,
+            false,
+            None,
+        )
+        .unwrap();
         let outcome = HtmlBaseParseOutcome::Parsed {
             record,
             base_allowed: allowed,
@@ -133,7 +138,7 @@ fn frozen_base_selection_keeps_scheme_csp_order_and_borrowed_record() {
 #[test]
 fn document_fallback_selects_srcdoc_and_about_blank_facts_lazily() {
     let revision = revision(&HtmlBaseProducerId::fresh(), 1);
-    let about = url(&revision, "https://example.test/about/");
+    let about = url(&revision, "https://example.test/about/", None);
     let srcdoc = HtmlBaseDocumentFacts::new(
         revision.clone(),
         None,
@@ -143,7 +148,7 @@ fn document_fallback_selects_srcdoc_and_about_blank_facts_lazily() {
     )
     .unwrap();
     assert_eq!(srcdoc.fallback().unwrap(), &about);
-    let ordinary = url(&revision, "https://example.test/ordinary/");
+    let ordinary = url(&revision, "https://example.test/ordinary/", None);
     let document = HtmlBaseDocumentFacts::new(
         revision.clone(),
         Some(ordinary.clone()),
@@ -158,6 +163,7 @@ fn document_fallback_selects_srcdoc_and_about_blank_facts_lazily() {
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let document = HtmlBaseDocumentFacts::new(
@@ -233,12 +239,13 @@ fn query(
 fn revision(producer: &HtmlBaseProducerId, n: u64) -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(producer.clone(), n, n, n)
 }
-fn url(revision: &HtmlBaseFactsRevision, text: &str) -> HtmlBaseUrlRecord {
+fn url(revision: &HtmlBaseFactsRevision, text: &str, fragment: Option<usize>) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         text.into(),
         HtmlBaseUrlScheme::Other,
         false,
+        fragment,
     )
     .unwrap()
 }
@@ -324,10 +331,11 @@ fn no_href_selects_document_fallback_but_the_getter_parses_its_empty_input() {
         "about:blank?x#y".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        Some(13),
     )
     .unwrap();
-    let fallback = url(&revision, "https://creator.test/fallback/");
-    let parsed = url(&revision, "https://creator.test/empty-getter");
+    let fallback = url(&revision, "https://creator.test/fallback/", None);
+    let parsed = url(&revision, "https://creator.test/empty-getter", None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
@@ -425,9 +433,9 @@ fn captured_first_href_is_historical_while_getter_uses_current_parse_and_target_
     let producer = HtmlBaseProducerId::fresh();
     let old = revision(&producer, 1);
     let current = revision(&producer, 2);
-    let old_url = url(&old, "https://old.test/frozen");
-    let fallback = url(&current, "https://new.test/fallback/");
-    let parsed = url(&current, "https://new.test/current-getter");
+    let old_url = url(&old, "https://old.test/frozen", None);
+    let fallback = url(&current, "https://new.test/fallback/", None);
+    let parsed = url(&current, "https://new.test/current-getter", None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
@@ -590,7 +598,7 @@ fn unresolved_first_href_cannot_skip_to_a_later_qualified_frozen_base() {
             capture.subject_id(&later).unwrap(),
             document.clone(),
             "later".into(),
-            Some(url(&revision, "https://later.test/")),
+            Some(url(&revision, "https://later.test/", None)),
             revision,
         )],
         HtmlBaseFactsLimits::new(10, 1000, 10000),
@@ -725,7 +733,7 @@ fn ordered_topology_before_first_base_is_required_but_later_or_first_children_ar
                 capture.subject_id(&base).unwrap(),
                 document.clone(),
                 "".into(),
-                Some(url(&revision, "https://first.test/")),
+                Some(url(&revision, "https://first.test/", None)),
                 revision,
             )],
             HtmlBaseFactsLimits::new(10, 1000, 10000),

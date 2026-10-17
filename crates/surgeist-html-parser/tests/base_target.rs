@@ -45,8 +45,9 @@ fn url(
     revision: &HtmlBaseFactsRevision,
     text: &str,
     scheme: HtmlBaseUrlScheme,
+    fragment: Option<usize>,
 ) -> HtmlBaseUrlRecord {
-    HtmlBaseUrlRecord::observed(revision.clone(), text.into(), scheme, false).unwrap()
+    HtmlBaseUrlRecord::observed(revision.clone(), text.into(), scheme, false, fragment).unwrap()
 }
 fn facts(
     raw: &str,
@@ -57,6 +58,7 @@ fn facts(
         &revision,
         "https://example.test/original/",
         HtmlBaseUrlScheme::Other,
+        None,
     );
     let encoding = HtmlBaseEncoding::fresh();
     let observation = HtmlBaseParseObservation::new(
@@ -92,7 +94,12 @@ fn source(raw: &str, utf16: bool) -> HtmlSource {
 #[test]
 fn ordinary_request_rejects_srcdoc_facts_and_failure_keeps_original_facts() {
     let revision = revision();
-    let about = url(&revision, "https://creator.test/", HtmlBaseUrlScheme::Other);
+    let about = url(
+        &revision,
+        "https://creator.test/",
+        HtmlBaseUrlScheme::Other,
+        None,
+    );
     let srcdoc = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
             revision,
@@ -238,6 +245,7 @@ fn first_href_binds_decoded_value_and_actual_node_before_later_bases() {
                 revision,
                 "https://example.test/original/A&B",
                 HtmlBaseUrlScheme::Other,
+                None,
             ),
             base_allowed: HtmlBaseAllowed::Allowed,
         });
@@ -326,7 +334,7 @@ fn failure_blocked_and_forbidden_schemes_freeze_fallback_without_response() {
                 HtmlBaseParseOutcome::Failure
             } else {
                 HtmlBaseParseOutcome::Parsed {
-                    record: url(revision, "externally-observed-record", scheme),
+                    record: url(revision, "externally-observed-record", scheme, None),
                     base_allowed: allowed,
                 }
             }
@@ -443,6 +451,11 @@ fn each_influencing_environment_fact_refuses_at_the_first_href_and_preserves_ori
                 .into(),
                 HtmlBaseUrlScheme::Other,
                 missing == HtmlBaseMissing::AboutBaseUrl,
+                if missing == HtmlBaseMissing::AboutBaseUrl {
+                    Some(13)
+                } else {
+                    None
+                },
             )
             .unwrap();
             let encoding = HtmlBaseEncoding::fresh();
@@ -458,6 +471,7 @@ fn each_influencing_environment_fact_refuses_at_the_first_href_and_preserves_ori
                                 &revision,
                                 "externally-observed-parsed",
                                 HtmlBaseUrlScheme::Other,
+                                None,
                             ),
                             base_allowed: HtmlBaseAllowed::Unavailable,
                         },

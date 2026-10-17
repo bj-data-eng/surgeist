@@ -272,6 +272,9 @@ fn state_usage(
         payload.bank::<NodeId>(state.signal_slots.capacity())?;
         payload.bank::<select::Task<NodeId>>(state.native_tasks.capacity())?;
         payload.bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())?;
+        if let Some(history) = &state.hosted_history {
+            payload.append(history.payload(&mut step)?)?;
+        }
         if let Some(index) = &state.hosted_globals {
             payload.add_bytes(index.retained_payload_bytes()?)?;
         }
@@ -461,6 +464,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let mut raw = Vec::with_capacity(128);

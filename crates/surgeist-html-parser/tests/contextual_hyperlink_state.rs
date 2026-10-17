@@ -30,8 +30,20 @@ fn limits() -> HtmlParseLimits {
 fn revision() -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3)
 }
-fn record(r: &HtmlBaseFactsRevision, text: &str, blank: bool) -> HtmlBaseUrlRecord {
-    HtmlBaseUrlRecord::observed(r.clone(), text.into(), HtmlBaseUrlScheme::Other, blank).unwrap()
+fn record(
+    r: &HtmlBaseFactsRevision,
+    text: &str,
+    blank: bool,
+    fragment: Option<usize>,
+) -> HtmlBaseUrlRecord {
+    HtmlBaseUrlRecord::observed(
+        r.clone(),
+        text.into(),
+        HtmlBaseUrlScheme::Other,
+        blank,
+        fragment,
+    )
+    .unwrap()
 }
 fn environment(base: &HtmlBaseUrlRecord, encoding: &HtmlBaseEncoding) -> HtmlParseBaseFacts {
     HtmlParseBaseFacts::new(
@@ -197,13 +209,14 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
     // children use its current captured Document. Template contents have their
     // independent actual owner. Adoption never calls A/Area set-URL again.
     let (context, target, _) = fixture(false);
-    let aux = record(&revision(), "about:blank", true);
-    let inert = record(&revision(), "about:blank", true);
-    let target_base = record(&revision(), "https://example.test/target/", false);
+    let aux = record(&revision(), "about:blank", true, None);
+    let inert = record(&revision(), "about:blank", true, None);
+    let target_base = record(&revision(), "https://example.test/target/", false, None);
     let target_x = record(
         target_base.revision(),
         "https://example.test/target/x",
         false,
+        None,
     );
     let a = HtmlBaseEncoding::fresh();
     let i = HtmlBaseEncoding::fresh();
@@ -287,8 +300,8 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
 #[test]
 fn existing_captured_inert_owner_uses_its_own_revision_and_encoding() {
     let (context, target, inert_doc) = fixture(true);
-    let target_base = record(&revision(), "https://example.test/", false);
-    let inert_base = record(&revision(), "about:blank", true);
+    let target_base = record(&revision(), "https://example.test/", false, None);
+    let inert_base = record(&revision(), "about:blank", true, None);
     let t = HtmlBaseEncoding::fresh();
     let i = HtmlBaseEncoding::fresh();
     let target_context = selected(&context, &target, environment(&target_base, &t));
@@ -325,7 +338,7 @@ fn existing_captured_inert_owner_uses_its_own_revision_and_encoding() {
 fn foreign_and_duplicate_selected_contexts_preserve_original_execution_inputs() {
     let (context, target, _) = fixture(false);
     let (foreign, foreign_doc, _) = fixture(false);
-    let base = record(&revision(), "https://example.test/", false);
+    let base = record(&revision(), "https://example.test/", false, None);
     let enc = HtmlBaseEncoding::fresh();
     let own = selected(&context, &target, environment(&base, &enc));
     let other = selected(&foreign, &foreign_doc, environment(&base, &enc));
@@ -365,7 +378,7 @@ fn foreign_and_duplicate_selected_contexts_preserve_original_execution_inputs() 
 fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_failure() {
     let (context, target, _) = fixture(false);
     let r = revision();
-    let base = record(&r, "https://example.test/", false);
+    let base = record(&r, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let prepared = selected(&context, &target, environment(&base, &encoding));
     let older = HtmlBaseFactsRevision::new(r.producer().clone(), 0, 2, 3);
@@ -382,7 +395,7 @@ fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_fai
         ),
         (
             vec![bank(
-                &record(&revision(), "https://foreign.test/", false),
+                &record(&revision(), "https://foreign.test/", false, None),
                 &encoding,
                 "http://[".into(),
                 HtmlEncodingUrlParseOutcome::Failure,
@@ -413,7 +426,7 @@ fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_fai
         ),
         (
             vec![bank(
-                &record(&r, "https://other.test/", false),
+                &record(&r, "https://other.test/", false, None),
                 &encoding,
                 "http://[".into(),
                 HtmlEncodingUrlParseOutcome::Failure,
@@ -459,13 +472,14 @@ fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_fai
 #[test]
 fn raw_isolated_surrogates_and_detached_base_preserve_exact_selected_input() {
     let (context, target, _) = fixture(false);
-    let base = record(&revision(), "https://example.test/old/", false);
+    let base = record(&revision(), "https://example.test/old/", false, None);
     // Same literal UTF-8 replacement result as the retained shared EncodingUrl
     // surrogate fixture; raw DOMString code units themselves stay unchanged.
     let parsed = record(
         base.revision(),
         "https://example.test/old/%EF%BF%BDx%EF%BF%BD",
         false,
+        None,
     );
     let encoding = HtmlBaseEncoding::fresh();
     let prepared = selected(&context, &target, environment(&base, &encoding));
@@ -507,7 +521,7 @@ fn raw_isolated_surrogates_and_detached_base_preserve_exact_selected_input() {
 #[test]
 fn constructor_roles_reject_contradictory_facts_without_issuing_a_request() {
     let (context, _, _) = fixture(false);
-    let not_blank = record(&revision(), "https://example.test/", false);
+    let not_blank = record(&revision(), "https://example.test/", false, None);
     let facts = environment(&not_blank, &HtmlBaseEncoding::fresh());
     assert!(
         HtmlFragmentParseRequest::new(HtmlSource::utf8(""), context.clone(), limits())
@@ -526,7 +540,7 @@ fn constructor_roles_reject_contradictory_facts_without_issuing_a_request() {
 #[test]
 fn selected_execution_spare_capacity_is_released_and_failure_returns_originals() {
     let (context, target, _) = fixture(false);
-    let base = record(&revision(), "https://example.test/", false);
+    let base = record(&revision(), "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let prepared = selected(&context, &target, environment(&base, &encoding));
     let observation = bank(
@@ -690,9 +704,9 @@ fn historical_first_base_uses_current_independent_revision_after_detached_meta()
         HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
     let current = revision();
     let historical = revision();
-    let parsed = record(&current, "https://example.test/old/x", false);
-    let fallback = record(&current, "https://example.test/current/", false);
-    let frozen = record(&historical, "https://example.test/old/", false);
+    let parsed = record(&current, "https://example.test/old/x", false, None);
+    let fallback = record(&current, "https://example.test/current/", false, None);
+    let frozen = record(&historical, "https://example.test/old/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let bank = HtmlCapturedBaseFacts::new(
         &capture,

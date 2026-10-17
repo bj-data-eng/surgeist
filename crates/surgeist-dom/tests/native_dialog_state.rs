@@ -349,6 +349,7 @@ fn actual_parsed_document_history_supports_native_dialog_cleanup_without_resetti
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         true,
+        None,
     )
     .unwrap();
     let installed = dom

@@ -21,7 +21,7 @@ mod details;
 mod dialog;
 mod document;
 mod form;
-mod hosted;
+pub(crate) mod hosted;
 mod hyperlink;
 mod image;
 mod import;
@@ -84,6 +84,9 @@ pub enum DomResource {
 pub enum DomError {
     /// A reached operation needs a current live hosted owner association.
     HostedSourceUnavailable,
+    HostedCompositionRequired,
+    SourceUrlInputsMismatch,
+    SourceUrlUnavailable,
     ForeignOwner,
     StaleNode,
     ForeignBatch,
@@ -746,6 +749,7 @@ pub(crate) struct State {
     pub(crate) slots: Vec<Slot>,
     pub(crate) registries: Option<Arc<registry::Bank>>,
     pub(crate) hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
+    pub(crate) hosted_history: Option<Arc<hosted::history::Graph>>,
     pub(crate) view_transitions: ViewTransitions,
     pub(crate) signal_slots: Vec<NodeId>,
     pub(crate) notification_queued: bool,
@@ -801,7 +805,7 @@ pub struct Dom {
     hosted_source: Option<crate::hosted::SourceObservation>,
     next_hosted_source: u64,
     details_transferred: bool,
-    hosted_operation: Option<Box<hosted::Operation>>,
+    hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
 }
 impl Drop for Dom {
@@ -829,6 +833,7 @@ impl Dom {
                 slots: Vec::new(),
                 registries: None,
                 hosted_globals: None,
+                hosted_history: None,
                 view_transitions: ViewTransitions::new(),
                 signal_slots: Vec::new(),
                 notification_queued: false,
@@ -846,7 +851,7 @@ impl Dom {
             hosted_source: None,
             next_hosted_source: 0,
             details_transferred: false,
-            hosted_operation: None,
+            hosted_operations: hosted::operations::Operations::default(),
             hosted_revisions: 0,
             history: None,
             history_entries: 0,
@@ -1256,6 +1261,7 @@ struct Draft {
     store: DomOwnerId,
     registries: Option<Arc<registry::Bank>>,
     hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
+    hosted_history: Option<Arc<hosted::history::Graph>>,
     hosted_owner: Option<crate::hosted::DomHostedOperationId>,
     basis: DomStamp,
     source_limits: Option<crate::DomSourceLimits>,
@@ -1286,7 +1292,9 @@ struct Draft {
     cancelled_details: Vec<details::Pending<NodeId>>,
     cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
     effects: Vec<select::EffectFrame>,
+    hosted_pending: Option<source::operation::hosted::ChildHook>,
     effects_running: bool,
+    effect_floor: usize,
     effect_bytes: usize,
     effect_scoped: bool,
     select_work: std::cell::Cell<u64>,
@@ -1484,6 +1492,7 @@ impl Draft {
             store: dom.owner,
             registries: dom.state.registries.clone(),
             hosted_globals: dom.state.hosted_globals.clone(),
+            hosted_history: dom.state.hosted_history.clone(),
             hosted_owner: None,
             basis: DomStamp {
                 owner: dom.owner,
@@ -1516,7 +1525,9 @@ impl Draft {
             cancelled_details: Vec::new(),
             cancelled_images: None,
             effects: Vec::new(),
+            hosted_pending: None,
             effects_running: false,
+            effect_floor: 0,
             effect_bytes: 0,
             effect_scoped: false,
             select_work: std::cell::Cell::new(0),
@@ -2421,6 +2432,7 @@ impl Draft {
             slots,
             registries: self.registries.clone(),
             hosted_globals: self.hosted_globals.clone(),
+            hosted_history: self.hosted_history.clone(),
             view_transitions: finished.value,
             signal_slots: self.map_public_ids(&self.signal_slots, &id, budget, cancelled)?,
             notification_queued: self.notification_queued,

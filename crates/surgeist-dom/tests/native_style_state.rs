@@ -1819,6 +1819,9 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 panic!("manual Slot assignment has no external Style phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
+                panic!("manual Slot assignment has no hosted child phase: {request:?}")
+            }
         },
     }
 }

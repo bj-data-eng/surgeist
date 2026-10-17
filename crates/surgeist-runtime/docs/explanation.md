@@ -98,12 +98,16 @@ shutdown, `try_shutdown` returns `DomShutdownOutcome::Pending` with the whole
 session when obligations remain.
 
 `HostedRuntime` creates a native Host and an initial top-level navigable through
-the canonical DOM source protocol. The resulting Document, browsing context,
+the canonical DOM source protocol. `create_top_level` returns the actual top-level
+result; `resume_top_level_creation` continues a refused creation using its original
+operation. The resulting Document, browsing context,
 history entry and Global have distinct checked identities. Settings read the
 actual associated Document; a captured settings value remains historical after
 later edits. The original Settings retain the constructor's actual creation and
-top-level creation URL records before native execution is sealed. For this
-no-opener top-level constructor, both refer to the same issued record. Their
+top-level creation URL records before native execution is sealed. For the
+no-opener top-level constructor, both refer to the same issued record. Child
+Settings retain the original top-level origin; cross-site ancestry observations
+instead walk the actual current canonical ancestry. Their
 readbacks borrow `HtmlBaseUrlRecord`; use `serialization()` when the spelling is
 needed. Current base selection still follows the associated Document. Storage
 refusal preserves the original operation and its records for a bounded retry.
@@ -112,14 +116,33 @@ entropy for the two history UUIDs. Unsupported clock or entropy providers return
 typed errors. Neither UUID generation nor cancellation promises to interrupt an
 OS entropy call.
 
-Top-level destruction first queues the original Global's navigation task and
-returns `Pending`, even when there are no children. Resumption performs the
-cleanup through that retained task. The Document and its tree remain canonical
+Connected native Frame/Iframe hooks use the same Source driver to create an
+initial child and queue its history attachment. Runtime computes the initial
+Permissions Policy for the selected fullscreen-only profile from the actual
+parent, container, sandbox and origin inputs. Reached URL parsing and origin
+facts require an independently configured `DomSourceUrlService`; unavailable
+facts park the original operation. This does not implement general navigation
+or resource loading. Frame and Iframe creation preserve their distinct sandbox
+rules, and later attribute changes do not retroactively rewrite a completed
+Document's policy.
+
+`destroy_top_level` returns `DomHostedDestructionQueued` after retaining the
+actual destruction invocation and its child dependencies. It does not promise
+that a waiting parent's Global cleanup task has already been queued. Use
+`run_next` on the actual traversable to service history, Global jobs and cleanup
+through the shared native task loop. A completed child removal can therefore
+leave mandatory queued history or destruction work. Distinct overlapping
+invocations join the same actual per-Document cleanup while retaining their own
+captured dependencies and completion identity. The Document and its tree remain canonical
 objects after destruction; current hosted authority becomes inactive while older
 snapshots retain their original observations. A Host can own several top-levels,
 so destroying one does not retire the shared Host. `destroy_host` retires an
 actually empty Host after its top-level, operation and task obligations are
-settled; graceful session shutdown still retains live hosted ownership.
+settled; graceful session shutdown still retains live hosted ownership. Canonical
+entry Document fields become null at actual destruction completion; earlier
+snapshots retain their original Document identities. Live-child membership and
+retained history custody are separate: a queued creation-history closure still
+runs after removal without restoring the live container relation.
 
 Details ingestion admits the actual canonical pending intentions before taking
 custody. Tasks preserve their original queued Document and Global across target

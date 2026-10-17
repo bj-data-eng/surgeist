@@ -10,7 +10,7 @@ use surgeist_html::{
     HtmlMarqueeState, KnownHtmlElement,
 };
 mod family;
-pub(crate) use family::NativeFamily;
+pub(crate) use family::{IframeState, NativeFamily};
 
 /// Definition association established by this native generic creation surface.
 /// Registry/definition object admission is a separate, unexposed capability.
@@ -294,7 +294,7 @@ impl DomElement {
                 // Every admitted target Document has the actual native never-BC
                 // environment. This is fresh element creation, not reconstruction
                 // from current null content or missing imported metadata.
-                NativeFamily::Iframe(HtmlIframeInitialState::fresh())
+                NativeFamily::Iframe(family::IframeState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Script) => NativeFamily::Script,
             Requirement::SvgScript => {
@@ -662,6 +662,16 @@ impl DomElement {
     }
     /// Actual content navigable for Frame/Iframe. Outer None is inapplicable;
     /// Some(None) is the stored null relationship, not a creation/history proof.
+    pub(crate) fn establish_child_navigable(
+        &mut self,
+        value: Option<crate::DomHostedNavigableId>,
+    ) -> Result<(), crate::DomError> {
+        if self.child_navigable().is_none() {
+            return Err(crate::DomError::WrongNodeKind);
+        }
+        self.content_navigable = value;
+        Ok(())
+    }
     pub fn child_navigable(&self) -> Option<Option<crate::DomHostedNavigableId>> {
         matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
             .then_some(self.content_navigable)
@@ -676,9 +686,25 @@ impl DomElement {
     /// Independent retained intrinsic Iframe tuple, without child identity.
     pub fn iframe_initial_state(&self) -> Option<HtmlIframeInitialState> {
         match self.family {
-            NativeFamily::Iframe(state) => Some(state),
+            NativeFamily::Iframe(state) => Some(state.initial),
             _ => None,
         }
+    }
+    pub(crate) fn iframe_sandbox_flags(&self) -> Option<surgeist_html::HtmlSandboxFlags> {
+        match self.family {
+            NativeFamily::Iframe(state) => Some(state.sandbox),
+            _ => None,
+        }
+    }
+    pub(crate) fn establish_iframe_sandbox_flags(
+        &mut self,
+        sandbox: surgeist_html::HtmlSandboxFlags,
+    ) -> Result<(), DomError> {
+        let NativeFamily::Iframe(state) = &mut self.family else {
+            return Err(DomError::WrongNodeKind);
+        };
+        state.sandbox = sandbox;
+        Ok(())
     }
     pub(crate) fn set_marquee_running(&mut self, running: bool) -> Result<(), DomError> {
         let NativeFamily::Marquee(state) = &mut self.family else {

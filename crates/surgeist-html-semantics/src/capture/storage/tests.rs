@@ -253,6 +253,7 @@ fn selected_hyperlink_adds_only_out_of_line_receipt_without_original_fact_bank()
         "https://example.test/".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let raw: DocumentString = "https://[".into();

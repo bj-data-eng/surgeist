@@ -4,12 +4,13 @@ use surgeist_html_semantics::*;
 fn rev(producer: &HtmlBaseProducerId, n: u64) -> HtmlBaseFactsRevision {
     HtmlBaseFactsRevision::new(producer.clone(), n, n, n)
 }
-fn url(revision: &HtmlBaseFactsRevision, text: &str) -> HtmlBaseUrlRecord {
+fn url(revision: &HtmlBaseFactsRevision, text: &str, fragment: Option<usize>) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         text.into(),
         HtmlBaseUrlScheme::Other,
         false,
+        fragment,
     )
     .unwrap()
 }
@@ -22,7 +23,7 @@ fn facts(raw: DocumentString, outcome: HtmlEncodingUrlParseOutcome) -> HtmlEncod
         _ => rev(&HtmlBaseProducerId::fresh(), 1),
     };
     HtmlEncodingUrlParseFacts::new(
-        url(&revision, "https://base/"),
+        url(&revision, "https://base/", None),
         HtmlBaseEncoding::fresh(),
         revision,
         vec![HtmlEncodingUrlParseObservation::new(raw, outcome)],
@@ -47,8 +48,8 @@ fn resolve(facts: &HtmlEncodingUrlParseFacts, raw: &DocumentString) -> HtmlHyper
 fn document_base_selection_prefers_actual_historical_frozen_record() {
     let producer = HtmlBaseProducerId::fresh();
     let current = rev(&producer, 2);
-    let fallback = url(&current, "https://fallback/");
-    let historical = url(&rev(&producer, 1), "https://frozen/");
+    let fallback = url(&current, "https://fallback/", None);
+    let historical = url(&rev(&producer, 1), "https://frozen/", None);
     let document = HtmlBaseDocumentFacts::new(
         current,
         Some(fallback.clone()),
@@ -78,8 +79,8 @@ fn document_base_selection_prefers_actual_historical_frozen_record() {
 fn positive_and_failed_snapshots_keep_exact_qualified_history() {
     let producer = HtmlBaseProducerId::fresh();
     let revision = rev(&producer, 3);
-    let base = url(&rev(&producer, 1), "https://frozen/");
-    let parsed = url(&revision, "https://frozen/result");
+    let base = url(&rev(&producer, 1), "https://frozen/", None);
+    let parsed = url(&revision, "https://frozen/result", None);
     let encoding = HtmlBaseEncoding::fresh();
     let raw = DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
     let facts = HtmlEncodingUrlParseFacts::new(
@@ -129,7 +130,7 @@ fn positive_and_failed_snapshots_keep_exact_qualified_history() {
 #[test]
 fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
     let facts = facts("A".into(), HtmlEncodingUrlParseOutcome::Failure);
-    let another = url(facts.revision(), "https://base/");
+    let another = url(facts.revision(), "https://base/", None);
     assert_eq!(
         facts.validate_inputs(&another, facts.encoding(), facts.revision()),
         Err(HtmlEncodingUrlFactsError::InputsMismatch)
@@ -173,7 +174,7 @@ fn qualification_refuses_foreign_stale_and_equal_spelling_different_identity() {
 #[test]
 fn formation_charges_capacity_utf16_backing_and_exact_work() {
     let revision = rev(&HtmlBaseProducerId::fresh(), 1);
-    let base = url(&revision, "b");
+    let base = url(&revision, "b", None);
     let mut raw = Vec::with_capacity(40);
     raw.push(65);
     let raw = DocumentString::from_utf16(raw);
@@ -248,7 +249,7 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
 #[test]
 fn duplicate_and_wrong_result_revision_are_refused() {
     let revision = rev(&HtmlBaseProducerId::fresh(), 1);
-    let base = url(&revision, "b");
+    let base = url(&revision, "b", None);
     let encoding = HtmlBaseEncoding::fresh();
     let observation =
         HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Failure);
@@ -264,7 +265,7 @@ fn duplicate_and_wrong_result_revision_are_refused() {
             HtmlBaseFactsError::DuplicateObservation
         ))
     ));
-    let wrong = url(&rev(revision.producer(), 2), "p");
+    let wrong = url(&rev(revision.producer(), 2), "p", None);
     assert!(matches!(
         HtmlEncodingUrlParseFacts::new(
             base,
@@ -567,7 +568,7 @@ fn capture_null_requires_absent_null_namespace_href_and_validates_document_kind(
 #[test]
 fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
     let revision = rev(&HtmlBaseProducerId::fresh(), 1);
-    let base = url(&revision, "base");
+    let base = url(&revision, "base", None);
     let mut result_units = Vec::with_capacity(80);
     result_units.extend("result".encode_utf16());
     let result = HtmlBaseUrlRecord::observed(
@@ -575,6 +576,7 @@ fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
         DocumentString::from_utf16(result_units),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let result_extent = result.serialization().shared_code_units().capacity();
@@ -608,7 +610,7 @@ fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
 #[test]
 fn snapshot_equality_uses_parse_content_and_identities_not_spare_backing_capacity() {
     let revision = rev(&HtmlBaseProducerId::fresh(), 1);
-    let base = url(&revision, "base");
+    let base = url(&revision, "base", None);
     let encoding = HtmlBaseEncoding::fresh();
     let make = |capacity| {
         let mut raw = Vec::with_capacity(capacity);
@@ -649,6 +651,7 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
         padded_snapshot_input("https://base.test/dir/", 73),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let parsed = HtmlBaseUrlRecord::observed(
@@ -656,6 +659,7 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
         padded_snapshot_input("https://base.test/dir/x", 113),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let encoding = HtmlBaseEncoding::fresh();
@@ -825,7 +829,7 @@ fn earlier_lookup_refusal_never_invokes_snapshot_retention() {
     let stale = rev(bank.revision().producer(), 2);
     let foreign = rev(&HtmlBaseProducerId::fresh(), 1);
     let other_encoding = HtmlBaseEncoding::fresh();
-    let other_base = url(bank.revision(), "https://base/");
+    let other_base = url(bank.revision(), "https://base/", None);
     for (raw, base, encoding, expected, error) in [
         (
             "missing",

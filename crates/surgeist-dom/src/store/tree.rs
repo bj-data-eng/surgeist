@@ -233,7 +233,11 @@ impl Draft {
             }
         }
         self.push_effect(
-            select::Effect::Post { list, index: 0 },
+            select::Effect::Post {
+                list,
+                index: 0,
+                stage: 0,
+            },
             self.effect_scoped,
             cancel,
         )?;
@@ -776,7 +780,7 @@ impl Draft {
                         )?;
                     }
                     match stage {
-                        0 => self.navigable_removing_node(key, &mut || check_cancel(cancel))?,
+                        0 => self.navigable_removing_node(key, cancel)?,
                         1 => self.script_removing_node(key, cancel)?,
                         2 => self.select_removal(key, limits, cancel)?,
                         3 => self.image_tree_change(

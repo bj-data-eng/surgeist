@@ -1,7 +1,13 @@
 //! Canonical native hosted associations and the original creation continuation.
 
+mod destruction;
+pub(crate) mod history;
+pub(in crate::store) mod operations;
+pub(in crate::store) mod queue;
 use super::*;
+use crate::DomOpaqueOrigin;
 use crate::hosted::*;
+use operations::OperationResult;
 
 // Backing fields precede their debit, including on every failed formation.
 struct ConstructorFormation {
@@ -10,10 +16,53 @@ struct ConstructorFormation {
     record: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
     retained: Retained,
 }
+pub(in crate::store) struct ChildConstructor<'a> {
+    pub(in crate::store) parent: &'a DomDocumentMetadata,
+    pub(in crate::store) creator_base: &'a surgeist_html_semantics::HtmlBaseUrlRecord,
+    pub(in crate::store) top_policy: &'a surgeist_html::HtmlOpenerPolicy,
+    pub(in crate::store) sandbox: surgeist_html::HtmlSandboxFlags,
+}
 impl crate::document::HostedDocumentInputs {
     pub(crate) fn form(
         source: &DomHostedSource,
         work: &Work,
+        origin: &DomOpaqueOrigin,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomHostedError> {
+        Self::form_profile(source, work, origin, None, None, cancel)
+    }
+    pub(in crate::store) fn form_child(
+        source: &DomHostedSource,
+        work: &Work,
+        profile: ChildConstructor<'_>,
+        formation: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomHostedError> {
+        Self::form_profile(
+            source,
+            work,
+            profile.parent.origin(),
+            Some((
+                profile.parent,
+                profile.creator_base,
+                profile.top_policy,
+                profile.sandbox,
+            )),
+            formation,
+            cancel,
+        )
+    }
+    fn form_profile(
+        source: &DomHostedSource,
+        work: &Work,
+        origin: &DomOpaqueOrigin,
+        parent: Option<(
+            &DomDocumentMetadata,
+            &surgeist_html_semantics::HtmlBaseUrlRecord,
+            &surgeist_html::HtmlOpenerPolicy,
+            surgeist_html::HtmlSandboxFlags,
+        )>,
+        formation: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomHostedError> {
         use crate::document::HostedDocumentInputData;
@@ -24,6 +73,16 @@ impl crate::document::HostedDocumentInputs {
         // The original constructor's intrinsic URL, not an external URL parse.
         const URL: &[u16] = &[97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107];
         work.step(cancel)?;
+        let workspace = if let Some(formation) = formation {
+            let payload = source::storage::Payload {
+                bytes: size_of::<ConstructorFormation>(),
+                units: 0,
+            };
+            formation.retain_payload(payload, cancel)?;
+            Some(formation.split_payload(payload))
+        } else {
+            None
+        };
         let requested_string = size_of::<Vec<u16>>() + size_of_val(URL);
         let header = size_of::<HostedDocumentInputData>();
         crate::hosted::admit(
@@ -31,6 +90,17 @@ impl crate::document::HostedDocumentInputs {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
+        if let Some(formation) = formation {
+            formation.retain_payload(
+                source::storage::Payload {
+                    bytes: header
+                        .checked_add(requested_string)
+                        .ok_or(DomError::RepresentationExhausted)?,
+                    units: URL.len(),
+                },
+                cancel,
+            )?;
+        }
         let retained = source.retain(
             header
                 .checked_add(requested_string)
@@ -61,6 +131,21 @@ impl crate::document::HostedDocumentInputs {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
+        if let Some(formation) = formation {
+            formation.retain_payload(
+                source::storage::Payload {
+                    bytes: actual_string
+                        .checked_sub(requested_string)
+                        .ok_or(DomError::RepresentationExhausted)?,
+                    units: candidate
+                        .units
+                        .capacity()
+                        .checked_sub(URL.len())
+                        .ok_or(DomError::RepresentationExhausted)?,
+                },
+                cancel,
+            )?;
+        }
         candidate.retained.append(
             source.retain(
                 actual_string
@@ -96,6 +181,9 @@ impl crate::document::HostedDocumentInputs {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(additional, cancel)?;
+        }
         candidate
             .retained
             .append(source.retain(additional, cancel)?)?;
@@ -112,45 +200,121 @@ impl crate::document::HostedDocumentInputs {
                     .expect("admitted same serialization"),
                 HtmlBaseUrlScheme::Other,
                 true,
+                None,
             )
             .expect("same prepriced serialization and intrinsic about:blank predicates"),
         );
+        // Capture all actual creator operands before cloning them into the
+        // once-issued request/Document owner. The parent's current base and its
+        // document URL/referrer are separate source inputs.
+        let (about, opener, top_creation_url, top_origin, active_sandbox, referrer) =
+            if let Some((parent, base, opener, sandbox)) = parent {
+                work.step(cancel)?;
+                let parent_inputs = parent
+                    .hosted_inputs
+                    .as_ref()
+                    .ok_or(DomHostedError::UnsupportedProfile)?;
+                let top = parent_inputs
+                    .0
+                    .top_creation_url
+                    .as_ref()
+                    .unwrap_or_else(|| parent_inputs.url());
+                let mut referrer_payload = source::storage::Payload::default();
+                referrer_payload.string(parent.url())?;
+                let bytes = base
+                    .retained_storage_usage()
+                    .retained_bytes()
+                    .checked_add(top.retained_storage_usage().retained_bytes())
+                    .and_then(|bytes| bytes.checked_add(referrer_payload.bytes))
+                    .ok_or(DomHostedError::RepresentationExhausted)?;
+                crate::hosted::admit(
+                    size_of::<ConstructorFormation>()
+                        .checked_add(header)
+                        .and_then(|n| n.checked_add(usage.retained_bytes()))
+                        .and_then(|n| n.checked_add(bytes))
+                        .ok_or(DomHostedError::RepresentationExhausted)?,
+                    source.limits().scratch_bytes(),
+                    DomHostedResource::ScratchBytes,
+                )?;
+                if let Some(formation) = formation {
+                    let units = base
+                        .retained_storage_usage()
+                        .utf16_extent()
+                        .checked_add(top.retained_storage_usage().utf16_extent())
+                        .and_then(|n| n.checked_add(referrer_payload.units))
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    formation.retain_payload(source::storage::Payload { bytes, units }, cancel)?;
+                }
+                candidate.retained.append(source.retain(bytes, cancel)?)?;
+                let top_origin = &parent_inputs.0.top_origin;
+                let selected_opener = if parent.origin() == top_origin {
+                    opener.clone()
+                } else {
+                    surgeist_html::HtmlOpenerPolicy::initial()
+                };
+                (
+                    HtmlAboutBaseUrl::KnownRecord(base.clone()),
+                    selected_opener,
+                    Some(top.clone()),
+                    top_origin.clone(),
+                    sandbox,
+                    Some(parent.url().clone()),
+                )
+            } else {
+                (
+                    HtmlAboutBaseUrl::KnownNull,
+                    surgeist_html::HtmlOpenerPolicy::initial(),
+                    None,
+                    origin.clone(),
+                    surgeist_html::HtmlSandboxFlags::empty(),
+                    None,
+                )
+            };
         let facts = HtmlBaseDocumentFacts::new(
             revision,
             candidate.record.take(),
-            HtmlAboutBaseUrl::KnownNull,
+            about,
             false,
             Some(HtmlBaseEncoding::fresh()),
         )
         .expect("constructor record has its exact original revision and is not srcdoc");
+        // The workspace guard outlives every temporary backing on refusal;
+        // only the result occurrence remains in the caller's Formation.
+        let _workspace = workspace;
         // All fallible admission and cancellation precede the immutable owner.
         Ok(Self(Arc::new(HostedDocumentInputData {
             facts,
-            opener: surgeist_html::HtmlOpenerPolicy::initial(),
+            opener,
+            top_creation_url,
+            top_origin,
+            active_sandbox,
+            referrer,
             _retained: candidate.retained,
         })))
     }
 }
 
-enum CreationPhase {
+pub(in crate::store) enum CreationPhase {
     Policy(DomHostedPolicyRequest),
     Execution(DomHostedExecutionRequest),
     MakeActive(DomHostedMakeActiveRequest),
     FinishLoading(DomHostedFinishLoadingRequest),
     Entry(DomHostedEntryRequest),
     Complete(Request, DomHostedCreation),
+    Queued(queue::Continuation),
+    Invocation(destruction::Invocation),
     DestroyEnqueue(DomHostedDestructionRequest),
     DestroyCleanup(DomHostedDestructionRequest),
     Destroyed(Request, DomHostedCreation),
 }
-pub(super) struct Operation {
-    origin: crate::DomOpaqueOrigin,
-    policy: Option<DomInitialPermissionsPolicy>,
-    phase: CreationPhase,
-    _retained: Retained,
+pub(in crate::store) struct Operation {
+    pub(in crate::store) origin: crate::DomOpaqueOrigin,
+    pub(in crate::store) policy: Option<DomInitialPermissionsPolicy>,
+    pub(in crate::store) phase: CreationPhase,
+    pub(in crate::store) _retained: Retained,
 }
 impl Operation {
-    fn request(&self) -> &Request {
+    pub(in crate::store) fn request(&self) -> &Request {
         match &self.phase {
             CreationPhase::Policy(request) => &request.request,
             CreationPhase::Execution(request) => &request.request,
@@ -158,12 +322,14 @@ impl Operation {
             CreationPhase::FinishLoading(request) => &request.request,
             CreationPhase::Entry(request) => &request.request,
             CreationPhase::Complete(request, _) | CreationPhase::Destroyed(request, _) => request,
+            CreationPhase::Queued(continuation) => continuation.request(),
+            CreationPhase::Invocation(invocation) => &invocation.request.request,
             CreationPhase::DestroyEnqueue(request) | CreationPhase::DestroyCleanup(request) => {
                 &request.request
             }
         }
     }
-    fn next_request(&self) -> Result<Request, DomHostedError> {
+    pub(in crate::store) fn next_request(&self) -> Result<Request, DomHostedError> {
         let old = self.request();
         Ok(Request {
             key: RequestKey {
@@ -177,6 +343,7 @@ impl Operation {
             host: old.host,
             context: old.context,
             work: old.work.clone(),
+            parent: old.parent,
         })
     }
     fn step(&self) -> Result<DomHostedCreationStep<'_>, DomHostedError> {
@@ -193,7 +360,10 @@ impl Operation {
 }
 
 impl Dom {
-    fn validate_hosted_source(&self, source: &DomHostedSource) -> Result<(), DomHostedError> {
+    pub(in crate::store) fn validate_hosted_source(
+        &self,
+        source: &DomHostedSource,
+    ) -> Result<(), DomHostedError> {
         if source.id().owner != self.owner || self.hosted_source.as_ref() != Some(&source.observe())
         {
             return Err(DomHostedError::ForeignSource);
@@ -212,7 +382,7 @@ impl Dom {
         self.require_source_idle()?;
         self.validate_hosted_source(source)?;
         check_cancel(cancel)?;
-        if self.hosted_operation.is_some() {
+        if self.hosted_operations.synchronous().is_some() {
             return Err(DomHostedError::IncompleteOperation);
         }
         let current = prepared
@@ -236,11 +406,25 @@ impl Dom {
         // result. Other edits must leave these reserved increments available.
         self.revision
             .0
-            .checked_add(5)
+            .checked_add(self.hosted_revisions)
+            .and_then(|revision| revision.checked_add(5))
             .ok_or(DomError::RevisionExhausted)?;
         let retained = source.retain(size_of::<Operation>(), cancel)?;
         let origin = DomDocumentMetadata::fresh_opaque_origin();
-        let operation = source.begin_operation(&prefix.work, 10, cancel)?;
+        let bank = self.hosted_operations.prepare(
+            source.next_operation_slot(&prefix.work, cancel)?,
+            &prefix.work,
+            source,
+            0,
+            None,
+            cancel,
+        )?;
+        crate::hosted::admit(
+            bank.operation_scratch_bytes()?,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        let operation = source.begin_operation(&prefix.work, 10, bank.scratch_bytes()?, cancel)?;
         let prepared = prepared.take().expect("validated original preparation");
         let request = Request {
             key: RequestKey {
@@ -250,14 +434,23 @@ impl Dom {
             host: prepared.preparation.host,
             context: prepared.preparation.context,
             work: prepared.preparation.work,
+            parent: None,
         };
-        self.hosted_operation = Some(Box::new(Operation {
-            origin: origin.clone(),
-            policy: None,
-            phase: CreationPhase::Policy(DomHostedPolicyRequest { request, origin }),
-            _retained: retained,
-        }));
-        self.hosted_revisions = 5;
+        self.hosted_operations.insert_prepared(
+            bank,
+            Operation {
+                origin: origin.clone(),
+                policy: None,
+                phase: CreationPhase::Policy(DomHostedPolicyRequest {
+                    request,
+                    origin,
+                    embedder_policy: None,
+                }),
+                _retained: retained,
+            },
+            true,
+        );
+        self.hosted_revisions += 5;
         Ok(DomHostedCreationLease {
             operation,
             completed: None,
@@ -270,10 +463,7 @@ impl Dom {
         if operation.source.owner != self.owner {
             return Err(DomHostedError::ForeignSource);
         }
-        self.hosted_operation
-            .as_deref()
-            .filter(|pending| pending.request().key.operation == operation)
-            .ok_or(DomHostedError::StaleIdentity)
+        self.hosted_operations.get(operation)
     }
     fn publish_hosted(
         &mut self,
@@ -357,8 +547,12 @@ impl DomHostedCreationLease {
         let request = operation.next_request()?;
         // Settings consumes these same once-established records during execution.
         // Formation failure leaves the original Policy publication and phase intact.
-        let inputs =
-            crate::document::HostedDocumentInputs::form(source, &operation.request().work, cancel)?;
+        let inputs = crate::document::HostedDocumentInputs::form(
+            source,
+            &operation.request().work,
+            &operation.origin,
+            cancel,
+        )?;
         let next = CreationPhase::Execution(DomHostedExecutionRequest {
             request,
             origin: operation.origin.clone(),
@@ -366,8 +560,8 @@ impl DomHostedCreationLease {
         });
         let permit = source.permit(operation.request(), current.revision, false, cancel)?;
         let pending = dom
-            .hosted_operation
-            .as_mut()
+            .hosted_operations
+            .get_mut(self.operation)
             .expect("validated original operation");
         pending.policy = Some(DomInitialPermissionsPolicy {
             inherited: current.inherited,
@@ -483,7 +677,12 @@ impl DomHostedCreationLease {
             }
             (
                 CreationPhase::Entry(request),
-                PublicationValue::InitialEntry { entry, navigable },
+                PublicationValue::InitialEntry {
+                    entry,
+                    navigable,
+                    initialization,
+                    ..
+                },
             ) => {
                 source.observe().validate(
                     entry.source,
@@ -523,7 +722,7 @@ impl DomHostedCreationLease {
                 let DocumentPhase::Loaded(loaded) = association.phase else {
                     return Err(DomHostedError::WrongPhase);
                 };
-                let prepared = dom.prepare_hosted_phase(
+                let mut prepared = dom.prepare_hosted_phase(
                     operation,
                     source,
                     request.document,
@@ -534,6 +733,83 @@ impl DomHostedCreationLease {
                     },
                     cancel,
                 )?;
+                let creation = DomHostedCreation {
+                    document: request.document,
+                    host: operation.request().host,
+                    context: operation.request().context,
+                    global: request.global,
+                    entry: *entry,
+                    navigable: *navigable,
+                };
+                for _ in 0..72 {
+                    request.request.work.step(cancel)?;
+                }
+                let scratch = prepared
+                    .formation
+                    .as_ref()
+                    .map_or(0, |formation| formation.owned_payload().bytes);
+                let fresh = prepared
+                    .formation
+                    .as_ref()
+                    .map(source::formation::Formation::fork);
+                let context = history::Context::new(
+                    source,
+                    &request.request.work,
+                    cancel,
+                    scratch
+                        .checked_add(size_of::<Vec<u16>>())
+                        .ok_or(DomError::RepresentationExhausted)?,
+                );
+                let context = if let Some(fresh) = &fresh {
+                    context.with_formation(fresh)
+                } else {
+                    context
+                };
+                // This fixed top-level front supplies the source's actual empty
+                // string name operand. It is distinct from a child's null name.
+                let _name_retained = source.retain(size_of::<Vec<u16>>(), cancel)?;
+                let _name_source = if let Some(fresh) = &fresh {
+                    let payload = source::storage::Payload {
+                        bytes: size_of::<Vec<u16>>(),
+                        units: 0,
+                    };
+                    fresh.retain_payload(payload, cancel)?;
+                    Some(fresh.split_payload(payload))
+                } else {
+                    None
+                };
+                let target_name = DocumentString::from("");
+                let DomNodeKind::Document(metadata) = &prepared
+                    .state
+                    .node(dom.owner, request.document.node())?
+                    .kind
+                else {
+                    return Err(DomError::WrongDocument.into());
+                };
+                let inputs = metadata
+                    .hosted_inputs
+                    .as_ref()
+                    .ok_or(DomHostedError::UnsupportedProfile)?;
+                let graph = history::Graph::initial(
+                    dom.state.hosted_history.as_deref(),
+                    history::Initial {
+                        creation,
+                        initialization: DomHostedEntryInitialization::new(
+                            initialization.navigation_key,
+                            initialization.navigation_id,
+                        ),
+                        origin: operation.origin.clone(),
+                        parent: None,
+                        target_name: Some(&target_name),
+                        about_base_url: inputs.0.facts.about_base_url(),
+                        initiator_origin: None,
+                    },
+                    &context,
+                )?;
+                prepared.state.hosted_history = Some(graph);
+                if let (Some(parent), Some(fresh)) = (&prepared.formation, fresh) {
+                    parent.absorb(fresh);
+                }
                 (
                     prepared,
                     CreationPhase::Complete(
@@ -554,8 +830,8 @@ impl DomHostedCreationLease {
         set_pending(&mut prepared, Some(self.operation), cancel)?;
         let permit = source.permit(operation.request(), current.revision, false, cancel)?;
         dom.publish_hosted(prepared, cancel)?;
-        dom.hosted_operation
-            .as_mut()
+        dom.hosted_operations
+            .get_mut(self.operation)
             .expect("original retained operation")
             .phase = next;
         permit.commit();
@@ -583,7 +859,9 @@ impl DomHostedCreationLease {
         let permit = source.permit(request, source.revision()?, true, cancel)?;
         dom.publish_hosted(prepared, cancel)?;
         permit.commit();
-        dom.hosted_operation.take();
+        dom.hosted_operations
+            .remove(self.operation)
+            .expect("completed original operation");
         self.completed = Some(result);
         Ok(result)
     }
@@ -619,6 +897,14 @@ impl Dom {
         source: &DomHostedSource,
         cancel: &AtomicBool,
     ) -> Result<Draft, DomHostedError> {
+        self.hosted_request_draft(operation.request(), source, cancel)
+    }
+    fn hosted_request_draft(
+        &self,
+        request: &Request,
+        source: &DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<Draft, DomHostedError> {
         let limits = crate::DomSourceLimits::new(
             source
                 .remaining_bytes()?
@@ -633,10 +919,37 @@ impl Dom {
             self,
             DomBatch::new().owner,
             limits,
-            operation.request().work.spent.clone(),
-            operation.request().key.operation,
+            request.work.spent.clone(),
+            request.key.operation,
             cancel,
         )?)
+    }
+    /// Hold checked revision headroom for an actual queued original operation.
+    /// Every fallible check precedes either owner's reservation change.
+    fn reserve_hosted_operation(
+        &mut self,
+        source: &DomHostedSource,
+        request: &Request,
+        source_needed: u64,
+        dom_revisions: u64,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
+        check_cancel(cancel)?;
+        let reserved = self
+            .hosted_revisions
+            .checked_add(dom_revisions)
+            .ok_or(DomError::RevisionExhausted)?;
+        self.revision
+            .0
+            .checked_add(reserved)
+            .ok_or(DomError::RevisionExhausted)?;
+        let owned = source.operation_reserved_revisions(request, cancel)?;
+        let additional = source_needed.saturating_sub(owned);
+        if additional != 0 {
+            source.reserve_operation_revisions(request, additional, cancel)?;
+        }
+        self.hosted_revisions = reserved;
+        Ok(())
     }
     fn prepare_hosted_document(
         &self,
@@ -653,6 +966,7 @@ impl Dom {
             self.owner,
             source,
             &request.work,
+            None,
             cancel,
         )?;
         let retained = source.retain(size_of::<DocumentAssociation>(), cancel)?;
@@ -672,7 +986,7 @@ impl Dom {
         if let Some(formation) = &formation {
             let mut payload = source::storage::Payload::default();
             payload.add_bytes(inputs.payload_bytes()?)?;
-            payload.add_units(inputs.url().retained_storage_usage().utf16_extent())?;
+            payload.add_units(inputs.payload_units()?)?;
             // Metadata also retains its URL occurrence, sharing this actual backing.
             payload.string(inputs.url().serialization())?;
             formation.retain_payload(payload, cancel)?;
@@ -790,7 +1104,7 @@ impl GlobalDocumentIndex {
             .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
             .ok_or(DomError::RepresentationExhausted)
     }
-    fn establish(
+    pub(in crate::store) fn establish(
         old: Option<&Self>,
         global: DomHostedGlobalId,
         document: DocumentId,
@@ -943,120 +1257,41 @@ impl Dom {
 }
 
 impl Draft {
-    pub(super) fn document_fully_active(&self, document: Key) -> Result<bool, DomError> {
+    pub(super) fn document_fully_active(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         match &self.document_environment(document)?.hosted {
             None => Ok(false),
             Some(association) => {
                 association
                     .validate_live()
                     .map_err(|_| DomError::HostedSourceUnavailable)?;
-                association
-                    .historical_fully_active()
-                    .map_err(|_| DomError::HostedSourceUnavailable)
+                let DocumentPhase::InitialEntry { navigable, .. } = association.phase else {
+                    return Err(DomError::HostedSourceUnavailable);
+                };
+                let document = self
+                    .published_id(document)
+                    .map(DocumentId)
+                    .ok_or(DomError::HostedSourceUnavailable)?;
+                let graph = self
+                    .hosted_history
+                    .as_deref()
+                    .ok_or(DomError::HostedSourceUnavailable)?;
+                captured_fully_active(graph, document, navigable, || {
+                    self.source_step(cancel).map_err(Into::into)
+                })
+                .map_err(|error| match error {
+                    DomHostedError::Dom(error) => error,
+                    _ => DomError::HostedSourceUnavailable,
+                })
             }
         }
     }
 }
 
 impl Dom {
-    /// Retain the actual top-level teardown. Queuing its task does not make the
-    /// current canonical tree incomplete or block an already started dispatch.
-    pub fn begin_hosted_top_level_destruction(
-        &mut self,
-        source: &mut DomHostedSource,
-        navigable: DomHostedNavigableId,
-        cancel: &AtomicBool,
-    ) -> Result<DomHostedDestructionLease, DomHostedError> {
-        self.require_source_idle()?;
-        self.validate_hosted_source(source)?;
-        if self.hosted_operation.is_some() {
-            return Err(DomHostedError::IncompleteOperation);
-        }
-        source.observe().validate(
-            navigable.source,
-            Role::Navigable,
-            navigable.slot,
-            navigable.generation,
-        )?;
-        check_cancel(cancel)?;
-        // A retained pre-publication creation prefix still owns its original
-        // work counter and future limit updates, even before a Dom cursor exists.
-        if source.active_work.upgrade().is_some() {
-            return Err(DomHostedError::IncompleteOperation);
-        }
-        let work = source.work(cancel)?;
-        let mut found = None;
-        for (slot, value) in self.state.slots.iter().enumerate() {
-            work.step(cancel)?;
-            let Some(Node {
-                kind: DomNodeKind::Document(metadata),
-                ..
-            }) = &value.node
-            else {
-                continue;
-            };
-            let environment = metadata.document_environment();
-            let Some(association) = &environment.hosted else {
-                continue;
-            };
-            let DocumentPhase::InitialEntry {
-                entry,
-                navigable: current,
-                ..
-            } = association.phase
-            else {
-                continue;
-            };
-            if current != navigable {
-                continue;
-            }
-            association.validate_live()?;
-            found = Some((
-                DomHostedCreation {
-                    document: DocumentId(NodeId {
-                        owner: self.owner,
-                        slot,
-                        generation: value.generation,
-                    }),
-                    host: association.host,
-                    context: association.context,
-                    global: association.global,
-                    entry,
-                    navigable,
-                },
-                metadata.origin().clone(),
-            ));
-            break;
-        }
-        let (creation, origin) = found.ok_or(DomHostedError::StaleIdentity)?;
-        self.revision
-            .0
-            .checked_add(1)
-            .ok_or(DomError::RevisionExhausted)?;
-        let retained = source.retain(size_of::<Operation>(), cancel)?;
-        let operation = source.begin_operation(&work, 4, cancel)?;
-        source.active_work = Arc::downgrade(&work);
-        let request = Request {
-            key: RequestKey {
-                operation,
-                phase: 0,
-            },
-            host: creation.host,
-            context: creation.context,
-            work,
-        };
-        self.hosted_operation = Some(Box::new(Operation {
-            origin,
-            policy: None,
-            phase: CreationPhase::DestroyEnqueue(DomHostedDestructionRequest { request, creation }),
-            _retained: retained,
-        }));
-        self.hosted_revisions = 1;
-        Ok(DomHostedDestructionLease {
-            operation,
-            completed: None,
-        })
-    }
     fn require_hosted_cleanup_ready(
         &self,
         operation: &Operation,
@@ -1136,36 +1371,81 @@ impl DomHostedDestructionLease {
         let next = operation.next_request()?;
         match (&operation.phase, current.cleanup) {
             (CreationPhase::DestroyEnqueue(request), false) => {
+                dom.require_hosted_invocation_children(
+                    request.invocation,
+                    &request.request.work,
+                    cancel,
+                )?;
                 let next = CreationPhase::DestroyCleanup(DomHostedDestructionRequest {
                     request: next,
                     creation: request.creation,
+                    children: request.children.clone(),
+                    invocation: request.invocation,
+                    traversable: request.traversable,
                 });
                 let permit = source.permit(operation.request(), current.revision, false, cancel)?;
-                dom.hosted_operation
-                    .as_mut()
+                dom.hosted_operations
+                    .get_mut(self.operation)
                     .expect("retained operation")
                     .phase = next;
                 permit.commit();
             }
             (CreationPhase::DestroyCleanup(request), true) => {
+                dom.require_hosted_invocation_children(
+                    request.invocation,
+                    &request.request.work,
+                    cancel,
+                )?;
                 dom.require_hosted_cleanup_ready(operation, request.creation.document, cancel)?;
                 let creation = request.creation;
-                let prepared = dom.prepare_hosted_phase(
+                let mut prepared = dom.prepare_hosted_phase(
                     operation,
                     source,
                     creation.document,
-                    DocumentPhase::Retired,
+                    DocumentPhase::Retired {
+                        operation: self.operation,
+                    },
                     cancel,
                 )?;
+                let fresh = prepared
+                    .formation
+                    .as_ref()
+                    .map(source::formation::Formation::fork);
+                let scratch = prepared
+                    .formation
+                    .as_ref()
+                    .map_or(0, |formation| formation.owned_payload().bytes);
+                let context = history::Context::new(source, &request.request.work, cancel, scratch);
+                let context = if let Some(fresh) = &fresh {
+                    context.with_formation(fresh)
+                } else {
+                    context
+                };
+                let graph = prepared
+                    .state
+                    .hosted_history
+                    .as_deref()
+                    .ok_or(DomHostedError::UnsupportedProfile)?
+                    .clear_document(creation.document, &context)?;
+                prepared.state.hosted_history = Some(graph);
+                if let (Some(parent), Some(fresh)) = (&prepared.formation, fresh) {
+                    parent.absorb(fresh);
+                }
                 let permit = source
                     .permit(operation.request(), current.revision, false, cancel)?
-                    .retire_top_level(creation)?;
+                    .retire_navigable(creation)?;
                 dom.publish_hosted(prepared, cancel)?;
-                dom.hosted_operation
-                    .as_mut()
+                dom.hosted_operations
+                    .get_mut(self.operation)
                     .expect("retained operation")
                     .phase = CreationPhase::Destroyed(next, creation);
                 permit.commit();
+                self.proof = Some(DomHostedDocumentDestructionProof {
+                    source: source.id(),
+                    document: creation.document,
+                    global: creation.global,
+                    operation: self.operation,
+                });
             }
             _ => return Err(DomHostedError::WrongPhase),
         }
@@ -1181,6 +1461,13 @@ impl DomHostedDestructionLease {
         cancel: &AtomicBool,
     ) -> Result<DomHostedCreation, DomHostedError> {
         dom.validate_hosted_source(source)?;
+        if let Some(creation) = self.completed {
+            self.proof
+                .as_ref()
+                .ok_or(DomHostedError::WrongPhase)?
+                .validate(source, creation.document, creation.global)?;
+            return Ok(creation);
+        }
         let operation = dom.hosted_operation(self.operation)?;
         let CreationPhase::Destroyed(request, creation) = &operation.phase else {
             return Err(DomHostedError::WrongPhase);
@@ -1188,7 +1475,9 @@ impl DomHostedDestructionLease {
         let creation = *creation;
         let permit = source.permit(request, source.revision()?, true, cancel)?;
         permit.commit();
-        dom.hosted_operation.take();
+        dom.hosted_operations
+            .remove(self.operation)
+            .expect("completed original operation");
         self.completed = Some(creation);
         Ok(creation)
     }
@@ -1199,3 +1488,225 @@ mod index_tests;
 
 #[cfg(test)]
 mod constructor_tests;
+#[cfg(test)]
+mod source_formation_tests;
+
+impl Dom {
+    /// Visits actual content-navigable edges in canonical shadow-including tree
+    /// order. No issuer-slot order or later Runtime tree mirror participates.
+    fn visit_hosted_children(
+        &self,
+        graph: &history::Graph,
+        parent: DomHostedNavigableId,
+        work: &Work,
+        cancel: &AtomicBool,
+        mut visit: impl FnMut(DomHostedNavigableId) -> Result<(), DomHostedError>,
+    ) -> Result<(), DomHostedError> {
+        work.step(cancel)?;
+        let parent = graph.navigable_with(parent, || work.step(cancel))?;
+        let Some(document) = graph
+            .entry_with(parent.active, || work.step(cancel))?
+            .document
+        else {
+            return Ok(());
+        };
+        let root = document.node();
+        let mut current = root;
+        loop {
+            work.step(cancel)?;
+            let node = self.state.node(self.owner, current)?;
+            if let DomNodeKind::Element(element) = &node.kind
+                && let Some(Some(child)) = element.child_navigable()
+            {
+                work.step(cancel)?;
+                if graph.navigable_with(child, || work.step(cancel))?.parent == Some(parent.id) {
+                    visit(child)?;
+                }
+            }
+            if let Some(shadow) = node.shadow_root {
+                current = shadow;
+                continue;
+            }
+            if let Some(first) = node.children.first() {
+                current = *first;
+                continue;
+            }
+            loop {
+                work.step(cancel)?;
+                if current == root {
+                    return Ok(());
+                }
+                let node = self.state.node(self.owner, current)?;
+                if let Some(host) = node.host {
+                    work.step(cancel)?;
+                    let owner = self.state.node(self.owner, host)?;
+                    if let Some(first) = owner.children.first() {
+                        current = *first;
+                        break;
+                    }
+                    current = host;
+                    continue;
+                }
+                let Some(ancestor) = node.parent else {
+                    return Err(DomHostedError::StaleBasis);
+                };
+                let siblings = &self.state.node(self.owner, ancestor)?.children;
+                let mut found = false;
+                let mut next = None;
+                for sibling in siblings {
+                    work.step(cancel)?;
+                    if found {
+                        next = Some(*sibling);
+                        break;
+                    }
+                    found = *sibling == current;
+                }
+                if !found {
+                    return Err(DomHostedError::StaleBasis);
+                }
+                if let Some(next) = next {
+                    current = next;
+                    break;
+                }
+                current = ancestor;
+            }
+        }
+    }
+    fn capture_hosted_children(
+        &self,
+        source: &DomHostedSource,
+        creation: DomHostedCreation,
+        work: &Work,
+        scratch_base: usize,
+        cancel: &AtomicBool,
+    ) -> Result<Arc<CapturedChildren>, DomHostedError> {
+        let graph = self
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        let mut count = 0usize;
+        self.visit_hosted_children(graph, creation.navigable, work, cancel, |_| {
+            count = count
+                .checked_add(1)
+                .ok_or(DomHostedError::RepresentationExhausted)?;
+            Ok(())
+        })?;
+        let extent = |capacity: usize| {
+            capacity
+                .checked_mul(size_of::<DomHostedCreation>())
+                .and_then(|bytes| bytes.checked_add(size_of::<CapturedChildren>()))
+                .ok_or(DomHostedError::RepresentationExhausted)
+        };
+        let requested = extent(count)?;
+        crate::hosted::admit(
+            scratch_base
+                .checked_add(requested)
+                .ok_or(DomHostedError::RepresentationExhausted)?,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        let retained = source.retain(requested, cancel)?;
+        let mut children = CapturedChildren {
+            values: Vec::new(),
+            _retained: retained,
+        };
+        children
+            .values
+            .try_reserve_exact(count)
+            .map_err(|_| DomHostedError::AllocationFailed)?;
+        let actual = extent(children.values.capacity())?;
+        crate::hosted::admit(
+            scratch_base
+                .checked_add(actual)
+                .ok_or(DomHostedError::RepresentationExhausted)?,
+            source.limits().scratch_bytes(),
+            DomHostedResource::ScratchBytes,
+        )?;
+        children._retained.append(
+            source.retain(
+                actual
+                    .checked_sub(requested)
+                    .ok_or(DomHostedError::RepresentationExhausted)?,
+                cancel,
+            )?,
+        )?;
+        self.visit_hosted_children(graph, creation.navigable, work, cancel, |child| {
+            work.step(cancel)?;
+            let child = graph.navigable_with(child, || work.step(cancel))?;
+            // The original created Document identity remains cleanup custody
+            // even after another invocation clears current DocumentState.
+            children.values.push(DomHostedCreation {
+                document: child.initial_document,
+                host: child.host,
+                context: child.context,
+                global: child.global,
+                entry: child.active,
+                navigable: child.id,
+            });
+            Ok(())
+        })?;
+        Ok(Arc::new(children))
+    }
+}
+
+/// One canonical relation predicate, shared by historical observation and
+/// current execution. It owns no activity table and performs no allocation.
+pub(crate) fn captured_fully_active(
+    graph: &history::Graph,
+    document: DocumentId,
+    navigable: DomHostedNavigableId,
+    mut step: impl FnMut() -> Result<(), DomHostedError>,
+) -> Result<bool, DomHostedError> {
+    let mut id = navigable;
+    let mut expected = Some(document);
+    loop {
+        let row = graph.navigable_with(id, &mut step)?;
+        if row.retired {
+            return Ok(false);
+        }
+        let active = graph.entry_with(row.active, &mut step)?.document;
+        if active.is_none() || expected.is_some_and(|expected| active != Some(expected)) {
+            return Ok(false);
+        }
+        match row.parent {
+            Some(parent) => {
+                id = parent;
+                expected = None;
+            }
+            None => return Ok(row.id == row.traversable),
+        }
+    }
+}
+impl Dom {
+    pub(in crate::store) fn hosted_document_fully_active(
+        &self,
+        document: DocumentId,
+        work: &Work,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomHostedError> {
+        work.step(cancel)?;
+        let DomNodeKind::Document(metadata) = &self.state.node(self.owner, document.node())?.kind
+        else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let Some(association) = &environment.hosted else {
+            return Ok(false);
+        };
+        let DocumentPhase::InitialEntry { navigable, .. } = association.phase else {
+            return if matches!(association.phase, DocumentPhase::Retired { .. }) {
+                Ok(false)
+            } else {
+                Err(DomHostedError::IncompleteOperation)
+            };
+        };
+        association.validate_current()?;
+        let graph = self
+            .state
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        captured_fully_active(graph, document, navigable, || work.step(cancel))
+    }
+}

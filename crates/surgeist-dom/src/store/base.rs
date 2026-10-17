@@ -560,6 +560,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let env = HtmlBaseDocumentFacts::new(
@@ -577,6 +578,7 @@ mod tests {
                 DocumentString::from(format!("https://example.test/{raw}")),
                 HtmlBaseUrlScheme::Other,
                 false,
+                None,
             )
             .unwrap();
             observations.push(
@@ -626,6 +628,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let encoding = HtmlBaseEncoding::fresh();

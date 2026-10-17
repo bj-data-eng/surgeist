@@ -4,6 +4,18 @@ Surgeist-authored code uses the repository [MIT License](../../LICENSE).
 
 The selected HTML algorithms and source adaptations retain the [WHATWG notice](../../licenses/whatwg/NOTICE.md).
 
+## URL value comparison
+
+The record-owned fragment-excluding value comparison adapts the URL serializer
+and equality algorithms from WHATWG URL Standard revision
+`fde3f74f063341a28d437216f75735b8b40128f5`. The
+[bounded source](../../references/url-equality-serialization--fde3f74f0633.md)
+and [WHATWG attribution and full license](../../licenses/whatwg/NOTICE.md#url-equality-and-serialization--2026-10-16)
+retain the copyright, conditions and disclaimer. Source-code incorporation uses
+the license's BSD 3-Clause provision; the reference prose remains CC BY 4.0.
+Surgeist uses the original producer's fragment boundary and bounded borrowed
+prefix comparison, without copying a URL parser or normalizing serialization.
+
 ## Unicode bidirectional character data
 
 The private first-strong lookup and its offline generator use complete Unicode

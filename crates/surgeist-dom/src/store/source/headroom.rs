@@ -203,6 +203,26 @@ impl Draft {
         scan.qualify(self, dom, phases, cancel)
     }
 
+    pub(in crate::store) fn headroom_child_hook(
+        &mut self,
+        removing: bool,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        let Some(scan) = &mut self.source_headroom else {
+            return Ok(false);
+        };
+        scan.phases = scan
+            .phases
+            .checked_add(if removing { 2 } else { 6 })
+            .ok_or(DomError::RepresentationExhausted)?;
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(true)
+    }
+
     fn seed_headroom(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.source_step(cancel)?;
         for index in 0..self.native_tasks.len() {

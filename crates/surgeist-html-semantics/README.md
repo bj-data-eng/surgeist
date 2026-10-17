@@ -104,6 +104,17 @@ references atomically. It establishes no origin, Blob-store or navigation facts.
 selection with `select_document_base`. Its caller establishes the serialized
 fallback; the helper does not infer a native Document or manufacture a URL record.
 
+`HtmlBaseUrlRecord::observed` requires the original producer's actual fragment
+boundary together with the complete serialization. `None` attests a null
+fragment; `Some(offset)` identifies its actual number-sign delimiter in UTF-16
+code units. The constructor checks that offset without parsing the URL. An
+opaque path can contain an earlier literal number sign, so the boundary cannot
+be inferred from the spelling. Record equality preserves identity.
+`equals_excluding_fragments_with` instead compares the actual qualified prefixes
+as values, preserving queries, percent spelling and spaces. Its callback admits
+the fixed input reads and each compared code unit; interruption returns the
+caller's error. See the [selected URL source](../../references/url-equality-serialization--fde3f74f0633.md).
+
 URL records, Base parse-facts banks, EncodingUrl banks and selected Hyperlink
 snapshots expose checked `retained_storage_usage()`. This counts owner payload
 headers, actual record capacity and UTF-16 backing capacity, including private

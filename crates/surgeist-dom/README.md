@@ -1041,10 +1041,23 @@ scoped registry implementation.
 closed Documents return false. Snapshot `global_document` and `relevant_global`
 lookups also retain historical identity. The corresponding methods on the current
 `Dom` owner check the live issuer, identity and association before execution.
+Native Frame/Iframe Source hooks create initial children and retain their actual
+parent/container relationships and queued history work in this same owner.
+Runtime computes the selected initial fullscreen Permissions Policy; required
+qualified URL observations remain explicit external inputs. Child entry target
+names preserve absent, supplied-empty and exact supplied values. The fixed
+top-level target name remains supplied-empty. Iframe creation consumes its
+retained sandbox flags; declared-origin policy processing separately consumes
+the source-selected raw sandbox attribute. Later attribute edits do not rewrite
+an already completed Document policy.
+
 Destruction retires hosted participation
 without deleting the managed Document or its tree. An older snapshot retains its
-captured activity state. Initial top-level creation and no-child destruction do
-not establish child navigation, replacement, resource loading, modal services or
+captured activity state. Live-child removal is distinct from retained history
+and cleanup custody. Queued initial history attachment remains obligatory after
+removal, and completed Document destruction clears the actual entry's nullable
+Document field without deleting the managed Document. These initial-entry
+operations do not establish general navigation, replacement, resource loading, modal services or
 JavaScript execution. The [Runtime explanation](../surgeist-runtime/docs/explanation.md#dom-orchestration)
 describes native task custody and checkpoint limitations.
 

@@ -15,6 +15,20 @@ use surgeist_html::{
     HtmlMarqueeState, HtmlNonNegativeInteger, HtmlValueInterpreter, KnownHtmlAttribute,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct IframeState {
+    pub(super) initial: HtmlIframeInitialState,
+    pub(super) sandbox: surgeist_html::HtmlSandboxFlags,
+}
+impl IframeState {
+    pub(crate) fn fresh() -> Self {
+        Self {
+            initial: HtmlIframeInitialState::fresh(),
+            sandbox: surgeist_html::HtmlSandboxFlags::empty(),
+        }
+    }
+}
+
 pub(super) struct AttributeMutation<'a> {
     pub element_name: &'a QualifiedName,
     pub name: &'a QualifiedName,
@@ -53,7 +67,7 @@ pub(crate) enum NativeFamily {
     Canvas(Arc<HtmlCanvasNoneState>),
     Marquee(HtmlMarqueeState),
     Frame,
-    Iframe(HtmlIframeInitialState),
+    Iframe(IframeState),
 }
 
 impl NativeFamily {
@@ -125,9 +139,7 @@ impl NativeFamily {
             }
 
             if let Self::Iframe(state) = self {
-                if attribute_is(name, KnownHtmlAttribute::Srcdoc, budget, cancel)?
-                    || attribute_is(name, KnownHtmlAttribute::Sandbox, budget, cancel)?
-                {
+                if attribute_is(name, KnownHtmlAttribute::Srcdoc, budget, cancel)? {
                     admit()?;
                     if content
                         .expect("actual container relation")
@@ -135,12 +147,38 @@ impl NativeFamily {
                     {
                         return Err(DomError::HostedSourceUnavailable);
                     }
+                } else if attribute_is(name, KnownHtmlAttribute::Sandbox, budget, cancel)? {
+                    admit()?;
+                    if content
+                        .expect("actual container relation")
+                        .attribute_change_requires_processing()
+                    {
+                        let mut raw = None;
+                        for attribute in attributes {
+                            admit()?;
+                            if attribute_is(
+                                attribute.name(),
+                                KnownHtmlAttribute::Sandbox,
+                                budget,
+                                cancel,
+                            )? {
+                                raw = Some(attribute.value());
+                                break;
+                            }
+                        }
+                        let sandbox = match raw {
+                            Some(raw) => surgeist_html::HtmlSandboxFlags::parse_with(raw, admit)?,
+                            None => surgeist_html::HtmlSandboxFlags::empty(),
+                        };
+                        return Self::Iframe(IframeState { sandbox, ..*state })
+                            .shared(budget, cancel);
+                    }
                 } else if attribute_is(name, KnownHtmlAttribute::Loading, budget, cancel)? {
                     let old = loading_state(element_name, previous, admit, budget, cancel)?;
                     let current = loading_state(element_name, attributes, admit, budget, cancel)?;
                     admit()?;
                     if surgeist_html::iframe_loading_became_eager(old, current)
-                        && !state.lazy_load_resumption_is_null()
+                        && !state.initial.lazy_load_resumption_is_null()
                     {
                         // A resource-capable representation must clear before
                         // invoking actual steps. It cannot enter this phase.
@@ -425,6 +463,84 @@ fn parse_dimension(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+    #[test]
+    fn iframe_sandbox_mutation_updates_only_the_actual_nonnull_content_slot() {
+        use surgeist_html::{HtmlChildNavigablePresence as Presence, HtmlSandboxFlag};
+        let cancel = AtomicBool::new(false);
+        let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
+        let name = QualifiedName::new(crate::Namespace::none(), None, "sandbox");
+        let update = |family: &NativeFamily, attributes: &[Attribute], content| {
+            family
+                .after_attribute(
+                    AttributeMutation {
+                        element_name: &element,
+                        name: &name,
+                        previous: &[],
+                        attributes,
+                        content: Some(content),
+                    },
+                    &mut || crate::store::check_cancel(&cancel),
+                    None,
+                    &cancel,
+                )
+                .unwrap()
+        };
+        let fresh = NativeFamily::Iframe(IframeState::fresh());
+        let empty = [Attribute::new(name.clone(), "")];
+        assert_eq!(update(&fresh, &empty, Presence::Null), fresh);
+        let restricted = update(&fresh, &empty, Presence::Present);
+        let NativeFamily::Iframe(restricted_state) = restricted else {
+            unreachable!()
+        };
+        assert!(restricted_state.sandbox.contains(HtmlSandboxFlag::Origin));
+        assert_eq!(restricted_state.initial, HtmlIframeInitialState::fresh());
+        let same_origin = [Attribute::new(name.clone(), "allow-same-origin")];
+        let allowed = update(&restricted, &same_origin, Presence::Present);
+        let NativeFamily::Iframe(allowed_state) = allowed else {
+            unreachable!()
+        };
+        assert!(!allowed_state.sandbox.contains(HtmlSandboxFlag::Origin));
+        assert!(restricted_state.sandbox.contains(HtmlSandboxFlag::Origin));
+        assert_eq!(update(&restricted, &[], Presence::Null), restricted);
+        assert_eq!(update(&restricted, &[], Presence::Present), fresh);
+        assert_eq!(
+            update(&NativeFamily::Frame, &empty, Presence::Present),
+            NativeFamily::Frame
+        );
+    }
+    #[test]
+    fn cancelled_iframe_sandbox_parse_preserves_the_original_family() {
+        let family = NativeFamily::Iframe(IframeState::fresh());
+        let name = QualifiedName::new(crate::Namespace::none(), None, "sandbox");
+        let attributes = [Attribute::new(
+            name.clone(),
+            "allow-same-origin allow-scripts",
+        )];
+        let cancel = AtomicBool::new(false);
+        let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
+        let mut reads = 0;
+        let result = family.after_attribute(
+            AttributeMutation {
+                element_name: &element,
+                name: &name,
+                previous: &[],
+                attributes: &attributes,
+                content: Some(surgeist_html::HtmlChildNavigablePresence::Present),
+            },
+            &mut || {
+                reads += 1;
+                if reads == 8 {
+                    cancel.store(true, Ordering::Release);
+                }
+                crate::store::check_cancel(&cancel)
+            },
+            None,
+            &cancel,
+        );
+        assert_eq!(result, Err(DomError::Cancelled));
+        assert_eq!(reads, 8);
+        assert_eq!(family, NativeFamily::Iframe(IframeState::fresh()));
+    }
     #[test]
     fn cancellation_during_actual_dimension_scan_stops_without_mutating_family() {
         let family = NativeFamily::Canvas(Arc::new(HtmlCanvasNoneState::fresh()));

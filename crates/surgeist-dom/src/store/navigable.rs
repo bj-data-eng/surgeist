@@ -6,11 +6,11 @@ impl Draft {
     /// Per-node family decision, after the shared native post-connection list
     /// has established actual current shadow-including connectedness.
     pub(super) fn navigable_post_connection_node(
-        &self,
+        &mut self,
         key: Key,
-        admit: &mut impl FnMut() -> Result<(), DomError>,
+        cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        admit()?;
+        self.source_step(cancel)?;
         let node = self.node(key)?;
         let DomNodeKind::Element(element) = &node.kind else {
             return Ok(());
@@ -34,7 +34,33 @@ impl Draft {
             )
         };
         if !returned {
-            return Err(DomError::HostedSourceUnavailable);
+            if self.headroom_child_hook(false, cancel)? {
+                return Ok(());
+            }
+            if self.source_limits.is_none() {
+                return Err(DomError::HostedSourceUnavailable);
+            }
+            // Iframe's actual post-connection sandbox step precedes the child
+            // creator. It changes only this element's own flag set.
+            if self.element(key)?.iframe_initial_state().is_some() {
+                let sandbox = match self.control_attribute(
+                    key,
+                    surgeist_html::KnownHtmlAttribute::Sandbox,
+                    cancel,
+                )? {
+                    Some(raw) => surgeist_html::HtmlSandboxFlags::parse_with(raw, || {
+                        self.source_step(cancel)
+                    })?,
+                    None => self
+                        .element(key)?
+                        .iframe_sandbox_flags()
+                        .expect("actual Iframe flag set"),
+                };
+                self.element_mut(key)
+                    .establish_iframe_sandbox_flags(sandbox)?;
+            }
+            self.hosted_pending = Some(source::operation::hosted::ChildHook::Create { key });
+            return Err(DomError::HostedCompositionRequired);
         }
         Ok(())
     }
@@ -42,11 +68,11 @@ impl Draft {
     /// Both actual families invoke destroy-child after detachment. Their closed
     /// null relationship returns before any child/document/history effects.
     pub(super) fn navigable_removing_node(
-        &self,
+        &mut self,
         key: Key,
-        admit: &mut impl FnMut() -> Result<(), DomError>,
+        cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        admit()?;
+        self.source_step(cancel)?;
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Ok(());
         };
@@ -54,7 +80,22 @@ impl Draft {
             surgeist_html::HtmlChildNavigablePresence::removal_requires_child_destruction,
         );
         if destroy {
-            return Err(DomError::HostedSourceUnavailable);
+            let navigable = self
+                .element(key)?
+                .child_navigable()
+                .flatten()
+                .ok_or(DomError::HostedSourceUnavailable)?;
+            if self.headroom_child_hook(true, cancel)? {
+                self.element_mut(key).establish_child_navigable(None)?;
+                return Ok(());
+            }
+            if self.source_limits.is_none() {
+                return Err(DomError::HostedSourceUnavailable);
+            }
+            self.element_mut(key).establish_child_navigable(None)?;
+            self.hosted_pending =
+                Some(source::operation::hosted::ChildHook::Remove { key, navigable });
+            return Err(DomError::HostedCompositionRequired);
         }
         Ok(())
     }

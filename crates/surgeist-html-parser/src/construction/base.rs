@@ -441,6 +441,7 @@ mod tests {
             "https://base.test/".into(),
             crate::HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         let encoding = crate::HtmlBaseEncoding::fresh();
@@ -463,6 +464,7 @@ mod tests {
                             output.into(),
                             crate::HtmlBaseUrlScheme::Other,
                             false,
+                            None,
                         )
                         .unwrap(),
                         base_allowed: crate::HtmlBaseAllowed::Allowed,

@@ -904,6 +904,7 @@ mod tests {
             "https://example.test/".into(),
             HtmlBaseUrlScheme::Other,
             false,
+            None,
         )
         .unwrap();
         let encoding = HtmlBaseEncoding::fresh();
@@ -1002,6 +1003,7 @@ mod tests {
             "about:blank".into(),
             HtmlBaseUrlScheme::Other,
             true,
+            None,
         )
         .unwrap();
         let encoding = HtmlBaseEncoding::fresh();

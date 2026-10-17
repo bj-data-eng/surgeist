@@ -15,6 +15,111 @@ fn limits(bytes: usize, scratch: usize, work: u64) -> DomHostedLimits {
         work,
     )
 }
+fn prepared_top_level() -> (Dom, DomHostedSource, Option<DomHostedPreparedTopLevel>) {
+    let c = cancel();
+    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
+    let mut source = dom
+        .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
+        .unwrap();
+    let host = source.issue_host(&c).unwrap();
+    let mut prefix = Some(source.prepare_top_level(host, &c).unwrap());
+    let prepared = Some(source.seal_top_level(&mut prefix, &c).unwrap());
+    (dom, source, prepared)
+}
+
+#[test]
+fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() {
+    let c = cancel();
+    let capacity = {
+        let (dom, source, prepared) = prepared_top_level();
+        let work = &prepared.as_ref().unwrap().preparation.work;
+        let bank = dom
+            .hosted_operations
+            .prepare(
+                source.next_operation_slot(work, &c).unwrap(),
+                work,
+                &source,
+                0,
+                None,
+                &c,
+            )
+            .unwrap();
+        bank.candidate_capacity().unwrap()
+    };
+    // Operation and PreparedRows are simultaneous arguments to the real
+    // canonical insertion. PreparedRows includes its candidate owner inline;
+    // only the replacement row backing is additional.
+    let row_backing = capacity * size_of::<Option<Box<Operation>>>();
+    let exact = size_of::<Operation>() + size_of::<operations::PreparedRows>() + row_backing;
+    for allowance in [exact, exact - 1] {
+        let (mut dom, mut source, mut prepared) = prepared_top_level();
+        let limits_before = source.limits();
+        source
+            .set_limits(
+                limits(
+                    limits_before.retained_bytes(),
+                    allowance,
+                    limits_before.work(),
+                ),
+                &c,
+            )
+            .unwrap();
+        let work = prepared.as_ref().unwrap().preparation.work.clone();
+        let prefix = std::ptr::from_ref(prepared.as_ref().unwrap());
+        let retained = used(&source);
+        let source_revision = source.revision().unwrap();
+        let canonical_revision = dom.revision;
+        let reserved = dom.hosted_revisions;
+        let spent = work.spent.load(Ordering::Relaxed);
+        match dom.begin_hosted_top_level(&mut source, &mut prepared, &c) {
+            Ok(lease) if allowance == exact => {
+                assert!(prepared.is_none());
+                assert_eq!(dom.hosted_operations.row_capacity(), capacity);
+                let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap()
+                else {
+                    panic!("actual Policy operation")
+                };
+                assert!(Arc::ptr_eq(&request.request.work, &work));
+                source
+                    .observe()
+                    .validate(
+                        lease.operation.source,
+                        Role::Operation,
+                        lease.operation.slot,
+                        lease.operation.generation,
+                    )
+                    .unwrap();
+                assert_eq!(dom.revision, canonical_revision);
+                assert_eq!(dom.hosted_revisions, reserved + 5);
+                eprintln!(
+                    "exact Policy installation succeeded: operation_header={}, prepared_header={}, row_backing={row_backing}, exact={exact}",
+                    size_of::<Operation>(),
+                    size_of::<operations::PreparedRows>()
+                );
+            }
+            Err(DomHostedError::Limit {
+                resource: DomHostedResource::ScratchBytes,
+                limit,
+            }) if allowance < exact && limit == allowance => {
+                assert_eq!(std::ptr::from_ref(prepared.as_ref().unwrap()), prefix);
+                assert_eq!(used(&source), retained);
+                assert_eq!(source.revision().unwrap(), source_revision);
+                assert_eq!(dom.revision, canonical_revision);
+                assert_eq!(dom.hosted_revisions, reserved);
+            }
+            Ok(lease) => panic!(
+                "one-short final Policy payload admitted: operation={:?}, operation_header={}, prepared_header={}, row_backing={row_backing}, exact={exact}",
+                lease.operation,
+                size_of::<Operation>(),
+                size_of::<operations::PreparedRows>()
+            ),
+            Err(error) => panic!(
+                "Policy installation returned an unrelated error at allowance {allowance}: {error:?}"
+            ),
+        }
+        assert!(work.spent.load(Ordering::Relaxed) > spent);
+    }
+}
 fn fixture() -> (
     Dom,
     DomHostedSource,
@@ -180,13 +285,18 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
         .request()
         .work
         .clone();
+    let origin = dom
+        .hosted_operation(lease.operation)
+        .unwrap()
+        .origin
+        .clone();
     let base = used(&source);
     let scratch = size_of::<ConstructorFormation>() + expected_payload();
     source
         .set_limits(limits(8_000_000, scratch - 1, 1_000_000), &cancel())
         .unwrap();
     assert!(
-        matches!(HostedDocumentInputs::form(&source,&work,&cancel()),
+        matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),
         Err(DomHostedError::Limit { resource: DomHostedResource::ScratchBytes,limit }) if limit==scratch-1)
     );
     assert_eq!(used(&source), base);
@@ -194,7 +304,7 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
         .set_limits(limits(8_000_000, scratch, 1_000_000), &cancel())
         .unwrap();
     let before = work.spent.load(Ordering::Relaxed);
-    let inputs = HostedDocumentInputs::form(&source, &work, &cancel()).unwrap();
+    let inputs = HostedDocumentInputs::form(&source, &work, &origin, &cancel()).unwrap();
     let cost = work.spent.load(Ordering::Relaxed) - before;
     assert_eq!(cost, 13); // entry + eleven literal UTF16 writes + observation
     assert_eq!(used(&source), base + expected_payload());
@@ -206,7 +316,7 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
             .set_limits(limits(8_000_000, scratch, before + allowance), &cancel())
             .unwrap();
         assert!(
-            matches!(HostedDocumentInputs::form(&source,&work,&cancel()),Err(DomHostedError::WorkLimit { limit }) if limit==before+allowance)
+            matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),Err(DomHostedError::WorkLimit { limit }) if limit==before+allowance)
         );
         assert_eq!(used(&source), base);
         assert_eq!(work.spent.load(Ordering::Relaxed), before + allowance);

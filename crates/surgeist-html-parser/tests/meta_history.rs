@@ -28,12 +28,18 @@ fn limits() -> HtmlParseLimits {
         .unwrap()
 }
 
-fn record(revision: &HtmlBaseFactsRevision, url: &str, blank: bool) -> HtmlBaseUrlRecord {
+fn record(
+    revision: &HtmlBaseFactsRevision,
+    url: &str,
+    blank: bool,
+    fragment: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         url.into(),
         HtmlBaseUrlScheme::Other,
         blank,
+        fragment,
     )
     .unwrap()
 }
@@ -172,7 +178,7 @@ fn independent_intrinsics_continue_after_missing_external_domains_and_keep_first
 #[test]
 fn known_true_refresh_returns_before_later_missing_url_observation() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     // Arbitrarily large delay is never narrowed to a machine integer. The
     // closed Do-nothing branch still sets the flag before later early return.
@@ -185,7 +191,7 @@ fn known_true_refresh_returns_before_later_missing_url_observation() {
 #[test]
 fn unavailable_refresh_never_becomes_false_or_speculatively_runs_later_refresh() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content='0; url=unobserved'><meta http-equiv=refresh content=0><meta http-equiv=content-language content=ko>"), limits())
         .with_base_facts(environment(&base, &encoding)).unwrap().parse().unwrap();
@@ -209,16 +215,17 @@ fn unavailable_refresh_never_becomes_false_or_speculatively_runs_later_refresh()
 #[test]
 fn refresh_uses_observed_failure_and_javascript_before_successful_actual_parse() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let js = HtmlBaseUrlRecord::observed(
         revision.clone(),
         "javascript:0".into(),
         HtmlBaseUrlScheme::Javascript,
         false,
+        None,
     )
     .unwrap();
-    let good = record(&revision, "https://example.test/x", false);
+    let good = record(&revision, "https://example.test/x", false, None);
     for (source, expected) in [
         (
             "<!doctype html><meta http-equiv=refresh content='0;url=bad'><meta http-equiv=refresh content='0;url=js'>",
@@ -261,8 +268,8 @@ fn refresh_uses_observed_failure_and_javascript_before_successful_actual_parse()
 #[test]
 fn base_after_unavailable_csp_is_explicitly_unavailable_and_earlier_frozen_value_survives() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
-    let chosen = record(&revision, "https://example.test/A", false);
+    let base = record(&revision, "https://example.test/", false, None);
+    let chosen = record(&revision, "https://example.test/A", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     for (source, frozen_expected) in [
         (
@@ -329,8 +336,8 @@ fn base_after_unavailable_csp_is_explicitly_unavailable_and_earlier_frozen_value
 #[test]
 fn refresh_uses_source_time_base_and_requires_independent_full_revision() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let old = record(&revision, "https://example.test/old/", false);
-    let new = record(&revision, "https://example.test/new/", false);
+    let old = record(&revision, "https://example.test/old/", false, None);
+    let new = record(&revision, "https://example.test/new/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = HtmlParseBaseFacts::new(
         environment(&old, &encoding).document().clone(),
@@ -381,6 +388,7 @@ fn refresh_uses_source_time_base_and_requires_independent_full_revision() {
                             &revision,
                             "https://example.test/new/x",
                             false,
+                            None,
                         )),
                     )],
                 ),
@@ -425,7 +433,7 @@ fn refresh_uses_source_time_base_and_requires_independent_full_revision() {
 #[test]
 fn unknown_csp_invalidates_required_url_context_without_erasing_known_document_url() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     for (content, expected) in [("0", true), ("0;url=x", false)] {
         let source = format!(
@@ -443,6 +451,7 @@ fn unknown_csp_invalidates_required_url_context_without_erasing_known_document_u
                         &revision,
                         "https://example.test/x",
                         false,
+                        None,
                     )),
                 )],
             )])
@@ -473,8 +482,8 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     // clone is inserted under selectedcontent afterward and processes refresh
     // against the then-current base, rather than copying/resetting Doc history.
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let old = record(&revision, "https://example.test/old/", false);
-    let new = record(&revision, "https://example.test/new/", false);
+    let old = record(&revision, "https://example.test/old/", false, None);
+    let new = record(&revision, "https://example.test/new/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = HtmlParseBaseFacts::new(
         environment(&old, &encoding).document().clone(),
@@ -497,7 +506,7 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><meta http-equiv=refresh content='0;url=x'><base href=new></option></select>"), limits())
         .with_base_facts(facts).unwrap().with_encoding_url_facts(vec![
             bank(&old, &encoding, vec![HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Failure)]),
-            bank(&new, &encoding, vec![HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Parsed(record(&revision, "https://example.test/new/x", false)))])
+            bank(&new, &encoding, vec![HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Parsed(record(&revision, "https://example.test/new/x", false, None)))])
         ]).parse().unwrap();
     let states = rows(&report);
     assert!(known_refresh(&states[0]));

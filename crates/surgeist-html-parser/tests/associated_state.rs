@@ -27,12 +27,18 @@ fn limits() -> HtmlParseLimits {
         .unwrap()
 }
 
-fn record(revision: &HtmlBaseFactsRevision, url: &str, blank: bool) -> HtmlBaseUrlRecord {
+fn record(
+    revision: &HtmlBaseFactsRevision,
+    url: &str,
+    blank: bool,
+    fragment: Option<usize>,
+) -> HtmlBaseUrlRecord {
     HtmlBaseUrlRecord::observed(
         revision.clone(),
         url.into(),
         HtmlBaseUrlScheme::Other,
         blank,
+        fragment,
     )
     .unwrap()
 }
@@ -108,10 +114,10 @@ fn hyperlinks(report: &HtmlParseReport) -> Vec<(String, HtmlBaseUrlRecord, HtmlB
 #[test]
 fn earlier_anchor_preserves_actual_cached_record_when_later_base_changes() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let old = record(&revision, "https://example.test/old/", false);
-    let new = record(&revision, "https://example.test/new/", false);
-    let old_x = record(&revision, "https://example.test/old/x", false);
-    let new_x = record(&revision, "https://example.test/new/x", false);
+    let old = record(&revision, "https://example.test/old/", false, None);
+    let new = record(&revision, "https://example.test/new/", false, None);
+    let old_x = record(&revision, "https://example.test/old/x", false, None);
+    let new_x = record(&revision, "https://example.test/new/x", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let base_observation = HtmlBaseParseObservation::new(
         "https://example.test/new/".into(),
@@ -174,7 +180,7 @@ fn earlier_anchor_preserves_actual_cached_record_when_later_base_changes() {
 #[test]
 fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = bank(
         &base,
@@ -186,6 +192,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
                     &revision,
                     "https://example.test/",
                     false,
+                    None,
                 )),
             ),
             HtmlEncodingUrlParseObservation::new(
@@ -246,8 +253,8 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
     // the independently supplied pre-policy URL context, even if URL spelling
     // would happen to remain equal. Guarded-out pragmas do not change it.
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
-    let resolved = record(&revision, "https://example.test/x", false);
+    let base = record(&revision, "https://example.test/", false, None);
+    let resolved = record(&revision, "https://example.test/x", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = bank(
         &base,
@@ -355,8 +362,8 @@ fn standalone_img_starts_before_disabled_guard_and_keeps_only_latest_inactive_wa
 fn template_url_facts_bind_only_actual_independent_inert_document() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
     let encoding = HtmlBaseEncoding::fresh();
-    let blank = record(&revision, "about:blank", true);
-    let not_blank = record(&revision, "https://outer.test/", false);
+    let blank = record(&revision, "about:blank", true, None);
+    let not_blank = record(&revision, "https://outer.test/", false, None);
     assert!(matches!(
         HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits())
             .with_template_base_facts(environment(&not_blank, &encoding)),
@@ -408,7 +415,7 @@ fn template_url_facts_bind_only_actual_independent_inert_document() {
 #[test]
 fn unused_execution_banks_are_released_before_successful_report_usage() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let mut banks = Vec::with_capacity(32);
     banks.push(bank(
@@ -434,7 +441,7 @@ fn unused_execution_banks_are_released_before_successful_report_usage() {
 fn spare_execution_capacity_does_not_overlap_successful_retained_receipt_and_failure_keeps_original_bank()
  {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let fact = bank(
         &base,
@@ -612,14 +619,19 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
 #[test]
 fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_cleanup() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let facts = bank(
         &base,
         &encoding,
         vec![HtmlEncodingUrlParseObservation::new(
             "x".into(),
-            HtmlEncodingUrlParseOutcome::Parsed(record(&revision, "https://example.test/x", false)),
+            HtmlEncodingUrlParseOutcome::Parsed(record(
+                &revision,
+                "https://example.test/x",
+                false,
+                None,
+            )),
         )],
     );
     let request = |limits| {
@@ -742,7 +754,7 @@ fn parsed_style_retains_actual_parser_document_and_pop_while_general_clone_is_fr
 #[test]
 fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_released() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let make = |raw: &str, capacity| {
         let mut observations = Vec::with_capacity(capacity);
@@ -813,7 +825,7 @@ fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_rel
 fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_serialization() {
     let producer = HtmlBaseProducerId::fresh();
     let revision = HtmlBaseFactsRevision::new(producer.clone(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let observation = || {
         vec![HtmlEncodingUrlParseObservation::new(
@@ -850,7 +862,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
         ),
         (
             facts(
-                record(&revision, "https://example.test/", false),
+                record(&revision, "https://example.test/", false, None),
                 encoding.clone(),
                 revision.clone(),
             ),
@@ -897,10 +909,10 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
 #[test]
 fn reached_general_clones_use_current_base_and_fresh_image_update_identity() {
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let old = record(&revision, "https://example.test/old/", false);
-    let new = record(&revision, "https://example.test/new/", false);
-    let old_x = record(&revision, "https://example.test/old/x", false);
-    let new_x = record(&revision, "https://example.test/new/x", false);
+    let old = record(&revision, "https://example.test/old/", false, None);
+    let new = record(&revision, "https://example.test/new/", false, None);
+    let old_x = record(&revision, "https://example.test/old/x", false, None);
+    let new_x = record(&revision, "https://example.test/new/x", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let environment = HtmlParseBaseFacts::new(
         HtmlBaseDocumentFacts::new(
@@ -1007,7 +1019,7 @@ fn missing_inert_context_and_duplicate_execution_contexts_remain_explicit() {
     }
     assert!(found);
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
-    let base = record(&revision, "https://example.test/", false);
+    let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let fact = bank(&base, &encoding, vec![]);
     let failure =

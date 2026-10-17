@@ -122,7 +122,16 @@ fn drive(
 ) -> DomSourceCompletion {
     match context
         .source
-        .apply(dom, edit, source_limits(), policy, &cancel())
+        .apply(
+            dom,
+            edit,
+            source_limits(),
+            &mut DomSourceServices {
+                style_policy: &mut policy,
+                url: None,
+            },
+            &cancel(),
+        )
         .unwrap()
     {
         DomSourceDriveProgress::Complete(done) => done,
@@ -434,7 +443,16 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
     let operation = {
         let DomSourceDriveProgress::Pending { request, reason } = context
             .source
-            .apply(&mut dom, edit, source_limits(), |_| None, &cancel())
+            .apply(
+                &mut dom,
+                edit,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
             .unwrap()
         else {
             panic!("missing actual policy cannot imply Allowed")
@@ -443,7 +461,9 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
             reason,
             DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy)
         );
-        let DomSourceRequest::Style(request) = request;
+        let DomSourceRequest::Style(request) = request else {
+            panic!("the reached Style operation must request its own inline policy")
+        };
         assert_eq!(request.source().element(), style);
         assert!(matches!(
             dom.snapshot()
@@ -462,7 +482,16 @@ fn missing_policy_preserves_incomplete_availability_then_exact_resume_establishe
     assert!(matches!(
         context
             .source
-            .resume(&mut dom, operation, source_limits(), policy, &cancel())
+            .resume(
+                &mut dom,
+                operation,
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None
+                },
+                &cancel()
+            )
             .unwrap(),
         DomSourceDriveProgress::Complete(_)
     ));

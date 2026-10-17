@@ -57,11 +57,7 @@ fn create(session: &mut DomSession) -> (HostedRuntime, DomHostedTopLevel) {
     let mut dom = session.dom();
     let host = hosted.create_host(&mut dom, &cancel()).unwrap();
     // Initial no-opener creation reaches no URL parsing service.
-    let DomHostedProgress::Created(top) =
-        hosted.create_top_level(&mut dom, host, &cancel()).unwrap()
-    else {
-        panic!("supported no-opener creation must complete with actual native services")
-    };
+    let top = hosted.create_top_level(&mut dom, host, &cancel()).unwrap();
     (hosted, top)
 }
 
@@ -133,12 +129,16 @@ fn actual_initial_policy_and_url_encoding_identities_survive_reads_and_destructi
             Some(encoding)
         );
         assert_eq!(current.document().document_base_record().unwrap(), url);
+        let queued = hosted
+            .destroy_top_level(&mut dom, top.navigable(), &cancel())
+            .unwrap();
+        assert_eq!(queued.host(), top.host());
+        assert_eq!(queued.navigable(), top.navigable());
+        assert_eq!(queued.traversable(), top.navigable());
         assert!(
-            matches!(hosted.destroy_top_level(&mut dom, top.navigable(), &cancel()).unwrap(),
-            DomHostedProgress::Pending { host } if host == top.host())
+            matches!(pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
         );
-        assert!(matches!(hosted.resume(&mut dom, &cancel()).unwrap(),
-            DomHostedProgress::Destroyed { navigable } if navigable == top.navigable()));
         assert!(hosted.settings(&dom, top.global(), &cancel()).is_err());
     }
     assert!(
@@ -282,7 +282,7 @@ fn entry_capacity_refusal_and_cancelled_retry_retain_original_constructor_facts(
     {
         let mut dom = session.dom();
         assert!(matches!(
-            hosted.resume(&mut dom, &AtomicBool::new(true)),
+            hosted.resume_top_level_creation(&mut dom, &AtomicBool::new(true)),
             Err(DomHostedRuntimeError::Cancelled)
         ));
         assert_eq!(dom.snapshot().stamp(), parked.stamp());
@@ -296,10 +296,9 @@ fn entry_capacity_refusal_and_cancelled_retry_retain_original_constructor_facts(
     }
     let top = {
         let mut dom = session.dom();
-        let DomHostedProgress::Created(top) = hosted.resume(&mut dom, &cancel()).unwrap() else {
-            panic!("raising the real Entry capacity must resume the original phase")
-        };
-        top
+        hosted
+            .resume_top_level_creation(&mut dom, &cancel())
+            .unwrap()
     };
     assert_eq!(top.document(), document_id);
     let current = session.snapshot();
@@ -336,4 +335,20 @@ fn entry_capacity_refusal_and_cancelled_retry_retain_original_constructor_facts(
             Some(&encoding)
         );
     }
+}
+
+fn pump_destruction(
+    hosted: &mut HostedRuntime,
+    dom: &mut DomEventDom<'_>,
+    queued: DomHostedDestructionQueued,
+) -> Result<DomHostedTaskProgress, DomHostedRuntimeError> {
+    let mut last = DomHostedTaskProgress::Idle;
+    for _ in 0..256 {
+        last = hosted.run_next(dom, queued.traversable(), &cancel())?;
+        if matches!(last, DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
+        {
+            break;
+        }
+    }
+    Ok(last)
 }

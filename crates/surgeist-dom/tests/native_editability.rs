@@ -377,6 +377,7 @@ fn actual_reports_transfer_separate_owned_document_states_and_preserve_captured_
         "about:blank".into(),
         HtmlBaseUrlScheme::Other,
         false,
+        None,
     )
     .unwrap();
     let environment = DomParsedDocumentEnvironment::headless(

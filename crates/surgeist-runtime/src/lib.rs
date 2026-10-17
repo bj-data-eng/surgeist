@@ -222,11 +222,13 @@ pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
 };
 pub use dom_lifecycle::{
-    DomHostedHistoryEntry, DomHostedProgress, DomHostedRuntimeError, DomHostedRuntimeLimits,
-    DomHostedSettings, DomHostedTopLevel, HostedRuntime,
+    DomHostedDestructionQueued, DomHostedHistoryEntry, DomHostedRuntimeError,
+    DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind, DomHostedTaskProgress,
+    DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
 };
 pub use dom_source::{
-    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceUnavailable,
+    DomSourceDriveProgress, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
+    DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
 };
 pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,

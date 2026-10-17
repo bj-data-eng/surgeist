@@ -108,6 +108,12 @@ pub(crate) struct HostedDocumentInputs(pub(crate) Arc<HostedDocumentInputData>);
 pub(crate) struct HostedDocumentInputData {
     pub(crate) facts: surgeist_html_semantics::HtmlBaseDocumentFacts,
     pub(crate) opener: surgeist_html::HtmlOpenerPolicy,
+    pub(crate) top_creation_url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
+    pub(crate) top_origin: DomOpaqueOrigin,
+    pub(crate) active_sandbox: surgeist_html::HtmlSandboxFlags,
+    pub(crate) referrer: Option<DocumentString>,
+    // Both source algorithms complete before the new Document has a container.
+    // Their actual initialized lists are empty in this creation profile.
     pub(crate) _retained: crate::hosted::Retained,
 }
 impl PartialEq for HostedDocumentInputs {
@@ -120,10 +126,51 @@ impl HostedDocumentInputs {
     pub(crate) fn url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
         self.0.facts.document_url().expect("constructor-owned URL")
     }
+    pub(crate) fn payload_units(&self) -> Result<usize, DomError> {
+        let mut units = self.url().retained_storage_usage().utf16_extent();
+        if let surgeist_html_semantics::HtmlAboutBaseUrl::KnownRecord(record) =
+            self.0.facts.about_base_url()
+        {
+            units = units
+                .checked_add(record.retained_storage_usage().utf16_extent())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(record) = &self.0.top_creation_url {
+            units = units
+                .checked_add(record.retained_storage_usage().utf16_extent())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(referrer) = &self.0.referrer {
+            units = units
+                .checked_add(referrer.shared_code_units().capacity())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(units)
+    }
     pub(crate) fn payload_bytes(&self) -> Result<usize, DomError> {
-        size_of::<HostedDocumentInputData>()
+        let mut bytes = size_of::<HostedDocumentInputData>()
             .checked_add(self.url().retained_storage_usage().retained_bytes())
-            .ok_or(DomError::RepresentationExhausted)
+            .ok_or(DomError::RepresentationExhausted)?;
+        if let surgeist_html_semantics::HtmlAboutBaseUrl::KnownRecord(record) =
+            self.0.facts.about_base_url()
+        {
+            bytes = bytes
+                .checked_add(record.retained_storage_usage().retained_bytes())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(record) = &self.0.top_creation_url {
+            bytes = bytes
+                .checked_add(record.retained_storage_usage().retained_bytes())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(referrer) = &self.0.referrer {
+            let mut payload = crate::store::source::storage::Payload::default();
+            payload.string(referrer)?;
+            bytes = bytes
+                .checked_add(payload.bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(bytes)
     }
 }
 
@@ -217,7 +264,12 @@ impl DomDocumentEnvironment {
     }
     pub fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
         match &self.hosted {
-            Some(association) if association.phase != crate::hosted::DocumentPhase::Retired => {
+            Some(association)
+                if !matches!(
+                    association.phase,
+                    crate::hosted::DocumentPhase::Retired { .. }
+                ) =>
+            {
                 surgeist_html::HtmlBrowsingContextPresence::Present
             }
             _ => surgeist_html::HtmlBrowsingContextPresence::Absent,
@@ -536,7 +588,7 @@ impl DomDocumentMetadata {
         }
         if let Some(inputs) = &self.hosted_inputs {
             units = units
-                .checked_add(inputs.url().retained_storage_usage().utf16_extent())
+                .checked_add(inputs.payload_units()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         Ok(units)
