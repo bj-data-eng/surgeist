@@ -24,9 +24,11 @@ whole session while mandatory work remains. Dropping it abandons execution
 without delivering callbacks or claiming completion. The native dispatcher handles real
 Details toggle events and Dialog Show's initial cancelable beforetoggle,
 including Global capture for hosted Documents. Uncanceled Show publishes its
-actual toggle task and canonical tracker, then remains Pending at AddOpen.
-The unfinished synchronous Show tail prevents queued delivery; later Dialog
-services remain explicitly unavailable. See
+actual toggle task and canonical tracker, then publishes `open=""` through the
+ordinary DOM hooks. It waits for remembered focus on an inactive or disconnected
+receiver, or for a close watcher after a connected, fully active receiver enters
+its Document's open-dialog list. The unfinished synchronous Show tail prevents
+queued delivery; later Dialog services remain explicitly unavailable. See
 [DOM orchestration](docs/explanation.md#dom-orchestration) for creation, teardown,
 custody and capability limits.
 

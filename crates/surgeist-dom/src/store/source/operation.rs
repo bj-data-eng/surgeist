@@ -455,6 +455,16 @@ impl Dom {
         })
     }
 }
+#[derive(Clone, Copy)]
+enum PublicationTarget {
+    None,
+    Style(Frame),
+    Dialog(crate::store::dialog::PendingDialog),
+}
+struct PublishedSegment {
+    commit: DomCommit,
+    dialog: Option<crate::DomSourceDialogRequest>,
+}
 impl Operation {
     #[cfg(test)]
     pub(in crate::store) fn semantic_usage_for_test(&self) -> (usize, usize) {
@@ -604,7 +614,8 @@ impl Operation {
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
             parent: None,
-            phase: if self.draft.dialog_show.is_some() {
+            phase: if self.draft.dialog_show.is_some() || self.draft.pending_dialog_hook().is_some()
+            {
                 crate::DomSourcePhase::DialogService
             } else {
                 crate::DomSourcePhase::Staging
@@ -1024,10 +1035,10 @@ impl Operation {
         &mut self,
         dom: &mut Dom,
         incomplete: bool,
-        frame: Option<Frame>,
+        target: PublicationTarget,
         cancel: &AtomicBool,
-    ) -> Result<DomCommit, DomError> {
-        self.publication_with_hosted(dom, incomplete, frame, None, cancel)
+    ) -> Result<PublishedSegment, DomError> {
+        self.publication_with_hosted(dom, incomplete, target, None, cancel)
             .map_err(|error| match error {
                 crate::hosted::DomHostedError::Dom(error) => error,
                 _ => {
@@ -1039,14 +1050,18 @@ impl Operation {
         &mut self,
         dom: &mut Dom,
         incomplete: bool,
-        frame: Option<Frame>,
+        target: PublicationTarget,
         hosted: Option<(
             &crate::DomHostedSource,
             &crate::hosted::Request,
             crate::DomHostedSourceRevision,
         )>,
         cancel: &AtomicBool,
-    ) -> Result<DomCommit, crate::hosted::DomHostedError> {
+    ) -> Result<PublishedSegment, crate::hosted::DomHostedError> {
+        let frame = match target {
+            PublicationTarget::Style(frame) => Some(frame),
+            _ => None,
+        };
         // A proposed ordinal stays private through every fallible formation.
         // Only successful canonical publication/request exposure issues it.
         let issued_next = match frame.map(|frame| frame.invocation) {
@@ -1171,6 +1186,24 @@ impl Operation {
             };
             historical.push(self.historical.get(i).copied().flatten().or(ids[*k]));
         }
+        let dialog = if let PublicationTarget::Dialog(pending) = target {
+            let subject = match pending.subject {
+                Key::Existing(slot) => NodeId {
+                    owner: self.id.owner,
+                    slot,
+                    generation: self.draft.generations[slot],
+                },
+                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+            };
+            prepared.state.node(self.id.owner, subject)?;
+            Some(crate::DomSourceDialogRequest {
+                operation: self.id,
+                subject,
+                action: pending.action,
+            })
+        } else {
+            None
+        };
         // Form every source-time input against this PRIVATE final mapping.
         // A refusal here retains the previous receipt and rolls back the segment;
         // no published command is stranded behind input allocation or lookup.
@@ -1368,7 +1401,7 @@ impl Operation {
         }
         self.phases += u64::from(changed);
         self.published = true;
-        Ok(commit)
+        Ok(PublishedSegment { commit, dialog })
     }
 }
 impl DomSourceLease<'_> {
@@ -1587,8 +1620,11 @@ impl DomSourceLease<'_> {
                         self.dom.limits,
                         cancel,
                     )
+                } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
+                    op.draft.run_effects(self.dom.limits, cancel)
                 } else if let Some(frame) = op.draft.dialog_show {
-                    op.draft.dialog_show_boundary(frame.subject, cancel)
+                    op.draft
+                        .dialog_show_boundary(frame.subject, self.dom.limits, cancel)
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
@@ -1609,19 +1645,51 @@ impl DomSourceLease<'_> {
                     return observed;
                 }
                 Err(DomError::DialogProcessingUnavailable { action })
-                    if op.draft.dialog_show.is_some() =>
+                    if op.draft.pending_dialog(action).is_some() =>
                 {
-                    let subject = op
+                    let pending = op
                         .draft
-                        .published_id(op.draft.dialog_show.expect("pending show").subject)
-                        .ok_or(DomError::UnavailableCreation)?;
+                        .pending_dialog(action)
+                        .expect("qualified actual Dialog stop");
+                    if matches!(action, surgeist_html::HtmlDialogAction::QueueToggle { .. }) {
+                        let subject = op
+                            .draft
+                            .published_id(pending.subject)
+                            .ok_or(DomError::UnavailableCreation)?;
+                        drop(checkpoint);
+                        return Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(
+                            crate::DomSourceDialogRequest {
+                                operation: op.id,
+                                subject,
+                                action,
+                            },
+                        )));
+                    }
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    op.started = true;
+                    let published = match op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::Dialog(pending),
+                        cancel,
+                    ) {
+                        Ok(published) => published,
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.started = started;
+                            return Err(error);
+                        }
+                    };
                     drop(checkpoint);
                     return Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(
-                        crate::DomSourceDialogRequest {
-                            operation: op.id,
-                            subject,
-                            action,
-                        },
+                        published
+                            .dialog
+                            .expect("actual request formed before publication"),
                     )));
                 }
                 Err(DomError::StyleCompositionRequired(_))
@@ -1635,7 +1703,9 @@ impl DomSourceLease<'_> {
                     }
                     op.started = true;
                     let frame = op.frame()?;
-                    if let Err(e) = op.publication(self.dom, true, Some(frame), cancel) {
+                    if let Err(e) =
+                        op.publication(self.dom, true, PublicationTarget::Style(frame), cancel)
+                    {
                         checkpoint.restore(&mut op.draft);
                         op.started = started;
                         return Err(e);
@@ -1659,7 +1729,9 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    if let Err(error) = op.publication(self.dom, true, None, cancel) {
+                    if let Err(error) =
+                        op.publication(self.dom, true, PublicationTarget::None, cancel)
+                    {
                         checkpoint.restore(&mut op.draft);
                         op.started = started;
                         return Err(error);
@@ -1676,6 +1748,9 @@ impl DomSourceLease<'_> {
                 }
                 Ok(()) => {
                     drop(checkpoint);
+                    if op.draft.dialog_show.is_some() {
+                        continue;
+                    }
                     // The real current command has drained. Excess conservative
                     // capacity is released while one actual final close remains.
                     if let Some(headroom) = &mut op.headroom {
@@ -1703,7 +1778,9 @@ impl DomSourceLease<'_> {
                             select.finished = true;
                         }
                         let installation_output = op.installation_output(self.dom, cancel)?;
-                        let commit = op.publication(self.dom, false, None, cancel)?;
+                        let commit = op
+                            .publication(self.dom, false, PublicationTarget::None, cancel)?
+                            .commit;
                         let installation = installation_output.map(|root| {
                             let input = op.installation.as_mut().expect("installation root");
                             let bindings = std::mem::take(&mut input.bindings);

@@ -106,9 +106,10 @@ impl DomDialogToggleQueueCommit<'_, '_> {
         op.published = true;
         op.event_exposed = true;
         op.dialog_queue = Some(self.plan.info.id);
-        if let Some(headroom) = &mut op.headroom {
-            headroom.remaining_phases = 1;
-        }
+        op.headroom = Some(headroom::Reservation {
+            remaining_phases: 2,
+        });
+        op.command_admitted = true;
         drop(commit);
         self.checkpoint.take();
         (
@@ -290,7 +291,7 @@ impl<'dom> DomSourceLease<'dom> {
             }
             if op
                 .phases
-                .checked_add(2)
+                .checked_add(3)
                 .is_none_or(|phases| phases > op.limits.phases)
             {
                 return Err(DomError::SourcePublicationLimit);
@@ -298,7 +299,7 @@ impl<'dom> DomSourceLease<'dom> {
             self.dom
                 .revision
                 .0
-                .checked_add(2)
+                .checked_add(3)
                 .and_then(|revision| revision.checked_add(self.dom.hosted_revisions))
                 .and_then(|revision| {
                     self.dom
@@ -312,7 +313,7 @@ impl<'dom> DomSourceLease<'dom> {
                 .checked_add(prepared.changes.len())
                 .ok_or(DomError::RepresentationExhausted)?;
             if outputs
-                .checked_add(1)
+                .checked_add(3)
                 .is_none_or(|outputs| outputs > op.limits.outputs)
             {
                 return Err(DomError::SourceOutputLimit);

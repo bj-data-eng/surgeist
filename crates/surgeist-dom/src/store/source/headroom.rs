@@ -42,6 +42,7 @@ pub(in crate::store) struct Scan {
     invocations: u64,
     selects: u64,
     details: u64,
+    dialog_wait: bool,
 }
 impl Scan {
     fn new() -> Self {
@@ -52,6 +53,7 @@ impl Scan {
             invocations: 0,
             selects: 0,
             details: 0,
+            dialog_wait: false,
         }
     }
     fn find(
@@ -194,12 +196,25 @@ impl Draft {
                         .schedule_selectedcontent(target, dom.limits, cancel),
                 }
             })();
+            if matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
+                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action))
+                && let Some(scan) = &mut restore.draft.source_headroom
+            {
+                scan.phases = scan
+                    .phases
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                scan.dialog_wait = true;
+            }
             let scan = restore.draft.source_headroom.take();
             // `restore` drops here, before qualifying the retained real counts.
             (result, scan)
         };
-        result?;
         let scan = scan.ok_or(DomError::StyleProtocol)?;
+        match result {
+            Err(DomError::DialogProcessingUnavailable { .. }) if scan.dialog_wait => {}
+            result => result?,
+        }
         scan.qualify(self, dom, phases, cancel)
     }
 

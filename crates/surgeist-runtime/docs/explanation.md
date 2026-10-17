@@ -103,9 +103,15 @@ Callbacks can make ordinary edits or start nested Source work under the exact
 event scope. An unfinished nested operation blocks the outer dispatch until the
 child is serviced; completed callbacks are not replayed. Uncanceled Show queues
 its actual null-source toggle task and publishes the canonical tracker before
-remaining Pending at AddOpen. The queued task cannot run through this unfinished
-synchronous tail. This bounded publication does not establish completed Show or
-its event delivery. An actual canceled event returns normally even if its callback
+adding `open=""` through the ordinary DOM attribute hooks. The reached prefix
+publishes before the next service wait: RememberFocusedElement for an inactive
+or disconnected receiver, or EstablishCloseWatcher after a connected, fully
+active receiver enters its Document's open-dialog list. Direct Source attribute
+edits retain that same watcher hook and the remaining attribute steps. Ordinary
+atomic edits refuse this watcher boundary with `NeedsEventfulOperation` and no
+publication. The queued task cannot run through an unfinished synchronous tail.
+These publications do not establish completed Show or its event delivery.
+An actual canceled event returns normally even if its callback
 retired the receiver; an uncanceled read of that retired receiver is a typed
 Source failure.
 

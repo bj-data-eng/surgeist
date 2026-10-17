@@ -156,3 +156,86 @@ fn manipulation_allocation_survives_original_child_close_and_releases_under_same
     );
     drop(parent_scope);
 }
+
+#[test]
+fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_effect() {
+    let cancel = AtomicBool::new(false);
+    // Queue changes ElementState + the incomplete marker. Reserve both known
+    // possible prefix changes and one final close: five output records total.
+    for (phases, outputs, failure) in [
+        (2, 4096, Some(DomError::SourcePublicationLimit)),
+        (3, 4, Some(DomError::SourceOutputLimit)),
+        (3, 5, None),
+    ] {
+        let (mut dom, executor, _, first, _) = fixture();
+        let owner = owner(&mut dom);
+        let event = request(&mut dom, first);
+        attest(
+            &mut dom,
+            &executor,
+            &event,
+            DomSourceEventOutcome::NotCanceled,
+        );
+        let mut policy = limits();
+        policy.phases = phases;
+        policy.outputs = outputs;
+        let stamp = dom.snapshot().stamp();
+        let mut lease = dom
+            .resume_source_edit(event.operation(), policy, &cancel)
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Dialog(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the original uncanceled Show must reach QueueToggle");
+        };
+        let plan = lease
+            .dialog_toggle_queue_plan(&request, &owner.source, 1, &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.prepare_dialog_toggle_queue(
+                &request,
+                &owner.source,
+                plan,
+                &AtomicBool::new(true)
+            ),
+            Err(DomError::Cancelled)
+        ));
+        {
+            let result = lease.prepare_dialog_toggle_queue(&request, &owner.source, plan, &cancel);
+            if let Some(expected) = failure {
+                match result {
+                    Err(actual) => assert_eq!(actual, expected),
+                    Ok(_) => panic!("insufficient original headroom admitted a queue candidate"),
+                }
+            } else {
+                // A real admitted candidate exists; dropping it is pre-effect
+                // rollback, not a fabricated Runtime queue publication.
+                drop(result.unwrap());
+            }
+        }
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.snapshot()
+                .node(first)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .toggle_task_tracker(),
+            None
+        );
+        assert_eq!(
+            dom.pending_source_edit().unwrap().operation(),
+            event.operation()
+        );
+        let op = dom.source_operation.as_ref().unwrap();
+        assert_eq!(
+            op.draft.dialog_show.unwrap().cursor.action(),
+            surgeist_html::HtmlDialogAction::QueueToggle {
+                old: surgeist_html::HtmlDialogState::Closed,
+                new: surgeist_html::HtmlDialogState::Open,
+                source: surgeist_html::HtmlDialogEventSource::Null,
+            }
+        );
+    }
+}

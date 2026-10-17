@@ -807,7 +807,7 @@ impl Draft {
                         5 => self.base_tree_change(key, limits, cancel)?,
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
                         7 => self.style_tree_change(key, old_parent, limits, cancel)?,
-                        9 => self.dialog_removal(key, cancel)?,
+                        9 => self.dialog_removal(key, limits, cancel)?,
                         8 => {
                             if matches!(&self.node(key)?.kind, DomNodeKind::Element(element) if element.is_meta())
                             {
@@ -871,7 +871,7 @@ impl Draft {
                         )?,
                         7 => self.style_tree_change(key, None, limits, cancel)?,
                         8 => self.meta_inserted(key, limits, cancel)?,
-                        9 => self.dialog_insertion(key, cancel)?,
+                        9 => self.dialog_insertion(key, limits, cancel)?,
                         _ => (),
                     }
                 }

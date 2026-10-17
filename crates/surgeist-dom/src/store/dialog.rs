@@ -1,8 +1,9 @@
 //! HTML Dialog ordinary hooks against the one canonical Draft.
 //!
-//! No service is acknowledged here: the admitted native environment stops setup
-//! at the actual inactive guard, and the sealed state proves existing services
-//! are null. A reached unsupported action refuses before atomic publication.
+//! Ordinary hooks retain their HTML cursor on the original effect stack. Active
+//! setup adds the Dialog to its Document's open list before the watcher wait;
+//! inactive setup follows the producer's early return. Source edits publish the
+//! reached prefix, while atomic edits refuse external services without publication.
 use super::*;
 use crate::dialog::{DocumentInteractiveState, DomDialogState};
 use surgeist_html::{
@@ -11,25 +12,52 @@ use surgeist_html::{
 };
 
 #[derive(Clone, Copy)]
+pub(super) enum ShowState {
+    Ready,
+    AwaitingOpenHooks,
+}
+#[derive(Clone, Copy)]
 pub(super) struct ShowFrame {
     pub subject: Key,
     pub cursor: HtmlDialogCursor,
+    pub state: ShowState,
+}
+#[derive(Clone, Copy)]
+pub(super) struct HookFrame {
+    pub subject: Key,
+    pub cursor: HtmlDialogCursor,
+}
+#[derive(Clone, Copy)]
+pub(in crate::store) struct PendingDialog {
+    pub subject: Key,
+    pub action: Action,
 }
 
 impl Draft {
     pub(super) fn dialog_show_boundary(
         &mut self,
         key: Key,
+        limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.dialog_state(key)?;
-        let mut cursor = self
-            .dialog_show
-            .map_or(HtmlDialogCursor::new(Operation::Show), |frame| frame.cursor);
+        let mut frame = self.dialog_show.unwrap_or(ShowFrame {
+            subject: key,
+            cursor: HtmlDialogCursor::new(Operation::Show),
+            state: ShowState::Ready,
+        });
+        if matches!(frame.state, ShowState::AwaitingOpenHooks) {
+            self.run_effects(limits, cancel)?;
+            frame
+                .cursor
+                .reply(Reply::Applied)
+                .map_err(DomError::DialogProtocol)?;
+            frame.state = ShowState::Ready;
+        }
         loop {
             self.source_step(cancel)?;
-            let action = cursor.action();
+            let action = frame.cursor.action();
             let reply = match action {
                 Action::ReadOpen => Reply::Open(
                     self.control_attribute(key, KnownHtmlAttribute::Open, cancel)?
@@ -43,25 +71,33 @@ impl Draft {
                 Action::Complete(HtmlDialogOutcome::InvalidState) => {
                     return Err(DomError::DialogInvalidState);
                 }
+                Action::AddOpen => {
+                    frame.state = ShowState::AwaitingOpenHooks;
+                    self.dialog_show = Some(frame);
+                    let formation = source::formation::Formation::new(self, cancel)?;
+                    let name = source::formation::string("open", formation.as_ref(), cancel)?;
+                    let value = source::formation::string("", formation.as_ref(), cancel)?;
+                    self.set_attribute(key, None, &name, &value, limits, cancel)?;
+                    self.run_effects(limits, cancel)?;
+                    frame.state = ShowState::Ready;
+                    Reply::Applied
+                }
                 Action::FireBeforeToggle { .. } => {
-                    self.dialog_show = Some(ShowFrame {
-                        subject: key,
-                        cursor,
-                    });
+                    self.dialog_show = Some(frame);
                     return Err(DomError::NeedsEventfulOperation {
                         subject: self.published_id(key),
                         action,
                     });
                 }
                 _ => {
-                    self.dialog_show = Some(ShowFrame {
-                        subject: key,
-                        cursor,
-                    });
+                    self.dialog_show = Some(frame);
                     return Err(DomError::DialogProcessingUnavailable { action });
                 }
             };
-            cursor.reply(reply).map_err(DomError::DialogProtocol)?;
+            frame
+                .cursor
+                .reply(reply)
+                .map_err(DomError::DialogProtocol)?;
         }
     }
 
@@ -214,7 +250,7 @@ impl Draft {
         Ok(())
     }
 
-    fn dialog_hook(
+    pub(super) fn schedule_dialog_hook(
         &mut self,
         key: Key,
         operation: Operation,
@@ -224,10 +260,94 @@ impl Draft {
         if !self.is_dialog(key)? {
             return Ok(());
         }
-        let mut cursor = HtmlDialogCursor::new(operation);
+        self.push_effect(
+            select::Effect::DialogHook(HookFrame {
+                subject: key,
+                cursor: HtmlDialogCursor::new(operation),
+            }),
+            self.effect_scoped,
+            cancel,
+        )?;
+        Ok(())
+    }
+    pub(super) fn dialog_hook(
+        &mut self,
+        key: Key,
+        operation: Operation,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.schedule_dialog_hook(key, operation, cancel)?;
+        self.run_effects(limits, cancel)
+    }
+    pub(super) fn pending_dialog_hook(&self) -> Option<PendingDialog> {
+        match self.effects.last().map(|frame| &frame.effect) {
+            Some(select::Effect::DialogHook(frame))
+                if frame.cursor.action() == Action::EstablishCloseWatcher =>
+            {
+                Some(PendingDialog {
+                    subject: frame.subject,
+                    action: frame.cursor.action(),
+                })
+            }
+            _ => None,
+        }
+    }
+    pub(super) fn pending_dialog(&self, action: Action) -> Option<PendingDialog> {
+        self.pending_dialog_hook()
+            .or_else(|| {
+                self.dialog_show.map(|frame| PendingDialog {
+                    subject: frame.subject,
+                    action: frame.cursor.action(),
+                })
+            })
+            .filter(|pending| pending.action == action)
+    }
+    fn dialog_list_add(
+        &mut self,
+        document: Key,
+        member: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.dialog_list_contains(document, member, false, cancel)? {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let (length, capacity) = match self.node(document)?.interactive_document.as_ref() {
+            Some(DocumentInteractiveState::Known { open_dialogs, .. }) => {
+                (open_dialogs.len(), open_dialogs.capacity())
+            }
+            Some(DocumentInteractiveState::Unavailable) => {
+                return Err(DomError::DialogDocumentStateUnavailable);
+            }
+            None => return Err(DomError::WrongNodeKind),
+        };
+        let admitted = self.source_reserve_amount::<Key>(length, capacity, 1, cancel)?;
+        let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
+            self.node_mut(document).interactive_document.as_mut()
+        else {
+            unreachable!("qualified native Document list")
+        };
+        source::reserve_bank(open_dialogs, 1, admitted)?;
+        self.source_admit(0, cancel)?;
+        self.source_step(cancel)?;
+        let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
+            self.node_mut(document).interactive_document.as_mut()
+        else {
+            unreachable!("qualified list")
+        };
+        open_dialogs.push(member);
+        self.source_admit(0, cancel)
+    }
+    pub(super) fn dialog_hook_effect(
+        &mut self,
+        mut frame: HookFrame,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let key = frame.subject;
         loop {
             self.source_step(cancel)?;
-            let action = cursor.action();
+            let action = frame.cursor.action();
             let reply = match action {
                 Action::Complete(HtmlDialogOutcome::Completed) => return Ok(()),
                 Action::ReadOpen => Reply::Open(
@@ -245,6 +365,10 @@ impl Draft {
                 Action::ReadTopLayerContains => Reply::TopLayerContains(
                     self.dialog_list_contains(self.node(key)?.document, key, true, cancel)?,
                 ),
+                Action::AddOpenDialog => {
+                    self.dialog_list_add(self.node(key)?.document, key, cancel)?;
+                    Reply::Applied
+                }
                 Action::RemoveOpenDialog => {
                     self.dialog_list_remove(self.node(key)?.document, key, false, cancel)?;
                     Reply::Applied
@@ -253,26 +377,34 @@ impl Draft {
                     self.dialog_list_remove(self.node(key)?.document, key, true, cancel)?;
                     Reply::Applied
                 }
-                // The closed service invariant establishes that the actual flag
-                // is already false. This fulfills the source idempotent write;
-                // it does not manufacture a hosted/modal transition.
                 Action::ClearModal if !self.dialog_state(key)?.is_modal() => Reply::Applied,
+                Action::EstablishCloseWatcher => {
+                    self.push_effect(
+                        select::Effect::DialogHook(frame),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    return Err(DomError::DialogProcessingUnavailable { action });
+                }
                 _ => return Err(DomError::DialogProcessingUnavailable { action }),
             };
-            cursor.reply(reply).map_err(DomError::DialogProtocol)?;
+            frame
+                .cursor
+                .reply(reply)
+                .map_err(DomError::DialogProtocol)?;
         }
     }
-    pub(super) fn dialog_attribute_change(
+    pub(super) fn dialog_attribute_operation(
         &mut self,
         key: Key,
         name: &crate::QualifiedName,
         old_present: bool,
         new_present: bool,
         cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
+    ) -> Result<Option<Operation>, DomError> {
         self.source_step(cancel)?;
         if !self.is_dialog(key)? {
-            return Ok(());
+            return Ok(None);
         }
         // Generic exact-name comparison consumes the HTML vocabulary's spelling;
         // the shared Dialog rule owns the resulting attribute operation.
@@ -284,28 +416,31 @@ impl Draft {
                 cancel,
             )?
         {
-            return Ok(());
+            return Ok(None);
         }
         self.source_step(cancel)?;
-        if let Some(operation) = surgeist_html::dialog_attribute_operation(
+        Ok(surgeist_html::dialog_attribute_operation(
             name.namespace(),
             KnownHtmlAttribute::Open,
             old_present,
             new_present,
-        ) {
-            self.dialog_hook(key, operation, cancel)?;
-        }
-        Ok(())
+        ))
     }
     pub(super) fn dialog_insertion(
         &mut self,
         key: Key,
+        limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.dialog_hook(key, Operation::Inserted, cancel)
+        self.dialog_hook(key, Operation::Inserted, limits, cancel)
     }
-    pub(super) fn dialog_removal(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        self.dialog_hook(key, Operation::Removed, cancel)
+    pub(super) fn dialog_removal(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.dialog_hook(key, Operation::Removed, limits, cancel)
     }
 }
 
@@ -321,6 +456,99 @@ mod tests {
         let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         (dom, commit.created(&dialog).unwrap().unwrap())
+    }
+
+    #[test]
+    fn native_open_list_growth_is_unique_and_one_short_preserves_the_original_bank() {
+        let cancel = AtomicBool::new(false);
+        for short in [true, false] {
+            let mut dom =
+                Dom::new(DomLimits::new(32, 16384, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+            let mut batch = DomBatch::new();
+            let document = batch.create_document();
+            let first = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+            let second = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+            batch.set_attribute(&first, "open", "");
+            batch.set_attribute(&second, "open", "");
+            let commit = dom.apply(batch, &cancel).unwrap();
+            let document = commit.document(&document).unwrap();
+            let first = commit.created(&first).unwrap().unwrap();
+            let second = commit.created(&second).unwrap().unwrap();
+            let before = dom.snapshot().stamp();
+            let batch = DomBatch::new();
+            let generous =
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+            let (mut draft, _, _) = Draft::new_source(
+                &dom,
+                batch.owner.clone(),
+                &batch.commands,
+                generous,
+                &cancel,
+            )
+            .unwrap();
+            let doc = draft.resolve(document.node().into()).unwrap();
+            let first = draft.resolve(first.into()).unwrap();
+            let second = draft.resolve(second.into()).unwrap();
+            assert!(!draft.document_fully_active(doc, &cancel).unwrap());
+            // This exercises the actual canonical list owner independently of
+            // setup eligibility; no fake Global/activity/watcher is supplied.
+            draft.dialog_list_add(doc, first, &cancel).unwrap();
+            let original = draft.dialog_list(doc, false).unwrap().as_ptr();
+            let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+            let replacement = 2 * size_of::<Key>();
+            let exact = base + replacement;
+            draft.source_limits = Some(crate::DomSourceLimits::new(
+                exact - usize::from(short),
+                100_000,
+                10_000_000,
+                16,
+                4096,
+                4096,
+                1,
+            ));
+            let result = draft.dialog_list_add(doc, second, &cancel);
+            if short {
+                assert_eq!(
+                    result.unwrap_err(),
+                    DomError::ResourceLimit {
+                        resource: DomResource::SourceRetainedBytes,
+                        limit: exact - 1
+                    }
+                );
+                assert_eq!(draft.dialog_list(doc, false).unwrap(), [first]);
+                assert_eq!(draft.dialog_list(doc, false).unwrap().as_ptr(), original);
+                draft.source_limits = Some(generous);
+                draft.dialog_list_add(doc, second, &cancel).unwrap();
+            } else {
+                result.unwrap();
+            }
+            let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
+                &draft.node(doc).unwrap().interactive_document
+            else {
+                panic!("native list");
+            };
+            assert_eq!(open_dialogs.capacity(), 2);
+            assert_eq!(open_dialogs.as_slice(), [first, second]);
+            let backing = open_dialogs.as_ptr();
+            draft.dialog_list_add(doc, first, &cancel).unwrap();
+            assert_eq!(draft.dialog_list(doc, false).unwrap(), [first, second]);
+            assert_eq!(draft.dialog_list(doc, false).unwrap().as_ptr(), backing);
+            draft.source_limits = Some(generous);
+            draft
+                .remove_attribute(first, None, &"open".into(), dom.limits, &cancel)
+                .unwrap();
+            assert_eq!(draft.dialog_list(doc, false).unwrap(), [second]);
+            assert_eq!(
+                draft.element(first).unwrap().attribute(&"open".into()),
+                None
+            );
+            assert!(draft.effects.is_empty());
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+            assert_eq!(dom.snapshot().stamp(), before);
+            // Removal cleaned the real retained member before the native
+            // negative fully-active check completed the actual HTML hook.
+        }
     }
 
     #[test]

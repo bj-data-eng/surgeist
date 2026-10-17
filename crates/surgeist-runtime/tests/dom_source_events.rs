@@ -430,7 +430,7 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
 }
 
 #[test]
-fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_replaying_callback() {
+fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callback() {
     let cancel = AtomicBool::new(false);
     let (mut session, subject) = fixture(session_limits());
     let mut listeners = dispatcher();
@@ -492,10 +492,12 @@ fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_rep
             assert_eq!(dialog.subject(), subject);
             assert_eq!(dialog.action(), action);
             // QueueToggle stores the real task/tracker before acknowledgment;
-            // the producer's next action is the still-unserviced AddOpen.
-            assert_eq!(action, HtmlDialogAction::AddOpen);
+            // the producer's next action is the still-unserviced remembered focus.
+            assert_eq!(action, HtmlDialogAction::RememberFocusedElement);
         }
-        other => panic!("queued toggle must retain the original Show at AddOpen: {other:?}"),
+        other => panic!(
+            "queued toggle must retain the original Show at its actual next service: {other:?}"
+        ),
     }
     assert_eq!(calls, 1);
     let snapshot = session.snapshot();
@@ -521,7 +523,7 @@ fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_rep
     );
     assert_eq!(
         snapshot.node(subject).unwrap().attribute(&"open".into()),
-        None
+        Some(&"".into())
     );
 }
 
@@ -533,7 +535,7 @@ fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_rep
     target_os = "ios"
 ))]
 #[test]
-fn hosted_uncanceled_resume_publishes_toggle_tracker_on_original_global_then_parks_at_add_open() {
+fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_watcher() {
     let cancel = AtomicBool::new(false);
     // The same public constructor used by native_hosted_lifecycle establishes
     // the actual Global/settings/agent/window loop; no native Document is
@@ -664,11 +666,13 @@ fn hosted_uncanceled_resume_publishes_toggle_tracker_on_original_global_then_par
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
-            assert_eq!(action, HtmlDialogAction::AddOpen);
+            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
         }
         other => {
-            panic!("hosted queue publication must retain its original Show at AddOpen: {other:?}")
+            panic!(
+                "hosted queue publication must retain its original Show at its actual next service: {other:?}"
+            )
         }
     }
     let snapshot = session.snapshot();
@@ -702,11 +706,11 @@ fn hosted_uncanceled_resume_publishes_toggle_tracker_on_original_global_then_par
     );
     assert_eq!(
         snapshot.node(subject).unwrap().attribute(&"open".into()),
-        None
+        Some(&"".into())
     );
     assert_eq!(observed.0, 1);
     // This pending synchronous Source tail is not permission to pump the
-    // queued event, acknowledge AddOpen, or claim completed Show.
+    // queued event, acknowledge the watcher, or claim completed Show.
 }
 
 #[cfg(any(
@@ -1014,10 +1018,10 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
-            assert_eq!(action, HtmlDialogAction::AddOpen);
+            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
         }
-        other => panic!("actual queueing must leave Show at AddOpen: {other:?}"),
+        other => panic!("actual queueing must leave Show at its actual next service: {other:?}"),
     }
     assert_eq!(context.owner.pending_tasks().unwrap(), 3);
     let pending = (0..3)
@@ -1065,7 +1069,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
             .node(subject)
             .unwrap()
             .attribute(&"open".into()),
-        None
+        Some(&"".into())
     );
     assert_eq!(
         queued_snapshot
@@ -1221,10 +1225,12 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
-            assert_eq!(action, HtmlDialogAction::AddOpen);
+            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
         }
-        other => panic!("adopted Dialog queueing must retain Show at AddOpen: {other:?}"),
+        other => {
+            panic!("adopted Dialog queueing must retain Show at its actual next service: {other:?}")
+        }
     }
     let owner = session.dom_manipulation_execution();
     assert_eq!(owner.pending_tasks().unwrap(), 1);
@@ -1252,7 +1258,7 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
     assert_eq!(queued.node(subject).unwrap().parent(), Some(second_body));
     assert_eq!(
         queued.node(subject).unwrap().attribute(&"open".into()),
-        None
+        Some(&"".into())
     );
     let tracker = queued
         .node(subject)
@@ -1273,7 +1279,7 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
         Some(first.document())
     );
     // Adoption happened before queue capture. This does not claim dispatch or
-    // the still-unreachable queue-then-adopt execution path behind AddOpen.
+    // the still-unreachable queue-then-adopt execution path behind the unfinished Show tail.
 }
 
 #[cfg(any(
@@ -1489,10 +1495,12 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         } => {
             assert_eq!(dialog.operation(), parent_request.operation());
             assert_eq!(dialog.subject(), parent);
-            assert_eq!(dialog.action(), HtmlDialogAction::AddOpen);
-            assert_eq!(action, HtmlDialogAction::AddOpen);
+            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
         }
-        other => panic!("P's authentic queue publication must stop at AddOpen: {other:?}"),
+        other => panic!(
+            "P's authentic queue publication must stop at its actual next service: {other:?}"
+        ),
     }
     assert_eq!(owner.pending_tasks().unwrap(), 2);
     let pending = [
@@ -1529,7 +1537,10 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         .unwrap();
     assert_eq!(tracker.task(), dialog_task.id());
     assert_eq!(tracker.old_state(), HtmlDialogState::Closed);
-    assert_eq!(queued.node(parent).unwrap().attribute(&"open".into()), None);
+    assert_eq!(
+        queued.node(parent).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
     assert!(
         !queued
             .node(grandparent)
@@ -2719,4 +2730,119 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
         session.try_shutdown(),
         DomShutdownOutcome::Complete
     ));
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_retry() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, _) = hosted_queue_fixture();
+    let before = session.snapshot();
+    let html = before.node(top.document().node()).unwrap().children()[0];
+    let body = before.node(html).unwrap().children()[1];
+    let prior_children = before.node(body).unwrap().children().len();
+    let mut builder = surgeist_html::HtmlFragment::builder(
+        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
+    )
+    .unwrap();
+    builder
+        .append_element(
+            &builder.root(),
+            surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "dialog"),
+            surgeist_html::OrderedAttributes::new([surgeist_html::Attribute::new(
+                surgeist_html::QualifiedName::new(surgeist_html::Namespace::none(), None, "open"),
+                "",
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    let fragment = builder.finish();
+    let target = DomNativeHtmlInstallTarget::new(
+        before.document(top.document()).unwrap().stamp(),
+        body,
+        None,
+    );
+    let mut permission = session.source_execution();
+    let mut policy = |_: &DomStyleSource| None;
+    let progress = permission
+        .install_native_html(
+            &mut session.dom(),
+            target,
+            &fragment,
+            DomSourceNativeHtmlInstallLimits::new(
+                DomNativeHtmlInstallLimits::new(16, 1_000_000, 16_000_000),
+                source_limits(),
+            ),
+            &mut DomSourceServices {
+                style_policy: &mut policy,
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Dialog(request),
+        reason: DomSourceUnavailable::Dialog(HtmlDialogAction::EstablishCloseWatcher),
+    } = progress
+    else {
+        panic!("the inserted active native Dialog must retain its actual watcher hook");
+    };
+    let subject = request.subject();
+    assert_eq!(request.action(), HtmlDialogAction::EstablishCloseWatcher);
+    assert!(before.node(subject).is_err());
+    let published = session.snapshot();
+    assert_eq!(published.node(subject).unwrap().parent(), Some(body));
+    assert_eq!(
+        published.node(subject).unwrap().owner_document(),
+        Some(top.document())
+    );
+    assert_eq!(
+        published.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert_eq!(
+        published.node(body).unwrap().children().len(),
+        prior_children + 1
+    );
+    assert_eq!(
+        published.incomplete_source_operation(),
+        Some(request.operation())
+    );
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().phase(),
+        DomSourcePhase::DialogService
+    );
+    assert_eq!(
+        session
+            .dom_manipulation_execution()
+            .pending_tasks()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        pending_dialog_service(
+            resume(&mut session, request.operation()),
+            subject,
+            HtmlDialogAction::EstablishCloseWatcher
+        ),
+        request.operation()
+    );
+    let retried = session.snapshot();
+    assert_eq!(retried.stamp(), published.stamp());
+    assert_eq!(
+        retried.node(body).unwrap().children(),
+        published.node(body).unwrap().children()
+    );
+    assert_eq!(
+        retried.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    // This authentic created-key publication proves neither installation
+    // completion nor a watcher reply; the original named root remains parked.
 }

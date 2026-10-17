@@ -985,9 +985,16 @@ cancellation completes without reading it again. An uncanceled post-event read
 instead reports the original receiver's retirement. QueueToggle publishes the
 real task and canonical tracker through the original bound DOM-manipulation
 owner. Its exact publication is accepted once; refusal retains it for retry
-without queueing again. Show then remains Pending at AddOpen, and queued delivery
-cannot bypass that unfinished synchronous tail. This bounded entry does not
-complete positive Show, Close, modal, focus, watcher or popover processing.
+without queueing again. Show adds `open=""` through the ordinary attribute hooks
+and publishes the reached prefix. An inactive or disconnected receiver then
+waits at RememberFocusedElement. A connected, fully active receiver enters its
+Document's open-dialog list and waits at EstablishCloseWatcher. Direct Source
+attribute changes retain the same hook and remaining attribute steps at that
+watcher boundary; an ordinary atomic edit instead returns
+`NeedsEventfulOperation` without publication. Retries retain the original
+continuation, and queued delivery cannot bypass the unfinished synchronous tail.
+This bounded entry does not complete positive Show, Close, modal, focus, watcher
+or popover processing.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

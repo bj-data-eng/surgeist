@@ -27,11 +27,31 @@ struct AttributeWrite<'a> {
     cause: AttributeCause,
     name_formation: Option<source::formation::Formation>,
 }
-struct HookChange<'a> {
-    changed: &'a QualifiedName,
-    old_value: Option<&'a DocumentString>,
-    new_value: Option<&'a DocumentString>,
+#[derive(Clone)]
+pub(super) struct AttributeSuffix {
+    subject: Key,
+    changed: QualifiedName,
+    old_value: Option<DocumentString>,
+    new_value: Option<DocumentString>,
     cause: AttributeCause,
+}
+impl AttributeSuffix {
+    pub(super) fn retained_payload(
+        &self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<source::storage::Payload, DomError> {
+        let mut payload = source::storage::Payload::default();
+        step()?;
+        payload.name(&self.changed)?;
+        for value in [self.old_value.as_ref(), self.new_value.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            step()?;
+            payload.string(value)?;
+        }
+        Ok(payload)
+    }
 }
 
 fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
@@ -437,37 +457,32 @@ impl Draft {
             self,
         );
         let result = self.attribute_hooks(
-            node,
-            HookChange {
-                changed: &changed,
-                old_value: old_value.as_ref(),
-                new_value: Some(&details_new_value),
+            AttributeSuffix {
+                subject: node,
+                changed,
+                old_value,
+                new_value: Some(details_new_value),
                 cause,
             },
+            hook.map(source::formation::Formation::into_charge),
             limits,
             cancelled,
         );
-        drop(old_value);
-        drop(details_new_value);
-        drop(changed);
-        drop(hook);
         #[cfg(test)]
         attribute_copy_observation::released(self);
         result
     }
     fn attribute_hooks(
         &mut self,
-        node: Key,
-        hook: HookChange<'_>,
+        hook: AttributeSuffix,
+        payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        let HookChange {
-            changed,
-            old_value,
-            new_value,
-            cause,
-        } = hook;
+        let node = hook.subject;
+        let changed = &hook.changed;
+        let old_value = hook.old_value.as_ref();
+        let new_value = hook.new_value.as_ref();
         let change = if new_value.is_none() {
             AttributeChange::Removed
         } else if old_value.is_some() {
@@ -475,7 +490,7 @@ impl Draft {
         } else {
             AttributeChange::Added
         };
-        self.input_attribute_change(node, changed, change, cause, limits, cancelled)?;
+        self.input_attribute_change(node, changed, change, hook.cause, limits, cancelled)?;
         self.script_attribute_change(
             node,
             changed,
@@ -488,13 +503,46 @@ impl Draft {
         self.control_attribute_change(node, changed, old_value, cancelled)?;
         self.select_attribute(node, changed, change, limits, cancelled)?;
         self.details_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
-        self.dialog_attribute_change(
+        if let Some(operation) = self.dialog_attribute_operation(
             node,
             changed,
             old_value.is_some(),
             new_value.is_some(),
             cancelled,
+        )? {
+            self.retain_dialog_attribute_tail(hook, operation, payload, cancelled)?;
+            self.run_effects(limits, cancelled)
+        } else {
+            self.attribute_suffix(hook, payload, limits, cancelled)
+        }
+    }
+    fn retain_dialog_attribute_tail(
+        &mut self,
+        hook: AttributeSuffix,
+        operation: surgeist_html::HtmlDialogOperation,
+        payload: Option<source::checkpoint::Charge>,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = hook.subject;
+        self.push_effect_retained(
+            select::Effect::AttributeSuffix(hook),
+            self.effect_scoped,
+            payload,
+            cancelled,
         )?;
+        self.schedule_dialog_hook(node, operation, cancelled)
+    }
+    pub(super) fn attribute_suffix(
+        &mut self,
+        hook: AttributeSuffix,
+        _payload: Option<source::checkpoint::Charge>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = hook.subject;
+        let changed = &hook.changed;
+        let old_value = hook.old_value.as_ref();
+        let new_value = hook.new_value.as_ref();
         self.base_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
         self.image_attribute_change(node, changed, old_value, new_value, cancelled)?;
         self.style_attribute_change(node, changed, limits, cancelled)?;
@@ -583,19 +631,17 @@ impl Draft {
         #[cfg(test)]
         attribute_copy_observation::hooks(&changed, Some(&old_value), None, self);
         let result = self.attribute_hooks(
-            node,
-            HookChange {
-                changed: &changed,
-                old_value: Some(&old_value),
+            AttributeSuffix {
+                subject: node,
+                changed,
+                old_value: Some(old_value),
                 new_value: None,
                 cause: AttributeCause::Change,
             },
+            hook.map(source::formation::Formation::into_charge),
             limits,
             cancelled,
         );
-        drop(old_value);
-        drop(changed);
-        drop(hook);
         #[cfg(test)]
         attribute_copy_observation::released(self);
         result
@@ -975,5 +1021,96 @@ mod tests {
             DomError::Cancelled
         );
         assert_eq!(dom.snapshot().stamp(), old.stamp());
+    }
+}
+
+#[cfg(test)]
+mod dialog_tail_tests {
+    use super::*;
+
+    #[test]
+    fn actual_dialog_attribute_tail_preserves_owned_payload_through_checkpoint_and_cancel() {
+        let cancel = AtomicBool::new(false);
+        let mut dom =
+            Dom::new(DomLimits::new(32, 16384, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let dialog = batch.create_element_ns(&document, Namespace::html(), "dialog");
+        batch.set_attribute(&dialog, "open", "kept");
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let dialog = commit.created(&dialog).unwrap().unwrap();
+        let stamp = dom.snapshot().stamp();
+        let batch = DomBatch::new();
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
+        let (mut draft, _, _) =
+            Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
+        let key = draft.resolve(dialog.into()).unwrap();
+        let attribute = &draft.element(key).unwrap().attributes().as_slice()[0];
+        let formation = source::formation::Formation::new(&draft, &cancel).unwrap();
+        let changed = retain_name(attribute.name(), formation.as_ref(), &cancel).unwrap();
+        let new_value = retain_string(attribute.value(), formation.as_ref(), &cancel).unwrap();
+        // Real immutable operand occurrences, independently priced from their
+        // actual UTF16 banks; inline frame fields belong to the effect bank.
+        let bytes = 2 * size_of::<Vec<u16>>()
+            + (changed.local_name().shared_code_units().capacity()
+                + new_value.shared_code_units().capacity())
+                * size_of::<u16>();
+        let units = changed.local_name().len() + new_value.len();
+        let operation = draft
+            .dialog_attribute_operation(key, &changed, false, true, &cancel)
+            .unwrap()
+            .unwrap();
+        draft
+            .retain_dialog_attribute_tail(
+                AttributeSuffix {
+                    subject: key,
+                    changed,
+                    old_value: None,
+                    new_value: Some(new_value),
+                    cause: AttributeCause::Change,
+                },
+                operation,
+                formation.map(source::formation::Formation::into_charge),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(draft.effects.len(), 2);
+        assert!(matches!(
+            draft.effects[0].effect,
+            select::Effect::AttributeSuffix(_)
+        ));
+        assert!(matches!(
+            draft.effects[1].effect,
+            select::Effect::DialogHook(_)
+        ));
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), units);
+        let checkpoint = draft
+            .source_checkpoint(draft.source_other_bytes, 0, &cancel)
+            .unwrap();
+        draft.run_effects(dom.limits, &cancel).unwrap();
+        assert!(draft.effects.is_empty());
+        checkpoint.restore(&mut draft);
+        assert_eq!(draft.effects.len(), 2);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), units);
+        assert_eq!(
+            draft.run_effects(dom.limits, &AtomicBool::new(true)),
+            Err(DomError::Cancelled)
+        );
+        assert_eq!(draft.effects.len(), 2);
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
+        draft.run_effects(dom.limits, &cancel).unwrap();
+        assert!(draft.effects.is_empty());
+        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            draft.element(key).unwrap().attribute(&"open".into()),
+            Some(&"kept".into())
+        );
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        // This native inactive executor test supplies no watcher completion or
+        // hosted activity. The public Source test owns that actual wait proof.
     }
 }

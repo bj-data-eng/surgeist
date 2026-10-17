@@ -1104,7 +1104,19 @@ impl Dom {
         };
         for command in batch.commands {
             check_cancel(cancelled)?;
-            draft.apply(&command, self.limits, cancelled)?;
+            if let Err(error) = draft.apply(&command, self.limits, cancelled) {
+                if let DomError::DialogProcessingUnavailable { action } = error
+                    && let Some(pending) = draft
+                        .pending_dialog_hook()
+                        .filter(|pending| pending.action == action)
+                {
+                    return Err(DomError::NeedsEventfulOperation {
+                        subject: draft.published_id(pending.subject),
+                        action,
+                    });
+                }
+                return Err(error);
+            }
         }
         check_cancel(cancelled)?;
         draft.finish(self, cancelled)
@@ -2278,7 +2290,7 @@ impl Draft {
             }
             Command::ShowDialog { node } => {
                 let key = self.resolve(node.clone())?;
-                self.dialog_show_boundary(key, cancelled)?;
+                self.dialog_show_boundary(key, limits, cancelled)?;
             }
             Command::SetDialogReturnValue { node, value } => {
                 let node = self.resolve(node.clone())?;

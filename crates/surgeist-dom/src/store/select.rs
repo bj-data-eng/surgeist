@@ -925,6 +925,8 @@ pub(super) enum SelectAfter {
     OptionCache { option: Key, removing: bool },
 }
 pub(super) enum Effect {
+    DialogHook(dialog::HookFrame),
+    AttributeSuffix(attributes::AttributeSuffix),
     Style(style::Frame),
     XmlDocument(super::document::XmlDocumentFrame),
     ChildrenChanged {
@@ -994,6 +996,7 @@ impl Effect {
     ) -> Result<source::storage::Payload, DomError> {
         step()?;
         match self {
+            Self::AttributeSuffix(frame) => frame.retained_payload(step),
             Self::XmlDocument(frame) => frame.retained_payload(step),
             Self::Output(frame) => frame.retained_payload(step),
             Self::Setter {
@@ -1020,6 +1023,8 @@ impl EffectFrame {
         let retained = self.effect.retained_payload(|| a.step())?;
         let payload = a.effect_payload(retained, cancel)?;
         let effect = match &self.effect {
+            Effect::DialogHook(frame) => Effect::DialogHook(*frame),
+            Effect::AttributeSuffix(frame) => Effect::AttributeSuffix(frame.clone()),
             Effect::Style(frame) => Effect::Style(*frame),
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
@@ -1119,7 +1124,11 @@ impl Draft {
         // graph occurrence is admitted before it is materialized or cloned.
         debug_assert!(!matches!(
             &effect,
-            Effect::Output(_) | Effect::Setter { .. } | Effect::Clone(_) | Effect::XmlDocument(_)
+            Effect::Output(_)
+                | Effect::Setter { .. }
+                | Effect::Clone(_)
+                | Effect::XmlDocument(_)
+                | Effect::AttributeSuffix(_)
         ));
         self.push_effect_retained(effect, scoped, None, cancel)
     }
@@ -1251,6 +1260,10 @@ impl Draft {
                 } = self.effects.pop().expect("admitted nonempty effect");
                 self.effect_scoped = scoped;
                 match effect {
+                    Effect::DialogHook(frame) => self.dialog_hook_effect(frame, cancel)?,
+                    Effect::AttributeSuffix(frame) => {
+                        self.attribute_suffix(frame, payload, limits, cancel)?
+                    }
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

@@ -1214,6 +1214,7 @@ impl DomSourceLease<'_> {
             draft.dialog_show = Some(crate::store::dialog::ShowFrame {
                 subject: key,
                 cursor,
+                state: crate::store::dialog::ShowState::Ready,
             });
         } else {
             // HTML's post-dispatch instruction clears CURRENT tracker, even if

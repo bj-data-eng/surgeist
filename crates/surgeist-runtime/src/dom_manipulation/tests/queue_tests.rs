@@ -173,7 +173,15 @@ fn queue_runtime_exact_candidate_peak_succeeds_and_one_short_has_no_effect() {
                     owner.tasks[old].value.id()
                 );
                 assert!(
-                    matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::AddOpen)
+                    matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement)
+                );
+                assert_eq!(
+                    lease
+                        .snapshot()
+                        .node(subject)
+                        .unwrap()
+                        .attribute(&"open".into()),
+                    Some(&"".into())
                 );
             }
         }
@@ -251,7 +259,15 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
     assert_eq!(owner.borrow().tasks[0].value.id(), id);
     assert!(owner.borrow().tasks[0].publication.is_none());
     assert!(
-        matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::AddOpen)
+        matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement)
+    );
+    assert_eq!(
+        lease
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into()),
+        Some(&"".into())
     );
 }
 

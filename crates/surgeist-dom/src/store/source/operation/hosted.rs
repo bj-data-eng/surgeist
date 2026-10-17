@@ -1356,7 +1356,7 @@ impl DomSourceLease<'_> {
                 operation.publication_with_hosted(
                     self.dom,
                     true,
-                    None,
+                    super::PublicationTarget::None,
                     Some((source, inner.request(), current.revision)),
                     cancel,
                 )?;
@@ -1529,7 +1529,7 @@ impl DomSourceLease<'_> {
                 operation.publication_with_hosted(
                     self.dom,
                     true,
-                    None,
+                    super::PublicationTarget::None,
                     Some((source, original, packet.revision)),
                     cancel,
                 )?;
@@ -1753,7 +1753,7 @@ impl DomSourceLease<'_> {
                     operation.publication_with_hosted(
                         self.dom,
                         true,
-                        None,
+                        super::PublicationTarget::None,
                         Some((source, original, packet.revision)),
                         cancel,
                     )?;
