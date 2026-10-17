@@ -3,6 +3,7 @@
 mod base;
 mod control;
 mod inheritance;
+mod modal;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
 
@@ -46,6 +47,10 @@ use crate::{
 /// Control facts admit up to twice subjects (association plus actual Input flags).
 /// Applicable current values use the shared HTML type predicate and the supplied
 /// capture UTF-16 ceiling; Slot supplementation uses its explicit language limits.
+/// Initial Document modal rows use `subjects` and independently bounded producer
+/// `work`, without supplying flat-node coverage. Slot supplementation admits the
+/// combined flat-node and Document modal vector capacities through its explicit
+/// `HtmlInertFactLimits`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
@@ -866,8 +871,20 @@ impl DomSnapshot {
             ),
         )
         .map_err(DomHtmlCaptureError::Language)?;
-        let input = control::with_native_state(
+        let input = modal::with_facts(
             control::native_input(self, &entries, &mut control)?.with_language_direction(language),
+            self,
+            &capture,
+            &entries,
+            Vec::new(),
+            surgeist_html_semantics::HtmlInertFactLimits::new(
+                control.limits.subjects,
+                control.limits.work,
+            ),
+            &mut control,
+        )?;
+        let input = control::with_native_state(
+            input,
             self,
             &capture,
             &entries,

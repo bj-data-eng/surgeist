@@ -1,9 +1,8 @@
 //! Concrete Slot directionality and CSS-flat inert supplement composition.
 use super::*;
 use surgeist_html_semantics::{
-    HtmlDocumentFlatTreeRelation, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
-    HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact, HtmlLanguageDirectionFacts,
-    HtmlLanguageDirectionLimits, HtmlSlotAssignedNodes,
+    HtmlDocumentFlatTreeRelation, HtmlInertFactLimits, HtmlInertNodeFact,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlSlotAssignedNodes,
 };
 
 /// Independent finite admission for the query, mapping and shared producers.
@@ -46,7 +45,8 @@ impl DomHtmlCapture {
     /// Installs real canonical stored assignments and current flat relations
     /// once for reuse by this capture's ordinary HTML semantic queries.
     /// Actual canonical control facts are rebuilt into the same context;
-    /// missing language fallback/modal facts stay unavailable.
+    /// canonical known-empty blocking facts remain available independently of
+    /// missing language fallbacks or unavailable nonempty top-layer history.
     pub fn with_slot_semantics(
         mut self,
         limits: DomSlotSemanticLimits,
@@ -141,28 +141,18 @@ impl DomHtmlCapture {
             limits.language,
         )
         .map_err(DomHtmlCaptureError::Language)?;
-        control.charge(1)?;
-        // One concrete selected flat algorithm/configuration, qualified by its
-        // own opaque producer identity and the exact canonical revision.
-        let flat_revision = HtmlFlatTreeRevision::new(
-            HtmlFlatTreeProducerId::fresh(),
-            0,
-            self.source.revision().get(),
-        );
-        let inert = HtmlInertFacts::new(
-            &self.capture,
-            revision.clone(),
-            flat_revision.clone(),
-            inert_nodes,
-            Vec::new(),
-            limits.inert,
-        )
-        .map_err(DomHtmlCaptureError::Inert)?;
-        control.charge(1)?;
-        let input = super::control::with_native_state(
+        let input = super::modal::with_facts(
             super::control::native_input(&self.source, &self.entries, &mut control)?
-                .with_language_direction(language)
-                .with_inert(flat_revision, Some(inert)),
+                .with_language_direction(language),
+            &self.source,
+            &self.capture,
+            &self.entries,
+            inert_nodes,
+            limits.inert,
+            &mut control,
+        )?;
+        let input = super::control::with_native_state(
+            input,
             &self.source,
             &self.capture,
             &self.entries,

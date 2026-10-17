@@ -160,12 +160,10 @@ fn inertness_uses_real_slot_flat_ancestry_and_detached_exclusion_stays_missing()
         fact(&c, slot, HtmlSemanticQuery::Inertness),
         HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
     );
-    assert!(matches!(
+    assert_eq!(
         fact(&c, x, HtmlSemanticQuery::Inertness),
-        HtmlSemanticFact::Inertness(HtmlSemanticValue::Missing(
-            HtmlSemanticMissing::ModalBlocking(_)
-        ))
-    ));
+        HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+    );
     assert_eq!(
         fact(&c, detached, HtmlSemanticQuery::Inertness),
         HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
@@ -179,7 +177,7 @@ fn inertness_uses_real_slot_flat_ancestry_and_detached_exclusion_stays_missing()
 }
 
 #[test]
-fn mixed_root_and_host_documents_preserve_real_flat_parent_and_missing_modal_facts() {
+fn mixed_root_and_host_documents_preserve_real_flat_parent_and_known_empty_blocking() {
     let mut dom = owner();
     let mut b = DomBatch::new();
     let a = b.create_document();
@@ -216,12 +214,10 @@ fn mixed_root_and_host_documents_preserve_real_flat_parent_and_missing_modal_fac
         .unwrap(),
         DomFlatRelation::Parent(host)
     );
-    assert!(matches!(
+    assert_eq!(
         fact(&c, slot, HtmlSemanticQuery::Inertness),
-        HtmlSemanticFact::Inertness(HtmlSemanticValue::Missing(
-            HtmlSemanticMissing::ModalBlocking(_)
-        ))
-    ));
+        HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+    );
 }
 
 #[test]

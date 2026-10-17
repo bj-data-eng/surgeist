@@ -1481,11 +1481,18 @@ directionality and current document flat relations for the inert producer. It
 closes required stored-reference subjects across actual documents, then invokes
 the real HTML kernels using explicit producer/mapping/query limits. Flat membership
 follows actual shadow-including documents independently of node-document ownership.
-It preserves actual Fieldset associations; language fallback, other live-control
-values and modal state remain unavailable.
-Connected inherited inertness therefore still needs current modal facts; own
-inert can succeed independently. Detached subjects are known flat-excluded, with
-inherited inert ancestry unavailable under the selected contract.
+It rebuilds the other canonical supplements alongside those flat facts.
+
+Initial captures and Slot reconstruction both qualify each represented Document's
+actual managed raw top layer. A known-empty layer supplies known unblocked state,
+including for supplemental Documents whose ordinary trees are only partially
+captured. Unavailable or nonempty layers retain unavailable blocking facts in
+this bounded profile. No absence is inferred from captured children or Dialog
+attributes. Initial captures supply these Document facts without certifying any
+flat-node relation; Slot supplementation supplies the actual flat records needed
+for connected inherited inertness. Own inert can succeed independently. Detached
+subjects remain known flat-excluded, with inherited inert ancestry unavailable
+under the selected contract.
 
 This native shadow/Slot/control/Template semantic profile does not complete #1124. Other live controls,
 registry objects,

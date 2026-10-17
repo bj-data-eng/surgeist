@@ -303,8 +303,12 @@ trees complete. Template closure includes actual contents, hosts, role/cache and
 documents; establish inert roles before ordinary cache links rather than using
 plain-fragment unhosted defaults. Slot supplements feed stored assignment to
 directionality and fresh flat facts to inertness, preserving actual related
-documents. Missing modal/live-control/fallback facts remain unavailable; detached
-flat exclusion does not establish empty inert ancestry. Preserve producer
+documents. Initial and Slot contexts share canonical modal-fact formation:
+known-empty raw layers establish unblocked Documents independently of ordinary
+capture completeness; unavailable or nonempty layers remain unavailable. Initial
+partial facts establish no flat-node relation. Missing live-control/fallback
+facts remain unavailable; detached flat exclusion does not establish empty inert
+ancestry. Preserve producer
 conservative dependency coverage rather than inventing precise invalidation.
 
 From repository root through bounded `pisct run`:
