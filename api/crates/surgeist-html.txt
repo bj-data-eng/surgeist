@@ -2117,6 +2117,23 @@ pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::At
 pub enum surgeist_html::HtmlCrossOriginState
 pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
 pub surgeist_html::HtmlCrossOriginState::NoCors
+pub enum surgeist_html::HtmlCurrentFocusChainAction
+pub surgeist_html::HtmlCurrentFocusChainAction::Complete
+pub surgeist_html::HtmlCurrentFocusChainAction::InitializeEmptyChain
+pub surgeist_html::HtmlCurrentFocusChainAction::ReadTraversable
+pub surgeist_html::HtmlCurrentFocusChainAction::RunCurrentlyFocusedArea
+pub surgeist_html::HtmlCurrentFocusChainAction::RunFocusChain
+pub enum surgeist_html::HtmlCurrentFocusChainError
+pub surgeist_html::HtmlCurrentFocusChainError::Terminal
+pub surgeist_html::HtmlCurrentFocusChainError::WrongReply
+impl core::error::Error for surgeist_html::HtmlCurrentFocusChainError
+impl core::fmt::Display for surgeist_html::HtmlCurrentFocusChainError
+pub fn surgeist_html::HtmlCurrentFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlCurrentFocusChainReply
+pub surgeist_html::HtmlCurrentFocusChainReply::Applied
+pub surgeist_html::HtmlCurrentFocusChainReply::CurrentlyFocusedAreaPresent(bool)
+pub surgeist_html::HtmlCurrentFocusChainReply::FocusChainReady
+pub surgeist_html::HtmlCurrentFocusChainReply::TraversablePresent(bool)
 pub enum surgeist_html::HtmlCurrentlyFocusedAreaAction
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::CaptureContentActiveDocument
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::CaptureTraversableActiveDocument
@@ -2411,6 +2428,36 @@ pub surgeist_html::HtmlFetchPriority::Low
 impl surgeist_html::HtmlFetchPriority
 pub fn surgeist_html::HtmlFetchPriority::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlFetchPriority::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFocusChainAction
+pub surgeist_html::HtmlFocusChainAction::AppendAnchorElement
+pub surgeist_html::HtmlFocusChainAction::AppendCorrespondingAreaElement
+pub surgeist_html::HtmlFocusChainAction::AppendCurrentObject
+pub surgeist_html::HtmlFocusChainAction::CaptureAnchorNodeDocument
+pub surgeist_html::HtmlFocusChainAction::CaptureChildNavigableContainerElement
+pub surgeist_html::HtmlFocusChainAction::CaptureSubject
+pub surgeist_html::HtmlFocusChainAction::Complete
+pub surgeist_html::HtmlFocusChainAction::InitializeEmptyChain
+pub surgeist_html::HtmlFocusChainAction::ReadAnchorIsDifferentElement
+pub surgeist_html::HtmlFocusChainAction::ReadAreaShape
+pub surgeist_html::HtmlFocusChainAction::ReadDocument
+pub surgeist_html::HtmlFocusChainAction::ReadFocusableArea
+pub surgeist_html::HtmlFocusChainAction::ReadNavigableParent
+pub surgeist_html::HtmlFocusChainAction::ReadNodeNavigable
+pub enum surgeist_html::HtmlFocusChainError
+pub surgeist_html::HtmlFocusChainError::InvalidCurrentObject
+pub surgeist_html::HtmlFocusChainError::Terminal
+pub surgeist_html::HtmlFocusChainError::WrongReply
+impl core::error::Error for surgeist_html::HtmlFocusChainError
+impl core::fmt::Display for surgeist_html::HtmlFocusChainError
+pub fn surgeist_html::HtmlFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlFocusChainReply
+pub surgeist_html::HtmlFocusChainReply::AnchorIsDifferentElement(bool)
+pub surgeist_html::HtmlFocusChainReply::Applied
+pub surgeist_html::HtmlFocusChainReply::AreaShape(bool)
+pub surgeist_html::HtmlFocusChainReply::Document(bool)
+pub surgeist_html::HtmlFocusChainReply::FocusableArea(bool)
+pub surgeist_html::HtmlFocusChainReply::NavigableParentPresent(bool)
+pub surgeist_html::HtmlFocusChainReply::NodeNavigablePresent(bool)
 pub enum surgeist_html::HtmlFocusDelegateAction
 pub surgeist_html::HtmlFocusDelegateAction::BeginDescendants
 pub surgeist_html::HtmlFocusDelegateAction::BeginDescendants::root: surgeist_html::HtmlFocusDelegateRoot
@@ -2453,9 +2500,138 @@ pub surgeist_html::HtmlFocusDelegateShadowRoot::DoesNotDelegateFocus
 pub enum surgeist_html::HtmlFocusDelegateTargetKind
 pub surgeist_html::HtmlFocusDelegateTargetKind::Dialog
 pub surgeist_html::HtmlFocusDelegateTargetKind::Other
+pub enum surgeist_html::HtmlFocusEventAction
+pub surgeist_html::HtmlFocusEventAction::CaptureElementDocumentGlobalView
+pub surgeist_html::HtmlFocusEventAction::CaptureWindowView
+pub surgeist_html::HtmlFocusEventAction::Complete
+pub surgeist_html::HtmlFocusEventAction::Dispatch
+pub surgeist_html::HtmlFocusEventAction::Dispatch::bubbles: bool
+pub surgeist_html::HtmlFocusEventAction::Dispatch::cancelable: bool
+pub surgeist_html::HtmlFocusEventAction::Dispatch::composed: bool
+pub surgeist_html::HtmlFocusEventAction::Dispatch::interface: surgeist_html::HtmlFocusEventInterface
+pub surgeist_html::HtmlFocusEventAction::Dispatch::view: surgeist_html::HtmlFocusEventView
+pub enum surgeist_html::HtmlFocusEventError
+pub surgeist_html::HtmlFocusEventError::Terminal
+pub surgeist_html::HtmlFocusEventError::WrongReply
+impl core::error::Error for surgeist_html::HtmlFocusEventError
+impl core::fmt::Display for surgeist_html::HtmlFocusEventError
+pub fn surgeist_html::HtmlFocusEventError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlFocusEventInterface
+pub surgeist_html::HtmlFocusEventInterface::FocusEvent
+pub enum surgeist_html::HtmlFocusEventName
+pub surgeist_html::HtmlFocusEventName::Blur
+pub surgeist_html::HtmlFocusEventName::Focus
+impl surgeist_html::HtmlFocusEventName
+pub const fn surgeist_html::HtmlFocusEventName::as_str(self) -> &'static str
+pub enum surgeist_html::HtmlFocusEventReply
+pub surgeist_html::HtmlFocusEventReply::Applied
+pub surgeist_html::HtmlFocusEventReply::Dispatched
+pub enum surgeist_html::HtmlFocusEventTargetKind
+pub surgeist_html::HtmlFocusEventTargetKind::Element
+pub surgeist_html::HtmlFocusEventTargetKind::Window
+pub enum surgeist_html::HtmlFocusEventView
+pub surgeist_html::HtmlFocusEventView::ElementDocumentGlobal
+pub surgeist_html::HtmlFocusEventView::TargetWindow
 pub enum surgeist_html::HtmlFocusTriggerKind
 pub surgeist_html::HtmlFocusTriggerKind::Click
 pub surgeist_html::HtmlFocusTriggerKind::Other
+pub enum surgeist_html::HtmlFocusUpdateAction
+pub surgeist_html::HtmlFocusUpdateAction::ApplyPlatformConventions
+pub surgeist_html::HtmlFocusUpdateAction::BeginNewEntriesReverse
+pub surgeist_html::HtmlFocusUpdateAction::BeginOldEntries
+pub surgeist_html::HtmlFocusUpdateAction::CaptureEntryDocument
+pub surgeist_html::HtmlFocusUpdateAction::CaptureEntryRelevantGlobal
+pub surgeist_html::HtmlFocusUpdateAction::CaptureEntryRelevantGlobal::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateAction::Complete
+pub surgeist_html::HtmlFocusUpdateAction::DesignateEntryFocusedArea
+pub surgeist_html::HtmlFocusUpdateAction::FireChange
+pub surgeist_html::HtmlFocusUpdateAction::FireChange::bubbles: bool
+pub surgeist_html::HtmlFocusUpdateAction::FireChange::cancelable: bool
+pub surgeist_html::HtmlFocusUpdateAction::FireChange::composed: bool
+pub surgeist_html::HtmlFocusUpdateAction::FireFocusEvent
+pub surgeist_html::HtmlFocusUpdateAction::FireFocusEvent::name: surgeist_html::HtmlFocusEventName
+pub surgeist_html::HtmlFocusUpdateAction::FireFocusEvent::related: surgeist_html::HtmlFocusUpdateRelatedTarget
+pub surgeist_html::HtmlFocusUpdateAction::FireFocusEvent::target: surgeist_html::HtmlFocusUpdateEventTarget
+pub surgeist_html::HtmlFocusUpdateAction::NextNewEntry
+pub surgeist_html::HtmlFocusUpdateAction::NextOldEntry
+pub surgeist_html::HtmlFocusUpdateAction::PopNewTail
+pub surgeist_html::HtmlFocusUpdateAction::PopOldTail
+pub surgeist_html::HtmlFocusUpdateAction::ReadChangeEventApplies
+pub surgeist_html::HtmlFocusUpdateAction::ReadEntryIsLast
+pub surgeist_html::HtmlFocusUpdateAction::ReadEntryIsLast::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateAction::ReadEntryKind
+pub surgeist_html::HtmlFocusUpdateAction::ReadEntryKind::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateAction::ReadEntryMatchesDesignation
+pub surgeist_html::HtmlFocusUpdateAction::ReadHasActivationBehavior
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputChangeUncommitted
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputChangeUncommitted::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputDiffersFromFirstFocus
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputDiffersFromFirstFocus::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputUserChangedDataWhileFocused
+pub surgeist_html::HtmlFocusUpdateAction::ReadInputUserChangedDataWhileFocused::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateAction::ReadNewEntryFocusableArea
+pub surgeist_html::HtmlFocusUpdateAction::ReadNewTailPresent
+pub surgeist_html::HtmlFocusUpdateAction::ReadOldEntryIsInput
+pub surgeist_html::HtmlFocusUpdateAction::ReadOldTailPresent
+pub surgeist_html::HtmlFocusUpdateAction::ReadOppositeTailKind
+pub surgeist_html::HtmlFocusUpdateAction::ReadOppositeTailKind::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateAction::ReadTailIdentityEqual
+pub surgeist_html::HtmlFocusUpdateAction::SetUserValidityTrue
+pub surgeist_html::HtmlFocusUpdateAction::SetWindowFocusChangedDuringNavigationTrue
+pub enum surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateChain::New
+pub surgeist_html::HtmlFocusUpdateChain::Old
+pub enum surgeist_html::HtmlFocusUpdateEntryKind
+pub surgeist_html::HtmlFocusUpdateEntryKind::Document
+pub surgeist_html::HtmlFocusUpdateEntryKind::Element
+pub surgeist_html::HtmlFocusUpdateEntryKind::Other
+pub enum surgeist_html::HtmlFocusUpdateError
+pub surgeist_html::HtmlFocusUpdateError::Terminal
+pub surgeist_html::HtmlFocusUpdateError::WrongReply
+impl core::error::Error for surgeist_html::HtmlFocusUpdateError
+impl core::fmt::Display for surgeist_html::HtmlFocusUpdateError
+pub fn surgeist_html::HtmlFocusUpdateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlFocusUpdateEventTarget
+pub surgeist_html::HtmlFocusUpdateEventTarget::EntryDocumentGlobal
+pub surgeist_html::HtmlFocusUpdateEventTarget::EntryElement
+pub enum surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateInputData::SelectedFiles
+pub surgeist_html::HtmlFocusUpdateInputData::Value
+pub enum surgeist_html::HtmlFocusUpdateRelatedTarget
+pub surgeist_html::HtmlFocusUpdateRelatedTarget::Null
+pub surgeist_html::HtmlFocusUpdateRelatedTarget::OppositeChainLastElement
+pub enum surgeist_html::HtmlFocusUpdateReply
+pub surgeist_html::HtmlFocusUpdateReply::Applied
+pub surgeist_html::HtmlFocusUpdateReply::ChangeDispatched
+pub surgeist_html::HtmlFocusUpdateReply::ChangeEventApplies(bool)
+pub surgeist_html::HtmlFocusUpdateReply::EntryIsLast
+pub surgeist_html::HtmlFocusUpdateReply::EntryIsLast::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateReply::EntryIsLast::value: bool
+pub surgeist_html::HtmlFocusUpdateReply::EntryKind
+pub surgeist_html::HtmlFocusUpdateReply::EntryKind::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateReply::EntryKind::kind: surgeist_html::HtmlFocusUpdateEntryKind
+pub surgeist_html::HtmlFocusUpdateReply::EntryMatchesDesignation(bool)
+pub surgeist_html::HtmlFocusUpdateReply::FocusEventCompleted
+pub surgeist_html::HtmlFocusUpdateReply::HasActivationBehavior(bool)
+pub surgeist_html::HtmlFocusUpdateReply::InputChangeUncommitted
+pub surgeist_html::HtmlFocusUpdateReply::InputChangeUncommitted::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateReply::InputChangeUncommitted::value: bool
+pub surgeist_html::HtmlFocusUpdateReply::InputDiffersFromFirstFocus
+pub surgeist_html::HtmlFocusUpdateReply::InputDiffersFromFirstFocus::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateReply::InputDiffersFromFirstFocus::value: bool
+pub surgeist_html::HtmlFocusUpdateReply::InputUserChangedDataWhileFocused
+pub surgeist_html::HtmlFocusUpdateReply::InputUserChangedDataWhileFocused::data: surgeist_html::HtmlFocusUpdateInputData
+pub surgeist_html::HtmlFocusUpdateReply::InputUserChangedDataWhileFocused::value: bool
+pub surgeist_html::HtmlFocusUpdateReply::NewEntryFocusableArea(bool)
+pub surgeist_html::HtmlFocusUpdateReply::NewEntryPresent(bool)
+pub surgeist_html::HtmlFocusUpdateReply::NewTailPresent(bool)
+pub surgeist_html::HtmlFocusUpdateReply::OldEntryIsInput(bool)
+pub surgeist_html::HtmlFocusUpdateReply::OldEntryPresent(bool)
+pub surgeist_html::HtmlFocusUpdateReply::OldTailPresent(bool)
+pub surgeist_html::HtmlFocusUpdateReply::OppositeTailKind
+pub surgeist_html::HtmlFocusUpdateReply::OppositeTailKind::chain: surgeist_html::HtmlFocusUpdateChain
+pub surgeist_html::HtmlFocusUpdateReply::OppositeTailKind::kind: core::option::Option<surgeist_html::HtmlFocusUpdateEntryKind>
+pub surgeist_html::HtmlFocusUpdateReply::TailIdentityEqual(bool)
 pub enum surgeist_html::HtmlFocusedAreaKind
 pub surgeist_html::HtmlFocusedAreaKind::NavigableContainer
 pub surgeist_html::HtmlFocusedAreaKind::Null
@@ -2588,7 +2764,7 @@ pub enum surgeist_html::HtmlGetFocusableAreaReply
 pub surgeist_html::HtmlGetFocusableAreaReply::Applied
 pub surgeist_html::HtmlGetFocusableAreaReply::AreaWithFocusableShapes(bool)
 pub surgeist_html::HtmlGetFocusableAreaReply::ContentNavigablePresent(bool)
-pub surgeist_html::HtmlGetFocusableAreaReply::CurrentlyFocusedAreaPresent(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::CurrentlyFocusedArea(surgeist_html::HtmlCurrentlyFocusedAreaOutcome)
 pub surgeist_html::HtmlGetFocusableAreaReply::DelegatingShadowHost(bool)
 pub surgeist_html::HtmlGetFocusableAreaReply::DocumentElement(bool)
 pub surgeist_html::HtmlGetFocusableAreaReply::ElementWithFocusableScrollRegions(bool)
@@ -4525,6 +4701,13 @@ pub fn surgeist_html::HtmlControlLengthReport::getter_limitation_source_clause(&
 pub fn surgeist_html::HtmlControlLengthReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
 pub fn surgeist_html::HtmlControlLengthReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlControlLengthReport::reflected_getter(&self) -> core::option::Option<i32>
+pub struct surgeist_html::HtmlCurrentFocusChainCursor
+impl surgeist_html::HtmlCurrentFocusChainCursor
+pub const fn surgeist_html::HtmlCurrentFocusChainCursor::action(&self) -> surgeist_html::HtmlCurrentFocusChainAction
+pub const fn surgeist_html::HtmlCurrentFocusChainCursor::new() -> Self
+pub fn surgeist_html::HtmlCurrentFocusChainCursor::reply(&mut self, reply: surgeist_html::HtmlCurrentFocusChainReply) -> core::result::Result<(), surgeist_html::HtmlCurrentFocusChainError>
+impl core::default::Default for surgeist_html::HtmlCurrentFocusChainCursor
+pub fn surgeist_html::HtmlCurrentFocusChainCursor::default() -> Self
 pub struct surgeist_html::HtmlCurrentlyFocusedAreaCursor
 impl surgeist_html::HtmlCurrentlyFocusedAreaCursor
 pub const fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::action(&self) -> surgeist_html::HtmlCurrentlyFocusedAreaAction
@@ -4696,11 +4879,30 @@ pub fn surgeist_html::HtmlFloatingPointNumber::try_from(value: f64) -> core::res
 impl core::convert::TryFrom<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::HtmlSrcsetDensity
 pub type surgeist_html::HtmlSrcsetDensity::Error = surgeist_html::HtmlSrcsetDensityError
 pub fn surgeist_html::HtmlSrcsetDensity::try_from(value: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlFocusChainCursor
+impl surgeist_html::HtmlFocusChainCursor
+pub const fn surgeist_html::HtmlFocusChainCursor::action(&self) -> surgeist_html::HtmlFocusChainAction
+pub const fn surgeist_html::HtmlFocusChainCursor::new() -> Self
+pub fn surgeist_html::HtmlFocusChainCursor::reply(&mut self, reply: surgeist_html::HtmlFocusChainReply) -> core::result::Result<(), surgeist_html::HtmlFocusChainError>
+impl core::default::Default for surgeist_html::HtmlFocusChainCursor
+pub fn surgeist_html::HtmlFocusChainCursor::default() -> Self
 pub struct surgeist_html::HtmlFocusDelegateCursor
 impl surgeist_html::HtmlFocusDelegateCursor
 pub const fn surgeist_html::HtmlFocusDelegateCursor::action(&self) -> surgeist_html::HtmlFocusDelegateAction
 pub const fn surgeist_html::HtmlFocusDelegateCursor::new(target_kind: surgeist_html::HtmlFocusDelegateTargetKind) -> Self
 pub fn surgeist_html::HtmlFocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlFocusDelegateError>
+pub struct surgeist_html::HtmlFocusEventCursor
+impl surgeist_html::HtmlFocusEventCursor
+pub const fn surgeist_html::HtmlFocusEventCursor::action(&self) -> surgeist_html::HtmlFocusEventAction
+pub const fn surgeist_html::HtmlFocusEventCursor::new(target_kind: surgeist_html::HtmlFocusEventTargetKind) -> Self
+pub fn surgeist_html::HtmlFocusEventCursor::reply(&mut self, reply: surgeist_html::HtmlFocusEventReply) -> core::result::Result<(), surgeist_html::HtmlFocusEventError>
+pub struct surgeist_html::HtmlFocusUpdateCursor
+impl surgeist_html::HtmlFocusUpdateCursor
+pub const fn surgeist_html::HtmlFocusUpdateCursor::action(&self) -> surgeist_html::HtmlFocusUpdateAction
+pub const fn surgeist_html::HtmlFocusUpdateCursor::new() -> Self
+pub fn surgeist_html::HtmlFocusUpdateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusUpdateReply) -> core::result::Result<(), surgeist_html::HtmlFocusUpdateError>
+impl core::default::Default for surgeist_html::HtmlFocusUpdateCursor
+pub fn surgeist_html::HtmlFocusUpdateCursor::default() -> Self
 pub struct surgeist_html::HtmlFocusingCursor
 impl surgeist_html::HtmlFocusingCursor
 pub const fn surgeist_html::HtmlFocusingCursor::action(&self) -> surgeist_html::HtmlFocusingAction

@@ -151,14 +151,33 @@ the cursor adds no activity filter, native focus state or host routing.
 `HtmlGetFocusableAreaCursor` applies the first matching target-resolution clause,
 preserving image-map shape order, flat-tree region order, viewport and active
 Document results. Delegating shadow hosts use the actual current area and anchor,
-then the complete focus delegate with the original trigger. A known-null current
-area proceeds directly to delegation under the selected source interpretation.
+then the complete focus delegate with the original trigger. The actual
+current-area result role distinguishes null, a non-area Document and a designated
+area. Null and Document results proceed to delegation without an undefined anchor
+query; a viewport area keeps its legitimate Document anchor.
 
 `HtmlFocusingCursor` preserves resolution, optional fallback, content-Document
 replacement, actual anchor inertness and target equality in source order. It
 requires completed old/new chain construction and focus update before returning.
 Those called dependencies retain their own implementation and admission needs;
 the pure protocol supplies neither native focus effects nor host observations.
+
+`HtmlCurrentFocusChainCursor` composes current-area resolution and chain
+construction, preserving known-null versus unavailable observations.
+`HtmlFocusChainCursor` orders actual area, corresponding Area Element and anchor
+entries, then crosses each child Document through its own navigable container
+Element into the enclosing Document. A non-area Document never acquires an
+invented self-anchor. The adapter retains and qualifies identities
+and list storage; missing container evidence does not complete a shorter chain.
+
+`HtmlFocusUpdateCursor` trims shared chain tails, processes old entries forward,
+applies platform conventions, then processes new entries in reverse. It owns
+input-change guards, validity-before-change ordering, per-entry Document capture,
+changed-only Navigation flag and designation writes, exclusive event-target
+selection and exact related-target roles. `HtmlFocusEventCursor` selects the
+actual event view and FocusEvent metadata. Both require completed effects and
+authentic dispatch before advancing. They provide language protocols; the
+consumer owns native state, callbacks, eligibility, work and host routing.
 
 `autofocus_presence` consumes the actual Element name and one
 attribute. It admits the exact HTML, SVG and MathML namespace URIs, then

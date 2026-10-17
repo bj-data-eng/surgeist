@@ -6,6 +6,8 @@
 //! Omission uses the source default `other`; a supplied trigger is forwarded
 //! unchanged through existing focus-delegate and nested resolution calls.
 
+use crate::HtmlCurrentlyFocusedAreaOutcome;
+
 /// The exact source result's role. Actual objects remain adapter-owned: a shape,
 /// scroll region, viewport, Document, anchor and delegated area are distinct.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,7 +47,8 @@ pub enum HtmlGetFocusableAreaAction {
     CaptureContentActiveDocument,
     ReadDelegatingShadowHost,
     /// Complete the existing currently-focused-area algorithm for the actual
-    /// top-level traversable, retaining its actual nullable area result.
+    /// top-level traversable, retaining its exact Null, CandidateDocument or
+    /// CandidateFocusedArea result. A non-area Document has no area anchor.
     RunCurrentlyFocusedArea,
     /// Capture the actual DOM anchor of that nonnull returned area. Do not
     /// replace the returned area with an Element earlier in its child protocol.
@@ -68,7 +71,10 @@ pub enum HtmlGetFocusableAreaReply {
     NavigableContainer(bool),
     ContentNavigablePresent(bool),
     DelegatingShadowHost(bool),
-    CurrentlyFocusedAreaPresent(bool),
+    /// Exact result role of the completed current-area child. CandidateDocument
+    /// is not null and does not acquire a DOM anchor; a genuine viewport area
+    /// remains CandidateFocusedArea even when its actual anchor is a Document.
+    CurrentlyFocusedArea(HtmlCurrentlyFocusedAreaOutcome),
     ShadowIncludingInclusiveAncestor(bool),
     FocusDelegatePresent(bool),
     /// Selection/capture actually fulfilled by the original adapter.
@@ -157,14 +163,19 @@ impl HtmlGetFocusableAreaCursor {
                 A::RunCurrentlyFocusedArea
             }
             (A::ReadDelegatingShadowHost, R::DelegatingShadowHost(false)) => A::Complete(O::Null),
-            // Selected nullable-current-area interpretation: known null has no
-            // anchor/ancestor fast path, and proceeds to actual delegation.
-            (A::RunCurrentlyFocusedArea, R::CurrentlyFocusedAreaPresent(false)) => {
-                A::RunFocusDelegate
-            }
-            (A::RunCurrentlyFocusedArea, R::CurrentlyFocusedAreaPresent(true)) => {
-                A::CaptureCurrentAreaAnchor
-            }
+            // Only a genuine area result has the anchor required by this fast
+            // path. Null and a non-area Document both proceed to real delegation.
+            (
+                A::RunCurrentlyFocusedArea,
+                R::CurrentlyFocusedArea(
+                    HtmlCurrentlyFocusedAreaOutcome::Null
+                    | HtmlCurrentlyFocusedAreaOutcome::CandidateDocument,
+                ),
+            ) => A::RunFocusDelegate,
+            (
+                A::RunCurrentlyFocusedArea,
+                R::CurrentlyFocusedArea(HtmlCurrentlyFocusedAreaOutcome::CandidateFocusedArea),
+            ) => A::CaptureCurrentAreaAnchor,
             (A::CaptureCurrentAreaAnchor, R::Applied) => A::ReadShadowIncludingInclusiveAncestor,
             (
                 A::ReadShadowIncludingInclusiveAncestor,

@@ -1,12 +1,12 @@
 //! Independent literal traces from HTML877d raw60083–60110. Selection actions
 //! carry real adapter obligations; these pure tests do not supply geometry.
 use surgeist_html::{
-    HtmlGetFocusableAreaAction as A, HtmlGetFocusableAreaCursor as C,
-    HtmlGetFocusableAreaError as E, HtmlGetFocusableAreaOutcome as O,
-    HtmlGetFocusableAreaReply as R,
+    HtmlCurrentlyFocusedAreaOutcome as CurrentOutcome, HtmlGetFocusableAreaAction as A,
+    HtmlGetFocusableAreaCursor as C, HtmlGetFocusableAreaError as E,
+    HtmlGetFocusableAreaOutcome as O, HtmlGetFocusableAreaReply as R,
 };
 
-const REPLIES: [R; 21] = [
+const REPLIES: [R; 22] = [
     R::AreaWithFocusableShapes(false),
     R::AreaWithFocusableShapes(true),
     R::ElementWithFocusableScrollRegions(false),
@@ -21,8 +21,9 @@ const REPLIES: [R; 21] = [
     R::ContentNavigablePresent(true),
     R::DelegatingShadowHost(false),
     R::DelegatingShadowHost(true),
-    R::CurrentlyFocusedAreaPresent(false),
-    R::CurrentlyFocusedAreaPresent(true),
+    R::CurrentlyFocusedArea(CurrentOutcome::Null),
+    R::CurrentlyFocusedArea(CurrentOutcome::CandidateDocument),
+    R::CurrentlyFocusedArea(CurrentOutcome::CandidateFocusedArea),
     R::ShadowIncludingInclusiveAncestor(false),
     R::ShadowIncludingInclusiveAncestor(true),
     R::FocusDelegatePresent(false),
@@ -193,7 +194,7 @@ fn known_null_current_area_skips_anchor_queries_and_runs_real_delegate_for_eithe
         step(
             &mut c,
             A::RunCurrentlyFocusedArea,
-            R::CurrentlyFocusedAreaPresent(false),
+            R::CurrentlyFocusedArea(CurrentOutcome::Null),
         );
         step(
             &mut c,
@@ -209,7 +210,7 @@ fn actual_current_anchor_in_shadow_including_inclusive_ancestry_bypasses_delegat
     step(
         &mut c,
         A::RunCurrentlyFocusedArea,
-        R::CurrentlyFocusedAreaPresent(true),
+        R::CurrentlyFocusedArea(CurrentOutcome::CandidateFocusedArea),
     );
     step(&mut c, A::CaptureCurrentAreaAnchor, R::Applied);
     step(
@@ -226,7 +227,7 @@ fn current_anchor_outside_ancestry_runs_delegate_and_keeps_delegate_result_role(
         step(
             &mut c,
             A::RunCurrentlyFocusedArea,
-            R::CurrentlyFocusedAreaPresent(true),
+            R::CurrentlyFocusedArea(CurrentOutcome::CandidateFocusedArea),
         );
         step(&mut c, A::CaptureCurrentAreaAnchor, R::Applied);
         step(
@@ -258,10 +259,13 @@ fn genuine_existing_children_complete_before_parent_accepts_their_nullable_retur
     let mut current = CC::new();
     current.reply(CR::SystemFocus(false)).unwrap();
     assert_eq!(current.action(), CA::Complete(CO::Null));
+    let CA::Complete(current_result) = current.action() else {
+        panic!("the current-area child must actually complete")
+    };
     step(
         &mut parent,
         A::RunCurrentlyFocusedArea,
-        R::CurrentlyFocusedAreaPresent(false),
+        R::CurrentlyFocusedArea(current_result),
     );
     let waiting = parent;
     let mut delegate = DC::new(Kind::Other);
@@ -327,10 +331,197 @@ fn candidate_document_from_real_current_area_does_not_enter_area_anchor_projecti
 
     let mut parent = delegating_shadow();
     assert_eq!(parent.action(), A::RunCurrentlyFocusedArea);
-    let present = match current.action() {
-        CA::Complete(CO::CandidateDocument) => true,
+    let result = match current.action() {
+        CA::Complete(result @ CO::CandidateDocument) => result,
         other => panic!("expected the actual completed Document result: {other:?}"),
     };
-    parent.reply(R::CurrentlyFocusedAreaPresent(present)).unwrap();
+    parent.reply(R::CurrentlyFocusedArea(result)).unwrap();
     assert_ne!(parent.action(), A::CaptureCurrentAreaAnchor);
+}
+
+fn actual_current_result(has_designated_area: bool) -> CurrentOutcome {
+    use surgeist_html::{
+        HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
+        HtmlCurrentlyFocusedAreaReply as CR, HtmlFocusedAreaKind,
+    };
+    let mut current = CC::new();
+    current.reply(CR::SystemFocus(true)).unwrap();
+    assert_eq!(current.action(), CA::CaptureTraversableActiveDocument);
+    current.reply(CR::Applied).unwrap();
+    assert_eq!(current.action(), CA::ReadLoopFocusedArea);
+    current
+        .reply(CR::LoopFocusedArea(if has_designated_area {
+            HtmlFocusedAreaKind::OtherArea
+        } else {
+            HtmlFocusedAreaKind::Null
+        }))
+        .unwrap();
+    assert_eq!(current.action(), CA::ReadResultFocusedArea);
+    current
+        .reply(CR::ResultFocusedAreaPresent(has_designated_area))
+        .unwrap();
+    let CA::Complete(result) = current.action() else {
+        panic!("actual current-area child must return")
+    };
+    result
+}
+
+fn actual_delegate_result(autofocus_descendant: bool) -> bool {
+    use surgeist_html::{
+        HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
+        HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,
+        HtmlFocusDelegateAction as DA, HtmlFocusDelegateCandidate as Candidate,
+        HtmlFocusDelegateCursor as DC, HtmlFocusDelegateOutcome as DO,
+        HtmlFocusDelegateReply as DR, HtmlFocusDelegateRoot as Root,
+        HtmlFocusDelegateShadowRoot as Shadow, HtmlFocusDelegateTargetKind as Kind,
+        HtmlFocusTriggerKind as Trigger,
+    };
+    let mut delegate = DC::new(Kind::Other);
+    delegate
+        .reply(DR::ShadowRoot(Shadow::DelegatesFocus))
+        .unwrap();
+    assert_eq!(
+        delegate.action(),
+        DA::RunAutofocusDelegate {
+            root: Root::ShadowRoot
+        }
+    );
+    let mut auto = AC::new(Trigger::Other);
+    assert_eq!(auto.action(), AA::BeginDescendants);
+    auto.reply(AR::Applied).unwrap();
+    assert_eq!(auto.action(), AA::NextDescendant);
+    auto.reply(AR::DescendantPresent(autofocus_descendant))
+        .unwrap();
+    if autofocus_descendant {
+        assert_eq!(auto.action(), AA::ReadAutofocus);
+        auto.reply(AR::Autofocus(true)).unwrap();
+        assert_eq!(auto.action(), AA::ReadFocusableArea);
+        auto.reply(AR::FocusableArea(true)).unwrap();
+        assert_eq!(
+            auto.action(),
+            AA::Complete(AO::Candidate(Candidate::Descendant))
+        );
+    } else {
+        assert_eq!(auto.action(), AA::Complete(AO::Null));
+    }
+    let auto_present = match auto.action() {
+        AA::Complete(AO::Null) => false,
+        AA::Complete(AO::Candidate(_)) => true,
+        other => panic!("actual autofocus child must complete: {other:?}"),
+    };
+    delegate
+        .reply(DR::AutofocusDelegatePresent(auto_present))
+        .unwrap();
+    if !auto_present {
+        assert_eq!(
+            delegate.action(),
+            DA::BeginDescendants {
+                root: Root::ShadowRoot
+            }
+        );
+        delegate.reply(DR::Applied).unwrap();
+        assert_eq!(delegate.action(), DA::NextDescendant);
+        delegate.reply(DR::DescendantPresent(false)).unwrap();
+    }
+    match delegate.action() {
+        DA::Complete(DO::Null) => false,
+        DA::Complete(DO::AutofocusDelegate | DO::Candidate(_)) => true,
+        other => panic!("actual focus-delegate child must complete: {other:?}"),
+    }
+}
+
+#[test]
+fn current_document_result_runs_the_real_delegate_for_both_null_and_candidate_returns() {
+    for autofocus_descendant in [false, true] {
+        let result = actual_current_result(false);
+        assert_eq!(result, CurrentOutcome::CandidateDocument);
+        let mut parent = delegating_shadow();
+        step(
+            &mut parent,
+            A::RunCurrentlyFocusedArea,
+            R::CurrentlyFocusedArea(result),
+        );
+        assert_eq!(parent.action(), A::RunFocusDelegate);
+        let waiting = parent;
+        let present = actual_delegate_result(autofocus_descendant);
+        assert_eq!(present, autofocus_descendant);
+        assert_eq!(parent, waiting);
+        step(
+            &mut parent,
+            A::RunFocusDelegate,
+            R::FocusDelegatePresent(present),
+        );
+        complete(&mut parent, if present { O::Delegate } else { O::Null });
+    }
+}
+
+#[test]
+fn actual_area_and_viewport_with_document_anchor_still_project_their_real_anchors() {
+    // These are distinct retained area fixtures. The second is a viewport,
+    // whose Document anchor must not be confused with a bare Document result.
+    for anchor_is_element in [true, false] {
+        let result = actual_current_result(true);
+        assert_eq!(result, CurrentOutcome::CandidateFocusedArea);
+        let mut parent = delegating_shadow();
+        step(
+            &mut parent,
+            A::RunCurrentlyFocusedArea,
+            R::CurrentlyFocusedArea(result),
+        );
+        step(&mut parent, A::CaptureCurrentAreaAnchor, R::Applied);
+        // The original target can contain the Element anchor. An Element is
+        // not an inclusive ancestor of the viewport's Document anchor.
+        step(
+            &mut parent,
+            A::ReadShadowIncludingInclusiveAncestor,
+            R::ShadowIncludingInclusiveAncestor(anchor_is_element),
+        );
+        if anchor_is_element {
+            complete(&mut parent, O::CurrentAnchor);
+        } else {
+            let present = actual_delegate_result(false);
+            step(
+                &mut parent,
+                A::RunFocusDelegate,
+                R::FocusDelegatePresent(present),
+            );
+            complete(&mut parent, O::Null);
+        }
+    }
+}
+
+#[test]
+fn unavailable_current_child_is_not_a_null_or_document_reply_and_wrong_stage_preserves_wait() {
+    use surgeist_html::{
+        HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
+        HtmlCurrentlyFocusedAreaReply as CR,
+    };
+    let mut parent = delegating_shadow();
+    let waiting = parent;
+    let mut current = CC::new();
+    current.reply(CR::SystemFocus(true)).unwrap();
+    assert_eq!(current.action(), CA::CaptureTraversableActiveDocument);
+    // No actual active-Document evidence means the child supplies no reply.
+    assert_eq!(parent.action(), A::RunCurrentlyFocusedArea);
+    assert_eq!(parent, waiting);
+    assert_eq!(parent.reply(R::Applied), Err(E::WrongReply));
+    assert_eq!(
+        parent.reply(R::FocusDelegatePresent(false)),
+        Err(E::WrongReply)
+    );
+    assert_eq!(parent, waiting);
+
+    let mut other = before_shadow();
+    let before = other;
+    for result in [
+        CurrentOutcome::Null,
+        CurrentOutcome::CandidateDocument,
+        CurrentOutcome::CandidateFocusedArea,
+    ] {
+        assert_eq!(
+            other.reply(R::CurrentlyFocusedArea(result)),
+            Err(E::WrongReply)
+        );
+        assert_eq!(other, before);
+    }
 }

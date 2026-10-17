@@ -1078,12 +1078,15 @@ cover its documentation excerpts; no browser source is compiled or linked.
 
 ## Focus algorithm editorial gaps
 
-[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects five
+[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects six
 bounded interpretations of the pinned HTML focus algorithms:
 
-- A known-null currently focused area has no anchor for the delegating shadow
-  host's ancestor fast path. Continue with the actual focus delegate and original
-  trigger. Unknown or unrepresentable observations do not become null.
+- A known-null current-area result or an actual non-area Document result has no
+  anchor for the delegating shadow host's ancestor fast path. Skip anchor and
+  ancestor queries and continue with the actual focus delegate and original
+  trigger. Keep the Document result distinct from null and from a viewport area,
+  whose actual Document anchor remains valid. Unknown or unrepresentable
+  observations do not become a fallback result.
 - A known absent traversable or known-null currently focused area yields an empty
   current focus chain. Only a nonnull actual area enters the focus-chain algorithm.
 - For each reached new-chain focusable-area entry, establish its Document from
@@ -1101,6 +1104,13 @@ bounded interpretations of the pinned HTML focus algorithms:
   association, not a completed shorter chain. Validate the original child,
   parent, container, content-navigable and enclosing-Document relations; do not
   append a Navigable or skip the container entry.
+- In focus-chain, guard the optional anchor insertion by actual area membership.
+  After appending a non-area Document, do not query or invent a DOM anchor; take
+  its qualified navigable/container or stop branch. A shape still appends its
+  corresponding Area Element, and an actual area can append its distinct Element
+  anchor before continuing to the anchor's node Document. This admits a
+  current-area Document result as a chain start without admitting arbitrary
+  non-area Nodes or conflating that Document with its viewport.
 
 The [pinned browser evidence](webkit-focus-editorial-evidence--73aa6c89e2cb.md)
 corroborates per-Document state, separate Element/Window dispatch and the actual
