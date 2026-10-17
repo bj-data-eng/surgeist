@@ -105,6 +105,19 @@ resources, complete a suspended update or replace retained image history.
 queued toggle. It supplies values, not a DOM target, listener registry or event
 execution; Runtime owns the task tracker and real dispatch.
 
+`HtmlDialogCursor` orders Dialog methods and ordinary lifecycle hooks. Its
+requestClose protocol requires current open, connection and Document-activity
+observations, writes the actual nullable request operands and force-enable
+state, and resets that state after either normal watcher-request result.
+`HtmlCloseWatcherRequestCursor` owns the watcher's request and Close ordering:
+cancel runs within the running-cancel guard, genuine cancellation consumes
+history-action activation, and an uncanceled request rechecks current guards
+before destruction and the close action. A true result can be an early return;
+it does not establish that a Dialog closed. Consumers retain actual identities,
+state and invocation custody, dispatch events and complete effects before
+acknowledging them. These allocation-free protocols provide no native dispatcher,
+Window, activation storage or live DOM operation.
+
 `HtmlStyleUpdateCursor` owns the ordered remove/guard/CSP/create/blocking
 steps. Consumers acknowledge actual owner actions after completion; the cursor
 executes no CSSOM mutation or CSP interpretation. Exact type eligibility and

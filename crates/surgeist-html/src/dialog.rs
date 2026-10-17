@@ -5,8 +5,11 @@
 //! Synchronous dispatch, focus, watchers, popover algorithms and layer services
 //! remain real requirements. This producer grants no hosted Document capability.
 //! The bounded operations are nonmodal show, close, insertion/removal and open
-//! changes. showModal, requestClose and light-dismiss execution remain separate.
+//! changes, and standard null-source requestClose. showModal and light-dismiss
+//! execution remain separate.
+mod request;
 use crate::{HtmlClosedBy, HtmlClosedByState, KnownHtmlAttribute, Namespace};
+pub use request::*;
 
 /// Ordered partial observations for HTML's allow-focus steps. Unknown feature
 /// permission cannot be replaced by a known activation state.
@@ -94,7 +97,11 @@ impl HtmlDialogOpenChange {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogOperation {
     Show,
-    Close { result_present: bool },
+    /// Standard requestClose method; the adapter retains its actual nullable result.
+    RequestClose,
+    Close {
+        result_present: bool,
+    },
     Inserted,
     Removed,
     OpenChanged(HtmlDialogOpenChange),
@@ -153,6 +160,18 @@ pub enum HtmlDialogAction {
     ReadFullyActive,
     ReadConnected,
     ReadWatcherPresent,
+    /// Capture the asserted nonnull watcher. Absence violates the source
+    /// invariant; it cannot be acknowledged or treated as an early return.
+    CaptureCloseWatcher,
+    SetForceCloseWatcherEnabled(bool),
+    /// Write the actual nullable method argument, including null or empty text.
+    WriteRequestCloseReturnValue,
+    /// Write null for the standard method source.
+    WriteNullRequestCloseSource,
+    /// Run the captured watcher request through its actual owner to completion.
+    RequestWatcherClose {
+        require_history_action_activation: bool,
+    },
     ReadTopLayerContains,
     /// Retain the actual previous-focus identity locally when present.
     ReadPreviousFocusPresent,
@@ -230,6 +249,8 @@ pub enum HtmlDialogReply {
     PreviousFocusPresent(bool),
     FocusedAnchorInside(bool),
     EventCanceled(bool),
+    /// Normal return of the called watcher request, distinct from event dispatch.
+    WatcherRequestResult(bool),
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -271,6 +292,7 @@ impl HtmlDialogCursor {
         use HtmlDialogAction as A;
         let pending = match operation {
             HtmlDialogOperation::Show
+            | HtmlDialogOperation::RequestClose
             | HtmlDialogOperation::Close { .. }
             | HtmlDialogOperation::Removed => A::ReadOpen,
             HtmlDialogOperation::Inserted => A::ReadFullyActive,
@@ -336,6 +358,13 @@ impl HtmlDialogCursor {
                 cancelable: true,
                 source: HtmlDialogEventSource::Null,
             },
+            O::RequestClose => {
+                if open {
+                    A::ReadConnected
+                } else {
+                    Self::completed()
+                }
+            }
             O::Close { .. } if !open => Self::completed(),
             O::Close { .. } if self.after_dispatch => A::QueueToggle {
                 old: HtmlDialogState::Open,
@@ -464,9 +493,21 @@ impl HtmlDialogCursor {
                 }
             }
             (A::RestorePreviousFocusWithoutScrolling, R::Applied) => A::QueueClose,
+            (A::CaptureCloseWatcher, R::Applied) => A::SetForceCloseWatcherEnabled(true),
+            (A::SetForceCloseWatcherEnabled(true), R::Applied) => A::WriteRequestCloseReturnValue,
+            (A::WriteRequestCloseReturnValue, R::Applied) => A::WriteNullRequestCloseSource,
+            (A::WriteNullRequestCloseSource, R::Applied) => A::RequestWatcherClose {
+                require_history_action_activation: false,
+            },
+            (A::RequestWatcherClose { .. }, R::WatcherRequestResult(_)) => {
+                A::SetForceCloseWatcherEnabled(false)
+            }
+            (A::SetForceCloseWatcherEnabled(false), R::Applied) => Self::completed(),
             (A::ReadFullyActive, R::FullyActive(active)) => {
                 if !active {
                     Self::completed()
+                } else if matches!(self.operation, O::RequestClose) {
+                    A::CaptureCloseWatcher
                 } else if matches!(self.operation, O::Inserted) {
                     A::ReadOpen
                 } else {
@@ -476,7 +517,11 @@ impl HtmlDialogCursor {
             (A::ReadConnected, R::Connected(connected)) => {
                 let setup = matches!(self.operation, O::Inserted)
                     || matches!(self.operation, O::OpenChanged(change) if change.added());
-                if connected && setup {
+                if !connected {
+                    Self::completed()
+                } else if matches!(self.operation, O::RequestClose) {
+                    A::ReadFullyActive
+                } else if setup {
                     A::AddOpenDialog
                 } else {
                     Self::completed()
@@ -649,6 +694,22 @@ impl HtmlCloseWatcherState {
     }
     pub const fn running_cancel_action(self) -> bool {
         self.running_cancel_action
+    }
+    /// Begin only an actually reached cancel action. No drop-based reset occurs.
+    pub fn begin_cancel_action(&mut self) -> Result<(), HtmlCloseWatcherStateError> {
+        if self.running_cancel_action {
+            return Err(HtmlCloseWatcherStateError::AlreadyRunning);
+        }
+        self.running_cancel_action = true;
+        Ok(())
+    }
+    /// Finish only after the original cancel action has actually returned.
+    pub fn finish_cancel_action(&mut self) -> Result<(), HtmlCloseWatcherStateError> {
+        if !self.running_cancel_action {
+            return Err(HtmlCloseWatcherStateError::NotRunning);
+        }
+        self.running_cancel_action = false;
+        Ok(())
     }
 }
 

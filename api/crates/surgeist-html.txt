@@ -1892,6 +1892,45 @@ pub const fn surgeist_html::HtmlChildNavigablePresence::removal_requires_child_d
 pub enum surgeist_html::HtmlCloseWatcherPlacement
 pub surgeist_html::HtmlCloseWatcherPlacement::LastGroup
 pub surgeist_html::HtmlCloseWatcherPlacement::NewGroup
+pub enum surgeist_html::HtmlCloseWatcherRequestAction
+pub surgeist_html::HtmlCloseWatcherRequestAction::CaptureWindow
+pub surgeist_html::HtmlCloseWatcherRequestAction::Complete(bool)
+pub surgeist_html::HtmlCloseWatcherRequestAction::ConsumeHistoryActionActivation
+pub surgeist_html::HtmlCloseWatcherRequestAction::DestroyMembership
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadActive
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadEnabled
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadHistoryActionActivation
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadManagerGroups
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadRunningCancelAction
+pub surgeist_html::HtmlCloseWatcherRequestAction::ReadWindowFullyActive
+pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction
+pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction::can_prevent_close: bool
+pub surgeist_html::HtmlCloseWatcherRequestAction::RunCloseAction
+pub surgeist_html::HtmlCloseWatcherRequestAction::SetRunningCancelAction(bool)
+pub enum surgeist_html::HtmlCloseWatcherRequestError
+pub surgeist_html::HtmlCloseWatcherRequestError::NoncancelableActionPreventedClose
+pub surgeist_html::HtmlCloseWatcherRequestError::Terminal
+pub surgeist_html::HtmlCloseWatcherRequestError::WrongReply
+impl core::error::Error for surgeist_html::HtmlCloseWatcherRequestError
+impl core::fmt::Display for surgeist_html::HtmlCloseWatcherRequestError
+pub fn surgeist_html::HtmlCloseWatcherRequestError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlCloseWatcherRequestReply
+pub surgeist_html::HtmlCloseWatcherRequestReply::Active(bool)
+pub surgeist_html::HtmlCloseWatcherRequestReply::Applied
+pub surgeist_html::HtmlCloseWatcherRequestReply::CancelActionResult(bool)
+pub surgeist_html::HtmlCloseWatcherRequestReply::Enabled(bool)
+pub surgeist_html::HtmlCloseWatcherRequestReply::HistoryActionActivation(bool)
+pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups
+pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::allowed_groups: core::num::nonzero::NonZeroUsize
+pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::groups: usize
+pub surgeist_html::HtmlCloseWatcherRequestReply::RunningCancelAction(bool)
+pub surgeist_html::HtmlCloseWatcherRequestReply::WindowFullyActive(bool)
+pub enum surgeist_html::HtmlCloseWatcherStateError
+pub surgeist_html::HtmlCloseWatcherStateError::AlreadyRunning
+pub surgeist_html::HtmlCloseWatcherStateError::NotRunning
+impl core::error::Error for surgeist_html::HtmlCloseWatcherStateError
+impl core::fmt::Display for surgeist_html::HtmlCloseWatcherStateError
+pub fn surgeist_html::HtmlCloseWatcherStateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlClosedBy
 pub surgeist_html::HtmlClosedBy::Any
 pub surgeist_html::HtmlClosedBy::CloseRequest
@@ -2098,6 +2137,7 @@ pub const fn surgeist_html::HtmlDetailsState::as_str(self) -> &'static str
 pub enum surgeist_html::HtmlDialogAction
 pub surgeist_html::HtmlDialogAction::AddOpen
 pub surgeist_html::HtmlDialogAction::AddOpenDialog
+pub surgeist_html::HtmlDialogAction::CaptureCloseWatcher
 pub surgeist_html::HtmlDialogAction::CaptureNodeDocument
 pub surgeist_html::HtmlDialogAction::ClearCloseWatcher
 pub surgeist_html::HtmlDialogAction::ClearModal
@@ -2134,8 +2174,13 @@ pub surgeist_html::HtmlDialogAction::RemoveOpen
 pub surgeist_html::HtmlDialogAction::RemoveOpenDialog
 pub surgeist_html::HtmlDialogAction::RemoveTopLayerImmediately
 pub surgeist_html::HtmlDialogAction::RequestTopLayerRemoval
+pub surgeist_html::HtmlDialogAction::RequestWatcherClose
+pub surgeist_html::HtmlDialogAction::RequestWatcherClose::require_history_action_activation: bool
 pub surgeist_html::HtmlDialogAction::RestorePreviousFocusWithoutScrolling
 pub surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
+pub surgeist_html::HtmlDialogAction::SetForceCloseWatcherEnabled(bool)
+pub surgeist_html::HtmlDialogAction::WriteNullRequestCloseSource
+pub surgeist_html::HtmlDialogAction::WriteRequestCloseReturnValue
 pub surgeist_html::HtmlDialogAction::WriteReturnValue
 pub enum surgeist_html::HtmlDialogCursorError
 pub surgeist_html::HtmlDialogCursorError::Terminal
@@ -2152,6 +2197,7 @@ pub surgeist_html::HtmlDialogOperation::Close::result_present: bool
 pub surgeist_html::HtmlDialogOperation::Inserted
 pub surgeist_html::HtmlDialogOperation::OpenChanged(surgeist_html::HtmlDialogOpenChange)
 pub surgeist_html::HtmlDialogOperation::Removed
+pub surgeist_html::HtmlDialogOperation::RequestClose
 pub surgeist_html::HtmlDialogOperation::Show
 pub enum surgeist_html::HtmlDialogOutcome
 pub surgeist_html::HtmlDialogOutcome::Completed
@@ -2167,6 +2213,7 @@ pub surgeist_html::HtmlDialogReply::Open(bool)
 pub surgeist_html::HtmlDialogReply::PreviousFocusPresent(bool)
 pub surgeist_html::HtmlDialogReply::TopLayerContains(bool)
 pub surgeist_html::HtmlDialogReply::WatcherPresent(bool)
+pub surgeist_html::HtmlDialogReply::WatcherRequestResult(bool)
 pub enum surgeist_html::HtmlDialogState
 pub surgeist_html::HtmlDialogState::Closed
 pub surgeist_html::HtmlDialogState::Open
@@ -4121,8 +4168,15 @@ pub const fn surgeist_html::HtmlCloseWatcherManager::allowed_groups(self) -> usi
 pub const fn surgeist_html::HtmlCloseWatcherManager::establishment(self, groups: usize) -> surgeist_html::HtmlCloseWatcherPlacement
 pub const fn surgeist_html::HtmlCloseWatcherManager::fresh() -> Self
 pub const fn surgeist_html::HtmlCloseWatcherManager::next_interaction_allows_new_group(self) -> bool
+pub struct surgeist_html::HtmlCloseWatcherRequestCursor
+impl surgeist_html::HtmlCloseWatcherRequestCursor
+pub const fn surgeist_html::HtmlCloseWatcherRequestCursor::action(&self) -> surgeist_html::HtmlCloseWatcherRequestAction
+pub const fn surgeist_html::HtmlCloseWatcherRequestCursor::new(require_history_action_activation: bool) -> Self
+pub fn surgeist_html::HtmlCloseWatcherRequestCursor::reply(&mut self, reply: surgeist_html::HtmlCloseWatcherRequestReply) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherRequestError>
 pub struct surgeist_html::HtmlCloseWatcherState
 impl surgeist_html::HtmlCloseWatcherState
+pub fn surgeist_html::HtmlCloseWatcherState::begin_cancel_action(&mut self) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherStateError>
+pub fn surgeist_html::HtmlCloseWatcherState::finish_cancel_action(&mut self) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherStateError>
 pub const fn surgeist_html::HtmlCloseWatcherState::fresh() -> Self
 pub const fn surgeist_html::HtmlCloseWatcherState::running_cancel_action(self) -> bool
 pub struct surgeist_html::HtmlClosedElementState
