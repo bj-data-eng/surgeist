@@ -242,7 +242,7 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
     assert!(receipt.failures().is_empty());
     let next = pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     assert_eq!(next.operation(), event.operation());
     assert_eq!(next.subject(), subject);
@@ -331,7 +331,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     );
     pending_action(
         resume(&mut session, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     let accepted = session.snapshot();
     let task = session
@@ -344,7 +344,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     assert!(resume(&mut session, event.operation(), Some(&conflict)).is_err());
     pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     assert_eq!(session.snapshot().stamp(), accepted.stamp());
     assert_eq!(
@@ -404,7 +404,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     let after = session.snapshot();
     assert_eq!(

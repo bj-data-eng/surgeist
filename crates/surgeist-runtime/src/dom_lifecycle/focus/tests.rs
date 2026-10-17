@@ -278,7 +278,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             after_progress,
             "accepted retained result must not resample"
         );
-        let next = request(&mut lease, HtmlDialogAction::CaptureNodeDocument);
+        let next = request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps);
         assert_eq!(next.subject(), subject);
         assert_eq!(
             lease.snapshot().stamp(),
@@ -297,7 +297,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(lease.snapshot().stamp(), basis);
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
             next
         );
         assert_eq!(
@@ -495,7 +495,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
         assert_eq!(owner.borrow().work - before, 3);
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             original.operation()
         );
     }
@@ -597,7 +597,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
             );
         }
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             original.operation()
         );
         // The real temporary formation released its debit after transfer. This
@@ -705,7 +705,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(owner.borrow().work, work);
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             original.operation()
         );
     }
@@ -762,7 +762,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
     );
     assert_eq!(owner.borrow().work, work);
     assert_eq!(
-        request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+        request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
         original.operation()
     );
 }

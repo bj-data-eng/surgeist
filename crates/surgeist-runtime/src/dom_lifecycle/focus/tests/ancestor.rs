@@ -297,7 +297,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
             );
         }
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             child.operation()
         );
     }
@@ -408,7 +408,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
             );
         }
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             child.operation()
         );
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
@@ -580,7 +580,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
                 .unwrap()
         );
         assert_eq!(
-            request(&mut lease, HtmlDialogAction::CaptureNodeDocument).operation(),
+            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
             child.operation()
         );
         assert_eq!(lease.snapshot().stamp(), basis);

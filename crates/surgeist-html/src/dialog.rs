@@ -153,7 +153,7 @@ pub enum HtmlDialogAction {
     RememberFocusedElement,
     /// Retain the current node Document as show's local `document`.
     CaptureNodeDocument,
-    /// Find topmost popover ancestor of subject with source null/fullscreen=false;
+    /// Find topmost popover ancestor of subject with source null/isPopover=false;
     /// retain its actual endpoint for the next action.
     FindTopmostPopoverAncestor,
     /// Use the captured show Document and endpoint, even after nested reentry.

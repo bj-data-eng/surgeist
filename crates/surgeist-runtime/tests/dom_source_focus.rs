@@ -201,7 +201,7 @@ fn pending_action(
     }
 }
 #[test]
-fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_document_capture() {
+fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_focusing() {
     let mut session = session();
     let subject = native_dialog(&mut session);
     assert_eq!(session.snapshot().relevant_global(subject).unwrap(), None);
@@ -220,7 +220,7 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_documen
     assert!(receipt.failures().is_empty());
     let next = pending_action(
         resume(&mut session, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     assert_eq!(next.subject(), subject);
     assert_eq!(next.operation(), event.operation());
@@ -249,7 +249,7 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_documen
     drop(scope);
     pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     assert_eq!(session.snapshot().stamp(), after.stamp());
     assert_eq!(
@@ -269,7 +269,7 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
     dispatch(&mut session, &event);
     pending_action(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
     let after = session.snapshot();
     let dialog = after.node(subject).unwrap().as_dialog().unwrap();
@@ -391,7 +391,7 @@ fn foreign_and_conflicting_host_permissions_preserve_the_original_operation() {
     assert_eq!(current.snapshot().stamp(), before.stamp());
     pending_action(
         resume(&mut current, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogAction::CaptureNodeDocument,
+        HtmlDialogAction::RunDialogFocusingSteps,
     );
 }
 
@@ -456,7 +456,7 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         assert!(receipt.failures().is_empty());
         assert!(context.adopted.unwrap().is_ok());
         let expected = if original_headless {
-            HtmlDialogAction::CaptureNodeDocument
+            HtmlDialogAction::RunDialogFocusingSteps
         } else {
             HtmlDialogAction::RememberFocusedElement
         };
@@ -643,7 +643,7 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
         assert_eq!(inner.parent_operation(), Some(outer.operation()));
         dispatch(&mut session, &inner);
         let expected = if child_headless == Some(true) {
-            HtmlDialogAction::CaptureNodeDocument
+            HtmlDialogAction::RunDialogFocusingSteps
         } else {
             HtmlDialogAction::RememberFocusedElement
         };

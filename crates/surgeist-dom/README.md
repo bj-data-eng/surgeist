@@ -1016,7 +1016,7 @@ operation/action/occurrence-qualified observation against the actual canonical
 basis and original live Host identity. Runtime's sealed headless Host can attest known
 absence; missing or unsupported observations leave the request pending. Accepted
 absence writes null to the shared common HTML state and acknowledges the cursor
-once, before yielding CaptureNodeDocument. Retained publication custody survives
+once. Retained publication custody survives
 refusal and retry without sampling again. An already-null slot remains a
 semantic no-op. No current positive focused-Element producer or arbitrary DOM
 focus setter is exposed. Inactivity, no Global and surface selection alone
@@ -1025,13 +1025,22 @@ lifetime, so unrelated issuer progress does not invalidate it. Actual Host
 retirement/reuse, disposed authority or a stale canonical basis still refuses.
 Future mutable focus adapters require their actual source and scope revisions.
 
+Show then captures the receiver's current node-Document in its original
+continuation. When the ancestry query's then-current Document has a known empty
+raw top layer, the Auto and Hint popover lists are empty and the endpoint is
+null. Hide rechecks the captured Document's exact identity and known empty
+state before advancing to RunDialogFocusingSteps. An unavailable or nonempty
+raw layer leaves the corresponding popover action pending. These checks use
+canonical Document state independently of the Host's headless focus proof;
+they perform no popover dispatch or focus movement.
+
 Open removal and source-required tree cleanup destroy the actual watcher before
 clearing the canonical association. This cleanup remains available after hosted
 execution retirement, which leaves the surviving Dialog and its original Window
 custody intact. Retries retain the original receipt without repeating manager
 effects. Queued delivery cannot bypass an unfinished synchronous tail. This
 bounded entry does not complete positive Show, Close, modal, focus, request-close,
-platform close requests or popover processing.
+platform close requests or general popover processing.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

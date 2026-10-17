@@ -130,7 +130,7 @@ therefore establish that no Element is focused. Ordinary Hosts have no focus
 observation yet. Native Window focus, UiSurface selections, inactivity and
 missing hosting are not substitutes for this proof. A headless entry's known
 absence writes null to the canonical common HTML state through the original
-Source receipt, then Show waits at CaptureNodeDocument. Refused acceptance or
+Source receipt. Refused acceptance or
 publication retains the observed result without sampling again. Saving null
 over an already-null slot creates no artificial DOM revision. This observation
 supplies neither a positive focused Element nor focus movement. Exact live
@@ -138,6 +138,13 @@ issuer/Host identity and the enforced lifetime restriction qualify this producer
 unrelated issuer progress does not invalidate its immutable absence fact. A
 retired/reused Host, disposed authority or stale canonical basis still refuses.
 Future mutable adapters must validate their actual source and scope revisions.
+
+The following Document capture and popover steps run in DOM's original Source
+continuation. A known empty canonical raw top layer establishes empty Auto and
+Hint lists; DOM retains the actual captured Document and null endpoint, then
+rechecks that Document before completing the empty hide step. Such Show paths
+wait at RunDialogFocusingSteps. Unknown or nonempty state retains its precise
+popover wait. Headlessness alone supplies no top-layer evidence.
 
 Each native Agent owns its Window records separately from execution Globals.
 The Window manager retains actual ordered watcher groups and Dialog-bound action

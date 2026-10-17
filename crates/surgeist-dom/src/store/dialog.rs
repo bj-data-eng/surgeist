@@ -10,6 +10,7 @@ use surgeist_html::{
     HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
     HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
 };
+mod empty_popovers;
 
 #[derive(Clone, Copy)]
 pub(super) enum ShowState {
@@ -22,6 +23,8 @@ pub(super) struct ShowFrame {
     pub cursor: HtmlDialogCursor,
     pub state: ShowState,
     pub invocation: source::Invocation,
+    pub captured_document: Option<DocumentId>,
+    pub popover_endpoint: Option<NodeId>,
 }
 #[derive(Clone, Copy)]
 pub(super) struct HookFrame {
@@ -50,6 +53,8 @@ impl Draft {
             cursor: HtmlDialogCursor::new(Operation::Show),
             state: ShowState::Ready,
             invocation: source::Invocation::Unissued,
+            captured_document: None,
+            popover_endpoint: None,
         });
         if matches!(frame.state, ShowState::AwaitingOpenHooks) {
             self.run_effects(limits, cancel)?;
@@ -84,6 +89,40 @@ impl Draft {
                     self.set_attribute(key, None, &name, &value, limits, cancel)?;
                     self.run_effects(limits, cancel)?;
                     frame.state = ShowState::Ready;
+                    Reply::Applied
+                }
+                Action::CaptureNodeDocument => {
+                    frame.captured_document = Some(self.dialog_show_node_document(key, cancel)?);
+                    frame.popover_endpoint = None;
+                    Reply::Applied
+                }
+                Action::FindTopmostPopoverAncestor => {
+                    // This algorithm reads the receiver's then-current Document,
+                    // independently of the show-local Document captured above.
+                    let document = self.dialog_show_node_document(key, cancel)?;
+                    if !self.dialog_show_known_empty_top_layer(document, cancel)? {
+                        self.dialog_show = Some(frame);
+                        return Err(DomError::DialogProcessingUnavailable { action });
+                    }
+                    frame.popover_endpoint = None;
+                    Reply::Applied
+                }
+                Action::HidePopoversUntil {
+                    focus_previous_element: false,
+                    fire_events: true,
+                } => {
+                    let Some(document) = frame.captured_document else {
+                        self.dialog_show = Some(frame);
+                        return Err(DomError::DialogProcessingUnavailable { action });
+                    };
+                    if frame.popover_endpoint.is_some()
+                        || !self.dialog_show_known_empty_top_layer(document, cancel)?
+                    {
+                        self.dialog_show = Some(frame);
+                        return Err(DomError::DialogProcessingUnavailable { action });
+                    }
+                    // The captured Document's Hint filter is empty, then its
+                    // Auto filter is empty. Neither loop has an item to hide.
                     Reply::Applied
                 }
                 Action::FireBeforeToggle { .. } => {
