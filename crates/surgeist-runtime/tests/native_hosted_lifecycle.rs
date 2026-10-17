@@ -2009,6 +2009,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
             task,
             receipt,
             displaced_owner: None,
+            dialog_toggle_disposition: None,
         } => {
             assert_eq!(task.id(), queued.id());
             assert_eq!(task.queue_association(), queued.queue_association());

@@ -372,8 +372,14 @@ fn run(
         DomElementTaskProgress::Complete {
             task,
             receipt,
+            dialog_toggle_disposition,
             displaced_owner,
         } => {
+            assert_eq!(
+                dialog_toggle_disposition,
+                task.dialog_toggle()
+                    .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
+            );
             assert!(displaced_owner.is_none());
             assert_eq!(receipt.original_target(), task.id().target());
             assert_eq!(
@@ -1683,12 +1689,14 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             let DomElementTaskProgress::Complete {
                 task,
                 receipt,
+                dialog_toggle_disposition,
                 displaced_owner,
             } = progress
             else {
                 panic!("started plain Close must complete its authentic receipt: {progress:?}");
             };
             assert_eq!(task, close);
+            assert_eq!(dialog_toggle_disposition, None);
             assert!(displaced_owner.is_none());
             assert_eq!(receipt.original_target(), subject);
             assert_eq!(receipt.event_type(), DomEventType::Close);
@@ -1774,3 +1782,9 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
         ));
     }
 }
+
+#[path = "dom_source_close/toggle_reentry.rs"]
+mod toggle_reentry;
+
+#[path = "dom_source_close/toggle_cleanup.rs"]
+mod toggle_cleanup;

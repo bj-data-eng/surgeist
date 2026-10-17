@@ -177,7 +177,16 @@ fn complete(
     )
     .unwrap()
     {
-        DomElementTaskProgress::Complete { task, receipt, .. } => {
+        DomElementTaskProgress::Complete {
+            task,
+            receipt,
+            dialog_toggle_disposition,
+            ..
+        } => {
+            assert_eq!(
+                dialog_toggle_disposition, None,
+                "Details has no Dialog cleanup result"
+            );
             assert!(
                 receipt.failures().is_empty(),
                 "positive fixture listener failed: {:?}",

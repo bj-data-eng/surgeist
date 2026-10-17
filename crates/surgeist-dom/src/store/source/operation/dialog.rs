@@ -1139,6 +1139,7 @@ impl DomSourceLease<'_> {
     fn finish_dialog_noop(
         &mut self,
         canceled_operation: bool,
+        dialog_toggle_disposition: Option<crate::DomDialogToggleTaskDisposition>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
         let operation = self
@@ -1178,6 +1179,7 @@ impl DomSourceLease<'_> {
             cancelled: canceled_operation || operation.cancelled,
             published: Vec::new(),
             installation: None,
+            dialog_toggle_disposition,
         });
         observation.request.work.stage.store(4, Ordering::Relaxed);
         self.complete = true;
@@ -1240,7 +1242,7 @@ impl DomSourceLease<'_> {
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
         if observation.request.kind() == DomSourceEventKind::Close {
-            return self.finish_dialog_noop(false, cancel);
+            return self.finish_dialog_noop(false, None, cancel);
         }
         let subject = observation.request.subject();
         self.dom.source_event_step(&observation.request, cancel)?;
@@ -1249,7 +1251,11 @@ impl DomSourceLease<'_> {
                 .dispatch_custody_association(&observation.receiver, 0, subject)?,
             crate::DomDispatchAssociation::Retired(_)
         ) {
-            return self.finish_dialog_noop(false, cancel);
+            return self.finish_dialog_noop(
+                false,
+                Some(crate::DomDialogToggleTaskDisposition::TargetRetiredDuringDispatch),
+                cancel,
+            );
         }
         self.rebase_dialog_observation(None, cancel)
     }
@@ -1271,7 +1277,7 @@ impl DomSourceLease<'_> {
             && operation.cancelled
             && observation.request.work.stage.load(Ordering::Relaxed) == 0
         {
-            return self.finish_dialog_noop(true, cancel);
+            return self.finish_dialog_noop(true, None, cancel);
         }
         if observation.accepted.is_none() {
             return Ok(DomSourceProgress::Request(DomSourceRequest::Event(
@@ -1315,7 +1321,7 @@ impl DomSourceLease<'_> {
         let action = frame.cursor.action();
         match action {
             HtmlDialogAction::Complete(HtmlDialogOutcome::Completed) => {
-                return self.finish_dialog_noop(false, cancel);
+                return self.finish_dialog_noop(false, None, cancel);
             }
             HtmlDialogAction::Complete(HtmlDialogOutcome::InvalidState) => {
                 return Err(DomError::DialogInvalidState);
@@ -1539,3 +1545,6 @@ mod close_tests;
 
 #[cfg(test)]
 mod dispatch_hosted_read_tests;
+
+#[cfg(test)]
+mod task_disposition_tests;

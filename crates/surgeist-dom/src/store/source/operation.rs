@@ -1795,6 +1795,7 @@ impl DomSourceLease<'_> {
                 published,
                 commit,
                 installation: None,
+                dialog_toggle_disposition: None,
             }));
         }
         if op.child.as_ref().is_some_and(hosted::Child::returned) {
@@ -2232,6 +2233,16 @@ impl DomSourceLease<'_> {
                             published: std::mem::take(&mut op.historical),
                             commit,
                             installation,
+                            // A task enters this Segment only after its actual
+                            // accepted observation rebases through tracker clear.
+                            // Retired targets and pre-dispatch cancellation finish
+                            // directly from Observed, without reaching this path.
+                            dialog_toggle_disposition: match op.commands {
+                                OperationRoot::DialogTask(crate::DomDialogTaskInfo::Toggle(_)) => {
+                                    Some(crate::DomDialogToggleTaskDisposition::TrackerCleared)
+                                }
+                                _ => None,
+                            },
                         }));
                     }
                 }

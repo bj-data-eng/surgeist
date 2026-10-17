@@ -28,6 +28,11 @@ hosted Documents. One element-task owner retains both DOM-manipulation and
 user-interaction work, with explicit source selection and shared finite limits.
 Toggle tasks coalesce through their family trackers; Close notifications are
 independent user-interaction tasks without a toggle tracker or coalescing.
+Completed Dialog toggles report `TrackerCleared` or
+`TargetRetiredDuringDispatch` through `dialog_toggle_disposition` beside the
+actual dispatch receipt. Clearing a callback's replacement tracker leaves its
+queued task intact. Cleanup retries retain the original result without replaying
+listeners. Other task families have no Dialog toggle disposition.
 
 Nonmodal Show queues its actual toggle, publishes `open=""` through ordinary
 hooks, and consumes qualified focus and popover observations. The sealed headless

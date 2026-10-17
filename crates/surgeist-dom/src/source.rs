@@ -175,6 +175,14 @@ pub enum DomSourceProgress {
     Request(DomSourceRequest),
     Complete(DomSourceCompletion),
 }
+/// Completed source-owned cleanup after an actual queued Dialog Toggle dispatch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDialogToggleTaskDisposition {
+    /// The unconditional tracker-clear step completed on the surviving Dialog.
+    TrackerCleared,
+    /// The exact target retired during dispatch, so no tracker write occurred.
+    TargetRetiredDuringDispatch,
+}
 #[derive(Debug)]
 pub struct DomSourceCompletion {
     pub(crate) operation: DomSourceOperationId,
@@ -182,8 +190,16 @@ pub struct DomSourceCompletion {
     pub(crate) cancelled: bool,
     pub(crate) published: Vec<Option<NodeId>>,
     pub(crate) installation: Option<crate::DomNativeHtmlInstallation>,
+    pub(crate) dialog_toggle_disposition: Option<DomDialogToggleTaskDisposition>,
 }
 impl DomSourceCompletion {
+    /// Completed post-dispatch Toggle cleanup. `None` means another operation
+    /// or cancellation before dispatch; it never means an unknown serviced
+    /// Toggle outcome. Cancellation requested after dispatch does not suppress
+    /// the actual cleanup disposition.
+    pub const fn dialog_toggle_disposition(&self) -> Option<DomDialogToggleTaskDisposition> {
+        self.dialog_toggle_disposition
+    }
     pub fn operation(&self) -> DomSourceOperationId {
         self.operation
     }

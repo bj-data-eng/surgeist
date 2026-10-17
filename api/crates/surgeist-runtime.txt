@@ -49,6 +49,7 @@ pub fn surgeist_runtime::DomElementTask::queue_association(self) -> core::option
 pub fn surgeist_runtime::DomElementTask::source(self) -> surgeist_dom::element_tasks::DomElementTaskSourceKind
 pub enum surgeist_runtime::DomElementTaskProgress
 pub surgeist_runtime::DomElementTaskProgress::Complete
+pub surgeist_runtime::DomElementTaskProgress::Complete::dialog_toggle_disposition: core::option::Option<surgeist_dom::source::DomDialogToggleTaskDisposition>
 pub surgeist_runtime::DomElementTaskProgress::Complete::displaced_owner: core::option::Option<surgeist_runtime::DomElementTaskRuntime>
 pub surgeist_runtime::DomElementTaskProgress::Complete::receipt: surgeist_runtime::DomEventDispatchReceipt
 pub surgeist_runtime::DomElementTaskProgress::Complete::task: surgeist_runtime::DomElementTask

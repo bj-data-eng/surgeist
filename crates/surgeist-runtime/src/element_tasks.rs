@@ -207,6 +207,8 @@ pub enum DomElementTaskProgress {
         task: DomElementTask,
         /// Actual shared-dispatch delivery and listener failure evidence.
         receipt: DomEventDispatchReceipt,
+        /// Source-produced post-dispatch Dialog Toggle cleanup, when applicable.
+        dialog_toggle_disposition: Option<surgeist_dom::DomDialogToggleTaskDisposition>,
         /// Original bank when a callback replaced the context's coordinator.
         /// Retains other queued work even if the callback dropped its old handle.
         displaced_owner: Option<DomElementTaskRuntime>,
@@ -359,6 +361,7 @@ struct Task {
     permit: Option<surgeist_dom::DomSourceEventDispatchPermit>,
     event_publication: Option<surgeist_dom::DomSourceEventPublication>,
     event_accepted: bool,
+    dialog_toggle_disposition: Option<surgeist_dom::DomDialogToggleTaskDisposition>,
 }
 impl Task {
     fn plan(&self) -> Plan {
@@ -938,6 +941,7 @@ impl ElementTaskState {
                     permit: None,
                     event_publication: None,
                     event_accepted: false,
+                    dialog_toggle_disposition: None,
                 });
             }
         }
@@ -1355,7 +1359,21 @@ impl ElementTaskState {
             .advance(cancel)
             .map_err(DomElementTaskRuntimeError::Dom)?
         {
-            surgeist_dom::DomSourceProgress::Complete(_) => {
+            surgeist_dom::DomSourceProgress::Complete(completion) => {
+                let disposition = completion.dialog_toggle_disposition();
+                if completion.operation() != operation
+                    || match task.value {
+                        DomElementTask::DialogToggle(_) => disposition.is_none(),
+                        DomElementTask::DialogClose(_) => disposition.is_some(),
+                        DomElementTask::DetailsToggle(_) => true,
+                    }
+                {
+                    return Err(DomElementTaskRuntimeError::Binding);
+                }
+                // This original row retains both authentic outputs through the
+                // fallible native checkpoint. A retry cannot redispatch or infer
+                // cleanup from a later canonical snapshot.
+                task.dialog_toggle_disposition = disposition;
                 task.task_operation = None;
                 // The real canonical root has released its EventWork debit.
                 // Keep no private request backing across a later checkpoint
@@ -1558,6 +1576,7 @@ impl DomElementTaskRuntime {
                     Ok(DomElementTaskProgress::Complete {
                         task: value,
                         receipt,
+                        dialog_toggle_disposition: task.dialog_toggle_disposition,
                         displaced_owner: displaced.then(|| Self {
                             state: Rc::downgrade(&state),
                         }),

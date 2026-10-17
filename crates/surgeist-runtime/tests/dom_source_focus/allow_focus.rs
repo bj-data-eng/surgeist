@@ -551,6 +551,8 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         task: delivered_task,
         receipt,
         displaced_owner,
+        dialog_toggle_disposition:
+            Some(surgeist_dom::DomDialogToggleTaskDisposition::TrackerCleared),
     } = delivered
     else {
         panic!(

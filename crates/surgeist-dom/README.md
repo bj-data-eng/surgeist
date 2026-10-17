@@ -1215,8 +1215,13 @@ Dialog toggles use the DOM-manipulation task source and its tracker. Close
 notifications are separate user-interaction tasks, with no toggle tracker or
 coalescing. Runtime's one element-task owner selects the actual source explicitly;
 both preserve the queued target and original Global/Document association.
-Successful Toggle dispatch clears the surviving Dialog's current tracker;
-Close dispatch does not clear it or repeat method effects. Real receiver
+Successful Toggle dispatch clears the surviving Dialog's current tracker,
+including a replacement installed by a callback, without canceling that queued
+replacement. `DomSourceCompletion::dialog_toggle_disposition` reports
+`TrackerCleared` or `TargetRetiredDuringDispatch` from the actual cleanup branch.
+Cancellation before dispatch and other Source operations return no Toggle
+disposition; a serviced Toggle never substitutes absence for its outcome.
+Close dispatch does not clear the tracker or repeat method effects. Real receiver
 retirement during beforetoggle preserves the started dispatcher and authentic
 receipt, then yields `SourceReceiverRetired` at ReadOpen rather than a synthetic
 absent-open return. Internal Close callers with nonnull source, complete modal execution,

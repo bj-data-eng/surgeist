@@ -334,6 +334,16 @@ the newer queued task. Close dispatch performs no toggle-tracker write and
 replays none of the initiating method's effects. A retired target never redirects
 cleanup to a replacement generation.
 
+For Dialog toggles, `DomElementTaskProgress::Complete` pairs the actual receipt
+with `dialog_toggle_disposition`: `TrackerCleared` means canonical cleanup cleared
+the surviving target's tracker; `TargetRetiredDuringDispatch` means cleanup found
+the exact target retired and performed no write to it. This result comes from
+the original DOM Source operation. The task owner retains it with the receipt
+across a later checkpoint refusal, so retry preserves both without replaying
+listeners or inferring a new outcome from a later snapshot. Close and Details
+completion carry no Dialog toggle disposition. Retirement before dispatch retains
+the separate `SkippedTargetDestroyed` outcome and supplies no delivery receipt.
+
 The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus
 supplied-empty result through the original method continuation. Initial absent

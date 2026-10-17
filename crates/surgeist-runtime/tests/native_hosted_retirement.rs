@@ -196,6 +196,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
         task,
         receipt,
         displaced_owner: None,
+        dialog_toggle_disposition: None,
     } = progress
     else {
         panic!("started dispatch must deliver its retained exact target and finish: {progress:?}")
@@ -423,6 +424,7 @@ fn assert_complete(progress: DomElementTaskProgress, queued: DomElementTask, cal
             task,
             receipt,
             displaced_owner: None,
+            dialog_toggle_disposition: None,
         } => {
             assert_eq!(task, queued);
             assert_eq!(receipt.callbacks(), callbacks);
