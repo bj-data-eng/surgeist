@@ -2988,6 +2988,266 @@ mod tests {
         assert_eq!(receipt.revision(), &historical);
     }
     #[test]
+    fn unacknowledged_cssom_commit_survives_execution_drop_and_whole_session_transfer() {
+        let cancel = AtomicBool::new(false);
+        let (mut session, document) = bound_dispatch_session();
+        let target = append_style(&mut session, document, None);
+        let mut context = Context {
+            styles: session.style_execution(),
+            source: session.source_execution(),
+            events: Vec::new(),
+        };
+        let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+            registrations: 4,
+            pending_events: 2,
+            nested_dispatches: 2,
+        })
+        .unwrap();
+        dispatcher
+            .add_listener(
+                &session.dom(),
+                target,
+                DomEventType::Load,
+                DomEventCallback::new(|_, _, context: &mut Context, event| {
+                    context.events.push((
+                        event.target().unwrap(),
+                        event.current_target().unwrap().node().unwrap(),
+                    ));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let DomStyleNetworkingProgress::Complete { receipt, .. } = DomStyleRuntime::run_networking(
+            &mut session.dom(),
+            &mut dispatcher,
+            &mut context,
+            dispatch_limits(),
+            &cancel,
+        )
+        .unwrap() else {
+            panic!("the original real Load must finish before the disabled edit");
+        };
+        assert_eq!(receipt.callbacks(), 1);
+        assert_eq!(context.events, [(target, target)]);
+        drop(context);
+        let styles = session.style_execution();
+        let before_dom = session.snapshot();
+        let before = styles.snapshot(document).unwrap().unwrap();
+        let sheet = before.sheets()[0].clone();
+        assert!(!before.sheet(&sheet).unwrap().inputs().disabled);
+        let weak_state = std::rc::Rc::downgrade(&styles.original().unwrap());
+        let operation;
+        let cap;
+        {
+            let mut dom = session.dom();
+            let mut lease = dom
+                .begin_source_edit(
+                    DomSourceEdit::set_style_disabled(target, true),
+                    source_limits(),
+                    &cancel,
+                )
+                .unwrap();
+            operation = lease.operation();
+            let DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
+                lease.advance(&cancel).unwrap()
+            else {
+                panic!("the actual disabled setter must request its CSSOM write");
+            };
+            assert_eq!(request.action(), DomStyleAction::SetDisabled(true));
+            assert!(lease.status().has_published());
+            let root = styles.original().unwrap().borrow().roots[0].store.clone();
+            // These are genuine, nonmutating producer qualifications on this
+            // SAME retained request. Their spent work is never reset/refunded.
+            // Warm the revision qualification before measuring its stable cost.
+            lease.bind_cssom_root(&request, &root, &cancel).unwrap();
+            let request = lease
+                .qualify_cssom(&request, document, &root.snapshot().unwrap())
+                .unwrap();
+            let start = lease.status().spent_work();
+            lease.bind_cssom_root(&request, &root, &cancel).unwrap();
+            lease
+                .qualify_cssom(&request, document, &root.snapshot().unwrap())
+                .unwrap();
+            let preparation = lease.status().spent_work() - start;
+            assert!(preparation > 0);
+            let start = lease.status().spent_work();
+            drop(lease);
+            let lease = dom
+                .resume_source_edit(operation, source_limits(), &cancel)
+                .unwrap();
+            let resume = lease.status().spent_work() - start;
+            let spent = lease.status().spent_work();
+            drop(lease);
+            // Admit the real resume + bind/qualify, excluding acknowledgment's
+            // next retained-root visit. No Runtime commit/retry is calibrated.
+            cap = spent + resume + preparation;
+            let low = DomSourceLimits::new(16_000_000, 1_000_000, cap, 128, 4096, 4096, 1);
+            let mut lease = dom.resume_source_edit(operation, low, &cancel).unwrap();
+            {
+                let original = styles.original().unwrap();
+                let mut state = original.borrow_mut();
+                assert!(matches!(
+                    state.service_source_request(&mut lease, request, &cancel),
+                    Err(DomStyleRuntimeError::Dom(DomError::SourceWorkLimit { limit }))
+                        if limit == cap
+                ));
+                let publication = state.publication.as_ref().expect("real unacked commit");
+                assert_eq!(
+                    publication.request.action(),
+                    DomStyleAction::SetDisabled(true)
+                );
+                assert!(publication.created.is_none());
+                assert!(state.staged.is_none());
+                assert!(state.completions.is_empty());
+                assert_eq!(state.reports.len(), 1);
+            }
+            assert_eq!(lease.status().operation(), operation);
+        }
+        let committed = styles.snapshot(document).unwrap().unwrap();
+        assert_eq!(committed.sheets(), std::slice::from_ref(&sheet));
+        assert!(committed.sheet(&sheet).unwrap().inputs().disabled);
+        assert_eq!(committed.revision().value(), before.revision().value() + 1);
+        let parked_dom = session.snapshot();
+        assert_eq!(parked_dom.incomplete_source_operation(), Some(operation));
+        assert!(styles.pending_sheet(0).unwrap().is_none());
+        drop(styles); // Sole execution permission; no strong State/root loan survives.
+        let DomShutdownOutcome::Pending {
+            session: transferred,
+            reason: DomShutdownReason::SourceTail(actual),
+        } = session.try_shutdown()
+        else {
+            panic!("shutdown must return the whole unacknowledged composition");
+        };
+        assert_eq!(actual, operation);
+        fn move_session(session: DomSession) -> DomSession {
+            session
+        }
+        let mut session = move_session(transferred);
+        let mut styles = session.style_execution();
+        assert!(std::rc::Weak::ptr_eq(
+            &weak_state,
+            &std::rc::Rc::downgrade(&styles.original().unwrap())
+        ));
+        let mut source = session.source_execution();
+        let cancelled = AtomicBool::new(true);
+        assert!(matches!(
+            source.resume(
+                &mut session.dom(),
+                operation,
+                source_limits(),
+                &mut DomSourceServices {
+                    execution_scope: None,
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancelled,
+            ),
+            Err(DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(
+                DomError::Cancelled
+            )))
+        ));
+        assert_eq!(
+            styles.snapshot(document).unwrap().unwrap().revision(),
+            committed.revision()
+        );
+        {
+            let original = styles.original().unwrap();
+            let state = original.borrow();
+            assert!(state.publication.is_some());
+        }
+        {
+            let mut dom = session.dom();
+            let mut lease = dom
+                .resume_source_edit(operation, source_limits(), &cancel)
+                .unwrap();
+            let DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
+                lease.advance(&cancel).unwrap()
+            else {
+                panic!("no Source acknowledgment was consumed before recovery");
+            };
+            assert_eq!(request.action(), DomStyleAction::SetDisabled(true));
+            assert_eq!(request.sheet().unwrap().id(), &sheet);
+        }
+        styles
+            .set_limits(&session.dom(), limits(), &cancel)
+            .unwrap();
+        assert!(matches!(
+            source
+                .resume(
+                    &mut session.dom(),
+                    operation,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        execution_scope: None,
+                        style_policy: &mut |_| panic!("retry must not rerun CSP"),
+                        url: None,
+                    },
+                    &cancel,
+                )
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+        assert!(session.dom().pending_source_edit().is_none());
+        let current = styles.snapshot(document).unwrap().unwrap();
+        assert_eq!(current.revision(), committed.revision());
+        assert_eq!(current.sheets(), std::slice::from_ref(&sheet));
+        assert!(styles.disabled(&session.dom(), target).unwrap().disabled());
+        assert!(styles.pending_sheet(0).unwrap().is_none());
+        let mut context = Context {
+            styles: session.style_execution(),
+            source: session.source_execution(),
+            events: Vec::new(),
+        };
+        assert!(matches!(
+            DomStyleRuntime::run_networking(
+                &mut session.dom(),
+                &mut dispatcher,
+                &mut context,
+                dispatch_limits(),
+                &cancel,
+            )
+            .unwrap(),
+            DomStyleNetworkingProgress::Empty
+        ));
+        assert!(context.events.is_empty());
+        drop(context);
+        {
+            let original = styles.original().unwrap();
+            let state = original.borrow();
+            assert!(state.publication.is_none() && state.staged.is_none());
+            assert_eq!(state.reports.len(), 1);
+        }
+        assert!(!before.sheet(&sheet).unwrap().inputs().disabled);
+        assert_eq!(
+            before_dom
+                .node(target)
+                .unwrap()
+                .as_style()
+                .unwrap()
+                .sheet()
+                .unwrap()
+                .unwrap()
+                .id(),
+            &sheet
+        );
+        assert_eq!(parked_dom.incomplete_source_operation(), Some(operation));
+        let DomShutdownOutcome::Pending {
+            session,
+            reason: DomShutdownReason::LiveResources,
+        } = session.try_shutdown()
+        else {
+            panic!("the bound root still requires terminal disposal");
+        };
+        drop(source);
+        drop(session);
+        assert!(weak_state.upgrade().is_none());
+        assert!(matches!(
+            styles.snapshot(document),
+            Err(DomStyleRuntimeError::SessionUnavailable)
+        ));
+    }
+    #[test]
     fn processing_source_storage_refusal_and_policy_raise_resume_original_operation_without_recreation()
      {
         let cancel = AtomicBool::new(false);
