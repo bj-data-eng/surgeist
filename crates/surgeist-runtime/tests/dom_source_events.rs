@@ -221,7 +221,7 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
 }
 
 #[test]
-fn uncanceled_resume_reaches_real_queue_toggle_and_preserves_callback_mutation() {
+fn uncanceled_resume_publishes_toggle_tracker_then_parks_at_add_open_without_replaying_callback() {
     let cancel = AtomicBool::new(false);
     let (mut session, subject) = fixture(session_limits());
     let mut listeners = dispatcher();
@@ -244,6 +244,11 @@ fn uncanceled_resume_reaches_real_queue_toggle_and_preserves_callback_mutation()
         )
         .unwrap();
     let request = request(&mut session, subject);
+    // HTML877d Show queues closed -> open with a null source only after the
+    // authentic uncanceled beforetoggle and its current open recheck.
+    assert_eq!(request.old_state(), HtmlDialogState::Closed);
+    assert_eq!(request.new_state(), HtmlDialogState::Open);
+    assert_eq!(request.source(), None);
     let mut calls = 0;
     let receipt = serviced(
         session
@@ -259,28 +264,45 @@ fn uncanceled_resume_reaches_real_queue_toggle_and_preserves_callback_mutation()
             .unwrap(),
     );
     assert!(!receipt.default_prevented());
-    let callback_stamp = session.snapshot().stamp();
+    let callback_snapshot = session.snapshot();
+    let callback_stamp = callback_snapshot.stamp();
+    assert!(
+        !callback_snapshot
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
     match resume(&mut session, request.operation()) {
         DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Dialog(dialog),
             reason: DomSourceUnavailable::Dialog(action),
         } => {
+            assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
             assert_eq!(dialog.action(), action);
-            assert!(matches!(
-                action,
-                HtmlDialogAction::QueueToggle {
-                    old: HtmlDialogState::Closed,
-                    new: HtmlDialogState::Open,
-                    ..
-                }
-            ));
+            // QueueToggle stores the real task/tracker before acknowledgment;
+            // the producer's next action is the still-unserviced AddOpen.
+            assert_eq!(action, HtmlDialogAction::AddOpen);
         }
-        other => panic!("QueueToggle has no service: {other:?}"),
+        other => panic!("queued toggle must retain the original Show at AddOpen: {other:?}"),
     }
     assert_eq!(calls, 1);
     let snapshot = session.snapshot();
-    assert_eq!(snapshot.stamp(), callback_stamp);
+    assert_ne!(snapshot.stamp(), callback_stamp);
+    assert!(
+        snapshot
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert_eq!(
+        snapshot.incomplete_source_operation(),
+        Some(request.operation())
+    );
     assert_eq!(
         snapshot
             .node(subject)
