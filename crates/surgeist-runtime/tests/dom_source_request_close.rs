@@ -1,5 +1,5 @@
 //! Native standard requestClose: real cancel dispatch, original watcher custody,
-//! nested nonmodal Close and literal final force reset (HTML877d46708–46723).
+//! nested modal/nonmodal Close and literal final force reset (HTML877d46708–46723).
 #![cfg(any(
     target_os = "macos",
     target_os = "linux",
@@ -11,6 +11,9 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::{HtmlDialogAction, HtmlDialogState};
 use surgeist_runtime::*;
+
+#[path = "dom_source_request_close/modal.rs"]
+mod modal;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

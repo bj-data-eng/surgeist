@@ -49,7 +49,7 @@ DOM's canonical candidate owner. Unsupported delegate queries retain their exact
 root, queried node, step and operation occurrence through `FocusDelegate` requests;
 other unsupported work retains its specific action. No focus movement or rendering-time autofocus flush is
 inferred.
-The standard nonmodal Close method dispatches genuine noncancelable beforetoggle,
+The standard Close method dispatches genuine noncancelable beforetoggle,
 rebases its open read after callbacks, runs full open-removal/watcher hooks, applies
 a supplied return value and queues its independent Close notification when previous
 focus is absent. Modal Close requests deferred top-layer removal and clears its

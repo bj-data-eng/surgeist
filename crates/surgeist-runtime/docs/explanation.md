@@ -403,6 +403,14 @@ pending cleanup, clears its canonical incomplete marker at actual terminal
 settlement and reports the native failure. It does not turn cancellation into
 an outer early return or manufacture Applied after a failed nested Close.
 
+Modal requestClose uses this same watcher and nested Close path. Preventing
+Cancel preserves the modal, watcher and top-layer input. An uncanceled result
+can close it, retaining raw membership with pending removal and queuing separate
+Toggle and Close notifications. If a reentrant request resets force-enable to
+false, the outer fresh enabled check still permits modal Auto's Close Request
+state; explicit `closedby="none"` instead keeps the modal open. The actual latest
+request operands determine the nested Close result.
+
 `show_modal_dialog(receiver)` reuses the same Source driver, dispatcher, element
 task queue and watcher setup. After actual open hooks and a valid watcher
 assertion, DOM publishes the coherent modal/raw-top-layer phase and its generated

@@ -1151,6 +1151,11 @@ cancel action, then performs its own literal force=false. The outer request's
 fresh enabled check can consequently skip Close. Omitted and supplied-empty
 request values remain distinct throughout.
 
+For a modal Dialog, computed Auto still enables Close Request after that force
+reset, while explicit `closedby="none"` can stop the outer Close. Genuine Cancel
+prevention preserves modal state; an uncanceled nested Close performs the same
+deferred top-layer removal and independent notification queuing described above.
+
 Runtime retains each started invocation's exact original watcher record after
 manager membership removal. Guard reset, reached activation consumption and
 invocation settlement complete through action-qualified affine receipts. Lease
