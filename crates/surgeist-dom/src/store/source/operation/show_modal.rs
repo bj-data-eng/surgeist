@@ -14,9 +14,10 @@ impl Operation {
         dom: &Dom,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let mut frame = self
+        let frame = self
             .draft
             .dialog_method
+            .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
         if !self.is_show_modal_method()
             || frame.cursor.action() != HtmlDialogAction::AssertCloseWatcherPresent
@@ -68,11 +69,13 @@ impl Operation {
             .ok_or(DomError::HostedSourceUnavailable)?
             .validate_issuer(watcher.global.source())
             .map_err(|_| DomError::HostedSourceUnavailable)?;
-        frame
+        self.draft
+            .dialog_method
+            .as_mut()
+            .expect("qualified method")
             .cursor
             .reply(HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;
-        self.draft.dialog_method = Some(frame);
         Ok(())
     }
 }

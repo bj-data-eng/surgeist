@@ -170,8 +170,15 @@ Unknown permission stays unavailable even when activation is known false.
 Forming a required Runtime qualification consumes the existing finite temporary/header and
 work allowance; refusal retains the original operation and no phantom result.
 
-The original method retains one complete HTML focusing child. Native own-inert,
-non-root and nondelegating facts can prove the autofocus subject's called
+The original method retains one complete HTML focusing child. Actual autofocus
+selects the subject; otherwise the HTML delegate protocols run their separate
+ordinary-descendant passes in the same DOM operation. Empty traversals return
+null and select the subject. An unavailable descendant query returns a precise
+`FocusDelegate` request, retaining the actual root, queried node, language step
+and original occurrence across retry. Runtime reports the missing query without
+inventing a focusability observation or acknowledging called resolution.
+
+Native own-inert, non-root and nondelegating facts can prove the selected subject's called
 focusing makes no change. That proof does not complete the outer call: DOM
 next resolves the selected control's actual top Document and compares actual
 origins. A difference returns before autofocus-state writes; the same-origin

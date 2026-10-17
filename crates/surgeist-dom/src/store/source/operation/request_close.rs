@@ -5,7 +5,6 @@ use surgeist_html::{
     HtmlCloseWatcherRequestReply as R, HtmlDialogAction as D, HtmlDialogReply,
 };
 
-#[derive(Clone, Copy)]
 pub(super) struct Call {
     pub(super) outer: crate::store::dialog::MethodFrame,
     pub(super) cursor: HtmlCloseWatcherRequestCursor,
@@ -18,7 +17,20 @@ pub(super) struct Call {
     pub(super) result: Option<bool>,
 }
 impl Call {
-    fn step(self, failure: Option<DomSourceCleanupCause>) -> DomSourceCloseWatcherStep {
+    pub(super) fn retry_copy(&self) -> Result<Self, DomError> {
+        Ok(Self {
+            outer: self.outer.before_focusing()?,
+            cursor: self.cursor,
+            watcher: self.watcher,
+            invocation: self.invocation,
+            occurrence: self.occurrence,
+            window: self.window,
+            nested: self.nested,
+            settled: self.settled,
+            result: self.result,
+        })
+    }
+    fn step(&self, failure: Option<DomSourceCleanupCause>) -> DomSourceCloseWatcherStep {
         if failure.is_some() || self.result.is_some() {
             DomSourceCloseWatcherStep::SettleInvocation
         } else {
@@ -26,7 +38,7 @@ impl Call {
         }
     }
     fn request(
-        self,
+        &self,
         failure: Option<DomSourceCleanupCause>,
     ) -> Result<DomSourceCloseWatcherRequest, DomError> {
         Ok(DomSourceCloseWatcherRequest {
@@ -42,8 +54,11 @@ impl Operation {
     fn qualify_close_watcher(
         &self,
         request: &DomSourceCloseWatcherRequest,
-    ) -> Result<Call, DomError> {
-        let call = self.request_close.ok_or(DomError::InvalidSourceOperation)?;
+    ) -> Result<&Call, DomError> {
+        let call = self
+            .request_close
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
         if call.nested
             || call.settled
             || call.request(self.failure)? != *request
@@ -67,7 +82,9 @@ impl Operation {
         if *applied {
             return Ok(());
         }
-        let mut call = self.qualify_close_watcher(&publication.request)?;
+        let mut call = self
+            .qualify_close_watcher(&publication.request)?
+            .retry_copy()?;
         self.draft.source_step(cancel)?;
         if let Some(reply) = publication.reply {
             call.cursor
@@ -86,7 +103,7 @@ impl Operation {
         Ok(())
     }
     pub(super) fn active_close_result(&self) -> Option<&DocumentString> {
-        if self.request_close.is_some_and(|call| call.nested) {
+        if self.request_close.as_ref().is_some_and(|call| call.nested) {
             self.request_close_result.as_ref()
         } else {
             match self.commands.get(self.index) {
@@ -313,7 +330,9 @@ impl DomSourceLease<'_> {
         let outer = op
             .draft
             .dialog_method
-            .ok_or(DomError::InvalidSourceOperation)?;
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?
+            .before_focusing()?;
         let crate::store::dialog::MethodLocals::RequestClose {
             watcher: Some(watcher),
         } = outer.locals
@@ -359,7 +378,11 @@ impl DomSourceLease<'_> {
             if op.receipt.is_some() {
                 op.apply_receipt(cancel)?;
             }
-            let mut call = op.request_close.ok_or(DomError::InvalidSourceOperation)?;
+            let mut call = op
+                .request_close
+                .as_ref()
+                .ok_or(DomError::InvalidSourceOperation)?
+                .retry_copy()?;
             if call.settled {
                 if op.failure.is_none()
                     && matches!(
@@ -477,9 +500,10 @@ impl DomSourceLease<'_> {
             op.publication(self.dom, true, PublicationTarget::None, cancel)?;
             op.draft.source_invocation = occurrence;
             call.occurrence = Some(occurrence);
+            let request = call.request(op.failure)?;
             op.request_close = Some(call);
             op.receipt = None;
-            return call.request(op.failure).map(|request| {
+            return Ok(request).map(|request| {
                 Some(DomSourceProgress::Request(DomSourceRequest::CloseWatcher(
                     request,
                 )))

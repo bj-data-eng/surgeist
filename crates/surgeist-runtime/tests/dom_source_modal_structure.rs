@@ -248,13 +248,17 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
         DomSourceDriveProgress::Pending {
             request: DomSourceRequest::DialogFocusing(pending),
             reason:
-                DomSourceUnavailable::DialogFocusing(HtmlDialogFocusingAction::FindFocusDelegate),
+                DomSourceUnavailable::DialogFocusing(HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: surgeist_html::HtmlDialogFocusControl::Subject,
+                }),
         } => {
             assert_eq!(pending.operation(), request.operation());
             assert_eq!(pending.subject(), subject);
             assert_eq!(
                 pending.action(),
-                HtmlDialogFocusingAction::FindFocusDelegate
+                HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: surgeist_html::HtmlDialogFocusControl::Subject
+                }
             );
         }
         other => panic!(

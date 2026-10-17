@@ -1810,6 +1810,31 @@ pub enum surgeist_html::HtmlAutofillFieldIdentity
 pub surgeist_html::HtmlAutofillFieldIdentity::Credential(surgeist_html::HtmlAutocompleteCredential)
 pub surgeist_html::HtmlAutofillFieldIdentity::Detail(surgeist_html::HtmlAutofillField)
 pub surgeist_html::HtmlAutofillFieldIdentity::Setting(surgeist_html::HtmlFormAutocomplete)
+pub enum surgeist_html::HtmlAutofocusDelegateAction
+pub surgeist_html::HtmlAutofocusDelegateAction::BeginDescendants
+pub surgeist_html::HtmlAutofocusDelegateAction::Complete(surgeist_html::HtmlAutofocusDelegateOutcome)
+pub surgeist_html::HtmlAutofocusDelegateAction::GetFocusableArea
+pub surgeist_html::HtmlAutofocusDelegateAction::NextDescendant
+pub surgeist_html::HtmlAutofocusDelegateAction::ReadAutofocus
+pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable
+pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable::candidate: surgeist_html::HtmlFocusDelegateCandidate
+pub surgeist_html::HtmlAutofocusDelegateAction::ReadFocusableArea
+pub enum surgeist_html::HtmlAutofocusDelegateError
+pub surgeist_html::HtmlAutofocusDelegateError::Terminal
+pub surgeist_html::HtmlAutofocusDelegateError::WrongReply
+impl core::error::Error for surgeist_html::HtmlAutofocusDelegateError
+impl core::fmt::Display for surgeist_html::HtmlAutofocusDelegateError
+pub fn surgeist_html::HtmlAutofocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlAutofocusDelegateOutcome
+pub surgeist_html::HtmlAutofocusDelegateOutcome::Candidate(surgeist_html::HtmlFocusDelegateCandidate)
+pub surgeist_html::HtmlAutofocusDelegateOutcome::Null
+pub enum surgeist_html::HtmlAutofocusDelegateReply
+pub surgeist_html::HtmlAutofocusDelegateReply::Applied
+pub surgeist_html::HtmlAutofocusDelegateReply::Autofocus(bool)
+pub surgeist_html::HtmlAutofocusDelegateReply::ClickFocusable(bool)
+pub surgeist_html::HtmlAutofocusDelegateReply::DescendantPresent(bool)
+pub surgeist_html::HtmlAutofocusDelegateReply::FocusableArea(bool)
+pub surgeist_html::HtmlAutofocusDelegateReply::ResolvedAreaPresent(bool)
 pub enum surgeist_html::HtmlAutofocusInsertionAction
 pub surgeist_html::HtmlAutofocusInsertionAction::AppendCandidate
 pub surgeist_html::HtmlAutofocusInsertionAction::CaptureTargetDocument
@@ -2362,6 +2387,51 @@ pub surgeist_html::HtmlFetchPriority::Low
 impl surgeist_html::HtmlFetchPriority
 pub fn surgeist_html::HtmlFetchPriority::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::HtmlFetchPriority::into_attribute(self) -> surgeist_html::Attribute
+pub enum surgeist_html::HtmlFocusDelegateAction
+pub surgeist_html::HtmlFocusDelegateAction::BeginDescendants
+pub surgeist_html::HtmlFocusDelegateAction::BeginDescendants::root: surgeist_html::HtmlFocusDelegateRoot
+pub surgeist_html::HtmlFocusDelegateAction::Complete(surgeist_html::HtmlFocusDelegateOutcome)
+pub surgeist_html::HtmlFocusDelegateAction::GetFocusableArea
+pub surgeist_html::HtmlFocusDelegateAction::NextDescendant
+pub surgeist_html::HtmlFocusDelegateAction::ReadFocusableArea
+pub surgeist_html::HtmlFocusDelegateAction::ReadSequentiallyFocusable
+pub surgeist_html::HtmlFocusDelegateAction::ReadShadowRoot
+pub surgeist_html::HtmlFocusDelegateAction::RunAutofocusDelegate
+pub surgeist_html::HtmlFocusDelegateAction::RunAutofocusDelegate::root: surgeist_html::HtmlFocusDelegateRoot
+pub enum surgeist_html::HtmlFocusDelegateCandidate
+pub surgeist_html::HtmlFocusDelegateCandidate::Descendant
+pub surgeist_html::HtmlFocusDelegateCandidate::ResolvedArea
+pub enum surgeist_html::HtmlFocusDelegateError
+pub surgeist_html::HtmlFocusDelegateError::Terminal
+pub surgeist_html::HtmlFocusDelegateError::WrongReply
+impl core::error::Error for surgeist_html::HtmlFocusDelegateError
+impl core::fmt::Display for surgeist_html::HtmlFocusDelegateError
+pub fn surgeist_html::HtmlFocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlFocusDelegateOutcome
+pub surgeist_html::HtmlFocusDelegateOutcome::AutofocusDelegate
+pub surgeist_html::HtmlFocusDelegateOutcome::Candidate(surgeist_html::HtmlFocusDelegateCandidate)
+pub surgeist_html::HtmlFocusDelegateOutcome::Null
+pub enum surgeist_html::HtmlFocusDelegateReply
+pub surgeist_html::HtmlFocusDelegateReply::Applied
+pub surgeist_html::HtmlFocusDelegateReply::AutofocusDelegatePresent(bool)
+pub surgeist_html::HtmlFocusDelegateReply::DescendantPresent(bool)
+pub surgeist_html::HtmlFocusDelegateReply::FocusableArea(bool)
+pub surgeist_html::HtmlFocusDelegateReply::ResolvedAreaPresent(bool)
+pub surgeist_html::HtmlFocusDelegateReply::SequentiallyFocusable(bool)
+pub surgeist_html::HtmlFocusDelegateReply::ShadowRoot(surgeist_html::HtmlFocusDelegateShadowRoot)
+pub enum surgeist_html::HtmlFocusDelegateRoot
+pub surgeist_html::HtmlFocusDelegateRoot::ShadowRoot
+pub surgeist_html::HtmlFocusDelegateRoot::Target
+pub enum surgeist_html::HtmlFocusDelegateShadowRoot
+pub surgeist_html::HtmlFocusDelegateShadowRoot::Absent
+pub surgeist_html::HtmlFocusDelegateShadowRoot::DelegatesFocus
+pub surgeist_html::HtmlFocusDelegateShadowRoot::DoesNotDelegateFocus
+pub enum surgeist_html::HtmlFocusDelegateTargetKind
+pub surgeist_html::HtmlFocusDelegateTargetKind::Dialog
+pub surgeist_html::HtmlFocusDelegateTargetKind::Other
+pub enum surgeist_html::HtmlFocusTriggerKind
+pub surgeist_html::HtmlFocusTriggerKind::Click
+pub surgeist_html::HtmlFocusTriggerKind::Other
 pub enum surgeist_html::HtmlFormAutocomplete
 pub surgeist_html::HtmlFormAutocomplete::Off
 pub surgeist_html::HtmlFormAutocomplete::On
@@ -4198,6 +4268,11 @@ pub struct surgeist_html::HtmlAutocompleteSection
 impl surgeist_html::HtmlAutocompleteSection
 pub fn surgeist_html::HtmlAutocompleteSection::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteSectionError>
 pub fn surgeist_html::HtmlAutocompleteSection::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlAutofocusDelegateCursor
+impl surgeist_html::HtmlAutofocusDelegateCursor
+pub const fn surgeist_html::HtmlAutofocusDelegateCursor::action(&self) -> surgeist_html::HtmlAutofocusDelegateAction
+pub const fn surgeist_html::HtmlAutofocusDelegateCursor::new(trigger_kind: surgeist_html::HtmlFocusTriggerKind) -> Self
+pub fn surgeist_html::HtmlAutofocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlAutofocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlAutofocusDelegateError>
 pub struct surgeist_html::HtmlAutofocusInsertionCursor
 impl surgeist_html::HtmlAutofocusInsertionCursor
 pub const fn surgeist_html::HtmlAutofocusInsertionCursor::action(&self) -> surgeist_html::HtmlAutofocusInsertionAction
@@ -4504,6 +4579,11 @@ pub fn surgeist_html::HtmlFloatingPointNumber::try_from(value: f64) -> core::res
 impl core::convert::TryFrom<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::HtmlSrcsetDensity
 pub type surgeist_html::HtmlSrcsetDensity::Error = surgeist_html::HtmlSrcsetDensityError
 pub fn surgeist_html::HtmlSrcsetDensity::try_from(value: surgeist_html::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
+pub struct surgeist_html::HtmlFocusDelegateCursor
+impl surgeist_html::HtmlFocusDelegateCursor
+pub const fn surgeist_html::HtmlFocusDelegateCursor::action(&self) -> surgeist_html::HtmlFocusDelegateAction
+pub const fn surgeist_html::HtmlFocusDelegateCursor::new(target_kind: surgeist_html::HtmlFocusDelegateTargetKind) -> Self
+pub fn surgeist_html::HtmlFocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlFocusDelegateError>
 pub struct surgeist_html::HtmlFormName
 impl surgeist_html::HtmlFormName
 pub fn surgeist_html::HtmlFormName::into_attribute(self) -> surgeist_html::Attribute
@@ -5925,7 +6005,7 @@ pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub const fn surgeist_html::allow_focus_decision(feature_permission: core::option::Option<bool>, transient_activation: core::option::Option<bool>) -> surgeist_html::HtmlAllowFocusDecision
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
-pub fn surgeist_html::autofocus_insertion_presence(element: &surgeist_html::QualifiedName, attribute: core::option::Option<&surgeist_html::Attribute>) -> bool
+pub fn surgeist_html::autofocus_presence(element: &surgeist_html::QualifiedName, attribute: core::option::Option<&surgeist_html::Attribute>) -> bool
 pub fn surgeist_html::blocking_tokens_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlBlockingTokens, E>
 pub const fn surgeist_html::computed_dialog_closed_by(state: surgeist_html::HtmlClosedByState, modal: bool) -> surgeist_html::HtmlClosedBy
 pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState

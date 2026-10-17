@@ -3139,6 +3139,7 @@ mod tests {
                         surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
                         | surgeist_dom::DomSourceRequest::DialogFocusing(_)
+                        | surgeist_dom::DomSourceRequest::FocusDelegate(_)
                         | surgeist_dom::DomSourceRequest::AutofocusInsertion(_)
                         | surgeist_dom::DomSourceRequest::CloseWatcher(_),
                     ) => {

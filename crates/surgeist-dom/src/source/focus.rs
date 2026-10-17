@@ -28,6 +28,46 @@ impl DomSourceDialogFocusingRequest {
         self.occurrence.ordinal
     }
 }
+/// The exact unavailable query of an original called focus-delegate protocol.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceFocusDelegateStep {
+    Focus(surgeist_html::HtmlFocusDelegateAction),
+    Autofocus(surgeist_html::HtmlAutofocusDelegateAction),
+}
+/// One source-issued descendant query. This observation supplies no focus fact
+/// and grants no authority to complete the called algorithm.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DomSourceFocusDelegateRequest {
+    pub(crate) operation: crate::DomSourceOperationId,
+    pub(crate) subject: crate::NodeId,
+    pub(crate) root: crate::NodeId,
+    pub(crate) queried_node: crate::NodeId,
+    pub(crate) step: DomSourceFocusDelegateStep,
+    pub(crate) occurrence: super::watcher::HookOccurrence,
+}
+impl DomSourceFocusDelegateRequest {
+    pub const fn operation(&self) -> crate::DomSourceOperationId {
+        self.operation
+    }
+    pub const fn subject(&self) -> crate::NodeId {
+        self.subject
+    }
+    pub const fn root(&self) -> crate::NodeId {
+        self.root
+    }
+    pub const fn queried_node(&self) -> crate::NodeId {
+        self.queried_node
+    }
+    pub const fn step(&self) -> DomSourceFocusDelegateStep {
+        self.step
+    }
+    pub const fn command(&self) -> usize {
+        self.occurrence.command
+    }
+    pub const fn current_occurrence(&self) -> u64 {
+        self.occurrence.ordinal
+    }
+}
 /// One exact action of an actual common Element insertion continuation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomSourceAutofocusInsertionRequest {

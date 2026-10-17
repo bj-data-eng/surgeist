@@ -73,7 +73,7 @@ impl Draft {
     }
     pub(super) fn dialog_modal_phase(
         &mut self,
-        mut frame: MethodFrame,
+        frame: &mut MethodFrame,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let subject = frame.subject;
@@ -103,7 +103,6 @@ impl Draft {
                     Reply::Applied
                 }
                 Action::RememberFocusedElement => {
-                    self.dialog_method = Some(frame);
                     return Err(DomError::DialogProcessingUnavailable {
                         action: Action::RememberFocusedElement,
                     });

@@ -146,9 +146,7 @@ fn permission_suspension_preserves_target_capture_and_exact_pending_stage() {
 
 #[test]
 fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spelling() {
-    use surgeist_html::{
-        Attribute, DocumentString, Namespace, QualifiedName, autofocus_insertion_presence,
-    };
+    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
     let element = QualifiedName::new(Namespace::html(), None, "dialog");
     for value in [
         DocumentString::from(""),
@@ -161,15 +159,15 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
             QualifiedName::new(Namespace::none(), None, "autofocus"),
             value,
         );
-        assert!(autofocus_insertion_presence(&element, Some(&actual)));
+        assert!(autofocus_presence(&element, Some(&actual)));
     }
     // Expanded-name identity ignores a raw prefix, without inventing a namespace.
     let prefixed = Attribute::new(
         QualifiedName::new(Namespace::none(), Some("p".into()), "autofocus"),
         "false",
     );
-    assert!(autofocus_insertion_presence(&element, Some(&prefixed)));
-    assert!(!autofocus_insertion_presence(&element, None));
+    assert!(autofocus_presence(&element, Some(&prefixed)));
+    assert!(!autofocus_presence(&element, None));
     for local in [
         "",
         "Autofocus",
@@ -179,7 +177,7 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
         "autofocusx",
     ] {
         let actual = Attribute::new(QualifiedName::new(Namespace::none(), None, local), "");
-        assert!(!autofocus_insertion_presence(&element, Some(&actual)));
+        assert!(!autofocus_presence(&element, Some(&actual)));
     }
     for namespace in [
         Namespace::html(),
@@ -188,7 +186,7 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
         Namespace::from_uri("urn:actual-attribute"),
     ] {
         let actual = Attribute::new(QualifiedName::new(namespace, None, "autofocus"), "");
-        assert!(!autofocus_insertion_presence(&element, Some(&actual)));
+        assert!(!autofocus_presence(&element, Some(&actual)));
     }
     let non_ascii_name = Attribute::new(
         QualifiedName::new(
@@ -198,17 +196,12 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
         ),
         "",
     );
-    assert!(!autofocus_insertion_presence(
-        &element,
-        Some(&non_ascii_name)
-    ));
+    assert!(!autofocus_presence(&element, Some(&non_ascii_name)));
 }
 
 #[test]
 fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
-    use surgeist_html::{
-        Attribute, DocumentString, Namespace, QualifiedName, autofocus_insertion_presence,
-    };
+    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
     let actual = Attribute::new(
         QualifiedName::new(Namespace::none(), None, "autofocus"),
         "false",
@@ -226,8 +219,8 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
     ] {
         for prefix in [None, Some(DocumentString::from("actual-prefix"))] {
             let element = QualifiedName::new(namespace.clone(), prefix, "actual-element");
-            assert!(autofocus_insertion_presence(&element, Some(&actual)));
-            assert!(!autofocus_insertion_presence(&element, None));
+            assert!(autofocus_presence(&element, Some(&actual)));
+            assert!(!autofocus_presence(&element, None));
         }
     }
     for namespace in [
@@ -242,7 +235,7 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
         Namespace::from_uri("http://www.w3.org/1999/xhtmL"),
     ] {
         let element = QualifiedName::new(namespace, Some("html".into()), "dialog");
-        assert!(!autofocus_insertion_presence(&element, Some(&actual)));
+        assert!(!autofocus_presence(&element, Some(&actual)));
     }
     // A same-length URI containing an isolated surrogate must not be normalized
     // or decoded into a recognized namespace identity.
@@ -255,5 +248,5 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
         None,
         "dialog",
     );
-    assert!(!autofocus_insertion_presence(&element, Some(&actual)));
+    assert!(!autofocus_presence(&element, Some(&actual)));
 }

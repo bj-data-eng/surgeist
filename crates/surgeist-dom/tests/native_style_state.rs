@@ -1841,6 +1841,9 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
                 panic!("manual Slot assignment has no Dialog focusing service phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FocusDelegate(request)) => {
+                panic!("manual Slot assignment has no focus delegate service phase: {request:?}")
+            }
         },
     }
 }

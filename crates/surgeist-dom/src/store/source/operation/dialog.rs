@@ -288,7 +288,9 @@ impl Operation {
         let frame = self
             .draft
             .dialog_method
-            .ok_or(DomError::InvalidSourceEvent)?;
+            .as_ref()
+            .ok_or(DomError::InvalidSourceEvent)?
+            .before_focusing()?;
         self.observe_dialog_event(
             dom,
             DialogFiring {
@@ -342,7 +344,10 @@ impl Operation {
         cancelable: bool,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
-        let call = self.request_close.ok_or(DomError::InvalidSourceOperation)?;
+        let call = self
+            .request_close
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
         self.observe_dialog_event(
             dom,
             DialogFiring {
@@ -350,7 +355,7 @@ impl Operation {
                 payload: crate::source::event::DomSourceEventPayload::Cancel,
                 cancelable,
                 kind: DomSourceEventKind::Cancel,
-                frame: Some(call.outer),
+                frame: Some(call.outer.before_focusing()?),
             },
             cancel,
         )
@@ -1288,7 +1293,11 @@ impl DomSourceLease<'_> {
         // Replay only this pure local transition on admission retry; the actual
         // dispatch and its consumed receipt are never replayed.
         let outcome = observation.accepted.expect("accepted event");
-        let mut frame = observation.frame;
+        let mut frame = observation
+            .frame
+            .as_ref()
+            .map(|frame| frame.before_focusing())
+            .transpose()?;
         if frame.is_none() {
             return self.advance_dialog_task_observation(cancel);
         }
@@ -1297,7 +1306,9 @@ impl DomSourceLease<'_> {
         if observation.request.kind() == DomSourceEventKind::Cancel {
             let mut call = operation
                 .request_close
-                .ok_or(DomError::InvalidSourceOperation)?;
+                .as_ref()
+                .ok_or(DomError::InvalidSourceOperation)?
+                .retry_copy()?;
             call.cursor
                 .reply(
                     surgeist_html::HtmlCloseWatcherRequestReply::CancelActionResult(
@@ -1378,9 +1389,10 @@ impl DomSourceLease<'_> {
         let old = self
             .dom
             .source_operation
-            .as_ref()
+            .as_mut()
             .expect("original operation")
-            .request_close;
+            .request_close
+            .take();
         self.dom
             .source_operation
             .as_mut()

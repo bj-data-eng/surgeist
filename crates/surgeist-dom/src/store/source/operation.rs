@@ -513,6 +513,7 @@ struct PublishedSegment {
     commit: DomCommit,
     dialog: Option<crate::DomSourceDialogRequest>,
     focusing: Option<crate::DomSourceDialogFocusingRequest>,
+    focus_delegate: Option<crate::DomSourceFocusDelegateRequest>,
     autofocus: Option<crate::DomSourceAutofocusInsertionRequest>,
 }
 impl Operation {
@@ -1333,7 +1334,9 @@ impl Operation {
         } else {
             None
         };
-        let focusing = if let PublicationTarget::DialogFocusing(pending) = target {
+        let focusing = if let PublicationTarget::DialogFocusing(pending) = target
+            && pending.delegate.is_none()
+        {
             let subject = match pending.subject {
                 Key::Existing(slot) => NodeId {
                     owner: self.id.owner,
@@ -1347,6 +1350,39 @@ impl Operation {
                 operation: self.id,
                 subject,
                 action: pending.action,
+                occurrence: crate::source::watcher::HookOccurrence {
+                    command: self.index,
+                    ordinal: match pending.invocation {
+                        Invocation::Unissued => self.draft.source_invocation,
+                        Invocation::Exposed(ordinal) => ordinal,
+                    },
+                },
+            })
+        } else {
+            None
+        };
+        let focus_delegate = if let PublicationTarget::DialogFocusing(pending) = target
+            && let Some(delegate) = pending.delegate
+        {
+            let mapped = |key| -> Result<NodeId, DomError> {
+                self.draft.source_step(cancel)?;
+                let id = match key {
+                    Key::Existing(slot) => NodeId {
+                        owner: self.id.owner,
+                        slot,
+                        generation: self.draft.generations[slot],
+                    },
+                    Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                };
+                prepared.state.node(self.id.owner, id)?;
+                Ok(id)
+            };
+            Some(crate::DomSourceFocusDelegateRequest {
+                operation: self.id,
+                subject: mapped(pending.subject)?,
+                root: mapped(delegate.root)?,
+                queried_node: mapped(delegate.queried_node)?,
+                step: delegate.step,
                 occurrence: crate::source::watcher::HookOccurrence {
                     command: self.index,
                     ordinal: match pending.invocation {
@@ -1559,7 +1595,15 @@ impl Operation {
                     .as_mut()
                     .expect("exposed actual Show")
                     .invocation = Invocation::Exposed(occurrence.ordinal);
-            } else if let Some(request) = &focusing {
+            } else if let Some(ordinal) = focusing
+                .as_ref()
+                .map(|request| request.occurrence.ordinal)
+                .or_else(|| {
+                    focus_delegate
+                        .as_ref()
+                        .map(|request| request.occurrence.ordinal)
+                })
+            {
                 self.draft
                     .dialog_method
                     .as_mut()
@@ -1567,7 +1611,7 @@ impl Operation {
                     .focusing
                     .as_mut()
                     .expect("actual focusing child")
-                    .invocation = Invocation::Exposed(request.occurrence.ordinal);
+                    .invocation = Invocation::Exposed(ordinal);
             } else {
                 match &mut self
                     .draft
@@ -1624,6 +1668,7 @@ impl Operation {
             commit,
             dialog,
             focusing,
+            focus_delegate,
             autofocus,
         })
     }
@@ -1870,7 +1915,9 @@ impl DomSourceLease<'_> {
                     )
                 } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
                     op.draft.run_effects(self.dom.limits, cancel)
-                } else if let Some(frame) = op.draft.dialog_method {
+                } else if let Some(subject) =
+                    op.draft.dialog_method.as_ref().map(|frame| frame.subject)
+                {
                     let input = if op.request_close.as_ref().is_some_and(|call| call.nested) {
                         crate::store::dialog::MethodInput::Close(op.request_close_result.as_ref())
                     } else {
@@ -1888,7 +1935,7 @@ impl DomSourceLease<'_> {
                         }
                     };
                     op.draft
-                        .dialog_method_boundary(frame.subject, input, self.dom.limits, cancel)
+                        .dialog_method_boundary(subject, input, self.dom.limits, cancel)
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
@@ -1964,13 +2011,14 @@ impl DomSourceLease<'_> {
                     };
                     drop(checkpoint);
                     op.receipt = None;
-                    return Ok(DomSourceProgress::Request(
-                        DomSourceRequest::DialogFocusing(
+                    return Ok(DomSourceProgress::Request(match published.focus_delegate {
+                        Some(request) => DomSourceRequest::FocusDelegate(request),
+                        None => DomSourceRequest::DialogFocusing(
                             published
                                 .focusing
                                 .expect("actual called request formed before publication"),
                         ),
-                    ));
+                    }));
                 }
                 Err(DomError::NeedsEventfulOperation {
                     subject: Some(subject),
@@ -2144,7 +2192,7 @@ impl DomSourceLease<'_> {
                         call.cursor
                             .reply(surgeist_html::HtmlCloseWatcherRequestReply::Applied)
                             .map_err(DomError::CloseWatcherProtocol)?;
-                        op.draft.dialog_method = Some(call.outer);
+                        op.draft.dialog_method = Some(call.outer.before_focusing()?);
                         op.request_close_result = None;
                         op.receipt = None;
                         continue;
@@ -5295,6 +5343,7 @@ pub(in crate::store) mod accounting_tests {
                     | DomSourceRequest::Dialog(_)
                     | DomSourceRequest::CloseWatcher(_)
                     | DomSourceRequest::DialogFocusing(_)
+                    | DomSourceRequest::FocusDelegate(_)
                     | DomSourceRequest::AutofocusInsertion(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")

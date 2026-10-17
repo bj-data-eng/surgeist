@@ -483,6 +483,7 @@ fn later_raw_attribute_changes_do_not_recompute_the_complete_constructor_policy(
 }
 #[test]
 fn enabled_permission_keeps_positive_focusing_pending_even_without_any_activation() {
+    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
     let (mut session, top) = headless_top();
     let (_, child) = container(&mut session, top.document(), "iframe", None, None, false);
     let subject = dialog(&mut session, child);
@@ -493,9 +494,13 @@ fn enabled_permission_keeps_positive_focusing_pending_even_without_any_activatio
         true,
         &mut calls,
     );
-    assert!(
-        matches!(progress,DomSourceDriveProgress::Pending{request:DomSourceRequest::DialogFocusing(request),reason:DomSourceUnavailable::DialogFocusing(surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate)} if request.subject()==subject && request.action()==surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate)
-    );
+    let expected = HtmlDialogFocusingAction::RunFocusingSteps {
+        control: HtmlDialogFocusControl::Subject,
+    };
+    assert!(matches!(progress, DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::DialogFocusing(request),
+        reason: DomSourceUnavailable::DialogFocusing(action),
+    } if request.subject() == subject && action == expected && request.action() == expected));
     assert_eq!(calls, [true]);
     assert!(
         session
@@ -1282,6 +1287,9 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
 
 #[path = "native_focus_permissions_policy/autofocus.rs"]
 mod autofocus;
+
+#[path = "native_focus_permissions_policy/delegates.rs"]
+mod delegates;
 
 #[test]
 fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_delegate_traversals() {

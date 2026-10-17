@@ -40,12 +40,14 @@ Host can supply actual remembered-focus absence. Qualified raw members' actual
 hidden popover state advances the empty popover steps; proven negative allow-focus
 can complete Show or ShowModal without focus
 movement. Unknown or unsupported actual inputs retain their precise action wait.
-Permitted calls run the HTML focusing child. An own-inert autofocus subject can
+Permitted calls run the HTML focusing child. Actual autofocus or completed empty
+delegate traversals can select the subject. An own-inert subject can
 finish called focusing without a change, then return on an actual origin
 difference or complete the same-origin top Document's autofocus processing.
 The same affine focus bridge serves real autofocus insertion occurrences through
-DOM's canonical candidate owner. Delegate and other unsupported work retain
-their specific action; no focus movement or rendering-time autofocus flush is
+DOM's canonical candidate owner. Unsupported delegate queries retain their exact
+root, queried node, step and operation occurrence through `FocusDelegate` requests;
+other unsupported work retains its specific action. No focus movement or rendering-time autofocus flush is
 inferred.
 The standard nonmodal Close method dispatches genuine noncancelable beforetoggle,
 rebases its open read after callbacks, runs full open-removal/watcher hooks, applies

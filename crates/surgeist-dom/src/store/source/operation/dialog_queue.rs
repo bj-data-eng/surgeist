@@ -217,6 +217,7 @@ impl<'dom> DomSourceLease<'dom> {
         let frame = operation
             .draft
             .dialog_method
+            .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
         if operation.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
@@ -258,6 +259,7 @@ impl<'dom> DomSourceLease<'dom> {
         let frame = op
             .draft
             .dialog_method
+            .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
         if op.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
@@ -265,9 +267,10 @@ impl<'dom> DomSourceLease<'dom> {
         {
             return Err(DomError::InvalidSourceOperation);
         }
+        let subject = frame.subject;
         op.refresh_admission(cancel)?;
         let id = source.task_id(serial, request.subject)?;
-        let association = op.draft.element_task_association(frame.subject, cancel)?;
+        let association = op.draft.element_task_association(subject, cancel)?;
         let (info, replacing) = match request.action {
             HtmlDialogAction::QueueToggle {
                 old,
@@ -276,7 +279,7 @@ impl<'dom> DomSourceLease<'dom> {
                     surgeist_html::HtmlDialogEventSource::Null
                     | surgeist_html::HtmlDialogEventSource::OperationSource,
             } => {
-                let tracker = op.draft.dialog_state(frame.subject)?.toggle_tracker;
+                let tracker = op.draft.dialog_state(subject)?.toggle_tracker;
                 let decision =
                     HtmlDialogToggleDecision::new(old, new, tracker.map(|tracker| tracker.old));
                 (
@@ -347,21 +350,28 @@ impl<'dom> DomSourceLease<'dom> {
                     cancel,
                 )?;
             }
-            let frame = op.draft.dialog_method.expect("qualified Dialog frame");
+            let (subject, locals) = {
+                let frame = op
+                    .draft
+                    .dialog_method
+                    .as_ref()
+                    .expect("qualified Dialog frame");
+                (frame.subject, frame.locals)
+            };
             if let DomDialogTaskInfo::Toggle(info) = plan.info {
-                if let Some(value) = &op.draft.dialog_state(frame.subject)?.request_return_value {
+                if let Some(value) = &op.draft.dialog_state(subject)?.request_return_value {
                     let mut payload = storage::Payload::default();
                     payload.string(value)?;
                     if let Some(formation) = &formation {
                         formation.retain_payload(payload, cancel)?;
                     }
                 }
-                let mut state = op.draft.dialog_state(frame.subject)?.clone();
+                let mut state = op.draft.dialog_state(subject)?.clone();
                 state.toggle_tracker = Some(crate::dialog::DomDialogToggleTracker {
                     task: info.id,
                     old: info.old,
                 });
-                op.draft.element_mut(frame.subject).set_dialog_state(state);
+                op.draft.element_mut(subject).set_dialog_state(state);
             }
             op.draft.details_intentions.clear();
             op.draft.prepare_transition_phase(cancel)?;
@@ -376,15 +386,15 @@ impl<'dom> DomSourceLease<'dom> {
                 )?;
                 prepared.changes.push(DomChange::SourceOperation);
             }
-            let (required_phases, future_outputs) = match (plan.info, frame.locals) {
+            let (required_phases, future_outputs) = match (plan.info, locals) {
                 (DomDialogTaskInfo::Close(_), _) => (2, 1),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Close) => {
-                    let state = op.draft.dialog_state(frame.subject)?;
+                    let state = op.draft.dialog_state(subject)?;
                     let watcher = state.watcher.is_some();
                     let modal = state.is_modal();
                     op.draft
                         .admit_dialog_occurrences(u64::from(watcher), cancel)?;
-                    let document = op.draft.node(frame.subject)?.document;
+                    let document = op.draft.node(subject)?.document;
                     let member = match op.draft.node(document)?.interactive_document.as_ref() {
                         Some(crate::dialog::DocumentInteractiveState::Known {
                             open_dialogs,
@@ -393,7 +403,7 @@ impl<'dom> DomSourceLease<'dom> {
                             let mut found = false;
                             for item in open_dialogs {
                                 op.draft.source_step(cancel)?;
-                                found |= *item == frame.subject;
+                                found |= *item == subject;
                             }
                             found
                         }
@@ -401,7 +411,7 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     let changed_result = match op.active_close_result() {
                         Some(result) => {
-                            let old = op.draft.dialog_state(frame.subject)?.return_value();
+                            let old = op.draft.dialog_state(subject)?.return_value();
                             let mut same = old.len() == result.len();
                             if same {
                                 for (old, new) in old.code_units().iter().zip(result.code_units()) {
@@ -429,13 +439,13 @@ impl<'dom> DomSourceLease<'dom> {
                         let mut raw = false;
                         for item in top_layer {
                             op.draft.source_step(cancel)?;
-                            raw |= *item == frame.subject;
+                            raw |= *item == subject;
                         }
                         let mut pending = false;
                         if raw {
                             for item in pending_top_layer_removals {
                                 op.draft.source_step(cancel)?;
-                                pending |= *item == frame.subject;
+                                pending |= *item == subject;
                             }
                         }
                         raw && !pending
@@ -457,7 +467,7 @@ impl<'dom> DomSourceLease<'dom> {
                     crate::store::dialog::MethodLocals::RequestClose { .. },
                 ) => return Err(DomError::InvalidSourceOperation),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Show { .. }) => {
-                    let document = op.draft.node(frame.subject)?.document;
+                    let document = op.draft.node(subject)?.document;
                     let original_window_active = match self
                         .dom
                         .snapshot()
@@ -476,7 +486,7 @@ impl<'dom> DomSourceLease<'dom> {
                         }
                     };
                     let reached_hook = op.draft.document_fully_active(document, cancel)?
-                        && op.draft.shadow_connected(frame.subject, cancel)?;
+                        && op.draft.shadow_connected(subject, cancel)?;
                     let active_hook = reached_hook && original_window_active;
                     let structural_modal = op.is_show_modal_method() && active_hook;
                     let method_occurrences = if op.is_show_modal_method() {
@@ -506,7 +516,7 @@ impl<'dom> DomSourceLease<'dom> {
                         let mut contains = false;
                         for member in raw {
                             op.draft.source_step(cancel)?;
-                            contains |= *member == frame.subject;
+                            contains |= *member == subject;
                         }
                         1 + usize::from(!contains)
                     } else {
@@ -517,7 +527,7 @@ impl<'dom> DomSourceLease<'dom> {
                         future_outputs + modal_outputs
                             // Autofocus history is a distinct canonical domain,
                             // possibly on a different captured top Document.
-                            + op.draft.dialog_autofocus_tail_outputs(frame.subject, cancel)?,
+                            + op.draft.dialog_autofocus_tail_outputs(subject, cancel)?,
                     )
                 }
             };

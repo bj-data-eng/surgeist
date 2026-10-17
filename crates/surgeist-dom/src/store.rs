@@ -158,6 +158,8 @@ pub enum DomError {
         action: surgeist_html::HtmlDialogFocusingAction,
     },
     DialogFocusingProtocol(surgeist_html::HtmlDialogFocusingError),
+    FocusDelegateProtocol(surgeist_html::HtmlFocusDelegateError),
+    AutofocusDelegateProtocol(surgeist_html::HtmlAutofocusDelegateError),
     TopLayerAlreadyActive {
         subject: NodeId,
         document: DocumentId,

@@ -59,6 +59,8 @@ pub enum DomSourceUnavailable {
     Dialog(surgeist_html::HtmlDialogAction),
     /// The exact child focusing action still lacks a qualified service.
     DialogFocusing(surgeist_html::HtmlDialogFocusingAction),
+    /// Exact unsupported fact in an original called focus-delegate traversal.
+    FocusDelegate(surgeist_dom::DomSourceFocusDelegateStep),
     /// The exact autofocus insertion action still lacks a qualified service.
     AutofocusInsertion(surgeist_html::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
@@ -516,6 +518,13 @@ impl DomSourceRuntime {
                     let reason = DomSourceUnavailable::DialogFocusing(request.action());
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::DialogFocusing(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::FocusDelegate(request)) => {
+                    let reason = DomSourceUnavailable::FocusDelegate(request.step());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::FocusDelegate(request),
                         reason,
                     });
                 }

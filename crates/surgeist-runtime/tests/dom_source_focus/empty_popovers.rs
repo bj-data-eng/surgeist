@@ -31,7 +31,9 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     let next = pending_focusing(
         resume(session, event.operation(), scope).unwrap(),
         if association.is_some() {
-            HtmlDialogFocusingAction::FindFocusDelegate
+            HtmlDialogFocusingAction::RunFocusingSteps {
+                control: surgeist_html::HtmlDialogFocusControl::Subject,
+            }
         } else {
             HtmlDialogFocusingAction::ReadAllowFocus
         },
@@ -128,7 +130,9 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     let retry = pending_focusing(
         resume(session, event.operation(), None).unwrap(),
         if association.is_some() {
-            HtmlDialogFocusingAction::FindFocusDelegate
+            HtmlDialogFocusingAction::RunFocusingSteps {
+                control: surgeist_html::HtmlDialogFocusControl::Subject,
+            }
         } else {
             HtmlDialogFocusingAction::ReadAllowFocus
         },

@@ -242,7 +242,9 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
     assert!(receipt.failures().is_empty());
     let next = pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogFocusingAction::FindFocusDelegate,
+        HtmlDialogFocusingAction::RunFocusingSteps {
+            control: surgeist_html::HtmlDialogFocusControl::Subject,
+        },
     );
     assert_eq!(next.operation(), event.operation());
     assert_eq!(next.subject(), subject);
@@ -331,7 +333,9 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     );
     pending_focusing(
         resume(&mut session, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogFocusingAction::FindFocusDelegate,
+        HtmlDialogFocusingAction::RunFocusingSteps {
+            control: surgeist_html::HtmlDialogFocusControl::Subject,
+        },
     );
     let accepted = session.snapshot();
     let task = session
@@ -344,7 +348,9 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     assert!(resume(&mut session, event.operation(), Some(&conflict)).is_err());
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogFocusingAction::FindFocusDelegate,
+        HtmlDialogFocusingAction::RunFocusingSteps {
+            control: surgeist_html::HtmlDialogFocusControl::Subject,
+        },
     );
     assert_eq!(session.snapshot().stamp(), accepted.stamp());
     assert_eq!(
@@ -404,7 +410,9 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogFocusingAction::FindFocusDelegate,
+        HtmlDialogFocusingAction::RunFocusingSteps {
+            control: surgeist_html::HtmlDialogFocusControl::Subject,
+        },
     );
     let after = session.snapshot();
     assert_eq!(

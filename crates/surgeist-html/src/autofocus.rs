@@ -7,7 +7,7 @@
 use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
 use crate::{Attribute, KnownHtmlAttribute, QualifiedName};
 
-/// Recognize one actual autofocus insertion-trigger attribute for an Element
+/// Recognize one actual autofocus content attribute for an Element
 /// in the HTML, SVG or MathML namespace. HTML877d raw8898–8903 excludes global
 /// attributes on namespaces not defined as having them; raw8160–8167 shares
 /// autofocus with SVG and MathML. HTML namespace identity applies even in XML
@@ -23,10 +23,7 @@ use crate::{Attribute, KnownHtmlAttribute, QualifiedName};
 /// comparisons (the three URI lengths differ), followed by at most nine attribute
 /// local-name comparisons after its length check. The adapter admits its actual
 /// attribute walk and this fixed work before calling the helper.
-pub fn autofocus_insertion_presence(
-    element: &QualifiedName,
-    attribute: Option<&Attribute>,
-) -> bool {
+pub fn autofocus_presence(element: &QualifiedName, attribute: Option<&Attribute>) -> bool {
     let Some(attribute) = attribute else {
         return false;
     };

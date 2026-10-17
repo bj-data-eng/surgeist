@@ -24,7 +24,6 @@ pub(super) enum MethodState {
     Ready,
     AwaitingAttributeHooks,
 }
-#[derive(Clone, Copy)]
 pub(super) struct MethodFrame {
     pub subject: Key,
     pub cursor: HtmlDialogCursor,
@@ -32,6 +31,41 @@ pub(super) struct MethodFrame {
     pub invocation: source::Invocation,
     pub locals: MethodLocals,
     pub focusing: Option<focusing::FocusingFrame>,
+}
+impl MethodFrame {
+    pub(in crate::store) fn checkpoint(
+        &self,
+        a: &mut source::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(Self {
+            subject: self.subject,
+            cursor: self.cursor,
+            state: self.state,
+            invocation: self.invocation,
+            locals: self.locals,
+            focusing: self
+                .focusing
+                .as_ref()
+                .map(|called| called.checkpoint(a, cancel))
+                .transpose()?,
+        })
+    }
+    /// Event observations and requestClose save a method before any focusing
+    /// call exists. This checked fixed-body copy never clones a traversal bank.
+    pub(in crate::store) fn before_focusing(&self) -> Result<Self, DomError> {
+        if self.focusing.is_some() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        Ok(Self {
+            subject: self.subject,
+            cursor: self.cursor,
+            state: self.state,
+            invocation: self.invocation,
+            locals: self.locals,
+            focusing: None,
+        })
+    }
 }
 #[derive(Clone, Copy)]
 pub(super) enum MethodLocals {
@@ -103,7 +137,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.dialog_state(key)?;
-        let mut frame = self.dialog_method.unwrap_or(MethodFrame {
+        let mut frame = self.dialog_method.take().unwrap_or(MethodFrame {
             subject: key,
             cursor: HtmlDialogCursor::new(input.operation()),
             state: MethodState::Ready,
@@ -111,11 +145,25 @@ impl Draft {
             locals: input.locals(),
             focusing: None,
         });
+        let result = self.drive_dialog_method(&mut frame, key, input, limits, cancel);
+        if !matches!(result, Ok(true)) {
+            self.dialog_method = Some(frame);
+        }
+        result.map(|_| ())
+    }
+    fn drive_dialog_method(
+        &mut self,
+        frame: &mut MethodFrame,
+        key: Key,
+        input: MethodInput<'_>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         if frame.cursor.action() == Action::SetModal {
-            return self.dialog_modal_phase(frame, cancel);
+            return self.dialog_modal_phase(frame, cancel).map(|_| false);
         }
         if frame.cursor.action() == Action::RunDialogFocusingSteps {
-            return self.dialog_focusing_boundary(frame, cancel);
+            return self.dialog_focusing_boundary(frame, cancel).map(|_| false);
         }
         if matches!(frame.state, MethodState::AwaitingAttributeHooks) {
             self.run_effects(limits, cancel)?;
@@ -138,15 +186,13 @@ impl Draft {
                     Reply::PopoverShowing(self.dialog_popover_showing(key, cancel)?)
                 }
                 Action::Complete(HtmlDialogOutcome::Completed) => {
-                    self.dialog_method = None;
-                    return Ok(());
+                    return Ok(true);
                 }
                 Action::Complete(HtmlDialogOutcome::InvalidState) => {
                     return Err(DomError::DialogInvalidState);
                 }
                 Action::AddOpen => {
                     frame.state = MethodState::AwaitingAttributeHooks;
-                    self.dialog_method = Some(frame);
                     let formation = source::formation::Formation::new(self, cancel)?;
                     let name = source::formation::string("open", formation.as_ref(), cancel)?;
                     let value = source::formation::string("", formation.as_ref(), cancel)?;
@@ -157,7 +203,6 @@ impl Draft {
                 }
                 Action::RemoveOpen => {
                     frame.state = MethodState::AwaitingAttributeHooks;
-                    self.dialog_method = Some(frame);
                     let formation = source::formation::Formation::new(self, cancel)?;
                     let name = source::formation::string("open", formation.as_ref(), cancel)?;
                     self.remove_attribute(key, None, &name, limits, cancel)?;
@@ -233,7 +278,6 @@ impl Draft {
                     // independently of the show-local Document captured above.
                     let document = self.dialog_method_node_document(key, cancel)?;
                     if !self.dialog_method_known_empty_popovers(document, cancel)? {
-                        self.dialog_method = Some(frame);
                         return Err(DomError::DialogProcessingUnavailable { action });
                     }
                     let MethodLocals::Show {
@@ -257,13 +301,11 @@ impl Draft {
                         popover_endpoint,
                     } = frame.locals
                     else {
-                        self.dialog_method = Some(frame);
                         return Err(DomError::DialogProcessingUnavailable { action });
                     };
                     if popover_endpoint.is_some()
                         || !self.dialog_method_known_empty_popovers(document, cancel)?
                     {
-                        self.dialog_method = Some(frame);
                         return Err(DomError::DialogProcessingUnavailable { action });
                     }
                     // The captured Document's Hint filter is empty, then its
@@ -271,17 +313,15 @@ impl Draft {
                     Reply::Applied
                 }
                 Action::FireBeforeToggle { .. } => {
-                    self.dialog_method = Some(frame);
                     return Err(DomError::NeedsEventfulOperation {
                         subject: self.published_id(key),
                         action,
                     });
                 }
                 Action::RunDialogFocusingSteps => {
-                    return self.dialog_focusing_boundary(frame, cancel);
+                    return self.dialog_focusing_boundary(frame, cancel).map(|_| false);
                 }
                 _ => {
-                    self.dialog_method = Some(frame);
                     return Err(DomError::DialogProcessingUnavailable { action });
                 }
             };
@@ -635,7 +675,7 @@ impl Draft {
     pub(super) fn pending_dialog(&self, action: Action) -> Option<PendingDialog> {
         self.pending_dialog_hook()
             .or_else(|| {
-                self.dialog_method.map(|frame| PendingDialog {
+                self.dialog_method.as_ref().map(|frame| PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
                     invocation: matches!(frame.cursor.action(), Action::RememberFocusedElement)

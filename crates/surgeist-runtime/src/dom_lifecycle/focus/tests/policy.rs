@@ -194,7 +194,9 @@ fn parked_live(denied: bool) -> LiveCase {
                 if denied {
                     surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
                 } else {
-                    surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate
+                    surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps {
+                        control: surgeist_html::HtmlDialogFocusControl::Subject,
+                    }
                 },
             );
             assert_eq!(
@@ -219,7 +221,7 @@ fn parked_live(denied: bool) -> LiveCase {
 }
 
 #[test]
-fn enabled_permission_advances_locally_to_delegate_wait_without_runtime_result_or_header() {
+fn enabled_permission_advances_locally_to_called_focusing_wait_without_runtime_result_or_header() {
     let mut case = parked_live(false);
     let cancel = AtomicBool::new(false);
     let hosted = case.session.hosted_execution();
@@ -241,11 +243,13 @@ fn enabled_permission_advances_locally_to_delegate_wait_without_runtime_result_o
         assert_eq!(
             focusing_request(
                 &mut lease,
-                surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate
+                surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: surgeist_html::HtmlDialogFocusControl::Subject
+                }
             ),
             case.request
         );
-        // A real yielded delegate request cannot masquerade as the allow-focus
+        // A real yielded called-focusing request cannot masquerade as allow-focus
         // child occurrence, even though its outer Dialog method is unchanged.
         assert!(matches!(
             lease.prepare_focus(

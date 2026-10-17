@@ -1,32 +1,50 @@
 //! Called Dialog focusing continuation, retained by the original method frame.
 use super::*;
+mod delegate;
 use crate::store::focus::AllowFocusPermission;
 use surgeist_html::{
     HtmlDialogFocusControl as Control, HtmlDialogFocusingAction as A, HtmlDialogFocusingCursor,
     HtmlDialogFocusingReply as R,
 };
 
-#[derive(Clone, Copy)]
 pub(in crate::store) struct FocusingFrame {
     pub cursor: HtmlDialogFocusingCursor,
     pub delegate: Option<Key>,
     pub top_document: Option<Key>,
     pub invocation: source::Invocation,
+    delegate_call: Option<delegate::DelegateFrame>,
 }
 #[derive(Clone, Copy)]
 pub(in crate::store) struct PendingFocusing {
+    pub delegate: Option<delegate::PendingDelegate>,
     pub subject: Key,
     pub action: A,
     pub invocation: source::Invocation,
 }
 impl Draft {
+    /// Read-only queue preflight uses the same complete called protocol. Its
+    /// temporary bank has no invocation or effect authority and is released
+    /// before queue admission. An unavailable query proves no executable tail.
+    pub(in crate::store) fn dialog_delegate_null_available(
+        &self,
+        subject: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.dialog_state(subject)?;
+        let mut call = delegate::DelegateFrame::new(self, subject);
+        Ok(call.advance(self, subject, cancel)? == Some(false))
+    }
     pub(in crate::store) fn pending_focusing(&self) -> Option<PendingFocusing> {
-        let frame = self.dialog_method?;
+        let frame = self.dialog_method.as_ref()?;
         if frame.cursor.action() != Action::RunDialogFocusingSteps {
             return None;
         }
-        let called = frame.focusing?;
+        let called = frame.focusing.as_ref()?;
         Some(PendingFocusing {
+            delegate: called
+                .delegate_call
+                .as_ref()
+                .and_then(|call| call.pending()),
             subject: frame.subject,
             action: called.cursor.action(),
             invocation: called.invocation,
@@ -103,113 +121,149 @@ impl Draft {
     }
     pub(super) fn dialog_focusing_boundary(
         &mut self,
-        mut frame: MethodFrame,
+        frame: &mut MethodFrame,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let mut called = frame.focusing.unwrap_or(FocusingFrame {
+        let mut called = frame.focusing.take().unwrap_or(FocusingFrame {
             cursor: HtmlDialogFocusingCursor::new(),
             delegate: None,
             top_document: None,
             invocation: source::Invocation::Unissued,
+            delegate_call: None,
         });
-        loop {
-            self.source_step(cancel)?;
-            let action = called.cursor.action();
-            let reply = match action {
-                A::ReadAllowFocus => {
-                    match self.dialog_allow_focus_permission(frame.subject, cancel)? {
-                        AllowFocusPermission::Allowed
-                            if surgeist_html::allow_focus_decision(Some(true), None)
-                                == surgeist_html::HtmlAllowFocusDecision::Allowed =>
-                        {
-                            Some(R::AllowFocus(true))
+        let result = (|| {
+            loop {
+                self.source_step(cancel)?;
+                let action = called.cursor.action();
+                let reply = match action {
+                    A::ReadAllowFocus => {
+                        match self.dialog_allow_focus_permission(frame.subject, cancel)? {
+                            AllowFocusPermission::Allowed
+                                if surgeist_html::allow_focus_decision(Some(true), None)
+                                    == surgeist_html::HtmlAllowFocusDecision::Allowed =>
+                            {
+                                Some(R::AllowFocus(true))
+                            }
+                            _ => None,
                         }
-                        _ => None,
                     }
-                }
-                A::ReadAutofocus => Some(R::Autofocus(self.focus_boolean(
-                    frame.subject,
-                    surgeist_html::HtmlBooleanAttribute::Autofocus,
-                    KnownHtmlAttribute::Autofocus,
-                    cancel,
-                )?)),
-                A::RunFocusingSteps {
-                    control: Control::Subject,
-                } if self.dialog_subject_focus_no_change(frame.subject, cancel)? => {
-                    Some(R::Applied)
-                }
-                A::CaptureControlTopDocument { control } => {
-                    match self.selected_focus_control(frame.subject, &called, control) {
-                        Some(control) => match self.dialog_control_top_document(control, cancel)? {
-                            Some(top) => {
-                                called.top_document = Some(top);
-                                Some(R::Applied)
+                    A::FindFocusDelegate => {
+                        let delegate = called.delegate_call.get_or_insert_with(|| {
+                            delegate::DelegateFrame::new(self, frame.subject)
+                        });
+                        match delegate.advance(self, frame.subject, cancel)? {
+                            Some(present) => {
+                                called.delegate_call = None;
+                                Some(R::FocusDelegatePresent(present))
                             }
                             None => None,
-                        },
-                        None => None,
+                        }
                     }
-                }
-                A::ReadSameOrigin { control } => match (
-                    self.selected_focus_control(frame.subject, &called, control),
-                    called.top_document,
-                ) {
-                    (Some(control), Some(top)) => {
-                        self.source_step(cancel)?;
-                        let document = self.node(control)?.document;
-                        self.source_step(cancel)?;
-                        Some(R::SameOrigin(
-                            self.document_metadata(document)?.origin()
-                                == self.document_metadata(top)?.origin(),
-                        ))
+                    A::ReadAutofocus => Some(R::Autofocus(self.focus_boolean(
+                        frame.subject,
+                        surgeist_html::HtmlBooleanAttribute::Autofocus,
+                        KnownHtmlAttribute::Autofocus,
+                        cancel,
+                    )?)),
+                    A::RunFocusingSteps {
+                        control: Control::Subject,
+                    } if self.dialog_subject_focus_no_change(frame.subject, cancel)? => {
+                        Some(R::Applied)
+                    }
+                    A::CaptureControlTopDocument { control } => {
+                        match self.selected_focus_control(frame.subject, &called, control) {
+                            Some(control) => {
+                                match self.dialog_control_top_document(control, cancel)? {
+                                    Some(top) => {
+                                        called.top_document = Some(top);
+                                        Some(R::Applied)
+                                    }
+                                    None => None,
+                                }
+                            }
+                            None => None,
+                        }
+                    }
+                    A::ReadSameOrigin { control } => match (
+                        self.selected_focus_control(frame.subject, &called, control),
+                        called.top_document,
+                    ) {
+                        (Some(control), Some(top)) => {
+                            self.source_step(cancel)?;
+                            let document = self.node(control)?.document;
+                            self.source_step(cancel)?;
+                            Some(R::SameOrigin(
+                                self.document_metadata(document)?.origin()
+                                    == self.document_metadata(top)?.origin(),
+                            ))
+                        }
+                        _ => None,
+                    },
+                    A::EmptyAutofocusCandidates => {
+                        let top = called
+                            .top_document
+                            .ok_or(DomError::InvalidSourceOperation)?;
+                        match self.autofocus_state(top) {
+                            Ok(_) => {
+                                self.autofocus_clear(top, cancel)?;
+                                Some(R::Applied)
+                            }
+                            Err(DomError::AutofocusDocumentStateUnavailable) => None,
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    A::SetAutofocusProcessed => {
+                        self.autofocus_set_processed(
+                            called
+                                .top_document
+                                .ok_or(DomError::InvalidSourceOperation)?,
+                            cancel,
+                        )?;
+                        Some(R::Applied)
+                    }
+                    A::Complete => {
+                        frame
+                            .cursor
+                            .reply(Reply::Applied)
+                            .map_err(DomError::DialogProtocol)?;
+                        return Ok(());
                     }
                     _ => None,
-                },
-                A::EmptyAutofocusCandidates => {
-                    let top = called
-                        .top_document
-                        .ok_or(DomError::InvalidSourceOperation)?;
-                    match self.autofocus_state(top) {
-                        Ok(_) => {
-                            self.autofocus_clear(top, cancel)?;
-                            Some(R::Applied)
-                        }
-                        Err(DomError::AutofocusDocumentStateUnavailable) => None,
-                        Err(error) => return Err(error),
-                    }
-                }
-                A::SetAutofocusProcessed => {
-                    self.autofocus_set_processed(
-                        called
-                            .top_document
-                            .ok_or(DomError::InvalidSourceOperation)?,
-                        cancel,
-                    )?;
-                    Some(R::Applied)
-                }
-                A::Complete => {
-                    frame
+                };
+                if let Some(reply) = reply {
+                    called
                         .cursor
-                        .reply(Reply::Applied)
-                        .map_err(DomError::DialogProtocol)?;
-                    frame.focusing = None;
-                    self.dialog_method = Some(frame);
-                    return Ok(());
+                        .reply(reply)
+                        .map_err(DomError::DialogFocusingProtocol)?;
+                    called.invocation = source::Invocation::Unissued;
+                } else {
+                    return Err(DomError::DialogFocusingUnavailable { action });
                 }
-                _ => None,
-            };
-            if let Some(reply) = reply {
-                called
-                    .cursor
-                    .reply(reply)
-                    .map_err(DomError::DialogFocusingProtocol)?;
-                called.invocation = source::Invocation::Unissued;
-            } else {
-                frame.focusing = Some(called);
-                self.dialog_method = Some(frame);
-                return Err(DomError::DialogFocusingUnavailable { action });
             }
+        })();
+        if result.is_err() || called.cursor.action() != A::Complete {
+            frame.focusing = Some(called);
         }
+        result
+    }
+}
+impl FocusingFrame {
+    pub(super) fn checkpoint(
+        &self,
+        a: &mut source::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(Self {
+            cursor: self.cursor,
+            delegate: self.delegate,
+            top_document: self.top_document,
+            invocation: self.invocation,
+            delegate_call: self
+                .delegate_call
+                .as_ref()
+                .map(|call| call.checkpoint(a, cancel))
+                .transpose()?,
+        })
     }
 }
 

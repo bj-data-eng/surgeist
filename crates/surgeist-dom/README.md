@@ -1050,7 +1050,18 @@ The original affine receipt fulfills this exact child permission step. Denial
 completes the child and then the outer Show or ShowModal. A permitted feature
 advances the child locally before reading activation or forming a Runtime receipt.
 
-Actual `autofocus` selects the subject. The native adapter can fulfill called
+Actual `autofocus` selects the subject. Without it, the original focusing frame
+runs the HTML-owned delegate protocols with two separate ordinary-descendant
+passes. An admitted indexed ancestor stack preserves preorder with linear work
+and storage proportional to depth. Actual shadow-root selection follows the
+producer; ordinary traversal does not enter shadow or hosted relations implicitly.
+An empty descendant domain genuinely completes both scans and selects the subject.
+Unknown focusability or called-area resolution retains a `FocusDelegate` request
+with its actual root, queried node, step and original operation occurrence.
+Checkpoint refusal, cancellation and lease replacement preserve the original
+traversal and cumulative admission; they do not supply missing facts.
+
+The native adapter can fulfill called
 focusing without changing focus when the subject has applicable own `inert`
 and actual non-root, nondelegating state. The shared HTML rule covers the
 subject's own scroll regions; it supplies no geometry or guessed focusability.
@@ -1058,8 +1069,7 @@ The child then reads the selected control's actual current top Document and
 compares origins. A genuine origin difference completes it before autofocus
 writes. For the same origin, the child clears that captured top Document's
 actual candidates, sets its processed flag and completes. Missing no-change proof
-waits at `RunFocusingSteps`, and delegate selection remains an actual service
-requirement. Positive focus movement and restoration remain unavailable.
+waits at `RunFocusingSteps`. Positive focus movement and restoration remain unavailable.
 
 Each Document retains independently qualified autofocus history. Fresh native
 and hosted Documents begin with an empty candidate list and processed=false;

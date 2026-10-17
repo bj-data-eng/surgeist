@@ -7,6 +7,7 @@ pub(crate) use focus::FocusQualification;
 pub use focus::{
     DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomFocusTarget,
     DomSourceAutofocusInsertionRequest, DomSourceDialogFocusingRequest,
+    DomSourceFocusDelegateRequest, DomSourceFocusDelegateStep,
 };
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
@@ -158,6 +159,7 @@ pub enum DomSourceRequest {
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
     DialogFocusing(DomSourceDialogFocusingRequest),
+    FocusDelegate(DomSourceFocusDelegateRequest),
     AutofocusInsertion(DomSourceAutofocusInsertionRequest),
     CloseWatcher(DomSourceCloseWatcherRequest),
 }

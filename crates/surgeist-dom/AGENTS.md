@@ -333,6 +333,16 @@ emitting Document-state changes. Historical snapshots retain their original
 identities without granting execution. Rendering flush and positive focusing
 remain unavailable.
 
+Dialog delegate selection consumes HTML's complete focus/autofocus delegate
+protocols in the original focusing frame. Use the shared Source-admitted indexed
+ancestor stack for two distinct ordinary preorder passes, with linear traversal
+work and depth-proportional storage. Preserve actual roots, descendants, returned
+area roles and the original trigger. An empty traversal returns null through the
+protocols; unsupported focusability or area queries retain their exact Source
+request and occurrence. Do not substitute shadow-inclusive traversal or heuristics
+for those facts. Fallible frame checkpoints admit old/new overlap; borrowed
+validation and driver take/restore preserve the original continuation on refusal.
+
 From repository root through bounded `pisct run`:
 
 ```sh

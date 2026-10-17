@@ -40,7 +40,7 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
         let cause = op.failure.ok_or(DomError::InvalidSourceOperation)?;
-        if op.request_close.is_some_and(|call| !call.settled) {
+        if op.request_close.as_ref().is_some_and(|call| !call.settled) {
             return Err(DomError::InvalidSourceOperation);
         }
         // Only the already-settled original operation releases its own marker.

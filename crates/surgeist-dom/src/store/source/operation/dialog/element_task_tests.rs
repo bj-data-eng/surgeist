@@ -225,7 +225,7 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         );
         let op = dom.source_operation.as_ref().unwrap();
         assert_eq!(
-            op.draft.dialog_method.unwrap().cursor.action(),
+            op.draft.dialog_method.as_ref().unwrap().cursor.action(),
             surgeist_html::HtmlDialogAction::QueueToggle {
                 old: surgeist_html::HtmlDialogState::Closed,
                 new: surgeist_html::HtmlDialogState::Open,
@@ -302,6 +302,7 @@ fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effec
                 .unwrap()
                 .draft
                 .dialog_method
+                .as_ref()
                 .unwrap()
                 .invocation,
             Invocation::Unissued

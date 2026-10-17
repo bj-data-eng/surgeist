@@ -287,7 +287,9 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
     dispatch(&mut session, &event);
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogFocusingAction::FindFocusDelegate,
+        HtmlDialogFocusingAction::RunFocusingSteps {
+            control: surgeist_html::HtmlDialogFocusControl::Subject,
+        },
     );
     let after = session.snapshot();
     let dialog = after.node(subject).unwrap().as_dialog().unwrap();
@@ -475,7 +477,12 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         assert!(context.adopted.unwrap().is_ok());
         let progress = resume(&mut session, event.operation(), None).unwrap();
         if original_headless {
-            pending_focusing(progress, HtmlDialogFocusingAction::FindFocusDelegate);
+            pending_focusing(
+                progress,
+                HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: surgeist_html::HtmlDialogFocusControl::Subject,
+                },
+            );
         } else {
             pending_action(progress, HtmlDialogAction::RememberFocusedElement);
         }

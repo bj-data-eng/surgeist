@@ -177,12 +177,17 @@ impl Draft {
         if !matches!(
             self.document_allow_focus_permission(document, cancel)?,
             AllowFocusPermission::Allowed
-        ) || !self.focus_boolean(
+        ) {
+            return Ok(0);
+        }
+        let autofocus = self.focus_boolean(
             subject,
             surgeist_html::HtmlBooleanAttribute::Autofocus,
             surgeist_html::KnownHtmlAttribute::Autofocus,
             cancel,
-        )? || !self.dialog_subject_focus_no_change(subject, cancel)?
+        )?;
+        if !self.dialog_subject_focus_no_change(subject, cancel)?
+            || (!autofocus && !self.dialog_delegate_null_available(subject, cancel)?)
         {
             return Ok(0);
         }
@@ -229,7 +234,7 @@ impl Draft {
                     self.source_step(cancel)?;
                 }
             }
-            if surgeist_html::autofocus_insertion_presence(element.name(), Some(attribute)) {
+            if surgeist_html::autofocus_presence(element.name(), Some(attribute)) {
                 return Ok(true);
             }
         }

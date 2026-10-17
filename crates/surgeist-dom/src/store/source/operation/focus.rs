@@ -6,7 +6,7 @@ use crate::{
 };
 use surgeist_html::{HtmlDialogAction, HtmlDialogReply};
 enum FocusFrame {
-    Dialog(crate::store::dialog::MethodFrame),
+    Dialog(Key),
     Insertion(crate::store::autofocus::Frame),
 }
 impl Operation {
@@ -33,6 +33,7 @@ impl Operation {
         let frame = self
             .draft
             .dialog_method
+            .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
         if request.operation() != self.id
             || self.draft.published_id(frame.subject) != Some(request.subject())
@@ -51,7 +52,10 @@ impl Operation {
                 }
             }
             DomFocusRequest::AllowDialog(request) => {
-                let child = frame.focusing.ok_or(DomError::InvalidSourceOperation)?;
+                let child = frame
+                    .focusing
+                    .as_ref()
+                    .ok_or(DomError::InvalidSourceOperation)?;
                 if request.action() != surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
                     || frame.cursor.action() != HtmlDialogAction::RunDialogFocusingSteps
                     || child.cursor.action() != request.action()
@@ -66,7 +70,7 @@ impl Operation {
             }
         }
         self.draft.dialog_state(frame.subject)?;
-        Ok(FocusFrame::Dialog(frame))
+        Ok(FocusFrame::Dialog(frame.subject))
     }
     fn focus_qualification(
         &self,
@@ -86,9 +90,9 @@ impl Operation {
             });
         }
         let document = match frame {
-            FocusFrame::Dialog(frame) => {
+            FocusFrame::Dialog(subject) => {
                 self.draft.source_step(cancel)?;
-                self.draft.node(frame.subject)?.document
+                self.draft.node(subject)?.document
             }
             FocusFrame::Insertion(frame) => frame.target.ok_or(DomError::InvalidSourceOperation)?,
         };
@@ -162,21 +166,26 @@ impl Operation {
                 .effect = select::Effect::AutofocusInsertion(frame);
             return Ok(());
         }
-        let FocusFrame::Dialog(mut frame) = frame else {
+        let FocusFrame::Dialog(subject) = frame else {
             unreachable!("handled insertion")
         };
         if matches!(request, DomFocusRequest::RememberDialog(_)) {
             // An already-null slot remains a semantic no-op.
             self.draft
-                .element_mut(frame.subject)
+                .element_mut(subject)
                 .remember_no_focused_element();
+            let frame = self.draft.dialog_method.as_mut().expect("qualified method");
             frame
                 .cursor
                 .reply(HtmlDialogReply::Applied)
                 .map_err(DomError::DialogProtocol)?;
             frame.invocation = Invocation::Unissued;
         } else {
-            let called = frame
+            let called = self
+                .draft
+                .dialog_method
+                .as_mut()
+                .expect("qualified method")
                 .focusing
                 .as_mut()
                 .ok_or(DomError::InvalidSourceOperation)?;
@@ -188,7 +197,6 @@ impl Operation {
         }
         // Denied allow-focus returns before all positive focusing effects.
         self.draft.source_step(cancel)?;
-        self.draft.dialog_method = Some(frame);
         Ok(())
     }
 }
