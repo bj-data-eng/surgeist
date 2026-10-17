@@ -1036,3 +1036,18 @@ The [conversion record](CONVERSION-REPORT.md#close-watcher-manager--2026-10-17)
 and [WHATWG notice](../licenses/whatwg/NOTICE.md#close-watcher-manager--2026-10-17)
 record the exact units. No new edition, source identity or implementation
 completion is asserted.
+
+## Dialog modal assertion comparison
+
+The [dated current-source comparison](html-dialog-modal-assertion-comparison--2026-10-17.md)
+retains the inactive open-hook return and selected post-event ShowModal steps
+observed on 17 October 2026. These clauses preserve the pinned edition's order:
+the open hook can return on inactivity, while ShowModal later asserts a nonnull
+watcher without a second post-event activity check.
+
+No replacement HTML edition or source correction is selected.
+[Issue #1225](https://github.com/bj-data-eng/surgeist/issues/1225) owns the explicit
+native failed-assertion disposition; the source comparison does not supply one.
+The [catalog entry](SOURCE-CATALOG.md#dialog-modal-assertion-comparison--2026-10-17)
+and [conversion record](CONVERSION-REPORT.md#dialog-modal-assertion-comparison--2026-10-17)
+identify the bounded transcription and its limits.

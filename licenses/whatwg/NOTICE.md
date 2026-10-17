@@ -541,3 +541,23 @@ byte-identical, including the descriptive cancellation contradiction. The
 states coverage and exact comparisons. No source script or renderer ran; no
 endorsement, new edition or browser-conformance claim is implied. Surgeist's
 own license remains unchanged.
+
+## Dialog modal assertion comparison — 2026-10-17
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [dated comparison](../../references/html-dialog-modal-assertion-comparison--2026-10-17.md)
+retains selected clauses from the
+[HTML Living Standard interactive-elements page](https://html.spec.whatwg.org/multipage/interactive-elements.html#show-a-modal-dialog),
+retrieved 17 October 2026 with a reported update date of 16 October.
+The unchanged complete [LICENSE](LICENSE) supplies CC BY 4.0 terms for this
+specification prose and the separate BSD 3-Clause provision for source-code incorporation.
+
+Changes by Surgeist on 17 October 2026: manual Markdown transcription, removal
+of inline links, explicit selection boundaries and original step numbers,
+provenance and separately marked comparison commentary. The
+[conversion record](../../references/CONVERSION-REPORT.md#dialog-modal-assertion-comparison--2026-10-17)
+states the selected coverage and fidelity limits. The excerpt is not a full
+current-page response, immutable standard edition or amendment of the pinned
+HTML877d implementation basis. No endorsement or browser-conformance claim is
+implied; Surgeist's own license remains unchanged.

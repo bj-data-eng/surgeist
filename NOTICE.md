@@ -681,3 +681,11 @@ retains the same edition's complete selected defaults, watcher definition,
 establishment and destruction units as inert literal source. The existing full
 license and [modification notice](licenses/whatwg/NOTICE.md#close-watcher-manager--2026-10-17)
 cover its bounded selection and Markdown framing.
+
+## Dialog modal assertion comparison
+
+The [dated HTML comparison](references/html-dialog-modal-assertion-comparison--2026-10-17.md)
+retains selected current-source clauses separately from the pinned implementation
+edition. The [WHATWG attribution and modification notice](licenses/whatwg/NOTICE.md#dialog-modal-assertion-comparison--2026-10-17)
+and unchanged complete license cover its Markdown transcription under CC BY 4.0.
+It supplies no upstream correction, replacement standard or implementation acceptance.

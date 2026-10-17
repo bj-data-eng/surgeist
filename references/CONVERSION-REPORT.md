@@ -1121,3 +1121,28 @@ The unchanged complete [WHATWG license](../licenses/whatwg/LICENSE) and
 cover this additional representation of an existing source identity. Counts
 remain 391 = 260 full + 102 partial + 29 metadata-only. Exact extraction does
 not certify implementation, visual rendering or full browser conformance.
+
+## Dialog modal assertion comparison — 2026-10-17
+
+The [comparison reference](html-dialog-modal-assertion-comparison--2026-10-17.md)
+is a manual Markdown transcription of selected current HTML clauses, retrieved
+2026-10-17 from the interactive-elements page reporting an update date of
+2026-10-16. It retains the open-attribute hook's step 4 and ShowModal steps 7–12;
+original step numbers make the omitted intervening work explicit. Headings,
+provenance and comparison commentary are additions, and inline links are removed.
+No complete algorithm or original HTML byte identity is claimed.
+
+Retained Markdown SHA-256:
+`f33602dcee1d93b7f659317ea647894d406b6912ad3afd9d8d7290dd7a052561`.
+The selected wording and order were also compared with retained HTML877d
+raw46573–46580 and46585–46615. The dated current-page observation supplies no
+additional activity guard or established correction. No full current-page response
+or immutable upstream commit is retained; this hash identifies only the Markdown.
+
+The pinned normative edition remains unchanged. The explicit native assertion
+failure policy belongs to [#1225](https://github.com/bj-data-eng/surgeist/issues/1225),
+separately from the literal source. The unchanged complete
+[WHATWG license](../licenses/whatwg/LICENSE) and
+[modification notice](../licenses/whatwg/NOTICE.md#dialog-modal-assertion-comparison--2026-10-17)
+cover the retained prose. This comparison adds no executable material or
+implementation-conformance evidence.

@@ -758,3 +758,19 @@ than the selected excerpts or Markdown.
 | Representation | Complete original source | Original SHA-256 | Coverage |
 | --- | --- | --- | --- |
 | [URL equality and serialization](url-equality-serialization--fde3f74f0633.md) | [URL Standard url.bs at fde3f74f](https://github.com/whatwg/url/blob/fde3f74f063341a28d437216f75735b8b40128f5/url.bs) | 7f45ea5b6167f08a098619167254a99a3c8b5fd6514fff4963ede4a7c8e05818 | partial; literal complete selected units at 469–495, 807–812, 1952–1963, 3034–3069, 3168–3271: encode sets, forbidden host characters, path representation, opaque-path parsing, serializers and equality |
+
+## Dialog modal assertion comparison — 2026-10-17
+
+The [dated comparison](html-dialog-modal-assertion-comparison--2026-10-17.md)
+retains selected clauses from the
+[current HTML interactive-elements page](https://html.spec.whatwg.org/multipage/interactive-elements.html#show-a-modal-dialog),
+retrieved 2026-10-17; the page reported an update date of 2026-10-16.
+Retained Markdown SHA-256:
+`f33602dcee1d93b7f659317ea647894d406b6912ad3afd9d8d7290dd7a052561`.
+
+This hash identifies the bounded transcription, not an original response or
+upstream commit. No full current-page response or additional immutable edition
+identity is asserted. The implementation edition remains HTML877d. The
+[conversion record](CONVERSION-REPORT.md#dialog-modal-assertion-comparison--2026-10-17)
+and [WHATWG notice](../licenses/whatwg/NOTICE.md#dialog-modal-assertion-comparison--2026-10-17)
+describe the comparison and attribution.
