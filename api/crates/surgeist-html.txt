@@ -2137,6 +2137,9 @@ pub const fn surgeist_html::HtmlDetailsState::as_str(self) -> &'static str
 pub enum surgeist_html::HtmlDialogAction
 pub surgeist_html::HtmlDialogAction::AddOpen
 pub surgeist_html::HtmlDialogAction::AddOpenDialog
+pub surgeist_html::HtmlDialogAction::AddTopLayer
+pub surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent
+pub surgeist_html::HtmlDialogAction::BlockNodeDocument
 pub surgeist_html::HtmlDialogAction::CaptureCloseWatcher
 pub surgeist_html::HtmlDialogAction::CaptureNodeDocument
 pub surgeist_html::HtmlDialogAction::ClearCloseWatcher
@@ -2166,6 +2169,7 @@ pub surgeist_html::HtmlDialogAction::ReadFocusedAnchorInside
 pub surgeist_html::HtmlDialogAction::ReadFullyActive
 pub surgeist_html::HtmlDialogAction::ReadModal
 pub surgeist_html::HtmlDialogAction::ReadOpen
+pub surgeist_html::HtmlDialogAction::ReadPopoverShowing
 pub surgeist_html::HtmlDialogAction::ReadPreviousFocusPresent
 pub surgeist_html::HtmlDialogAction::ReadTopLayerContains
 pub surgeist_html::HtmlDialogAction::ReadWatcherPresent
@@ -2179,6 +2183,7 @@ pub surgeist_html::HtmlDialogAction::RequestWatcherClose::require_history_action
 pub surgeist_html::HtmlDialogAction::RestorePreviousFocusWithoutScrolling
 pub surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
 pub surgeist_html::HtmlDialogAction::SetForceCloseWatcherEnabled(bool)
+pub surgeist_html::HtmlDialogAction::SetModal
 pub surgeist_html::HtmlDialogAction::WriteNullRequestCloseSource
 pub surgeist_html::HtmlDialogAction::WriteRequestCloseReturnValue
 pub surgeist_html::HtmlDialogAction::WriteReturnValue
@@ -2199,6 +2204,7 @@ pub surgeist_html::HtmlDialogOperation::OpenChanged(surgeist_html::HtmlDialogOpe
 pub surgeist_html::HtmlDialogOperation::Removed
 pub surgeist_html::HtmlDialogOperation::RequestClose
 pub surgeist_html::HtmlDialogOperation::Show
+pub surgeist_html::HtmlDialogOperation::ShowModal
 pub enum surgeist_html::HtmlDialogOutcome
 pub surgeist_html::HtmlDialogOutcome::Completed
 pub surgeist_html::HtmlDialogOutcome::InvalidState
@@ -2210,6 +2216,7 @@ pub surgeist_html::HtmlDialogReply::FocusedAnchorInside(bool)
 pub surgeist_html::HtmlDialogReply::FullyActive(bool)
 pub surgeist_html::HtmlDialogReply::Modal(bool)
 pub surgeist_html::HtmlDialogReply::Open(bool)
+pub surgeist_html::HtmlDialogReply::PopoverShowing(bool)
 pub surgeist_html::HtmlDialogReply::PreviousFocusPresent(bool)
 pub surgeist_html::HtmlDialogReply::TopLayerContains(bool)
 pub surgeist_html::HtmlDialogReply::WatcherPresent(bool)

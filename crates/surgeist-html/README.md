@@ -106,7 +106,14 @@ queued toggle. It supplies values, not a DOM target, listener registry or event
 execution; Runtime owns the task tracker and real dispatch.
 
 `HtmlDialogCursor` orders Dialog methods and ordinary lifecycle hooks. Its
-requestClose protocol requires current open, connection and Document-activity
+standard null-source showModal protocol distinguishes initial InvalidState
+guards from normal post-dispatch returns. It requires the completed open hook
+and watcher assertion before modal state, Document blocking and conditional
+top-layer addition, then the shared remembered-focus, popover and focusing
+steps. Each action requires its actual owner; the protocol supplies no native
+modal state or service completion.
+
+Its requestClose protocol requires current open, connection and Document-activity
 observations, writes the actual nullable request operands and force-enable
 state, and resets that state after either normal watcher-request result.
 `HtmlCloseWatcherRequestCursor` owns the watcher's request and Close ordering:

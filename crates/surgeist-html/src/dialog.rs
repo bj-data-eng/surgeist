@@ -5,8 +5,8 @@
 //! Synchronous dispatch, focus, watchers, popover algorithms and layer services
 //! remain real requirements. This producer grants no hosted Document capability.
 //! The bounded operations are nonmodal show, close, insertion/removal and open
-//! changes, and standard null-source requestClose. showModal and light-dismiss
-//! execution remain separate.
+//! changes, and standard null-source requestClose/showModal. Light-dismiss
+//! execution remains separate.
 mod request;
 use crate::{HtmlClosedBy, HtmlClosedByState, KnownHtmlAttribute, Namespace};
 pub use request::*;
@@ -97,6 +97,8 @@ impl HtmlDialogOpenChange {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogOperation {
     Show,
+    /// Standard showModal method with null source.
+    ShowModal,
     /// Standard requestClose method; the adapter retains its actual nullable result.
     RequestClose,
     Close {
@@ -144,7 +146,7 @@ pub enum HtmlDialogEventSource {
     /// Use the original nullable close source retained by the adapter.
     OperationSource,
 }
-/// Normal source return versus the show() InvalidState error.
+/// Normal source return versus a show()/showModal() InvalidState error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogOutcome {
     Completed,
@@ -159,6 +161,8 @@ pub enum HtmlDialogAction {
     ReadModal,
     ReadFullyActive,
     ReadConnected,
+    /// Read actual popover showing state, not its authored popover attribute.
+    ReadPopoverShowing,
     ReadWatcherPresent,
     /// Capture the asserted nonnull watcher. Absence violates the source
     /// invariant; it cannot be acknowledged or treated as an early return.
@@ -172,6 +176,7 @@ pub enum HtmlDialogAction {
     RequestWatcherClose {
         require_history_action_activation: bool,
     },
+    /// Read the receiver's then-current node Document's actual top layer.
     ReadTopLayerContains,
     /// Retain the actual previous-focus identity locally when present.
     ReadPreviousFocusPresent,
@@ -193,6 +198,15 @@ pub enum HtmlDialogAction {
     },
     /// Ordinary empty open addition, including its complete nested attribute hook.
     AddOpen,
+    /// Assert the actual watcher is nonnull after AddOpen and its complete
+    /// nested hook. This neither establishes nor captures an invocation.
+    AssertCloseWatcherPresent,
+    /// Set the receiver's modal state to literal true.
+    SetModal,
+    /// Block the receiver's then-current node Document by this receiver.
+    BlockNodeDocument,
+    /// Execute actual top-layer addition for the receiver.
+    AddTopLayer,
     /// Ordinary open removal, including its complete nested attribute hook.
     RemoveOpen,
     /// Store the actually focused Element (or known null), not a desired target.
@@ -244,6 +258,7 @@ pub enum HtmlDialogReply {
     Modal(bool),
     FullyActive(bool),
     Connected(bool),
+    PopoverShowing(bool),
     WatcherPresent(bool),
     TopLayerContains(bool),
     PreviousFocusPresent(bool),
@@ -271,6 +286,7 @@ impl std::error::Error for HtmlDialogCursorError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ModalRead {
     Show,
+    ShowModal,
     Removal,
     WasModal,
 }
@@ -292,6 +308,7 @@ impl HtmlDialogCursor {
         use HtmlDialogAction as A;
         let pending = match operation {
             HtmlDialogOperation::Show
+            | HtmlDialogOperation::ShowModal
             | HtmlDialogOperation::RequestClose
             | HtmlDialogOperation::Close { .. }
             | HtmlDialogOperation::Removed => A::ReadOpen,
@@ -358,6 +375,13 @@ impl HtmlDialogCursor {
                 cancelable: true,
                 source: HtmlDialogEventSource::Null,
             },
+            O::ShowModal if open && !self.after_dispatch => {
+                self.modal_read = ModalRead::ShowModal;
+                A::ReadModal
+            }
+            O::ShowModal if open => Self::completed(),
+            O::ShowModal if self.after_dispatch => A::ReadConnected,
+            O::ShowModal => A::ReadFullyActive,
             O::RequestClose => {
                 if open {
                     A::ReadConnected
@@ -406,6 +430,11 @@ impl HtmlDialogCursor {
                 } else {
                     HtmlDialogOutcome::Completed
                 }),
+                ModalRead::ShowModal => A::Complete(if modal {
+                    HtmlDialogOutcome::Completed
+                } else {
+                    HtmlDialogOutcome::InvalidState
+                }),
                 ModalRead::Removal => {
                     self.modal_read = ModalRead::WasModal;
                     if modal {
@@ -442,13 +471,23 @@ impl HtmlDialogCursor {
                 A::ReadOpen
             }
             (A::QueueToggle { .. }, R::Applied) => {
-                if matches!(self.operation, O::Show) {
+                if matches!(self.operation, O::Show | O::ShowModal) {
                     A::AddOpen
                 } else {
                     A::RemoveOpen
                 }
             }
-            (A::AddOpen, R::Applied) => A::RememberFocusedElement,
+            (A::AddOpen, R::Applied) => {
+                if matches!(self.operation, O::ShowModal) {
+                    A::AssertCloseWatcherPresent
+                } else {
+                    A::RememberFocusedElement
+                }
+            }
+            (A::AssertCloseWatcherPresent, R::Applied) => A::SetModal,
+            (A::SetModal, R::Applied) => A::BlockNodeDocument,
+            (A::BlockNodeDocument, R::Applied) => A::ReadTopLayerContains,
+            (A::AddTopLayer, R::Applied) => A::RememberFocusedElement,
             (A::RememberFocusedElement, R::Applied) => A::CaptureNodeDocument,
             (A::CaptureNodeDocument, R::Applied) => A::FindTopmostPopoverAncestor,
             (A::FindTopmostPopoverAncestor, R::Applied) => A::HidePopoversUntil {
@@ -504,7 +543,9 @@ impl HtmlDialogCursor {
             }
             (A::SetForceCloseWatcherEnabled(false), R::Applied) => Self::completed(),
             (A::ReadFullyActive, R::FullyActive(active)) => {
-                if !active {
+                if !active && matches!(self.operation, O::ShowModal) {
+                    A::Complete(HtmlDialogOutcome::InvalidState)
+                } else if !active {
                     Self::completed()
                 } else if matches!(self.operation, O::RequestClose) {
                     A::CaptureCloseWatcher
@@ -517,7 +558,15 @@ impl HtmlDialogCursor {
             (A::ReadConnected, R::Connected(connected)) => {
                 let setup = matches!(self.operation, O::Inserted)
                     || matches!(self.operation, O::OpenChanged(change) if change.added());
-                if !connected {
+                if matches!(self.operation, O::ShowModal) {
+                    if connected {
+                        A::ReadPopoverShowing
+                    } else if self.after_dispatch {
+                        Self::completed()
+                    } else {
+                        A::Complete(HtmlDialogOutcome::InvalidState)
+                    }
+                } else if !connected {
                     Self::completed()
                 } else if matches!(self.operation, O::RequestClose) {
                     A::ReadFullyActive
@@ -525,6 +574,26 @@ impl HtmlDialogCursor {
                     A::AddOpenDialog
                 } else {
                     Self::completed()
+                }
+            }
+            (A::ReadPopoverShowing, R::PopoverShowing(showing)) => {
+                if showing && self.after_dispatch {
+                    Self::completed()
+                } else if showing {
+                    A::Complete(HtmlDialogOutcome::InvalidState)
+                } else if self.after_dispatch {
+                    A::QueueToggle {
+                        old: HtmlDialogState::Closed,
+                        new: HtmlDialogState::Open,
+                        source: HtmlDialogEventSource::Null,
+                    }
+                } else {
+                    A::FireBeforeToggle {
+                        old: HtmlDialogState::Closed,
+                        new: HtmlDialogState::Open,
+                        cancelable: true,
+                        source: HtmlDialogEventSource::Null,
+                    }
                 }
             }
             (A::AddOpenDialog, R::Applied) => A::EstablishCloseWatcher,
@@ -539,7 +608,13 @@ impl HtmlDialogCursor {
             (A::DestroyCloseWatcher, R::Applied) => A::ClearCloseWatcher,
             (A::ClearCloseWatcher, R::Applied) => self.after_cleanup(),
             (A::ReadTopLayerContains, R::TopLayerContains(contains)) => {
-                if contains {
+                if matches!(self.operation, O::ShowModal) {
+                    if contains {
+                        A::RememberFocusedElement
+                    } else {
+                        A::AddTopLayer
+                    }
+                } else if contains {
                     A::RemoveTopLayerImmediately
                 } else {
                     A::ClearModal
