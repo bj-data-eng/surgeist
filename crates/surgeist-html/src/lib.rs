@@ -21,11 +21,13 @@ mod custom_names;
 mod details_rules;
 mod dialog;
 mod focus_delegate;
+mod focusing;
 mod form_association;
 mod form_native;
 mod form_owner;
 mod fragment_initialization;
 mod frame;
+mod get_focusable_area;
 mod hyperlink;
 mod iframe;
 mod image;
@@ -75,6 +77,7 @@ pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
 pub use dialog::*;
 pub use focus_delegate::*;
+pub use focusing::*;
 pub use form_association::HtmlNativeFormAssociationKind;
 pub use form_native::HtmlFormNativeState;
 pub use fragment_initialization::{
@@ -84,6 +87,7 @@ pub use fragment_initialization::{
 pub use frame::{
     HtmlFramePostConnectionDecision, frame_post_connection, frame_potentially_delays_load,
 };
+pub use get_focusable_area::*;
 pub use hyperlink::*;
 pub use iframe::{
     HtmlIframeAttributeBranch, HtmlIframeInitialState, HtmlIframePostConnectionDecision,

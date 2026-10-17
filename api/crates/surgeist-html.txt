@@ -2460,6 +2460,43 @@ pub enum surgeist_html::HtmlFocusedAreaKind
 pub surgeist_html::HtmlFocusedAreaKind::NavigableContainer
 pub surgeist_html::HtmlFocusedAreaKind::Null
 pub surgeist_html::HtmlFocusedAreaKind::OtherArea
+pub enum surgeist_html::HtmlFocusingAction
+pub surgeist_html::HtmlFocusingAction::CaptureContentActiveDocument
+pub surgeist_html::HtmlFocusingAction::Complete
+pub surgeist_html::HtmlFocusingAction::ReadActualAnchorInert
+pub surgeist_html::HtmlFocusingAction::ReadContentNavigable
+pub surgeist_html::HtmlFocusingAction::ReadInitialTargetFocusableArea
+pub surgeist_html::HtmlFocusingAction::ReadReplacementTargetFocusableArea
+pub surgeist_html::HtmlFocusingAction::ReadSameTarget
+pub surgeist_html::HtmlFocusingAction::ReadTargetIsNavigableContainer
+pub surgeist_html::HtmlFocusingAction::RunCurrentFocusChain
+pub surgeist_html::HtmlFocusingAction::RunCurrentlyFocusedArea
+pub surgeist_html::HtmlFocusingAction::RunFocusChain
+pub surgeist_html::HtmlFocusingAction::RunFocusUpdate
+pub surgeist_html::HtmlFocusingAction::RunGetFocusableArea
+pub surgeist_html::HtmlFocusingAction::UseFallbackTarget
+pub enum surgeist_html::HtmlFocusingError
+pub surgeist_html::HtmlFocusingError::Terminal
+pub surgeist_html::HtmlFocusingError::WrongReply
+impl core::error::Error for surgeist_html::HtmlFocusingError
+impl core::fmt::Display for surgeist_html::HtmlFocusingError
+pub fn surgeist_html::HtmlFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlFocusingFallback
+pub surgeist_html::HtmlFocusingFallback::Omitted
+pub surgeist_html::HtmlFocusingFallback::Supplied
+pub enum surgeist_html::HtmlFocusingReply
+pub surgeist_html::HtmlFocusingReply::ActualAnchorInert(bool)
+pub surgeist_html::HtmlFocusingReply::Applied
+pub surgeist_html::HtmlFocusingReply::ContentNavigablePresent(bool)
+pub surgeist_html::HtmlFocusingReply::CurrentFocusChainReady
+pub surgeist_html::HtmlFocusingReply::CurrentlyFocusedAreaReady
+pub surgeist_html::HtmlFocusingReply::FocusChainReady
+pub surgeist_html::HtmlFocusingReply::FocusUpdateCompleted
+pub surgeist_html::HtmlFocusingReply::InitialTargetFocusableArea(bool)
+pub surgeist_html::HtmlFocusingReply::ReplacementTargetFocusableArea(bool)
+pub surgeist_html::HtmlFocusingReply::ResolvedTargetPresent(bool)
+pub surgeist_html::HtmlFocusingReply::SameTarget(bool)
+pub surgeist_html::HtmlFocusingReply::TargetIsNavigableContainer(bool)
 pub enum surgeist_html::HtmlFormAutocomplete
 pub surgeist_html::HtmlFormAutocomplete::Off
 pub surgeist_html::HtmlFormAutocomplete::On
@@ -2514,6 +2551,51 @@ pub enum surgeist_html::HtmlFramePostConnectionDecision
 pub surgeist_html::HtmlFramePostConnectionDecision::Continue
 pub surgeist_html::HtmlFramePostConnectionDecision::NeedsBrowsingContext
 pub surgeist_html::HtmlFramePostConnectionDecision::Return
+pub enum surgeist_html::HtmlGetFocusableAreaAction
+pub surgeist_html::HtmlGetFocusableAreaAction::CaptureContentActiveDocument
+pub surgeist_html::HtmlGetFocusableAreaAction::CaptureCurrentAreaAnchor
+pub surgeist_html::HtmlGetFocusableAreaAction::CaptureNavigableActiveDocument
+pub surgeist_html::HtmlGetFocusableAreaAction::CaptureViewport
+pub surgeist_html::HtmlGetFocusableAreaAction::Complete(surgeist_html::HtmlGetFocusableAreaOutcome)
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadAreaWithFocusableShapes
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadContentNavigable
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadDelegatingShadowHost
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadDocumentElement
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadElementWithFocusableScrollRegions
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadNavigable
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadNavigableContainer
+pub surgeist_html::HtmlGetFocusableAreaAction::ReadShadowIncludingInclusiveAncestor
+pub surgeist_html::HtmlGetFocusableAreaAction::RunCurrentlyFocusedArea
+pub surgeist_html::HtmlGetFocusableAreaAction::RunFocusDelegate
+pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstImageMapShape
+pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstScrollableRegion
+pub enum surgeist_html::HtmlGetFocusableAreaError
+pub surgeist_html::HtmlGetFocusableAreaError::Terminal
+pub surgeist_html::HtmlGetFocusableAreaError::WrongReply
+impl core::error::Error for surgeist_html::HtmlGetFocusableAreaError
+impl core::fmt::Display for surgeist_html::HtmlGetFocusableAreaError
+pub fn surgeist_html::HtmlGetFocusableAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlGetFocusableAreaOutcome
+pub surgeist_html::HtmlGetFocusableAreaOutcome::ContentActiveDocument
+pub surgeist_html::HtmlGetFocusableAreaOutcome::CurrentAnchor
+pub surgeist_html::HtmlGetFocusableAreaOutcome::Delegate
+pub surgeist_html::HtmlGetFocusableAreaOutcome::MapShape
+pub surgeist_html::HtmlGetFocusableAreaOutcome::NavigableActiveDocument
+pub surgeist_html::HtmlGetFocusableAreaOutcome::Null
+pub surgeist_html::HtmlGetFocusableAreaOutcome::ScrollRegion
+pub surgeist_html::HtmlGetFocusableAreaOutcome::Viewport
+pub enum surgeist_html::HtmlGetFocusableAreaReply
+pub surgeist_html::HtmlGetFocusableAreaReply::Applied
+pub surgeist_html::HtmlGetFocusableAreaReply::AreaWithFocusableShapes(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::ContentNavigablePresent(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::CurrentlyFocusedAreaPresent(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::DelegatingShadowHost(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::DocumentElement(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::ElementWithFocusableScrollRegions(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::FocusDelegatePresent(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::Navigable(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::NavigableContainer(bool)
+pub surgeist_html::HtmlGetFocusableAreaReply::ShadowIncludingInclusiveAncestor(bool)
 pub enum surgeist_html::HtmlHashNameAuthorForm
 pub surgeist_html::HtmlHashNameAuthorForm::LeadingHashName
 pub surgeist_html::HtmlHashNameAuthorForm::Missing
@@ -4619,6 +4701,11 @@ impl surgeist_html::HtmlFocusDelegateCursor
 pub const fn surgeist_html::HtmlFocusDelegateCursor::action(&self) -> surgeist_html::HtmlFocusDelegateAction
 pub const fn surgeist_html::HtmlFocusDelegateCursor::new(target_kind: surgeist_html::HtmlFocusDelegateTargetKind) -> Self
 pub fn surgeist_html::HtmlFocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlFocusDelegateError>
+pub struct surgeist_html::HtmlFocusingCursor
+impl surgeist_html::HtmlFocusingCursor
+pub const fn surgeist_html::HtmlFocusingCursor::action(&self) -> surgeist_html::HtmlFocusingAction
+pub const fn surgeist_html::HtmlFocusingCursor::new(fallback: surgeist_html::HtmlFocusingFallback) -> Self
+pub fn surgeist_html::HtmlFocusingCursor::reply(&mut self, reply: surgeist_html::HtmlFocusingReply) -> core::result::Result<(), surgeist_html::HtmlFocusingError>
 pub struct surgeist_html::HtmlFormName
 impl surgeist_html::HtmlFormName
 pub fn surgeist_html::HtmlFormName::into_attribute(self) -> surgeist_html::Attribute
@@ -4649,6 +4736,13 @@ pub fn surgeist_html::HtmlFragmentBuilder::finish(self) -> surgeist_html::HtmlFr
 pub fn surgeist_html::HtmlFragmentBuilder::root(&self) -> surgeist_html::HtmlBuilderNode
 pub fn surgeist_html::HtmlFragmentBuilder::template_contents(&self, template: &surgeist_html::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::HtmlBuilderNode>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::HtmlFragmentBuilder::usage(&self) -> surgeist_html::HtmlConstructionUsage
+pub struct surgeist_html::HtmlGetFocusableAreaCursor
+impl surgeist_html::HtmlGetFocusableAreaCursor
+pub const fn surgeist_html::HtmlGetFocusableAreaCursor::action(&self) -> surgeist_html::HtmlGetFocusableAreaAction
+pub const fn surgeist_html::HtmlGetFocusableAreaCursor::new() -> Self
+pub fn surgeist_html::HtmlGetFocusableAreaCursor::reply(&mut self, reply: surgeist_html::HtmlGetFocusableAreaReply) -> core::result::Result<(), surgeist_html::HtmlGetFocusableAreaError>
+impl core::default::Default for surgeist_html::HtmlGetFocusableAreaCursor
+pub fn surgeist_html::HtmlGetFocusableAreaCursor::default() -> Self
 pub struct surgeist_html::HtmlGlobalDateTime
 impl surgeist_html::HtmlGlobalDateTime
 pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime

@@ -148,6 +148,18 @@ designation reads and distinguishes null, the candidate Document, and its
 designated area. Consumers retain the actual area and DOM anchor independently;
 the cursor adds no activity filter, native focus state or host routing.
 
+`HtmlGetFocusableAreaCursor` applies the first matching target-resolution clause,
+preserving image-map shape order, flat-tree region order, viewport and active
+Document results. Delegating shadow hosts use the actual current area and anchor,
+then the complete focus delegate with the original trigger. A known-null current
+area proceeds directly to delegation under the selected source interpretation.
+
+`HtmlFocusingCursor` preserves resolution, optional fallback, content-Document
+replacement, actual anchor inertness and target equality in source order. It
+requires completed old/new chain construction and focus update before returning.
+Those called dependencies retain their own implementation and admission needs;
+the pure protocol supplies neither native focus effects nor host observations.
+
 `autofocus_presence` consumes the actual Element name and one
 attribute. It admits the exact HTML, SVG and MathML namespace URIs, then
 recognizes exact null-namespace `autofocus` without inspecting its value.
