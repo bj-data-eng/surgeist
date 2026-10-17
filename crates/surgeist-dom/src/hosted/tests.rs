@@ -2,6 +2,24 @@
 use super::*;
 use std::mem::size_of;
 
+impl DomHostedSource {
+    /// Canonical-owner fixtures need a genuinely metered, live Global token.
+    /// This issues only that identity: no Window, constructor phase or external
+    /// execution effect is asserted, and no canonical revision is reserved.
+    pub(crate) fn issue_global_for_canonical_source_fixture(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedGlobalId, DomHostedError> {
+        let work = self.work(cancel)?;
+        let (slot, generation) = self.issue(Role::Global, &work, false, None, 0, cancel)?;
+        Ok(DomHostedGlobalId {
+            source: self.id(),
+            slot,
+            generation,
+        })
+    }
+}
+
 fn cancellation() -> AtomicBool {
     AtomicBool::new(false)
 }

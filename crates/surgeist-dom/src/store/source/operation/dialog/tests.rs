@@ -92,6 +92,254 @@ pub(super) fn attest(
         .unwrap();
     assert!(publication.is_none());
 }
+
+#[test]
+fn request_close_called_boundary_reserves_nested_close_before_request_state_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _executor, document, subject, _) = fixture();
+    let mut issuer = dom
+        .register_hosted_source(
+            crate::DomHostedLimits::new(
+                crate::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                8_000_000,
+                8_000_000,
+                1_000_000,
+            ),
+            &cancel,
+        )
+        .unwrap();
+    let global = issuer
+        .issue_global_for_canonical_source_fixture(&cancel)
+        .unwrap();
+    issuer
+        .observe()
+        .validate(
+            issuer.id(),
+            crate::hosted::Role::Global,
+            global.slot,
+            global.generation,
+        )
+        .unwrap();
+    let original_source = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::set_attribute(subject, "open", ""),
+                limits(),
+                &cancel,
+            )
+            .unwrap();
+        let id = lease.operation();
+        assert!(matches!(
+            lease.advance(&cancel).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+        id
+    };
+    // Controlled canonical stored-watcher input for the Source preflight. The
+    // original issuer token is real; no manager registration, Window activity,
+    // request action or external service reply is fabricated by this fixture.
+    let watcher = crate::DomCloseWatcherId {
+        operation: original_source,
+        command: 0,
+        occurrence: 0,
+        target: subject,
+        global,
+        window_document: document,
+    };
+    let b = DomBatch::new();
+    let mut staged = Draft::new_source(&dom, b.owner.clone(), &b.commands, limits(), &cancel)
+        .unwrap()
+        .0;
+    let key = staged.resolve(subject.into()).unwrap();
+    staged
+        .set_dialog_watcher(key, Some(watcher), &cancel)
+        .unwrap();
+    let prepared = staged.finish(&dom, &cancel).unwrap();
+    dom.publish(prepared, &cancel).unwrap();
+    assert_eq!(
+        dom.hosted_revisions, 0,
+        "no unfinished hosted constructor contaminates the boundary"
+    );
+    dom.revision = DomRevision(u64::MAX - 2);
+    let before = dom.snapshot();
+    assert!(
+        !before
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .force_close_watcher_enabled()
+    );
+    assert_eq!(
+        before
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .request_close_return_value(),
+        None
+    );
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::request_close_dialog(subject, Some("new request".into())),
+            limits(),
+            &cancel,
+        )
+        .unwrap();
+    // Explicit private caller-frame precondition: only the identity-free HTML
+    // cursor is supplied after its initial guards. This does not assert native
+    // guard evaluation, an active Window, manager registration or any completed
+    // external service. The tested boundary starts at CaptureCloseWatcher.
+    let mut caller =
+        surgeist_html::HtmlDialogCursor::new(surgeist_html::HtmlDialogOperation::RequestClose);
+    for reply in [
+        surgeist_html::HtmlDialogReply::Open(true),
+        surgeist_html::HtmlDialogReply::Connected(true),
+        surgeist_html::HtmlDialogReply::FullyActive(true),
+    ] {
+        caller.reply(reply).unwrap();
+    }
+    assert_eq!(caller.action(), HtmlDialogAction::CaptureCloseWatcher);
+    let mut operation = lease.dom.source_operation.take().unwrap();
+    let key = operation.draft.resolve(subject.into()).unwrap();
+    operation.draft.dialog_method = Some(crate::store::dialog::MethodFrame {
+        subject: key,
+        cursor: caller,
+        state: crate::store::dialog::MethodState::Ready,
+        invocation: Invocation::Unissued,
+        locals: crate::store::dialog::MethodLocals::RequestClose { watcher: None },
+        focusing: None,
+    });
+    let Command::RequestCloseDialog { result, .. } = &operation.commands[0] else {
+        panic!("original requestClose input");
+    };
+    // The production Draft interpreter captures the actual stored watcher and
+    // performs the actual private force/request-slot writes before the call.
+    assert_eq!(
+        operation.draft.dialog_method_boundary(
+            key,
+            crate::store::dialog::MethodInput::RequestClose(result.as_ref()),
+            lease.dom.limits,
+            &cancel
+        ),
+        Err(DomError::DialogProcessingUnavailable {
+            action: HtmlDialogAction::RequestWatcherClose {
+                require_history_action_activation: false
+            }
+        })
+    );
+    assert!(
+        operation
+            .draft
+            .dialog_state(key)
+            .unwrap()
+            .force_watcher_enabled
+    );
+    assert_eq!(
+        operation
+            .draft
+            .dialog_state(key)
+            .unwrap()
+            .request_return_value
+            .as_ref(),
+        Some(&DocumentString::from("new request"))
+    );
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    // HTML877d46708–46723 calls the original watcher, whose accepted close
+    // action calls ordinary Close. Its possible canonical tail has separate
+    // Toggle tracking, open-removal/watcher-stop, Close queue, and final reset
+    // publications. Two remaining revisions cannot cover the initial request
+    // publication plus that tail; refuse before force/request fields escape.
+    let called = lease.begin_request_close(&mut operation, false, &cancel);
+    lease.dom.source_operation = Some(operation);
+    assert!(
+        matches!(called, Err(DomError::RevisionExhausted)),
+        "called request-state prepublication admission must refuse: {called:?}"
+    );
+    assert!(!lease.status().has_published());
+    let after = lease.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.incomplete_source_operation(), None);
+    let dialog = after.node(subject).unwrap().as_dialog().unwrap();
+    assert!(!dialog.force_close_watcher_enabled());
+    assert_eq!(dialog.request_close_return_value(), None);
+    assert_eq!(dialog.request_close_source(), None);
+    assert_eq!(dialog.close_watcher(), Some(watcher));
+}
+
+#[test]
+fn close_observation_preserves_its_remaining_publications_before_scoped_batch_revision() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, executor, _, subject, _) = fixture();
+    let mut setup = DomBatch::new();
+    setup.set_attribute(subject, "open", "");
+    dom.apply(setup, &cancel).unwrap();
+    assert_eq!(dom.hosted_revisions, 0);
+    dom.revision = DomRevision(u64::MAX - 4);
+    let before = dom.snapshot();
+    let event = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::close_dialog(subject, None),
+                limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("actual Close beforetoggle observation");
+        };
+        assert!(!event.cancelable());
+        assert!(!lease.status().has_published());
+        event
+    };
+    let permit = executor.begin_dispatch(&dom, &event, &cancel).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel).unwrap();
+    let mut callback = DomBatch::new();
+    callback.set_attribute(
+        subject,
+        "data-actual-scoped-mutation",
+        "must not consume the tail",
+    );
+    // This actual callback mutation keeps `open` and the Close path intact.
+    // Pre-exposure reservation must also cover a watcher established/replaced
+    // by subsequent callback work: Toggle tracking, possible watcher-stop,
+    // Close-queue/open-removal, and final publication are four distinct stops.
+    // All four fit before this mutation; consuming one revision would make
+    // that permitted tail impossible. No watcher effect is fabricated here.
+    let result = dom.apply(callback, &cancel);
+    assert!(
+        matches!(result, Err(DomError::RevisionExhausted)),
+        "scoped mutation must preserve the original Close tail: {result:?}"
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        dom.snapshot()
+            .node(subject)
+            .unwrap()
+            .attribute(&"data-actual-scoped-mutation".into()),
+        None
+    );
+    assert_eq!(
+        dom.snapshot()
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into()),
+        Some(&DocumentString::from(""))
+    );
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        event.operation()
+    );
+    assert_eq!(
+        dom.pending_source_edit().unwrap().phase(),
+        DomSourcePhase::EventObservation
+    );
+    drop(scope);
+    // No completed dispatch or queue service is asserted to manufacture entry.
+    drop(permit);
+}
 #[test]
 fn initial_event_request_survives_permission_drop_without_tree_publication_and_prestart_cancel() {
     fn requires_send<T: Send>() {}
