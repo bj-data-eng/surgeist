@@ -2846,3 +2846,290 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
     // This authentic created-key publication proves neither installation
     // completion nor a watcher reply; the original named root remains parked.
 }
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
+    let cancel = AtomicBool::new(false);
+    let (mut session, top, body) = hosted_queue_fixture();
+    let subject = {
+        let mut batch = DomBatch::new();
+        let dialog = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&dialog, body, None);
+        session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&dialog)
+            .unwrap()
+            .unwrap()
+    };
+    let original = session.snapshot();
+    assert_eq!(
+        original.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    assert!(
+        !original
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
+    assert_eq!(
+        original.relevant_global(subject).unwrap(),
+        Some(top.global())
+    );
+    let opened_progress = {
+        let mut policy = |_: &DomStyleSource| None;
+        session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::set_attribute(subject, "open", ""),
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+    };
+    let opened = session.snapshot();
+    // HTML877d open-change/setup establishes the actual watcher even for
+    // nonmodal Auto's disabled getEnabledState. No beforetoggle is involved.
+    assert_eq!(
+        opened.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    let DomSourceDriveProgress::Complete(done) = opened_progress else {
+        panic!("active open addition must establish its watcher and complete: {opened_progress:?}");
+    };
+    assert!(!done.cancellation_requested());
+    drop(done);
+    assert!(
+        opened
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
+    assert!(
+        !opened
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert_eq!(opened.incomplete_source_operation(), None);
+    assert_eq!(session.dom().pending_source_edit(), None);
+    assert_eq!(
+        session
+            .dom_manipulation_execution()
+            .pending_tasks()
+            .unwrap(),
+        0
+    );
+    assert_ne!(opened.stamp(), original.stamp());
+
+    let retired_snapshot = if retire_before_removal {
+        let mut hosted = session.hosted_execution();
+        let queued = hosted
+            .destroy_top_level(&mut session.dom(), top.navigable(), &cancel)
+            .unwrap();
+        let mut last = DomHostedTaskProgress::Idle;
+        for _ in 0..32 {
+            last = hosted
+                .run_next(&mut session.dom(), queued.traversable(), &cancel)
+                .unwrap();
+            if matches!(last, DomHostedTaskProgress::Complete { operation } if operation == queued.operation())
+            {
+                break;
+            }
+        }
+        assert!(
+            matches!(last, DomHostedTaskProgress::Complete { operation } if operation == queued.operation()),
+            "actual hosted destruction did not complete within 32 queue steps: {last:?}"
+        );
+        let retired = session.snapshot();
+        assert!(
+            !retired
+                .document(top.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap()
+        );
+        assert_eq!(
+            retired.node(subject).unwrap().owner_document(),
+            Some(top.document())
+        );
+        assert_eq!(retired.node(subject).unwrap().parent(), Some(body));
+        assert_eq!(
+            retired.global_document(top.global()).unwrap(),
+            top.document()
+        );
+        assert_eq!(
+            retired.relevant_global(subject).unwrap(),
+            Some(top.global())
+        );
+        assert_eq!(
+            retired.node(subject).unwrap().attribute(&"open".into()),
+            Some(&"".into())
+        );
+        assert!(
+            retired
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .has_close_watcher()
+        );
+        assert!(matches!(
+            hosted.settings(&session.dom(), top.global(), &cancel),
+            Err(DomHostedRuntimeError::Dom(DomHostedError::StaleIdentity))
+        ));
+        assert!(
+            opened
+                .document(top.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap()
+        );
+        Some(retired)
+    } else {
+        None
+    };
+
+    let removed_progress = {
+        let mut policy = |_: &DomStyleSource| None;
+        session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::remove_attribute(subject, "open"),
+                source_limits(),
+                &mut DomSourceServices {
+                    style_policy: &mut policy,
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+    };
+    let DomSourceDriveProgress::Complete(done) = removed_progress else {
+        panic!("open removal must destroy and clear its actual watcher: {removed_progress:?}");
+    };
+    assert!(!done.cancellation_requested());
+    drop(done);
+    let removed = session.snapshot();
+    // HTML877d runs cleanup before the fully-active guard; it destroys the
+    // watcher through its recorded Window and then clears the association.
+    assert_eq!(
+        removed.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    assert!(
+        !removed
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
+    assert!(
+        !removed
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_toggle_task_tracker()
+    );
+    assert_eq!(removed.incomplete_source_operation(), None);
+    assert_eq!(session.dom().pending_source_edit(), None);
+    assert_eq!(
+        session
+            .dom_manipulation_execution()
+            .pending_tasks()
+            .unwrap(),
+        0
+    );
+    assert_ne!(removed.stamp(), opened.stamp());
+    assert_eq!(
+        original.node(subject).unwrap().attribute(&"open".into()),
+        None
+    );
+    assert!(
+        !original
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
+    assert_eq!(
+        opened.node(subject).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert!(
+        opened
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
+    if let Some(retired) = retired_snapshot {
+        assert!(
+            !removed
+                .document(top.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap()
+        );
+        assert_eq!(
+            retired.node(subject).unwrap().attribute(&"open".into()),
+            Some(&"".into())
+        );
+        assert!(
+            retired
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .has_close_watcher()
+        );
+    }
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_open_addition_establishes_watcher_and_open_removal_destroys_it() {
+    hosted_dialog_watcher_lifetime(false);
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn hosted_watcher_survives_execution_retirement_until_inactive_open_removal() {
+    hosted_dialog_watcher_lifetime(true);
+}
