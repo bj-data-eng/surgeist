@@ -1263,8 +1263,15 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
-        match &self.document_environment(document)?.hosted {
+        match &self
+            .document_metadata(document)?
+            .document_environment()
+            .hosted
+        {
             None => Ok(false),
+            Some(association) if matches!(association.phase, DocumentPhase::Retired { .. }) => {
+                Ok(false)
+            }
             Some(association) => {
                 association
                     .validate_live()

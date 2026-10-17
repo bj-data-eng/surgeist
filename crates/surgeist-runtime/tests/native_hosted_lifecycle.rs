@@ -948,7 +948,7 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
 }
 
 #[test]
-fn retired_document_refuses_environment_dependent_creation_but_keeps_intrinsic_text_edits() {
+fn retired_document_retains_canonical_creation_and_text_without_live_execution() {
     let mut session = session();
     let top = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
@@ -1000,12 +1000,24 @@ fn retired_document_refuses_environment_dependent_creation_but_keeps_intrinsic_t
     {
         let mut dom = session.dom();
         let mut batch = DomBatch::new();
-        batch.create_element_ns(top.document(), Namespace::html(), "span");
-        assert!(matches!(
-            dom.apply(batch, &cancel()),
-            Err(DomError::HostedSourceUnavailable)
-        ));
-        assert_eq!(dom.snapshot().stamp(), retired.stamp());
+        let span = batch.create_element_ns(top.document(), Namespace::html(), "span");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let span = commit.created(&span).unwrap().unwrap();
+        let created = dom.snapshot();
+        let node = created.node(span).unwrap();
+        assert_eq!(node.owner_document(), Some(top.document()));
+        assert_eq!(node.parent(), None);
+        assert_eq!(node.node_name(), DocumentString::from("SPAN"));
+        assert_eq!(created.relevant_global(span).unwrap(), Some(top.global()));
+        assert_eq!(
+            node.as_element().unwrap().custom_element_registry(),
+            retired
+                .document(top.document())
+                .unwrap()
+                .metadata()
+                .custom_element_registry()
+        );
+        assert_ne!(created.stamp(), retired.stamp());
         let mut batch = DomBatch::new();
         batch.replace_data(text, 0, usize::MAX, "after retirement");
         dom.apply(batch, &cancel()).unwrap();
@@ -1036,6 +1048,11 @@ fn retired_document_refuses_environment_dependent_creation_but_keeps_intrinsic_t
             .unwrap()
             .is_fully_active()
             .unwrap()
+    );
+    assert!(
+        hosted
+            .settings(&session.dom(), top.global(), &cancel())
+            .is_err()
     );
 }
 

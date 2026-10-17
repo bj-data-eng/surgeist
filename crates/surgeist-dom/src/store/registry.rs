@@ -265,10 +265,12 @@ impl Draft {
         let DomNodeKind::Element(element) = &node.kind else {
             return Ok(());
         };
-        let DomNodeKind::Document(metadata) = &self.node(node.document)?.kind else {
-            return Err(DomError::WrongDocument);
-        };
-        self.document_environment(node.document)?;
+        let metadata = self
+            .document_metadata(node.document)
+            .map_err(|error| match error {
+                DomError::WrongNodeKind => DomError::WrongDocument,
+                error => error,
+            })?;
         let binding = metadata.custom_element_registry();
         if let crate::DomRegistryBinding::Registry(id) = binding {
             let record = self

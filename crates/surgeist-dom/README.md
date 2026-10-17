@@ -532,10 +532,12 @@ association, without inventing loaded resources or external geometry.
 
 Creation and every relevant mutation synchronously start HTML's update-image-data
 algorithm. Its first step waits for the actual node Document to become fully
-active. All admitted native Documents have never been active in a navigable, so
-the wait occurs before the later images-disabled abort/reset. The current request
-stays unchanged; no load/error event, request reset, promise or continuation task
-is reported as completed. Native activation and resource-history installation are
+active. Closed native Documents and genuinely retired hosted Documents establish
+inactivity through the canonical activity owner, so the wait occurs before the
+later images-disabled abort/reset. Unavailable live authority does not establish
+inactivity. The current request stays unchanged; no load/error event, request
+reset, promise or continuation task is reported as completed. Native activation
+and resource-history installation are
 unadmitted phases, with `ImageProcessingUnavailable` at a reached unsupported
 processing boundary.
 
@@ -1092,11 +1094,21 @@ retained sandbox flags; declared-origin policy processing separately consumes
 the source-selected raw sandbox attribute. Later attribute edits do not rewrite
 an already completed Document policy.
 
-Destruction retires hosted participation
-without deleting the managed Document or its tree. An older snapshot retains its
-captured activity state. Live-child removal is distinct from retained history
-and cleanup custody. Queued initial history attachment remains obligatory after
-removal, and completed Document destruction clears the actual entry's nullable
+Destruction retires hosted participation without deleting the managed Document
+or its tree. Canonical creation, clone/import, adoption, shadow attachment and
+native fragment installation can still consume its actual metadata, original
+Global identity and retained registry. Input and Textarea keep using its fixed
+platform policy. XML creation copies the associated origin and policy into a
+fresh closed Document. None of these facts restores execution permission or
+supplies unavailable family/resource services.
+
+Current staged activity is false
+for actual retired participation; expired or unknown live authority remains an
+error. Dialog hooks and standalone Img use that same activity decision.
+An older snapshot retains its captured activity state. Live-child removal is
+distinct from retained history and cleanup custody. Queued initial history
+attachment remains obligatory after removal, and completed Document destruction
+clears the actual entry's nullable
 Document field without deleting the managed Document. These initial-entry
 operations do not establish general navigation, replacement, resource loading, modal services or
 JavaScript execution. The [Runtime explanation](../surgeist-runtime/docs/explanation.md#dom-orchestration)

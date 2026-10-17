@@ -36,7 +36,8 @@ impl Draft {
         let length =
             crate::textarea::normalized_length(raw.code_units(), &mut || self.source_step(cancel))?;
         let platform = self
-            .document_environment(self.node(key)?.document)?
+            .document_metadata(self.node(key)?.document)?
+            .document_environment()
             .input_platform();
         let selection = self
             .textarea_state(key)?
@@ -161,7 +162,8 @@ impl Draft {
             == surgeist_html::HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
         {
             let platform = self
-                .document_environment(self.node(key)?.document)?
+                .document_metadata(self.node(key)?.document)?
+                .document_environment()
                 .input_platform();
             self.textarea_state_mut(key, cancel)?.selection =
                 surgeist_html::HtmlInputSelection::cursor(

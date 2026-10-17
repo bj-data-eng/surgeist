@@ -148,6 +148,86 @@ fn fixture() -> (
 fn used(source: &DomHostedSource) -> usize {
     source.limits().retained_bytes() - source.remaining_bytes().unwrap()
 }
+
+#[test]
+fn incomplete_and_expired_constructor_authority_never_substitutes_false_for_activity() {
+    // Exercise the canonical issuer/constructor boundary, not a claim that a
+    // Runtime Global or completed initial entry has been constructed. Every
+    // phase below is reached through the original request/publication owner.
+    let c = cancel();
+    let (mut dom, mut source, mut lease, mut policy) = fixture();
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut policy, &c)
+        .unwrap();
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+        panic!("actual constructor execution request")
+    };
+    let global = source.issue_global(request, &c).unwrap();
+    let mut execution = Some(
+        source
+            .seal_native_execution(request, global, 100, &c)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(&mut dom, &mut source, &mut execution, &c)
+        .unwrap();
+    assert!(execution.is_none());
+    let DomHostedCreationStep::MakeActive(request) = lease.step(&dom).unwrap() else {
+        panic!("actual constructed Document awaiting make-active")
+    };
+    let document = request.document();
+    let draft = Draft::new(&dom, Arc::new(BatchIdentity), &c).unwrap();
+    let key = draft.resolve(document.into()).unwrap();
+    let metadata = draft.document_metadata(key).unwrap();
+    let origin = metadata.origin().clone();
+    let environment = metadata.document_environment();
+    let association = environment.hosted.as_ref().unwrap();
+    assert_eq!(association.global, global);
+    assert!(matches!(association.phase, DocumentPhase::Constructed));
+    assert!(association.validate_current().is_ok());
+    assert_eq!(
+        association.validate_live(),
+        Err(DomHostedError::IncompleteOperation)
+    );
+    assert_eq!(
+        draft.document_fully_active(key, &c),
+        Err(DomError::HostedSourceUnavailable)
+    );
+    assert_eq!(
+        dom.apply(DomBatch::new(), &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    let stamp = dom.snapshot().stamp();
+    drop(source);
+    assert_eq!(
+        association.validate_current(),
+        Err(DomHostedError::SourceExpired)
+    );
+    assert_eq!(
+        draft.document_fully_active(key, &c),
+        Err(DomError::HostedSourceUnavailable)
+    );
+    let retained = draft.document_metadata(key).unwrap();
+    assert_eq!(retained.origin(), &origin);
+    assert_eq!(
+        retained.document_environment().input_platform(),
+        environment.input_platform()
+    );
+    assert_eq!(
+        retained
+            .document_environment()
+            .hosted
+            .as_ref()
+            .unwrap()
+            .global,
+        global
+    );
+    assert_eq!(
+        dom.apply(DomBatch::new(), &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    assert_eq!(dom.snapshot().stamp(), stamp);
+}
 fn expected_payload() -> usize {
     // The producer owns the record's private extent; the caller owns exactly
     // this immutable payload header. No private URL layout is copied here.

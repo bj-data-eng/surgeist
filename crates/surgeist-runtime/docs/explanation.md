@@ -178,6 +178,14 @@ snapshots retain their original Document identities. Live-child membership and
 retained history custody are separate: a queued creation-history closure still
 runs after removal without restoring the live container relation.
 
+Surviving Documents retain their canonical metadata, registry and fixed platform
+policy after hosted teardown. Ordinary DOM edits can use those facts while
+current hosted settings and execution remain unavailable. Actual retirement
+proves inactivity for the existing Dialog hooks and standalone Img wait; a missing
+or expired live issuer does not supply that proof. Resource-bearing edits still
+need their actual composed service, including removal of an associated Style
+sheet through the Source driver.
+
 Details ingestion admits the actual canonical pending intentions before taking
 custody. Tasks preserve their original queued Document and Global across target
 adoption; dispatch builds its path from the current tree. At task completion,

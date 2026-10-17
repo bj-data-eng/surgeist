@@ -430,8 +430,9 @@ impl Dom {
                             DomElement::native_components(
                                 element.name(),
                                 draft
-                                    .document_environment(document)
-                                    .map_err(Error::Target)?,
+                                    .document_metadata(document)
+                                    .map_err(Error::Target)?
+                                    .document_environment(),
                                 cancelled,
                                 formation.as_ref(),
                             )

@@ -105,7 +105,8 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let platform = self
-            .document_environment(self.node(key)?.document)?
+            .document_metadata(self.node(key)?.document)?
+            .document_environment()
             .input_platform();
         let units = (self.units - self.input_state(key)?.current.len())
             .checked_add(value.value.len())
@@ -350,7 +351,8 @@ impl Draft {
                 ) == HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
                 {
                     let platform = self
-                        .document_environment(self.node(key)?.document)?
+                        .document_metadata(self.node(key)?.document)?
+                        .document_environment()
                         .input_platform();
                     let len = state.current.len();
                     self.input_state_mut(key, cancel)?.selection = HtmlInputSelection::cursor(
@@ -483,7 +485,8 @@ impl Draft {
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
                 Effect::SetInitialCursorAndNoneDirection => {
                     let platform = self
-                        .document_environment(self.node(key)?.document)?
+                        .document_metadata(self.node(key)?.document)?
+                        .document_environment()
                         .input_platform();
                     self.input_state_mut(key, cancel)?.selection =
                         HtmlInputSelection::initial(platform.none_direction());
@@ -519,7 +522,8 @@ impl Draft {
         );
         let guard = if guard == surgeist_html::HtmlInputImageUpdateGuard::NeedsImageEnvironment {
             guard.with_disabled_images(
-                self.document_environment(self.node(key)?.document)?
+                self.document_metadata(self.node(key)?.document)?
+                    .document_environment()
                     .input_images(),
             )
         } else {

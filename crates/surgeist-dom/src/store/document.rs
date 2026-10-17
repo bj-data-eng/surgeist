@@ -28,33 +28,15 @@ impl XmlDocumentFrame {
 }
 
 impl Draft {
-    pub(super) fn document_environment(
+    /// Current staged canonical facts, independent of hosted execution authority.
+    pub(super) fn document_metadata(
         &self,
         document: Key,
-    ) -> Result<crate::DomDocumentEnvironment, DomError> {
+    ) -> Result<&DomDocumentMetadata, DomError> {
         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        let environment = metadata.document_environment();
-        if let Some(association) = &environment.hosted {
-            association
-                .validate_current()
-                .map_err(|_| DomError::HostedSourceUnavailable)?;
-            if !matches!(
-                association.phase,
-                crate::hosted::DocumentPhase::InitialEntry { .. }
-            ) {
-                let crate::DomDocumentCreationCause::HostedInitialAboutBlank { operation, .. } =
-                    metadata.creation_cause()
-                else {
-                    return Err(DomError::HostedSourceUnavailable);
-                };
-                if self.hosted_owner != Some(*operation) {
-                    return Err(DomError::HostedSourceUnavailable);
-                }
-            }
-        }
-        Ok(environment)
+        Ok(metadata)
     }
     pub(super) fn create_xml_document(
         &mut self,
@@ -66,7 +48,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        let input = self.document_environment(associated)?.input_platform();
+        let input = self
+            .document_metadata(associated)?
+            .document_environment()
+            .input_platform();
         admit(
             self.nodes
                 .checked_add(1)
@@ -97,7 +82,7 @@ impl Draft {
             let element = DomElement::native_ns(
                 namespace,
                 qualified_name,
-                self.document_environment(document)?,
+                self.document_metadata(document)?.document_environment(),
                 cancel,
                 formation.as_ref(),
             )?;

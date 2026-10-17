@@ -1855,7 +1855,8 @@ impl Draft {
                 .as_ref()
                 .map(|association| association.global),
             _ => self
-                .document_environment(document)?
+                .document_metadata(document)?
+                .document_environment()
                 .hosted
                 .as_ref()
                 .map(|association| association.global),
@@ -2097,7 +2098,7 @@ impl Draft {
                         DomNodeKind::Element(DomElement::native_ns(
                             namespace,
                             name,
-                            self.document_environment(document)?,
+                            self.document_metadata(document)?.document_environment(),
                             cancelled,
                             metadata_formation.as_ref(),
                         )?)

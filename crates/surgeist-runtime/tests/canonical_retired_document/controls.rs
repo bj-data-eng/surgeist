@@ -570,7 +570,9 @@ fn standalone_img_adopted_into_retired_document_waits_before_resources_and_super
         .suspended_update()
         .unwrap()
         .unwrap();
-    assert_eq!(first.flags(), HtmlImageUpdateFlags::new(true, false));
+    // HTML877d relevant mutations sets restart-animation only for an equal
+    // src SET. Adding the first src changes its actual value.
+    assert_eq!(first.flags(), HtmlImageUpdateFlags::new(false, false));
     assert_ne!(first.id(), waiting.id());
     let units = fixture.session.dom().usage().string_code_units();
     let mut batch = DomBatch::new();

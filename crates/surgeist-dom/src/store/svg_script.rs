@@ -40,7 +40,7 @@ impl Draft {
         // Connection follows shadow topology; qualification follows the actual
         // node document, which need not be the connected host document.
         let document = self.node(key)?.document;
-        let environment = self.document_environment(document)?;
+        let environment = self.document_metadata(document)?.document_environment();
         check_cancel(cancel)?;
         let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
             unreachable!("checked SVG Script")

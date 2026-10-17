@@ -357,7 +357,7 @@ impl Draft {
                 return Err(DomError::NotSupported);
             }
             DomNodeKind::Element(e) => DomNodeKind::Element(e.clone_initialized(
-                self.document_environment(document)?,
+                self.document_metadata(document)?.document_environment(),
                 cancel,
                 formation.as_ref(),
             )?),

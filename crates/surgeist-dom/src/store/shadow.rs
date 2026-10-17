@@ -110,7 +110,7 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         let document = node.document;
-        self.document_environment(document)?;
+        self.document_metadata(document)?;
         let registry = element.custom_element_registry();
         let mut state = crate::DomShadowRootState::native(init);
         state.select_global_registry(registry);

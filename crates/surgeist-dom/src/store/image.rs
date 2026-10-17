@@ -26,16 +26,13 @@ impl Draft {
             .high_water
             .checked_add(1)
             .ok_or(DomError::ImageUpdateExhausted)?;
-        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
-        // Every admitted creation/install/adoption target establishes this
-        // actual never-navigable environment. No activation or hosted Document
-        // ingress is admitted. Do not substitute the later disabled-images step.
-        let activity = if !document.document_environment().has_ever_had_navigable() {
-            HtmlImageDocumentActivity::NotFullyActive
+        // The actual current node Document owns activity independently of the
+        // later images-disabled decision. Retired hosted and closed Documents
+        // take the same original inactive wait; unavailable authority refuses.
+        let activity = if self.document_fully_active(node.document, cancel)? {
+            HtmlImageDocumentActivity::FullyActive
         } else {
-            HtmlImageDocumentActivity::Unavailable
+            HtmlImageDocumentActivity::NotFullyActive
         };
         if surgeist_html::image_update_start(activity)
             != HtmlImageUpdateStartDecision::WaitForFullyActive

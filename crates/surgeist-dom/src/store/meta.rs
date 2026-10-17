@@ -86,12 +86,6 @@ impl Draft {
             }
         }
     }
-    fn meta_metadata(&self, document: Key) -> Result<&DomDocumentMetadata, DomError> {
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
-        Ok(metadata)
-    }
     fn meta_metadata_mut(&mut self, document: Key) -> &mut DomDocumentMetadata {
         let DomNodeKind::Document(metadata) = &mut self.node_mut(document).kind else {
             unreachable!("checked Document");
@@ -146,7 +140,7 @@ impl Draft {
                     return Ok(());
                 };
                 let old = self
-                    .meta_metadata(document)?
+                    .document_metadata(document)?
                     .meta_state()
                     .ok_or(DomError::Meta(Failure::HistoryUnavailable))?
                     .pragma_language()
@@ -197,7 +191,7 @@ impl Draft {
                     return Ok(());
                 }
                 let history = self
-                    .meta_metadata(document)?
+                    .document_metadata(document)?
                     .meta_state()
                     .ok_or(DomError::Meta(Failure::HistoryUnavailable))?;
                 if history.will_declaratively_refresh() {
@@ -266,7 +260,7 @@ impl Draft {
             surgeist_html::bounded::meta_referrer_policy_with(content, || self.meta_step(cancel))?
         {
             let current = self
-                .meta_metadata(document)?
+                .document_metadata(document)?
                 .policy_container()
                 .referrer_policy()
                 .ok_or(DomError::Meta(Failure::HistoryUnavailable))?;
@@ -315,7 +309,7 @@ impl Draft {
                 })?;
             }
             if theme_pass {
-                self.meta_metadata(document)?.apply_no_meta_theme();
+                self.document_metadata(document)?.apply_no_meta_theme();
             }
         }
         Ok(())
@@ -580,7 +574,7 @@ mod tests {
     }
     fn language(draft: &Draft, doc: Key) -> &[u16] {
         draft
-            .meta_metadata(doc)
+            .document_metadata(doc)
             .unwrap()
             .meta_state()
             .unwrap()
