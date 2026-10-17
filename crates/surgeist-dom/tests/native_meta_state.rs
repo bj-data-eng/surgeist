@@ -1192,3 +1192,87 @@ fn source_phase_admits_language_token_units_and_keeps_history_atomic_at_the_actu
     assert!(!attempt(low - 1));
     assert!(attempt(low));
 }
+
+#[test]
+fn local_css_theme_color_finite_literal_without_media_completes_native_insertion() {
+    let (mut dom, document, root, meta) = fixture();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(meta, "name", "theme-color");
+    batch.set_attribute(meta, "content", "  #123abc  ");
+    batch.insert_before(meta, root, None);
+    // HTML877d raw11466–11500 requires actual local color parsing even with
+    // the native constructor's sealed empty set of affected Meta UI consumers.
+    // No media attribute introduces an environment-matching dependency here.
+    let result = dom.apply(batch, &cancel());
+    assert!(
+        result.is_ok(),
+        "available finite local CSS color must complete: {result:?}"
+    );
+    let current = dom.snapshot();
+    assert_ne!(current.stamp(), before.stamp());
+    assert_ne!(
+        current.document(document).unwrap().stamp(),
+        before.document(document).unwrap().stamp()
+    );
+    assert_eq!(current.node(meta).unwrap().parent(), Some(root));
+    assert_eq!(current.node(meta).unwrap().owner_document(), Some(document));
+    assert_eq!(current.node(root).unwrap().children(), &[meta]);
+    assert_eq!(
+        current.node(meta).unwrap().attribute(&"name".into()),
+        Some(&"theme-color".into())
+    );
+    assert_eq!(
+        current.node(meta).unwrap().attribute(&"content".into()),
+        Some(&"  #123abc  ".into())
+    );
+    assert_eq!(current.node(meta).unwrap().attribute(&"media".into()), None);
+    assert_eq!(current.incomplete_source_operation(), None);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(before.node(meta).unwrap().parent(), None);
+    assert_eq!(
+        before.node(meta).unwrap().attribute(&"content".into()),
+        None
+    );
+}
+
+#[test]
+fn local_css_color_scheme_keyword_list_completes_native_insertion() {
+    let (mut dom, document, root, meta) = fixture();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(meta, "name", "color-scheme");
+    batch.set_attribute(meta, "content", "light dark");
+    batch.insert_before(meta, root, None);
+    // HTML877d raw11514–11539 requires the CSS-owned component-value/property
+    // grammar. This finite keyword list needs no host or rendering operation.
+    let result = dom.apply(batch, &cancel());
+    assert!(
+        result.is_ok(),
+        "available local CSS keyword list must complete: {result:?}"
+    );
+    let current = dom.snapshot();
+    assert_ne!(current.stamp(), before.stamp());
+    assert_ne!(
+        current.document(document).unwrap().stamp(),
+        before.document(document).unwrap().stamp()
+    );
+    assert_eq!(current.node(meta).unwrap().parent(), Some(root));
+    assert_eq!(current.node(meta).unwrap().owner_document(), Some(document));
+    assert_eq!(current.node(root).unwrap().children(), &[meta]);
+    assert_eq!(
+        current.node(meta).unwrap().attribute(&"name".into()),
+        Some(&"color-scheme".into())
+    );
+    assert_eq!(
+        current.node(meta).unwrap().attribute(&"content".into()),
+        Some(&"light dark".into())
+    );
+    assert_eq!(current.incomplete_source_operation(), None);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(before.node(meta).unwrap().parent(), None);
+    assert_eq!(
+        before.node(meta).unwrap().attribute(&"content".into()),
+        None
+    );
+}
