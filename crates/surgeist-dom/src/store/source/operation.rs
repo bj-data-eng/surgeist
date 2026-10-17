@@ -506,10 +506,12 @@ enum PublicationTarget {
     None,
     Style(Frame),
     Dialog(crate::store::dialog::PendingDialog),
+    DialogFocusing(crate::store::dialog::PendingFocusing),
 }
 struct PublishedSegment {
     commit: DomCommit,
     dialog: Option<crate::DomSourceDialogRequest>,
+    focusing: Option<crate::DomSourceDialogFocusingRequest>,
 }
 impl Operation {
     #[cfg(test)]
@@ -1130,6 +1132,7 @@ impl Operation {
         // Only successful canonical publication/request exposure issues it.
         let invocation = frame.map(|frame| frame.invocation).or(match target {
             PublicationTarget::Dialog(pending) => pending.invocation,
+            PublicationTarget::DialogFocusing(pending) => Some(pending.invocation),
             _ => None,
         });
         let issued_next = match invocation {
@@ -1292,13 +1295,37 @@ impl Operation {
                     if matches!(
                         pending.action,
                         surgeist_html::HtmlDialogAction::RememberFocusedElement
-                            | surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
                     ) {
                         crate::source::watcher::DialogOccurrence::Method(occurrence)
                     } else {
                         crate::source::watcher::DialogOccurrence::Hook(occurrence)
                     }
                 }),
+            })
+        } else {
+            None
+        };
+        let focusing = if let PublicationTarget::DialogFocusing(pending) = target {
+            let subject = match pending.subject {
+                Key::Existing(slot) => NodeId {
+                    owner: self.id.owner,
+                    slot,
+                    generation: self.draft.generations[slot],
+                },
+                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+            };
+            prepared.state.node(self.id.owner, subject)?;
+            Some(crate::DomSourceDialogFocusingRequest {
+                operation: self.id,
+                subject,
+                action: pending.action,
+                occurrence: crate::source::watcher::HookOccurrence {
+                    command: self.index,
+                    ordinal: match pending.invocation {
+                        Invocation::Unissued => self.draft.source_invocation,
+                        Invocation::Exposed(ordinal) => ordinal,
+                    },
+                },
             })
         } else {
             None
@@ -1479,6 +1506,15 @@ impl Operation {
                     .as_mut()
                     .expect("exposed actual Show")
                     .invocation = Invocation::Exposed(occurrence.ordinal);
+            } else if let Some(request) = &focusing {
+                self.draft
+                    .dialog_method
+                    .as_mut()
+                    .expect("called Dialog frame")
+                    .focusing
+                    .as_mut()
+                    .expect("actual focusing child")
+                    .invocation = Invocation::Exposed(request.occurrence.ordinal);
             } else {
                 match &mut self
                     .draft
@@ -1522,7 +1558,11 @@ impl Operation {
         }
         self.phases += u64::from(changed);
         self.published = true;
-        Ok(PublishedSegment { commit, dialog })
+        Ok(PublishedSegment {
+            commit,
+            dialog,
+            focusing,
+        })
     }
 }
 impl DomSourceLease<'_> {
@@ -1794,6 +1834,44 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::DialogFocusingUnavailable { action }) => {
+                    let pending = op
+                        .draft
+                        .pending_focusing()
+                        .filter(|pending| pending.action == action)
+                        .ok_or(DomError::InvalidSourceOperation)?;
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    op.started = true;
+                    let published = match op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::DialogFocusing(pending),
+                        cancel,
+                    ) {
+                        Ok(published) => published,
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            return Err(error);
+                        }
+                    };
+                    drop(checkpoint);
+                    op.receipt = None;
+                    return Ok(DomSourceProgress::Request(
+                        DomSourceRequest::DialogFocusing(
+                            published
+                                .focusing
+                                .expect("actual called request formed before publication"),
+                        ),
+                    ));
+                }
                 Err(DomError::NeedsEventfulOperation {
                     subject: Some(subject),
                     action,
@@ -5107,7 +5185,8 @@ pub(in crate::store) mod accounting_tests {
                 Ok(DomSourceProgress::Request(
                     DomSourceRequest::Event(_)
                     | DomSourceRequest::Dialog(_)
-                    | DomSourceRequest::CloseWatcher(_),
+                    | DomSourceRequest::CloseWatcher(_)
+                    | DomSourceRequest::DialogFocusing(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")
                 }

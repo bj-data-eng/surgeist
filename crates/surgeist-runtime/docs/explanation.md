@@ -153,7 +153,8 @@ Global. An explicitly retired Document denies feature permission before policy
 evaluation. Its actual retained original Window can then establish no transient
 activation from its constructor-owned never-activated state. Runtime publishes
 that precise negative allow-focus result through the same affine focus bridge;
-accepted denial completes the focusing action without moving focus. Missing
+accepted denial completes the called permission step and its genuine early-return
+branch without moving focus. Missing
 Window state remains unavailable. The live execution checks for retired Globals
 are preserved.
 
@@ -163,10 +164,20 @@ policy. Runtime reads the current associated Window's activation only after
 permission is known false. This Window may differ from the method's original
 queue Global or remembered-focus Host. Live roles and the exact canonical basis
 qualify the new receipt; the retired-Window path keeps its historical checks.
-Enabled permission skips the activation read and still needs positive focusing.
+Enabled permission advances the HTML focusing child locally in DOM, with no
+Window activation read or Runtime observation/header formation.
 Unknown permission stays unavailable even when activation is known false.
-Forming this qualification consumes the existing finite temporary/header and
+Forming a required Runtime qualification consumes the existing finite temporary/header and
 work allowance; refusal retains the original operation and no phantom result.
+
+The original method retains one complete HTML focusing child. Native own-inert,
+non-root and nondelegating facts can prove the autofocus subject's called
+focusing makes no change. That proof does not complete the outer call: DOM
+next resolves the selected control's actual top Document and compares actual
+origins. A difference returns before autofocus-state writes; a same-origin
+case still requires those writes. Other unavailable work is exposed as the
+precise `DialogFocusing` child action. No positive focus movement or focused-area
+history is inferred.
 
 Each admitted native Window starts never activated. The current HTML event
 surface admits load, error, toggle, beforetoggle and close; physical Window input and
@@ -179,7 +190,7 @@ Watcher custody can retain an original Window after execution teardown.
 An unfinished Source tail prevents its real cleanup from overtaking a pending
 focus receipt; it cannot manufacture a missing Window. After the tail completes,
 ordinary watcher cleanup can release that retired Window. Native no-Global
-Documents, unknown or allowed feature branches and positive focusing still
+Documents, unknown feature branches and unsupported focusing actions still
 retain their precise service wait.
 
 Each native Agent owns its Window records separately from execution Globals.
@@ -371,8 +382,9 @@ assertion, DOM publishes the coherent modal/raw-top-layer phase and its generate
 UA overlay input before observing remembered focus. With actual remembered-focus
 absence and empty showing-popover lists, it reaches allow-focus qualification.
 A real inherited denial and the actual Window's false activation complete the
-method before focus-target selection. Other inputs retain their genuine focusing
-wait. The structural publication supplies no computed-style or rendered result;
+method before focus-target selection. Permitted calls run the actual child
+protocol and can complete the own-inert, distinct-origin no-change path described
+above. Other inputs retain their precise child wait. The structural publication supplies no computed-style or rendered result;
 completion requires the actual producer terminal branch. Source-completeness guards protect ordinary
 top-layer views and semantic captures. Canceled and post-event early returns use
 the actual producer result. Callback adoption into a connected inactive Document

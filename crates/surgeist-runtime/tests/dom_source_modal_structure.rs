@@ -10,7 +10,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogAction, HtmlDialogState};
+use surgeist_html::{HtmlDialogFocusingAction, HtmlDialogState};
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {
@@ -246,12 +246,16 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
     );
     match progress {
         DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Dialog(pending),
-            reason: DomSourceUnavailable::Dialog(HtmlDialogAction::RunDialogFocusingSteps),
+            request: DomSourceRequest::DialogFocusing(pending),
+            reason:
+                DomSourceUnavailable::DialogFocusing(HtmlDialogFocusingAction::FindFocusDelegate),
         } => {
             assert_eq!(pending.operation(), request.operation());
             assert_eq!(pending.subject(), subject);
-            assert_eq!(pending.action(), HtmlDialogAction::RunDialogFocusingSteps);
+            assert_eq!(
+                pending.action(),
+                HtmlDialogFocusingAction::FindFocusDelegate
+            );
         }
         other => panic!(
             "structural modal effects must reach the genuine remaining focusing wait: {other:?}"

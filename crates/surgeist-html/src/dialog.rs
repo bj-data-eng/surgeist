@@ -7,8 +7,10 @@
 //! The bounded operations are nonmodal show, close, insertion/removal and open
 //! changes, and standard null-source requestClose/showModal. Light-dismiss
 //! execution remains separate.
+mod focusing;
 mod request;
 use crate::{HtmlClosedBy, HtmlClosedByState, KnownHtmlAttribute, Namespace};
+pub use focusing::*;
 pub use request::*;
 
 /// Ordered partial observations for HTML's allow-focus steps. Unknown feature

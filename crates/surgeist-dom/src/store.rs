@@ -146,6 +146,10 @@ pub enum DomError {
     MarqueeInapplicable,
     DialogInapplicable,
     DialogDocumentStateUnavailable,
+    DialogFocusingUnavailable {
+        action: surgeist_html::HtmlDialogFocusingAction,
+    },
+    DialogFocusingProtocol(surgeist_html::HtmlDialogFocusingError),
     TopLayerAlreadyActive {
         subject: NodeId,
         document: DocumentId,

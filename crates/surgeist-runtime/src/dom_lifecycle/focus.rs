@@ -2,7 +2,7 @@
 use super::*;
 use surgeist_dom::{
     DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
-    DomDialogFocusTarget, DomHostedRuntimeRetention, DomSourceDialogRequest, DomSourceLease,
+    DomDialogFocusRequest, DomDialogFocusTarget, DomHostedRuntimeRetention, DomSourceLease,
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HostFocusDisposition {
@@ -123,7 +123,7 @@ impl HostedRuntime {
     pub(crate) fn service_dialog_focus(
         &self,
         lease: &mut DomSourceLease<'_>,
-        request: &DomSourceDialogRequest,
+        request: &DomDialogFocusRequest,
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -138,8 +138,7 @@ impl HostedRuntime {
                 return Err(DomHostedRuntimeError::OperationPending);
             }
         } else {
-            let remembering =
-                request.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement;
+            let remembering = matches!(request, DomDialogFocusRequest::Remember(_));
             if remembering {
                 // Missing/unobserved original scope needs no owned formation.
                 let host = match lease

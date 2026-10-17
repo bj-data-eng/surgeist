@@ -8,7 +8,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlDialogAction;
+use surgeist_html::{HtmlDialogAction, HtmlDialogFocusingAction};
 use surgeist_runtime::*;
 #[path = "dom_source_focus/allow_focus.rs"]
 mod allow_focus;
@@ -202,6 +202,22 @@ fn pending_action(
         other => panic!("actual Dialog wait required: {other:?}"),
     }
 }
+fn pending_focusing(
+    progress: DomSourceDriveProgress,
+    expected: HtmlDialogFocusingAction,
+) -> DomSourceDialogFocusingRequest {
+    match progress {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::DialogFocusing(request),
+            reason: DomSourceUnavailable::DialogFocusing(action),
+        } => {
+            assert_eq!(action, expected);
+            assert_eq!(request.action(), expected);
+            request
+        }
+        other => panic!("actual child focusing wait required: {other:?}"),
+    }
+}
 #[test]
 fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_focusing() {
     let mut session = session();
@@ -220,9 +236,9 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     assert_eq!(receipt.callbacks(), 0);
     assert!(!receipt.default_prevented());
     assert!(receipt.failures().is_empty());
-    let next = pending_action(
+    let next = pending_focusing(
         resume(&mut session, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        HtmlDialogFocusingAction::ReadAllowFocus,
     );
     assert_eq!(next.subject(), subject);
     assert_eq!(next.operation(), event.operation());
@@ -249,9 +265,9 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
         .unwrap();
     assert!(task.dialog_toggle().unwrap().queue_association().is_none());
     drop(scope);
-    pending_action(
+    pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        HtmlDialogFocusingAction::ReadAllowFocus,
     );
     assert_eq!(session.snapshot().stamp(), after.stamp());
     assert_eq!(
@@ -269,9 +285,9 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
     let before = session.snapshot();
     let event = start(&mut session, subject, None);
     dispatch(&mut session, &event);
-    pending_action(
+    pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        HtmlDialogFocusingAction::FindFocusDelegate,
     );
     let after = session.snapshot();
     let dialog = after.node(subject).unwrap().as_dialog().unwrap();
@@ -391,9 +407,9 @@ fn foreign_and_conflicting_host_permissions_preserve_the_original_operation() {
     let before = current.snapshot();
     assert!(resume(&mut current, event.operation(), Some(&conflict)).is_err());
     assert_eq!(current.snapshot().stamp(), before.stamp());
-    pending_action(
+    pending_focusing(
         resume(&mut current, event.operation(), Some(&scope)).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        HtmlDialogFocusingAction::ReadAllowFocus,
     );
 }
 
@@ -457,15 +473,12 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         assert_eq!(receipt.callbacks(), 1);
         assert!(receipt.failures().is_empty());
         assert!(context.adopted.unwrap().is_ok());
-        let expected = if original_headless {
-            HtmlDialogAction::RunDialogFocusingSteps
+        let progress = resume(&mut session, event.operation(), None).unwrap();
+        if original_headless {
+            pending_focusing(progress, HtmlDialogFocusingAction::FindFocusDelegate);
         } else {
-            HtmlDialogAction::RememberFocusedElement
-        };
-        pending_action(
-            resume(&mut session, event.operation(), None).unwrap(),
-            expected,
-        );
+            pending_action(progress, HtmlDialogAction::RememberFocusedElement);
+        }
         let after = session.snapshot();
         assert_eq!(
             after.node(subject).unwrap().owner_document(),
@@ -644,15 +657,12 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
         };
         assert_eq!(inner.parent_operation(), Some(outer.operation()));
         dispatch(&mut session, &inner);
-        let expected = if child_headless == Some(true) {
-            HtmlDialogAction::RunDialogFocusingSteps
+        let progress = resume(&mut session, inner.operation(), None).unwrap();
+        if child_headless == Some(true) {
+            pending_focusing(progress, HtmlDialogFocusingAction::ReadAllowFocus);
         } else {
-            HtmlDialogAction::RememberFocusedElement
-        };
-        pending_action(
-            resume(&mut session, inner.operation(), None).unwrap(),
-            expected,
-        );
+            pending_action(progress, HtmlDialogAction::RememberFocusedElement);
+        }
         let status = session.dom().pending_source_edit().unwrap();
         assert_eq!(status.operation(), inner.operation());
         assert_eq!(status.parent_operation(), Some(outer.operation()));

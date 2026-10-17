@@ -1038,15 +1038,27 @@ action pending. These checks use
 canonical Document state independently of the Host's headless focus proof;
 they perform no popover dispatch or focus movement.
 
-At RunDialogFocusingSteps, the allow-focus decision reads the receiver's
-then-current Document. It checks browsing-context presence and full activity
+At RunDialogFocusingSteps, the original method retains the complete HTML-owned
+focusing child cursor. `DomSourceRequest::DialogFocusing` exposes its exact
+unfulfilled action and original invocation. The allow-focus decision reads the
+receiver's then-current Document. It checks browsing-context presence and full activity
 before consulting that Document's actual focus-without-user-activation policy.
 A denied feature then requires the actual current Window's activation state.
 Runtime's constructor-owned never-activated state supplies false activation,
 so the shared HTML rule returns before focus-target selection or focus effects.
-The original affine receipt acknowledges this proven denial and lets Show or
-ShowModal reach its actual Complete branch. A permitted feature returns allowed
-before reading activation; positive focusing remains unavailable.
+The original affine receipt fulfills this exact child permission step. Denial
+completes the child and then the outer Show or ShowModal. A permitted feature
+advances the child locally before reading activation or forming a Runtime receipt.
+
+Actual `autofocus` selects the subject. The native adapter can fulfill called
+focusing without changing focus when the subject has applicable own `inert`
+and actual non-root, nondelegating state. The shared HTML rule covers the
+subject's own scroll regions; it supplies no geometry or guessed focusability.
+The child then reads the selected control's actual current top Document and
+compares origins. A genuine origin difference completes it before autofocus
+writes. Same-origin work waits at `EmptyAutofocusCandidates`; missing no-change
+proof waits at `RunFocusingSteps`, and delegate selection remains an actual
+service requirement. Positive focus movement and restoration remain unavailable.
 
 An explicitly retired hosted Document has no browsing context, so feature
 permission is denied without evaluating policy. Its historical original Window

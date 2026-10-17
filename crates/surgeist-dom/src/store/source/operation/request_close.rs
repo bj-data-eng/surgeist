@@ -445,6 +445,7 @@ impl DomSourceLease<'_> {
                             state: crate::store::dialog::MethodState::Ready,
                             invocation: Invocation::Unissued,
                             locals: crate::store::dialog::MethodLocals::Close,
+                            focusing: None,
                         });
                         op.request_close = Some(call);
                         op.receipt = None;

@@ -113,7 +113,15 @@ top-layer addition, then the shared remembered-focus, popover and focusing
 steps. Each action requires its actual owner; the protocol supplies no native
 modal state or service completion.
 
-Its requestClose protocol requires current open, connection and Document-activity
+`HtmlDialogFocusingCursor` owns the complete called focusing protocol: allow-focus,
+autofocus or delegate selection, actual focusing, the selected control's top
+Document and origin comparison, then the required autofocus-state writes.
+The outer method completes only after this child completes. The narrow
+`dialog_subject_focusing_decision` can prove a called focusing invocation makes
+no change for an actual own-inert, non-root, nondelegating Dialog subject;
+it supplies no rendering or focus state and does not skip the remaining tail.
+
+The Dialog method cursor's requestClose protocol requires current open, connection and Document-activity
 observations, writes the actual nullable request operands and force-enable
 state, and resets that state after either normal watcher-request result.
 `HtmlCloseWatcherRequestCursor` owns the watcher's request and Close ordering:

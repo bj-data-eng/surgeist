@@ -8,7 +8,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogAction, HtmlValueInterpreter};
+use surgeist_html::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
@@ -494,7 +494,7 @@ fn enabled_permission_keeps_positive_focusing_pending_even_without_any_activatio
         &mut calls,
     );
     assert!(
-        matches!(progress,DomSourceDriveProgress::Pending{request:DomSourceRequest::Dialog(request),reason:DomSourceUnavailable::Dialog(HtmlDialogAction::RunDialogFocusingSteps)} if request.subject()==subject && request.action()==HtmlDialogAction::RunDialogFocusingSteps)
+        matches!(progress,DomSourceDriveProgress::Pending{request:DomSourceRequest::DialogFocusing(request),reason:DomSourceUnavailable::DialogFocusing(surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate)} if request.subject()==subject && request.action()==surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate)
     );
     assert_eq!(calls, [true]);
     assert!(
@@ -632,6 +632,332 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
             .pending_removals(),
         [subject]
     );
+}
+
+#[test]
+fn enabled_autofocus_waits_for_actual_focusing_or_same_origin_autofocus_tail() {
+    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
+    for (sandbox, inert, expected) in [
+        (
+            Some(""),
+            false,
+            HtmlDialogFocusingAction::RunFocusingSteps {
+                control: HtmlDialogFocusControl::Subject,
+            },
+        ),
+        (
+            None,
+            true,
+            HtmlDialogFocusingAction::EmptyAutofocusCandidates,
+        ),
+    ] {
+        let (mut session, top) = headless_top();
+        let (_, child) = container(
+            &mut session,
+            top.document(),
+            "iframe",
+            Some("focus-without-user-activation *"),
+            sandbox,
+            false,
+        );
+        let subject = dialog(&mut session, child);
+        for name in ["autofocus"].into_iter().chain(inert.then_some("inert")) {
+            let progress = session
+                .source_execution()
+                .apply(
+                    &mut session.dom(),
+                    DomSourceEdit::set_attribute(subject, name, ""),
+                    source_limits(),
+                    &mut DomSourceServices {
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                )
+                .unwrap();
+            assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
+        }
+        let before = session.snapshot();
+        assert_eq!(
+            policy(&before, child).inherited_focus_without_user_activation(),
+            DomPermissionsPolicyValue::Enabled
+        );
+        assert_eq!(
+            before.document(child).unwrap().metadata().origin()
+                == before.document(top.document()).unwrap().metadata().origin(),
+            sandbox.is_none()
+        );
+        let mut calls = Vec::new();
+        let progress = drive(
+            &mut session,
+            DomSourceEdit::show_modal_dialog(subject),
+            true,
+            &mut calls,
+        );
+        let operation = match progress {
+            DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::DialogFocusing(request),
+                reason: DomSourceUnavailable::DialogFocusing(action),
+            } => {
+                assert_eq!(action, expected);
+                assert_eq!(request.action(), expected);
+                assert_eq!(request.subject(), subject);
+                request.operation()
+            }
+            other => panic!("the actual unsupported child action must remain pending: {other:?}"),
+        };
+        assert_eq!(calls, [true]);
+        let current = session.snapshot();
+        assert_eq!(current.incomplete_source_operation(), Some(operation));
+        assert!(matches!(
+            current.document(child).unwrap().top_layer(),
+            Err(DomError::IncompleteSourceOperation)
+        ));
+        let dialog = current.node(subject).unwrap().as_dialog().unwrap();
+        assert!(dialog.is_modal());
+        assert!(dialog.has_close_watcher());
+        assert_eq!(
+            session
+                .element_task_execution()
+                .pending_total_tasks()
+                .unwrap(),
+            1
+        );
+        assert!(
+            !before
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .is_modal()
+        );
+        assert!(
+            before
+                .document(child)
+                .unwrap()
+                .top_layer()
+                .unwrap()
+                .raw_members()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exact_retry() {
+    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
+    let (mut session, top) = headless_top();
+    let (_, child) = container(
+        &mut session,
+        top.document(),
+        "iframe",
+        Some("focus-without-user-activation *"),
+        Some(""),
+        false,
+    );
+    let subject = dialog(&mut session, child);
+    for name in ["inert", "autofocus"] {
+        let result = session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::set_attribute(subject, name, ""),
+                source_limits(),
+                &mut DomSourceServices {
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .unwrap();
+        assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
+    }
+    let before = session.snapshot();
+    let event = match session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_modal_dialog(subject),
+            source_limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(event),
+            ..
+        } => event,
+        other => panic!("actual beforetoggle required: {other:?}"),
+    };
+    struct Context {
+        source: DomSourceRuntime,
+        calls: usize,
+        removed: Option<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+    }
+    let mut context = Context {
+        source: session.source_execution(),
+        calls: 0,
+        removed: None,
+    };
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap();
+    registry
+        .add_listener(
+            &session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                assert!(event.cancelable());
+                context.calls += 1;
+                context.removed = Some(context.source.apply(
+                    dom,
+                    DomSourceEdit::remove_attribute(subject, "inert"),
+                    source_limits(),
+                    &mut DomSourceServices {
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                ));
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
+    match session
+        .source_execution()
+        .service_event(
+            &mut session.dom(),
+            &event,
+            &mut registry,
+            &mut context,
+            DomSourceEventServiceLimits {
+                source: source_limits(),
+                dispatch: dispatch_limits(),
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceEventServiceProgress::Serviced { receipt } => {
+            assert_eq!(receipt.callbacks(), 1);
+            assert!(receipt.failures().is_empty());
+            assert!(!receipt.default_prevented());
+        }
+        other => panic!("actual completed beforetoggle required: {other:?}"),
+    }
+    assert!(matches!(
+        context.removed.take().unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    assert_eq!(context.calls, 1);
+    let child_request = match session
+        .source_execution()
+        .resume(
+            &mut session.dom(),
+            event.operation(),
+            source_limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::DialogFocusing(request),
+            reason: DomSourceUnavailable::DialogFocusing(action),
+        } => {
+            assert_eq!(
+                action,
+                HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: HtmlDialogFocusControl::Subject
+                }
+            );
+            assert_eq!(request.action(), action);
+            request
+        }
+        other => {
+            panic!("lost actual inert proof must preserve the called focusing wait: {other:?}")
+        }
+    };
+    let current = session.snapshot();
+    assert_eq!(
+        current.node(subject).unwrap().attribute(&"inert".into()),
+        None
+    );
+    assert_eq!(
+        before.node(subject).unwrap().attribute(&"inert".into()),
+        Some(&"".into())
+    );
+    assert_eq!(
+        current.incomplete_source_operation(),
+        Some(event.operation())
+    );
+    assert_eq!(
+        policy(&current, child).inherited_focus_without_user_activation(),
+        DomPermissionsPolicyValue::Enabled
+    );
+    let dialog = current.node(subject).unwrap().as_dialog().unwrap();
+    assert!(dialog.is_modal());
+    let watcher = dialog.close_watcher().unwrap();
+    let task = session
+        .element_task_execution()
+        .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap();
+    let retry = session
+        .source_execution()
+        .resume(
+            &mut session.dom(),
+            event.operation(),
+            source_limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(retry,DomSourceDriveProgress::Pending {request:DomSourceRequest::DialogFocusing(request),reason:DomSourceUnavailable::DialogFocusing(action)} if request==child_request && action==child_request.action())
+    );
+    assert_eq!(session.snapshot().stamp(), current.stamp());
+    assert_eq!(
+        session
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .close_watcher(),
+        Some(watcher)
+    );
+    assert_eq!(
+        session
+            .element_task_execution()
+            .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        task
+    );
+    assert_eq!(context.calls, 1);
 }
 
 #[test]

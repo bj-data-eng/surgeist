@@ -11,11 +11,13 @@ use surgeist_html::{
     HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
 };
 mod empty_popovers;
+mod focusing;
 #[cfg(test)]
 mod request_close_tests;
 #[cfg(test)]
 mod show_modal_tests;
 mod top_layer;
+pub(in crate::store) use focusing::{AllowFocusPermission, PendingFocusing};
 
 #[derive(Clone, Copy)]
 pub(super) enum MethodState {
@@ -29,6 +31,7 @@ pub(super) struct MethodFrame {
     pub state: MethodState,
     pub invocation: source::Invocation,
     pub locals: MethodLocals,
+    pub focusing: Option<focusing::FocusingFrame>,
 }
 #[derive(Clone, Copy)]
 pub(super) enum MethodLocals {
@@ -106,9 +109,13 @@ impl Draft {
             state: MethodState::Ready,
             invocation: source::Invocation::Unissued,
             locals: input.locals(),
+            focusing: None,
         });
         if frame.cursor.action() == Action::SetModal {
             return self.dialog_modal_phase(frame, cancel);
+        }
+        if frame.cursor.action() == Action::RunDialogFocusingSteps {
+            return self.dialog_focusing_boundary(frame, cancel);
         }
         if matches!(frame.state, MethodState::AwaitingAttributeHooks) {
             self.run_effects(limits, cancel)?;
@@ -269,6 +276,9 @@ impl Draft {
                         subject: self.published_id(key),
                         action,
                     });
+                }
+                Action::RunDialogFocusingSteps => {
+                    return self.dialog_focusing_boundary(frame, cancel);
                 }
                 _ => {
                     self.dialog_method = Some(frame);
@@ -628,11 +638,8 @@ impl Draft {
                 self.dialog_method.map(|frame| PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
-                    invocation: matches!(
-                        frame.cursor.action(),
-                        Action::RememberFocusedElement | Action::RunDialogFocusingSteps
-                    )
-                    .then_some(frame.invocation),
+                    invocation: matches!(frame.cursor.action(), Action::RememberFocusedElement)
+                        .then_some(frame.invocation),
                 })
             })
             .filter(|pending| pending.action == action)

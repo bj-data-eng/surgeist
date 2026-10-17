@@ -10,7 +10,7 @@ const RUNTIME_VISITS: u64 = 19;
 
 struct Parked {
     session: DomSession,
-    request: DomSourceDialogRequest,
+    request: DomDialogFocusRequest,
     parent: Option<DomSourceEventRequest>,
     host: DomHostedHostId,
     original_global: DomHostedGlobalId,
@@ -78,6 +78,21 @@ fn next(
     };
     assert_eq!(request.action(), action);
     Ok(request)
+}
+fn next_allow(lease: &mut DomSourceLease<'_>) -> Result<DomDialogFocusRequest, Failure> {
+    // This setup participates in the canonical-only parent-work search. A real
+    // child-exposure refusal must propagate just like the preceding outer
+    // requests, rather than panic inside an infallible assertion helper.
+    let DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) =
+        lease.advance(&AtomicBool::new(false))?
+    else {
+        panic!("actual child allow-focus request required")
+    };
+    assert_eq!(
+        request.action(),
+        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+    );
+    Ok(DomDialogFocusRequest::Allow(request))
 }
 fn parked(
     work: u64,
@@ -275,8 +290,12 @@ fn parked(
         };
         tasks.queue_dialog(&mut lease, &queue, &cancel)?;
         let remembered = next(&mut lease, HtmlDialogAction::RememberFocusedElement)?;
-        assert!(hosted.service_dialog_focus(&mut lease, &remembered, &cancel)?);
-        let focusing = next(&mut lease, HtmlDialogAction::RunDialogFocusingSteps)?;
+        assert!(hosted.service_dialog_focus(
+            &mut lease,
+            &DomDialogFocusRequest::Remember(remembered),
+            &cancel
+        )?);
+        let focusing = next_allow(&mut lease)?;
         assert_eq!(
             lease.status().parent_operation(),
             parent.as_ref().map(DomSourceEventRequest::operation)
@@ -613,10 +632,7 @@ fn pruned_original_window_does_not_become_a_negative_focus_observation() {
         );
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(lease.snapshot().stamp(), basis);
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-            case.request
-        );
+        assert_eq!(allow_request(&mut lease), case.request);
     }
 }
 
@@ -659,10 +675,7 @@ fn denial_hosted_formation_storage_scratch_and_nineteen_visits_admit_exactly() {
                 "no owned result may precede full admission"
             );
             assert_eq!(lease.snapshot().stamp(), basis);
-            assert_eq!(
-                request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-                case.request
-            );
+            assert_eq!(allow_request(&mut lease), case.request);
         }
         policy.storage_bytes = baseline + candidate;
         policy.scratch_bytes = candidate;

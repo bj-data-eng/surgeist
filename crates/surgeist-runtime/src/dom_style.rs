@@ -3138,6 +3138,7 @@ mod tests {
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
+                        | surgeist_dom::DomSourceRequest::DialogFocusing(_)
                         | surgeist_dom::DomSourceRequest::CloseWatcher(_),
                     ) => {
                         panic!("Style fixture cannot request a Dialog service")

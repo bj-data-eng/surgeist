@@ -1833,6 +1833,9 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::CloseWatcher(request)) => {
                 panic!("manual Slot assignment has no close-watcher service phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
+                panic!("manual Slot assignment has no Dialog focusing service phase: {request:?}")
+            }
         },
     }
 }

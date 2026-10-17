@@ -6,7 +6,7 @@ mod url;
 pub(crate) use focus::FocusQualification;
 pub use focus::{
     DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
-    DomDialogFocusTarget,
+    DomDialogFocusRequest, DomDialogFocusTarget, DomSourceDialogFocusingRequest,
 };
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
@@ -155,6 +155,7 @@ pub enum DomSourceRequest {
     HostedChild(crate::DomHostedChildRequest),
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
+    DialogFocusing(DomSourceDialogFocusingRequest),
     CloseWatcher(DomSourceCloseWatcherRequest),
 }
 /// The final identity produced by one completed creation operation.

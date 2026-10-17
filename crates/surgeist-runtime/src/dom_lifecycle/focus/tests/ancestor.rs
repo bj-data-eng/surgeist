@@ -19,7 +19,7 @@ struct Child {
 struct Ancestor {
     session: DomSession,
     parent: DomSourceEventRequest,
-    child: DomSourceDialogRequest,
+    child: DomDialogFocusRequest,
 }
 fn child_limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4)
@@ -164,7 +164,7 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         };
         assert_eq!(child.action(), HtmlDialogAction::RememberFocusedElement);
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
-        child
+        DomDialogFocusRequest::Remember(child)
     };
     if prelude {
         // Match the second actual resume used by the service tests. Its
@@ -293,10 +293,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
                     .unwrap()
             );
         }
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            child.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), child.operation());
     }
 }
 #[test]
@@ -404,10 +401,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
                 "retained result transfers without a second observation"
             );
         }
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            child.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), child.operation());
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
     }
 }
@@ -576,10 +570,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
                 .service_dialog_focus(&mut lease, &child, &cancel)
                 .unwrap()
         );
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            child.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), child.operation());
         assert_eq!(lease.snapshot().stamp(), basis);
     }
 }

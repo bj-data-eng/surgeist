@@ -2196,6 +2196,34 @@ pub fn surgeist_html::HtmlDialogCursorError::fmt(&self, f: &mut core::fmt::Forma
 pub enum surgeist_html::HtmlDialogEventSource
 pub surgeist_html::HtmlDialogEventSource::Null
 pub surgeist_html::HtmlDialogEventSource::OperationSource
+pub enum surgeist_html::HtmlDialogFocusControl
+pub surgeist_html::HtmlDialogFocusControl::Delegate
+pub surgeist_html::HtmlDialogFocusControl::Subject
+pub enum surgeist_html::HtmlDialogFocusingAction
+pub surgeist_html::HtmlDialogFocusingAction::CaptureControlTopDocument
+pub surgeist_html::HtmlDialogFocusingAction::CaptureControlTopDocument::control: surgeist_html::HtmlDialogFocusControl
+pub surgeist_html::HtmlDialogFocusingAction::Complete
+pub surgeist_html::HtmlDialogFocusingAction::EmptyAutofocusCandidates
+pub surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate
+pub surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+pub surgeist_html::HtmlDialogFocusingAction::ReadAutofocus
+pub surgeist_html::HtmlDialogFocusingAction::ReadSameOrigin
+pub surgeist_html::HtmlDialogFocusingAction::ReadSameOrigin::control: surgeist_html::HtmlDialogFocusControl
+pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps
+pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps::control: surgeist_html::HtmlDialogFocusControl
+pub surgeist_html::HtmlDialogFocusingAction::SetAutofocusProcessed
+pub enum surgeist_html::HtmlDialogFocusingError
+pub surgeist_html::HtmlDialogFocusingError::Terminal
+pub surgeist_html::HtmlDialogFocusingError::WrongReply
+impl core::error::Error for surgeist_html::HtmlDialogFocusingError
+impl core::fmt::Display for surgeist_html::HtmlDialogFocusingError
+pub fn surgeist_html::HtmlDialogFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlDialogFocusingReply
+pub surgeist_html::HtmlDialogFocusingReply::AllowFocus(bool)
+pub surgeist_html::HtmlDialogFocusingReply::Applied
+pub surgeist_html::HtmlDialogFocusingReply::Autofocus(bool)
+pub surgeist_html::HtmlDialogFocusingReply::FocusDelegatePresent(bool)
+pub surgeist_html::HtmlDialogFocusingReply::SameOrigin(bool)
 pub enum surgeist_html::HtmlDialogOperation
 pub surgeist_html::HtmlDialogOperation::Close
 pub surgeist_html::HtmlDialogOperation::Close::result_present: bool
@@ -2226,6 +2254,9 @@ pub surgeist_html::HtmlDialogState::Closed
 pub surgeist_html::HtmlDialogState::Open
 impl surgeist_html::HtmlDialogState
 pub const fn surgeist_html::HtmlDialogState::as_str(self) -> &'static str
+pub enum surgeist_html::HtmlDialogSubjectFocusingDecision
+pub surgeist_html::HtmlDialogSubjectFocusingDecision::NeedsActualFocusing
+pub surgeist_html::HtmlDialogSubjectFocusingDecision::NoChange
 pub enum surgeist_html::HtmlDialogToggleEffect
 pub surgeist_html::HtmlDialogToggleEffect::ClearTracker
 pub surgeist_html::HtmlDialogToggleEffect::FireQueuedEvent
@@ -4315,6 +4346,13 @@ impl surgeist_html::HtmlDialogCursor
 pub const fn surgeist_html::HtmlDialogCursor::action(&self) -> surgeist_html::HtmlDialogAction
 pub const fn surgeist_html::HtmlDialogCursor::new(operation: surgeist_html::HtmlDialogOperation) -> Self
 pub fn surgeist_html::HtmlDialogCursor::reply(&mut self, reply: surgeist_html::HtmlDialogReply) -> core::result::Result<(), surgeist_html::HtmlDialogCursorError>
+pub struct surgeist_html::HtmlDialogFocusingCursor
+impl surgeist_html::HtmlDialogFocusingCursor
+pub const fn surgeist_html::HtmlDialogFocusingCursor::action(&self) -> surgeist_html::HtmlDialogFocusingAction
+pub const fn surgeist_html::HtmlDialogFocusingCursor::new() -> Self
+pub fn surgeist_html::HtmlDialogFocusingCursor::reply(&mut self, reply: surgeist_html::HtmlDialogFocusingReply) -> core::result::Result<(), surgeist_html::HtmlDialogFocusingError>
+impl core::default::Default for surgeist_html::HtmlDialogFocusingCursor
+pub fn surgeist_html::HtmlDialogFocusingCursor::default() -> Self
 pub struct surgeist_html::HtmlDialogFreshState
 impl surgeist_html::HtmlDialogFreshState
 pub const fn surgeist_html::HtmlDialogFreshState::force_close_watcher_enabled(&self) -> bool
@@ -4329,6 +4367,10 @@ pub struct surgeist_html::HtmlDialogOpenChange
 impl surgeist_html::HtmlDialogOpenChange
 pub const fn surgeist_html::HtmlDialogOpenChange::new_present(self) -> bool
 pub const fn surgeist_html::HtmlDialogOpenChange::old_present(self) -> bool
+pub struct surgeist_html::HtmlDialogSubjectFocusFacts
+pub surgeist_html::HtmlDialogSubjectFocusFacts::has_delegating_focus_root: core::option::Option<bool>
+pub surgeist_html::HtmlDialogSubjectFocusFacts::is_document_element: core::option::Option<bool>
+pub surgeist_html::HtmlDialogSubjectFocusFacts::own_inert: core::option::Option<bool>
 pub struct surgeist_html::HtmlDialogToggleDecision
 impl surgeist_html::HtmlDialogToggleDecision
 pub const fn surgeist_html::HtmlDialogToggleDecision::dispatch_effects(self) -> [surgeist_html::HtmlDialogToggleEffect; 2]
@@ -5857,6 +5899,7 @@ pub const fn surgeist_html::default_document_referrer_policy() -> surgeist_html:
 pub fn surgeist_html::details_attribute_effect(namespace: &surgeist_html::Namespace, attribute: surgeist_html::HtmlDetailsAttribute, old: core::option::Option<&surgeist_html::DocumentString>, new: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlDetailsAttributeEffect
 pub fn surgeist_html::dialog_attribute_operation(namespace: &surgeist_html::Namespace, attribute: surgeist_html::KnownHtmlAttribute, old_present: bool, new_present: bool) -> core::option::Option<surgeist_html::HtmlDialogOperation>
 pub fn surgeist_html::dialog_close_watcher_enabled(force: bool, state: surgeist_html::HtmlClosedByState, modal: bool) -> bool
+pub const fn surgeist_html::dialog_subject_focusing_decision(facts: surgeist_html::HtmlDialogSubjectFocusFacts) -> surgeist_html::HtmlDialogSubjectFocusingDecision
 pub const fn surgeist_html::document_allows_render_blocking(content_type_is_html: bool, body_present: bool) -> bool
 pub fn surgeist_html::document_body_role_with<E>(name: &surgeist_html::QualifiedName, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlDocumentBodyRole, E>
 pub fn surgeist_html::element_inventory() -> &'static [surgeist_html::ElementInventoryRow]

@@ -77,7 +77,7 @@ fn fixture() -> (DomSession, DomHostedHostId, NodeId) {
         .unwrap();
     (session, host, subject)
 }
-fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomSourceDialogRequest) {
+fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomDialogFocusRequest) {
     let (mut session, host, subject) = fixture();
     let cancel = AtomicBool::new(false);
     let scope = session.source_execution_scope(host, &cancel).unwrap();
@@ -157,7 +157,7 @@ fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomSourceDialogReq
             panic!("actual remembered-focus wait required")
         };
         assert_eq!(request.action(), HtmlDialogAction::RememberFocusedElement);
-        request
+        DomDialogFocusRequest::Remember(request)
     };
     (session, host, subject, request)
 }
@@ -169,6 +169,24 @@ fn request(lease: &mut DomSourceLease<'_>, action: HtmlDialogAction) -> DomSourc
     };
     assert_eq!(request.action(), action);
     request
+}
+fn focusing_request(
+    lease: &mut DomSourceLease<'_>,
+    action: surgeist_html::HtmlDialogFocusingAction,
+) -> DomSourceDialogFocusingRequest {
+    let DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) =
+        lease.advance(&AtomicBool::new(false)).unwrap()
+    else {
+        panic!("actual child Dialog focusing request required");
+    };
+    assert_eq!(request.action(), action);
+    request
+}
+fn allow_request(lease: &mut DomSourceLease<'_>) -> DomDialogFocusRequest {
+    DomDialogFocusRequest::Allow(focusing_request(
+        lease,
+        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus,
+    ))
 }
 fn producer_scaffold() -> (u64, u64, u64) {
     let (mut session, _, _, request) = parked(10_000_000);
@@ -274,7 +292,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             after_progress,
             "accepted retained result must not resample"
         );
-        let next = request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps);
+        let next = allow_request(&mut lease);
         assert_eq!(next.subject(), subject);
         assert_eq!(
             lease.snapshot().stamp(),
@@ -292,10 +310,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         assert_eq!(owner.borrow().work, after_progress + 3);
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(lease.snapshot().stamp(), basis);
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-            next
-        );
+        assert_eq!(allow_request(&mut lease), next);
         assert_eq!(
             lease
                 .snapshot()
@@ -490,10 +505,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
         );
         assert_eq!(owner.borrow().work - before, 3);
         assert!(owner.borrow().focus.pending.is_none());
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            original.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), original.operation());
     }
 }
 
@@ -591,10 +603,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
                     .unwrap()
             );
         }
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            original.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), original.operation());
         // The real temporary formation released its debit after transfer. This
         // actual allocation independently demonstrates reclaimed capacity.
         let recovered = filler(&mut lease, &owner.borrow().source, candidate).unwrap();
@@ -604,7 +613,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
 
 mod ancestor;
 
-fn retained_result() -> (DomSession, DomSourceDialogRequest) {
+fn retained_result() -> (DomSession, DomDialogFocusRequest) {
     let (scaffold, preparation, retention) = producer_scaffold();
     let cap = scaffold + preparation + retention + 3;
     let (mut session, _, _, original) = parked(cap);
@@ -699,10 +708,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
         );
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(owner.borrow().work, work);
-        assert_eq!(
-            request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-            original.operation()
-        );
+        assert_eq!(allow_request(&mut lease).operation(), original.operation());
     }
 }
 #[test]
@@ -756,10 +762,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
             .unwrap()
     );
     assert_eq!(owner.borrow().work, work);
-    assert_eq!(
-        request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps).operation(),
-        original.operation()
-    );
+    assert_eq!(allow_request(&mut lease).operation(), original.operation());
 }
 
 #[test]
@@ -801,7 +804,7 @@ fn focus_preparation_rejects_wrong_observation_and_native_focusing_stays_unavail
         .accept_dialog_focus(&original, source, &mut publication, &cancel)
         .unwrap();
     assert!(publication.is_none());
-    let focusing = request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps);
+    let focusing = allow_request(&mut lease);
     assert_ne!(
         focusing, original,
         "each actual Show action has its own original occurrence"
@@ -812,10 +815,7 @@ fn focus_preparation_rejects_wrong_observation_and_native_focusing_stays_unavail
             .unwrap()
             .is_none()
     );
-    assert_eq!(
-        request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-        focusing
-    );
+    assert_eq!(allow_request(&mut lease), focusing);
 }
 
 mod denial;

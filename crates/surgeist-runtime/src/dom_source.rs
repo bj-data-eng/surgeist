@@ -57,6 +57,8 @@ pub enum DomSourceUnavailable {
     Event,
     /// This actual Dialog service has no implementation yet.
     Dialog(surgeist_html::HtmlDialogAction),
+    /// The exact child focusing action still lacks a qualified service.
+    DialogFocusing(surgeist_html::HtmlDialogFocusingAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
     /// A reached URL stage has no qualified observation yet.
@@ -479,10 +481,13 @@ impl DomSourceRuntime {
                     if matches!(
                         request.action(),
                         surgeist_html::HtmlDialogAction::RememberFocusedElement
-                            | surgeist_html::HtmlDialogAction::RunDialogFocusingSteps
                     ) && self
                         .hosted
-                        .service_dialog_focus(lease, &request, cancel)
+                        .service_dialog_focus(
+                            lease,
+                            &surgeist_dom::DomDialogFocusRequest::Remember(request.clone()),
+                            cancel,
+                        )
                         .map_err(DomSourceRuntimeError::Hosted)?
                     {
                         continue;
@@ -490,6 +495,25 @@ impl DomSourceRuntime {
                     let reason = DomSourceUnavailable::Dialog(request.action());
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::Dialog(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
+                    if request.action() == surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                        && self
+                            .hosted
+                            .service_dialog_focus(
+                                lease,
+                                &surgeist_dom::DomDialogFocusRequest::Allow(request.clone()),
+                                cancel,
+                            )
+                            .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::DialogFocusing(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::DialogFocusing(request),
                         reason,
                     });
                 }

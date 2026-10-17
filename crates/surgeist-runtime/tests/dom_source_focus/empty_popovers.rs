@@ -28,9 +28,13 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     // Known empty raw top layers, not unavailable imported lists. Auto and Hint
     // filtering therefore yields no candidates or hide iterations. DOM exposes
     // no public raw-layer getter; headlessness supplies only the focus absence.
-    let next = pending_action(
+    let next = pending_focusing(
         resume(session, event.operation(), scope).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        if association.is_some() {
+            HtmlDialogFocusingAction::FindFocusDelegate
+        } else {
+            HtmlDialogFocusingAction::ReadAllowFocus
+        },
     );
     assert_eq!(next.operation(), event.operation());
     assert_eq!(next.subject(), subject);
@@ -121,9 +125,13 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
             .has_close_watcher()
     );
 
-    let retry = pending_action(
+    let retry = pending_focusing(
         resume(session, event.operation(), None).unwrap(),
-        HtmlDialogAction::RunDialogFocusingSteps,
+        if association.is_some() {
+            HtmlDialogFocusingAction::FindFocusDelegate
+        } else {
+            HtmlDialogFocusingAction::ReadAllowFocus
+        },
     );
     assert_eq!(retry.operation(), event.operation());
     assert_eq!(retry.subject(), subject);

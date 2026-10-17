@@ -4,7 +4,7 @@ use crate::{DomEventCallback, DomEventListenerOptions, DomEventType};
 
 struct LiveCase {
     session: DomSession,
-    request: DomSourceDialogRequest,
+    request: DomSourceDialogFocusingRequest,
     host: DomHostedHostId,
     document: DocumentId,
     global: DomHostedGlobalId,
@@ -178,10 +178,34 @@ fn parked_live(denied: bool) -> LiveCase {
         settlement.finish(&lease.snapshot());
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &remember, &cancel)
+                .service_dialog_focus(
+                    &mut lease,
+                    &DomDialogFocusRequest::Remember(remember),
+                    &cancel
+                )
                 .unwrap()
         );
-        request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps)
+        {
+            let owner = hosted.state().unwrap();
+            let before = owner.borrow().work;
+            let retained = owner.borrow().source.retained_storage_bytes();
+            let next = focusing_request(
+                &mut lease,
+                if denied {
+                    surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                } else {
+                    surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate
+                },
+            );
+            assert_eq!(
+                owner.borrow().work,
+                before,
+                "canonical focusing progress performs no Runtime Window observation"
+            );
+            assert_eq!(owner.borrow().source.retained_storage_bytes(), retained);
+            assert!(owner.borrow().focus.pending.is_none());
+            next
+        }
     };
     LiveCase {
         session,
@@ -195,97 +219,64 @@ fn parked_live(denied: bool) -> LiveCase {
 }
 
 #[test]
-fn enabled_focus_header_refusal_and_admitted_none_leave_no_phantom_result_or_debit() {
-    for scratch in [false, true] {
-        let mut case = parked_live(false);
-        let cancel = AtomicBool::new(false);
-        let hosted = case.session.hosted_execution();
-        let owner = hosted.state().unwrap();
-        let baseline = owner.borrow_mut().retained_bytes(&cancel).unwrap();
-        let retained = owner.borrow().source.retained_storage_bytes();
-        let candidate = size_of::<FocusFormation>();
-        {
-            let mut state = owner.borrow_mut();
-            if scratch {
-                state.limits.scratch_bytes = candidate - 1;
-            } else {
-                state.limits.storage_bytes = baseline + candidate - 1;
-            }
-        }
-        let stamp = case.session.snapshot().stamp();
-        let task = case
-            .session
-            .element_task_execution()
-            .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+fn enabled_permission_advances_locally_to_delegate_wait_without_runtime_result_or_header() {
+    let mut case = parked_live(false);
+    let cancel = AtomicBool::new(false);
+    let hosted = case.session.hosted_execution();
+    let owner = hosted.state().unwrap();
+    let work = owner.borrow().work;
+    let retained = owner.borrow().source.retained_storage_bytes();
+    let stamp = case.session.snapshot().stamp();
+    let task = case
+        .session
+        .element_task_execution()
+        .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap();
+    for _ in 0..2 {
+        let mut dom = case.session.dom();
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
             .unwrap();
-        {
-            let mut dom = case.session.dom();
-            let mut lease = dom
-                .raw_mut()
-                .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
-                .unwrap();
-            assert!(matches!(
-                hosted.service_dialog_focus(&mut lease, &case.request, &cancel),
-                Err(DomHostedRuntimeError::Admission)
-            ));
-            assert_eq!(lease.snapshot().stamp(), stamp);
-            assert_eq!(
-                request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-                case.request
-            );
-        }
+        assert_eq!(
+            focusing_request(
+                &mut lease,
+                surgeist_html::HtmlDialogFocusingAction::FindFocusDelegate
+            ),
+            case.request
+        );
+        // A real yielded delegate request cannot masquerade as the allow-focus
+        // child occurrence, even though its outer Dialog method is unchanged.
+        assert!(matches!(
+            lease.prepare_dialog_focus(
+                &DomDialogFocusRequest::Allow(case.request.clone()),
+                &owner.borrow().source,
+                &cancel
+            ),
+            Err(DomError::InvalidSourceOperation)
+        ));
+        assert_eq!(lease.status().cleanup_cause(), None);
+        assert_eq!(lease.snapshot().stamp(), stamp);
+        assert_eq!(owner.borrow().work, work);
         assert_eq!(owner.borrow().source.retained_storage_bytes(), retained);
         assert!(owner.borrow().focus.pending.is_none());
-        owner.borrow_mut().limits = session_limits().hosted;
-        for _ in 0..2 {
-            let mut dom = case.session.dom();
-            let mut lease = dom
-                .raw_mut()
-                .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
-                .unwrap();
-            assert!(
-                !hosted
-                    .service_dialog_focus(&mut lease, &case.request, &cancel)
-                    .unwrap()
-            );
-            assert_eq!(lease.snapshot().stamp(), stamp);
-            assert_eq!(lease.status().cleanup_cause(), None);
-            assert_eq!(
-                request(&mut lease, HtmlDialogAction::RunDialogFocusingSteps),
-                case.request
-            );
-            assert!(owner.borrow().focus.pending.is_none());
-            assert_eq!(owner.borrow().source.retained_storage_bytes(), retained);
-        }
-        assert_eq!(case.calls, 1);
-        assert_eq!(
-            case.session
-                .element_task_execution()
-                .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
-                .unwrap(),
-            task
-        );
-        assert_eq!(
-            case.session
-                .snapshot()
-                .node(case.subject)
-                .unwrap()
-                .owner_document(),
-            Some(case.document)
-        );
-        let mut state = owner.borrow_mut();
-        let (h, t, c, w) = state.find_window(case.global, &cancel, || Ok(())).unwrap();
-        let window = &state.hosts[h].top_levels[t]
-            .group
-            .as_ref()
-            .unwrap()
-            .clusters[c]
-            .agent
-            .windows
-            .rows[w];
-        assert!(!window.retired);
-        assert!(!window.transient_activation());
     }
+    assert_eq!(case.calls, 1);
+    assert_eq!(
+        case.session
+            .element_task_execution()
+            .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+            .unwrap(),
+        task
+    );
+    assert_eq!(
+        case.session
+            .snapshot()
+            .node(case.subject)
+            .unwrap()
+            .owner_document(),
+        Some(case.document)
+    );
 }
 
 fn denied_producer_scaffold() -> (u64, u64, u64) {
@@ -302,7 +293,11 @@ fn denied_producer_scaffold() -> (u64, u64, u64) {
     let scaffold = lease.status().spent_work();
     let preparation = {
         let prepared = lease
-            .prepare_dialog_focus(&case.request, &state.source, &cancel)
+            .prepare_dialog_focus(
+                &DomDialogFocusRequest::Allow(case.request.clone()),
+                &state.source,
+                &cancel,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -364,13 +359,13 @@ fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retr
             .unwrap();
         assert_eq!(lease.status().spent_work(), scaffold);
         assert!(
-            matches!(hosted.service_dialog_focus(&mut lease,&case.request,&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
+            matches!(hosted.service_dialog_focus(&mut lease,&DomDialogFocusRequest::Allow(case.request.clone()),&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
         );
         assert_eq!(owner.borrow().work - before, RUNTIME_VISITS);
         assert_eq!(lease.snapshot().stamp(), stamp);
         assert_eq!(
             owner.borrow().focus.pending.as_ref().unwrap().request(),
-            &case.request
+            &DomDialogFocusRequest::Allow(case.request.clone())
         );
     }
     drop(hosted);
@@ -382,18 +377,26 @@ fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retr
             .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
             .unwrap();
         assert!(matches!(
-            replacement.service_dialog_focus(&mut lease, &case.request, &AtomicBool::new(true)),
+            replacement.service_dialog_focus(
+                &mut lease,
+                &DomDialogFocusRequest::Allow(case.request.clone()),
+                &AtomicBool::new(true)
+            ),
             Err(DomHostedRuntimeError::Cancelled
                 | DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::Cancelled)))
         ));
         assert_eq!(
             owner.borrow().focus.pending.as_ref().unwrap().request(),
-            &case.request
+            &DomDialogFocusRequest::Allow(case.request.clone())
         );
         let before = owner.borrow().work;
         assert!(
             replacement
-                .service_dialog_focus(&mut lease, &case.request, &cancel)
+                .service_dialog_focus(
+                    &mut lease,
+                    &DomDialogFocusRequest::Allow(case.request.clone()),
+                    &cancel
+                )
                 .unwrap()
         );
         assert_eq!(
@@ -402,6 +405,17 @@ fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retr
             "retained actual receipt accepts without Window/activation observation replay"
         );
         assert!(owner.borrow().focus.pending.is_none());
+        // The actual receipt moved this exact child allow occurrence. Its old
+        // request cannot be acknowledged again while the same outer call still
+        // owns the now-terminal child cursor.
+        assert!(matches!(
+            lease.prepare_dialog_focus(
+                &DomDialogFocusRequest::Allow(case.request.clone()),
+                &owner.borrow().source,
+                &cancel
+            ),
+            Err(DomError::InvalidSourceOperation)
+        ));
         assert!(matches!(
             lease.advance(&cancel).unwrap(),
             DomSourceProgress::Complete(_)
@@ -418,6 +432,127 @@ fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retr
     );
 }
 
+fn retained_denied_child() -> LiveCase {
+    let (scaffold, preparation, retention) = denied_producer_scaffold();
+    // Same independently derived native visits as the exact live-denial case:
+    // retained11 + actual child Global5 + original child Window5 + observation1.
+    let cap = scaffold + preparation + retention + 22;
+    let mut case = parked_live(true);
+    let hosted = case.session.hosted_execution();
+    {
+        let mut dom = case.session.dom();
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(
+                case.request.operation(),
+                source_limits(cap),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert!(
+            matches!(hosted.service_dialog_focus(&mut lease, &DomDialogFocusRequest::Allow(case.request.clone()), &AtomicBool::new(false)),
+            Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {limit}))) if limit == cap)
+        );
+    }
+    assert_eq!(
+        hosted
+            .state()
+            .unwrap()
+            .borrow()
+            .focus
+            .pending
+            .as_ref()
+            .unwrap()
+            .request(),
+        &DomDialogFocusRequest::Allow(case.request.clone())
+    );
+    case
+}
+
+#[test]
+fn actual_child_allow_receipt_cannot_cross_original_source_and_accepts_once_without_resampling() {
+    let mut first = retained_denied_child();
+    let mut second = retained_denied_child();
+    let first_owner = first.session.hosted_execution().state().unwrap();
+    let second_owner = second.session.hosted_execution().state().unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut foreign = first_owner.borrow_mut().focus.pending.take();
+    let original_second = DomDialogFocusRequest::Allow(second.request.clone());
+    let basis = second.session.snapshot().stamp();
+    {
+        let mut dom = second.session.dom();
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(
+                second.request.operation(),
+                source_limits(10_000_000),
+                &cancel,
+            )
+            .unwrap();
+        assert!(matches!(
+            lease.accept_dialog_focus(
+                &original_second,
+                &second_owner.borrow().source,
+                &mut foreign,
+                &cancel
+            ),
+            Err(DomError::InvalidSourceOperation)
+        ));
+        assert_eq!(
+            foreign.as_ref().unwrap().request(),
+            &DomDialogFocusRequest::Allow(first.request.clone())
+        );
+        assert_eq!(lease.snapshot().stamp(), basis);
+        assert_eq!(
+            second_owner
+                .borrow()
+                .focus
+                .pending
+                .as_ref()
+                .unwrap()
+                .request(),
+            &original_second
+        );
+    }
+    first_owner.borrow_mut().focus.pending = foreign;
+    for case in [&mut first, &mut second] {
+        let hosted = case.session.hosted_execution();
+        let owner = hosted.state().unwrap();
+        let before = owner.borrow().work;
+        {
+            let mut dom = case.session.dom();
+            let mut lease = dom
+                .raw_mut()
+                .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
+                .unwrap();
+            assert!(
+                hosted
+                    .service_dialog_focus(
+                        &mut lease,
+                        &DomDialogFocusRequest::Allow(case.request.clone()),
+                        &cancel
+                    )
+                    .unwrap()
+            );
+            assert!(owner.borrow().focus.pending.is_none());
+            assert_eq!(owner.borrow().work, before);
+            assert!(matches!(
+                lease.advance(&cancel).unwrap(),
+                DomSourceProgress::Complete(_)
+            ));
+        }
+        assert!(case.session.dom().pending_source_edit().is_none());
+        assert_eq!(case.calls, 1);
+        assert_eq!(
+            case.session
+                .element_task_execution()
+                .pending_total_tasks()
+                .unwrap(),
+            1
+        );
+    }
+}
+
 #[test]
 fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queue() {
     let mut case = parked_live(true);
@@ -431,7 +566,11 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
             .unwrap();
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &case.request, &cancel)
+                .service_dialog_focus(
+                    &mut lease,
+                    &DomDialogFocusRequest::Allow(case.request.clone()),
+                    &cancel
+                )
                 .unwrap()
         );
         assert!(matches!(
