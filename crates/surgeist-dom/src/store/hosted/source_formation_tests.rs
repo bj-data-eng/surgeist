@@ -19,7 +19,7 @@ fn hosted_limits(bytes: usize, scratch: usize) -> DomHostedLimits {
     )
 }
 fn source_limits(bytes: usize, units: usize, work: u64) -> DomSourceLimits {
-    DomSourceLimits::new(bytes, units, work, 64, 4096, 4096)
+    DomSourceLimits::new(bytes, units, work, 64, 4096, 4096, 1)
 }
 struct Fixture {
     dom: Dom,

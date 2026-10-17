@@ -25,7 +25,17 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 512, 128, 128, 32, 131072).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(128, 32768, 512, 128, 128, 32, 131072)
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            ),
+    )
+    .unwrap()
 }
 struct Ordinary {
     dom: Dom,
@@ -1340,7 +1350,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
 }
 
 fn style_edit_limits() -> surgeist_dom::DomSourceLimits {
-    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
+    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
 }
 fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::DomSourceOperationId {
     let mut b = DomBatch::new();
@@ -1848,3 +1858,6 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
 }
 
 mod hosted_style_parent_tests;
+
+#[path = "beforetoggle_tests.rs"]
+mod beforetoggle;

@@ -172,6 +172,9 @@ pub(crate) enum Command {
         node: NodeOperand,
         value: DocumentString,
     },
+    ShowDialog {
+        node: NodeOperand,
+    },
     SetDialogReturnValue {
         node: NodeOperand,
         value: DocumentString,
@@ -668,6 +671,11 @@ impl DomBatch {
             slot: slot.into(),
             incoming,
         });
+    }
+    /// Stages nonmodal Dialog show. A reached event boundary refuses atomic apply.
+    pub fn show_dialog(&mut self, node: impl Into<NodeOperand>) {
+        self.commands
+            .push(Command::ShowDialog { node: node.into() });
     }
     /// Sets the exact UTF-16 returnValue of a native HTML Dialog.
     pub fn set_dialog_return_value(

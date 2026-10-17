@@ -10,7 +10,61 @@ use surgeist_html::{
     HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
 };
 
+#[derive(Clone, Copy)]
+pub(super) struct ShowFrame {
+    pub subject: Key,
+    pub cursor: HtmlDialogCursor,
+}
+
 impl Draft {
+    pub(super) fn dialog_show_boundary(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        self.dialog_state(key)?;
+        let mut cursor = self
+            .dialog_show
+            .map_or(HtmlDialogCursor::new(Operation::Show), |frame| frame.cursor);
+        loop {
+            self.source_step(cancel)?;
+            let action = cursor.action();
+            let reply = match action {
+                Action::ReadOpen => Reply::Open(
+                    self.control_attribute(key, KnownHtmlAttribute::Open, cancel)?
+                        .is_some(),
+                ),
+                Action::ReadModal => Reply::Modal(self.dialog_state(key)?.is_modal()),
+                Action::Complete(HtmlDialogOutcome::Completed) => {
+                    self.dialog_show = None;
+                    return Ok(());
+                }
+                Action::Complete(HtmlDialogOutcome::InvalidState) => {
+                    return Err(DomError::DialogInvalidState);
+                }
+                Action::FireBeforeToggle { .. } => {
+                    self.dialog_show = Some(ShowFrame {
+                        subject: key,
+                        cursor,
+                    });
+                    return Err(DomError::NeedsEventfulOperation {
+                        subject: self.published_id(key),
+                        action,
+                    });
+                }
+                _ => {
+                    self.dialog_show = Some(ShowFrame {
+                        subject: key,
+                        cursor,
+                    });
+                    return Err(DomError::DialogProcessingUnavailable { action });
+                }
+            };
+            cursor.reply(reply).map_err(DomError::DialogProtocol)?;
+        }
+    }
+
     fn dialog_state(&self, key: Key) -> Result<&DomDialogState, DomError> {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Err(DomError::DialogInapplicable);
@@ -264,7 +318,7 @@ mod tests {
             let mut batch = DomBatch::new();
             batch.set_dialog_return_value(dialog, value.clone());
             let generous =
-                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
             let (mut draft, _, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
@@ -288,7 +342,7 @@ mod tests {
             let unit_limit = base_units + capacity
                 - usize::from(failure == Some(DomResource::SourceRetainedUnits));
             draft.source_limits = Some(crate::DomSourceLimits::new(
-                byte_limit, unit_limit, 10_000_000, 16, 4096, 4096,
+                byte_limit, unit_limit, 10_000_000, 16, 4096, 4096, 1,
             ));
             let key = draft.resolve(dialog.into()).unwrap();
             let original_units = draft.units;
@@ -343,7 +397,8 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         batch.set_dialog_return_value(dialog, "unpublished");
-        let limits = crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
         let (mut draft, _, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let original = draft.units;
@@ -375,7 +430,7 @@ mod tests {
             let before = dom.snapshot();
             let batch = DomBatch::new();
             let generous =
-                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+                crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
             let (mut draft, _, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
@@ -391,7 +446,7 @@ mod tests {
             // five literal UTF16 pairs. Begin a fresh measured setter interval;
             // initial Source formation was separately admitted above.
             draft.source_limits = Some(crate::DomSourceLimits::new(
-                16_000_000, 100_000, work, 16, 4096, 4096,
+                16_000_000, 100_000, work, 16, 4096, 4096, 1,
             ));
             draft.source_work.store(0, Ordering::Relaxed);
             let result = draft.set_dialog_return_value(key, &value, dom.limits, &cancel);

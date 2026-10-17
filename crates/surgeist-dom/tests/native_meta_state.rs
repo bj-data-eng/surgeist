@@ -1139,7 +1139,7 @@ fn source_phase_admits_language_token_units_and_keeps_history_atomic_at_the_actu
         let result = {
             match dom.begin_source_edit(
                 edit,
-                DomSourceLimits::new(16_000_000, allowance, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(16_000_000, allowance, 10_000_000, 64, 4096, 4096, 1),
                 &cancel(),
             ) {
                 Err(error) => Err(error),

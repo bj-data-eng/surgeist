@@ -596,7 +596,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
         .clone();
     let edit =
         DomSourceEdit::create_xml_document(associated.node(), Namespace::html(), "style", Some(dt));
-    let bounds = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096);
+    let bounds = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1);
     let mut lease = dom.begin_source_edit(edit, bounds, &cancel).unwrap();
     let operation = lease.operation();
     let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =

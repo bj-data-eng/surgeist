@@ -7,7 +7,7 @@
 | Cargo package | `surgeist-runtime` `0.1.0` | [Cargo.toml](../Cargo.toml) |
 | Rust library import | `surgeist_runtime` | [Cargo.toml](../Cargo.toml) |
 | Edition / minimum Rust | `2024` / `1.97` | [Cargo.toml](../Cargo.toml) |
-| Production dependencies | CSS, CSSOM, DOM and HTML; target-gated `getrandom` 0.3.4 supplies native entropy. Parser and HTML semantics are test dependencies | [Cargo.toml](../Cargo.toml) |
+| Production dependencies | CSS, CSSOM, DOM, HTML and HTML semantics; target-gated `getrandom` 0.3.4 supplies native entropy. The HTML parser is a test dependency | [Cargo.toml](../Cargo.toml) |
 | Features | Empty `default` feature set; no other features declared | [Cargo.toml](../Cargo.toml) |
 | License | MIT | [LICENSE](../LICENSE) |
 | Public entry point | Reexports from `src/lib.rs`; implementation modules are private | [lib.rs](../src/lib.rs) |
@@ -29,6 +29,7 @@
 | Canonical host association | Generation-qualified surface focus/hover captures in [dom_host.rs](../src/dom_host.rs) |
 | Native event dispatch | Controlled `DomEventDom` access, listener registration, immutable dispatch paths and resumable progress in [dom_event.rs](../src/dom_event.rs) |
 | Shared DOM session and Style orchestration | `DomSession`, weak execution permissions, resource custody and source/networking progress in [dom_style.rs](../src/dom_style.rs) |
+| Source event orchestration | `DomSourceRuntime::service_event`, canonical `raise_event_limits` and independent adapter `raise_event_runtime_limits` in [dom_source.rs](../src/dom_source.rs), with finite Session-owned linked jobs and retained actual receipts in [dom_dialog.rs](../src/dom_dialog.rs) |
 | Details orchestration | Bounded toggle tasks over the shared dispatcher in [dom_details.rs](../src/dom_details.rs) |
 | Native hosted lifecycle | `HostedRuntime`, explicit limits, top-level creation, settings and queued teardown in [dom_lifecycle.rs](../src/dom_lifecycle.rs) |
 

@@ -1365,6 +1365,8 @@ impl StyleState {
 /// Finite admission for each actual owner in the same durable composition.
 #[derive(Clone, Copy, Debug)]
 pub struct DomSessionLimits {
+    /// Durable Source event jobs and actual adapter admission work.
+    pub source_events: crate::dom_dialog::DomSourceEventRuntimeLimits,
     /// Style source/resource/task orchestration admission.
     pub style: DomStyleRuntimeLimits,
     /// Details task/tracker admission.
@@ -1375,6 +1377,8 @@ pub struct DomSessionLimits {
 /// The owner which refused construction, with the original DOM still returned.
 #[derive(Debug)]
 pub enum DomSessionCreateFailure {
+    /// The original Source event executor or its fixed owner was not admitted.
+    SourceEvents(crate::dom_dialog::DomSourceEventRuntimeError),
     /// Existing Style source/resource custody prevents adoption or admission.
     Style(DomStyleRuntimeError),
     /// The actual Details task owner could not be admitted.
@@ -1385,6 +1389,7 @@ pub enum DomSessionCreateFailure {
 impl std::fmt::Display for DomSessionCreateFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
             Self::Style(error) => std::fmt::Display::fmt(error, f),
             Self::Details(error) => std::fmt::Display::fmt(error, f),
             Self::Hosted(error) => std::fmt::Display::fmt(error, f),
@@ -1394,6 +1399,7 @@ impl std::fmt::Display for DomSessionCreateFailure {
 impl std::error::Error for DomSessionCreateFailure {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::SourceEvents(error) => Some(error),
             Self::Style(error) => Some(error),
             Self::Details(error) => Some(error),
             Self::Hosted(error) => Some(error),
@@ -1408,6 +1414,7 @@ pub struct DomSession {
     state: std::rc::Rc<std::cell::RefCell<StyleState>>,
     details: crate::dom_details::DetailsOwner,
     hosted: crate::dom_lifecycle::HostedOwner,
+    events: crate::dom_dialog::SourceEventOwner,
 }
 impl std::fmt::Debug for DomSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1451,6 +1458,8 @@ impl std::error::Error for DomSessionCreateError {
 /// Exact unresolved Style obligation during graceful shutdown.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomShutdownReason {
+    /// The actual beforetoggle event remains owned by this session.
+    SourceEvent(surgeist_dom::DomSourceEventId),
     /// An actual Details source intention has not reached its task owner.
     DetailsIntentions,
     /// An actual queued/running Details task has not completed or been canceled.
@@ -1497,6 +1506,14 @@ impl DomSession {
         reason = "Creation refusal returns the actual unchanged input Dom without another allocation or resource-loss failure"
     )]
     pub fn new(mut dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
+        if dom.has_source_event_executor() {
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::SourceEvents(
+                    crate::dom_dialog::DomSourceEventRuntimeError::PreboundSession,
+                ),
+            });
+        }
         let reject = if dom.has_style_cssom_roots() {
             Some(DomStyleRuntimeError::PreboundSession)
         } else if let Some(status) = dom.pending_source_edit() {
@@ -1519,6 +1536,13 @@ impl DomSession {
                 error: DomSessionCreateFailure::Details(
                     crate::dom_details::DomDetailsRuntimeError::PretransferredSession,
                 ),
+            });
+        }
+        if let Err(error) = crate::dom_dialog::SourceEventOwner::admit_initial(limits.source_events)
+        {
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::SourceEvents(error),
             });
         }
         if let Err(error) = crate::dom_lifecycle::HostedOwner::admit_initial_headers(limits.hosted)
@@ -1549,6 +1573,13 @@ impl DomSession {
         };
         details.bind_hosted(hosted.execution());
         hosted.bind_details(details.execution());
+        // All binding preconditions were checked before Hosted adoption. This
+        // exclusive construction has executed no callbacks or Source edits.
+        let executor = dom
+            .bind_source_event_executor(&AtomicBool::new(false))
+            .expect("exclusive preflighted Source event binding");
+        let events =
+            crate::dom_dialog::SourceEventOwner::new(owner, executor, limits.source_events);
         Ok(Self {
             dom,
             state: std::rc::Rc::new(std::cell::RefCell::new(StyleState::new(
@@ -1557,6 +1588,7 @@ impl DomSession {
             ))),
             details,
             hosted,
+            events,
         })
     }
     /// Non-owning execution permission for this exact original session.
@@ -1579,6 +1611,7 @@ impl DomSession {
             self.style_execution(),
             self.details_execution(),
             self.hosted_execution(),
+            self.events.execution(),
         )
     }
     /// Controlled canonical access. No bound mutable owner can be extracted.
@@ -1593,6 +1626,14 @@ impl DomSession {
     /// Drop releases all session/DOM/task-owned custody without callbacks or
     /// completion; independent public root capabilities may retain their Store.
     pub fn try_shutdown(self) -> DomShutdownOutcome {
+        let events = match self.events.pending() {
+            Ok(Some(event)) => Some(DomShutdownReason::SourceEvent(event)),
+            Ok(None) => None,
+            Err(crate::dom_dialog::DomSourceEventRuntimeError::Busy) => {
+                Some(DomShutdownReason::Busy)
+            }
+            Err(_) => Some(DomShutdownReason::Admission),
+        };
         let hosted = match self.hosted.pending() {
             Ok(false) => None,
             Ok(true) => Some(DomShutdownReason::HostedLifecycle),
@@ -1607,6 +1648,8 @@ impl DomSession {
         };
         let reason = if let Some(pending) = self.dom.pending_source_edit() {
             Some(DomShutdownReason::SourceTail(pending.operation()))
+        } else if events.is_some() {
+            events
         } else if self.dom.pending_details_toggle_intentions() != 0 {
             Some(DomShutdownReason::DetailsIntentions)
         } else if details.is_some() {
@@ -2181,6 +2224,11 @@ use surgeist_dom::DomStyleInlineCspObservation;
 mod tests {
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
+            source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             style,
             details: crate::dom_details::DomDetailsRuntimeLimits {
                 tasks: 32,
@@ -2229,7 +2277,7 @@ mod tests {
         }
     }
     fn source_limits() -> DomSourceLimits {
-        DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
+        DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1)
     }
     fn dispatch_limits() -> DomEventDispatchLimits {
         DomEventDispatchLimits {
@@ -2242,6 +2290,19 @@ mod tests {
     }
     fn dom() -> Dom {
         Dom::new(DomLimits::new(256, 100_000, 1024, 0, 0, 32, 1_000_000).unwrap()).unwrap()
+    }
+    fn dispatch_dom() -> Dom {
+        Dom::new(
+            DomLimits::new(256, 100_000, 1024, 0, 0, 32, 1_000_000)
+                .unwrap()
+                .with_dispatch_custody(
+                    surgeist_dom::DomDispatchCustodyLimits::new(
+                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                    )
+                    .unwrap(),
+                ),
+        )
+        .unwrap()
     }
     fn policy(source: &DomStyleSource) -> Option<DomStyleInlineCspObservation> {
         Some(DomStyleInlineCspObservation::complete_empty(source, 1))
@@ -2581,7 +2642,7 @@ mod tests {
     #[test]
     fn actual_parsed_sheet_networking_capture_event_and_unblock_survive_nested_removal() {
         let cancel = AtomicBool::new(false);
-        let mut dom = dom();
+        let mut dom = dispatch_dom();
         let mut b = DomBatch::new();
         let document = b.create_document();
         let c = dom.apply(b, &cancel).unwrap();
@@ -2717,7 +2778,12 @@ mod tests {
         bound_session_with_context(CssomContext::default())
     }
     fn bound_session_with_context(context: CssomContext) -> (DomSession, NodeId) {
-        let mut owner = dom();
+        bound_session_from(dom(), context)
+    }
+    fn bound_dispatch_session() -> (DomSession, NodeId) {
+        bound_session_from(dispatch_dom(), CssomContext::default())
+    }
+    fn bound_session_from(mut owner: Dom, context: CssomContext) -> (DomSession, NodeId) {
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let container = batch.create_element_ns(&document, Namespace::html(), "div");
@@ -3024,6 +3090,12 @@ mod tests {
                     DomSourceProgress::Request(surgeist_dom::DomSourceRequest::HostedChild(_)) => {
                         panic!("Style fixture cannot request a hosted child")
                     }
+                    DomSourceProgress::Request(
+                        surgeist_dom::DomSourceRequest::Event(_)
+                        | surgeist_dom::DomSourceRequest::Dialog(_),
+                    ) => {
+                        panic!("Style fixture cannot request a Dialog service")
+                    }
                     DomSourceProgress::Complete(_) => panic!("real pending source was expected"),
                 }
             }
@@ -3221,7 +3293,7 @@ mod tests {
     #[test]
     fn work_refusal_before_callback_and_raised_policy_keep_the_exact_task_and_monotone_work() {
         let cancel = AtomicBool::new(false);
-        let (mut session, document) = bound_session();
+        let (mut session, document) = bound_dispatch_session();
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
@@ -4075,7 +4147,7 @@ mod tests {
     #[test]
     fn initial_event_storage_refusal_keeps_the_original_unstarted_task_for_raised_policy_retry() {
         let cancel = AtomicBool::new(false);
-        let (mut session, document) = bound_session();
+        let (mut session, document) = bound_dispatch_session();
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
@@ -4269,7 +4341,7 @@ mod tests {
             }
         }
         let cancel = AtomicBool::new(false);
-        let (mut session, document) = bound_session();
+        let (mut session, document) = bound_dispatch_session();
         let target = append_style(&mut session, document, None);
         let parent = session.snapshot().node(document).unwrap().children()[0];
         let mut context = NestedContext {
@@ -4519,7 +4591,7 @@ mod tests {
                 &mut self.styles
             }
         }
-        let (mut session, document) = bound_session();
+        let (mut session, document) = bound_dispatch_session();
         let target = append_style(&mut session, document, None);
         let mut context = PanicContext {
             styles: session.style_execution(),
@@ -4858,7 +4930,17 @@ mod replacement_test {
     #[test]
     fn replacing_the_actual_style_owner_preserves_original_task_and_does_not_replay_event() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(64, 10000, 256, 0, 0, 16, 100000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(64, 10000, 256, 0, 0, 16, 100000)
+                .unwrap()
+                .with_dispatch_custody(
+                    surgeist_dom::DomDispatchCustodyLimits::new(
+                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                    )
+                    .unwrap(),
+                ),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let document = b.create_document();
         let c = dom.apply(b, &cancel).unwrap();
@@ -4898,7 +4980,7 @@ mod replacement_test {
             .apply(
                 &mut dom,
                 edit,
-                DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096, 1),
                 &mut DomSourceServices {
                     style_policy: &mut |source| {
                         Some(DomStyleInlineCspObservation::complete_empty(source, 1))

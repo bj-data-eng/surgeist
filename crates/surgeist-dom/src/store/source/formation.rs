@@ -13,18 +13,14 @@ pub(crate) struct Formation {
     live_units: Arc<AtomicUsize>,
     own_units: Cell<usize>,
     work: Arc<AtomicU64>,
+    ancestors: Option<Arc<crate::source::event::EventWork>>,
     work_limit: u64,
 }
 impl Drop for Formation {
     fn drop(&mut self) {
-        self.live.store(
-            self.live.load(Ordering::Relaxed) - self.own.get(),
-            Ordering::Relaxed,
-        );
-        self.live_units.store(
-            self.live_units.load(Ordering::Relaxed) - self.own_units.get(),
-            Ordering::Relaxed,
-        );
+        self.live.fetch_sub(self.own.get(), Ordering::Relaxed);
+        self.live_units
+            .fetch_sub(self.own_units.get(), Ordering::Relaxed);
     }
 }
 impl Formation {
@@ -52,8 +48,28 @@ impl Formation {
             live_units: draft.source_temporary_units.clone(),
             own_units: Cell::new(0),
             work: draft.source_work.clone(),
+            ancestors: draft.source_ancestors.clone(),
             work_limit: limits.work,
         }))
+    }
+    pub(in crate::store) fn from_event(
+        work: &Arc<crate::source::event::EventWork>,
+        base: storage::Payload,
+        limits: crate::DomSourceLimits,
+    ) -> Self {
+        Self {
+            base: base.bytes,
+            base_units: base.units,
+            limit: limits.retained_bytes,
+            unit_limit: limits.retained_units,
+            live: work.bytes.clone(),
+            live_units: work.units.clone(),
+            own: Cell::new(0),
+            own_units: Cell::new(0),
+            work: work.work.clone(),
+            work_limit: limits.work,
+            ancestors: work.ancestors.clone(),
+        }
     }
     /// A distinct temporary custody guard over these same actual live atoms.
     /// No budget or spent-work counter is renewed.
@@ -68,6 +84,7 @@ impl Formation {
             live_units: self.live_units.clone(),
             own_units: Cell::new(0),
             work: self.work.clone(),
+            ancestors: self.ancestors.clone(),
             work_limit: self.work_limit,
         }
     }
@@ -105,6 +122,7 @@ impl Formation {
             });
         }
         self.work.store(next, Ordering::Relaxed);
+        crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)?;
         Ok(())
     }
     pub(in crate::store) fn retained_byte_limit(&self) -> usize {
@@ -151,14 +169,12 @@ impl Formation {
             .get()
             .checked_add(payload.bytes)
             .ok_or(DomError::RepresentationExhausted)?;
-        let live = self
-            .live
-            .load(Ordering::Relaxed)
-            .checked_add(payload.bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.live.store(live, Ordering::Relaxed);
+        // Only this exclusive canonical execution adds; independent Send job
+        // guards may release concurrently. Admission used the larger observed
+        // extent, and relative atomics must preserve those releases.
+        self.live.fetch_add(payload.bytes, Ordering::Relaxed);
         self.own.set(own);
-        self.live_units.store(units, Ordering::Relaxed);
+        self.live_units.fetch_add(payload.units, Ordering::Relaxed);
         self.own_units.set(own_units);
         Ok(())
     }
@@ -232,13 +248,7 @@ impl Formation {
         let growth = actual
             .checked_sub(old)
             .ok_or(DomError::RepresentationExhausted)?;
-        self.live.store(
-            self.live
-                .load(Ordering::Relaxed)
-                .checked_add(growth)
-                .ok_or(DomError::RepresentationExhausted)?,
-            Ordering::Relaxed,
-        );
+        self.live.fetch_add(growth, Ordering::Relaxed);
         self.own.set(
             self.own
                 .get()
@@ -247,13 +257,7 @@ impl Formation {
         );
         if utf16 {
             let growth = values.capacity() - old_capacity;
-            self.live_units.store(
-                self.live_units
-                    .load(Ordering::Relaxed)
-                    .checked_add(growth)
-                    .ok_or(DomError::RepresentationExhausted)?,
-                Ordering::Relaxed,
-            );
+            self.live_units.fetch_add(growth, Ordering::Relaxed);
             self.own_units.set(
                 self.own_units
                     .get()
@@ -312,25 +316,12 @@ impl Formation {
                 .checked_sub(payload.units)
                 .expect("owned payload units"),
         );
-        self.live.store(
-            self.live
-                .load(Ordering::Relaxed)
-                .checked_sub(payload.bytes)
-                .expect("live payload bytes"),
-            Ordering::Relaxed,
-        );
-        self.live_units.store(
-            self.live_units
-                .load(Ordering::Relaxed)
-                .checked_sub(payload.units)
-                .expect("live payload units"),
-            Ordering::Relaxed,
-        );
+        self.live.fetch_sub(payload.bytes, Ordering::Relaxed);
+        self.live_units.fetch_sub(payload.units, Ordering::Relaxed);
     }
     pub(in crate::store) fn release_bytes(&self, bytes: usize) {
         self.own.set(self.own.get() - bytes);
-        self.live
-            .store(self.live.load(Ordering::Relaxed) - bytes, Ordering::Relaxed);
+        self.live.fetch_sub(bytes, Ordering::Relaxed);
     }
     #[cfg(test)]
     pub(in crate::store) fn observe_candidate(

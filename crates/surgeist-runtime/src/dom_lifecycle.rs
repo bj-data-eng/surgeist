@@ -1732,6 +1732,11 @@ mod constructor_settings_tests {
         let mut session = DomSession::new(
             Dom::new(DomLimits::new(128, 200_000, 256, 256, 256, 32, 1_000_000).unwrap()).unwrap(),
             DomSessionLimits {
+                source_events: crate::DomSourceEventRuntimeLimits {
+                    jobs: 0,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 style: DomStyleRuntimeLimits {
                     roots: 4,
                     completions: 32,

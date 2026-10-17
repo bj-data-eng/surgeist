@@ -2,7 +2,7 @@
 use super::*;
 use crate::dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventListenerOptions, DomEventPhase,
-    DomEventRegistryLimits, DomEventResource, DomEventType,
+    DomEventRegistryLimits, DomEventResource, DomEventType, DomToggleEvent,
 };
 use crate::dom_lifecycle::DomHostedRuntimeLimits;
 use crate::dom_style::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
@@ -12,6 +12,11 @@ fn session(dom: Dom) -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            source_events: crate::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             style: DomStyleRuntimeLimits {
                 roots: 32,
                 completions: 32,
@@ -64,6 +69,12 @@ fn fixture() -> (DomSession, DocumentId, NodeId, NodeId) {
     let mut dom = Dom::new(
         DomLimits::new(256, 65536, 1024, 1024, 512, 16, 1_000_000)
             .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            )
             .with_details_toggle_intentions(128)
             .unwrap(),
     )
@@ -86,7 +97,7 @@ fn fixture() -> (DomSession, DocumentId, NodeId, NodeId) {
 }
 struct Context {
     details: DomDetailsRuntime,
-    log: Vec<(NodeId, HtmlDetailsToggleEvent, DomEventPhase)>,
+    log: Vec<(NodeId, DomToggleEvent, DomEventPhase)>,
     reenter: bool,
     refused_limit_change: bool,
     panic_next_access: bool,
@@ -301,11 +312,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
             .iter()
             .map(|(_, event, _)| (event.old_state(), event.new_state()))
             .collect::<Vec<_>>(),
-        vec![
-            (HtmlDetailsState::Closed, HtmlDetailsState::Open),
-            (HtmlDetailsState::Closed, HtmlDetailsState::Closed),
-            (HtmlDetailsState::Closed, HtmlDetailsState::Open)
-        ]
+        vec![("closed", "open"), ("closed", "closed"), ("closed", "open")]
     );
     // With all prior tasks finished, a new transition has no tracked old state.
     // It must use this actual Open→Closed transition, not the earlier Closed.
@@ -315,7 +322,15 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     assert_eq!(fresh_close.event().old_state(), HtmlDetailsState::Open);
     assert_eq!(fresh_close.event().new_state(), HtmlDetailsState::Closed);
     assert_eq!(c.log.len(), 4);
-    assert_eq!(c.log[3].1, fresh_close.event());
+    assert_eq!(
+        c.log[3].1.old_state(),
+        fresh_close.event().old_state().as_str()
+    );
+    assert_eq!(
+        c.log[3].1.new_state(),
+        fresh_close.event().new_state().as_str()
+    );
+    assert_eq!(c.log[3].1.source(), None);
     assert_eq!(c.details.pending_tasks().unwrap(), 0);
 }
 
@@ -794,6 +809,12 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
         let mut dom = Dom::new(
             DomLimits::new(32, 4096, 128, 128, 128, 8, 100_000)
                 .unwrap()
+                .with_dispatch_custody(
+                    surgeist_dom::DomDispatchCustodyLimits::new(
+                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                    )
+                    .unwrap(),
+                )
                 .with_details_toggle_intentions(8)
                 .unwrap(),
         )
@@ -816,6 +837,11 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
         let stamp = dom.snapshot().stamp();
         let pending = dom.pending_details_toggle_intentions();
         let limits = DomSessionLimits {
+            source_events: crate::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             style: DomStyleRuntimeLimits {
                 roots: 8,
                 completions: 8,

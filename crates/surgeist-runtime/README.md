@@ -13,15 +13,18 @@ elements and publishes exact Runtime focus/hover selections. This does not claim
 complete HTML focus processing, native activity or pointer-device state. Host
 publication revisions are independent of render invalidations and acknowledgements.
 
-`DomSession` keeps the original canonical DOM, CSSOM resources, Details tasks and
-native hosted lifecycle together. Supply explicit `DomSessionLimits`, edit
+`DomSession` keeps the original canonical DOM, CSSOM resources, Details tasks,
+native hosted lifecycle and Source event continuations together. Supply explicit
+`DomSessionLimits`, edit
 through `dom()`, and obtain weak execution permissions with `source_execution()`,
 `style_execution()`, `details_execution()` and `hosted_execution()`. The Source
 driver executes one edit or named feature operation; the Style handle retains
 CSSOM resources, notifications and readback. `try_shutdown` returns the whole
 session while mandatory work remains. Dropping it abandons execution without
 delivering callbacks or claiming completion. The native dispatcher handles real
-Details toggle events, including Global capture for hosted Documents. See
+Details toggle events and Dialog Show's initial cancelable beforetoggle,
+including Global capture for hosted Documents. Later Dialog services remain
+explicitly unavailable. See
 [DOM orchestration](docs/explanation.md#dom-orchestration) for creation, teardown,
 custody and capability limits.
 

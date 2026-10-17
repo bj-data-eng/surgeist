@@ -79,9 +79,12 @@ or reset processed/imported history without an actual supported cause/state.
 Clone/import-as-clone creates new native state; adoption preserves it. No Window, child navigable ID or host capability is
 fabricated. Nonce content and cryptographic slot are independent stored/accounted
 strings. Keep ElementState and Attributes change coverage distinct.
-The shared Source engine admits exactly one public `DomSourceEdit` or named
-native-install/Select completion root. Public operands are established canonical
-identities, not cross-operation batch tickets. Ordinary `Dom::apply(DomBatch)`
+The shared Source engine executes one top public `DomSourceEdit` or named
+native-install/Select completion root. An exact affine event-dispatch scope can
+admit nested roots while retaining their original ancestors; only the top root
+executes, and each ancestor constrains actual work and simultaneous storage.
+Public operands are established canonical identities, not cross-operation batch
+tickets. Ordinary `Dom::apply(DomBatch)`
 remains atomic; source phases retain their original continuation, external
 receipts and mandatory hooks across refusal. Style owns its CSSOM semantics and
 resources, while Runtime's weak Source permission routes the composed operation.

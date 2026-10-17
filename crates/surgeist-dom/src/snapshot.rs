@@ -20,6 +20,7 @@ pub enum DomNodeKind {
 /// Owned immutable state, including detached nodes and all documents.
 #[derive(Clone, Debug)]
 pub struct DomSnapshot {
+    pub(crate) source_tail: Option<crate::DomSourceOperationId>,
     pub(crate) owner: DomOwnerId,
     pub(crate) revision: DomRevision,
     pub(crate) state: Arc<State>,
@@ -30,10 +31,10 @@ impl DomSnapshot {
         self.state.incomplete_hosted
     }
     pub fn incomplete_source_operation(&self) -> Option<crate::DomSourceOperationId> {
-        self.state.incomplete_source
+        self.source_tail.or(self.state.incomplete_source)
     }
     pub(crate) fn require_complete_source(&self) -> Result<(), DomError> {
-        if self.state.incomplete_source.is_some() || self.state.incomplete_hosted.is_some() {
+        if self.incomplete_source_operation().is_some() || self.state.incomplete_hosted.is_some() {
             Err(DomError::IncompleteSourceOperation)
         } else {
             Ok(())

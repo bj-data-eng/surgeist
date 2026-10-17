@@ -603,6 +603,19 @@ impl Draft {
                     } else {
                         check_cancel(cancel)?;
                         self.retire_template_contents_target(key, cancel)?;
+                        if let Some(target) = self.published_id(key) {
+                            self.source_step(cancel)?;
+                            let document = self.node(key)?.document;
+                            let amount = self.source_reserve_amount::<(NodeId, Key)>(
+                                self.dispatch_retirements.len(),
+                                self.dispatch_retirements.capacity(),
+                                1,
+                                cancel,
+                            )?;
+                            reserve(&mut self.dispatch_retirements, amount.unwrap_or(1))?;
+                            self.dispatch_retirements.push((target, document));
+                            self.source_admit(0, cancel)?;
+                        }
                         let node = match key {
                             Key::Existing(i) => self.existing[i].take(),
                             Key::Created(i) => self.created[i].take(),

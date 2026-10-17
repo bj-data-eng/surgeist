@@ -167,6 +167,7 @@ mod coord;
 mod descriptor;
 mod diagnostic;
 mod dom_details;
+mod dom_dialog;
 mod dom_event;
 mod dom_host;
 mod dom_lifecycle;
@@ -211,12 +212,16 @@ pub use dom_details::{
     DomDetailsEventContext, DomDetailsProgress, DomDetailsRuntime, DomDetailsRuntimeError,
     DomDetailsRuntimeLimits, DomDetailsTask, DomDetailsTaskId,
 };
+pub use dom_dialog::{
+    DomSourceEventResource, DomSourceEventRuntimeError, DomSourceEventRuntimeLimits,
+    DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+};
 pub use dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventDispatchError,
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
     DomEventDom, DomEventListenerFailure, DomEventListenerFailureKind, DomEventListenerOptions,
     DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource,
-    DomEventTarget, DomEventType, NativeDomEvent,
+    DomEventTarget, DomEventType, DomToggleEvent, NativeDomEvent,
 };
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,

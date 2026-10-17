@@ -914,6 +914,7 @@ impl Dom {
             0,
             0,
             0,
+            1,
         );
         Ok(Draft::new_hosted_source(
             self,

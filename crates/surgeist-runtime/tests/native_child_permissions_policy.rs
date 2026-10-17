@@ -28,6 +28,11 @@ fn session() -> DomSession {
     DomSession::new(
         Dom::new(DomLimits::new(512, 1_000_000, 1024, 1024, 1024, 64, 4_000_000).unwrap()).unwrap(),
         DomSessionLimits {
+            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             style: DomStyleRuntimeLimits {
                 roots: 8,
                 completions: 64,
@@ -59,7 +64,7 @@ fn session() -> DomSession {
 }
 
 fn source_limits() -> DomSourceLimits {
-    DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096)
+    DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096, 1)
 }
 
 fn top_level(session: &mut DomSession) -> DomHostedTopLevel {

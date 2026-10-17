@@ -1,8 +1,10 @@
 //! One requested canonical edit and its retained source continuation.
+pub(crate) mod event;
 mod url;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;
 use crate::{DocumentString, DomDocumentStamp, DomSnapshot, DomStyleRequest, Namespace, NodeId};
+pub use event::*;
 use std::sync::Arc;
 use surgeist_css::CssViewTransitionIdent;
 pub(crate) use url::UrlBasis;
@@ -21,6 +23,7 @@ pub struct DomSourceLimits {
     pub(crate) phases: u64,
     pub(crate) outputs: usize,
     pub(crate) identities: u64,
+    pub(crate) nested_operations: usize,
 }
 impl DomSourceLimits {
     pub const fn new(
@@ -30,6 +33,7 @@ impl DomSourceLimits {
         phases: u64,
         outputs: usize,
         identities: u64,
+        nested_operations: usize,
     ) -> Self {
         Self {
             retained_bytes,
@@ -38,7 +42,12 @@ impl DomSourceLimits {
             phases,
             outputs,
             identities,
+            nested_operations,
         }
+    }
+    /// Maximum simultaneous original Source owners, including this operation.
+    pub const fn nested_operations(self) -> usize {
+        self.nested_operations
     }
     pub const fn retained_bytes(self) -> usize {
         self.retained_bytes
@@ -67,6 +76,18 @@ pub struct DomSourceOperationId {
     pub(crate) serial: u64,
 }
 
+/// Actual continuation phase, distinct from canonical tree publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourcePhase {
+    /// Original private canonical segment.
+    Staging,
+    /// Coherent current-state observation awaiting actual event dispatch.
+    EventObservation,
+    /// Qualified event outcome retained before current-state rebase.
+    EventReceiptAccepted,
+    /// A genuine remaining Dialog action without its service.
+    DialogService,
+}
 /// Actual publication status; structural snapshots remain readable while source
 /// hooks are incomplete, and dependent semantic reads reject that state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,8 +97,18 @@ pub struct DomSourceStatus {
     pub(crate) cancelled: bool,
     pub(crate) work: u64,
     pub(crate) phases: u64,
+    pub(crate) parent: Option<DomSourceOperationId>,
+    pub(crate) phase: DomSourcePhase,
 }
 impl DomSourceStatus {
+    /// The actual retained parent operation, if this is a nested edit.
+    pub fn parent_operation(self) -> Option<DomSourceOperationId> {
+        self.parent
+    }
+    /// Current owner phase, independently of tree revision/publication.
+    pub fn phase(self) -> DomSourcePhase {
+        self.phase
+    }
     pub fn operation(self) -> DomSourceOperationId {
         self.operation
     }
@@ -99,6 +130,8 @@ impl DomSourceStatus {
 pub enum DomSourceRequest {
     Style(DomStyleRequest),
     HostedChild(crate::DomHostedChildRequest),
+    Event(DomSourceEventRequest),
+    Dialog(DomSourceDialogRequest),
 }
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,6 +205,13 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// Invoke nonmodal Dialog show through the original Source engine.
+    pub fn show_dialog(node: NodeId) -> Self {
+        Self {
+            command: Command::ShowDialog { node: node.into() },
+        }
+    }
+
     fn create(kind: crate::batch::Creation, document: Option<crate::NodeOperand>) -> Self {
         Self {
             command: crate::batch::Command::Create { kind, document },

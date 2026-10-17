@@ -592,7 +592,7 @@ mod source_tests {
         let mut lease = dom
             .begin_source_commands(
                 batch,
-                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
                 &cancel,
             )
             .unwrap();
@@ -654,7 +654,7 @@ mod source_tests {
             "pi",
             format!("a='{}' b='literal'", "x".repeat(4096)),
         );
-        let limits = DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
+        let limits = DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096, 1);
         let mut lease = match dom.begin_source_commands(batch, limits, &cancel) {
             Ok(lease) => lease,
             Err(error) => {

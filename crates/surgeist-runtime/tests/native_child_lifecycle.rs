@@ -21,6 +21,12 @@ fn session() -> DomSession {
     let dom = Dom::new(
         DomLimits::new(256, 200_000, 1024, 1024, 1024, 32, 4_000_000)
             .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            )
             .with_details_toggle_intentions(32)
             .unwrap(),
     )
@@ -28,6 +34,11 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             style: DomStyleRuntimeLimits {
                 roots: 4,
                 completions: 32,
@@ -118,7 +129,7 @@ fn absent_src_insertion_creates_child(local: &str) {
             .apply(
                 &mut dom,
                 DomSourceEdit::insert_before(container, parent, None),
-                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096),
+                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
                 &mut services,
                 &cancel(),
             )
@@ -261,7 +272,7 @@ fn single_subtree_insertion_creates_both_sibling_children_before_source_completi
                 .apply(
                     &mut dom,
                     DomSourceEdit::insert_before(root, parent, None),
-                    DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096),
+                    DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
                     &mut services,
                     &cancel()
                 )
@@ -340,7 +351,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                     let result = context.source.apply(
                         dom,
                         DomSourceEdit::insert_before(context.root, context.parent, None),
-                        DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096),
+                        DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
                         &mut services,
                         &cancel(),
                     );
@@ -475,7 +486,7 @@ fn complete_source_edit(session: &mut DomSession, edit: DomSourceEdit) {
             .apply(
                 &mut dom,
                 edit,
-                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096),
+                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
                 &mut services,
                 &cancel(),
             )
@@ -1439,7 +1450,7 @@ fn retiring_document_refuses_fresh_child_before_single_edit_publication() {
         source.apply(
             &mut session.dom(),
             DomSourceEdit::insert_before(container, parent, None),
-            DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096),
+            DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
             &mut services,
             &cancel(),
         ),

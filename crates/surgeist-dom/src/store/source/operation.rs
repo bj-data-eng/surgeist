@@ -1,5 +1,6 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
+mod dialog;
 pub(in crate::store) mod hosted;
 use super::*;
 use crate::source::*;
@@ -52,11 +53,14 @@ impl<'a> IntoIterator for &'a OperationRoot {
 }
 pub(in crate::store) struct Operation {
     id: DomSourceOperationId,
-    draft: Draft,
+    limits: DomSourceLimits,
+    draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
     started: bool,
     published: bool,
+    event_exposed: bool,
+    event_work: std::sync::Weak<crate::source::event::EventWork>,
     cancelled: bool,
     phases: u64,
     headroom: Option<headroom::Reservation>,
@@ -76,6 +80,7 @@ pub(in crate::store) struct Operation {
     command_storage: storage::Payload,
     canonical_history_bytes: usize,
     custody_bytes: usize,
+    canonical_aux_bytes: usize,
 }
 #[expect(
     clippy::large_enum_variant,
@@ -107,9 +112,9 @@ impl Drop for DomSourceLease<'_> {
                 .dom
                 .source_operation
                 .as_ref()
-                .is_some_and(|o| !o.published)
+                .is_some_and(|o| !o.published && !o.event_exposed && o.observation().is_none())
         {
-            self.dom.source_operation = None;
+            self.dom.source_operation = self.dom.source_parents.pop();
         }
     }
 }
@@ -155,7 +160,7 @@ impl Dom {
             .ok_or(DomError::RepresentationExhausted)
     }
     pub(in crate::store) fn require_sync_source_idle(&self) -> Result<(), DomError> {
-        if self.source_operation.is_some() {
+        if self.source_operation.is_some() || !self.source_parents.is_empty() {
             Err(DomError::SourceOperationPending)
         } else {
             Ok(())
@@ -169,8 +174,26 @@ impl Dom {
             Ok(())
         }
     }
+    /// Reentry belongs only to original roots whose complete formation and
+    /// publication join the retained Source envelopes. Legacy controllers keep
+    /// the strict idle gate until their actual output lifetime is integrated.
+    pub(in crate::store) fn require_source_entry(&self) -> Result<(), DomError> {
+        match self.source_operation.as_ref() {
+            Some(operation)
+                if operation.permits_reentry() && self.state.incomplete_hosted.is_none() =>
+            {
+                Ok(())
+            }
+            Some(_) => Err(DomError::SourceOperationPending),
+            None => self.require_source_idle(),
+        }
+    }
     pub fn pending_source_edit(&self) -> Option<DomSourceStatus> {
-        self.source_operation.as_ref().map(|o| o.status())
+        self.source_operation.as_ref().map(|operation| {
+            let mut status = operation.status();
+            status.parent = self.source_parents.last().map(|parent| parent.id);
+            status
+        })
     }
     /// Begin exactly one requested edit through the original canonical engine.
     pub fn begin_source_edit(
@@ -207,21 +230,65 @@ impl Dom {
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
-        self.require_source_idle()?;
+        self.require_source_entry()?;
         check_cancel(cancel)?;
-        let (draft, canonical_storage, command_storage) =
-            Draft::new_source_root(self, owner, &commands, commands.capacity(), limits, cancel)?;
+        self.next_source_operation
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let original_limits = limits;
+        let limits = self.source_child_limits(limits, cancel)?;
+        let nested = self
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| op.permits_reentry());
+        if nested {
+            self.push_source_observer(cancel)?;
+        }
+        let limits = if nested {
+            match self.source_rebase_limits(original_limits, cancel) {
+                Ok(limits) => limits,
+                Err(error) => {
+                    self.source_operation = self.source_parents.pop();
+                    return Err(error);
+                }
+            }
+        } else {
+            limits
+        };
+        let formed =
+            Draft::new_source_root(self, owner, &commands, commands.capacity(), limits, cancel)
+                .and_then(|(draft, canonical, command)| {
+                    let aux = self
+                        .source_retained_stack_bytes()?
+                        .checked_add(
+                            self.source_dispatch_custody_bytes(|| draft.source_step(cancel))?,
+                        )
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    Ok((draft, canonical, command, aux))
+                });
+        let (draft, canonical_storage, command_storage, canonical_aux_bytes) = match formed {
+            Ok(formed) => formed,
+            Err(error) => {
+                if nested {
+                    self.source_operation = self.source_parents.pop();
+                }
+                return Err(error);
+            }
+        };
         let id = DomSourceOperationId {
             owner: self.owner,
             serial: self.next_source_operation,
         };
         let mut op = Box::new(Operation {
             id,
-            draft,
+            limits: original_limits,
+            draft: dialog::OperationDraft::Segment(draft),
             commands,
             index: 0,
             started: false,
             published: false,
+            event_exposed: false,
+            event_work: std::sync::Weak::new(),
             cancelled: false,
             phases: 0,
             headroom: None,
@@ -240,9 +307,19 @@ impl Dom {
             canonical_storage,
             canonical_history_bytes: self.history_bytes,
             command_storage,
-            custody_bytes: self.style_cssom_custody_bytes()?,
+            custody_bytes: 0,
+            canonical_aux_bytes,
         });
-        op.refresh_admission(cancel)?;
+        let admitted = (|| {
+            op.custody_bytes = self.style_cssom_custody_bytes()?;
+            op.refresh_admission(cancel)
+        })();
+        if let Err(error) = admitted {
+            if nested {
+                self.source_operation = self.source_parents.pop();
+            }
+            return Err(error);
+        }
         let next = self
             .next_source_operation
             .checked_add(1)
@@ -281,12 +358,40 @@ impl Dom {
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
+        let observed = self
+            .source_operation
+            .as_ref()
+            .filter(|operation| operation.id == id)
+            .ok_or(DomError::InvalidSourceOperation)?
+            .observed_event_work();
+        if let Some(work) = observed {
+            let mut policy = dialog::ResumeWorkPolicy::new(work, limits.work)?;
+            self.admit_source_resume(id, limits, cancel)?;
+            self.source_operation
+                .as_mut()
+                .expect("qualified original observation")
+                .admit_observation_limits(limits, cancel)?;
+            policy.commit();
+            return Ok(DomSourceLease {
+                dom: self,
+                id,
+                complete: false,
+                select_authorization: None,
+            });
+        }
+        self.admit_source_resume(id, limits, cancel)?;
+        let effective = self.source_rebase_limits(limits, cancel)?;
+        let aux_header = self
+            .source_retained_stack_bytes()?
+            .checked_add(size_of::<crate::store::dispatch::CustodyBank>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        let dispatch = &self.dispatch_custody;
         let op = self
             .source_operation
             .as_mut()
             .filter(|o| o.id == id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        // Bounds are absolute. In particular spent work never resets on resume.
+        // Bounds are absolute; original spent work never resets on resume.
         if limits.work < op.draft.source_work.load(Ordering::Relaxed)
             || limits.phases
                 < op.phases
@@ -310,11 +415,26 @@ impl Dom {
                 )
                 .ok_or(DomError::RevisionExhausted)?;
         }
-        let previous = op.draft.source_limits.replace(limits);
+        let previous = op.draft.source_limits.replace(effective);
+        let aux = dispatch
+            .retained_bytes(|| op.draft.source_step(cancel))
+            .and_then(|bytes| {
+                aux_header
+                    .checked_add(bytes)
+                    .ok_or(DomError::RepresentationExhausted)
+            });
+        match aux {
+            Ok(bytes) => op.canonical_aux_bytes = bytes,
+            Err(error) => {
+                op.draft.source_limits = previous;
+                return Err(error);
+            }
+        }
         if let Err(e) = op.refresh_admission(cancel) {
             op.draft.source_limits = previous;
             return Err(e);
         }
+        op.limits = limits;
         Ok(DomSourceLease {
             dom: self,
             id,
@@ -332,6 +452,9 @@ impl Operation {
         )
     }
     pub(in crate::store) fn admit_dom_limits(&self, limits: DomLimits) -> Result<(), DomError> {
+        if let Some(observation) = self.observation() {
+            return observation.usage.admit_limits(limits);
+        }
         let draft = &self.draft;
         admit(draft.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(draft.units, limits.units, DomResource::StringCodeUnits)?;
@@ -443,6 +566,9 @@ impl Operation {
         admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)
     }
     pub(in crate::store) fn update_dom_limits(&mut self, limits: DomLimits) {
+        if self.observation().is_some() {
+            return;
+        }
         let draft = &mut self.draft;
         draft
             .input_processing
@@ -455,21 +581,33 @@ impl Operation {
             draft.select_scratch_limit = limits.select_scratch;
         }
     }
-    fn status(&self) -> DomSourceStatus {
+    pub(in crate::store) fn status(&self) -> DomSourceStatus {
+        if let Some(observation) = self.observation() {
+            return observation.status(self);
+        }
         DomSourceStatus {
             operation: self.id,
             published: self.published,
             cancelled: self.cancelled,
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
+            parent: None,
+            phase: if self.draft.dialog_show.is_some() {
+                crate::DomSourcePhase::DialogService
+            } else {
+                crate::DomSourcePhase::Staging
+            },
         }
     }
     fn input_bytes(&self) -> Result<usize, DomError> {
+        let event_payload = self.event_payload()?;
         let mut bytes = self
             .canonical_storage
             .bytes
             .checked_add(self.command_storage.bytes)
             .and_then(|n| n.checked_add(self.custody_bytes))
+            .and_then(|n| n.checked_add(self.canonical_aux_bytes))
+            .and_then(|n| n.checked_add(event_payload.bytes))
             .and_then(|n| n.checked_add(self.canonical_history_bytes))
             // Draft owns its inline header in source_storage_bytes already.
             .and_then(|n| n.checked_add(size_of::<Self>().checked_sub(size_of::<Draft>())?))
@@ -540,11 +678,19 @@ impl Operation {
         Ok(bytes)
     }
     fn refresh_admission(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if self.observation().is_some() {
+            return Ok(());
+        }
         self.draft.source_other_bytes = self.input_bytes()?;
         let mut units = self
-            .canonical_storage
+            .event_payload()?
             .units
-            .checked_add(self.command_storage.units)
+            .checked_add(
+                self.canonical_storage
+                    .units
+                    .checked_add(self.command_storage.units)
+                    .ok_or(DomError::RepresentationExhausted)?,
+            )
             .ok_or(DomError::RepresentationExhausted)?;
         if let Some((_, source)) = &self.context {
             units = units
@@ -967,6 +1113,11 @@ impl Operation {
             dom.revision
                 .0
                 .checked_add(remaining)
+                .and_then(|next| {
+                    dom.source_reserved_closing()
+                        .ok()
+                        .and_then(|closing| next.checked_add(closing))
+                })
                 .ok_or(DomError::RevisionExhausted)?;
         }
         let outputs = self
@@ -1123,6 +1274,7 @@ impl Operation {
             .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
             .transpose()?;
         let commit = dom.publish(prepared, cancel)?;
+        self.draft.dispatch_retirements.clear();
         if let Some(permit) = permit {
             permit.commit();
         }
@@ -1148,9 +1300,10 @@ impl Operation {
                     *old = new;
                 }
             });
-        let private = &self.draft.phase_map.as_ref().expect("source map").private;
+        let draft: &mut Draft = &mut self.draft;
+        let private = &draft.phase_map.as_ref().expect("source map").private;
         let mut published = dom.state.native_tasks.iter();
-        for pending in &mut self.draft.native_tasks {
+        for pending in &mut draft.native_tasks {
             if matches!(pending, select::Pending::Update {target:Key::Created(i),..} if private[*i])
             {
                 continue;
@@ -1209,11 +1362,7 @@ impl Operation {
 }
 impl DomSourceLease<'_> {
     pub fn status(&self) -> DomSourceStatus {
-        self.dom
-            .source_operation
-            .as_ref()
-            .expect("live lease")
-            .status()
+        self.dom.pending_source_edit().expect("live lease")
     }
     pub fn operation(&self) -> DomSourceOperationId {
         self.id
@@ -1229,9 +1378,25 @@ impl DomSourceLease<'_> {
     }
     pub fn advance(&mut self, cancel: &AtomicBool) -> Result<DomSourceProgress, DomError> {
         check_cancel(cancel)?;
+        if !self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| operation.id == self.id)
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
         // Independent public capabilities may commit concurrently. Keep the
         // exact owner locked from receipt validation through canonical source
         // publication; this segment executes no external callbacks.
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| op.observation().is_some())
+        {
+            return self.advance_show_observation(cancel);
+        }
         let root = self
             .dom
             .source_operation
@@ -1271,6 +1436,9 @@ impl DomSourceLease<'_> {
         } else {
             self.dom.source_operation = Some(op);
         }
+        if self.complete {
+            self.dom.source_operation = self.dom.source_parents.pop();
+        }
         result
     }
     fn advance_operation(
@@ -1278,7 +1446,7 @@ impl DomSourceLease<'_> {
         op: &mut Operation,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
-        if op.cancelled && !op.published {
+        if op.cancelled && !op.published && !op.event_exposed {
             // No canonical phase or external effect occurred. Return the actual
             // current stamp directly; a second Draft/candidate would only copy
             // the unchanged tree while the original admitted operation lives.
@@ -1392,6 +1560,8 @@ impl DomSourceLease<'_> {
                         self.dom.limits,
                         cancel,
                     )
+                } else if let Some(frame) = op.draft.dialog_show {
+                    op.draft.dialog_show_boundary(frame.subject, cancel)
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
@@ -1401,6 +1571,32 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::NeedsEventfulOperation {
+                    subject: Some(subject),
+                    action,
+                }) => {
+                    let observed = op.observe_show(self.dom, subject, action, cancel);
+                    if observed.is_err() {
+                        checkpoint.restore(&mut op.draft);
+                    }
+                    return observed;
+                }
+                Err(DomError::DialogProcessingUnavailable { action })
+                    if op.draft.dialog_show.is_some() =>
+                {
+                    let subject = op
+                        .draft
+                        .published_id(op.draft.dialog_show.expect("pending show").subject)
+                        .ok_or(DomError::UnavailableCreation)?;
+                    drop(checkpoint);
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(
+                        crate::DomSourceDialogRequest {
+                            operation: op.id,
+                            subject,
+                            action,
+                        },
+                    )));
+                }
                 Err(DomError::StyleCompositionRequired(_))
                 | Err(DomError::StyleOwnerAttributesCompositionRequired)
                 | Err(DomError::StyleDisabledCompositionRequired) => {
@@ -2056,7 +2252,7 @@ impl Dom {
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
-        self.require_source_idle()?;
+        self.require_source_entry()?;
         self.validate_style_select(task)?;
         let mut lease = self.begin_source_root(
             OperationRoot::SelectCompletion,
@@ -2115,61 +2311,103 @@ impl Dom {
             native: installation_limits,
             source: limits,
         } = budgets;
-        self.require_source_idle().map_err(Error::Target)?;
-        let mut staged = self.stage_native_html_installation(
-            basis,
-            parent,
-            before,
-            source,
-            installation::Budgets {
-                native: installation_limits,
-                source: Some(limits),
-            },
-            cancel,
-        )?;
-        staged
-            .continuation
-            .prepare_source_closing(&staged.draft, cancel)?;
+        self.require_source_entry().map_err(Error::Target)?;
+        self.next_source_operation
+            .checked_add(1)
+            .ok_or(Error::Target(DomError::RepresentationExhausted))?;
+        let original_limits = limits;
+        let limits = self
+            .source_child_limits(limits, cancel)
+            .map_err(Error::Target)?;
+        let nested = self
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| operation.permits_reentry());
+        if nested {
+            self.push_source_observer(cancel).map_err(Error::Target)?;
+        }
         let id = DomSourceOperationId {
             owner: self.owner,
             serial: self.next_source_operation,
         };
-        let canonical_storage = storage::state(&self.state, || staged.draft.source_step(cancel))
-            .map_err(Error::Target)?;
-        let mut op = Box::new(Operation {
-            id,
-            draft: staged.draft,
-            commands: OperationRoot::NativeInstallation,
-            index: 0,
-            started: false,
-            published: false,
-            cancelled: false,
-            phases: 0,
-            headroom: None,
-            command_admitted: false,
-            outputs: 0,
-            identities: 0,
-            context: None,
-            request: None,
-            child: None,
-            hosted_global: None,
-            receipt: None,
-            owner_binding: None,
-            historical: Vec::new(),
-            select: None,
-            installation: Some(staged.continuation),
-            canonical_storage,
-            canonical_history_bytes: self.history_bytes,
-            command_storage: storage::Payload::default(),
-            custody_bytes: self.style_cssom_custody_bytes().map_err(Error::Target)?,
-        });
-        op.refresh_admission(cancel).map_err(Error::Target)?;
-        let next = self
-            .next_source_operation
-            .checked_add(1)
-            .ok_or(Error::Target(DomError::RepresentationExhausted))?;
-        self.source_operation = Some(op);
-        self.next_source_operation = next;
+        let formed = (|| {
+            let limits = if nested {
+                self.source_rebase_limits(original_limits, cancel)
+                    .map_err(Error::Target)?
+            } else {
+                limits
+            };
+            let mut staged = self.stage_native_html_installation(
+                basis,
+                parent,
+                before,
+                source,
+                installation::Budgets {
+                    native: installation_limits,
+                    source: Some(limits),
+                },
+                cancel,
+            )?;
+            staged
+                .continuation
+                .prepare_source_closing(&staged.draft, cancel)?;
+            let canonical_storage =
+                storage::state(&self.state, || staged.draft.source_step(cancel))
+                    .map_err(Error::Target)?;
+            let canonical_aux_bytes = self
+                .source_retained_stack_bytes()
+                .map_err(Error::Target)?
+                .checked_add(
+                    self.source_dispatch_custody_bytes(|| staged.draft.source_step(cancel))
+                        .map_err(Error::Target)?,
+                )
+                .ok_or(DomError::RepresentationExhausted)
+                .map_err(Error::Target)?;
+            let mut operation = Box::new(Operation {
+                id,
+                limits: original_limits,
+                draft: dialog::OperationDraft::Segment(staged.draft),
+                commands: OperationRoot::NativeInstallation,
+                index: 0,
+                started: false,
+                published: false,
+                event_exposed: false,
+                event_work: std::sync::Weak::new(),
+                cancelled: false,
+                phases: 0,
+                headroom: None,
+                command_admitted: false,
+                outputs: 0,
+                identities: 0,
+                context: None,
+                request: None,
+                child: None,
+                hosted_global: None,
+                receipt: None,
+                owner_binding: None,
+                historical: Vec::new(),
+                select: None,
+                installation: Some(staged.continuation),
+                canonical_storage,
+                canonical_history_bytes: self.history_bytes,
+                command_storage: storage::Payload::default(),
+                custody_bytes: self.style_cssom_custody_bytes().map_err(Error::Target)?,
+                canonical_aux_bytes,
+            });
+            operation.refresh_admission(cancel).map_err(Error::Target)?;
+            Ok::<_, Error>(operation)
+        })();
+        let operation = match formed {
+            Ok(operation) => operation,
+            Err(error) => {
+                if nested {
+                    self.source_operation = self.source_parents.pop();
+                }
+                return Err(error);
+            }
+        };
+        self.next_source_operation += 1; // Checked before any nested parent transfer.
+        self.source_operation = Some(operation);
         Ok(DomSourceLease {
             dom: self,
             id,
@@ -2335,7 +2573,7 @@ impl DomStyleSource {
 pub(in crate::store) mod accounting_tests {
     use super::*;
     fn limits(work: u64) -> DomSourceLimits {
-        DomSourceLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096)
+        DomSourceLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096, 1)
     }
     fn xml_command(work_limit: u64) -> (Result<(), DomError>, u64) {
         let cancel = AtomicBool::new(false);
@@ -2880,7 +3118,7 @@ pub(in crate::store) mod accounting_tests {
         raw.push(u16::from(b'a'));
         let mut batch = DomBatch::new();
         batch.set_input_value(input, DocumentString::from_utf16(raw));
-        let bounds = DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096);
+        let bounds = DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, bounds, &cancel) else {
             return None;
         };
@@ -2918,7 +3156,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.replace_data(text, 1, 0, "new");
-        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -2962,7 +3200,7 @@ pub(in crate::store) mod accounting_tests {
         } else {
             batch.set_input_value(input, "a\r\nb".repeat(20_000));
         }
-        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -3025,7 +3263,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.insert_before(fragment, parent, None);
-        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -3067,7 +3305,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.detach(option);
-        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -3088,7 +3326,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.create_document();
-        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -3115,7 +3353,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_input_checked(input, true);
-        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
@@ -3157,7 +3395,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_output_value(output, "new");
-        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
@@ -3352,7 +3590,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_textarea_value(textarea, "after\r\n".repeat(1024));
-        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limit = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limit, &cancel) else {
             return None;
         };
@@ -3440,7 +3678,7 @@ pub(in crate::store) mod accounting_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.insert_before(container, document.node(), None);
-        let small = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 2, 4096, 4096);
+        let small = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 2, 4096, 4096, 1);
         let mut lease = dom.begin_source_commands(batch, small, &cancel).unwrap();
         let operation = lease.operation();
         // Refusal at the original private boundary is the valid outcome. The
@@ -3529,7 +3767,7 @@ pub(in crate::store) mod accounting_tests {
             DomError::SourcePublicationLimit
         );
         drop(lease);
-        let larger = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 3, 4096, 4096);
+        let larger = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 3, 4096, 4096, 1);
         assert!(matches!(
             dom.resume_source_edit(operation, larger, &cancel),
             Err(DomError::RevisionExhausted)
@@ -4284,7 +4522,7 @@ pub(in crate::store) mod accounting_tests {
             let lease = dom
                 .begin_source_commands(
                     DomBatch::new(),
-                    DomSourceLimits::new(16_000_000, limit, 10_000_000, 64, 4096, 4096),
+                    DomSourceLimits::new(16_000_000, limit, 10_000_000, 64, 4096, 4096, 1),
                     &cancel,
                 )
                 .unwrap();
@@ -4325,7 +4563,7 @@ pub(in crate::store) mod accounting_tests {
         let lease = dom
             .begin_source_commands(
                 DomBatch::new(),
-                DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096),
+                DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
                 &cancel,
             )
             .unwrap();
@@ -4468,6 +4706,11 @@ pub(in crate::store) mod accounting_tests {
                 Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(_))) => {
                     panic!("Slot assignment fixture has no navigable-container hooks")
                 }
+                Ok(DomSourceProgress::Request(
+                    DomSourceRequest::Event(_) | DomSourceRequest::Dialog(_),
+                )) => {
+                    panic!("Slot assignment fixture has no eventful Dialog operation")
+                }
                 Err(error) => Err(error),
             },
         };
@@ -4527,6 +4770,7 @@ pub(in crate::store) mod accounting_tests {
                     64,
                     4096,
                     4096,
+                    1,
                 )
             };
             let mut low = 0;

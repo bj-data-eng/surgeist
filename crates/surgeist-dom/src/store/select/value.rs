@@ -126,7 +126,7 @@ impl Draft {
         Ok(HtmlOptionValueEnvelope::new(
             limits.retained_bytes - bytes,
             limits.retained_units - units,
-            work,
+            crate::source::event::remaining_ancestor_work(self.source_ancestors.as_ref(), work)?,
         ))
     }
     fn option_value_usage(
@@ -160,6 +160,9 @@ impl Draft {
         }
         self.select_semantic_work.set(semantic_work);
         self.select_semantic_bytes.set(semantic_bytes);
+        if self.source_limits.is_some() {
+            crate::source::event::retain_ancestor_work(self.source_ancestors.as_ref(), work_delta)?;
+        }
         Ok(())
     }
     fn option_value_error(&self, error: HtmlControlledOptionValueError) -> DomError {
@@ -450,7 +453,7 @@ mod tests {
         )
     }
     fn limits(bytes: usize) -> crate::DomSourceLimits {
-        crate::DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096)
+        crate::DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096, 1)
     }
     fn source_value(bytes: usize) -> (Option<observation::Boundary>, Result<(), DomError>) {
         let (mut dom, select, _, _) = fixture();
@@ -567,6 +570,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
         for attempted in 1..=3 {
             let error = Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel)

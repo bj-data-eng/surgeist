@@ -667,7 +667,7 @@ fn url_cancel_work_and_bytes_refusals_keep_phase_candidate_and_retry_custody() {
         let mut lease = dom
             .resume_source_edit(
                 pending.child.operation(),
-                DomSourceLimits::new(4_000_000, 16_000_000, 20_000_000, 256, 4096, 4096),
+                DomSourceLimits::new(4_000_000, 16_000_000, 20_000_000, 256, 4096, 4096, 1),
                 &cancel,
             )
             .unwrap();

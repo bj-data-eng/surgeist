@@ -19,6 +19,7 @@ mod children;
 mod control;
 mod details;
 mod dialog;
+mod dispatch;
 mod document;
 mod form;
 pub(crate) mod hosted;
@@ -72,6 +73,14 @@ pub enum DomResource {
     BaseObservations,
     ImageUpdateCancellations,
     EncodingUrlObservations,
+    /// Registered dispatch-custody index capacity.
+    DispatchCustodyScopes,
+    /// Actual simultaneously retained target references.
+    DispatchCustodyReferences,
+    /// Actual custody scope and weak-index payload.
+    DispatchCustodyRetainedBytes,
+    /// Temporary registration and retirement-publication banks.
+    DispatchCustodyScratch,
     SourceRetainedBytes,
     SourceRetainedUnits,
 }
@@ -85,6 +94,29 @@ pub enum DomError {
     /// A reached operation needs a current live hosted owner association.
     HostedSourceUnavailable,
     HostedCompositionRequired,
+    /// A custody capability, target, or occurrence does not match this owner.
+    InvalidDispatchCustody,
+    /// The finite independent custody-processing allowance was exhausted.
+    DispatchCustodyWorkLimit {
+        limit: u64,
+    },
+    /// A raise-only Source policy call attempted to reduce an allowance.
+    SourceLimitReduction,
+    InvalidSourceEvent,
+    SourceReceiverRetired {
+        operation: crate::DomSourceOperationId,
+        subject: NodeId,
+        action: surgeist_html::HtmlDialogAction,
+    },
+    SourceEventExecutorUnavailable,
+    DialogInvalidState,
+    NeedsEventfulOperation {
+        subject: Option<NodeId>,
+        action: surgeist_html::HtmlDialogAction,
+    },
+    SourceNestedOperationLimit {
+        limit: usize,
+    },
     SourceUrlInputsMismatch,
     SourceUrlUnavailable,
     ForeignOwner,
@@ -215,6 +247,7 @@ impl std::error::Error for DomError {}
 /// Explicit finite admission policy. No hidden or unlimited default is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomLimits {
+    dispatch_custody: crate::DomDispatchCustodyLimits,
     nodes: usize,
     units: usize,
     commands: usize,
@@ -242,6 +275,15 @@ pub struct DomLimits {
     )>,
 }
 impl DomLimits {
+    /// Select explicit finite dispatch-custody allowances; the default is disabled.
+    pub fn with_dispatch_custody(mut self, limits: crate::DomDispatchCustodyLimits) -> Self {
+        self.dispatch_custody = limits;
+        self
+    }
+    /// Current independent dispatch-custody allowances.
+    pub fn dispatch_custody(self) -> crate::DomDispatchCustodyLimits {
+        self.dispatch_custody
+    }
     pub fn new(
         nodes: usize,
         units: usize,
@@ -277,6 +319,7 @@ impl DomLimits {
             }
         }
         Ok(Self {
+            dispatch_custody: crate::DomDispatchCustodyLimits::default(),
             nodes,
             units,
             commands,
@@ -790,6 +833,7 @@ fn discard_history(mut history: Option<Box<HistoryEntry>>) {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
+    dispatch_custody: dispatch::CustodyBank,
     owner: DomOwnerId,
     revision: DomRevision,
     limits: DomLimits,
@@ -801,6 +845,12 @@ pub struct Dom {
     active_task: std::sync::Weak<crate::select::Authorization>,
     source_operation: Option<Box<source::operation::Operation>>,
     next_source_operation: u64,
+    #[expect(
+        clippy::vec_box,
+        reason = "Retained parents move the original operation boxes and pop restores the same owner without fallible reboxing"
+    )]
+    pub(in crate::store) source_parents: Vec<Box<source::operation::Operation>>,
+    source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
     style_cssom_roots: Vec<crate::style::DomStyleCssomRoot>,
     hosted_source: Option<crate::hosted::SourceObservation>,
     next_hosted_source: u64,
@@ -824,6 +874,7 @@ impl Dom {
         input: crate::DomNativeInputPlatform,
     ) -> Result<Self, DomError> {
         Ok(Self {
+            dispatch_custody: dispatch::CustodyBank::default(),
             owner: DomOwnerId::allocate()?,
             revision: DomRevision(0),
             limits,
@@ -847,6 +898,8 @@ impl Dom {
             active_task: std::sync::Weak::new(),
             source_operation: None,
             next_source_operation: 0,
+            source_parents: Vec::new(),
+            source_event_executor: None,
             style_cssom_roots: Vec::new(),
             hosted_source: None,
             next_hosted_source: 0,
@@ -883,6 +936,11 @@ impl Dom {
     }
     pub fn snapshot(&self) -> DomSnapshot {
         DomSnapshot {
+            source_tail: self
+                .source_operation
+                .as_ref()
+                .filter(|operation| operation.has_event_tail())
+                .map(|operation| operation.id()),
             owner: self.owner,
             revision: self.revision,
             state: self.state.clone(),
@@ -890,9 +948,19 @@ impl Dom {
     }
     /// Live bounds cannot fall below admitted state. Smaller history bounds
     /// discard coverage explicitly, without changing semantic revision.
+    /// Retained event observations must settle before these bounds can change.
     pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
+        // This legacy policy controller supports the original single staged
+        // Source recovery, but not event-observation reentry. Refuse before
+        // traversing canonical banks without the observing owners' Work.
+        if self.source_reserved_closing()? != 0 {
+            return Err(DomError::SourceOperationPending);
+        }
         if let Some(op) = &self.source_operation {
             op.admit_dom_limits(limits)?;
+        }
+        for parent in &self.source_parents {
+            parent.admit_dom_limits(limits)?;
         }
         let mut encoding_url_records = 0usize;
         let mut records = 0usize;
@@ -953,6 +1021,21 @@ impl Dom {
             limits.details_intentions,
             DomResource::DetailsToggleIntentions,
         )?;
+        let cancel = AtomicBool::new(false);
+        let custody_formation = match &self.source_operation {
+            Some(op) if self.dispatch_custody.has_indexed_scopes() => {
+                match op.dispatch_limit_formation(&cancel)? {
+                    Some(formation) => Some(formation),
+                    None => self.source_observation_formation(&cancel)?,
+                }
+            }
+            _ => None,
+        };
+        self.dispatch_custody.admit_limits(
+            limits.dispatch_custody,
+            custody_formation.as_ref(),
+            &cancel,
+        )?;
         if let Some(op) = &mut self.source_operation {
             op.update_dom_limits(limits);
         }
@@ -996,10 +1079,23 @@ impl Dom {
         Ok(())
     }
     fn prepare(&self, batch: DomBatch, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
-        self.require_source_idle()?;
+        self.require_source_entry()?;
         check_cancel(cancelled)?;
         self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
-        let mut draft = Draft::new(self, batch.owner, cancelled)?;
+        let mut draft = if self
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| op.permits_reentry())
+        {
+            self.source_observed_batch(
+                batch.owner,
+                &batch.commands,
+                batch.commands.capacity(),
+                cancelled,
+            )?
+        } else {
+            Draft::new(self, batch.owner, cancelled)?
+        };
         for command in batch.commands {
             check_cancel(cancelled)?;
             draft.apply(&command, self.limits, cancelled)?;
@@ -1014,6 +1110,7 @@ impl Dom {
     ) -> Result<DomCommit, DomError> {
         check_cancel(cancelled)?;
         let Prepared {
+            retirements,
             mut state,
             formation,
             allocation_ids: _allocation_ids,
@@ -1037,6 +1134,11 @@ impl Dom {
                 .0
                 .checked_add(1)
                 .and_then(|next| next.checked_add(self.hosted_revisions))
+                .and_then(|next| {
+                    self.source_reserved_closing()
+                        .ok()
+                        .and_then(|closing| next.checked_add(closing))
+                })
                 .ok_or(DomError::RevisionExhausted)?;
             DomRevision(
                 self.revision
@@ -1107,6 +1209,13 @@ impl Dom {
                 check_cancel(cancelled)?;
             }
         }
+        let retirement_publication = self.dispatch_custody.prepare_publication(
+            &retirements,
+            to,
+            self.limits.dispatch_custody,
+            formation.as_ref(),
+            cancelled,
+        )?;
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
@@ -1127,6 +1236,7 @@ impl Dom {
                 self.history_bytes = 0;
             }
         }
+        retirement_publication.publish();
         if let Some(auth) = retired_authority {
             auth.destroy_if_pending();
             self.active_task = std::sync::Weak::new();
@@ -1269,12 +1379,15 @@ struct Draft {
     // owner. Relaxed numerical loads/stores need no publication ordering; Arc
     // and atomics allow the complete parked owner to move between threads.
     source_work: Arc<AtomicU64>,
+    source_ancestors: Option<Arc<crate::source::event::EventWork>>,
     source_formation_bytes: Arc<AtomicUsize>,
     source_temporary_units: Arc<AtomicUsize>,
     source_other_bytes: usize,
     source_other_units: usize,
     source_invocation: u64,
     source_headroom: Option<source::headroom::Scan>,
+    dialog_show: Option<dialog::ShowFrame>,
+    dispatch_retirements: Vec<(NodeId, Key)>,
     phase_map: Option<source::PhaseMap>,
     base_work: std::cell::Cell<u64>,
     base_work_limit: u64,
@@ -1319,6 +1432,7 @@ struct Draft {
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
 }
 struct Prepared {
+    retirements: Vec<dispatch::Retirement>,
     formation: Option<source::formation::Formation>,
     allocation_ids: Vec<Option<NodeId>>,
     state: State,
@@ -1502,12 +1616,15 @@ impl Draft {
             source_work: Arc::new(AtomicU64::new(
                 initial.map_or(0, source::initial::Initial::work),
             )),
+            source_ancestors: initial.and_then(|initial| initial.ancestors().cloned()),
             source_formation_bytes: Arc::new(AtomicUsize::new(0)),
             source_temporary_units: Arc::new(AtomicUsize::new(0)),
             source_other_bytes: 0,
             source_other_units: 0,
             source_invocation: 0,
             source_headroom: None,
+            dialog_show: None,
+            dispatch_retirements: Vec::new(),
             phase_map: None,
             base_work: std::cell::Cell::new(0),
             base_work_limit: dom.limits.base_work,
@@ -2091,6 +2208,10 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
             }
+            Command::ShowDialog { node } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_show_boundary(key, cancelled)?;
+            }
             Command::SetDialogReturnValue { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_dialog_return_value(node, value, limits, cancelled)?;
@@ -2508,8 +2629,27 @@ impl Draft {
                     .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
             );
         }
+        let mut retirements = Vec::new();
+        source::formation::reserve(
+            &mut retirements,
+            self.dispatch_retirements.len(),
+            budget,
+            cancelled,
+        )?;
+        for &(target, document) in &self.dispatch_retirements {
+            self.source_step(cancelled)?;
+            if !dom
+                .dispatch_custody
+                .tracks(target, || self.source_step(cancelled))?
+            {
+                continue;
+            }
+            let document = DocumentId(id(document));
+            retirements.push(dispatch::Retirement { target, document });
+        }
         Ok((
             Prepared {
+                retirements,
                 formation,
                 allocation_ids: allocated_ids,
                 state,

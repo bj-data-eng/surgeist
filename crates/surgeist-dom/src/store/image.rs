@@ -601,7 +601,7 @@ mod tests {
         let mut new = Vec::with_capacity(65_536);
         new.extend("eager".encode_utf16());
         edit.set_attribute(img, "loading", DocumentString::from_utf16(new));
-        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
@@ -661,6 +661,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
@@ -671,6 +672,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
     }
     #[test]
@@ -801,6 +803,7 @@ mod tests {
                                 64,
                                 4096,
                                 4096,
+                                1,
                             ),
                             &cancel,
                         )
@@ -851,7 +854,8 @@ mod tests {
             edit.set_attribute(img, "loading", "eager");
             edit
         };
-        let limits = crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let limits =
+            crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
         let mut lease = dom.begin_source_commands(edit(), limits, &cancel).unwrap();
         report_cancellation::start();
         assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));

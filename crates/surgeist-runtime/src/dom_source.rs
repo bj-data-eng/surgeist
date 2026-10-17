@@ -4,6 +4,11 @@
 //! This weak permission routes actual yielded requests; it owns neither tree nor
 //! resources and cannot accept an arbitrary sequence of commands.
 use crate::dom_details::{DomDetailsRuntime, DomDetailsRuntimeError};
+use crate::dom_dialog::{
+    DomSourceEventRuntimeError, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+    SourceEventRuntime,
+};
+use crate::dom_event::DomEventDispatcher;
 use crate::dom_event::DomEventDom;
 use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime, HostedSourceProgress};
 use crate::dom_style::{
@@ -46,6 +51,10 @@ pub struct DomSourceUrlService<'a> {
 /// A missing service at the actual next request, without acknowledging it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceUnavailable {
+    /// An exact beforetoggle request requires explicit event dispatch.
+    Event,
+    /// This actual Dialog service has no implementation yet.
+    Dialog(surgeist_html::HtmlDialogAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
     /// A reached URL stage has no qualified observation yet.
@@ -69,6 +78,8 @@ pub enum DomSourceDriveProgress {
 /// Refusal preserves the original canonical operation and family-owned results.
 #[derive(Debug)]
 pub enum DomSourceRuntimeError {
+    /// The durable Source event adapter refused admission or execution.
+    SourceEvent(DomSourceEventRuntimeError),
     /// Canonical Source validation or finite admission refused the operation.
     Dom(DomError),
     /// The original Style resource or processing owner refused its step.
@@ -88,6 +99,7 @@ impl std::fmt::Display for DomSourceRuntimeError {
 impl std::error::Error for DomSourceRuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::SourceEvent(error) => Some(error),
             Self::Dom(error) => Some(error),
             Self::Style(error) => Some(error),
             Self::Details(error) => Some(error),
@@ -114,6 +126,7 @@ pub struct DomSourceRuntime {
     styles: DomStyleRuntime,
     details: DomDetailsRuntime,
     hosted: HostedRuntime,
+    events: SourceEventRuntime,
 }
 impl std::fmt::Debug for DomSourceRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -125,12 +138,57 @@ impl DomSourceRuntime {
         styles: DomStyleRuntime,
         details: DomDetailsRuntime,
         hosted: HostedRuntime,
+        events: SourceEventRuntime,
     ) -> Self {
         Self {
             styles,
             details,
             hosted,
+            events,
         }
+    }
+    /// Dispatch exactly the issued event and accept its actual receipt. This
+    /// does not advance the remaining Source tail; use ordinary `resume` next.
+    pub fn service_event<C>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::DomSourceEventRequest,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        limits: DomSourceEventServiceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventServiceProgress, DomSourceRuntimeError> {
+        self.events
+            .service_event(dom, request, dispatcher, context, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+    /// Monotonically raise the original event operation's policy limits, even
+    /// while a retained child is topmost. This performs no dispatch, resume or
+    /// Source-tail execution and preserves the original cumulative counters.
+    pub fn raise_event_limits(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        request: &surgeist_dom::DomSourceEventRequest,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.events
+            .raise_event_limits(dom, request, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
+    }
+    /// Monotonically raise this Session's independent event-adapter limits.
+    /// Retained jobs, actual receipts and cumulative work stay with the same
+    /// owner. Validation consumes actual work under the proposed work cap;
+    /// failed policy changes preserve that work and the original limits.
+    pub fn raise_event_runtime_limits(
+        &self,
+        dom: &DomEventDom<'_>,
+        limits: crate::dom_dialog::DomSourceEventRuntimeLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.events
+            .raise_event_runtime_limits(dom, limits, cancel)
+            .map_err(DomSourceRuntimeError::SourceEvent)
     }
     fn prepare(
         &self,
@@ -333,6 +391,19 @@ fn drive_lease(
     loop {
         guard.flush(lease, cancel)?;
         match lease.advance(cancel)? {
+            DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
+                return Ok(DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: DomSourceUnavailable::Event,
+                });
+            }
+            DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
+                let reason = DomSourceUnavailable::Dialog(request.action());
+                return Ok(DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Dialog(request),
+                    reason,
+                });
+            }
             DomSourceProgress::Complete(done) => return Ok(DomSourceDriveProgress::Complete(done)),
             DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
                 match hosted
@@ -485,6 +556,11 @@ mod tests {
         let mut session = DomSession::new(
             dom,
             DomSessionLimits {
+                source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
+                    jobs: 0,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 style: DomStyleRuntimeLimits {
                     roots: 4,
                     completions: 8,
@@ -514,7 +590,7 @@ mod tests {
         )
         .unwrap();
         let mut source = session.source_execution();
-        let limits = DomSourceLimits::new(1_000_000, 4096, 100_000, 16, 64, 64);
+        let limits = DomSourceLimits::new(1_000_000, 4096, 100_000, 16, 64, 64, 1);
         let DomSourceDriveProgress::Complete(document) = source
             .apply(
                 &mut session.dom(),

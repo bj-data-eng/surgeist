@@ -11,6 +11,11 @@ fn cancel() -> AtomicBool {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            jobs: 0,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         style: DomStyleRuntimeLimits {
             roots: 4,
             completions: 32,
@@ -39,7 +44,7 @@ fn limits() -> DomSessionLimits {
     }
 }
 fn source_limits() -> DomSourceLimits {
-    DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096)
+    DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1)
 }
 fn event_limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
@@ -63,8 +68,17 @@ impl DomStyleEventContext for Context {
     }
 }
 fn fixture() -> (DomSession, Context, DocumentId, NodeId, DocumentId, NodeId) {
-    let mut dom =
-        Dom::new(DomLimits::new(256, 200_000, 1024, 1024, 1024, 32, 2_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(256, 200_000, 1024, 1024, 1024, 32, 2_000_000)
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            ),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let d1 = batch.create_document();
     let r1 = batch.create_element_ns(&d1, Namespace::html(), "div");

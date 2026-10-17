@@ -39,6 +39,7 @@ fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
                 128,
                 4096,
                 4096,
+                1,
             ),
             &cancel,
         ),
@@ -79,7 +80,7 @@ fn first_external_phase_reserves_its_required_closing_publication() {
     let usage = dom.usage();
     let edit = DomSourceEdit::insert_before(style, document, None);
     let limits =
-        surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096);
+        surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096, 1);
     let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
     assert_eq!(
         lease.advance(&cancel).unwrap_err(),
@@ -141,7 +142,7 @@ fn unrelated_actual_attribute_backing_is_admitted_with_the_retained_source_opera
                 .capacity();
             let edit = DomSourceEdit::insert_before(style, parent, None);
             let limits = surgeist_dom::DomSourceLimits::new(
-                allowance, 1_000_000, 10_000_000, 128, 4096, 4096,
+                allowance, 1_000_000, 10_000_000, 128, 4096, 4096, 1,
             );
             let admitted = match dom.begin_source_edit(edit, limits, &cancel) {
                 Ok(mut lease) => match lease.advance(&cancel) {
@@ -250,7 +251,7 @@ fn equal_comment_data_reaches_style_but_nested_text_and_type_attribute_alone_do_
 }
 
 fn source_limits() -> surgeist_dom::DomSourceLimits {
-    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096)
+    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
 }
 fn cssom() -> surgeist_cssom::CssomStore {
     surgeist_cssom::CssomStore::new(Default::default(), Default::default()).unwrap()
@@ -743,7 +744,7 @@ fn actual_creation_receipt(
         assert_eq!(dom.snapshot().stamp(), before);
         destination_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
         let insufficient =
-            surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096);
+            surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096, 1);
         assert!(matches!(
             dom.resume_source_edit(operation, insufficient, &destination_cancel),
             Err(DomError::InvalidLimit(_))
@@ -1086,6 +1087,7 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                 64,
                 4096,
                 4096,
+                1,
             );
             let edit = DomSourceEdit::insert_before(style, document.node(), None);
             let mut reached = false;
@@ -1822,6 +1824,12 @@ fn execute_slot_source_edit(
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
                 panic!("manual Slot assignment has no hosted child phase: {request:?}")
             }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
+                panic!("manual Slot assignment has no event observation: {request:?}")
+            }
+            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
+                panic!("manual Slot assignment has no Dialog service phase: {request:?}")
+            }
         },
     }
 }
@@ -2023,7 +2031,7 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
     };
     assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
     assert!(
-        matches!(dom.begin_source_edit(DomSourceEdit::assign_slot(slot, vec![text]), surgeist_dom::DomSourceLimits::new(0, 0, 0, 0, 0, 0), &cancel), Err(error) if error == expected)
+        matches!(dom.begin_source_edit(DomSourceEdit::assign_slot(slot, vec![text]), surgeist_dom::DomSourceLimits::new(0, 0, 0, 0, 0, 0, 1), &cancel), Err(error) if error == expected)
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert!(dom.pending_source_edit().is_none());

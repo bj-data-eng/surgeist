@@ -120,6 +120,7 @@ impl<'a> Admission<'a> {
             return Err(DomError::SourceWorkLimit { limit: limits.work });
         }
         self.original.source_work.store(next, Ordering::Relaxed);
+        crate::source::event::retain_ancestor_work(self.original.source_ancestors.as_ref(), 1)?;
         Ok(())
     }
     pub(in crate::store) fn before(&self, bytes: usize) -> Result<(), DomError> {
@@ -437,6 +438,8 @@ impl Draft {
             source_other_units: self.source_other_units,
             source_invocation: self.source_invocation,
             source_headroom: None,
+            dialog_show: self.dialog_show,
+            dispatch_retirements: a.copy(&self.dispatch_retirements, cancel)?,
             meta_work: Cell::new(self.meta_work.get()),
             meta_work_limit: self.meta_work_limit,
             phase_map: self
@@ -495,6 +498,7 @@ impl Draft {
                 .map(|v| v.checkpoint(&mut a, cancel))
                 .transpose()?,
             source_work: Arc::new(AtomicU64::new(self.source_work.load(Ordering::Relaxed))),
+            source_ancestors: self.source_ancestors.clone(),
             source_formation_bytes: self.source_formation_bytes.clone(),
             source_temporary_units: self.source_temporary_units.clone(),
         };
@@ -532,6 +536,10 @@ impl Draft {
         add(self.created.capacity(), size_of::<Option<DraftNode>>())?;
         add(self.generations.capacity(), size_of::<u64>())?;
         add(self.tickets.capacity(), size_of::<Key>())?;
+        add(
+            self.dispatch_retirements.capacity(),
+            size_of::<(NodeId, Key)>(),
+        )?;
         if let Some(map) = &self.phase_map {
             add(map.ids.capacity(), size_of::<Option<NodeId>>())?;
             add(map.private.capacity(), size_of::<bool>())?;

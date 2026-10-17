@@ -777,7 +777,7 @@ mod tests {
         batch.set_input_checked(key, true);
         let mut lease = match dom.begin_source_commands(
             batch,
-            crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
+            crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096, 1),
             &cancel,
         ) {
             Ok(lease) => lease,

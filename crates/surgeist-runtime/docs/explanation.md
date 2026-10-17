@@ -71,15 +71,17 @@ acknowledgement errors.
 ## DOM orchestration
 
 `DomSession` owns the original canonical `Dom`, CSSOM resources, Details task
-state and native hosted lifecycle. Its explicit `DomSessionLimits` admits each
-domain's actual storage and work. `source_execution()`, `style_execution()`,
+state, Source event continuations and native hosted lifecycle. Its explicit
+`DomSessionLimits` admits each domain's actual storage and work.
+`source_execution()`, `style_execution()`,
 `details_execution()` and `hosted_execution()` return weak permissions into
 that same session. Dropping or
 reacquiring a permission preserves the original resources, queues and spent work.
 The scoped `DomEventDom` view permits canonical edits without exposing a
 replaceable mutable owner or its source issuer. Session construction refuses
 prebound Style custody and prior nonempty standalone Details transfers whose
-external task custody it cannot recover.
+external task custody it cannot recover. An already bound Source event executor
+also refuses Session construction.
 
 DOM owns each source operation's identity and published continuation. Runtime
 drives one edit or named feature operation through that same canonical engine.
@@ -88,6 +90,38 @@ publications and queues the actual notification tasks. A later cancellation or
 refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
+
+For Dialog Show's initial beforetoggle request, call
+`DomSourceRuntime::service_event` with the original request, actual dispatcher
+and explicit canonical/dispatch limits. The Session's finite
+`source_events` limits bound adapter jobs, retained bytes and cumulative adapter
+work. Canonical Source work and dispatcher work retain their separate limits.
+The durable job preserves the actual event, dispatch permit and completion receipt
+across refusal or replacement of a weak execution permission. Servicing accepts
+the event result; ordinary `resume` then runs the remaining Source cursor.
+Callbacks can make ordinary edits or start nested Source work under the exact
+event scope. An unfinished nested operation blocks the outer dispatch until the
+child is serviced; completed callbacks are not replayed. Initial uncanceled Show
+can remain Pending at QueueToggle because later Dialog services are not yet
+implemented. An actual canceled event returns normally even if its callback
+retired the receiver; an uncanceled read of that retired receiver is a typed
+Source failure.
+
+If a retained child exhausts an ancestor's Source allowance, use
+`DomSourceRuntime::raise_event_limits` with the ancestor's original event request.
+This monotonically raises policy through the same Session owner without resuming
+the parent or disturbing the child, receipt or spent work. A replacement weak
+permission can perform the same recovery.
+
+The adapter's own cumulative work has a separate recovery front:
+`DomSourceRuntime::raise_event_runtime_limits`. It monotonically raises the
+Session's event-job, byte and work limits while retaining the original jobs,
+permits, delivered receipts and spent work. Validation uses the proposed work
+allowance, so an exhausted old allowance cannot prevent recovery. This update
+runs no callback or canonical Source step. In particular, a receipt retained
+after listener delivery can complete acceptance after a raise without replaying
+that listener. Linked job bodies retain their original Source storage charge
+until their actual custody is dropped.
 
 The native dispatcher retains an immutable event path and once-only progress
 across suspension. Style and Details use this shared dispatcher while retaining
@@ -158,10 +192,18 @@ listener then uses its current target's actual node Document: known inactive
 hosted Documents skip the listener; unavailable authority returns
 `RetainedHostedAuthority` with the same pending listener and cursor. Earlier
 callbacks are not replayed, and a pending once registration is not consumed by
-unavailable admission. Closed native Documents remain eligible. Their existing
-started-dispatch retirement policy preserves historical exact-target delivery;
-it never redirects an event to a replacement generation or establishes current
-Window authority from a missing node.
+unavailable admission. Closed native Documents remain eligible. Before the
+first callback, the dispatcher registers exact invocation targets with the
+canonical DOM's bounded dispatch custody. If a callback retires one, successful
+canonical publication retains its actual retirement-time node-document,
+including adoption and destruction in one edit. Later listeners use that
+association with the Document's current activity and issuer. They never infer it
+from a missing node, an earlier path association or an earlier closed environment.
+The same started event retains its path, registrations and cancellation state
+across quota refusal and resume; it cannot redirect to a replacement generation.
+The original queue association remains distinct from each listener's current
+eligibility. Configure explicit `DomDispatchCustodyLimits` on the DOM as well as
+the dispatcher's limits; the DOM's aggregate capacity defaults to zero.
 
 These operations implement bounded native orchestration. A retained sheet or
 completed canonical edit does not establish fetched-resource completion,

@@ -567,7 +567,7 @@ mod tests {
         let before = dom.snapshot();
         let mut edit = DomBatch::new();
         edit.destroy(a);
-        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
@@ -601,6 +601,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
@@ -611,6 +612,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
     }
     fn named_draft() -> (Draft, Key, usize) {
@@ -799,7 +801,8 @@ mod tests {
         let text = edit.create_text(doc, "a {}");
         edit.insert_before(&text, &style, None);
         edit.insert_before(&style, parent, None);
-        let limits = crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let limits =
+            crate::DomSourceLimits::new(8_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
         let mut lease = dom.begin_source_commands(edit, limits, &cancel).unwrap();
         let request = match lease.advance(&cancel).unwrap() {
             crate::DomSourceProgress::Request(crate::DomSourceRequest::Style(request)) => request,

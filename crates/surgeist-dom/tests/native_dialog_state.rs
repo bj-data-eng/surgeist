@@ -250,7 +250,7 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
     let before = dom.snapshot();
     let usage = dom.usage();
     let edit = DomSourceEdit::set_dialog_return_value(node, value.clone());
-    let bounded = DomSourceLimits::new(16_000_000, 4095, 10_000_000, 16, 4096, 4096);
+    let bounded = DomSourceLimits::new(16_000_000, 4095, 10_000_000, 16, 4096, 4096, 1);
     assert!(matches!(
         dom.begin_source_edit(edit, bounded, &cancel),
         Err(DomError::ResourceLimit {
@@ -262,7 +262,7 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
     assert_eq!(dom.usage(), usage);
     assert!(dom.pending_source_edit().is_none());
 
-    let generous = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096);
+    let generous = DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
     let edit = DomSourceEdit::set_dialog_return_value(node, value.clone());
     let mut lease = dom.begin_source_edit(edit, generous, &cancel).unwrap();
     assert_eq!(

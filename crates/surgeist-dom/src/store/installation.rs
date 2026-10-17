@@ -872,7 +872,7 @@ mod tests {
             &source,
             crate::DomSourceNativeHtmlInstallLimits::new(
                 DomNativeHtmlInstallLimits::new(4096, 10_000_000, 10_000_000),
-                crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096),
+                crate::DomSourceLimits::new(bytes, 1_000_000, 100_000_000, 64, 4096, 4096, 1),
             ),
             &cancel,
         );

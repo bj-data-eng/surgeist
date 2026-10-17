@@ -8,10 +8,17 @@ pub(in crate::store) struct Initial {
     bytes: Cell<usize>,
     units: Cell<usize>,
     work: Work,
+    ancestors: Option<Arc<crate::source::event::EventWork>>,
 }
 enum Work {
     Local(Cell<u64>),
     Shared(Arc<AtomicU64>),
+}
+/// Borrowed commands and their actual allocated backing, which can be zero
+/// for an inline command even when the slice is nonempty.
+struct CommandStorage<'a> {
+    commands: &'a [Command],
+    capacity: usize,
 }
 impl Work {
     fn get(&self) -> u64 {
@@ -34,6 +41,7 @@ impl Initial {
             bytes: Cell::new(0),
             units: Cell::new(0),
             work: Work::Local(Cell::new(0)),
+            ancestors: None,
         }
     }
     pub(in crate::store) fn with_work(
@@ -45,7 +53,15 @@ impl Initial {
             bytes: Cell::new(0),
             units: Cell::new(0),
             work: Work::Shared(work),
+            ancestors: None,
         }
+    }
+    pub(in crate::store) fn ancestors(&self) -> Option<&Arc<crate::source::event::EventWork>> {
+        self.ancestors.as_ref()
+    }
+    fn with_ancestors(mut self, ancestors: Option<Arc<crate::source::event::EventWork>>) -> Self {
+        self.ancestors = ancestors;
+        self
     }
     pub(in crate::store) fn limits(&self) -> crate::DomSourceLimits {
         self.limits
@@ -66,6 +82,7 @@ impl Initial {
             });
         }
         self.work.set(next);
+        crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)?;
         Ok(())
     }
     pub(in crate::store) fn retain(
@@ -217,18 +234,47 @@ impl Draft {
         limits: crate::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload, Payload), DomError> {
-        let initial = Initial::new(limits);
+        let initial = Initial::new(limits).with_ancestors(dom.source_work_ancestors(None));
         Self::new_source_initial(
             dom,
             owner,
-            commands,
-            command_capacity,
+            CommandStorage {
+                commands,
+                capacity: command_capacity,
+            },
             initial,
             size_of::<super::operation::Operation>()
                 .checked_sub(size_of::<Draft>())
                 .ok_or(DomError::RepresentationExhausted)?,
+            None,
             cancel,
         )
+    }
+    pub(in crate::store) fn new_source_root_with_work(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        commands: &[Command],
+        command_capacity: usize,
+        limits: crate::DomSourceLimits,
+        work: Arc<AtomicU64>,
+        cancel: &AtomicBool,
+    ) -> Result<(Self, Payload, Payload), DomError> {
+        let initial = Initial::with_work(limits, work.clone())
+            .with_ancestors(dom.source_work_ancestors(Some(&work)));
+        let (mut draft, canonical, command) = Self::new_source_initial(
+            dom,
+            owner,
+            CommandStorage {
+                commands,
+                capacity: command_capacity,
+            },
+            initial,
+            0,
+            Some(work.clone()),
+            cancel,
+        )?;
+        draft.source_work = work;
+        Ok((draft, canonical, command))
     }
     pub(in crate::store) fn new_hosted_source(
         dom: &Dom,
@@ -238,8 +284,20 @@ impl Draft {
         operation: crate::hosted::DomHostedOperationId,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
-        let initial = Initial::with_work(limits, work.clone());
-        let (mut draft, _, _) = Self::new_source_initial(dom, owner, &[], 0, initial, 0, cancel)?;
+        let initial = Initial::with_work(limits, work.clone())
+            .with_ancestors(dom.source_work_ancestors(Some(&work)));
+        let (mut draft, _, _) = Self::new_source_initial(
+            dom,
+            owner,
+            CommandStorage {
+                commands: &[],
+                capacity: 0,
+            },
+            initial,
+            0,
+            None,
+            cancel,
+        )?;
         draft.source_work = work;
         draft.hosted_owner = Some(operation);
         Ok(draft)
@@ -247,12 +305,16 @@ impl Draft {
     fn new_source_initial(
         dom: &Dom,
         owner: Arc<BatchIdentity>,
-        commands: &[Command],
-        command_capacity: usize,
+        commands: CommandStorage<'_>,
         initial: Initial,
         owner_bytes: usize,
+        shared_work: Option<Arc<AtomicU64>>,
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload, Payload), DomError> {
+        let CommandStorage {
+            commands,
+            capacity: command_capacity,
+        } = commands;
         // The source front retains the ordinary owner's whole-batch canonical
         // quota policy. Meter the actual scan before any Draft retention or ID
         // issuance; later execution cannot reduce raw duplicate input counts.
@@ -262,7 +324,9 @@ impl Draft {
         let mut retained = canonical;
         retained.append(command_payload)?;
         retained.add_bytes(dom.history_bytes)?;
+        retained.add_bytes(dom.source_retained_stack_bytes()?)?;
         retained.add_bytes(dom.style_cssom_custody_bytes()?)?;
+        retained.add_bytes(dom.source_dispatch_custody_bytes(|| initial.step(cancel))?)?;
         retained.add_bytes(owner_bytes)?;
         retained.bank::<Command>(command_capacity)?;
         for command in commands {
@@ -286,6 +350,9 @@ impl Draft {
             cancel,
         )?;
         let mut draft = Self::new_formed(dom, owner, Some(&initial), cancel)?;
+        if let Some(work) = shared_work {
+            draft.source_work = work;
+        }
         draft.source_other_bytes = retained.bytes;
         draft.source_other_units = retained.units;
         draft.phase_map = Some(super::PhaseMap {

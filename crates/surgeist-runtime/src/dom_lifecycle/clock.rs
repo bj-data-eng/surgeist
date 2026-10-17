@@ -129,6 +129,11 @@ mod tests {
         let mut session = DomSession::new(
             dom,
             DomSessionLimits {
+                source_events: crate::DomSourceEventRuntimeLimits {
+                    jobs: 0,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 style: DomStyleRuntimeLimits {
                     roots: 4,
                     completions: 32,
@@ -420,6 +425,11 @@ mod tests {
                     )
                     .unwrap(),
                     DomSessionLimits {
+                        source_events: crate::DomSourceEventRuntimeLimits {
+                            jobs: 0,
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
                         style: DomStyleRuntimeLimits {
                             roots: 4,
                             completions: 32,
@@ -485,7 +495,7 @@ mod tests {
             }
 
             fn source_limits() -> DomSourceLimits {
-                DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096)
+                DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096, 1)
             }
 
             fn child_phase(

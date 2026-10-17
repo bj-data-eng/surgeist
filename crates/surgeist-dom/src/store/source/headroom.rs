@@ -376,7 +376,7 @@ mod tests {
         details: [NodeId; 2],
     }
     fn limits(bytes: usize) -> crate::DomSourceLimits {
-        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
+        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1)
     }
     fn fixture() -> Fixture {
         let mut dom = Dom::new(
@@ -568,6 +568,7 @@ mod tests {
             6,
             policy.outputs,
             policy.identities,
+            1,
         ));
         assert!(matches!(
             scan.qualify(&draft, &f.dom, 0, &cancel),

@@ -12,7 +12,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_css::CssUtf16InputLimits;
 use surgeist_dom::*;
-use surgeist_html::{HtmlDetailsState, HtmlDetailsToggleEvent, HtmlDocumentMode};
+use surgeist_html::HtmlDocumentMode;
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {
@@ -20,6 +20,11 @@ fn cancel() -> AtomicBool {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            jobs: 0,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         style: DomStyleRuntimeLimits {
             roots: 4,
             completions: 32,
@@ -51,6 +56,12 @@ fn session() -> DomSession {
     let dom = Dom::new(
         DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000)
             .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            )
             .with_details_toggle_intentions(32)
             .unwrap(),
     )
@@ -86,7 +97,7 @@ struct Observation {
     current: Option<DomEventTarget>,
     target: Option<NodeId>,
     phase: DomEventPhase,
-    payload: Option<HtmlDetailsToggleEvent>,
+    payload: Option<DomToggleEvent>,
     bubbles: bool,
 }
 struct Context {
@@ -409,8 +420,8 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
         assert_eq!(observation.target, Some(target));
         assert!(!observation.bubbles);
         let payload = observation.payload.unwrap();
-        assert_eq!(payload.old_state(), HtmlDetailsState::Closed);
-        assert_eq!(payload.new_state(), HtmlDetailsState::Open);
+        assert_eq!(payload.old_state(), "closed");
+        assert_eq!(payload.new_state(), "open");
     }
     assert_eq!(context.details.pending_tasks().unwrap(), 0);
 }
@@ -623,7 +634,17 @@ fn cancelled_and_foreign_host_permission_does_not_publish_a_document_then_same_o
 
 #[test]
 fn zero_host_admission_refuses_before_any_document_or_global_is_published() {
-    let dom = Dom::new(DomLimits::new(128, 20_000, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(128, 20_000, 128, 128, 128, 16, 1_000_000)
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            ),
+    )
+    .unwrap();
     let mut policy = limits();
     policy.hosted.canonical = DomHostedLimits::new(
         DomHostedRecordLimits::new(0, 32, 32, 32, 32, 32, 32),
@@ -898,10 +919,7 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         ));
         assert_eq!(context.seen.len(), 1);
         assert_eq!(context.seen[0].target, Some(target));
-        assert_eq!(
-            context.seen[0].payload.unwrap().new_state(),
-            HtmlDetailsState::Open
-        );
+        assert_eq!(context.seen[0].payload.unwrap().new_state(), "open");
         let retained = context.details.pending_task(0).unwrap().unwrap();
         assert_eq!(retained.id(), queued.id());
         assert_eq!(retained.queue_association(), queued.queue_association());
@@ -1641,7 +1659,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     assert_eq!(context.observed[0].target(), Some(target));
     assert_eq!(
         context.observed[0].toggle_event().unwrap().new_state(),
-        HtmlDetailsState::Open
+        "open"
     );
     if let Ok(DomDetailsProgress::Complete { receipt, .. }) = &result {
         assert_eq!(receipt.callbacks(), 1);
@@ -1669,7 +1687,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
 }
 
 #[test]
-fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
+fn adopted_target_retirement_delivers_once_using_its_active_destination_document() {
     struct DestroyTargetContext {
         details: DomDetailsRuntime,
         target: NodeId,
@@ -1757,60 +1775,25 @@ fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
             )
             .unwrap()
     };
-    for _ in 0..2 {
-        let progress = {
-            let mut dom = session.dom();
-            DomDetailsRuntime::run_next(
-                &mut dom,
-                &mut registry,
-                &mut context,
-                event_limits(),
-                &cancel(),
-            )
+    let adopted = session.snapshot();
+    assert_eq!(
+        adopted.node(target).unwrap().owner_document(),
+        Some(second.document())
+    );
+    assert_eq!(
+        adopted.global_document(second.global()).unwrap(),
+        second.document()
+    );
+    assert!(
+        adopted
+            .document(second.document())
             .unwrap()
-        };
-        match progress {
-            DomDetailsProgress::Retained {
-                task,
-                dispatch:
-                    DomEventDispatchOutcome::RetainedHostedAuthority(DomHostedError::Dom(
-                        DomError::StaleNode,
-                    )),
-                displaced_owner: None,
-            } => {
-                assert_eq!(task.id(), queued.id());
-                assert_eq!(task.queue_association(), queued.queue_association());
-            }
-            other => {
-                panic!("the missing current target must retain its exact invocation: {other:?}")
-            }
-        }
-        // Actual edit and callback effects are inspected outside the callback.
-        assert_eq!(context.applied.len(), 1);
-        assert!(context.applied[0].is_ok());
-        assert_eq!(context.seen, ["destination-global"]);
-        assert!(matches!(
-            session.snapshot().node(target),
-            Err(DomError::StaleNode)
-        ));
-        assert!(
-            session
-                .snapshot()
-                .document(second.document())
-                .unwrap()
-                .is_fully_active()
-                .unwrap()
-        );
-        assert_eq!(context.details.pending_tasks().unwrap(), 1);
-        assert_eq!(
-            context.details.pending_task(0).unwrap().unwrap().id(),
-            queued.id()
-        );
-    }
-    // Unavailable authority is checked before consuming the pending once
-    // listener. Explicit real removal changes the condition preventing progress.
-    assert!(registry.remove_listener(target_once));
-    assert!(!registry.remove_listener(target_once));
+            .is_fully_active()
+            .unwrap()
+    );
+    let still_queued = context.details.pending_task(0).unwrap().unwrap();
+    assert_eq!(still_queued.id(), queued.id());
+    assert_eq!(still_queued.queue_association(), queued.queue_association());
     let progress = {
         let mut dom = session.dom();
         DomDetailsRuntime::run_next(
@@ -1822,6 +1805,9 @@ fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
         )
         .unwrap()
     };
+    // The fixed started path uses the exact successful retirement association,
+    // not stale-node absence or its original queue Document. The destination
+    // Document remains active, so its applicable once listener still runs.
     match progress {
         DomDetailsProgress::Complete {
             task,
@@ -1829,12 +1815,48 @@ fn unavailable_target_authority_retains_once_listener_until_explicit_removal() {
             displaced_owner: None,
         } => {
             assert_eq!(task.id(), queued.id());
-            assert_eq!(receipt.callbacks(), 1);
+            assert_eq!(task.queue_association(), queued.queue_association());
+            assert_eq!(receipt.callbacks(), 2);
             assert!(receipt.failures().is_empty());
+            assert!(!receipt.default_prevented());
         }
-        other => panic!("removing the actual blocked listener must permit completion: {other:?}"),
+        other => panic!("proven retired target in its active destination must complete: {other:?}"),
     }
-    assert_eq!(context.seen, ["destination-global"]);
+    // Actual edit and callback effects are inspected outside the callbacks.
+    assert_eq!(context.applied.len(), 1);
+    assert!(context.applied[0].is_ok());
+    assert_eq!(context.seen, ["destination-global", "destroyed-target"]);
+    let retired = session.snapshot();
+    assert!(matches!(retired.node(target), Err(DomError::StaleNode)));
+    assert!(
+        retired
+            .document(second.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        retired.global_document(second.global()).unwrap(),
+        second.document()
+    );
+    assert_eq!(context.details.pending_tasks().unwrap(), 0);
+    assert!(
+        !registry.remove_listener(target_once),
+        "the actual once invocation consumed registration"
+    );
+    let next = {
+        let mut dom = session.dom();
+        DomDetailsRuntime::run_next(
+            &mut dom,
+            &mut registry,
+            &mut context,
+            event_limits(),
+            &cancel(),
+        )
+        .unwrap()
+    };
+    assert!(matches!(next, DomDetailsProgress::Empty));
+    assert_eq!(context.seen, ["destination-global", "destroyed-target"]);
     assert_eq!(context.applied.len(), 1);
     assert_eq!(context.details.pending_tasks().unwrap(), 0);
 }

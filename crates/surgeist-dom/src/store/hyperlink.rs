@@ -651,7 +651,7 @@ mod tests {
         }
         let mut lease = match dom.begin_source_commands(
             batch,
-            crate::DomSourceLimits::new(bytes, units, 100_000_000, 64, 4096, 4096),
+            crate::DomSourceLimits::new(bytes, units, 100_000_000, 64, 4096, 4096, 1),
             &cancel,
         ) {
             Ok(lease) => lease,

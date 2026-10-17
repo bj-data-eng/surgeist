@@ -809,7 +809,7 @@ mod tests {
         } else {
             batch.set_attribute(element, if append { "data-new" } else { "data-31" }, "new");
         }
-        let limits = crate::DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096);
+        let limits = crate::DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
@@ -897,7 +897,8 @@ mod tests {
         let mut batch = DomBatch::new();
         batch.set_attribute_ns(element, namespace.clone(), "second:item", value.clone());
         batch.set_attribute(element, "NoNcE", "new nonce");
-        let limits = crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let mut lease = dom.begin_source_commands(batch, limits, &cancel).unwrap();
         assert!(matches!(
             lease.advance(&cancel),
@@ -960,7 +961,8 @@ mod tests {
         let mut late = DomBatch::new();
         late.set_attribute(element, "kept", "new");
         late.set_attribute(document, "wrong-kind", "x");
-        let limits = crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096);
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
         let mut lease = dom.begin_source_commands(late, limits, &cancel).unwrap();
         assert_eq!(lease.advance(&cancel).unwrap_err(), DomError::WrongNodeKind);
         assert_eq!(lease.snapshot().stamp(), old.stamp());

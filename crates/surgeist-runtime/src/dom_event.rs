@@ -1,13 +1,14 @@
 //! Synchronous native DOM event dispatch over the canonical DOM owner.
 //!
 //! Implements the pinned DOM3071 dispatch/invoke and parent algorithms for the
-//! ordinary nonbubbling, noncancelable, noncomposed Style load/error and Details
-//! toggle events. Details retains its queued HTML-owned payload and null source.
+//! ordinary nonbubbling, noncomposed Style load/error, Details toggle and Dialog
+//! beforetoggle events. Details preserves its queued state; Dialog supplies its
+//! source-selected cancelability. Both admitted ToggleEvent sources are null.
 //! Registration supports capture and once; JS, AbortSignal, passive listeners,
 //! arbitrary event construction and activation are not offered. A hosted
 //! Document's non-load parent is its actual native Global; this is no JS Window
 //! or ECMAScript realm implementation. Family owners validate their actual
-//! queued operation before creating an event and advance only after a receipt.
+//! source operation before creating an event and advance only after a receipt.
 //! Event creation/execution is crate-private: the public callback view cannot
 //! consume a feature task's continuation or completion receipt out of its owner.
 //!
@@ -28,10 +29,10 @@
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use surgeist_dom::{
-    Dom, DomError, DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot, HtmlShadowRootMode,
-    NodeId,
+    Dom, DomDispatchCustody, DomError, DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot,
+    HtmlShadowRootMode, NodeId,
 };
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
@@ -166,6 +167,8 @@ pub enum DomEventType {
     Error,
     /// The Details notification toggle event with its exact queued payload.
     Toggle,
+    /// The source-qualified Dialog beforetoggle event.
+    BeforeToggle,
 }
 impl DomEventType {
     /// Exact source event type spelling.
@@ -174,6 +177,7 @@ impl DomEventType {
             Self::Load => "load",
             Self::Error => "error",
             Self::Toggle => "toggle",
+            Self::BeforeToggle => "beforetoggle",
         }
     }
 }
@@ -249,7 +253,7 @@ pub struct DomEventListenerFailure {
     pub registration: DomEventRegistrationId,
     /// Exact invocation target on the fixed path.
     pub current_target: DomEventTarget,
-    /// Failure independently of the event's noncancelable result.
+    /// Failure independently of the event's canceled flag.
     pub kind: DomEventListenerFailureKind,
 }
 /// A finite resource whose admission refused further work.
@@ -340,6 +344,7 @@ pub struct DomEventDispatchReceipt {
     event_type: DomEventType,
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
+    default_prevented: bool,
 }
 impl DomEventDispatchReceipt {
     pub(crate) fn retained_backing_bytes(&self) -> usize {
@@ -361,9 +366,9 @@ impl DomEventDispatchReceipt {
     pub fn failures(&self) -> &[DomEventListenerFailure] {
         &self.failures
     }
-    /// These admitted source events cannot be canceled.
+    /// Actual canceled flag at completion, independently of listener failures.
     pub const fn default_prevented(&self) -> bool {
-        false
+        self.default_prevented
     }
 }
 /// Result of executing as far as current admission permits.
@@ -604,7 +609,7 @@ impl<C> DomEventDispatcher<C> {
         }
         let mut budget = Budget::new(limits);
         let snapshot = dom.snapshot();
-        if snapshot.incomplete_source_operation().is_some() {
+        if dom.source_dispatch_blocker().is_some() {
             return Err(DomEventDispatchError::Dom(
                 DomError::IncompleteSourceOperation,
             ));
@@ -614,7 +619,7 @@ impl<C> DomEventDispatcher<C> {
                 DomHostedError::IncompleteOperation,
             ));
         }
-        let path = build_path(
+        let mut path = build_path(
             dom,
             &snapshot,
             event.0.original,
@@ -631,8 +636,33 @@ impl<C> DomEventDispatcher<C> {
             .map_err(DomEventDispatchError::Dom)?
             .as_shadow_root()
             .is_some();
+        // This bounded temporary is live alongside the path and producer
+        // scope construction. Family maximum admission includes that overlap.
+        let mut invocation_nodes = Vec::new();
+        // Allocate once from empty: incremental growth would require admitting
+        // an old/new gather overlap as well as the completed path and scope.
+        invocation_nodes
+            .try_reserve_exact(path.len())
+            .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+        if invocation_nodes.capacity() > limits.path_items {
+            return Err(DomEventDispatchError::Admission(
+                DomEventResource::PathItems,
+            ));
+        }
+        for item in &mut path {
+            budget.tick().map_err(DomEventDispatchError::Admission)?;
+            if let DomEventTarget::Node(node) = item.invocation {
+                item.custody_row = Some(invocation_nodes.len());
+                invocation_nodes.push(node);
+            }
+        }
+        let association_custody = dom
+            .register_dispatch_custody(&invocation_nodes, &AtomicBool::new(false))
+            .map_err(DomEventDispatchError::Dom)?;
+        drop(invocation_nodes);
         self.owner.pending.set(self.owner.pending.get() + 1);
         let dispatch = Dispatch {
+            association_custody,
             _reservation: PendingReservation(self.owner.clone()),
             path: Rc::new(path),
             invoke: 0,
@@ -727,6 +757,7 @@ impl<C> DomEventDispatcher<C> {
                     event_type: event.0.event_type(),
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
+                    default_prevented: event.default_prevented(),
                 }))
             }
             other => {
@@ -853,7 +884,7 @@ impl<C> DomEventDispatcher<C> {
                 // Native authority admission can refuse before source's
                 // irreversible once removal. A known inactive target instead
                 // follows inner invoke's skip, including its once removal.
-                if !listener_target_active(dom, item, budget)? {
+                if !listener_target_active(dom, &dispatch.association_custody, item, budget)? {
                     let once = r.options.once;
                     dispatch.listener += 1;
                     if once {
@@ -923,10 +954,36 @@ enum Status {
     Retained,
     Complete,
 }
+/// Immutable ToggleEvent data projected from the actual HTML producer states.
+/// No public constructor or arbitrary state/source injection is offered.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomToggleEvent {
+    old_state: &'static str,
+    new_state: &'static str,
+}
+impl DomToggleEvent {
+    /// Exact original state spelling supplied by the HTML producer.
+    pub const fn old_state(&self) -> &'static str {
+        self.old_state
+    }
+    /// Exact new state spelling supplied by the HTML producer.
+    pub const fn new_state(&self) -> &'static str {
+        self.new_state
+    }
+    /// Details notification and the admitted Dialog Show firing clause both
+    /// supply null. This makes no claim about future event-producing clauses.
+    pub const fn source(&self) -> Option<NodeId> {
+        None
+    }
+}
 enum EventData {
     StyleLoad,
     StyleError,
-    DetailsToggle(surgeist_html::HtmlDetailsToggleEvent),
+    DetailsToggle(DomToggleEvent),
+    DialogBeforeToggle {
+        payload: DomToggleEvent,
+        cancelable: bool,
+    },
 }
 struct Event {
     original: NodeId,
@@ -937,6 +994,7 @@ struct Event {
     phase: Cell<DomEventPhase>,
     stop: Cell<bool>,
     immediate: Cell<bool>,
+    canceled: Cell<bool>,
     path: RefCell<Option<Rc<Vec<PathItem>>>>,
     continuation: std::rc::Weak<RefCell<Option<Dispatch>>>,
 }
@@ -946,6 +1004,7 @@ impl Event {
             EventData::StyleLoad => DomEventType::Load,
             EventData::StyleError => DomEventType::Error,
             EventData::DetailsToggle(_) => DomEventType::Toggle,
+            EventData::DialogBeforeToggle { .. } => DomEventType::BeforeToggle,
         }
     }
 }
@@ -972,6 +1031,7 @@ impl NativeDomEventOwner {
             phase: Cell::new(DomEventPhase::None),
             stop: Cell::new(false),
             immediate: Cell::new(false),
+            canceled: Cell::new(false),
             path: RefCell::new(None),
             continuation: Rc::downgrade(&custody),
         }));
@@ -985,7 +1045,18 @@ impl NativeDomEventOwner {
         std::mem::size_of::<Event>().checked_add(std::mem::size_of::<RefCell<Option<Dispatch>>>())
     }
     pub(crate) fn maximum_payload_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
+        Self::maximum_source_payload_bytes(limits)?
+            .checked_add(DomDispatchCustody::maximum_retained_bytes(limits.path_items).ok()?)
+    }
+    /// Source charges canonical scope bodies through its sole DOM bank term.
+    /// This caller term includes the temporary exact-node gather overlap.
+    pub(crate) fn maximum_source_payload_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
         Self::initial_payload_bytes()?
+            .checked_add(
+                limits
+                    .path_items
+                    .checked_mul(std::mem::size_of::<NodeId>())?,
+            )?
             .checked_add(std::mem::size_of::<Vec<PathItem>>())?
             .checked_add(
                 limits
@@ -1004,6 +1075,16 @@ impl NativeDomEventOwner {
             )
     }
     pub(crate) fn retained_payload_bytes(&self) -> Option<usize> {
+        let own = self.retained_source_payload_bytes()?;
+        own.checked_add(
+            self._custody
+                .borrow()
+                .as_ref()
+                .map_or(0, |dispatch| dispatch.association_custody.retained_bytes()),
+        )
+    }
+    /// Actual caller payload only; canonical Source custody body is separate.
+    pub(crate) fn retained_source_payload_bytes(&self) -> Option<usize> {
         // Private observation only; no user code runs under this borrow.
         let mut bytes = Self::initial_payload_bytes()?;
         if let Some(dispatch) = self._custody.borrow().as_ref() {
@@ -1074,19 +1155,46 @@ impl NativeDomEvent {
         target: NodeId,
         payload: surgeist_html::HtmlDetailsToggleEvent,
     ) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::DetailsToggle(payload))
+        NativeDomEventOwner::new(
+            target,
+            EventData::DetailsToggle(DomToggleEvent {
+                old_state: payload.old_state().as_str(),
+                new_state: payload.new_state().as_str(),
+            }),
+        )
+    }
+
+    /// The actual Dialog cursor supplies the HTML-owned states and the
+    /// cancelability selected by its reached firing clause. Show supplies true.
+    pub(crate) fn dialog_before_toggle(
+        target: NodeId,
+        old: surgeist_html::HtmlDialogState,
+        new: surgeist_html::HtmlDialogState,
+        cancelable: bool,
+    ) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(
+            target,
+            EventData::DialogBeforeToggle {
+                payload: DomToggleEvent {
+                    old_state: old.as_str(),
+                    new_state: new.as_str(),
+                },
+                cancelable,
+            },
+        )
     }
 
     /// Exact source event type.
     pub fn event_type(&self) -> DomEventType {
         self.0.event_type()
     }
-    /// Actual queued Details payload, unchanged by coalescing or attribute edits
-    /// during dispatch. Other event kinds have no ToggleEvent data. Details' source
-    /// is fixed null by its firing clause; no source injection is offered.
-    pub fn toggle_event(&self) -> Option<&surgeist_html::HtmlDetailsToggleEvent> {
+    /// Immutable state strings from the actual Details task or Dialog firing
+    /// clause. Attribute edits during delivery cannot change this payload.
+    pub fn toggle_event(&self) -> Option<&DomToggleEvent> {
         match &self.0.data {
-            EventData::DetailsToggle(payload) => Some(payload),
+            EventData::DetailsToggle(payload) | EventData::DialogBeforeToggle { payload, .. } => {
+                Some(payload)
+            }
             EventData::StyleLoad | EventData::StyleError => None,
         }
     }
@@ -1106,20 +1214,30 @@ impl NativeDomEvent {
     pub const fn bubbles(&self) -> bool {
         false
     }
-    /// Source default: these events cannot be canceled.
-    pub const fn cancelable(&self) -> bool {
-        false
+    /// The actual firing clause's cancelability. Style and Details are false.
+    pub fn cancelable(&self) -> bool {
+        matches!(
+            self.0.data,
+            EventData::DialogBeforeToggle {
+                cancelable: true,
+                ..
+            }
+        )
     }
     /// Source default: these events are noncomposed.
     pub const fn composed(&self) -> bool {
         false
     }
-    /// These source event types cannot acquire a canceled flag.
-    pub const fn default_prevented(&self) -> bool {
-        false
+    /// Sticky canceled flag retained with the same actual event identity.
+    pub fn default_prevented(&self) -> bool {
+        self.0.canceled.get()
     }
-    /// Source preventDefault is ineffective for a noncancelable event.
-    pub const fn prevent_default(&self) {}
+    /// Set the canceled flag only when the actual firing clause is cancelable.
+    pub fn prevent_default(&self) {
+        if self.cancelable() {
+            self.0.canceled.set(true);
+        }
+    }
     /// Stop subsequent source invoke steps. Other listeners in the current
     /// snapshot may still run; the later target invocation checks this flag too.
     pub fn stop_propagation(&self) {
@@ -1221,11 +1339,12 @@ struct PathItem {
     at_target: bool,
     closed_root: bool,
     closed_slot: bool,
-    // Actual never-hosted provenance at path admission supports the existing
-    // native historical-retirement DELIVERY policy, not current Window absence.
-    closed_native_retirement: bool,
+    // Exact row in this Dispatch's original affine canonical association scope.
+    // Global invocation targets use their own actual current authority instead.
+    custody_row: Option<usize>,
 }
 struct Dispatch {
+    association_custody: DomDispatchCustody,
     _reservation: PendingReservation,
     path: Rc<Vec<PathItem>>,
     invoke: usize,
@@ -1256,21 +1375,25 @@ impl From<DomEventResource> for RunStop {
         Self::Resource(resource)
     }
 }
-fn listener_target_active(dom: &Dom, item: PathItem, budget: &mut Budget) -> Result<bool, RunStop> {
+fn listener_target_active(
+    dom: &Dom,
+    custody: &DomDispatchCustody,
+    item: PathItem,
+    budget: &mut Budget,
+) -> Result<bool, RunStop> {
     budget.tick()?;
     let snapshot = dom.snapshot();
     let document = match item.invocation {
-        DomEventTarget::Node(node) => {
-            let node = match snapshot.node(node) {
-                Ok(node) => node,
-                Err(DomError::StaleNode) if item.closed_native_retirement => return Ok(true),
-                Err(error) => return Err(RunStop::HostedAuthority(error.into())),
-            };
-            node.as_document()
-                .map(|document| document.id())
-                .or_else(|| node.owner_document())
-                .expect("canonical node document")
-        }
+        DomEventTarget::Node(node) => dom
+            .dispatch_custody_association(
+                custody,
+                item.custody_row.ok_or(RunStop::HostedAuthority(
+                    DomError::InvalidDispatchCustody.into(),
+                ))?,
+                node,
+            )
+            .map_err(|error| RunStop::HostedAuthority(error.into()))?
+            .document(),
         DomEventTarget::Global(global) => snapshot
             .global_document(global)
             .map_err(RunStop::HostedAuthority)?,
@@ -1325,7 +1448,7 @@ fn dispatch_ready(
     if dom.owner() != event.0.original.owner() {
         return Err(RunStop::ForeignOwner);
     }
-    if let Some(operation) = dom.snapshot().incomplete_source_operation() {
+    if let Some(operation) = dom.source_dispatch_blocker() {
         return Err(RunStop::SourceOperation(operation));
     }
     if let Some(operation) = dom.snapshot().incomplete_hosted_operation() {
@@ -1435,17 +1558,6 @@ fn build_path(
         }
         let view = snapshot.node(node).map_err(DomEventDispatchError::Dom)?;
         source_tick(budget)?;
-        let document = view
-            .as_document()
-            .map(|document| document.id())
-            .or_else(|| view.owner_document())
-            .expect("canonical node document");
-        let closed_native_retirement = !snapshot
-            .document(document)
-            .map_err(DomEventDispatchError::Dom)?
-            .metadata()
-            .document_environment()
-            .has_ever_had_navigable();
         let closed_root = view
             .as_shadow_root()
             .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
@@ -1462,7 +1574,7 @@ fn build_path(
             at_target,
             closed_root,
             closed_slot,
-            closed_native_retirement,
+            custody_row: None,
         });
         let assigned = assigned(snapshot, node)?;
         let parent = if let Some(shadow) = view.as_shadow_root() {
@@ -1518,7 +1630,7 @@ fn build_path(
                     at_target: false,
                     closed_root: false,
                     closed_slot: false,
-                    closed_native_retirement: false,
+                    custody_row: None,
                 });
             }
             // Load stops at Document. A non-load hosted Document adds its

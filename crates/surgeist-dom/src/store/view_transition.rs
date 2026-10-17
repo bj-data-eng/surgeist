@@ -1130,7 +1130,7 @@ mod tests {
         (dom, document, transition)
     }
     fn source_append_limits(bytes: usize) -> crate::DomSourceLimits {
-        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096)
+        crate::DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1)
     }
     fn long_append_batch(
         dom: &Dom,
@@ -1355,7 +1355,7 @@ mod tests {
             let limit = spent + incoming.as_str().len() as u64;
             if stop == 0 {
                 draft.source_limits = Some(crate::DomSourceLimits::new(
-                    4_000_000, 1_000_000, limit, 64, 4096, 4096,
+                    4_000_000, 1_000_000, limit, 64, 4096, 4096, 1,
                 ));
             }
             cancel.store(stop == 1, Ordering::Release);

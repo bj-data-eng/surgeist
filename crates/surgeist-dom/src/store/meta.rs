@@ -493,7 +493,7 @@ mod tests {
         let before = dom.snapshot();
         let mut edit = DomBatch::new();
         edit.insert_before(meta, root, None);
-        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096);
+        let limits = crate::DomSourceLimits::new(bytes, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(edit, limits, &cancel) else {
             return None;
         };
@@ -535,6 +535,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
         let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
@@ -545,6 +546,7 @@ mod tests {
             64,
             4096,
             4096,
+            1,
         ));
     }
     fn language_draft() -> (Draft, Key, Key) {

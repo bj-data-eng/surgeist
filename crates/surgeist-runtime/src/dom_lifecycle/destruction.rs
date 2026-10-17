@@ -1434,6 +1434,11 @@ mod completion_retention_tests {
             Dom::new(DomLimits::new(256, 1_000_000, 512, 512, 512, 32, 4_000_000).unwrap())
                 .unwrap(),
             DomSessionLimits {
+                source_events: crate::DomSourceEventRuntimeLimits {
+                    jobs: 0,
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 style: DomStyleRuntimeLimits {
                     roots: 8,
                     completions: 32,
@@ -1486,7 +1491,7 @@ mod completion_retention_tests {
                 .apply(
                     &mut session.dom(),
                     edit,
-                    DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096),
+                    DomSourceLimits::new(32_000_000, 1_000_000, 20_000_000, 256, 4096, 4096, 1),
                     &mut DomSourceServices {
                         style_policy: &mut |_| None,
                         url: None,

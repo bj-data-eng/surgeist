@@ -723,6 +723,7 @@ mod source_tests {
             64,
             4096,
             4096,
+            1,
         ));
         let base = draft.source_storage_bytes(cancel).unwrap() + draft.source_other_bytes;
         let base_units = draft.source_storage_units(cancel).unwrap() + draft.source_other_units;
@@ -733,6 +734,7 @@ mod source_tests {
             64,
             4096,
             4096,
+            1,
         ));
         draft
     }
@@ -1087,7 +1089,7 @@ mod source_tests {
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.set_input_value(input, "rgb(255 0 0 / .5)");
-        let limits = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096);
+        let limits = DomSourceLimits::new(bytes, 10_000_000, 100_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };

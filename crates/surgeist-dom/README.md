@@ -902,9 +902,10 @@ failed later segment and is not reissued. Cancellation preserves an already
 published phase and its remaining cleanup obligations.
 
 `DomSourceLimits` bounds represented live bytes, UTF-16 backing capacity,
-cumulative work, phase publications, output records and published native
-identities. Storage includes simultaneous private candidates, checkpoints,
-temporary banks and retained outputs. Shared immutable payloads are charged per
+cumulative work, phase publications, output records, published native
+identities and simultaneously outstanding nested operations. Storage includes
+simultaneous private candidates, checkpoints, temporary banks and retained outputs.
+Shared immutable payloads are charged per
 retained occurrence; allocator metadata and Arc control blocks are excluded.
 Growth admits requested replacement storage while the old bank is live and
 checks actual capacity afterwards. These are representation limits, not a
@@ -951,8 +952,48 @@ while adoption preserves the existing value. Ordinary `open` attribute and tree
 hooks consume HTML's rules against the actual closed Document environment and
 canonical Document lists. Their admitted transitions preserve null watcher,
 tracker and request-close state and false modal state. Reached unsupported
-processing refuses atomically. Positive show/close, focus, watchers and hosted
-top-layer operations require their eventful adapters.
+processing refuses atomically.
+
+`DomSourceEdit::show_dialog` starts the shared HTML Show cursor and can expose
+its actual cancelable beforetoggle request. A bound event executor acknowledges
+only a completed dispatch. Its scoped permission permits callback edits and
+nested Source operations; after dispatch the original cursor resumes against
+fresh canonical state, preserving those edits. The initial event observation
+has no unpublished Draft and does not mark the snapshot incomplete. Dropping
+its lease retains the exposed request even before the first tree publication.
+Each outstanding ancestor constrains real nested work and retained storage.
+Publication, identity and output counters remain owned by each original
+operation; callback edits preserve its reserved closing revision without
+pretending that it published those edits.
+If a pending child exhausts an observing ancestor's allowance, retain that
+ancestor's issued event request and use `raise_source_event_limits` to raise
+its policy monotonically. This does not execute the parent or replace the top
+child. Spent work and accepted receipts survive the update; ordinary top resume
+still performs full admission for policy reductions and preserves the required
+closing phase. Canonical `set_limits` refuses while an event observation or its
+retained ancestor is outstanding.
+Task transfers, notification completion and other atomic controllers whose
+outputs have not joined this admission retain their strict Source-idle guard.
+They preserve pending obligations for later service.
+
+Canceling beforetoggle is a normal HTML return, distinct from canceling the
+Source operation. If the callback retires the receiver, genuine event
+cancellation completes without reading it again. An uncanceled post-event read
+instead reports the original receiver's retirement. QueueToggle and later
+unavailable services preserve the actual Show cursor; this bounded entry does
+not complete positive Show, Close, modal, focus, watcher or popover processing.
+
+A started dispatcher registers its actual Node invocation targets through
+`register_dispatch_custody`. Configure aggregate
+`DomDispatchCustodyLimits` with `DomLimits::with_dispatch_custody`; the default
+has zero capacity. Custody retains exact target generations and records their
+actual staged node-document only when retirement successfully publishes,
+including adoption and destruction in one edit. It retains no mutable node or
+tree. Live targets use their current association; a retirement stamp grants
+neither mutation nor current Document/Global execution authority. Dropping the
+affine scope releases its rows, while the bounded weak index charges remaining
+headers until reclamation. This mechanism is independent of snapshots and
+change history and preserves the standalone owner's `Send` contract.
 
 Native HTML Template owns a separate real DocumentFragment. Its checked
 `DomNode::as_template()` view exposes contents and the HTML-owned known-null native

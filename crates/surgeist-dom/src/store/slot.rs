@@ -499,7 +499,7 @@ mod tests {
             &dom,
             batch.owner,
             &batch.commands,
-            crate::DomSourceLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128),
+            crate::DomSourceLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128, 1),
             &cancel,
         )
         .unwrap();
@@ -528,7 +528,7 @@ mod tests {
     fn source_slot_resolution_cannot_run_past_its_spent_work_allowance() {
         let (dom, s, x) = fixture();
         let cancel = AtomicBool::new(false);
-        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128, 1);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,
@@ -556,7 +556,7 @@ mod tests {
     fn source_slot_attribute_hook_admits_work_before_reading_its_name() {
         let (dom, s, _) = fixture();
         let cancel = AtomicBool::new(false);
-        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128);
+        let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128, 1);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,
@@ -588,7 +588,8 @@ mod tests {
         let prepared = setup.finish(&dom, &cancel).unwrap();
         dom.publish(prepared, &cancel).unwrap();
         assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
-        let limits = |bytes| crate::DomSourceLimits::new(bytes, 100_000, 1_000_000, 32, 128, 128);
+        let limits =
+            |bytes| crate::DomSourceLimits::new(bytes, 100_000, 1_000_000, 32, 128, 128, 1);
         let batch = DomBatch::new();
         let (measured, _, _) = Draft::new_source(
             &dom,

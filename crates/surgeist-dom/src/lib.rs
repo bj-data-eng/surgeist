@@ -116,6 +116,7 @@ mod button;
 mod control;
 mod details;
 mod dialog;
+mod dispatch;
 mod document;
 mod element;
 mod fieldset;
@@ -156,6 +157,7 @@ pub use details::{
     DomDetailsToggleIntention, DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
 };
 pub use dialog::DomDialog;
+pub use dispatch::{DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits};
 pub use document::DomNativeInputPlatform;
 pub use document::{
     DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentMetadata,

@@ -1925,7 +1925,7 @@ mod tests {
         let mut draft = Draft::new_hosted_source(
             &f.dom,
             DomBatch::new().owner,
-            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0),
+            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
             op,
             &cancel,
@@ -1941,6 +1941,7 @@ mod tests {
             0,
             0,
             0,
+            1,
         ));
         let before_work = work.spent.load(Ordering::Relaxed);
         {
@@ -1962,6 +1963,7 @@ mod tests {
             0,
             0,
             0,
+            1,
         ));
         let fresh = source::formation::Formation::new(&draft, &cancel)
             .unwrap()
@@ -2396,7 +2398,7 @@ mod tests {
         let draft = Draft::new_hosted_source(
             &f.dom,
             DomBatch::new().owner,
-            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0),
+            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
             op,
             &cancel,
@@ -2457,7 +2459,7 @@ mod tests {
         let mut draft = Draft::new_hosted_source(
             &f.dom,
             DomBatch::new().owner,
-            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0),
+            DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
             op,
             &cancel,
@@ -2465,7 +2467,9 @@ mod tests {
         .unwrap();
         let base_units = draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
         let limit = base_units + 71;
-        draft.source_limits = Some(DomSourceLimits::new(16_000_000, limit, 10_000_000, 0, 0, 0));
+        draft.source_limits = Some(DomSourceLimits::new(
+            16_000_000, limit, 10_000_000, 0, 0, 0, 1,
+        ));
         let live = draft.source_formation_bytes.clone();
         let live_units = draft.source_temporary_units.clone();
         let original_live = live.load(Ordering::Relaxed);

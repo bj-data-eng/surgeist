@@ -151,6 +151,7 @@ impl Draft {
                 return Err(DomError::SourceWorkLimit { limit: limits.work });
             }
             self.source_work.store(next, Ordering::Relaxed);
+            crate::source::event::step_ancestors(self.source_ancestors.as_ref(), cancel)?;
         }
         Ok(())
     }

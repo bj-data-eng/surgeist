@@ -20,6 +20,11 @@ fn cancel() -> AtomicBool {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            jobs: 0,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         style: DomStyleRuntimeLimits {
             roots: 4,
             completions: 32,
