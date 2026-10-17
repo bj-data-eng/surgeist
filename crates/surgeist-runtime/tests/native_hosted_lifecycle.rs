@@ -1876,3 +1876,388 @@ fn pump_destruction(
     }
     Ok(last)
 }
+
+fn plain_adoption_subtree(session: &mut DomSession, document: DocumentId) -> (NodeId, NodeId) {
+    let parent = body(&session.snapshot(), document);
+    let mut batch = DomBatch::new();
+    let element = batch.create_element_ns(document, Namespace::html(), "div");
+    let text = batch.create_text(document, "preserved adoption text");
+    batch.insert_before(&text, &element, None);
+    batch.insert_before(&element, parent, None);
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    (
+        commit.created(&element).unwrap().unwrap(),
+        commit.created(&text).unwrap().unwrap(),
+    )
+}
+
+fn teardown_adoption_destination(session: &mut DomSession, top: DomHostedTopLevel) {
+    let mut hosted = session.hosted_execution();
+    let mut dom = session.dom();
+    let queued = hosted
+        .destroy_top_level(&mut dom, top.navigable(), &cancel())
+        .unwrap();
+    assert!(matches!(
+        pump_destruction(&mut hosted, &mut dom, queued).unwrap(),
+        DomHostedTaskProgress::Complete { operation } if operation == queued.operation()
+    ));
+}
+
+fn assert_retired_adoption_destination(
+    session: &mut DomSession,
+    top: DomHostedTopLevel,
+    binding: DomRegistryBinding,
+) {
+    let snapshot = session.snapshot();
+    let document = snapshot.document(top.document()).unwrap();
+    assert!(!document.is_fully_active().unwrap());
+    assert!(
+        document
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable()
+    );
+    assert_eq!(document.metadata().custom_element_registry(), binding);
+    let DomRegistryBinding::Registry(id) = binding else {
+        panic!("the genuine hosted destination retains its nonnull registry");
+    };
+    let registry = snapshot.registry(id).unwrap();
+    assert_eq!(
+        registry.scope(),
+        surgeist_html_semantics::HtmlRegistryScope::Global
+    );
+    assert_eq!(registry.definition_count(), 0);
+    assert!(!registry.is_scoped());
+    assert_eq!(
+        registry
+            .lookup_definition(&Namespace::html(), &"div".into(), None)
+            .unwrap(),
+        None
+    );
+    assert!(matches!(
+        session
+            .hosted_execution()
+            .settings(&session.dom(), top.global(), &cancel()),
+        Err(DomHostedRuntimeError::Dom(DomHostedError::StaleIdentity))
+    ));
+}
+
+fn assert_adopted_plain_subtree(
+    snapshot: &DomSnapshot,
+    target: NodeId,
+    text: NodeId,
+    destination: DocumentId,
+    binding: DomRegistryBinding,
+) {
+    let element = snapshot.node(target).unwrap();
+    assert_eq!(element.owner_document(), Some(destination));
+    assert_eq!(element.parent(), None);
+    assert_eq!(element.children(), &[text]);
+    let state = element.as_element().unwrap();
+    assert_eq!(state.name().namespace(), &Namespace::html());
+    assert_eq!(state.name().local_name(), &DocumentString::from("div"));
+    assert_eq!(state.custom_element_registry(), binding);
+    let child = snapshot.node(text).unwrap();
+    assert_eq!(child.owner_document(), Some(destination));
+    assert_eq!(child.parent(), Some(target));
+    assert_eq!(
+        child.data(),
+        Some(&DocumentString::from("preserved adoption text"))
+    );
+}
+
+fn assert_plain_adoption_unchanged(
+    before: &DomSnapshot,
+    after: &DomSnapshot,
+    target: NodeId,
+    text: NodeId,
+) {
+    assert_eq!(after.stamp(), before.stamp());
+    for id in [target, text] {
+        let old = before.node(id).unwrap();
+        let current = after.node(id).unwrap();
+        assert_eq!(current.owner_document(), old.owner_document());
+        assert_eq!(current.parent(), old.parent());
+        assert_eq!(current.children(), old.children());
+        assert_eq!(current.kind(), old.kind());
+    }
+    let parent = before.node(target).unwrap().parent().unwrap();
+    assert_eq!(
+        after.node(parent).unwrap().children(),
+        before.node(parent).unwrap().children()
+    );
+}
+
+#[test]
+fn canonical_adoption_after_hosted_teardown_preserves_identity_and_actual_registry() {
+    let mut session = session();
+    let original = create(&mut session);
+    let destination = create(&mut session);
+    let (target, text) = plain_adoption_subtree(&mut session, original.document());
+    let binding = session
+        .snapshot()
+        .document(destination.document())
+        .unwrap()
+        .metadata()
+        .custom_element_registry();
+    teardown_adoption_destination(&mut session, destination);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+    let before = session.snapshot();
+    let usage = session.dom().usage();
+    let old_parent = before.node(target).unwrap().parent().unwrap();
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    session.dom().apply(batch, &cancel()).expect(
+        "canonical adoption into a surviving Document needs its actual registry, not live execution authority",
+    );
+    let after = session.snapshot();
+    assert_adopted_plain_subtree(&after, target, text, destination.document(), binding);
+    assert!(!after.node(old_parent).unwrap().children().contains(&target));
+    assert_eq!(
+        before.node(target).unwrap().owner_document(),
+        Some(original.document())
+    );
+    assert_eq!(before.node(target).unwrap().parent(), Some(old_parent));
+    assert_eq!(session.dom().usage().managed_nodes(), usage.managed_nodes());
+    assert_eq!(
+        session.dom().usage().string_code_units(),
+        usage.string_code_units()
+    );
+    assert_retired_adoption_destination(&mut session, destination, binding);
+    assert!(
+        session
+            .snapshot()
+            .document(original.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+}
+
+#[test]
+fn canonical_adoption_late_batch_error_after_hosted_teardown_rolls_back_registry_and_tree() {
+    let mut session = session();
+    let original = create(&mut session);
+    let destination = create(&mut session);
+    let (target, text) = plain_adoption_subtree(&mut session, original.document());
+    let binding = session
+        .snapshot()
+        .document(destination.document())
+        .unwrap()
+        .metadata()
+        .custom_element_registry();
+    teardown_adoption_destination(&mut session, destination);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+    let before = session.snapshot();
+    let usage = session.dom().usage();
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    // This fails only after the preceding adoption and registry lookup staged.
+    batch.destroy(destination.document());
+    assert_eq!(
+        session.dom().apply(batch, &cancel()).unwrap_err(),
+        DomError::InvalidDestruction
+    );
+    assert_plain_adoption_unchanged(&before, &session.snapshot(), target, text);
+    assert_eq!(session.dom().usage(), usage);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+}
+
+#[test]
+fn canonical_adoption_cancellation_after_hosted_teardown_publishes_nothing() {
+    let mut session = session();
+    let original = create(&mut session);
+    let destination = create(&mut session);
+    let (target, text) = plain_adoption_subtree(&mut session, original.document());
+    let binding = session
+        .snapshot()
+        .document(destination.document())
+        .unwrap()
+        .metadata()
+        .custom_element_registry();
+    teardown_adoption_destination(&mut session, destination);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+    let before = session.snapshot();
+    let usage = session.dom().usage();
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    assert_eq!(
+        session
+            .dom()
+            .apply(batch, &AtomicBool::new(true))
+            .unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_plain_adoption_unchanged(&before, &session.snapshot(), target, text);
+    assert_eq!(session.dom().usage(), usage);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+}
+
+#[test]
+fn canonical_adoption_active_and_never_hosted_destinations_remain_controls() {
+    let mut session = session();
+    let original = create(&mut session);
+    let active = create(&mut session);
+    let closed = {
+        let mut batch = DomBatch::new();
+        let document = batch.create_html_document(original.document(), None);
+        session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .document(&document)
+            .unwrap()
+    };
+    for destination in [active.document(), closed] {
+        let (target, text) = plain_adoption_subtree(&mut session, original.document());
+        let binding = session
+            .snapshot()
+            .document(destination)
+            .unwrap()
+            .metadata()
+            .custom_element_registry();
+        let mut batch = DomBatch::new();
+        batch.adopt(target, destination);
+        session.dom().apply(batch, &cancel()).unwrap();
+        assert_adopted_plain_subtree(&session.snapshot(), target, text, destination, binding);
+    }
+    let snapshot = session.snapshot();
+    assert!(
+        snapshot
+            .document(active.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        !snapshot
+            .document(closed)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        snapshot
+            .document(closed)
+            .unwrap()
+            .metadata()
+            .custom_element_registry(),
+        DomRegistryBinding::Null
+    );
+}
+
+#[test]
+fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_real_sheet() {
+    use surgeist_cssom::CssomStore;
+
+    let mut session = session();
+    let destination = create(&mut session);
+    let binding = session
+        .snapshot()
+        .document(destination.document())
+        .unwrap()
+        .metadata()
+        .custom_element_registry();
+    // Use the existing supported native Style environment, with a real CSSOM
+    // owner. Hosted Style base/CSP services are a separate contribution.
+    let (document, parent, style, text) = {
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let parent = batch.create_element_ns(&document, Namespace::html(), "div");
+        batch.insert_before(&parent, &document, None);
+        let style = batch.create_element_ns(&document, Namespace::html(), "style");
+        let text = batch.create_text(&document, "p { color: red }");
+        batch.insert_before(&text, &style, None);
+        let commit = session.dom().apply(batch, &cancel()).unwrap();
+        (
+            commit.document(&document).unwrap(),
+            commit.created(&parent).unwrap().unwrap(),
+            commit.created(&style).unwrap().unwrap(),
+            commit.created(&text).unwrap().unwrap(),
+        )
+    };
+    let mut styles = session.style_execution();
+    let mut source = session.source_execution();
+    let mut root = Some(DomStyleCssomRoot::new(
+        document.node(),
+        CssomStore::new(Default::default(), Default::default()).unwrap(),
+    ));
+    styles
+        .bind_root(
+            &session.dom(),
+            "adoption-refusal-root".into(),
+            &mut root,
+            &cancel(),
+        )
+        .unwrap();
+    assert!(root.is_none());
+    let mut policy =
+        |source: &DomStyleSource| Some(DomStyleInlineCspObservation::complete_empty(source, 1));
+    let progress = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::insert_before(style, parent, None),
+            DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
+            &mut DomSourceServices {
+                style_policy: &mut policy,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
+    teardown_adoption_destination(&mut session, destination);
+    assert_retired_adoption_destination(&mut session, destination, binding);
+    let before = session.snapshot();
+    let before_style = before.node(style).unwrap().as_style().unwrap();
+    assert!(before.node(style).unwrap().is_connected());
+    assert!(!before_style.state().creation_state().on_parser_stack());
+    assert_eq!(before_style.parser_document(), None);
+    let associated = before_style.sheet().unwrap().unwrap().clone();
+    let before_cssom = styles.snapshot(document.node()).unwrap().unwrap();
+    assert_eq!(before_cssom.sheets(), std::slice::from_ref(associated.id()));
+    assert_eq!(before_cssom.sheet_rules(associated.id()).unwrap().len(), 1);
+    let before_owner = before_cssom
+        .sheet(associated.id())
+        .unwrap()
+        .inputs()
+        .owner
+        .clone();
+    assert!(before_owner.is_some());
+    let mut batch = DomBatch::new();
+    batch.adopt(style, destination.document());
+    assert_eq!(
+        session.dom().apply(batch, &cancel()).unwrap_err(),
+        DomError::StyleCompositionRequired(
+            surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet
+        )
+    );
+    let after = session.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.node(style).unwrap().parent(), Some(parent));
+    assert_eq!(after.node(style).unwrap().owner_document(), Some(document));
+    assert_eq!(after.node(style).unwrap().children(), &[text]);
+    assert_eq!(
+        after.node(parent).unwrap().children(),
+        before.node(parent).unwrap().children()
+    );
+    assert_eq!(
+        after
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap(),
+        Some(&associated)
+    );
+    let after_cssom = styles.snapshot(document.node()).unwrap().unwrap();
+    assert_eq!(after_cssom.revision(), before_cssom.revision());
+    assert_eq!(after_cssom.sheet_list(), before_cssom.sheet_list());
+    assert_eq!(after_cssom.sheets(), before_cssom.sheets());
+    assert_eq!(
+        after_cssom.sheet(associated.id()).unwrap().inputs().owner,
+        before_owner
+    );
+    assert_retired_adoption_destination(&mut session, destination, binding);
+}
