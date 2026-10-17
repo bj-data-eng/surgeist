@@ -594,3 +594,59 @@ fn retired_history_does_not_supply_the_independent_never_hosted_svg_script_proof
         Some(fixture.closed)
     );
 }
+
+#[test]
+fn actual_active_and_retired_registries_reject_cross_owner_snapshot_lookup() {
+    let active = HostedFixture::active();
+    let retired = HostedFixture::retired();
+    let active_before = active.session.snapshot();
+    let retired_before = retired.session.snapshot();
+    assert_ne!(active_before.owner(), retired_before.owner());
+    let DomRegistryBinding::Registry(active_registry) = active.registry else {
+        panic!("the actual active Global established a non-null registry");
+    };
+    let DomRegistryBinding::Registry(retired_registry) = retired.registry else {
+        panic!("actual teardown retains the original non-null registry");
+    };
+    for (snapshot, id) in [
+        (&active_before, active_registry),
+        (&retired_before, retired_registry),
+    ] {
+        let registry = snapshot.registry(id).unwrap();
+        assert_eq!(registry.id(), id);
+        assert_eq!(registry.definition_count(), 0);
+        assert!(
+            registry
+                .lookup_definition(&Namespace::html(), &"div".into(), None)
+                .unwrap()
+                .is_none()
+        );
+    }
+    // Both IDs are real and readable in their original stores. Canonical owner
+    // qualification rejects crossing them independently of execution lifetime.
+    assert_eq!(
+        active_before.registry(retired_registry).unwrap_err(),
+        DomError::ForeignOwner
+    );
+    assert_eq!(
+        retired_before.registry(active_registry).unwrap_err(),
+        DomError::ForeignOwner
+    );
+    for (fixture, before, fully_active) in [
+        (&active, &active_before, true),
+        (&retired, &retired_before, false),
+    ] {
+        let current = fixture.session.snapshot();
+        assert_eq!(current.stamp(), before.stamp());
+        let document = current.document(fixture.top.document()).unwrap();
+        assert_eq!(
+            document.metadata().custom_element_registry(),
+            fixture.registry
+        );
+        assert_eq!(document.is_fully_active().unwrap(), fully_active);
+        let DomRegistryBinding::Registry(id) = fixture.registry else {
+            unreachable!("both real bindings were checked above");
+        };
+        assert_eq!(current.registry(id).unwrap().definition_count(), 0);
+    }
+}
