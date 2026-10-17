@@ -1282,3 +1282,212 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
 
 #[path = "native_focus_permissions_policy/autofocus.rs"]
 mod autofocus;
+
+#[test]
+fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_delegate_traversals() {
+    use DomPermissionsPolicyValue::Enabled;
+    let (mut session, top) = headless_top();
+    let document = top.document();
+    let subject = dialog(&mut session, document);
+    let inserted = session.snapshot();
+    let expected_policy = DomInitialPermissionsPolicy::new(Enabled, Enabled);
+    assert_eq!(policy(&inserted, document), expected_policy);
+    assert!(
+        inserted
+            .document(document)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert_eq!(
+        inserted.relevant_global(subject).unwrap(),
+        Some(top.global())
+    );
+    let node = inserted.node(subject).unwrap();
+    assert!(node.children().is_empty());
+    assert_eq!(node.hosted_shadow_root(), None);
+    assert_eq!(node.attribute(&"autofocus".into()), None);
+    assert_eq!(node.attribute(&"inert".into()), None);
+    assert_eq!(
+        node.as_element()
+            .unwrap()
+            .common_state()
+            .html()
+            .unwrap()
+            .previously_focused_element(),
+        None
+    );
+    // Set only inert after insertion. No autofocus insertion enrollment, focus
+    // movement, or external focusability observation supplies the null delegate.
+    let changed = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(subject, "inert", ""),
+            source_limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(changed, DomSourceDriveProgress::Complete(_)));
+    let ready = session.snapshot();
+    let node = ready.node(subject).unwrap();
+    assert!(node.children().is_empty());
+    assert_eq!(node.hosted_shadow_root(), None);
+    assert_eq!(node.attribute(&"inert".into()), Some(&"".into()));
+    assert_eq!(node.attribute(&"autofocus".into()), None);
+    assert_eq!(node.attribute(&"open".into()), None);
+    assert!(!node.as_dialog().unwrap().is_modal());
+    let initial_autofocus = ready.document(document).unwrap().autofocus().unwrap();
+    assert!(initial_autofocus.candidates().is_empty());
+    assert!(!initial_autofocus.processed());
+    assert!(
+        ready
+            .document(document)
+            .unwrap()
+            .top_layer()
+            .unwrap()
+            .raw_members()
+            .is_empty()
+    );
+    assert_eq!(
+        session
+            .element_task_execution()
+            .pending_total_tasks()
+            .unwrap(),
+        0
+    );
+    let mut calls = Vec::new();
+    // HTML877d60113–60159 runs the autofocus-delegate traversal, then the
+    // ordinary focus-delegate traversal. Both visit this actual empty ordinary
+    // descendant domain and return null. HTML877d46762–46779 then selects the
+    // subject; its own inert makes called focusing a no-change path, and its
+    // actual same-origin top Document permits the existing autofocus tail.
+    let progress = drive(
+        &mut session,
+        DomSourceEdit::show_modal_dialog(subject),
+        true,
+        &mut calls,
+    );
+    let prefix = session.snapshot();
+    let reached = prefix.node(subject).unwrap();
+    assert_eq!(reached.attribute(&"open".into()), Some(&"".into()));
+    let reached_dialog = reached.as_dialog().unwrap();
+    assert!(reached_dialog.is_modal());
+    assert_eq!(
+        reached_dialog.close_watcher().unwrap().global(),
+        top.global()
+    );
+    assert_eq!(reached_dialog.close_watcher().unwrap().subject(), subject);
+    assert_eq!(
+        reached
+            .as_element()
+            .unwrap()
+            .common_state()
+            .html()
+            .unwrap()
+            .previously_focused_element(),
+        None
+    );
+    let done = match progress {
+        DomSourceDriveProgress::Complete(done) => done,
+        other => {
+            panic!("empty delegate traversals must let the real inert Dialog complete: {other:?}")
+        }
+    };
+    assert!(!done.cancellation_requested());
+    let shown = session.snapshot();
+    assert_eq!(calls, [true]);
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(shown.incomplete_source_operation(), None);
+    assert_eq!(done.commit().changes().to(), shown.stamp());
+    assert_eq!(policy(&shown, document), expected_policy);
+    assert_eq!(
+        shown
+            .hosted_navigable(top.navigable())
+            .unwrap()
+            .active_document(),
+        Some(document)
+    );
+    let node = shown.node(subject).unwrap();
+    assert_eq!(node.owner_document(), Some(document));
+    assert!(node.children().is_empty());
+    assert_eq!(node.hosted_shadow_root(), None);
+    assert_eq!(node.attribute(&"autofocus".into()), None);
+    assert_eq!(node.attribute(&"inert".into()), Some(&"".into()));
+    assert_eq!(node.attribute(&"open".into()), Some(&"".into()));
+    let dialog = node.as_dialog().unwrap();
+    assert!(dialog.is_modal());
+    let watcher = dialog.close_watcher().expect("actual standard watcher");
+    assert_eq!(watcher.global(), top.global());
+    assert_eq!(watcher.subject(), subject);
+    assert_eq!(
+        node.as_element()
+            .unwrap()
+            .common_state()
+            .html()
+            .unwrap()
+            .previously_focused_element(),
+        None
+    );
+    let layer = shown.document(document).unwrap().top_layer().unwrap();
+    assert_eq!(layer.raw_members(), [subject]);
+    assert!(layer.pending_removals().is_empty());
+    assert_eq!(
+        layer.ua_rules().collect::<Vec<_>>(),
+        [
+            DomTopLayerUaRule::UniversalOverlayNone,
+            DomTopLayerUaRule::ElementOverlayAuto(subject),
+        ]
+    );
+    let autofocus = shown.document(document).unwrap().autofocus().unwrap();
+    assert!(autofocus.candidates().is_empty());
+    assert!(autofocus.processed());
+    assert_eq!(
+        document_inert(&shown, document),
+        HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
+    );
+    let tasks = session.element_task_execution();
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    let task = tasks
+        .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
+        .unwrap()
+        .unwrap()
+        .dialog_toggle()
+        .unwrap();
+    assert_eq!(task.id().target(), subject);
+    assert_eq!(task.old_state(), surgeist_html::HtmlDialogState::Closed);
+    assert_eq!(task.new_state(), surgeist_html::HtmlDialogState::Open);
+    assert_eq!(task.source(), None);
+    assert_eq!(task.queue_association().unwrap().document(), document);
+    assert_eq!(task.queue_association().unwrap().global(), top.global());
+    assert_eq!(dialog.toggle_task_tracker().unwrap().task(), task.id());
+    // Historical complete snapshots retain the pre-method tree and history.
+    assert_eq!(
+        inserted.node(subject).unwrap().attribute(&"inert".into()),
+        None
+    );
+    assert_eq!(ready.node(subject).unwrap().attribute(&"open".into()), None);
+    assert_eq!(
+        ready.node(subject).unwrap().attribute(&"autofocus".into()),
+        None
+    );
+    assert!(!ready.node(subject).unwrap().as_dialog().unwrap().is_modal());
+    assert!(
+        ready
+            .document(document)
+            .unwrap()
+            .top_layer()
+            .unwrap()
+            .raw_members()
+            .is_empty()
+    );
+    let historical_autofocus = ready.document(document).unwrap().autofocus().unwrap();
+    assert!(historical_autofocus.candidates().is_empty());
+    assert!(!historical_autofocus.processed());
+    assert_eq!(policy(&ready, document), expected_policy);
+}
