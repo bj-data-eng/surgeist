@@ -2274,9 +2274,11 @@ version = "0.1.0"
 name = "surgeist-dom"
 version = "0.1.0"
 dependencies = [
+ "surgeist-color",
  "surgeist-css",
  "surgeist-cssom",
  "surgeist-html",
+ "surgeist-html-parser",
  "surgeist-html-semantics",
 ]
 
@@ -2327,7 +2329,12 @@ dependencies = [
 name = "surgeist-runtime"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
+ "surgeist-css",
+ "surgeist-cssom",
  "surgeist-dom",
+ "surgeist-html",
+ "surgeist-html-semantics",
 ]
 
 [[package]]

@@ -92,6 +92,10 @@ pub(in crate::store) struct Operation {
     custody_bytes: usize,
     canonical_aux_bytes: usize,
 }
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the sole caller-accounted Source receipt inline; boxing adds allocation and failure during published continuation"
+)]
 enum Receipt {
     CloseWatcher {
         publication: crate::DomCloseWatcherRequestPublication,
@@ -593,7 +597,13 @@ impl Operation {
         }
         let mut base = 0usize;
         let mut encoding = 0usize;
+        let mut meta_color_scheme = 0usize;
         for node in draft.existing.iter().chain(&draft.created).flatten() {
+            if let DomNodeKind::Document(metadata) = &node.kind {
+                meta_color_scheme = meta_color_scheme
+                    .checked_add(metadata.meta_color_scheme_bytes())
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
             base = base
                 .checked_add(
                     node.base_document
@@ -618,6 +628,11 @@ impl Operation {
             encoding,
             limits.encoding_url_observations,
             DomResource::EncodingUrlObservations,
+        )?;
+        admit(
+            meta_color_scheme,
+            limits.meta_color_scheme_bytes,
+            DomResource::MetaColorSchemeRetainedBytes,
         )?;
         admit(
             draft

@@ -8,6 +8,8 @@ fn limits() -> DomLimits {
     DomLimits::new(32, 4096, 64, 32, 16, 8, 262_144)
         .unwrap()
         .with_meta_processing_work(100_000_000)
+        .with_meta_theme_color_scratch_bytes(2 * 1024 * 1024)
+        .unwrap()
 }
 
 fn assert_media_matches(media: &str) {

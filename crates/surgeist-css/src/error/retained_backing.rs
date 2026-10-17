@@ -142,6 +142,17 @@ impl Error {
     }
 }
 
+impl ErrorKind {
+    pub(crate) fn retained_backing_bytes_with<E>(
+        &self,
+        admit: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, CssRetainedPayloadError<E>> {
+        let mut measure = DiagnosticBacking { admit, bytes: 0 };
+        measure.kind(self)?;
+        Ok(measure.bytes)
+    }
+}
+
 #[cfg(test)]
 #[path = "retained_backing_tests.rs"]
 mod tests;

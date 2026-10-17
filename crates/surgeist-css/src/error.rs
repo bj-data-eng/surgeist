@@ -241,6 +241,14 @@ pub struct CssTokenSummary {
 }
 
 impl CssTokenSummary {
+    fn clone_controlled(&self, control: &crate::utf16_value::Control<'_>) -> Result<Self, ()> {
+        control.step()?;
+        Ok(Self {
+            kind: self.kind,
+            authored: control.string(&self.authored)?,
+        })
+    }
+
     #[must_use]
     /// Returns the semantic category of the encountered authored token.
     pub const fn kind(&self) -> CssTokenKind {
@@ -253,11 +261,11 @@ impl CssTokenSummary {
         &self.authored
     }
 
-    fn from_component(component: &crate::CssComponentValue) -> Self {
+    fn kind_from_component(component: &crate::CssComponentValue) -> CssTokenKind {
         use crate::{
             CssBlockKind as Block, CssComponentValueRef as Component, CssValueTokenRef as Value,
         };
-        let kind = match component.view() {
+        match component.view() {
             Component::Token(token) => match token {
                 Value::Ident(_) => CssTokenKind::Ident,
                 Value::AtKeyword(_) => CssTokenKind::AtKeyword,
@@ -289,7 +297,35 @@ impl CssTokenSummary {
                 Block::CurlyBracket => CssTokenKind::CurlyBracketBlock,
             },
             Component::Comment(_) => CssTokenKind::Comment,
+        }
+    }
+    fn from_checked_controlled(
+        component: &crate::CssComponentValue,
+        closing: bool,
+        authored: &str,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> Result<Self, ()> {
+        control.step()?;
+        let kind = if closing {
+            match component.view() {
+                crate::CssComponentValueRef::Function(_) => CssTokenKind::CloseParenthesis,
+                crate::CssComponentValueRef::Block(block) => match block.kind() {
+                    crate::CssBlockKind::Parenthesis => CssTokenKind::CloseParenthesis,
+                    crate::CssBlockKind::SquareBracket => CssTokenKind::CloseSquareBracket,
+                    crate::CssBlockKind::CurlyBracket => CssTokenKind::CloseCurlyBracket,
+                },
+                _ => unreachable!("actual checked closing component"),
+            }
+        } else {
+            Self::kind_from_component(component)
         };
+        Ok(Self {
+            kind,
+            authored: control.string(authored)?,
+        })
+    }
+    fn from_component(component: &crate::CssComponentValue) -> Self {
+        let kind = Self::kind_from_component(component);
         let (authored, _) = component
             .structural_lexeme(false)
             .expect("a component owns its leaf or opening lexeme");

@@ -2,6 +2,10 @@
 use super::*;
 use crate::DomMetaError as Failure;
 use surgeist_html::{HtmlMetaPragmaState as Pragma, KnownHtmlAttribute as Attr};
+mod color;
+mod scheme;
+#[cfg(test)]
+mod tests_css;
 
 impl Draft {
     pub(super) fn meta_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -273,10 +277,11 @@ impl Draft {
         Ok(())
     }
     fn meta_candidates(
-        &self,
+        &mut self,
         document: Key,
         theme: bool,
         scheme: bool,
+        limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         // These are two source algorithms, not an interleaved candidate query.
@@ -291,25 +296,113 @@ impl Draft {
                 "color-scheme"
             };
             let mut next = Some(document);
+            let mut selected_theme = None;
+            let mut selected_scheme = None;
             while let Some(key) = next {
                 self.meta_step(cancel)?;
                 if self.is_meta(key)?
                     && let Some(name) = self.meta_attribute(key, Attr::Name, cancel)?
                     && self.meta_ascii(name, expected, true, cancel)?
-                    && self.meta_attribute(key, Attr::Content, cancel)?.is_some()
+                    && let Some(content) = self.meta_attribute(key, Attr::Content, cancel)?
                 {
-                    return Err(DomError::Meta(if theme_pass {
-                        Failure::ThemeColorUnsupported
+                    if theme_pass {
+                        if let Some(media) = self.meta_attribute(key, Attr::Media, cancel)? {
+                            // HTML's media foundation defines empty and solely
+                            // ASCII-whitespace input to match without facts.
+                            // Any other input still needs its actual matcher.
+                            self.meta_step(cancel)?;
+                            for unit in media.code_units() {
+                                self.meta_step(cancel)?;
+                                if !surgeist_html::bounded::is_ascii_whitespace(*unit) {
+                                    return Err(DomError::Meta(
+                                        Failure::ThemeColorMediaUnavailable,
+                                    ));
+                                }
+                            }
+                        }
+                        if let Some(color) = color::parse(self, content, limits, cancel)? {
+                            selected_theme = Some(color);
+                            break;
+                        }
                     } else {
-                        Failure::ColorSchemeUnsupported
-                    }));
+                        let candidate = scheme::parse(self, document, content, limits, cancel)?;
+                        self.meta_step(cancel)?;
+                        if candidate.selected.report.result().is_ok() {
+                            selected_scheme = Some(candidate);
+                            break;
+                        }
+                    }
                 }
                 next = crate::slot::next_admitted(self, document, key, &mut || {
                     self.meta_step(cancel)
                 })?;
             }
             if theme_pass {
-                self.document_metadata(document)?.apply_no_meta_theme();
+                // A fixed actual Color comparison has no parse/source identity.
+                for _ in 0..size_of::<crate::DomMetaThemeColorState>() {
+                    self.meta_step(cancel)?;
+                }
+                self.meta_metadata_mut(document).meta_theme_color =
+                    crate::DomMetaThemeColorState::Known(selected_theme);
+                self.document_metadata(document)?.apply_meta_theme();
+            } else {
+                let old = self
+                    .document_metadata(document)?
+                    .meta_color_scheme
+                    .as_ref()
+                    .and_then(Option::as_ref);
+                let equivalent = match (old, selected_scheme.as_ref()) {
+                    (Some(old), Some(new)) => old
+                        .report
+                        .equivalent_with(&new.selected.report, || self.meta_step(cancel))
+                        .map_err(scheme::payload_error)?,
+                    (None, None) => self
+                        .document_metadata(document)?
+                        .meta_color_scheme
+                        .is_some(),
+                    _ => false,
+                };
+                if !equivalent {
+                    let old_bytes = old.map_or(0, |old| old.bytes);
+                    let new_bytes = selected_scheme.as_ref().map_or(0, |new| new.selected.bytes);
+                    let mut retained = 0usize;
+                    for node in self.existing.iter().chain(&self.created).flatten() {
+                        self.meta_step(cancel)?;
+                        if let DomNodeKind::Document(metadata) = &node.kind {
+                            retained = retained
+                                .checked_add(metadata.meta_color_scheme_bytes())
+                                .ok_or(DomError::RepresentationExhausted)?;
+                        }
+                    }
+                    let retained = retained
+                        .checked_sub(old_bytes)
+                        .and_then(|n| n.checked_add(new_bytes))
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(
+                        retained,
+                        limits.meta_color_scheme_bytes,
+                        DomResource::MetaColorSchemeRetainedBytes,
+                    )?;
+                    let old_units = old.map_or(0, |old| old.units);
+                    let new_units = selected_scheme.as_ref().map_or(0, |new| new.selected.units);
+                    let units = self
+                        .units
+                        .checked_sub(old_units)
+                        .and_then(|units| units.checked_add(new_units))
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(units, limits.units, DomResource::StringCodeUnits)?;
+                    // Move the admitted report into canonical custody before
+                    // its temporary formation debit is released.
+                    if let Some(candidate) = selected_scheme {
+                        self.meta_metadata_mut(document).meta_color_scheme =
+                            Some(Some(candidate.selected));
+                        self.units = units;
+                        drop(candidate.formation);
+                    } else {
+                        self.meta_metadata_mut(document).meta_color_scheme = Some(None);
+                        self.units = units;
+                    }
+                }
             }
         }
         Ok(())
@@ -328,19 +421,19 @@ impl Draft {
         };
         self.meta_pragma(key, document, limits, cancel)?;
         self.meta_referrer(key, cancel)?;
-        self.meta_candidates(document, true, true, cancel)
+        self.meta_candidates(document, true, true, limits, cancel)
     }
     pub(super) fn meta_removed(
-        &self,
+        &mut self,
         key: Key,
         old_document: Option<Key>,
-        _limits: DomLimits,
+        limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if self.is_meta(key)?
             && let Some(document) = old_document
         {
-            self.meta_candidates(document, true, true, cancel)?;
+            self.meta_candidates(document, true, true, limits, cancel)?;
         }
         Ok(())
     }
@@ -348,7 +441,7 @@ impl Draft {
         &mut self,
         key: Key,
         name: &crate::QualifiedName,
-        _limits: DomLimits,
+        limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if !self.is_meta(key)? || name.namespace().uri().is_some() {
@@ -361,7 +454,13 @@ impl Draft {
             self.meta_referrer(key, cancel)?;
         }
         if name_or_content || media {
-            self.meta_candidates(self.node(key)?.document, true, name_or_content, cancel)?;
+            self.meta_candidates(
+                self.node(key)?.document,
+                true,
+                name_or_content,
+                limits,
+                cancel,
+            )?;
         }
         Ok(())
     }
@@ -460,7 +559,7 @@ mod token_observation {
 mod tests {
     use super::*;
     use crate::Namespace;
-    fn policy() -> DomLimits {
+    pub(super) fn policy() -> DomLimits {
         DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 1_000_000)
             .unwrap()
             .with_meta_processing_work(1_000_000)
@@ -520,7 +619,7 @@ mod tests {
         }
         read
     }
-    fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
+    pub(super) fn source_budget(draft: &mut Draft, bytes: usize, units: usize) {
         let cancel = AtomicBool::new(false);
         draft.source_limits = Some(crate::DomSourceLimits::new(
             usize::MAX,

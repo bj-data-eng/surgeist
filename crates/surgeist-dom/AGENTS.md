@@ -17,6 +17,14 @@ pseudo-attribute cursor; do not replace its target grammar with relaxed element
 validation or HTML authoring restrictions. Doctype names use DOM's relaxed rule.
 Native XML Document metadata follows the selected document defaults (capture
 lines 2110–2112), including a fresh opaque origin and known-null registry.
+Meta language/referrer/refresh history remains distinct from current theme and
+color-scheme selections. Consume CSS's own source-preserving bounded fronts;
+never copy Input color fallback/quantization policy or duplicate component
+grammar. Missing media/context facts refuse before a later candidate; scheme
+selection has no theme media filter. Native empty UI-recipient qualification
+does not waive either computation. Parsed history alone cannot establish selected
+CSS results. Preserve exact Source storage custody and meaningful raw-input
+no-op backing through canonical Document metadata and its existing change kind.
 Stored content type, encoding name and URL count toward string admission;
 doctype edits do not infer compatibility mode. Keep metadata and origin
 identity within the same staged publication and immutable snapshot as the tree.

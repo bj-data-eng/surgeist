@@ -87,6 +87,8 @@ pub enum DomResource {
     DispatchCustodyScratch,
     SourceRetainedBytes,
     SourceRetainedUnits,
+    MetaColorSchemeRetainedBytes,
+    MetaThemeColorScratch,
 }
 
 /// Typed edit/readback failure. Atomic batch failures publish no state or
@@ -296,6 +298,9 @@ pub struct DomLimits {
     encoding_url_observations: usize,
     encoding_url_work: u64,
     meta_work: u64,
+    meta_theme_scratch: usize,
+    meta_color_scheme: Option<surgeist_css::CssUtf16PropertyValueLimits>,
+    meta_color_scheme_bytes: usize,
     select_tasks: usize,
     select_scratch: usize,
     select_work: u64,
@@ -382,6 +387,9 @@ impl DomLimits {
             encoding_url_observations: 0,
             encoding_url_work: 0,
             meta_work: 0,
+            meta_theme_scratch: 0,
+            meta_color_scheme: None,
+            meta_color_scheme_bytes: 0,
             select_tasks: 0,
             select_scratch: 0,
             select_work: 0,
@@ -527,6 +535,43 @@ impl DomLimits {
         self.meta_work = work;
         self
     }
+    /// Actual simultaneous banks/registers of one theme-color parse.
+    pub fn with_meta_theme_color_scratch_bytes(mut self, bytes: usize) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::MetaThemeColorScratch));
+        }
+        self.meta_theme_scratch = bytes;
+        Ok(self)
+    }
+    pub const fn meta_theme_color_scratch_bytes(self) -> usize {
+        self.meta_theme_scratch
+    }
+    /// Complete finite CSS-owned UTF16/property allowance; unconfigured is unavailable.
+    pub const fn with_meta_color_scheme_limits(
+        mut self,
+        limits: surgeist_css::CssUtf16PropertyValueLimits,
+    ) -> Self {
+        self.meta_color_scheme = Some(limits);
+        self
+    }
+    pub const fn meta_color_scheme_limits(
+        self,
+    ) -> Option<surgeist_css::CssUtf16PropertyValueLimits> {
+        self.meta_color_scheme
+    }
+    /// Aggregate installed CSS report/source backing across all Documents.
+    pub fn with_meta_color_scheme_retained_bytes(mut self, bytes: usize) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(
+                DomResource::MetaColorSchemeRetainedBytes,
+            ));
+        }
+        self.meta_color_scheme_bytes = bytes;
+        Ok(self)
+    }
+    pub const fn meta_color_scheme_retained_bytes(self) -> usize {
+        self.meta_color_scheme_bytes
+    }
     /// Retained raw Details transitions, including staged cancellation evidence.
     /// Scans use canonical node/string/command bounds and per-step cancellation.
     pub fn with_details_toggle_intentions(mut self, max_pending: usize) -> Result<Self, DomError> {
@@ -584,6 +629,7 @@ impl DomLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomUsage {
+    meta_color_scheme_bytes: usize,
     autofocus_candidates: usize,
     slot_references: usize,
     nodes: usize,
@@ -595,6 +641,9 @@ pub struct DomUsage {
     pseudos: usize,
 }
 impl DomUsage {
+    pub const fn meta_color_scheme_retained_bytes(self) -> usize {
+        self.meta_color_scheme_bytes
+    }
     pub fn autofocus_candidates(self) -> usize {
         self.autofocus_candidates
     }
@@ -798,7 +847,7 @@ impl DomCommit {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Node {
     pub(crate) document: DocumentId,
     pub(crate) relevant_global: Option<crate::hosted::DomHostedGlobalId>,
@@ -829,13 +878,13 @@ pub(crate) struct Node {
     pub(crate) interactive_document: Option<crate::dialog::DocumentInteractiveState<NodeId>>,
     pub(crate) autofocus_document: Option<crate::autofocus::DocumentAutofocusState<NodeId>>,
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Slot {
     pub(crate) generation: u64,
     retired: bool,
     pub(crate) node: Option<Node>,
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct State {
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
@@ -972,6 +1021,16 @@ impl Dom {
     pub fn usage(&self) -> DomUsage {
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            meta_color_scheme_bytes: self
+                .state
+                .slots
+                .iter()
+                .filter_map(|slot| slot.node.as_ref())
+                .map(|node| match &node.kind {
+                    DomNodeKind::Document(metadata) => metadata.meta_color_scheme_bytes(),
+                    _ => 0,
+                })
+                .sum(),
             autofocus_candidates: self
                 .state
                 .slots
@@ -1069,6 +1128,11 @@ impl Dom {
         )?;
         admit(self.state.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(self.state.units, limits.units, DomResource::StringCodeUnits)?;
+        admit(
+            self.usage().meta_color_scheme_retained_bytes(),
+            limits.meta_color_scheme_bytes,
+            DomResource::MetaColorSchemeRetainedBytes,
+        )?;
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         admit(
             transitions,
@@ -3026,6 +3090,8 @@ fn difference(
                 if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
                     (&node.kind, &current.kind)
                     && (before.meta_state() != after.meta_state()
+                        || before.meta_theme_color() != after.meta_theme_color()
+                        || before.meta_color_scheme != after.meta_color_scheme
                         || before.policy_container() != after.policy_container())
                 {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;

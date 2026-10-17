@@ -1,6 +1,7 @@
 use super::property_input::{Parser, Site};
 use crate::error::property::ParseError;
 use crate::numeric::NumericInputContext;
+use crate::utf16_value::Control;
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueRef as Component, CssComponentValues, CssNumericTokenKind, CssValueOrigin,
@@ -71,12 +72,15 @@ enum VarMismatch {
     Unexpected(usize),
 }
 impl Summary {
-    fn merge(&mut self, other: Self) {
+    fn merge(&mut self, mut other: Self, control: Option<&Control<'_>>) {
         self.var.merge(other.var);
         self.env.merge(other.env);
         self.attr.merge(other.attr);
         if self.invalid_var.is_none() {
-            self.invalid_var = other.invalid_var;
+            self.invalid_var = other.invalid_var.take();
+        }
+        if let Some(issue) = other.invalid_var.take() {
+            release(control, issue.path);
         }
     }
 }
@@ -115,26 +119,47 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
         let state = input.state();
         let offset = input.position();
         let location = input.current_source_location();
-        let token = match input.next() {
-            Ok(token) => token.clone(),
-            Err(error) => match error.kind {
-                BasicParseErrorKind::EndOfInput => break,
-                _ => return Err(basic(error)),
-            },
+        let group = if input.control().is_some() {
+            match input.next_kind(false) {
+                Ok(
+                    crate::syntax_consumption::TokenKind::Function(_)
+                    | crate::syntax_consumption::TokenKind::Opening(_),
+                ) => true,
+                Ok(_) => false,
+                Err(error) => match error.kind {
+                    BasicParseErrorKind::EndOfInput => break,
+                    _ => return Err(basic(error)),
+                },
+            }
+        } else {
+            let token = match input.next() {
+                Ok(token) => token.clone(),
+                Err(error) => match error.kind {
+                    BasicParseErrorKind::EndOfInput => break,
+                    _ => return Err(basic(error)),
+                },
+            };
+            if token.is_parse_error() {
+                return Err(location.new_unexpected_token_error(token));
+            }
+            matches!(
+                token,
+                Token::Function(_)
+                    | Token::ParenthesisBlock
+                    | Token::SquareBracketBlock
+                    | Token::CurlyBracketBlock
+            )
         };
-        if token.is_parse_error() {
-            return Err(location.new_unexpected_token_error(token));
-        }
-        if matches!(
-            token,
-            Token::Function(_)
-                | Token::ParenthesisBlock
-                | Token::SquareBracketBlock
-                | Token::CurlyBracketBlock
-        ) {
+        if group {
             input.reset(&state);
-            let component = input
-                .collect_component()
+            let collected = input.collect_component();
+            if input
+                .control()
+                .is_some_and(|control| control.failure().is_some())
+            {
+                return Err(location.new_error(BasicParseErrorKind::EndOfInput));
+            }
+            let component = collected
                 .map_err(crate::CssNumericConstructionError::component)
                 .map_err(|error| {
                     let location = numeric.property_error_location(&error, location, offset);
@@ -158,13 +183,17 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                     }
                     invalid_syntax(location)
                 })?;
-            let local = summarize(
+            let local = summarize_with_control(
                 std::slice::from_ref(component.as_ref()),
                 Some(numeric),
                 true,
                 matches!(context, SubstitutionContext::KnownProperty),
+                input.control(),
             )
             .map_err(|error| {
+                if let Some(control) = input.control() {
+                    let _ = control.component_resource(error.kind());
+                }
                 invalid_component_value(
                     issue_location(numeric, error.origin(), &[], false, offset, location),
                     error,
@@ -182,24 +211,34 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                     offset,
                     location,
                 );
-                invalid_var_error = Some(match issue.reason {
-                    VarMismatch::MissingName => location.new_error(BasicParseErrorKind::EndOfInput),
-                    VarMismatch::InvalidName(_) => invalid_syntax(location),
-                    VarMismatch::Unexpected(_) => {
-                        token_error(numeric, &issue.origin, &issue.path, false, offset, location)
-                    }
-                });
+                invalid_var_error = Some((issue.reason, location));
             }
-            summary.merge(local);
+            summary.merge(local, input.control());
         }
         end = input.position();
     }
     let qualifies = summary.var.qualifies() || summary.env.qualifies() || summary.attr.qualifies();
     if summary.var.invalid
         && (matches!(context, SubstitutionContext::CustomProperty) || !qualifies)
-        && let Some(error) = invalid_var_error
+        && let Some((reason, location)) = invalid_var_error
     {
-        return Err(error);
+        if let Some(issue) = summary.invalid_var.take() {
+            release(input.control(), issue.path);
+        }
+        return Err(match reason {
+            VarMismatch::MissingName => location.new_error(BasicParseErrorKind::EndOfInput),
+            VarMismatch::InvalidName(_) => invalid_syntax(location),
+            VarMismatch::Unexpected(_) if input.control().is_some() => {
+                location.new_error(BasicParseErrorKind::EndOfInput)
+            }
+            VarMismatch::Unexpected(_) => match location.token() {
+                Some(token) => location.new_unexpected_token_error(token),
+                None => location.new_error(BasicParseErrorKind::EndOfInput),
+            },
+        });
+    }
+    if let Some(issue) = summary.invalid_var.take() {
+        release(input.control(), issue.path);
     }
     Ok((
         CssAuthoredDeclarationValue::new(input.slice(start..end)),
@@ -230,6 +269,9 @@ fn token_error<'i>(
     location: Site<'i>,
 ) -> ParseError<'i, Error> {
     let site = issue_location(numeric, origin, path, closing, root, location);
+    if site.control().is_some() {
+        return site.new_error(BasicParseErrorKind::EndOfInput);
+    }
     if let Some(token) = site.token() {
         site.new_unexpected_token_error(token)
     } else {
@@ -243,58 +285,82 @@ fn trivia(component: &CssComponentValue) -> bool {
         Component::Comment(_) | Component::Token(ValueToken::Whitespace(_))
     )
 }
-fn fallback_valid(items: &[CssComponentValue]) -> bool {
-    !items.iter().any(|item| {
-        matches!(
+fn fallback_valid_with_control(
+    items: &[CssComponentValue],
+    control: Option<&Control<'_>>,
+) -> Result<bool, CssComponentValueError> {
+    for item in items {
+        step(control)?;
+        if matches!(
             item.view(),
             Component::Token(ValueToken::Semicolon | ValueToken::Delim('!'))
-        )
-    })
+        ) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+fn next_argument<'a>(
+    items: &'a [CssComponentValue],
+    cursor: &mut usize,
+    control: Option<&Control<'_>>,
+) -> Result<Option<(usize, &'a CssComponentValue)>, CssComponentValueError> {
+    while *cursor < items.len() {
+        step(control)?;
+        let index = *cursor;
+        *cursor += 1;
+        if !trivia(&items[index]) {
+            return Ok(Some((index, &items[index])));
+        }
+    }
+    Ok(None)
 }
 
 // A mismatch is local to its family. Traversal always continues into every child.
-fn var_mismatch(items: &[CssComponentValue]) -> Option<VarMismatch> {
-    let mut args = items.iter().enumerate().filter(|(_, item)| !trivia(item));
-    let Some((index, name)) = args.next() else {
-        return Some(VarMismatch::MissingName);
+fn var_mismatch_with_control(
+    items: &[CssComponentValue],
+    control: Option<&Control<'_>>,
+) -> Result<Option<VarMismatch>, CssComponentValueError> {
+    let mut cursor = 0;
+    let Some((index, name)) = next_argument(items, &mut cursor, control)? else {
+        return Ok(Some(VarMismatch::MissingName));
     };
-    if !matches!(name.view(), Component::Token(ValueToken::Ident(name)) if parse_custom_property_name(name).is_some())
+    step(control)?;
+    if !matches!(name.view(), Component::Token(ValueToken::Ident(name)) if crate::CssCustomPropertyName::accepts_ident_token(name))
     {
-        return Some(
+        return Ok(Some(
             if matches!(name.view(), Component::Token(ValueToken::Ident(_))) {
                 VarMismatch::InvalidName(index)
             } else {
                 VarMismatch::Unexpected(index)
             },
-        );
+        ));
     }
-    if let Some((index, separator)) = args.next() {
+    if let Some((index, separator)) = next_argument(items, &mut cursor, control)? {
         if !matches!(separator.view(), Component::Token(ValueToken::Comma)) {
-            return Some(VarMismatch::Unexpected(index));
+            return Ok(Some(VarMismatch::Unexpected(index)));
         }
-        if !fallback_valid(&items[index + 1..]) {
-            return items
-                .iter()
-                .enumerate()
-                .skip(index + 1)
-                .find_map(|(i, item)| {
-                    matches!(
-                        item.view(),
-                        Component::Token(ValueToken::Semicolon | ValueToken::Delim('!'))
-                    )
-                    .then_some(VarMismatch::Unexpected(i))
-                });
+        for (index, item) in items.iter().enumerate().skip(index + 1) {
+            step(control)?;
+            if matches!(
+                item.view(),
+                Component::Token(ValueToken::Semicolon | ValueToken::Delim('!'))
+            ) {
+                return Ok(Some(VarMismatch::Unexpected(index)));
+            }
         }
     }
-    None
+    Ok(None)
 }
 
-fn env_valid(
+fn env_valid_with_control(
     items: &[CssComponentValue],
     numeric: Option<&NumericInputContext<'_>>,
+    control: Option<&Control<'_>>,
 ) -> Result<bool, CssComponentValueError> {
-    let mut args = items.iter().enumerate().filter(|(_, item)| !trivia(item));
-    let Some((_, name)) = args.next() else {
+    let mut cursor = 0;
+    let Some((_, name)) = next_argument(items, &mut cursor, control)? else {
+        step(control)?;
         return Ok(false);
     };
     if !matches!(name.view(), Component::Token(ValueToken::Ident(name))
@@ -302,29 +368,55 @@ fn env_valid(
     {
         return Ok(false);
     }
-    for (index, argument) in args {
+    while let Some((index, argument)) = next_argument(items, &mut cursor, control)? {
+        step(control)?;
         match argument.view() {
             Component::Token(ValueToken::Comma) => {
                 let fallback = &items[index + 1..];
-                return Ok(fallback
-                    .iter()
-                    .any(|item| !matches!(item.view(), Component::Comment(_)))
-                    && fallback_valid(fallback));
+                let mut non_comment = false;
+                for item in fallback {
+                    step(control)?;
+                    non_comment |= !matches!(item.view(), Component::Comment(_));
+                }
+                return Ok(non_comment && fallback_valid_with_control(fallback, control)?);
             }
             Component::Token(ValueToken::Number(number))
                 if number.kind() == CssNumericTokenKind::Integer =>
             {
-                let nonnegative =
+                let nonnegative = if let Some(control) = control {
+                    crate::integer_value::nonnegative_integer_literal_controlled(argument, control)
+                        .map_err(|_| {
+                            CssComponentValueError::new(
+                                CssComponentValueErrorKind::CapacityOverflow,
+                                argument.origin().clone(),
+                            )
+                        })?
+                } else {
                     match crate::integer_value::admit_integer_literal(argument.clone()) {
                         Ok(crate::CssIntegerValue::Literal(value)) => !value.is_negative(),
                         _ => false,
-                    };
+                    }
+                };
                 if !nonnegative {
                     return Ok(false);
                 }
             }
             Component::Function(function) if crate::numeric::is_math_function(function.name()) => {
-                let result = if let Some(numeric) = numeric {
+                let result = if let Some(control) = control {
+                    numeric
+                        .unwrap_or(&NumericInputContext::Checked)
+                        .check_component_controlled(
+                            argument,
+                            crate::numeric::CalculationRoot::Integer,
+                            control,
+                        )
+                        .map_err(|_| {
+                            CssComponentValueError::new(
+                                CssComponentValueErrorKind::CapacityOverflow,
+                                argument.origin().clone(),
+                            )
+                        })?
+                } else if let Some(numeric) = numeric {
                     numeric.check_component(argument, crate::numeric::CalculationRoot::Integer)
                 } else {
                     crate::numeric::check_component(
@@ -350,6 +442,7 @@ fn env_valid(
             _ => return Ok(false),
         }
     }
+    step(control)?;
     Ok(true)
 }
 
@@ -359,10 +452,26 @@ fn summarize(
     classify_env: bool,
     classify_attr: bool,
 ) -> Result<Summary, CssComponentValueError> {
+    summarize_with_control(items, numeric, classify_env, classify_attr, None)
+}
+
+fn summarize_with_control(
+    items: &[CssComponentValue],
+    numeric: Option<&NumericInputContext<'_>>,
+    classify_env: bool,
+    classify_attr: bool,
+    control: Option<&Control<'_>>,
+) -> Result<Summary, CssComponentValueError> {
     let mut summary = Summary::default();
-    let mut stack = vec![(items, 0_usize)];
+    let mut stack = Vec::new();
+    reserve(control, &mut stack, 1)?;
+    stack.push((items, 0_usize));
     let mut path = Vec::new();
-    while let Some((values, index)) = stack.last_mut() {
+    while !stack.is_empty() {
+        step(control)?;
+        let Some((values, index)) = stack.last_mut() else {
+            break;
+        };
         let Some(component) = values.get(*index) else {
             stack.pop();
             path.pop();
@@ -370,16 +479,24 @@ fn summarize(
         };
         let current_index = *index;
         *index += 1;
+        reserve(control, &mut path, 1)?;
         path.push(current_index);
         let children = match component.view() {
             Component::Function(function) => {
                 match substitution_kind(function.name()) {
                     Some(SubstitutionKind::Var) => {
                         summary.var.seen = true;
-                        if let Some(reason) = var_mismatch(function.values().items()) {
+                        if let Some(reason) =
+                            var_mismatch_with_control(function.values().items(), control)?
+                        {
                             summary.var.invalid = true;
                             if summary.invalid_var.is_none() {
-                                let mut issue_path = path.clone();
+                                let mut issue_path = Vec::new();
+                                reserve(control, &mut issue_path, path.len() + 1)?;
+                                for index in &path {
+                                    step(control)?;
+                                    issue_path.push(*index);
+                                }
                                 let origin = match reason {
                                     VarMismatch::MissingName => function.closing_origin(),
                                     VarMismatch::InvalidName(index)
@@ -398,13 +515,17 @@ fn summarize(
                     }
                     Some(SubstitutionKind::Env) if classify_env => {
                         summary.env.seen = true;
-                        summary.env.invalid |= !env_valid(function.values().items(), numeric)?;
+                        summary.env.invalid |=
+                            !env_valid_with_control(function.values().items(), numeric, control)?;
                     }
                     _ => {}
                 }
                 if classify_attr && function.name().eq_ignore_ascii_case("attr") {
                     summary.attr.seen = true;
-                    summary.attr.invalid |= !attr::valid(function.values().items())?;
+                    summary.attr.invalid |= !match control {
+                        Some(_) => attr::valid_with_control(function.values().items(), control)?,
+                        None => attr::valid(function.values().items())?,
+                    };
                 }
                 Some(function.values().items())
             }
@@ -412,11 +533,14 @@ fn summarize(
             _ => None,
         };
         if let Some(children) = children {
+            reserve(control, &mut stack, 1)?;
             stack.push((children, 0));
         } else {
             path.pop();
         }
     }
+    release(control, stack);
+    release(control, path);
     Ok(summary)
 }
 
@@ -518,4 +642,43 @@ pub(crate) fn first_substitution_origin(values: &CssComponentValues) -> Option<C
         }
     }
     None
+}
+
+fn step(control: Option<&Control<'_>>) -> Result<(), CssComponentValueError> {
+    match control {
+        Some(control) => control.step().map_err(|_| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::CapacityOverflow,
+                CssValueOrigin::Programmatic,
+            )
+        }),
+        None => Ok(()),
+    }
+}
+fn reserve<T>(
+    control: Option<&Control<'_>>,
+    values: &mut Vec<T>,
+    additional: usize,
+) -> Result<(), CssComponentValueError> {
+    if let Some(control) = control {
+        control.reserve(values, additional).map_err(|_| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::CapacityOverflow,
+                CssValueOrigin::Programmatic,
+            )
+        })
+    } else {
+        values.reserve(additional);
+        Ok(())
+    }
+}
+fn release<T>(control: Option<&Control<'_>>, values: Vec<T>) {
+    let bytes = values.capacity().checked_mul(std::mem::size_of::<T>());
+    drop(values);
+    if let Some(control) = control {
+        let Some(bytes) = bytes else {
+            unreachable!("admitted symbolic bank")
+        };
+        control.released(bytes);
+    }
 }

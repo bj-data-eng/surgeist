@@ -34,6 +34,12 @@ impl<'i, E> From<BasicParseError<'i>> for ParseError<'i, E> {
 impl<'i> ParseError<'i, Error> {
     /// Qualify diagnostics from actual input bookmarks before publishing them.
     pub(crate) fn qualify(self) -> Self {
+        if let Some(control) = self.location.control() {
+            let location = self.location;
+            return self
+                .qualify_controlled(control)
+                .unwrap_or_else(|()| location.new_error(BasicParseErrorKind::EndOfInput));
+        }
         let mut error = match self.kind {
             ParseErrorKind::Custom(error) => error,
             ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)) => Box::new(Error {
@@ -87,6 +93,96 @@ impl<'i> ParseError<'i, Error> {
             kind: ParseErrorKind::Custom(error),
             location,
         }
+    }
+    pub(crate) fn into_parts_controlled(
+        self,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> Result<(ErrorKind, crate::CssSerializedOrigin), ()> {
+        let error = self.qualify_controlled(control)?;
+        control.step()?;
+        let ParseErrorKind::Custom(detail) = error.kind else {
+            unreachable!("admitted qualified property diagnostic")
+        };
+        let Error { kind } = *detail;
+        control.released(std::mem::size_of::<Error>());
+        let origin = match &kind {
+            ErrorKind::InvalidComponentValue(detail) => {
+                crate::CssSerializedOrigin::Token(detail.origin().clone())
+            }
+            _ => error.location.origin(),
+        };
+        if control.failure().is_some() {
+            return Err(());
+        }
+        Ok((kind, origin))
+    }
+    fn qualify_controlled(self, control: &crate::utf16_value::Control<'_>) -> Result<Self, ()> {
+        control.step()?;
+        let mut error = match self.kind {
+            ParseErrorKind::Custom(error) => error,
+            ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_token)) => {
+                let encountered = summary_at_controlled(self.location, control)?;
+                control.add(std::mem::size_of::<Error>())?;
+                Box::new(Error {
+                    kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
+                        expectation: EXPECT_CSS_SYNTAX,
+                        encountered,
+                    }),
+                })
+            }
+            ParseErrorKind::Basic(_) => {
+                control.add(std::mem::size_of::<Error>())?;
+                Box::new(Error {
+                    kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
+                        expectation: EXPECT_CSS_SYNTAX,
+                    }),
+                })
+            }
+        };
+        let mut location = self.location;
+        let (next, previous) = location.diagnostic_candidates();
+        control.step()?;
+        if let Some(encountered) = encountered_mut(&mut error.kind) {
+            if let Some(site) = next
+                && checked_kind_at(site) == Some(encountered.kind)
+            {
+                if let Some(text) = site.lexeme()
+                    && !same_text_controlled(&encountered.authored, text, control)?
+                {
+                    let next = control.string(text)?;
+                    let old = std::mem::replace(&mut encountered.authored, next);
+                    let bytes = old.capacity();
+                    drop(old);
+                    control.released(bytes);
+                }
+                location = site;
+            }
+        } else if let Some(slot) = optional_encountered_mut(&mut error.kind) {
+            let candidate = next
+                .filter(|site| {
+                    checked_kind_at(*site).is_some_and(|kind| !is_bounded_end_token(kind))
+                })
+                .or_else(|| {
+                    previous.filter(|site| {
+                        checked_kind_at(*site).is_some_and(|kind| !is_boundary_token(kind))
+                    })
+                });
+            if let Some(site) = candidate {
+                let summary = summary_at_controlled(site, control)?;
+                let previous = slot.replace(summary);
+                let bytes = previous
+                    .as_ref()
+                    .map_or(0, |value| value.authored.capacity());
+                drop(previous);
+                control.released(bytes);
+                location = site;
+            }
+        }
+        control.step()?;
+        Ok(Self {
+            kind: ParseErrorKind::Custom(error),
+            location,
+        })
     }
     pub(crate) fn into_parts(self) -> (ErrorKind, crate::CssSerializedOrigin) {
         let error = self.qualify();
@@ -176,6 +272,13 @@ pub(crate) fn invalid_component_value<'i>(
     location: Site<'i>,
     detail: crate::CssComponentValueError,
 ) -> ParseError<'i, Error> {
+    if location.control().is_some_and(|control| {
+        control
+            .add(std::mem::size_of::<crate::CssComponentValueError>())
+            .is_err()
+    }) {
+        return location.new_error(BasicParseErrorKind::EndOfInput);
+    }
     error_at(location, ErrorKind::InvalidComponentValue(Box::new(detail)))
 }
 pub(crate) fn invalid_color<'i>(
@@ -197,6 +300,11 @@ pub(crate) fn with_property_context<'i>(
     mut error: ParseError<'i, Error>,
     property: &str,
 ) -> ParseError<'i, Error> {
+    if let Some(control) = error.location.control() {
+        let location = error.location;
+        return with_property_context_controlled(error, property, control)
+            .unwrap_or_else(|()| location.new_error(BasicParseErrorKind::EndOfInput));
+    }
     let Some(property) = property_for_supported_name(property) else {
         return error;
     };
@@ -254,6 +362,107 @@ pub(crate) fn property_rejection_kind(
             expectation: CssGrammarExpectation::new(expectation),
         }),
     }
+}
+
+fn same_text_controlled(
+    a: &str,
+    b: &str,
+    control: &crate::utf16_value::Control<'_>,
+) -> Result<bool, ()> {
+    control.step()?;
+    if a.len() != b.len() {
+        return Ok(false);
+    }
+    for index in 0..a.len() {
+        control.step()?;
+        let left = a.as_bytes()[index];
+        control.step()?;
+        if left != b.as_bytes()[index] {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+fn with_property_context_controlled<'i>(
+    mut error: ParseError<'i, Error>,
+    property: &str,
+    control: &crate::utf16_value::Control<'_>,
+) -> Result<ParseError<'i, Error>, ()> {
+    control.step()?;
+    let Some(property) = property_for_supported_name(property) else {
+        return Ok(error);
+    };
+    if let ParseErrorKind::Custom(detail) = &error.kind
+        && (matches!(&detail.kind, ErrorKind::InvalidColorSyntax(_))
+            || matches!(&detail.kind, ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)))
+    {
+        return Ok(error);
+    }
+    let encountered = match &mut error.kind {
+        ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_token)) => {
+            Some(summary_at_controlled(error.location, control)?)
+        }
+        ParseErrorKind::Custom(detail) => encountered_mut(&mut detail.kind)
+            .map(|value| value.clone_controlled(control))
+            .transpose()?,
+        _ => None,
+    };
+    let kind = ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+        property,
+        expectation: EXPECT_PROPERTY_VALUE,
+        encountered,
+    });
+    match &mut error.kind {
+        ParseErrorKind::Custom(detail) => {
+            let previous_bytes = detail
+                .kind
+                .retained_backing_bytes_with(&mut || control.step())
+                .map_err(|error| match error {
+                    crate::CssRetainedPayloadError::Admission(()) => (),
+                    crate::CssRetainedPayloadError::CapacityOverflow => {
+                        let _ = control.fail::<()>(crate::utf16_value::Failure::CapacityOverflow);
+                    }
+                })?;
+            let previous = std::mem::replace(&mut detail.kind, kind);
+            drop(previous);
+            control.released(previous_bytes);
+        }
+        ParseErrorKind::Basic(_) => {
+            control.add(std::mem::size_of::<Error>())?;
+            error.kind = ParseErrorKind::Custom(Box::new(Error { kind }));
+        }
+    }
+    Ok(error)
+}
+
+fn checked_kind_at(site: Site<'_>) -> Option<CssTokenKind> {
+    let (component, closing) = site.checked_component()?;
+    Some(if closing {
+        match component.view() {
+            crate::CssComponentValueRef::Function(_) => CssTokenKind::CloseParenthesis,
+            crate::CssComponentValueRef::Block(block) => match block.kind() {
+                crate::CssBlockKind::Parenthesis => CssTokenKind::CloseParenthesis,
+                crate::CssBlockKind::SquareBracket => CssTokenKind::CloseSquareBracket,
+                crate::CssBlockKind::CurlyBracket => CssTokenKind::CloseCurlyBracket,
+            },
+            _ => return None,
+        }
+    } else {
+        CssTokenSummary::kind_from_component(component)
+    })
+}
+fn summary_at_controlled(
+    site: Site<'_>,
+    control: &crate::utf16_value::Control<'_>,
+) -> Result<CssTokenSummary, ()> {
+    control.step()?;
+    let Some((component, closing)) = site.checked_component() else {
+        unreachable!("controlled diagnostic borrows actual checked component")
+    };
+    let Some(text) = site.lexeme() else {
+        unreachable!("controlled diagnostic retains exact lexical source")
+    };
+    CssTokenSummary::from_checked_controlled(component, closing, text, control)
 }
 
 #[cfg(test)]

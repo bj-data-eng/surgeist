@@ -5,7 +5,7 @@ use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomSt
 use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
 
 /// The complete node kinds supported by this contribution.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DomNodeKind {
     Document(DomDocumentMetadata),
     Element(DomElement),

@@ -376,6 +376,58 @@ struct SourceSnapshotData {
     storage: CssSourceStorageUsage,
 }
 
+struct SourceCheckpoints {
+    values: Vec<CssSourcePosition>,
+    position: CssSourcePosition,
+    start: usize,
+}
+impl SourceCheckpoints {
+    fn new() -> Self {
+        Self {
+            values: Vec::new(),
+            position: CssSourcePosition::from_byte_offset_in("", 0),
+            start: 0,
+        }
+    }
+    fn fill<E>(
+        &mut self,
+        source: &str,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut reserve: impl FnMut(&mut Vec<CssSourcePosition>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        reserve(&mut self.values)?;
+        self.values.push(self.position);
+        let mut current = self.position;
+        let mut characters = source.char_indices().peekable();
+        while let Some((offset, character)) = characters.next() {
+            step()?;
+            let mut end = offset + character.len_utf8();
+            if character == '\r' && characters.peek().is_some_and(|(_, next)| *next == '\n') {
+                step()?;
+                let (offset, character) = characters.next().expect("peeked LF");
+                end = offset + character.len_utf8();
+            }
+            // Advance over this one scalar (or indivisible CRLF), rather than
+            // rescanning a whole checkpoint suffix after its metered walk.
+            current = current.advanced_by(&source[offset..end]);
+            if end - self.start >= 64 {
+                self.position = current;
+                reserve(&mut self.values)?;
+                self.values.push(self.position);
+                self.start = end;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct SecondarySourceFormation {
+    text: String,
+    checkpoints: SourceCheckpoints,
+    input: crate::tokenization::bounded::InputCursor,
+    scalars: Vec<char>,
+}
+
 /// Checked retained backing of a source, excluding fixed Arc headers.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct CssSourceStorageUsage(pub(crate) usize);
@@ -403,25 +455,9 @@ impl CssSourceSnapshot {
     pub(crate) fn try_from_owned(
         source: String,
     ) -> Result<Self, std::collections::TryReserveError> {
-        let mut position = CssSourcePosition::from_byte_offset_in("", 0);
-        let mut checkpoints = Vec::new();
-        checkpoints.try_reserve(1)?;
-        checkpoints.push(position);
-        let mut start = 0;
-        let mut characters = source.char_indices().peekable();
-        while let Some((offset, character)) = characters.next() {
-            let mut end = offset + character.len_utf8();
-            if character == '\r' && characters.peek().is_some_and(|(_, next)| *next == '\n') {
-                let (offset, character) = characters.next().expect("peeked LF");
-                end = offset + character.len_utf8();
-            }
-            if end - start >= 64 {
-                position = position.advanced_by(&source[start..end]);
-                checkpoints.try_reserve(1)?;
-                checkpoints.push(position);
-                start = end;
-            }
-        }
+        let mut checkpoints = SourceCheckpoints::new();
+        checkpoints.fill(&source, || Ok(()), |values| values.try_reserve(1))?;
+        let checkpoints = checkpoints.values;
         let storage = CssSourceStorageUsage(
             source
                 .capacity()
@@ -439,6 +475,125 @@ impl CssSourceSnapshot {
             utf16: None,
             storage,
         })))
+    }
+
+    /// A distinct decoded CSS-language input used by a called grammar. The
+    /// original CSS input cursor preprocesses it before tokenization. Positions
+    /// are local to that preprocessed input; it never acquires the main UTF16
+    /// source's mapping or replaces that source's authored origins.
+    pub(crate) fn try_from_decoded_utf8(
+        source: &str,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> Result<Self, ()> {
+        use crate::tokenization::bounded::{InputCursor, InputKind, Request};
+        use crate::utf16_value::Failure;
+        let baseline = control.live().bytes();
+        let result = (|| {
+            control.step()?;
+            control.add(std::mem::size_of::<SecondarySourceFormation>())?;
+            let mut formation = SecondarySourceFormation {
+                text: String::new(),
+                checkpoints: SourceCheckpoints::new(),
+                input: InputCursor::new(InputKind::Utf8, source.len()),
+                scalars: Vec::new(),
+            };
+            let mut output_bytes = 0_usize;
+            loop {
+                control.step()?;
+                match formation.input.request() {
+                    Request::Read { index } => formation
+                        .input
+                        .read(u16::from(source.as_bytes()[index]))
+                        .expect("actual decoded UTF8 input"),
+                    Request::HeldUnit => formation.input.process_held().expect("actual held input"),
+                    Request::Emit(scalar) => {
+                        let Some(bytes) = output_bytes.checked_add(scalar.value.len_utf8()) else {
+                            return control.fail(Failure::CapacityOverflow);
+                        };
+                        control.reserve(&mut formation.scalars, 1)?;
+                        formation.scalars.push(scalar.value);
+                        output_bytes = bytes;
+                        formation
+                            .input
+                            .emitted()
+                            .expect("actual admitted scalar storage");
+                    }
+                    Request::End => {
+                        if formation.input.end().expect("actual UTF8 EOF") {
+                            break;
+                        }
+                    }
+                }
+            }
+            // Reserve only the actual reached normalized output extent. The
+            // scalar bank remains live during copying; it is neither a second
+            // decoder nor an unaccounted worst-case text reservation.
+            control.add(output_bytes)?;
+            if formation.text.try_reserve_exact(output_bytes).is_err() {
+                return control.fail(Failure::Allocation);
+            }
+            if formation.text.capacity() > output_bytes {
+                control.add(formation.text.capacity() - output_bytes)?;
+            }
+            for scalar in &formation.scalars {
+                control.step()?;
+                formation.text.push(*scalar);
+            }
+            let Some(scalar_bytes) = formation
+                .scalars
+                .capacity()
+                .checked_mul(std::mem::size_of::<char>())
+            else {
+                return control.fail(Failure::CapacityOverflow);
+            };
+            drop(std::mem::take(&mut formation.scalars));
+            control.released(scalar_bytes);
+            formation.checkpoints.fill(
+                &formation.text,
+                || control.step(),
+                |values| control.reserve(values, 1),
+            )?;
+            let Some(checkpoint_bytes) = formation
+                .checkpoints
+                .values
+                .capacity()
+                .checked_mul(std::mem::size_of::<CssSourcePosition>())
+            else {
+                return control.fail(Failure::CapacityOverflow);
+            };
+            let Some(bytes) = formation.text.capacity().checked_add(checkpoint_bytes) else {
+                return control.fail(Failure::CapacityOverflow);
+            };
+            control.add(std::mem::size_of::<SourceSnapshotData>())?;
+            let SecondarySourceFormation {
+                text,
+                checkpoints,
+                input: _,
+                scalars,
+            } = formation;
+            drop(scalars);
+            let result = Self(Arc::new(SourceSnapshotData {
+                text,
+                checkpoints: checkpoints.values,
+                utf16: None,
+                storage: CssSourceStorageUsage(bytes),
+            }));
+            // Formation ownership has moved into the immutable source owner.
+            control.released(std::mem::size_of::<SecondarySourceFormation>());
+            Ok(result)
+        })();
+        if result.is_err() {
+            // Every failed formation payload has dropped before cleanup; the
+            // caller's main source and unrelated banks retain their baseline.
+            control.released(
+                control
+                    .live()
+                    .bytes()
+                    .checked_sub(baseline)
+                    .expect("secondary source keeps caller baseline"),
+            );
+        }
+        result
     }
 
     pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {
@@ -509,6 +664,10 @@ impl CssSourceSnapshot {
         self.0.utf16.as_ref().map(|value| &value.original)
     }
 
+    pub(crate) fn preprocessed_scalar_count(&self) -> Option<usize> {
+        self.0.utf16.as_ref().map(|value| value.map.len())
+    }
+
     /// Maps complete normalized scalar boundaries to original half-open units.
     /// Interior UTF8 byte offsets and out-of-range intervals are rejected.
     #[must_use]
@@ -545,25 +704,25 @@ impl CssSourceSnapshot {
 
     pub(crate) fn try_from_preprocessed<E>(
         source: String,
+        mut checkpoints: Vec<CssSourcePosition>,
+        mut position: CssSourcePosition,
         limits: crate::CssUtf16InputLimits,
         other_bytes: usize,
-        step: &mut impl FnMut() -> Result<(), crate::CssUtf16InputError<E>>,
+        control: &mut crate::utf16_input::Preparation<'_, E>,
     ) -> Result<Self, crate::CssUtf16InputError<E>> {
-        use crate::CssUtf16InputError::{Allocation, CapacityOverflow};
+        use crate::CssUtf16InputError::CapacityOverflow;
         let backing = |capacity: usize| {
             other_bytes
                 .checked_add(source.capacity())?
                 .checked_add(capacity.checked_mul(std::mem::size_of::<CssSourcePosition>())?)
         };
-        let mut position = CssSourcePosition::from_byte_offset_in("", 0);
-        let mut checkpoints = Vec::new();
         crate::utf16_input::check(1, limits.max_checkpoints, "source checkpoints")?;
         crate::utf16_input::check(
             backing(1).ok_or(CapacityOverflow)?,
             limits.max_retained_bytes,
             "retained source bytes",
         )?;
-        checkpoints.try_reserve_exact(1).map_err(|_| Allocation)?;
+        control.grow_vec(&mut checkpoints, 1)?;
         crate::utf16_input::check(
             checkpoints.capacity(),
             limits.max_checkpoints,
@@ -577,7 +736,7 @@ impl CssSourceSnapshot {
         checkpoints.push(position);
         let mut start = 0;
         for (offset, character) in source.char_indices() {
-            step()?;
+            control.step()?;
             let end = offset + character.len_utf8();
             if end - start >= 64 {
                 position = position.advanced_by(&source[start..end]);
@@ -597,9 +756,7 @@ impl CssSourceSnapshot {
                         limits.max_retained_bytes,
                         "retained source bytes",
                     )?;
-                    checkpoints
-                        .try_reserve_exact(capacity - checkpoints.len())
-                        .map_err(|_| Allocation)?;
+                    control.grow_vec(&mut checkpoints, capacity)?;
                     crate::utf16_input::check(
                         checkpoints.capacity(),
                         limits.max_checkpoints,
@@ -625,12 +782,19 @@ impl CssSourceSnapshot {
             )
             .ok_or(CapacityOverflow)?;
         crate::utf16_input::check(bytes, limits.max_retained_bytes, "retained source bytes")?;
-        Ok(Self(Arc::new(SourceSnapshotData {
+        // Admit the actual immutable source payload before forming its owner;
+        // the old String/checkpoint headers remain owned until this move.
+        control.add(std::mem::size_of::<SourceSnapshotData>())?;
+        let result = Self(Arc::new(SourceSnapshotData {
             text: source,
             checkpoints,
             utf16: None,
             storage: CssSourceStorageUsage(bytes),
-        })))
+        }));
+        control.released(
+            std::mem::size_of::<String>() + std::mem::size_of::<Vec<CssSourcePosition>>(),
+        );
+        Ok(result)
     }
 }
 
@@ -804,6 +968,242 @@ mod utf16_admission_tests {
         assert!(matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == total));
         assert_eq!(calls, total);
         assert_eq!(Arc::strong_count(&original), 1);
+    }
+}
+
+#[cfg(test)]
+mod secondary_admission_tests {
+    use super::*;
+    use crate::utf16_value::{Control, Failure};
+    use crate::{CssUtf16PropertyValueLimits, CssUtf16ValueAdmission};
+    use std::cell::{Cell, RefCell};
+    use std::mem::size_of;
+
+    fn limits() -> CssUtf16PropertyValueLimits {
+        CssUtf16PropertyValueLimits {
+            input: crate::CssUtf16InputLimits::default(),
+            syntax: crate::CssComponentValueLimits::default(),
+            max_work: 1_000_000,
+            max_live_bytes: 16_000_000,
+            max_retained_bytes: 16_000_000,
+        }
+    }
+
+    #[test]
+    fn decoded_secondary_source_keeps_local_positions_and_original_utf16_origin_independent() {
+        let raw = Arc::new(r#""\3c length\3e ""#.encode_utf16().collect::<Vec<_>>());
+        let main = crate::utf16_input::prepare_utf16(
+            raw.clone(),
+            crate::CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+            |_, _| Ok(()),
+            |_, _| {},
+        )
+        .unwrap();
+        let original = CssParsedOrigin::from_range(&main, 0..main.as_str().len()).unwrap();
+        let events = RefCell::new(Vec::new());
+        let admit = |action| {
+            events.borrow_mut().push(action);
+            Ok(())
+        };
+        let release = |_| {};
+        let control = Control::new(limits(), &admit, &release);
+        let baseline = main.payload_bytes(true).unwrap();
+        control.add(baseline).unwrap();
+        let secondary = CssSourceSnapshot::try_from_decoded_utf8("<length>", &control).unwrap();
+        assert!(!secondary.same_snapshot(&main));
+        assert!(secondary.original_utf16().is_none());
+        assert_eq!(secondary.original_utf16_range(0..8), None);
+        assert_eq!(secondary.preprocessed_scalar_count(), None);
+        assert_eq!(secondary.as_str(), "<length>");
+        let local = CssParsedOrigin::from_range(&secondary, 0..8).unwrap();
+        assert_eq!(local.span().start().byte_offset().value(), 0);
+        assert_eq!(local.span().end().byte_offset().value(), 8);
+        assert!(original.source().same_snapshot(&main));
+        assert!(Arc::ptr_eq(
+            original.source().original_utf16().unwrap(),
+            &raw
+        ));
+        assert_eq!(original.span().end().byte_offset().value(), raw.len());
+        assert_eq!(
+            control.live().bytes(),
+            baseline + secondary.payload_bytes(false).unwrap()
+        );
+        let payload = secondary.payload_bytes(false).unwrap();
+        drop(local);
+        drop(secondary);
+        control.released(payload);
+        assert_eq!(control.live().bytes(), baseline);
+        drop(original);
+        drop(main);
+        control.released(baseline);
+        assert_eq!(control.live().bytes(), 0);
+        assert!(
+            events
+                .borrow()
+                .iter()
+                .any(|action| matches!(action, CssUtf16ValueAdmission::Work))
+        );
+    }
+
+    #[test]
+    fn secondary_checkpoints_address_preprocessed_crlf_and_unicode_positions() {
+        let text = format!("{}\r\n{}", "a".repeat(63), "😀".repeat(18));
+        let admit = |_| Ok(());
+        let released = Cell::new(0);
+        let release = |usage: crate::CssUtf16ValueStorage| released.set(usage.bytes());
+        let control = Control::new(limits(), &admit, &release);
+        let source = CssSourceSnapshot::try_from_decoded_utf8(&text, &control).unwrap();
+        let positions: Vec<_> = source
+            .0
+            .checkpoints
+            .iter()
+            .map(|position| {
+                (
+                    position.byte_offset().value(),
+                    position.line().value(),
+                    position.column().value(),
+                )
+            })
+            .collect();
+        assert_eq!(positions, [(0, 0, 0), (64, 1, 0), (128, 1, 32)]);
+        let end = source.position_at(136).unwrap();
+        assert_eq!((end.line().value(), end.column().value()), (1, 36));
+        let normalized = format!("{}\n{}", "a".repeat(63), "😀".repeat(18));
+        assert_eq!(source.as_str(), normalized);
+        assert_eq!(control.live().bytes(), source.payload_bytes(false).unwrap());
+        let ordinary = CssSourceSnapshot::new(&normalized);
+        assert_eq!(source.0.checkpoints, ordinary.0.checkpoints);
+        let payload = source.payload_bytes(false).unwrap();
+        drop(source);
+        control.released(payload);
+        assert_eq!(released.get(), 0);
+    }
+
+    #[test]
+    fn secondary_scalar_growth_one_short_and_preprocessing_cancellation_release_only_their_payload()
+    {
+        let text = "x".repeat(130);
+        // The first genuinely emitted scalar forms the original Control's
+        // four-char bank while the new Vec/old IntoIter growth headers coexist.
+        let first_scalar_peak = size_of::<SecondarySourceFormation>()
+            + size_of::<Vec<char>>()
+            + size_of::<std::vec::IntoIter<char>>()
+            + 4 * size_of::<char>();
+        let mut short = limits();
+        short.max_live_bytes = first_scalar_peak - 1;
+        let admit = |_| Ok(());
+        let released = Cell::new(None);
+        let release = |usage: crate::CssUtf16ValueStorage| released.set(Some(usage.bytes()));
+        let control = Control::new(short, &admit, &release);
+        assert!(CssSourceSnapshot::try_from_decoded_utf8(&text, &control).is_err());
+        assert_eq!(
+            control.failure(),
+            Some(Failure::Limit("property input live bytes"))
+        );
+        assert_eq!(control.live().bytes(), 0);
+        assert_eq!(released.get(), Some(0));
+
+        let main = CssSourceSnapshot::new("original authored input");
+        let baseline = main.payload_bytes(false).unwrap();
+        let work = Cell::new(0);
+        let admit = |action| {
+            if matches!(action, CssUtf16ValueAdmission::Work) {
+                work.set(work.get() + 1);
+                // Refuse an actual decoder/storage action while the original
+                // caller's source remains independently owned.
+                if work.get() == 190 {
+                    return Err(());
+                }
+            }
+            Ok(())
+        };
+        let released = Cell::new(None);
+        let release = |usage: crate::CssUtf16ValueStorage| released.set(Some(usage.bytes()));
+        let control = Control::new(limits(), &admit, &release);
+        control.add(baseline).unwrap();
+        assert!(CssSourceSnapshot::try_from_decoded_utf8(&text, &control).is_err());
+        assert_eq!(control.failure(), Some(Failure::Admission));
+        assert_eq!(work.get(), 190);
+        assert_eq!(control.live().bytes(), baseline);
+        assert_eq!(released.get(), Some(baseline));
+        assert_eq!(main.as_str(), "original authored input");
+        drop(main);
+        control.released(baseline);
+    }
+
+    #[test]
+    fn secondary_css_preprocessing_normalizes_cr_ff_crlf_and_nul_without_main_origin() {
+        let admit = |_| Ok(());
+        let release = |_| {};
+        let control = Control::new(limits(), &admit, &release);
+        let source =
+            CssSourceSnapshot::try_from_decoded_utf8("\r\nA\rB\u{c}C\0😀\r", &control).unwrap();
+        assert_eq!(source.as_str(), "\nA\nB\nC�😀\n");
+        assert!(source.original_utf16().is_none());
+        assert_eq!(source.original_utf16_range(0..14), None);
+        let end = source.position_at(14).unwrap();
+        assert_eq!(
+            (
+                end.byte_offset().value(),
+                end.line().value(),
+                end.column().value()
+            ),
+            (14, 4, 0)
+        );
+        let payload = source.payload_bytes(false).unwrap();
+        assert_eq!(control.live().bytes(), payload);
+        drop(source);
+        control.released(payload);
+        assert_eq!(control.live().bytes(), 0);
+    }
+
+    #[test]
+    fn every_secondary_preprocessing_admission_refuses_without_retaining_partial_payload() {
+        let input = "\r\n\0\u{c}😀\r";
+        let actions = Cell::new(0);
+        let admit = |_| {
+            actions.set(actions.get() + 1);
+            Ok(())
+        };
+        let release = |_| {};
+        let control = Control::new(limits(), &admit, &release);
+        let source = CssSourceSnapshot::try_from_decoded_utf8(input, &control).unwrap();
+        assert_eq!(source.as_str(), "\n�\n😀\n");
+        let payload = source.payload_bytes(false).unwrap();
+        drop(source);
+        control.released(payload);
+
+        // Cuts enumerate actual reached source-owner admissions; expected
+        // normalization and unchanged main ownership are independent oracles.
+        for cut in 1..=actions.get() {
+            let main = CssSourceSnapshot::new("original authored source");
+            let baseline = main.payload_bytes(false).unwrap();
+            let seen = Cell::new(0);
+            let enabled = Cell::new(false);
+            let admit = |_| {
+                if enabled.get() {
+                    seen.set(seen.get() + 1);
+                    if seen.get() == cut {
+                        return Err(());
+                    }
+                }
+                Ok(())
+            };
+            let release = |_| {};
+            let control = Control::new(limits(), &admit, &release);
+            control.add(baseline).unwrap();
+            enabled.set(true);
+            assert!(
+                CssSourceSnapshot::try_from_decoded_utf8(input, &control).is_err(),
+                "cut {cut}"
+            );
+            assert_eq!(control.failure(), Some(Failure::Admission), "cut {cut}");
+            assert_eq!(control.live().bytes(), baseline, "cut {cut}");
+            assert_eq!(main.as_str(), "original authored source");
+            drop(main);
+            control.released(baseline);
+        }
     }
 }
 

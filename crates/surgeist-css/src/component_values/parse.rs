@@ -8,6 +8,9 @@ use crate::tokenization::{numeric_prefix_length, source_token_parts};
 #[cfg(test)]
 mod spelling_allocation_tests;
 
+mod bounded;
+pub(crate) use bounded::parse_controlled_snapshot;
+
 pub(super) fn parse(
     source: &str,
     limits: CssComponentValueLimits,
@@ -205,7 +208,7 @@ pub(crate) fn promote_nodes(
                     origin: origin.clone(),
                     children: frames.pop().expect("child promotion frame"),
                 };
-                let value = frame.finish(origin.source(), closing, limits)?;
+                let value = frame.finish(origin.source(), closing, limits, None)?;
                 frames.last_mut().expect("promotion frame").push(value);
             }
         }
@@ -351,12 +354,13 @@ impl OpenFrame {
         source: &CssSourceSnapshot,
         closing_range: std::ops::Range<usize>,
         limits: CssComponentValueLimits,
+        control: Option<&crate::utf16_value::Control<'_>>,
     ) -> Result<CssComponentValue, CssComponentValueError> {
         let end = closing_range.end;
         let start = self.origin.span().start().byte_offset().value();
         let closing = if closing_range.is_empty() {
             Lexeme {
-                text: self.kind.delimiters().1.into(),
+                text: copied(self.kind.delimiters().1, control, &self.origin)?,
                 origin: CssValueOrigin::ImplicitClosure {
                     opening: self.origin,
                     at: range_origin(source, closing_range),
@@ -364,11 +368,15 @@ impl OpenFrame {
             }
         } else {
             Lexeme {
-                text: source.as_str()[closing_range.clone()].into(),
+                text: copied(
+                    &source.as_str()[closing_range.clone()],
+                    control,
+                    &self.origin,
+                )?,
                 origin: CssValueOrigin::Parsed(range_origin(source, closing_range)),
             }
         };
-        let values = CssComponentValues::from_items(self.children, limits)?;
+        let values = CssComponentValues::from_items_controlled(self.children, limits, control)?;
         let data = if let Some(name) = self.name {
             ComponentData::Function(CssFunctionValue {
                 name,
@@ -391,6 +399,124 @@ impl OpenFrame {
     }
 }
 
+fn interrupted(origin: &CssParsedOrigin) -> CssComponentValueError {
+    CssComponentValueError::new(
+        CssComponentValueErrorKind::CapacityOverflow,
+        CssValueOrigin::Parsed(origin.clone()),
+    )
+}
+
+fn copied(
+    value: &str,
+    control: Option<&crate::utf16_value::Control<'_>>,
+    origin: &CssParsedOrigin,
+) -> Result<Box<str>, CssComponentValueError> {
+    match control {
+        Some(control) => control.boxed(value).map_err(|()| interrupted(origin)),
+        None => Ok(value.into()),
+    }
+}
+
+/// The component structural owner shared by provider and bounded lexical input.
+/// Feeders supply lexical payloads; matching delimiters, nesting admission and
+/// implicit group completion have exactly one implementation here.
+struct ComponentStack<'a, 'c> {
+    source: &'a CssSourceSnapshot,
+    limits: CssComponentValueLimits,
+    base_depth: u32,
+    items: Vec<CssComponentValue>,
+    frames: Vec<OpenFrame>,
+    control: Option<&'a crate::utf16_value::Control<'c>>,
+}
+impl<'a, 'c> ComponentStack<'a, 'c> {
+    fn new(
+        source: &'a CssSourceSnapshot,
+        limits: CssComponentValueLimits,
+        base_depth: u32,
+        control: Option<&'a crate::utf16_value::Control<'c>>,
+    ) -> Self {
+        Self {
+            source,
+            limits,
+            base_depth,
+            items: Vec::new(),
+            frames: Vec::new(),
+            control,
+        }
+    }
+    fn close(
+        &mut self,
+        kind: Option<CssBlockKind>,
+        range: std::ops::Range<usize>,
+    ) -> Result<bool, CssComponentValueError> {
+        if let Some(frame) = self.frames.pop_if(|frame| Some(frame.kind) == kind) {
+            let value = frame.finish(self.source, range, self.limits, self.control)?;
+            self.push(value)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+    fn open(
+        &mut self,
+        kind: CssBlockKind,
+        name: Option<Box<str>>,
+        range: std::ops::Range<usize>,
+        count: &mut usize,
+    ) -> Result<(), CssComponentValueError> {
+        let origin = range_origin(self.source, range.clone());
+        admit_component(count, self.limits, &origin)?;
+        if self.frames.len() >= self.limits.max_depth.saturating_sub(self.base_depth) as usize {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::NestingLimit,
+                CssValueOrigin::Parsed(origin),
+            ));
+        }
+        let opening = Lexeme {
+            text: copied(&self.source.as_str()[range], self.control, &origin)?,
+            origin: CssValueOrigin::Parsed(origin.clone()),
+        };
+        if let Some(control) = self.control {
+            control
+                .reserve(&mut self.frames, 1)
+                .map_err(|()| interrupted(&origin))?;
+        }
+        self.frames.push(OpenFrame {
+            kind,
+            name,
+            opening,
+            origin,
+            children: Vec::new(),
+        });
+        Ok(())
+    }
+    fn push(&mut self, value: CssComponentValue) -> Result<(), CssComponentValueError> {
+        let destination = self
+            .frames
+            .last_mut()
+            .map_or(&mut self.items, |frame| &mut frame.children);
+        if let Some(control) = self.control {
+            let origin = value.parsed.as_ref().expect("parsed lexical input");
+            control
+                .reserve(destination, 1)
+                .map_err(|()| interrupted(origin))?;
+        }
+        destination.push(value);
+        Ok(())
+    }
+    fn finish(mut self, end: usize) -> Result<Vec<CssComponentValue>, CssComponentValueError> {
+        while let Some(frame) = self.frames.pop() {
+            let value = frame.finish(self.source, end..end, self.limits, self.control)?;
+            self.push(value)?;
+        }
+        let backing = self.frames.capacity() * std::mem::size_of::<OpenFrame>();
+        drop(self.frames);
+        if let Some(control) = self.control {
+            control.released(backing);
+        }
+        Ok(self.items)
+    }
+}
+
 fn consume_range(
     source: &CssSourceSnapshot,
     range: std::ops::Range<usize>,
@@ -398,8 +524,7 @@ fn consume_range(
     base_depth: u32,
     count: &mut usize,
 ) -> Result<Vec<CssComponentValue>, CssComponentValueError> {
-    let mut items = Vec::new();
-    let mut frames: Vec<OpenFrame> = Vec::new();
+    let mut stack = ComponentStack::new(source, limits, base_depth, None);
     let mut offset = range.start;
     while offset < range.end {
         // Restart only at a verified token boundary. Reading a single token
@@ -414,15 +539,10 @@ fn consume_range(
             Token::CloseCurlyBracket => Some(CssBlockKind::CurlyBracket),
             _ => None,
         };
-        if let Some(frame) = frames.pop_if(|frame| Some(frame.kind) == closing) {
-            let value = frame.finish(source, offset..end, limits)?;
-            push_value(&mut items, &mut frames, value);
+        if stack.close(closing, offset..end)? {
             offset = end;
             continue;
         }
-        let origin = range_origin(source, offset..end);
-        let error_at_token =
-            |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
         let kind = match token {
             Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
             Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
@@ -430,53 +550,23 @@ fn consume_range(
             _ => None,
         };
         if let Some(kind) = kind {
-            let spelling = Lexeme {
-                text: source.as_str()[offset..end].into(),
-                origin: CssValueOrigin::Parsed(origin.clone()),
-            };
-            admit_component(count, limits, &origin)?;
-            if frames.len() >= (limits.max_depth - base_depth) as usize {
-                return Err(error_at_token(CssComponentValueErrorKind::NestingLimit));
-            }
             let name = if let Token::Function(name) = token {
                 Some(name.as_ref().into())
             } else {
                 None
             };
-            frames.push(OpenFrame {
-                kind,
-                name,
-                opening: spelling,
-                origin,
-                children: Vec::new(),
-            });
+            stack.open(kind, name, offset..end, count)?;
         } else {
             for value in normalized_leaves(source, token, offset..end, limits, count, false)?
                 .into_iter()
                 .flatten()
             {
-                push_value(&mut items, &mut frames, value);
+                stack.push(value)?;
             }
         }
         offset = end;
     }
-    while let Some(frame) = frames.pop() {
-        let value = frame.finish(source, range.end..range.end, limits)?;
-        push_value(&mut items, &mut frames, value);
-    }
-    Ok(items)
-}
-
-fn push_value(
-    items: &mut Vec<CssComponentValue>,
-    frames: &mut [OpenFrame],
-    value: CssComponentValue,
-) {
-    if let Some(frame) = frames.last_mut() {
-        frame.children.push(value);
-    } else {
-        items.push(value);
-    }
+    stack.finish(range.end)
 }
 
 fn admit_component(

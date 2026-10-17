@@ -81,7 +81,7 @@ pub enum DomDocumentCreationCause {
 /// Native defaults follow the selected DOM document clause. Host/imported facts
 /// have no unchecked constructor here. Native HTML creation publishes its full
 /// source skeleton and copies an actual associated Document origin.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DomDocumentMetadata {
     class: DomDocumentClass,
     content_type: DocumentString,
@@ -95,6 +95,9 @@ pub struct DomDocumentMetadata {
     environment: DomDocumentEnvironment,
     cause: DomDocumentCreationCause,
     meta: Option<crate::DomMetaDocumentState>,
+    pub(crate) meta_theme_color: crate::DomMetaThemeColorState,
+    // Outer None is unavailable; Some(None) is a completed null selection.
+    pub(crate) meta_color_scheme: Option<Option<crate::meta::SelectedColorScheme>>,
     policy: crate::DomDocumentPolicyContainer,
     meta_ui: NoAssociatedMetaThemeConsumer,
     pub(crate) hosted_inputs: Option<HostedDocumentInputs>,
@@ -387,6 +390,8 @@ impl DomDocumentMetadata {
             environment,
             cause: DomDocumentCreationCause::Native,
             meta: Some(crate::DomMetaDocumentState::native()),
+            meta_theme_color: crate::DomMetaThemeColorState::Known(None),
+            meta_color_scheme: Some(None),
             policy: crate::DomDocumentPolicyContainer::native(),
             meta_ui: NoAssociatedMetaThemeConsumer,
             hosted_inputs: None,
@@ -431,6 +436,8 @@ impl DomDocumentMetadata {
         // history. The installer must qualify this Document's original parser
         // record before explicitly establishing its Meta/policy history.
         result.meta = None;
+        result.meta_theme_color = crate::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
         result.policy = crate::DomDocumentPolicyContainer::unavailable();
         result
     }
@@ -446,6 +453,8 @@ impl DomDocumentMetadata {
         result.design_mode_enabled = design_mode_enabled;
         result.cause = DomDocumentCreationCause::ParsedTemplateOwner;
         result.meta = None;
+        result.meta_theme_color = crate::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
         result.policy = crate::DomDocumentPolicyContainer::unavailable();
         result
     }
@@ -477,6 +486,8 @@ impl DomDocumentMetadata {
         // Only the separate, qualified per-Document Meta view establishes this
         // original processing history. Constructor facts never substitute it.
         result.meta = None;
+        result.meta_theme_color = crate::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
         result.policy = crate::DomDocumentPolicyContainer::unavailable();
         result
     }
@@ -530,6 +541,27 @@ impl DomDocumentMetadata {
     pub fn meta_state(&self) -> Option<&crate::DomMetaDocumentState> {
         self.meta.as_ref()
     }
+    /// Last completed theme selection at this publication. Current-tree
+    /// interpretation requires a complete Source snapshot.
+    pub fn meta_theme_color(&self) -> &crate::DomMetaThemeColorState {
+        &self.meta_theme_color
+    }
+    /// Last completed color-scheme selection, with its original CSS source and
+    /// context. Current-tree interpretation requires a complete Source snapshot.
+    pub fn meta_color_scheme(&self) -> crate::DomMetaColorSchemeState<'_> {
+        match &self.meta_color_scheme {
+            None => crate::DomMetaColorSchemeState::Unavailable,
+            Some(value) => crate::DomMetaColorSchemeState::Known(
+                value.as_ref().map(|value| value.report.as_ref()),
+            ),
+        }
+    }
+    pub(crate) fn meta_color_scheme_bytes(&self) -> usize {
+        self.meta_color_scheme
+            .as_ref()
+            .and_then(Option::as_ref)
+            .map_or(0, |value| value.bytes)
+    }
     /// The one canonical supported policy-container authority for this Document.
     pub fn policy_container(&self) -> &crate::DomDocumentPolicyContainer {
         &self.policy
@@ -555,9 +587,9 @@ impl DomDocumentMetadata {
     pub(crate) fn policy_container_mut(&mut self) -> &mut crate::DomDocumentPolicyContainer {
         &mut self.policy
     }
-    /// Complete application of a no-theme result to the actually empty recipient
+    /// Complete application of the selected color or absence to the empty recipient
     /// set. Selection must already have run over this Document's current tree.
-    pub(crate) fn apply_no_meta_theme(&self) {
+    pub(crate) fn apply_meta_theme(&self) {
         let NoAssociatedMetaThemeConsumer = self.meta_ui;
     }
     fn retained_strings(&self) -> impl Iterator<Item = &DocumentString> {
@@ -576,6 +608,9 @@ impl DomDocumentMetadata {
     /// the enclosing node or source record. Keep consumers out of field pricing.
     pub(crate) fn retained_payload_units(&self) -> Result<usize, crate::DomError> {
         let mut units = 0usize;
+        if let Some(Some(value)) = &self.meta_color_scheme {
+            units = value.units;
+        }
         for string in self.retained_strings() {
             units = units
                 .checked_add(string.shared_code_units().capacity())
@@ -595,6 +630,9 @@ impl DomDocumentMetadata {
     }
     pub(crate) fn retained_payload_bytes(&self) -> Result<usize, crate::DomError> {
         let mut bytes = 0usize;
+        if let Some(Some(value)) = &self.meta_color_scheme {
+            bytes = value.bytes;
+        }
         for string in self.retained_strings() {
             bytes = bytes
                 .checked_add(std::mem::size_of::<Vec<u16>>())
@@ -636,6 +674,14 @@ impl DomDocumentMetadata {
                     .and_then(|meta| meta.pragma_language.as_ref())
                     .map_or(0, |value| value.shared_code_units().capacity()),
             )
+            .and_then(|units| {
+                units.checked_add(
+                    self.meta_color_scheme
+                        .as_ref()
+                        .and_then(Option::as_ref)
+                        .map_or(0, |value| value.units),
+                )
+            })
     }
 }
 

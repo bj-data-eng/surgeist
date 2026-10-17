@@ -6,12 +6,15 @@
 
 mod entries;
 mod parse;
+mod retained;
 pub use entries::{
     parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
     parse_component_value, parse_component_value_with_limits,
 };
+pub(crate) use parse::parse_controlled_snapshot;
 pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
+pub(crate) use retained::{equivalent_in_same_input_with, retained_backing_bytes_with};
 mod serialize;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
@@ -1105,9 +1108,25 @@ impl CssComponentValues {
         items: Vec<CssComponentValue>,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssComponentValueError> {
+        Self::from_items_controlled(items, limits, None)
+    }
+
+    fn from_items_controlled(
+        items: Vec<CssComponentValue>,
+        limits: CssComponentValueLimits,
+        control: Option<&crate::utf16_value::Control<'_>>,
+    ) -> Result<Self, CssComponentValueError> {
         let mut count = items.len();
         let mut depth = 0;
         for item in &items {
+            if let Some(control) = control {
+                control.step().map_err(|()| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        item.origin().clone(),
+                    )
+                })?;
+            }
             if let Some(children) = item.child_values() {
                 count = count.checked_add(children.count).ok_or_else(|| {
                     CssComponentValueError::new(
@@ -1130,8 +1149,23 @@ impl CssComponentValues {
                 ));
             }
         }
+        let previous = items.capacity() * std::mem::size_of::<CssComponentValue>();
+        let retained = items.len() * std::mem::size_of::<CssComponentValue>();
+        if let Some(control) = control
+            && previous != retained
+        {
+            control.add(retained).map_err(|()| {
+                CssComponentValueError::programmatic(CssComponentValueErrorKind::CapacityOverflow)
+            })?;
+        }
+        let items = items.into_boxed_slice();
+        if let Some(control) = control
+            && previous != retained
+        {
+            control.released(previous);
+        }
         Ok(Self {
-            items: items.into_boxed_slice(),
+            items,
             count,
             depth,
         })

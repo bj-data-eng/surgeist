@@ -3,6 +3,38 @@
 use crate::DocumentString;
 use surgeist_html::HtmlReferrerPolicy;
 
+/// Last completed theme selection at this publication, independently qualified
+/// from Meta processing history. Current-tree interpretation requires a complete
+/// Source snapshot; `Known` does not certify a paused Source's unfinished tree.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DomMetaThemeColorState {
+    /// The original producer has not supplied this selection.
+    Unavailable,
+    /// A completed selection; `None` means it found no valid candidate.
+    Known(Option<surgeist_color::Color>),
+}
+
+/// Last completed color-scheme selection and its original CSS input/context.
+/// Current-tree interpretation requires a complete Source snapshot.
+#[derive(Clone, Copy, Debug)]
+pub enum DomMetaColorSchemeState<'a> {
+    Unavailable,
+    Known(Option<&'a surgeist_css::CssColorSchemeParseReport>),
+}
+
+/// The CSS owner seals the report; this receipt records its admitted backing.
+#[derive(Clone, Debug)]
+pub(crate) struct SelectedColorScheme {
+    pub report: std::sync::Arc<surgeist_css::CssColorSchemeParseReport>,
+    pub bytes: usize,
+    pub units: usize,
+}
+impl PartialEq for SelectedColorScheme {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.report, &other.report)
+    }
+}
+
 /// Established native Meta history, captured with its actual Document revision.
 /// This is processing history, rather than a summary of currently attached Meta nodes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,10 +92,23 @@ pub enum DomMetaError {
     DefaultStyleUnsupported,
     /// The reached CSP parser and policy enforcement are not supplied.
     ContentSecurityPolicyUnsupported,
-    /// A theme candidate requires actual media and CSS color processing.
-    ThemeColorUnsupported,
-    /// A candidate requires actual CSS color-scheme processing.
-    ColorSchemeUnsupported,
+    /// Media beyond HTML's empty/ASCII-whitespace match needs actual matching facts.
+    ThemeColorMediaUnavailable,
+    ThemeColorProtocol(surgeist_css::CssColorProtocolError),
+    ThemeColorUnavailable(surgeist_css::CssColorUnavailable),
+    ThemeColorUnsupported(surgeist_css::CssColorUnsupported),
+    ThemeColorFacts(surgeist_css::CssColorFactError),
+    ThemeColorNumerical {
+        error: surgeist_color::ColorError,
+        input: surgeist_css::CssColorInputRange,
+    },
+    ThemeColorScratchLimit {
+        limit: usize,
+    },
+    /// No caller-selected finite CSS property processing allowance is present.
+    ColorSchemeProcessingUnavailable,
+    ColorSchemeLimit(&'static str),
+    CssProcessingProtocol,
     /// Cumulative current-batch Meta processing exhausted its caller allowance.
     WorkLimit {
         /// Caller-selected cumulative current-batch work allowance.

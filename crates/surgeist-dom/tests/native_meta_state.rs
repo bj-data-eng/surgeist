@@ -11,6 +11,17 @@ fn limits(work: u64) -> DomLimits {
     DomLimits::new(128, 32768, 512, 128, 64, 8, 262144)
         .unwrap()
         .with_meta_processing_work(work)
+        .with_meta_theme_color_scratch_bytes(262144)
+        .unwrap()
+        .with_meta_color_scheme_limits(surgeist_css::CssUtf16PropertyValueLimits {
+            input: surgeist_css::CssUtf16InputLimits::default(),
+            syntax: surgeist_css::CssComponentValueLimits::default(),
+            max_work: 1_000_000,
+            max_live_bytes: 1_000_000,
+            max_retained_bytes: 1_000_000,
+        })
+        .with_meta_color_scheme_retained_bytes(1_000_000)
+        .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &cancel()).unwrap()
@@ -244,18 +255,6 @@ fn reached_external_operations_refuse_whole_batch_without_history_or_identity() 
             "default-src 'none'",
             DomMetaError::ContentSecurityPolicyUnsupported,
         ),
-        (
-            "name",
-            "theme-color",
-            "",
-            DomMetaError::ThemeColorUnsupported,
-        ),
-        (
-            "name",
-            "color-scheme",
-            "",
-            DomMetaError::ColorSchemeUnsupported,
-        ),
     ] {
         let (mut dom, _, root, meta) = fixture();
         let before = dom.snapshot();
@@ -270,6 +269,34 @@ fn reached_external_operations_refuse_whole_batch_without_history_or_identity() 
         );
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         assert_eq!(dom.usage(), usage);
+    }
+}
+
+#[test]
+fn empty_css_meta_candidates_complete_with_no_selected_value() {
+    // The original empty-content cases reach CSS syntax failure, rather than
+    // requiring an external service or producing a fallback selection.
+    for name in ["theme-color", "color-scheme"] {
+        let (mut dom, document, root, meta) = fixture();
+        let before = dom.snapshot();
+        let mut batch = DomBatch::new();
+        batch.set_attribute(meta, "name", name);
+        batch.set_attribute(meta, "content", "");
+        batch.insert_before(meta, root, None);
+        apply(&mut dom, batch);
+        let snapshot = dom.snapshot();
+        let metadata = snapshot.document(document).unwrap().metadata();
+        assert_eq!(
+            metadata.meta_theme_color(),
+            &DomMetaThemeColorState::Known(None)
+        );
+        assert!(matches!(
+            metadata.meta_color_scheme(),
+            DomMetaColorSchemeState::Known(None)
+        ));
+        assert_eq!(snapshot.node(meta).unwrap().parent(), Some(root));
+        assert_eq!(before.node(meta).unwrap().parent(), None);
+        assert!(snapshot.incomplete_source_operation().is_none());
     }
 }
 

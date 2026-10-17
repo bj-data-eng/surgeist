@@ -139,6 +139,107 @@ pub(crate) fn admit_integer_literal(
     Ok(CssIntegerValue::Literal(literal))
 }
 
+/// The env() index grammar only needs lexical nonnegativity. Borrow the
+/// original checked token instead of retaining another integer/component graph.
+pub(crate) fn nonnegative_integer_literal_controlled(
+    component: &CssComponentValue,
+    control: &crate::utf16_value::Control<'_>,
+) -> Result<bool, ()> {
+    control.step()?;
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
+        return Ok(false);
+    };
+    if number.kind() != CssNumericTokenKind::Integer {
+        return Ok(false);
+    }
+    let text = number.representation();
+    if !text.starts_with('-') {
+        return Ok(true);
+    }
+    // Exactly the same signed-zero rule as CssIntegerLiteral::is_negative;
+    // each actual digit read is admitted before looking at the next digit.
+    for digit in text.as_bytes().iter().skip(1) {
+        control.step()?;
+        if *digit != b'0' {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod controlled_index_tests {
+    use super::*;
+    use crate::{
+        CssComponentValueLimits, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+        CssUtf16ValueAdmission,
+    };
+    use std::cell::Cell;
+
+    fn limits() -> CssUtf16PropertyValueLimits {
+        CssUtf16PropertyValueLimits {
+            input: CssUtf16InputLimits::default(),
+            syntax: CssComponentValueLimits::default(),
+            max_work: 10_000,
+            max_live_bytes: 0,
+            max_retained_bytes: 0,
+        }
+    }
+
+    #[test]
+    fn borrowed_index_admits_huge_magnitudes_and_signed_zero_without_allocating_a_graph() {
+        for (source, expected) in [
+            ("0", true),
+            ("+000", true),
+            ("-000", true),
+            ("-0001", false),
+            ("9999999999999999999999999999999999999999", true),
+            ("1.0", false),
+            ("1e2", false),
+            ("none", false),
+        ] {
+            let values = crate::parse_component_values(source).unwrap();
+            let admit = |action| {
+                assert!(matches!(action, CssUtf16ValueAdmission::Work));
+                Ok(())
+            };
+            let release = |_| {};
+            let control = crate::utf16_value::Control::new(limits(), &admit, &release);
+            assert_eq!(
+                nonnegative_integer_literal_controlled(&values.items()[0], &control),
+                Ok(expected),
+                "{source}"
+            );
+            assert_eq!(control.live().bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn real_signed_zero_scan_is_cancellable_and_keeps_original_token() {
+        let values =
+            crate::parse_component_values("-000000000000000000000000000000000000").unwrap();
+        let before = values.clone();
+        let work = Cell::new(0);
+        let admit = |_| {
+            work.set(work.get() + 1);
+            if work.get() == 9 { Err(()) } else { Ok(()) }
+        };
+        let release = |_| {};
+        let control = crate::utf16_value::Control::new(limits(), &admit, &release);
+        assert_eq!(
+            nonnegative_integer_literal_controlled(&values.items()[0], &control),
+            Err(())
+        );
+        assert_eq!(
+            control.failure(),
+            Some(crate::utf16_value::Failure::Admission)
+        );
+        assert_eq!(work.get(), 9);
+        assert_eq!(control.live().bytes(), 0);
+        assert_eq!(values, before);
+    }
+}
+
 // Input has already been checked as a lexical integer. Accumulating negatively
 // admits i32::MIN without an overflowing positive intermediate. Leading zeroes
 // never consume an artificial significant-digit allowance.

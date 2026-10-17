@@ -3366,6 +3366,9 @@ impl PartialEq for CssDeclaration {
 }
 
 impl CssDeclaration {
+    pub(crate) const fn constructed_allocation_bytes() -> usize {
+        std::mem::size_of::<DeclarationOccurrence>() + std::mem::size_of::<DeclarationPayload>()
+    }
     /// Borrows the independent SVG authored body; known/custom accessors return None for it.
     #[must_use]
     pub fn svg_glyph_orientation_vertical(
@@ -3829,11 +3832,14 @@ impl CssCustomPropertyName {
 
     #[must_use]
     pub(crate) fn from_ident_token(name: &str) -> Option<Self> {
+        Self::accepts_ident_token(name).then(|| Self {
+            name: name.to_owned(),
+        })
+    }
+
+    pub(crate) fn accepts_ident_token(name: &str) -> bool {
         name.strip_prefix("--")
-            .filter(|suffix| !suffix.is_empty())
-            .map(|_| Self {
-                name: name.to_owned(),
-            })
+            .is_some_and(|suffix| !suffix.is_empty())
     }
 
     /// Returns the decoded, case-sensitive semantic custom-property name.
@@ -3855,6 +3861,9 @@ pub struct CssAuthoredDeclarationValue {
 }
 
 impl CssAuthoredDeclarationValue {
+    pub(crate) fn retained_backing_bytes(&self) -> usize {
+        self.css.capacity()
+    }
     #[must_use]
     pub fn try_new(css: impl Into<String>) -> Option<Self> {
         let css = css.into();
@@ -4028,6 +4037,9 @@ pub struct CssSubstitutionDependentValue {
 }
 
 impl CssSubstitutionDependentValue {
+    pub(crate) fn backing_capacity(&self) -> usize {
+        self.authored.retained_backing_bytes()
+    }
     #[must_use]
     pub(crate) const fn new(authored: CssAuthoredDeclarationValue) -> Self {
         Self { authored }
@@ -6365,6 +6377,15 @@ pub struct CssIdent {
 }
 
 impl CssIdent {
+    /// The original lexical/property owner has checked the decoded name and
+    /// admitted this exact String allocation.
+    pub(crate) fn from_admitted(value: String) -> Self {
+        Self { value }
+    }
+
+    pub(crate) fn backing_capacity(&self) -> usize {
+        self.value.capacity()
+    }
     /// Constructs a representable decoded CSS identifier, retaining its case and punctuation.
     /// Consumer-specific keyword exclusions are intentionally not applied.
     pub fn try_new(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {

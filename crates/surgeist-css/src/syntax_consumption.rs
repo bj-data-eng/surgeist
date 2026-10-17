@@ -5,6 +5,7 @@
 
 use std::{borrow::Cow, ops::Range};
 
+use crate::utf16_value::Control;
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueRef, CssParsedOrigin, CssSourceSnapshot, CssValueOrigin, CssValueTokenRef,
@@ -298,9 +299,61 @@ pub(crate) struct SyntaxDocument<'a> {
     pub(crate) metrics: SyntaxInputMetrics,
     pub(crate) source: Option<SourceWindow<'a>>,
     ranges: Vec<Option<Range<usize>>>,
+    pub(crate) control: Option<&'a Control<'a>>,
 }
 
-impl SyntaxDocument<'_> {
+impl<'a> SyntaxDocument<'a> {
+    /// Only the private controlled front may bind its own single-source graph.
+    pub(crate) fn bind_controlled_source(
+        &mut self,
+        source: &'a CssSourceSnapshot,
+    ) -> Result<(), ()> {
+        let Some(control) = self.control else {
+            unreachable!("controlled source binding")
+        };
+        control.step()?;
+        self.source = Some(SourceWindow {
+            text: Cow::Borrowed(source.as_str()),
+            range: 0..source.as_str().len(),
+            original: source.clone(),
+        });
+        self.ends[self.root] = Some(SourceSite {
+            snapshot: source.clone(),
+            offset: source.as_str().len(),
+        });
+        for index in 0..self.nodes.len() {
+            control.step()?;
+            let TokenPayload::Checked { component, .. } = self.nodes[index].token().payload else {
+                unreachable!("controlled graph borrows checked input")
+            };
+            let Some(origin) = component.parsed_origin() else {
+                unreachable!("controlled components retain their source spans")
+            };
+            self.ranges[index] = Some(
+                origin.span().start().byte_offset().value()
+                    ..origin.span().end().byte_offset().value(),
+            );
+            if let Some(children) = self.nodes[index].children() {
+                control.step()?;
+                let closing = match component.view() {
+                    CssComponentValueRef::Function(function) => function.closing_origin(),
+                    CssComponentValueRef::Block(block) => block.closing_origin(),
+                    _ => unreachable!("actual checked group"),
+                };
+                let at = match closing {
+                    CssValueOrigin::Parsed(origin) => origin,
+                    CssValueOrigin::ImplicitClosure { at, .. } => at,
+                    _ => unreachable!("controlled group retains its closing source boundary"),
+                };
+                self.ends[children] = Some(SourceSite {
+                    snapshot: at.source().clone(),
+                    offset: at.span().start().byte_offset().value(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn cursor(&self, list: ListId) -> SyntaxCursor<'_> {
         SyntaxCursor {
             document: self,
@@ -403,6 +456,32 @@ struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    fn controlled(
+        limits: SyntaxInputLimits,
+        base_depth: u32,
+        control: &'a Control<'a>,
+    ) -> Result<Self, CssComponentValueError> {
+        let mut lists = Vec::new();
+        reserve_controlled(Some(control), &mut lists, 1)?;
+        lists.push(Vec::new());
+        let mut ends = Vec::new();
+        reserve_controlled(Some(control), &mut ends, 1)?;
+        ends.push(None);
+        Ok(Self {
+            document: SyntaxDocument {
+                nodes: Vec::new(),
+                lists,
+                ends,
+                root: 0,
+                metrics: SyntaxInputMetrics::default(),
+                source: None,
+                ranges: Vec::new(),
+                control: Some(control),
+            },
+            limits,
+            base_depth,
+        })
+    }
     fn new(limits: SyntaxInputLimits, base_depth: u32) -> Self {
         Self {
             document: SyntaxDocument {
@@ -413,6 +492,7 @@ impl<'a> Builder<'a> {
                 metrics: SyntaxInputMetrics::default(),
                 source: None,
                 ranges: Vec::new(),
+                control: None,
             },
             limits,
             base_depth,
@@ -424,6 +504,7 @@ impl<'a> Builder<'a> {
         component: bool,
         depth: u32,
     ) -> Result<(), CssComponentValueError> {
+        control_step(self.document.control)?;
         let error = |kind| CssComponentValueError::new(kind, token.origin.clone().into_owned());
         let metrics = &mut self.document.metrics;
         if component {
@@ -475,8 +556,8 @@ impl<'a> Builder<'a> {
         Ok(())
     }
     fn list(&mut self, end: Option<SourceSite>) -> Result<ListId, CssComponentValueError> {
-        self.document.lists.try_reserve(1).map_err(|_| capacity())?;
-        self.document.ends.try_reserve(1).map_err(|_| capacity())?;
+        reserve_controlled(self.document.control, &mut self.document.lists, 1)?;
+        reserve_controlled(self.document.control, &mut self.document.ends, 1)?;
         let id = self.document.lists.len();
         self.document.lists.push(Vec::new());
         self.document.ends.push(end);
@@ -488,14 +569,9 @@ impl<'a> Builder<'a> {
         node: SyntaxNode<'a>,
         range: Option<Range<usize>>,
     ) -> Result<NodeId, CssComponentValueError> {
-        self.document.nodes.try_reserve(1).map_err(|_| capacity())?;
-        self.document
-            .ranges
-            .try_reserve(1)
-            .map_err(|_| capacity())?;
-        self.document.lists[list]
-            .try_reserve(1)
-            .map_err(|_| capacity())?;
+        reserve_controlled(self.document.control, &mut self.document.nodes, 1)?;
+        reserve_controlled(self.document.control, &mut self.document.ranges, 1)?;
+        reserve_controlled(self.document.control, &mut self.document.lists[list], 1)?;
         let id = self.document.nodes.len();
         self.document.nodes.push(node);
         self.document.ranges.push(range);
@@ -821,7 +897,33 @@ pub(crate) fn normalize<'a>(
     limits: SyntaxInputLimits,
     base_depth: u32,
 ) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
-    let mut builder = Builder::new(limits, base_depth);
+    normalize_with_control(input, limits, base_depth, None)
+}
+
+pub(crate) fn normalize_checked_controlled<'a>(
+    values: &'a [CssComponentValue],
+    limits: SyntaxInputLimits,
+    base_depth: u32,
+    control: &'a Control<'a>,
+) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
+    normalize_with_control(
+        SyntaxInput::CheckedComponents(values),
+        limits,
+        base_depth,
+        Some(control),
+    )
+}
+
+fn normalize_with_control<'a>(
+    input: SyntaxInput<'a>,
+    limits: SyntaxInputLimits,
+    base_depth: u32,
+    control: Option<&'a Control<'a>>,
+) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
+    let mut builder = match control {
+        Some(control) => Builder::controlled(limits, base_depth, control)?,
+        None => Builder::new(limits, base_depth),
+    };
     match input {
         SyntaxInput::Source(window) => {
             normalize_source(&mut builder, window, &[])?;
@@ -840,9 +942,13 @@ pub(crate) fn normalize<'a>(
             }
             let mut pending = Vec::new();
             for value in values.iter().rev() {
+                control_step(control)?;
+                reserve_controlled(control, &mut pending, 1)?;
                 pending.push(Work::Value(value, 0, 0));
             }
-            while let Some(work) = pending.pop() {
+            while !pending.is_empty() {
+                control_step(control)?;
+                let Some(work) = pending.pop() else { break };
                 match work {
                     Work::Value(value, list, depth) => {
                         let children = match value.view() {
@@ -854,8 +960,11 @@ pub(crate) fn normalize<'a>(
                             let opening = SyntaxToken::checked(value, CheckedLexeme::Opening);
                             let (node, child) =
                                 builder.opening(list, opening, None, depth + 1, None)?;
+                            reserve_controlled(control, &mut pending, 1)?;
                             pending.push(Work::Close(node, value, depth + 1));
                             for value in children.iter().rev() {
+                                control_step(control)?;
+                                reserve_controlled(control, &mut pending, 1)?;
                                 pending.push(Work::Value(value, child, depth + 1));
                             }
                         } else {
@@ -899,6 +1008,7 @@ pub(crate) fn normalize<'a>(
                     }
                 }
             }
+            release_controlled_vec(control, pending);
         }
         SyntaxInput::Components { document, list } => {
             enum Work {
@@ -1576,3 +1686,75 @@ mod declaration_boundary_tests;
 
 #[cfg(test)]
 mod raw_component_boundaries;
+
+// The controlled entry borrows checked components, so these are the only owned
+// normalization allocations. Other normalization fronts retain their old owner.
+impl Drop for SyntaxDocument<'_> {
+    fn drop(&mut self) {
+        if let Some(control) = self.control {
+            let mut bytes = 0usize;
+            for part in [
+                self.nodes
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<SyntaxNode<'_>>()),
+                self.lists
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<Vec<NodeId>>()),
+                self.ends
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<Option<SourceSite>>()),
+                self.ranges
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<Option<Range<usize>>>()),
+            ] {
+                let Some(part) = part else {
+                    unreachable!("admitted normalization backing")
+                };
+                let Some(total) = bytes.checked_add(part) else {
+                    unreachable!("admitted normalization backing")
+                };
+                bytes = total;
+            }
+            for list in &self.lists {
+                let Some(part) = list.capacity().checked_mul(std::mem::size_of::<NodeId>()) else {
+                    unreachable!("admitted normalization list")
+                };
+                let Some(total) = bytes.checked_add(part) else {
+                    unreachable!("admitted normalization lists")
+                };
+                bytes = total;
+            }
+            drop((
+                std::mem::take(&mut self.nodes),
+                std::mem::take(&mut self.lists),
+                std::mem::take(&mut self.ends),
+                std::mem::take(&mut self.ranges),
+            ));
+            control.released(bytes);
+        }
+    }
+}
+
+fn control_step(control: Option<&Control<'_>>) -> Result<(), CssComponentValueError> {
+    control.map_or(Ok(()), |control| control.step().map_err(|_| capacity()))
+}
+fn reserve_controlled<T>(
+    control: Option<&Control<'_>>,
+    values: &mut Vec<T>,
+    additional: usize,
+) -> Result<(), CssComponentValueError> {
+    match control {
+        Some(control) => control.reserve(values, additional).map_err(|_| capacity()),
+        None => values.try_reserve(additional).map_err(|_| capacity()),
+    }
+}
+fn release_controlled_vec<T>(control: Option<&Control<'_>>, values: Vec<T>) {
+    let bytes = values.capacity().checked_mul(std::mem::size_of::<T>());
+    drop(values);
+    if let Some(control) = control {
+        let Some(bytes) = bytes else {
+            unreachable!("admitted normalization temporary")
+        };
+        control.released(bytes);
+    }
+}

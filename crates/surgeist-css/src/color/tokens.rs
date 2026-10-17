@@ -128,7 +128,15 @@ impl<'owner> TokenReader<'owner> {
                     let name = match token.kind {
                         TokenKind::Name { units, .. } => Some(units),
                         TokenKind::Number { unit, .. } => Some(unit),
-                        _ => None,
+                        TokenKind::Whitespace
+                        | TokenKind::Comment { .. }
+                        | TokenKind::String { .. }
+                        | TokenKind::BadString
+                        | TokenKind::Url { .. }
+                        | TokenKind::BadUrl { .. }
+                        | TokenKind::Delimiter(_)
+                        | TokenKind::Cdo
+                        | TokenKind::Cdc => None,
                     };
                     if name
                         .is_some_and(|name| name.end > self.table.length() || name.start > name.end)

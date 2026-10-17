@@ -204,7 +204,10 @@ pub use installation::{
     DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallTarget,
     DomNativeHtmlInstallation,
 };
-pub use meta::{DomDocumentPolicyContainer, DomMetaDocumentState, DomMetaError};
+pub use meta::{
+    DomDocumentPolicyContainer, DomMetaColorSchemeState, DomMetaDocumentState, DomMetaError,
+    DomMetaThemeColorState,
+};
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
 pub use parsed_installation::{

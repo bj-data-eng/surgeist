@@ -551,6 +551,19 @@ macro_rules! define_semantic_property_value {
     };
 }
 
+impl CssColorSchemePropertyValue {
+    pub(crate) fn retained_backing_bytes_with<E>(
+        &self,
+        admit: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
+        admit().map_err(crate::CssRetainedPayloadError::Admission)?;
+        self.authored
+            .retained_backing_bytes()
+            .checked_add(self.value.retained_backing_bytes_with(admit)?)
+            .ok_or(crate::CssRetainedPayloadError::CapacityOverflow)
+    }
+}
+
 macro_rules! define_property_identity {
     ($input:ident, $numeric:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,

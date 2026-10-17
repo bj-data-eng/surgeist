@@ -152,7 +152,7 @@ pub(super) fn parse<'a>(
     )
 }
 
-fn rounding_strategy(name: &str) -> Option<CssRoundingStrategy> {
+pub(super) fn rounding_strategy(name: &str) -> Option<CssRoundingStrategy> {
     if name.eq_ignore_ascii_case("nearest") {
         Some(CssRoundingStrategy::Nearest)
     } else if name.eq_ignore_ascii_case("up") {

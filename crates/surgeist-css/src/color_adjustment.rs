@@ -30,6 +30,9 @@ impl std::error::Error for CssColorSchemeConstructionError {}
 pub struct CssColorSchemeName(CssIdent);
 
 impl CssColorSchemeName {
+    pub(crate) fn from_admitted_ident(name: CssIdent) -> Option<Self> {
+        Self::try_new(name).ok()
+    }
     /// Checks a representable decoded identifier against generic and local exclusions.
     /// `none`, `auto`, and `span` remain valid; escaped punctuation is retained.
     pub fn try_new(name: CssIdent) -> Result<Self, CssColorSchemeConstructionError> {
@@ -73,6 +76,28 @@ pub struct CssColorScheme {
 }
 
 impl CssColorScheme {
+    pub(crate) fn retained_backing_bytes_with<E>(
+        &self,
+        admit: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
+        use crate::CssRetainedPayloadError as Error;
+        admit().map_err(Error::Admission)?;
+        let mut bytes = self
+            .schemes
+            .capacity()
+            .checked_mul(std::mem::size_of::<CssColorSchemeKeyword>())
+            .ok_or(Error::CapacityOverflow)?;
+        for scheme in &self.schemes {
+            admit().map_err(Error::Admission)?;
+            if let CssColorSchemeKeyword::Custom(name) = scheme {
+                admit().map_err(Error::Admission)?;
+                bytes = bytes
+                    .checked_add(name.0.backing_capacity())
+                    .ok_or(Error::CapacityOverflow)?;
+            }
+        }
+        Ok(bytes)
+    }
     /// Constructs the normal branch without a list or modifier.
     #[must_use]
     pub const fn normal() -> Self {

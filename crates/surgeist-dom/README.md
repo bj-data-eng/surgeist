@@ -1398,6 +1398,47 @@ doctype edits do not change document mode. There is no general host-metadata or
 registry-object setter; qualified completed-report transfer is described below.
 Native environment proof also survives captures.
 
+Native Meta processing keeps Document history and current CSS selections
+separately. Content-language and referrer processing consume HTML-owned rules;
+refresh retains its actual source flag and the native Do-nothing terminal action.
+These histories are not reconstructed from currently attached nodes.
+`metadata().meta_theme_color()` and `meta_color_scheme()` capture the independent
+last completed selections at that publication. Like other raw canonical fields,
+these getters can be read during incomplete Source execution; interpret them as
+current-tree results only after the snapshot's Source operation is complete.
+A known empty selection differs from unavailable producer
+evidence, including in parsed Documents whose processing history alone does not
+establish CSS results.
+
+Ordinary Meta tree and attribute hooks select theme color in document order,
+then independently select color-scheme. Theme candidates with missing, empty or
+ASCII-whitespace-only media use the CSS-owned UTF16 whole-color operation after
+ASCII edge trimming. Invalid colors
+permit a later candidate; unavailable media or contextual color facts refuse the
+batch before a later candidate can hide that missing computation. The selected
+numerical color retains its alpha and color space. Color-scheme uses CSS-owned
+component and property grammar, preserves symbolic values and original UTF16
+provenance, and does not apply theme-color's media filter.
+
+The native constructor establishes an actual empty set of Meta UI recipients,
+independently of Document activity and focus/hover associations. Selection still
+runs and applies its result to that empty set. These results do not establish
+installed UI colors, computed root color-scheme or rendering resources.
+Reached preferred stylesheet-set and Meta CSP effects retain explicit refusal
+until their actual owners are available; a later refusal rolls back earlier
+private selection and history changes in the batch.
+
+`DomLimits::with_meta_processing_work` admits cumulative Meta work.
+`with_meta_theme_color_scratch_bytes` and `with_meta_color_scheme_limits` select
+the corresponding finite CSS processing allowances; unconfigured processing
+cannot silently acquire them. `with_meta_color_scheme_retained_bytes` separately
+bounds aggregate selected CSS payload across the canonical Documents;
+`DomUsage::meta_color_scheme_retained_bytes` reads their actual retained usage.
+Source execution also admits actual simultaneous
+parser and retained-result storage through its original controller. Equal
+recomputations retain the previous checked CSS backing, while changed original
+UTF16 remains observable even when preprocessing yields equal normalized text.
+
 `create_html_document(associated_document, title)` implements the selected DOM
 createHTMLDocument tree in the same staged owner: Document, html doctype, HTML
 `html` element, `head`, optional `title` with a Text child, then `body`. `None`

@@ -32,7 +32,8 @@ uses the general CSS Syntax input cursor for newline/NUL/surrogate preprocessing
 and invokes the ordinary stylesheet grammar in the supplied complete context.
 Finite preparation limits cover original units, normalized bytes, map entries,
 position checkpoints, fixed decoder/checkpoint registers, retained backing and
-work. A fallible callback is polled during preparation and immediately before
+work, including actual buffer movement during growth. A fallible callback is
+polled during preparation and immediately before
 and after grammar execution. The grammar retains its existing resource limits;
 it does not provide fine-grained cancellation or a whole-grammar work budget.
 Failure returns no partial report.
@@ -63,6 +64,32 @@ visits/depth and accumulates each actual source identity once. It inspects store
 provenance independently of formatting, resource execution or Arc strong counts.
 Source storage admission is separate from input parsing admission and caller-owned
 historical captures.
+
+`CssParserContext::parse_color_scheme_utf16_with_limits` supplies the independent
+bounded authored `color-scheme` value front. It preserves the shared original
+UTF16 and its preprocessed source through the existing component and property
+grammars, including arbitrary substitution fallbacks. Concrete values, CSS-wide
+keywords and substitution-dependent declarations retain their authored meaning;
+the front does not perform cascade or substitution.
+
+`CssUtf16PropertyValueLimits` combines preparation and component syntax limits
+with whole-operation work, simultaneous live payload and retained-result bounds.
+The caller's fallible admission callback receives work and prospective or actual
+live storage observations before processing continues. A separate infallible
+release callback observes storage only after it is dropped or transferred. This
+lets a consumer compose its existing resource owner without reserving the whole
+allowance or treating an admission failure as invalid CSS. Success retains the
+report's exact source-inclusive storage receipt; failure returns no report and
+releases its temporary custody.
+
+The immutable `CssColorSchemeParseReport` couples the original parse source with
+checked syntax success or rejection. Resource and caller interruption failures
+remain outside that syntax result. Its meaningful equivalence query compares
+original input, parser context and checked contents under caller admission;
+equal normalized text alone does not establish equal UTF16 provenance, and fresh
+parse identities alone do not make the content different. These guarantees are
+specific to this value front; the stylesheet and media preparation contracts
+above retain their own documented grammar limits.
 
 Processing-result consumers can separately observe diagnostic-owned out-of-line
 backing with `CssRecoveryDiagnostic::retained_backing_bytes_with`. It includes

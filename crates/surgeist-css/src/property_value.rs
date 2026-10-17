@@ -33,6 +33,36 @@ struct PropertyValueParseErrorDetail {
 }
 
 impl CssPropertyValueParseError {
+    pub(crate) fn from_component_controlled(
+        error: CssComponentValueError,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> Result<Self, ()> {
+        control.add(std::mem::size_of::<PropertyValueParseErrorDetail>())?;
+        Ok(Self::from_component(error))
+    }
+
+    pub(crate) fn from_direct_grammar_controlled(
+        kind: ErrorKind,
+        origin: CssSerializedOrigin,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> Result<Self, ()> {
+        control.add(std::mem::size_of::<PropertyValueParseErrorDetail>())?;
+        Ok(Self::from_direct_grammar(kind, origin))
+    }
+
+    pub(crate) fn retained_backing_bytes_with<E>(
+        &self,
+        admit: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
+        admit().map_err(crate::CssRetainedPayloadError::Admission)?;
+        let extra = match &self.detail.kind {
+            CssPropertyValueErrorKind::Grammar(kind) => kind.retained_backing_bytes_with(admit)?,
+            CssPropertyValueErrorKind::Component(_) => 0,
+        };
+        std::mem::size_of::<PropertyValueParseErrorDetail>()
+            .checked_add(extra)
+            .ok_or(crate::CssRetainedPayloadError::CapacityOverflow)
+    }
     /// Returns the structured component or grammar failure.
     #[must_use]
     pub fn kind(&self) -> &CssPropertyValueErrorKind {

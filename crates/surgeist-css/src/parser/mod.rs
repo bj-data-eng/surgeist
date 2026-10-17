@@ -3287,6 +3287,70 @@ pub(super) fn collect_declaration_value<'i, 't, T>(
     Ok((value, components, origin))
 }
 
+/// The original checked property pipeline under the producer's one live control.
+/// The source belongs to the privately issued component graph, not caller input.
+pub(crate) fn parse_color_scheme_value_controlled(
+    components: &CssComponentValues,
+    parser_context: crate::CssParserContext,
+    source: &CssSourceSnapshot,
+    control: &crate::utf16_value::Control<'_>,
+) -> Result<Result<CssDeclarationBody, crate::CssPropertyValueParseError>, ()> {
+    control.step()?;
+    let mut document = match crate::syntax_consumption::normalize_checked_controlled(
+        components.items(),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+        control,
+    ) {
+        Ok(document) => document,
+        Err(error) => {
+            if control.failure().is_some() {
+                return Err(());
+            }
+            control.component_resource(error.kind())?;
+            return crate::CssPropertyValueParseError::from_component_controlled(error, control)
+                .map(Err);
+        }
+    };
+    document.bind_controlled_source(source)?;
+    // The original checked front rejects implied closure before every grammar,
+    // including CSS-wide and substitution-dependent values.
+    for node in &document.nodes {
+        control.step()?;
+        let crate::syntax_consumption::TokenPayload::Checked { component, .. } =
+            node.token().payload
+        else {
+            unreachable!("controlled checked component")
+        };
+        if let Some(origin) = component.implicit_termination_origin() {
+            return crate::CssPropertyValueParseError::from_direct_grammar_controlled(
+                crate::error::property::implicit_eof_kind(),
+                crate::CssSerializedOrigin::End(Some(origin.clone())),
+                control,
+            )
+            .map(Err);
+        }
+    }
+    let mut parser = property_input::Parser::new(&document);
+    let result = parse_property_value_from_parser(
+        PropertyValueGrammar::Known(CssKnownProperty::ColorScheme.grammar()),
+        &mut parser,
+        &crate::numeric::NumericInputContext::Checked,
+        parser_context,
+    );
+    if control.failure().is_some() {
+        return Err(());
+    }
+    match result {
+        Ok(body) => Ok(Ok(body)),
+        Err(error) => {
+            let (kind, origin) = error.into_parts_controlled(control)?;
+            crate::CssPropertyValueParseError::from_direct_grammar_controlled(kind, origin, control)
+                .map(Err)
+        }
+    }
+}
+
 pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     components: &CssComponentValues,
@@ -3373,17 +3437,39 @@ fn parse_property_value_from_parser<'i>(
     let start = parser.state();
     loop {
         let location = parser.current_source_location();
-        let Ok(token) = parser.next_including_whitespace_and_comments().cloned() else {
-            break;
+        let kind = if parser.control().is_some() {
+            let Ok(kind) = parser.next_kind(true) else {
+                break;
+            };
+            kind
+        } else {
+            let Ok(token) = parser.next_including_whitespace_and_comments().cloned() else {
+                break;
+            };
+            match token {
+                Token::Delim(value) => crate::syntax_consumption::TokenKind::Delim(value),
+                Token::Semicolon => crate::syntax_consumption::TokenKind::Semicolon,
+                Token::CloseCurlyBracket => {
+                    crate::syntax_consumption::TokenKind::Closing(crate::CssBlockKind::CurlyBracket)
+                }
+                Token::CloseParenthesis => {
+                    crate::syntax_consumption::TokenKind::Closing(crate::CssBlockKind::Parenthesis)
+                }
+                Token::CloseSquareBracket => crate::syntax_consumption::TokenKind::Closing(
+                    crate::CssBlockKind::SquareBracket,
+                ),
+                _ => crate::syntax_consumption::TokenKind::Other,
+            }
         };
         if matches!(
-            token,
-            Token::Delim('!')
-                | Token::Semicolon
-                | Token::CloseCurlyBracket
-                | Token::CloseParenthesis
-                | Token::CloseSquareBracket
+            kind,
+            crate::syntax_consumption::TokenKind::Delim('!')
+                | crate::syntax_consumption::TokenKind::Semicolon
+                | crate::syntax_consumption::TokenKind::Closing(_)
         ) {
+            let Some(token) = location.token() else {
+                unreachable!("actual fixed delimiter")
+            };
             return Err(location.new_unexpected_token_error(token));
         }
     }
@@ -3535,6 +3621,11 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
                     context_name,
                 ));
             }
+            if let Some(control) = input.control() {
+                let bytes = authored.retained_backing_bytes();
+                drop(authored);
+                control.released(bytes);
+            }
             return Ok(CssDeclarationBody::Known(
                 CssKnownDeclaration::from_global(known_property, keyword)
                     .with_grammar(CssPropertyGrammar::from_resolved(resolved_property)),
@@ -3547,6 +3638,7 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
 
     let length_scope = quirky_length::property_context(known_property, parser_context, numeric);
     let numeric = &length_scope;
+    let authored_bytes = authored.retained_backing_bytes();
     let declaration = match resolved_property {
         CssResolvedPropertyName::Canonical(_) => quirky_color::parse_property_value(
             known_property,
@@ -3559,7 +3651,12 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
             parse_legacy_property_alias_value(alias, authored, input, numeric)
         }
     }
-    .map_err(|error| crate::error::property::with_property_context(error, context_name))?;
+    .map_err(|error| {
+        if let Some(control) = input.control() {
+            control.released(authored_bytes);
+        }
+        crate::error::property::with_property_context(error, context_name)
+    })?;
     input.expect_exhausted().map_err(|error| {
         crate::error::property::with_property_context(error.into(), context_name)
     })?;

@@ -1804,6 +1804,7 @@ mod break_controls;
 mod calc_size;
 mod clip;
 mod color;
+mod utf16_value;
 pub use color::{
     CssAuthoredColorAction, CssAuthoredColorActionDescription, CssAuthoredColorActionLayout,
     CssAuthoredColorCheckpoint, CssAuthoredColorCleanupLayout,
@@ -1830,6 +1831,10 @@ pub use color::{
     CssColorStandardFailure, CssColorStandardFailureKind, CssColorTransformAction,
     CssColorTransformation, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact,
     CssUsedColorCheckpoint, parse_used_color, resolve_authored_color,
+};
+pub use utf16_value::{
+    CssColorSchemeParseReport, CssPropertyValueSyntaxError, CssUtf16PropertyValueLimits,
+    CssUtf16ValueAdmission, CssUtf16ValueStorage,
 };
 mod color_alpha;
 mod color_scalar;

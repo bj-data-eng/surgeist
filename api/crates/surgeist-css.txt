@@ -4760,6 +4760,13 @@ pub surgeist_css::CssPropertyNameRef::SvgGlyphOrientationVertical
 #[non_exhaustive] pub enum surgeist_css::CssPropertyValueErrorKind
 pub surgeist_css::CssPropertyValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
 pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub enum surgeist_css::CssPropertyValueSyntaxError
+pub surgeist_css::CssPropertyValueSyntaxError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssPropertyValueSyntaxError::Property(surgeist_css::CssPropertyValueParseError)
+impl core::error::Error for surgeist_css::CssPropertyValueSyntaxError
+pub fn surgeist_css::CssPropertyValueSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssPropertyValueSyntaxError
+pub fn surgeist_css::CssPropertyValueSyntaxError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssPseudoClass
 pub surgeist_css::CssPseudoClass::Active
 pub surgeist_css::CssPseudoClass::AnyLink
@@ -6098,6 +6105,9 @@ pub surgeist_css::CssUtf16InputError::Limit(&'static str)
 impl<E: core::fmt::Debug + core::fmt::Display> core::error::Error for surgeist_css::CssUtf16InputError<E>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_css::CssUtf16InputError<E>
 pub fn surgeist_css::CssUtf16InputError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_css::CssUtf16ValueAdmission
+pub surgeist_css::CssUtf16ValueAdmission::Live(surgeist_css::CssUtf16ValueStorage)
+pub surgeist_css::CssUtf16ValueAdmission::Work
 #[non_exhaustive] pub enum surgeist_css::CssValueOrigin
 pub surgeist_css::CssValueOrigin::ImplicitClosure
 pub surgeist_css::CssValueOrigin::ImplicitClosure::at: surgeist_css::CssParsedOrigin
@@ -7854,6 +7864,13 @@ pub struct surgeist_css::CssColorSchemeName(_)
 impl surgeist_css::CssColorSchemeName
 pub fn surgeist_css::CssColorSchemeName::as_str(&self) -> &str
 pub fn surgeist_css::CssColorSchemeName::try_new(name: surgeist_css::CssIdent) -> core::result::Result<Self, surgeist_css::CssColorSchemeConstructionError>
+pub struct surgeist_css::CssColorSchemeParseReport
+impl surgeist_css::CssColorSchemeParseReport
+pub fn surgeist_css::CssColorSchemeParseReport::equivalent_with<E>(&self, other: &Self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, surgeist_css::CssRetainedPayloadError<E>>
+pub const fn surgeist_css::CssColorSchemeParseReport::result(&self) -> &core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueSyntaxError>
+pub const fn surgeist_css::CssColorSchemeParseReport::retained_storage(&self) -> surgeist_css::CssUtf16ValueStorage
+pub const fn surgeist_css::CssColorSchemeParseReport::source(&self) -> &surgeist_css::CssParseSource
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorSchemeParseReport
 pub struct surgeist_css::CssColorSchemePropertyValue
 impl surgeist_css::CssColorSchemePropertyValue
 pub fn surgeist_css::CssColorSchemePropertyValue::as_css(&self) -> &str
@@ -11481,6 +11498,8 @@ pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attr
 pub const fn surgeist_css::CssParserContext::with_mode(self, mode: surgeist_css::CssParserMode) -> Self
 pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical(self) -> Self
 impl surgeist_css::CssParserContext
+pub fn surgeist_css::CssParserContext::parse_color_scheme_utf16_with_limits<E>(self, original: alloc::sync::Arc<alloc::vec::Vec<u16>>, limits: surgeist_css::CssUtf16PropertyValueLimits, admit: impl core::ops::function::FnMut(surgeist_css::CssUtf16ValueAdmission) -> core::result::Result<(), E>, release: impl core::ops::function::FnMut(surgeist_css::CssUtf16ValueStorage)) -> core::result::Result<surgeist_css::CssColorSchemeParseReport, surgeist_css::CssUtf16InputError<E>>
+impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_keyframe_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_media_query_list(self, source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
@@ -13682,6 +13701,16 @@ pub surgeist_css::CssUtf16InputLimits::max_scratch_bytes: usize
 pub surgeist_css::CssUtf16InputLimits::max_work: usize
 impl core::default::Default for surgeist_css::CssUtf16InputLimits
 pub fn surgeist_css::CssUtf16InputLimits::default() -> Self
+pub struct surgeist_css::CssUtf16PropertyValueLimits
+pub surgeist_css::CssUtf16PropertyValueLimits::input: surgeist_css::CssUtf16InputLimits
+pub surgeist_css::CssUtf16PropertyValueLimits::max_live_bytes: usize
+pub surgeist_css::CssUtf16PropertyValueLimits::max_retained_bytes: usize
+pub surgeist_css::CssUtf16PropertyValueLimits::max_work: usize
+pub surgeist_css::CssUtf16PropertyValueLimits::syntax: surgeist_css::CssComponentValueLimits
+pub struct surgeist_css::CssUtf16ValueStorage
+impl surgeist_css::CssUtf16ValueStorage
+pub const fn surgeist_css::CssUtf16ValueStorage::bytes(self) -> usize
+pub const fn surgeist_css::CssUtf16ValueStorage::utf16_units(self) -> usize
 pub struct surgeist_css::CssValidationFailure
 impl surgeist_css::CssValidationFailure
 pub fn surgeist_css::CssValidationFailure::diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic]
@@ -13929,6 +13958,7 @@ impl surgeist_css::CssRetainedSources for surgeist_css::CssAuthoredFontFaceDescr
 impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptor
 impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileDescriptorValue
 impl surgeist_css::CssRetainedSources for surgeist_css::CssColorProfileRule
+impl surgeist_css::CssRetainedSources for surgeist_css::CssColorSchemeParseReport
 impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValue
 impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValueError
 impl surgeist_css::CssRetainedSources for surgeist_css::CssComponentValues

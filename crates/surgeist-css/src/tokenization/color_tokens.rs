@@ -1,4 +1,4 @@
-//! Flat color-bearing CSS token continuation over actual preprocessed scalars.
+//! Flat CSS token continuation over actual preprocessed scalars.
 //!
 //! Each input observation, grammar transition, decoded name/digit append and
 //! token append is distinct. All variable storage belongs to the caller.
@@ -50,6 +50,13 @@ pub(crate) enum TokenKind {
         closed: bool,
     },
     BadString,
+    Url {
+        units: Span,
+        closed: bool,
+    },
+    BadUrl {
+        closed: bool,
+    },
     Delimiter(char),
     Cdo,
     Cdc,
@@ -93,6 +100,22 @@ enum NamePurpose {
 }
 
 #[derive(Clone, Copy)]
+enum EscapeTarget {
+    String { quote: char, units_start: usize },
+    Url { units_start: usize },
+    BadUrl,
+}
+impl EscapeTarget {
+    const fn continuation(self) -> State {
+        match self {
+            Self::String { quote, units_start } => State::String { quote, units_start },
+            Self::Url { units_start } => State::Url { units_start },
+            Self::BadUrl => State::BadUrl,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 enum State {
     Start,
     Whitespace,
@@ -101,6 +124,7 @@ enum State {
         cursor: NameCursor,
         purpose: NamePurpose,
         units_start: usize,
+        url_match: u8,
     },
     Number {
         cursor: NumberCursor,
@@ -114,19 +138,30 @@ enum State {
         quote: char,
         units_start: usize,
     },
-    StringEscape {
-        quote: char,
+    UrlStart {
+        name: Span,
+        opening_end: usize,
+    },
+    QuotedUrlWhitespace {
+        source: Span,
+    },
+    Url {
         units_start: usize,
     },
-    StringHex {
-        quote: char,
+    UrlWhitespace {
         units_start: usize,
+    },
+    BadUrl,
+    Escape {
+        target: EscapeTarget,
+    },
+    Hex {
+        target: EscapeTarget,
         value: u32,
         digits: u8,
     },
-    StringHexEmit {
-        quote: char,
-        units_start: usize,
+    HexEmit {
+        target: EscapeTarget,
         value: u32,
     },
     Done,
@@ -257,6 +292,7 @@ impl TokenCursor {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Name(NameKind::Ident),
                         units_start: self.next_slot,
+                        url_match: 0,
                     };
                 } else if value == '#' && (b.is_some_and(name_point) || valid_escape(b, c)) {
                     self.consume(1)?;
@@ -266,6 +302,7 @@ impl TokenCursor {
                             identifier: identifier_start([b, c, d]),
                         }),
                         units_start: self.next_slot,
+                        url_match: 0,
                     };
                 } else if value == '@' && identifier_start([b, c, d]) {
                     self.consume(1)?;
@@ -273,6 +310,7 @@ impl TokenCursor {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Name(NameKind::At),
                         units_start: self.next_slot,
+                        url_match: 0,
                     };
                 } else if matches!(value, '\'' | '"') {
                     self.consume(1)?;
@@ -304,6 +342,7 @@ impl TokenCursor {
                 mut cursor,
                 purpose,
                 units_start,
+                url_match,
             } => {
                 let action = cursor.action([a, b]);
                 match action.step() {
@@ -314,6 +353,7 @@ impl TokenCursor {
                             cursor,
                             purpose,
                             units_start,
+                            url_match,
                         };
                     }
                     NameStep::Emit { value, count } => {
@@ -324,6 +364,10 @@ impl TokenCursor {
                                 cursor,
                                 purpose,
                                 units_start,
+                                url_match: match (url_match, value.to_ascii_lowercase()) {
+                                    (0, 'u') | (1, 'r') | (2, 'l') => url_match + 1,
+                                    _ => 4,
+                                },
                             },
                             count,
                         )?;
@@ -333,6 +377,17 @@ impl TokenCursor {
                             start: units_start,
                             end: self.next_slot,
                         };
+                        if matches!(purpose, NamePurpose::Name(NameKind::Ident))
+                            && url_match == 3
+                            && a == Some('(')
+                        {
+                            self.consume(1)?;
+                            self.state = State::UrlStart {
+                                name: units,
+                                opening_end: self.consumed_end,
+                            };
+                            return Ok(());
+                        }
                         let (kind, consume) = match purpose {
                             NamePurpose::Name(NameKind::Ident) if a == Some('(') => (
                                 TokenKind::Name {
@@ -428,6 +483,7 @@ impl TokenCursor {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Dimension { layout, digits },
                         units_start: self.next_slot,
+                        url_match: 0,
                     };
                 } else {
                     self.token(
@@ -468,69 +524,184 @@ impl TokenCursor {
                 Some('\n') => self.token(TokenKind::BadString, 0)?,
                 Some('\\') => {
                     self.consume(1)?;
-                    self.state = State::StringEscape { quote, units_start };
+                    self.state = State::Escape {
+                        target: EscapeTarget::String { quote, units_start },
+                    };
                 }
                 Some(value) => self.append(Record::NameUnit(value), self.state, 1)?,
             },
-            State::StringEscape { quote, units_start } => match a {
-                None => {
-                    self.state = State::String { quote, units_start };
-                }
-                Some('\n') => {
+            State::UrlStart { name, opening_end } => {
+                if a.is_some_and(whitespace) {
                     self.consume(1)?;
-                    self.state = State::String { quote, units_start };
+                } else if matches!(a, Some('\'' | '"')) {
+                    // Recognition may cross arbitrary whitespace, but the
+                    // Function's opening ends at '(' and the actual whitespace
+                    // retains its own source interval. No input is replayed.
+                    let next = if self.consumed_end == opening_end {
+                        State::Start
+                    } else {
+                        State::QuotedUrlWhitespace {
+                            source: Span {
+                                start: opening_end,
+                                end: self.consumed_end,
+                            },
+                        }
+                    };
+                    self.append(
+                        Record::Token(Token {
+                            kind: TokenKind::Name {
+                                kind: NameKind::Function,
+                                units: name,
+                            },
+                            source: Span {
+                                start: self.token_start,
+                                end: opening_end,
+                            },
+                        }),
+                        next,
+                        0,
+                    )?;
+                } else {
+                    self.state = State::Url {
+                        units_start: self.next_slot,
+                    };
+                }
+            }
+            State::QuotedUrlWhitespace { source } => {
+                self.append(
+                    Record::Token(Token {
+                        kind: TokenKind::Whitespace,
+                        source,
+                    }),
+                    State::Start,
+                    0,
+                )?;
+            }
+            State::Url { units_start } => match a {
+                Some(')') | None => self.token(
+                    TokenKind::Url {
+                        units: Span {
+                            start: units_start,
+                            end: self.next_slot,
+                        },
+                        closed: a.is_some(),
+                    },
+                    u8::from(a.is_some()),
+                )?,
+                Some(value) if whitespace(value) => {
+                    self.consume(1)?;
+                    self.state = State::UrlWhitespace { units_start };
+                }
+                Some(
+                    '"' | '\'' | '(' | '\u{0}'..='\u{8}' | '\u{b}' | '\u{e}'..='\u{1f}' | '\u{7f}',
+                ) => {
+                    self.consume(1)?;
+                    self.state = State::BadUrl;
+                }
+                Some('\\') => {
+                    self.consume(1)?;
+                    self.state = if valid_escape(a, b) {
+                        State::Escape {
+                            target: EscapeTarget::Url { units_start },
+                        }
+                    } else {
+                        State::BadUrl
+                    };
+                }
+                Some(value) => self.append(Record::NameUnit(value), self.state, 1)?,
+            },
+            State::UrlWhitespace { units_start } => {
+                if a.is_some_and(whitespace) {
+                    self.consume(1)?;
+                } else if matches!(a, Some(')') | None) {
+                    self.token(
+                        TokenKind::Url {
+                            units: Span {
+                                start: units_start,
+                                end: self.next_slot,
+                            },
+                            closed: a.is_some(),
+                        },
+                        u8::from(a.is_some()),
+                    )?;
+                } else {
+                    self.state = State::BadUrl;
+                }
+            }
+            State::BadUrl => {
+                if matches!(a, Some(')') | None) {
+                    self.token(
+                        TokenKind::BadUrl {
+                            closed: a.is_some(),
+                        },
+                        u8::from(a.is_some()),
+                    )?;
+                } else if valid_escape(a, b) {
+                    self.consume(1)?;
+                    self.state = State::Escape {
+                        target: EscapeTarget::BadUrl,
+                    };
+                } else {
+                    self.consume(1)?;
+                }
+            }
+            State::Escape { target } => match a {
+                None if matches!(target, EscapeTarget::Url { .. }) => {
+                    self.append(Record::NameUnit('\u{fffd}'), target.continuation(), 0)?;
+                }
+                None => {
+                    self.state = target.continuation();
+                }
+                Some('\n') if matches!(target, EscapeTarget::String { .. }) => {
+                    self.consume(1)?;
+                    self.state = target.continuation();
                 }
                 Some(value) if value.is_ascii_hexdigit() => {
                     self.consume(1)?;
-                    self.state = State::StringHex {
-                        quote,
-                        units_start,
+                    self.state = State::Hex {
+                        target,
                         value: value.to_digit(16).expect("hex check"),
                         digits: 1,
                     };
                 }
-                Some(value) => self.append(
-                    Record::NameUnit(value),
-                    State::String { quote, units_start },
-                    1,
-                )?,
+                Some(_) if matches!(target, EscapeTarget::BadUrl) => {
+                    self.consume(1)?;
+                    self.state = target.continuation();
+                }
+                Some(value) => self.append(Record::NameUnit(value), target.continuation(), 1)?,
             },
-            State::StringHex {
-                quote,
-                units_start,
+            State::Hex {
+                target,
                 value,
                 digits,
             } => {
                 if digits < 6 && a.is_some_and(|value| value.is_ascii_hexdigit()) {
                     self.consume(1)?;
-                    self.state = State::StringHex {
-                        quote,
-                        units_start,
+                    self.state = State::Hex {
+                        target,
                         value: value * 16
                             + a.and_then(|value| value.to_digit(16)).expect("hex check"),
                         digits: digits + 1,
                     };
                 } else {
                     self.consume(u8::from(a.is_some_and(whitespace)))?;
-                    self.state = State::StringHexEmit {
-                        quote,
-                        units_start,
-                        value,
-                    };
+                    self.state = State::HexEmit { target, value };
                 }
             }
-            State::StringHexEmit {
-                quote,
-                units_start,
-                value,
+            State::HexEmit {
+                target: EscapeTarget::BadUrl,
+                ..
             } => {
+                self.state = State::BadUrl;
+            }
+            State::HexEmit { target, value } => {
                 self.append(
                     Record::NameUnit(if value == 0 {
                         '\u{fffd}'
                     } else {
                         char::from_u32(value).unwrap_or('\u{fffd}')
                     }),
-                    State::String { quote, units_start },
+                    target.continuation(),
                     0,
                 )?;
             }
@@ -633,6 +804,283 @@ mod tests {
                 _ => panic!("name unit"),
             })
             .collect()
+    }
+
+    fn token_records(records: &[Record]) -> Vec<Token> {
+        records
+            .iter()
+            .filter_map(|record| match record {
+                Record::Token(token) => Some(*token),
+                _ => None,
+            })
+            .collect()
+    }
+
+    // CSS Syntax 4.3.4/4.3.6/4.3.7/4.3.14 supply these literal token outcomes,
+    // independently of the consumer's eventual component/fallback grammar.
+    #[test]
+    fn unquoted_urls_decode_escaped_names_values_and_retain_exact_source() {
+        let text = "u\\72l( a\\20 b\\)c )";
+        let records = tokens(text);
+        let actual = token_records(&records);
+        assert_eq!(actual.len(), 1);
+        let TokenKind::Url {
+            units,
+            closed: true,
+        } = actual[0].kind
+        else {
+            panic!("escaped case-insensitive url name must select unquoted URL");
+        };
+        assert_eq!(names(&records, units), "a b)c");
+        assert_eq!(
+            actual[0].source,
+            Span {
+                start: 0,
+                end: text.len()
+            }
+        );
+        for text in ["url()", "URL(  )", "\\75rl()"] {
+            let records = tokens(text);
+            let actual = token_records(&records);
+            assert_eq!(actual.len(), 1);
+            let TokenKind::Url {
+                units,
+                closed: true,
+            } = actual[0].kind
+            else {
+                panic!("actual empty URL token: {text:?}");
+            };
+            assert_eq!(names(&records, units), "");
+            assert_eq!(
+                actual[0].source,
+                Span {
+                    start: 0,
+                    end: text.len()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn url_eof_is_distinct_from_closure_and_escape_eof_emits_replacement() {
+        for (text, expected) in [
+            ("url(", ""),
+            ("url(  ", ""),
+            ("url(a", "a"),
+            ("url(a \t", "a"),
+            ("url(a\\", "a�"),
+            ("url(\\0", "�"),
+            ("url(\\d800", "�"),
+            ("url(\\110000", "�"),
+            ("url(\\000061b", "ab"),
+        ] {
+            let records = tokens(text);
+            let actual = token_records(&records);
+            assert_eq!(actual.len(), 1, "{text:?}");
+            let TokenKind::Url {
+                units,
+                closed: false,
+            } = actual[0].kind
+            else {
+                panic!("EOF is an unclosed URL, not a bad URL: {text:?}");
+            };
+            assert_eq!(names(&records, units), expected, "{text:?}");
+            assert_eq!(
+                actual[0].source,
+                Span {
+                    start: 0,
+                    end: text.len()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn quoted_url_keeps_function_opening_and_actual_arbitrary_whitespace_separate() {
+        let text = "url( \t \n'v')";
+        let records = tokens(text);
+        let actual = token_records(&records);
+        assert_eq!(actual.len(), 4);
+        let TokenKind::Name {
+            kind: NameKind::Function,
+            units,
+        } = actual[0].kind
+        else {
+            panic!("quoted URL is the original Function token");
+        };
+        assert_eq!(names(&records, units), "url");
+        assert_eq!(actual[0].source, Span { start: 0, end: 4 });
+        assert_eq!(
+            actual[1],
+            Token {
+                kind: TokenKind::Whitespace,
+                source: Span { start: 4, end: 8 },
+            }
+        );
+        let TokenKind::String {
+            units,
+            closed: true,
+        } = actual[2].kind
+        else {
+            panic!("quoted payload is the ordinary String token");
+        };
+        assert_eq!(names(&records, units), "v");
+        assert_eq!(actual[2].source, Span { start: 8, end: 11 });
+        assert_eq!(
+            actual[3],
+            Token {
+                kind: TokenKind::Delimiter(')'),
+                source: Span { start: 11, end: 12 },
+            }
+        );
+
+        let text = format!("url({}\"v\")", " \t\n".repeat(100));
+        let actual = token_records(&tokens(&text));
+        assert_eq!(actual.len(), 4);
+        assert_eq!(actual[0].source, Span { start: 0, end: 4 });
+        assert_eq!(
+            actual[1],
+            Token {
+                kind: TokenKind::Whitespace,
+                source: Span { start: 4, end: 304 },
+            }
+        );
+        assert_eq!(
+            actual[2].source,
+            Span {
+                start: 304,
+                end: 307
+            }
+        );
+        assert_eq!(
+            actual[3].source,
+            Span {
+                start: 307,
+                end: 308
+            }
+        );
+    }
+
+    #[test]
+    fn url_name_prefixes_at_keywords_and_dimensions_do_not_select_url_consumption() {
+        for text in ["urls(x)", "@url(x)", "1url(x)", "url (x)"] {
+            assert!(
+                !token_records(&tokens(text)).iter().any(|token| matches!(
+                    token.kind,
+                    TokenKind::Url { .. } | TokenKind::BadUrl { .. }
+                )),
+                "{text:?}"
+            );
+        }
+        let records = tokens("url(\"v\")");
+        let actual = token_records(&records);
+        assert_eq!(actual.len(), 3);
+        assert!(matches!(
+            actual[0].kind,
+            TokenKind::Name {
+                kind: NameKind::Function,
+                ..
+            }
+        ));
+        assert_eq!(actual[0].source, Span { start: 0, end: 4 });
+        assert_eq!(actual[1].source, Span { start: 4, end: 7 });
+    }
+
+    #[test]
+    fn bad_url_recovery_consumes_escaped_closing_parentheses_and_retains_eof() {
+        for (text, closed) in [
+            ("url(a b)", true),
+            ("url(a\"b)", true),
+            ("url(a'b)", true),
+            ("url(a(b)", true),
+            ("url(a\u{7f}b)", true),
+            ("url(a\\\nb)", true),
+            ("url(a b", false),
+            ("url(a\"\\)", false),
+            ("url(a\"\\29 ", false),
+        ] {
+            let actual = token_records(&tokens(text));
+            assert_eq!(
+                actual,
+                [Token {
+                    kind: TokenKind::BadUrl { closed },
+                    source: Span {
+                        start: 0,
+                        end: text.len()
+                    },
+                }],
+                "{text:?}"
+            );
+        }
+        for text in ["url(a\"x\\)y)tail", "url(a\"x\\29 y)tail"] {
+            let records = tokens(text);
+            let actual = token_records(&records);
+            assert_eq!(actual.len(), 2);
+            assert_eq!(
+                actual[0],
+                Token {
+                    kind: TokenKind::BadUrl { closed: true },
+                    source: Span {
+                        start: 0,
+                        end: text.len() - 4
+                    },
+                }
+            );
+            let TokenKind::Name {
+                kind: NameKind::Ident,
+                units,
+            } = actual[1].kind
+            else {
+                panic!("bad URL recovery must return before the following real token");
+            };
+            assert_eq!(names(&records, units), "tail");
+        }
+    }
+
+    #[test]
+    fn url_and_quoted_whitespace_append_refusal_keeps_every_exact_pending_record() {
+        for text in ["url(a\\20 b)", "url(  \"v\")", "url(a\"\\)x)", "url(a\\"] {
+            let points: Vec<_> = text
+                .char_indices()
+                .map(|(start, value)| Scalar {
+                    value,
+                    start,
+                    end: start + value.len_utf8(),
+                })
+                .collect();
+            let mut cursor = TokenCursor::new(points.len(), 0);
+            let mut records = Vec::new();
+            let mut reads = 0;
+            let mut done = false;
+            for _ in 0..(text.len() * 32 + 32) {
+                match cursor.request() {
+                    Request::ReadScalar { index } => {
+                        assert_eq!(index, reads);
+                        cursor.read_scalar(index, points[index]).unwrap();
+                        reads += 1;
+                    }
+                    Request::Compute => cursor.compute().unwrap(),
+                    request @ Request::Append { index, record } => {
+                        assert_eq!(index, records.len());
+                        assert_eq!(cursor.appended(index + 1), Err(Error::WrongIndex));
+                        assert_eq!(cursor.compute(), Err(Error::WrongReply));
+                        assert_eq!(cursor.request(), request);
+                        records.push(record);
+                        cursor.appended(index).unwrap();
+                    }
+                    Request::Done => {
+                        done = true;
+                        break;
+                    }
+                }
+            }
+            assert!(
+                done,
+                "bounded lexical continuation did not finish: {text:?}"
+            );
+            assert_eq!(reads, points.len());
+            assert_eq!(records, tokens(text));
+        }
     }
 
     #[test]

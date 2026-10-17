@@ -4,6 +4,7 @@ use crate::syntax_consumption::{
     CheckedLexeme, GroupEnd, ListId, SyntaxDocument, SyntaxNode, SyntaxToken, TokenKind,
     TokenPayload,
 };
+use crate::utf16_value::Control;
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssHashFlag, CssNumericTokenKind,
@@ -40,6 +41,16 @@ impl PartialEq for Site<'_> {
 }
 impl Eq for Site<'_> {}
 impl<'i> Site<'i> {
+    pub(crate) fn control(self) -> Option<&'i Control<'i>> {
+        self.document.control
+    }
+    pub(crate) fn checked_component(self) -> Option<(&'i CssComponentValue, bool)> {
+        match &self.node()?.token().payload {
+            TokenPayload::Checked { component, .. } => Some((*component, self.closing)),
+            _ => None,
+        }
+    }
+
     fn node(self) -> Option<&'i SyntaxNode<'i>> {
         self.document.lists[self.list]
             .get(self.index)
@@ -73,6 +84,13 @@ impl<'i> Site<'i> {
     pub(crate) fn descendant(self, path: &[usize], closing: bool) -> Option<Self> {
         let mut site = self;
         for (depth, index) in path.iter().copied().enumerate() {
+            if self
+                .document
+                .control
+                .is_some_and(|control| control.step().is_err())
+            {
+                return None;
+            }
             if depth == 0 {
                 site.index = site.index.checked_add(index)?;
             } else {
@@ -100,6 +118,13 @@ impl<'i> Site<'i> {
         let offset = origin.span().start().byte_offset().value();
         for (list, nodes) in self.document.lists.iter().enumerate() {
             for (index, id) in nodes.iter().copied().enumerate() {
+                if self
+                    .document
+                    .control
+                    .is_some_and(|control| control.step().is_err())
+                {
+                    return None;
+                }
                 let node = &self.document.nodes[id];
                 if self
                     .document
@@ -166,36 +191,57 @@ impl<'i> Site<'i> {
             self
         };
         let nodes = &self.document.lists[context.list];
-        let next = (context.index..nodes.len())
-            .find(|index| !self.document.nodes[nodes[*index]].is_trivia())
-            .map(|index| Self { index, ..context })
-            .or_else(|| {
-                self.document
-                    .lists
-                    .iter()
-                    .enumerate()
-                    .find_map(|(list, nodes)| {
-                        nodes
-                            .iter()
-                            .position(|id| {
-                                self.document.nodes[*id].children() == Some(context.list)
-                            })
-                            .map(|index| Self {
-                                document: self.document,
-                                list,
-                                index,
-                                closing: true,
-                            })
-                    })
-            });
-        let previous = (0..context.index)
-            .rev()
-            .find(|index| !self.document.nodes[nodes[*index]].is_trivia())
-            .map(|index| Self {
-                index,
-                closing: self.document.nodes[nodes[index]].end().is_some(),
-                ..context
-            });
+        let mut next = None;
+        for (index, node) in nodes.iter().enumerate().skip(context.index) {
+            if self
+                .control()
+                .is_some_and(|control| control.step().is_err())
+            {
+                return (None, None);
+            }
+            if !self.document.nodes[*node].is_trivia() {
+                next = Some(Self { index, ..context });
+                break;
+            }
+        }
+        if next.is_none() {
+            'parents: for (list, nodes) in self.document.lists.iter().enumerate() {
+                for (index, id) in nodes.iter().enumerate() {
+                    if self
+                        .control()
+                        .is_some_and(|control| control.step().is_err())
+                    {
+                        return (None, None);
+                    }
+                    if self.document.nodes[*id].children() == Some(context.list) {
+                        next = Some(Self {
+                            document: self.document,
+                            list,
+                            index,
+                            closing: true,
+                        });
+                        break 'parents;
+                    }
+                }
+            }
+        }
+        let mut previous = None;
+        for index in (0..context.index).rev() {
+            if self
+                .control()
+                .is_some_and(|control| control.step().is_err())
+            {
+                return (None, None);
+            }
+            if !self.document.nodes[nodes[index]].is_trivia() {
+                previous = Some(Self {
+                    index,
+                    closing: self.document.nodes[nodes[index]].end().is_some(),
+                    ..context
+                });
+                break;
+            }
+        }
         (next, previous)
     }
     pub(crate) fn lexeme(self) -> Option<&'i str> {
@@ -246,6 +292,12 @@ impl<'i> Site<'i> {
         // A child EOF is the original closing boundary, even for empty groups.
         if self.index == self.document.lists[self.list].len() {
             for node in &self.document.nodes {
+                if self
+                    .control()
+                    .is_some_and(|control| control.step().is_err())
+                {
+                    return CssSerializedOrigin::End(None);
+                }
                 if node.children() == Some(self.list) {
                     return match node.end().expect("group end") {
                         GroupEnd::Explicit(token) => {
@@ -271,6 +323,12 @@ impl<'i> Site<'i> {
         }))
     }
     pub(crate) fn new_custom_error<E, E2: From<E>>(self, error: E) -> ParseError<'i, E2> {
+        if self
+            .control()
+            .is_some_and(|control| control.add(std::mem::size_of::<E2>()).is_err())
+        {
+            return self.new_error(BasicParseErrorKind::EndOfInput);
+        }
         ParseError {
             kind: ParseErrorKind::Custom(Box::new(error.into())),
             location: self,
@@ -319,6 +377,42 @@ pub(crate) struct PropertyParser<'i, 't> {
     lifetime: PhantomData<&'t mut ()>,
 }
 impl<'i, 't> PropertyParser<'i, 't> {
+    pub(crate) fn control(&self) -> Option<&'i Control<'i>> {
+        self.document.control
+    }
+    pub(crate) fn controlled_step(&self) -> Result<(), BasicParseError<'i>> {
+        if self
+            .control()
+            .is_some_and(|control| control.step().is_err())
+        {
+            return Err(BasicParseError {
+                kind: BasicParseErrorKind::EndOfInput,
+                location: self.position(),
+            });
+        }
+        Ok(())
+    }
+    pub(crate) fn reserve_controlled<T>(
+        &self,
+        values: &mut Vec<T>,
+        additional: usize,
+    ) -> Result<(), BasicParseError<'i>> {
+        self.controlled_step()?;
+        if let Some(control) = self.control() {
+            control
+                .reserve(values, additional)
+                .map_err(|_| BasicParseError {
+                    kind: BasicParseErrorKind::EndOfInput,
+                    location: self.position(),
+                })
+        } else {
+            values.try_reserve(additional).map_err(|_| BasicParseError {
+                kind: BasicParseErrorKind::EndOfInput,
+                location: self.position(),
+            })
+        }
+    }
+
     pub(crate) fn new(document: &'i SyntaxDocument<'i>) -> Self {
         Self::bounded(
             document,
@@ -386,19 +480,46 @@ impl<'i, 't> PropertyParser<'i, 't> {
         result
     }
     pub(crate) fn skip_whitespace(&mut self) {
-        while self.next < self.end
-            && self.document.nodes[self.document.lists[self.list][self.next]].is_trivia()
-        {
+        while self.next < self.end {
+            if self.controlled_step().is_err() {
+                break;
+            }
+            if !self.document.nodes[self.document.lists[self.list][self.next]].is_trivia() {
+                break;
+            }
             self.next += 1;
         }
         self.pending = None;
     }
     pub(crate) fn is_exhausted(&mut self) -> bool {
+        if self.controlled_step().is_err() {
+            return true;
+        }
         let state = self.state();
         self.skip_whitespace();
         let result = self.next == self.end;
         self.reset(&state);
         result
+    }
+    pub(crate) fn next_kind(
+        &mut self,
+        include_trivia: bool,
+    ) -> Result<TokenKind<'i>, BasicParseError<'i>> {
+        if !include_trivia {
+            self.skip_whitespace();
+        }
+        self.controlled_step()?;
+        if self.next == self.end {
+            return Err(BasicParseError {
+                kind: BasicParseErrorKind::EndOfInput,
+                location: self.position(),
+            });
+        }
+        let id = self.document.lists[self.list][self.next];
+        self.next += 1;
+        let node = &self.document.nodes[id];
+        self.pending = node.children().map(|_| id);
+        Ok(node.token().kind())
     }
     pub(crate) fn next(&mut self) -> Result<&Token<'i>, BasicParseError<'i>> {
         self.skip_whitespace();
@@ -407,6 +528,7 @@ impl<'i, 't> PropertyParser<'i, 't> {
     pub(crate) fn next_including_whitespace_and_comments(
         &mut self,
     ) -> Result<&Token<'i>, BasicParseError<'i>> {
+        self.controlled_step()?;
         let location = self.position();
         if self.next == self.end {
             return Err(BasicParseError {
@@ -422,6 +544,27 @@ impl<'i, 't> PropertyParser<'i, 't> {
         Ok(self.token.as_ref().expect("selected token"))
     }
     pub(crate) fn expect_exhausted(&mut self) -> Result<(), BasicParseError<'i>> {
+        if self.control().is_some() {
+            let state = self.state();
+            self.skip_whitespace();
+            let location = self.position();
+            let result = match self.next_kind(false) {
+                Ok(_) => Err(BasicParseError {
+                    kind: BasicParseErrorKind::EndOfInput,
+                    location,
+                }),
+                Err(error)
+                    if self
+                        .control()
+                        .is_some_and(|control| control.failure().is_some()) =>
+                {
+                    Err(error)
+                }
+                Err(_) => Ok(()),
+            };
+            self.reset(&state);
+            return result;
+        }
         let state = self.state();
         self.skip_whitespace();
         let site = self.position();
@@ -454,6 +597,23 @@ impl<'i, 't> PropertyParser<'i, 't> {
     pub(crate) fn expect_ident(&mut self) -> Result<&CowRcStr<'i>, BasicParseError<'i>> {
         self.skip_whitespace();
         let site = self.position();
+        if self.control().is_some() {
+            match self.next_kind(false)? {
+                TokenKind::Ident(name) => {
+                    self.token = Some(Token::Ident(name.into()));
+                }
+                _ => {
+                    return Err(BasicParseError {
+                        kind: BasicParseErrorKind::EndOfInput,
+                        location: site,
+                    });
+                }
+            }
+            let Some(Token::Ident(name)) = self.token.as_ref() else {
+                unreachable!("actual checked identifier")
+            };
+            return Ok(name);
+        }
         match self.next()? {
             Token::Ident(name) => Ok(name),
             token => Err(site.new_basic_unexpected_token_error(token.clone())),
@@ -466,9 +626,14 @@ impl<'i, 't> PropertyParser<'i, 't> {
         &mut self,
         expected: &str,
     ) -> Result<(), BasicParseError<'i>> {
-        self.expect_token(
-            |token| matches!(token, Token::Ident(name) if name.eq_ignore_ascii_case(expected)),
-        )
+        self.skip_whitespace();
+        let site = self.position();
+        let ident = self.expect_ident()?;
+        if ident.eq_ignore_ascii_case(expected) {
+            Ok(())
+        } else {
+            Err(site.new_basic_unexpected_token_error(Token::Ident(ident.clone())))
+        }
     }
     pub(crate) fn expect_function(&mut self) -> Result<&CowRcStr<'i>, BasicParseError<'i>> {
         self.skip_whitespace();
@@ -567,7 +732,9 @@ impl<'i, 't> PropertyParser<'i, 't> {
     {
         let mut values = Vec::new();
         loop {
-            values.push(self.parse_until_before(Delimiter::Comma, &mut parse)?);
+            let value = self.parse_until_before(Delimiter::Comma, &mut parse)?;
+            self.reserve_controlled(&mut values, 1)?;
+            values.push(value);
             if self.is_exhausted() {
                 return Ok(values);
             }
@@ -577,6 +744,12 @@ impl<'i, 't> PropertyParser<'i, 't> {
     pub(crate) fn collect_component(
         &mut self,
     ) -> Result<Cow<'i, CssComponentValue>, CssComponentValueError> {
+        self.controlled_step().map_err(|_| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::CapacityOverflow,
+                CssValueOrigin::Programmatic,
+            )
+        })?;
         self.skip_whitespace();
         if self.next == self.end {
             let origin = match self.position().origin() {
@@ -637,8 +810,16 @@ impl<'i, 't> PropertyParser<'i, 't> {
                 .source
                 .expect("source boundary")
                 .offset;
-            return source.original.as_str()[start..end].to_owned();
+            let text = &source.original.as_str()[start..end];
+            return match self.control() {
+                Some(control) => control.string(text).unwrap_or_default(),
+                None => text.to_owned(),
+            };
         }
+        assert!(
+            self.control().is_none(),
+            "controlled property slices retain their actual source"
+        );
         let mut output = crate::component_values::CssCanonicalBuilder::new(usize::MAX);
         for id in &self.document.lists[self.list][range.start.index..range.end.index] {
             let TokenPayload::Checked { component, .. } = &self.document.nodes[*id].token().payload

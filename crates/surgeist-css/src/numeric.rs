@@ -17,6 +17,7 @@ pub use color_expression::{
 mod borrowed_admission_tests;
 pub(crate) mod bounded_decimal;
 pub(crate) mod bounded_expression;
+mod controlled_check;
 mod ordinary_expression;
 pub(crate) mod projection;
 pub(crate) use projection::{
@@ -222,6 +223,20 @@ impl<'a> NumericInputContext<'a> {
         root: CalculationRoot,
     ) -> Result<()> {
         check_component_with_policy(component, root, self.admission_policy())
+    }
+    /// Read-only env() integer syntax over producer-checked immutable components.
+    /// The called owner retains no expression or diagnostic path graph.
+    pub(crate) fn check_component_controlled(
+        &self,
+        component: &CssComponentValue,
+        root: CalculationRoot,
+        control: &crate::utf16_value::Control<'_>,
+    ) -> std::result::Result<Result<()>, ()> {
+        assert!(
+            root == CalculationRoot::Integer,
+            "controlled env index domain"
+        );
+        controlled_check::check(component, self.admission_policy(), control)
     }
     /// Classifies checked syntax without retaining its component graph.
     pub(crate) fn component_result_type(
@@ -2178,25 +2193,24 @@ fn parse_node<'a>(
 ) -> Result<CssCalculationExpression> {
     let root = parser.root;
     let error = |kind| CssNumericConstructionError::at(kind, Some(c));
+    let intrinsic = intrinsic_token_type(c).transpose()?;
     let (kind, mut ty) = match c.view() {
-        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => {
-            (NodeKind::Value(Box::new(c.clone())), CssNumericType::NUMBER)
-        }
+        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => (
+            NodeKind::Value(Box::new(c.clone())),
+            intrinsic.expect("number type"),
+        ),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => (
             NodeKind::Value(Box::new(c.clone())),
-            CssNumericType::dimension(CssNumericDimension::Percentage),
+            intrinsic.expect("percentage type"),
         ),
-        CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => (
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { .. }) => (
             NodeKind::Value(Box::new(c.clone())),
-            CssNumericType::dimension(
-                unit_dimension(unit)
-                    .ok_or_else(|| error(CssNumericConstructionErrorKind::InvalidArgumentType))?,
-            ),
+            intrinsic.expect("dimension type"),
         ),
         CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
             let constant = CssNumericConstant::parse(name);
             if let Some(v) = constant {
-                (NodeKind::Constant(v), CssNumericType::NUMBER)
+                (NodeKind::Constant(v), intrinsic.expect("constant type"))
             } else if root == CalculationRoot::ProfileRelative {
                 let name = crate::CssColorProfileComponentName::try_new(name)
                     .ok_or_else(|| error(CssNumericConstructionErrorKind::InvalidArgumentType))?;
@@ -2263,6 +2277,32 @@ fn parse_node<'a>(
         components: None,
         syntax,
         closing,
+    })
+}
+/// Intrinsic numeric leaves shared by owned projection and borrowed checks.
+/// Relative/profile channels are qualified by their existing contextual owner.
+fn intrinsic_token_type(component: &CssComponentValue) -> Option<Result<CssNumericType>> {
+    Some(match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => Ok(CssNumericType::NUMBER),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
+            Ok(CssNumericType::dimension(CssNumericDimension::Percentage))
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => {
+            unit_dimension(unit)
+                .map(CssNumericType::dimension)
+                .ok_or_else(|| {
+                    CssNumericConstructionError::at(
+                        CssNumericConstructionErrorKind::InvalidArgumentType,
+                        Some(component),
+                    )
+                })
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
+            if CssNumericConstant::parse(name).is_some() =>
+        {
+            Ok(CssNumericType::NUMBER)
+        }
+        _ => return None,
     })
 }
 fn parse_function<'a>(

@@ -4,6 +4,7 @@
 //! fallback substitution, and taint belong to computed-value consumers. The
 //! original components stay on the enclosing pending declaration.
 
+use crate::utf16_value::Control;
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueRef as Component, CssValueOrigin, CssValueTokenRef as Token,
@@ -17,12 +18,36 @@ fn trivia(value: &CssComponentValue) -> bool {
     )
 }
 
-fn next_significant(items: &[CssComponentValue], start: usize) -> Option<usize> {
-    (start..items.len()).find(|index| !trivia(&items[*index]))
+fn next_significant(
+    items: &[CssComponentValue],
+    start: usize,
+    control: Option<&Control<'_>>,
+) -> Option<usize> {
+    for (index, item) in items.iter().enumerate().skip(start) {
+        if super::step(control).is_err() {
+            return None;
+        }
+        if !trivia(item) {
+            return Some(index);
+        }
+    }
+    None
 }
 
-fn next_non_comment(items: &[CssComponentValue], start: usize) -> Option<usize> {
-    (start..items.len()).find(|index| !matches!(items[*index].view(), Component::Comment(_)))
+fn next_non_comment(
+    items: &[CssComponentValue],
+    start: usize,
+    control: Option<&Control<'_>>,
+) -> Option<usize> {
+    for (index, item) in items.iter().enumerate().skip(start) {
+        if super::step(control).is_err() {
+            return None;
+        }
+        if !matches!(item.view(), Component::Comment(_)) {
+            return Some(index);
+        }
+    }
+    None
 }
 
 fn ident(value: &CssComponentValue) -> Option<&str> {
@@ -66,19 +91,46 @@ fn syntax_valid(
     items: &[CssComponentValue],
     decode_limit: usize,
 ) -> Result<bool, CssComponentValueError> {
-    let mut current = items.to_vec();
+    syntax_valid_with_control(items, decode_limit, None)
+}
+struct Decoded<'a> {
+    source: Option<crate::CssSourceSnapshot>,
+    values: Option<crate::CssComponentValues>,
+    control: Option<&'a Control<'a>>,
+    bytes: usize,
+}
+impl Drop for Decoded<'_> {
+    fn drop(&mut self) {
+        drop(self.values.take());
+        drop(self.source.take());
+        if let Some(control) = self.control {
+            control.released(self.bytes);
+        }
+    }
+}
+fn syntax_valid_with_control(
+    items: &[CssComponentValue],
+    decode_limit: usize,
+    control: Option<&Control<'_>>,
+) -> Result<bool, CssComponentValueError> {
+    let mut current: Option<Decoded<'_>> = None;
     let mut decoded = 0;
     let mut outer_string_origin: Option<CssValueOrigin> = None;
     loop {
-        let Some(first) = next_significant(&current, 0) else {
+        super::step(control)?;
+        let values = current
+            .as_ref()
+            .and_then(|current| current.values.as_ref())
+            .map_or(items, crate::CssComponentValues::items);
+        let Some(first) = next_significant(values, 0, control) else {
             return Ok(false);
         };
-        if let Component::Token(Token::String(value)) = current[first].view() {
-            if next_significant(&current, first + 1).is_some() {
+        if let Component::Token(Token::String(value)) = values[first].view() {
+            if next_significant(values, first + 1, control).is_some() {
                 return Ok(false);
             }
             let original = outer_string_origin
-                .get_or_insert_with(|| current[first].origin().clone())
+                .get_or_insert_with(|| values[first].origin().clone())
                 .clone();
             if decoded >= decode_limit {
                 return Err(CssComponentValueError::new(
@@ -87,37 +139,105 @@ fn syntax_valid(
                 ));
             }
             decoded += 1;
-            current = match parse_component_values(value) {
-                Ok(values) => values.items().to_vec(),
-                Err(error)
+            let (source, parsed) = if let Some(control) = control {
+                let source = crate::CssSourceSnapshot::try_from_decoded_utf8(value, control)
+                    .map_err(|_| {
+                        CssComponentValueError::new(
+                            CssComponentValueErrorKind::CapacityOverflow,
+                            original.clone(),
+                        )
+                    })?;
+                let parsed = crate::component_values::parse_controlled_snapshot(
+                    &source,
+                    crate::CssComponentValueLimits::default(),
+                    control,
+                );
+                (Some(source), parsed)
+            } else {
+                (None, parse_component_values(value))
+            };
+            let values = match parsed {
+                Ok(values) => values,
+                Err(error) => {
+                    let kind = error.kind();
+                    let bytes = source
+                        .as_ref()
+                        .and_then(|source| source.payload_bytes(true));
+                    drop(error);
+                    drop(source);
+                    if let Some(control) = control {
+                        let Some(bytes) = bytes else {
+                            unreachable!("admitted decoded source payload")
+                        };
+                        control.released(bytes);
+                        control
+                            .component_resource(kind)
+                            .map_err(|_| CssComponentValueError::new(kind, original.clone()))?;
+                    }
                     if matches!(
-                        error.kind(),
+                        kind,
                         CssComponentValueErrorKind::NestingLimit
                             | CssComponentValueErrorKind::ComponentLimit
                             | CssComponentValueErrorKind::ByteLimit
                             | CssComponentValueErrorKind::CapacityOverflow
-                    ) =>
-                {
-                    return Err(CssComponentValueError::new(error.kind(), original));
+                    ) {
+                        return Err(CssComponentValueError::new(kind, original));
+                    }
+                    return Ok(false);
                 }
-                Err(_) => return Ok(false),
             };
+            let bytes = if let Some(control) = control {
+                let backing =
+                    crate::component_values::retained_backing_bytes_with(&values, &mut || {
+                        control.step()
+                    })
+                    .map_err(|_| {
+                        CssComponentValueError::new(
+                            CssComponentValueErrorKind::CapacityOverflow,
+                            original.clone(),
+                        )
+                    })?;
+                let source_bytes = source
+                    .as_ref()
+                    .and_then(|source| source.payload_bytes(true))
+                    .ok_or_else(|| {
+                        CssComponentValueError::new(
+                            CssComponentValueErrorKind::CapacityOverflow,
+                            original.clone(),
+                        )
+                    })?;
+                backing.checked_add(source_bytes).ok_or_else(|| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        original.clone(),
+                    )
+                })?
+            } else {
+                0
+            };
+            let next = Decoded {
+                source,
+                values: Some(values),
+                control,
+                bytes,
+            };
+            drop(current.replace(next));
             continue;
         }
-        return Ok(syntax_tokens_valid(&current));
+        return Ok(syntax_tokens_valid(values, control));
     }
 }
 
-fn syntax_tokens_valid(items: &[CssComponentValue]) -> bool {
-    let Some(mut cursor) = next_significant(items, 0) else {
+fn syntax_tokens_valid(items: &[CssComponentValue], control: Option<&Control<'_>>) -> bool {
+    let Some(mut cursor) = next_significant(items, 0, control) else {
         return false;
     };
     if delim(&items[cursor], '*') {
-        return next_significant(items, cursor + 1).is_none();
+        return next_significant(items, cursor + 1, control).is_none();
     }
     loop {
         let transform_list = if delim(&items[cursor], '<') {
-            let Some(name_index) = next_non_comment(items, cursor + 1) else {
+            let Some(name_index) = next_non_comment(items, cursor + 1, control) else {
                 return false;
             };
             let Some(name) = ident(&items[name_index]) else {
@@ -126,7 +246,7 @@ fn syntax_tokens_valid(items: &[CssComponentValue]) -> bool {
             if !type_name(name) {
                 return false;
             }
-            let Some(close) = next_non_comment(items, name_index + 1) else {
+            let Some(close) = next_non_comment(items, name_index + 1, control) else {
                 return false;
             };
             if !delim(&items[close], '>') {
@@ -142,7 +262,7 @@ fn syntax_tokens_valid(items: &[CssComponentValue]) -> bool {
         };
 
         // Comments may intervene, but CSS whitespace before a multiplier is invalid.
-        if let Some(next) = next_non_comment(items, cursor)
+        if let Some(next) = next_non_comment(items, cursor, control)
             && (delim(&items[next], '#') || delim(&items[next], '+'))
         {
             if transform_list {
@@ -150,81 +270,116 @@ fn syntax_tokens_valid(items: &[CssComponentValue]) -> bool {
             }
             cursor = next + 1;
         }
-        let Some(separator) = next_significant(items, cursor) else {
+        let Some(separator) = next_significant(items, cursor, control) else {
             return true;
         };
         if !delim(&items[separator], '|') {
             return false;
         }
-        let Some(next) = next_significant(items, separator + 1) else {
+        let Some(next) = next_significant(items, separator + 1, control) else {
             return false;
         };
         cursor = next;
     }
 }
 
-fn fallback_valid(items: &[CssComponentValue]) -> bool {
-    let first = next_significant(items, 0);
-    let significant: Vec<_> = items.iter().filter(|value| !trivia(value)).collect();
+fn fallback_valid(items: &[CssComponentValue], control: Option<&Control<'_>>) -> bool {
+    let first = next_significant(items, 0, control);
+    let mut significant = 0usize;
+    for value in items {
+        if super::step(control).is_err() {
+            return false;
+        }
+        if !trivia(value) {
+            significant += 1;
+        }
+    }
     if let Some(first) = first
         && let Component::Block(block) = items[first].view()
         && block.kind() == CssBlockKind::CurlyBracket
     {
-        if significant.len() != 1 {
+        if significant != 1 {
             return false;
         }
-        return declaration_value_valid(block.values().items(), true);
+        return declaration_value_valid(block.values().items(), true, control);
     }
-    declaration_value_valid(items, false)
+    declaration_value_valid(items, false, control)
 }
 
-fn declaration_value_valid(items: &[CssComponentValue], wrapped: bool) -> bool {
-    if !items
-        .iter()
-        .any(|value| !matches!(value.view(), Component::Comment(_)))
-    {
-        return false;
+fn declaration_value_valid(
+    items: &[CssComponentValue],
+    wrapped: bool,
+    control: Option<&Control<'_>>,
+) -> bool {
+    let mut non_comment = false;
+    for value in items {
+        if super::step(control).is_err() {
+            return false;
+        }
+        non_comment |= !matches!(value.view(), Component::Comment(_));
+        match value.view() {
+            Component::Token(Token::Semicolon | Token::Delim('!')) => return false,
+            Component::Token(Token::Comma) if !wrapped => return false,
+            Component::Block(block) if block.kind() == CssBlockKind::CurlyBracket && !wrapped => {
+                return false;
+            }
+            _ => {}
+        }
     }
-    items.iter().all(|value| match value.view() {
-        Component::Token(Token::Semicolon | Token::Delim('!')) => false,
-        Component::Token(Token::Comma) if !wrapped => false,
-        Component::Block(block) if block.kind() == CssBlockKind::CurlyBracket && !wrapped => false,
-        _ => true,
-    })
+    non_comment
 }
 
 /// Whether the function arguments match the selected 2024 `attr()` grammar.
 pub(super) fn valid(items: &[CssComponentValue]) -> Result<bool, CssComponentValueError> {
-    let Some(mut name_index) = next_significant(items, 0) else {
+    valid_with_control(items, None)
+}
+pub(super) fn valid_with_control(
+    items: &[CssComponentValue],
+    control: Option<&Control<'_>>,
+) -> Result<bool, CssComponentValueError> {
+    let Some(mut name_index) = next_significant(items, 0, control) else {
         return Ok(false);
     };
     if ident(&items[name_index]).is_none() {
         return Ok(false);
     }
-    name_index = next_significant(items, name_index + 1).unwrap_or(items.len());
+    name_index = next_significant(items, name_index + 1, control).unwrap_or(items.len());
     if name_index < items.len() && delim(&items[name_index], '|') {
-        let Some(local) = next_significant(items, name_index + 1) else {
+        let Some(local) = next_significant(items, name_index + 1, control) else {
             return Ok(false);
         };
         if ident(&items[local]).is_none() {
             return Ok(false);
         }
-        name_index = next_significant(items, local + 1).unwrap_or(items.len());
+        name_index = next_significant(items, local + 1, control).unwrap_or(items.len());
     }
 
-    let comma = (name_index..items.len())
-        .find(|index| matches!(items[*index].view(), Component::Token(Token::Comma)));
+    let mut comma = None;
+    for (index, item) in items.iter().enumerate().skip(name_index) {
+        super::step(control)?;
+        if matches!(item.view(), Component::Token(Token::Comma)) {
+            comma = Some(index);
+            break;
+        }
+    }
     let header_end = comma.unwrap_or(items.len());
     if name_index < header_end
-        && !syntax_valid(
-            &items[name_index..header_end],
-            crate::STRUCTURAL_NESTING_LIMIT as usize,
-        )?
+        && !match control {
+            Some(_) => syntax_valid_with_control(
+                &items[name_index..header_end],
+                crate::STRUCTURAL_NESTING_LIMIT as usize,
+                control,
+            )?,
+            None => syntax_valid(
+                &items[name_index..header_end],
+                crate::STRUCTURAL_NESTING_LIMIT as usize,
+            )?,
+        }
     {
         return Ok(false);
     }
     match comma {
-        Some(index) => Ok(fallback_valid(&items[index + 1..])),
+        Some(index) => Ok(fallback_valid(&items[index + 1..], control)),
         None => Ok(true),
     }
 }
