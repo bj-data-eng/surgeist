@@ -1093,3 +1093,31 @@ or implementation correctness. The unchanged complete
 cover the material. No source scripts or renderer ran and no asset was added.
 This is another representation of the existing HTML identity; totals remain
 391 = 260 full + 102 partial + 29 metadata-only.
+
+## Close-watcher manager — 2026-10-17
+
+The [manager reference](html-close-watcher-manager--877d6146487f.md) reuses the
+existing complete HTML877d source, SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Three complete selected units retain literal bytes inside inert HTML fences:
+
+| Unit | Inclusive raw lines | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| Window manager defaults | 61929–61937 | 1,256 | `9eb6d311bd1fe34753584adbfb4f4f84f09c16cf9b9ad8f4509dbea0e6c1aa5f` |
+| Watcher definition, activity and establishment | 61980–62022 | 6,501 | `1d1801d55815ba0a2d512eb3ba67916301a939aab25f80f5ba8d9580cae6ec5b` |
+| Destruction | 62060–62067 | 1,415 | `6d08391f947d16e20c2ed188949fcb9ff260e73c7b472dd01d392e88e03ae5b9` |
+
+All three emitted blocks compare byte for byte with the retained raw source,
+including original links, IDs, whitespace, source order and branches. Headings,
+provenance, attribution and a separately marked reading guide are additions.
+The descriptive cancellation contradiction remains literal. No source script,
+renderer, acquisition or asset is involved; user-activation notification and
+platform/request-close processing remain outside this capture. Original fragment
+links remain inert source spelling, resolved against the immutable complete
+snapshot rather than rewritten to a different edition.
+
+The unchanged complete [WHATWG license](../licenses/whatwg/LICENSE) and
+[modification notice](../licenses/whatwg/NOTICE.md#close-watcher-manager--2026-10-17)
+cover this additional representation of an existing source identity. Counts
+remain 391 = 260 full + 102 partial + 29 metadata-only. Exact extraction does
+not certify implementation, visual rendering or full browser conformance.

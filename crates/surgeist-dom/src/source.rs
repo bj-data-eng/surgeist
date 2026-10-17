@@ -1,6 +1,7 @@
 //! One requested canonical edit and its retained source continuation.
 pub(crate) mod event;
 mod url;
+pub(crate) mod watcher;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;
 use crate::{DocumentString, DomDocumentStamp, DomSnapshot, DomStyleRequest, Namespace, NodeId};
@@ -11,6 +12,7 @@ pub(crate) use url::UrlBasis;
 pub use url::{
     DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest, DomSourceUrlStage,
 };
+pub use watcher::{DomDialogWatcherPreparation, DomDialogWatcherPublication};
 
 /// Absolute finite admission for one composed source operation. Resuming does
 /// not reset work or publication/output counters. CSS and CSSOM retain their
@@ -85,7 +87,7 @@ pub enum DomSourcePhase {
     EventObservation,
     /// Qualified event outcome retained before current-state rebase.
     EventReceiptAccepted,
-    /// A genuine remaining Dialog action without its service.
+    /// A genuine Dialog action waiting for its qualified external service.
     DialogService,
 }
 /// Actual publication status; structural snapshots remain readable while source

@@ -1,8 +1,7 @@
-//! Canonical Dialog values for the admitted closed operation domain.
+//! Canonical Dialog state with actual optional task and watcher associations.
 //!
-//! Ordinary open/tree hooks and returnValue assignment cannot create modal,
-//! watcher, queued-task or request-close state. Positive show/close/hosted service
-//! operations require their real owner before this representation can advance.
+//! Native Window-manager receipts establish or clear watcher identities through
+//! the original Source hooks. Modal/request-close state remains a closed proof.
 use crate::{DocumentString, DomNode, NodeId};
 
 /// Qualification of the actual null/false service slots through the complete
@@ -25,9 +24,6 @@ impl ClosedDialogServices {
     const fn is_modal(self) -> bool {
         false
     }
-    const fn has_watcher(self) -> bool {
-        false
-    }
     const fn force_watcher_enabled(self) -> bool {
         false
     }
@@ -37,7 +33,25 @@ impl ClosedDialogServices {
 pub(crate) struct DomDialogState {
     return_value: DocumentString,
     services: ClosedDialogServices,
+    pub(crate) watcher: Option<DomCloseWatcherId>,
     pub(crate) toggle_tracker: Option<DomDialogToggleTracker>,
+}
+/// One exact watcher occurrence owned by the original Window manager.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomCloseWatcherId {
+    pub(crate) operation: crate::DomSourceOperationId,
+    pub(crate) command: usize,
+    pub(crate) occurrence: u64,
+    pub(crate) target: NodeId,
+    pub(crate) global: crate::DomHostedGlobalId,
+}
+impl DomCloseWatcherId {
+    pub const fn subject(self) -> NodeId {
+        self.target
+    }
+    pub const fn global(self) -> crate::DomHostedGlobalId {
+        self.global
+    }
 }
 /// Historical canonical identity and first state of the currently tracked task.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -64,6 +78,7 @@ impl DomDialogState {
             return_value: fresh.return_value().into(),
             services: ClosedDialogServices::from_fresh(fresh),
             toggle_tracker: None,
+            watcher: None,
         }
     }
     /// Transfers the original controller's current state, never native fresh
@@ -77,6 +92,7 @@ impl DomDialogState {
             return_value,
             services,
             toggle_tracker: None,
+            watcher: None,
         })
     }
     pub(crate) fn return_value(&self) -> &DocumentString {
@@ -87,19 +103,19 @@ impl DomDialogState {
             return_value,
             services: self.services,
             toggle_tracker: self.toggle_tracker,
+            watcher: self.watcher,
         }
     }
     pub(crate) const fn is_modal(&self) -> bool {
         self.services.is_modal()
     }
     pub(crate) const fn has_close_watcher(&self) -> bool {
-        self.services.has_watcher()
+        self.watcher.is_some()
     }
 }
 
-/// A Dialog at one actual immutable canonical revision. An advanced returnValue
-/// is read from retained state; the remaining null/false results are established
-/// by the closed operation domain, not reconstructed from its open attribute.
+/// A Dialog at one immutable canonical revision. Return value, watcher and task
+/// associations are retained state; none grants current execution authority.
 #[derive(Clone, Copy, Debug)]
 pub struct DomDialog<'a> {
     pub(crate) node: DomNode<'a>,
@@ -127,6 +143,10 @@ impl<'a> DomDialog<'a> {
     /// Current canonical tracker at this historical snapshot revision.
     pub fn toggle_task_tracker(self) -> Option<DomDialogToggleTracker> {
         self.state().toggle_tracker
+    }
+    /// Historical association; grants no manager execution authority.
+    pub fn close_watcher(self) -> Option<DomCloseWatcherId> {
+        self.state().watcher
     }
     pub fn has_close_watcher(self) -> bool {
         self.state().has_close_watcher()

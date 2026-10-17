@@ -332,7 +332,8 @@ fn show_publishes_open_and_retains_queued_task(
             .attribute(&"open".into()),
         None
     );
-    // No focus value, watcher reply or completed Show is supplied by this test.
+    // Remembered focus and completed Show remain unavailable; the hosted
+    // watcher, when applicable, is a real Window-manager registration.
 }
 
 #[test]
@@ -535,7 +536,7 @@ fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callbac
     target_os = "ios"
 ))]
 #[test]
-fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_watcher() {
+fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_remembered_focus() {
     let cancel = AtomicBool::new(false);
     // The same public constructor used by native_hosted_lifecycle establishes
     // the actual Global/settings/agent/window loop; no native Document is
@@ -666,8 +667,8 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_watc
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
-            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(dialog.action(), HtmlDialogAction::RememberFocusedElement);
+            assert_eq!(action, HtmlDialogAction::RememberFocusedElement);
         }
         other => {
             panic!(
@@ -765,7 +766,7 @@ fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
     target_os = "ios"
 ))]
 #[test]
-fn hosted_show_publishes_empty_open_before_waiting_for_close_watcher() {
+fn hosted_show_establishes_watcher_before_waiting_for_remembered_focus() {
     let cancel = AtomicBool::new(false);
     let (mut session, top, body) = hosted_queue_fixture();
     let subject = {
@@ -793,7 +794,7 @@ fn hosted_show_publishes_empty_open_before_waiting_for_close_watcher() {
     show_publishes_open_and_retains_queued_task(
         session,
         subject,
-        HtmlDialogAction::EstablishCloseWatcher,
+        HtmlDialogAction::RememberFocusedElement,
         Some((top.global(), top.document())),
     );
 }
@@ -806,7 +807,7 @@ fn hosted_show_publishes_empty_open_before_waiting_for_close_watcher() {
     target_os = "ios"
 ))]
 #[test]
-fn hosted_source_open_attribute_publishes_hook_prefix_before_waiting_for_close_watcher() {
+fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing() {
     let cancel = AtomicBool::new(false);
     let (mut session, top, body) = hosted_queue_fixture();
     let subject = {
@@ -847,25 +848,31 @@ fn hosted_source_open_attribute_publishes_hook_prefix_before_waiting_for_close_w
             )
             .unwrap()
     };
-    // The ordinary attribute request owns the nested hook independently of
-    // Show. HTML877d setup adds the open-list entry before its watcher wait.
-    let operation =
-        pending_dialog_service(progress, subject, HtmlDialogAction::EstablishCloseWatcher);
+    let DomSourceDriveProgress::Complete(done) = progress else {
+        panic!("actual ordinary watcher hook must complete");
+    };
+    assert!(!done.cancellation_requested());
+    let operation = done.operation();
     let published = session.snapshot();
     assert_ne!(published.stamp(), original.stamp());
     assert_eq!(
         published.node(subject).unwrap().attribute(&"open".into()),
         Some(&"".into())
     );
-    assert_eq!(published.incomplete_source_operation(), Some(operation));
-    assert!(
-        !published
-            .node(subject)
-            .unwrap()
-            .as_dialog()
-            .unwrap()
-            .has_toggle_task_tracker()
+    assert_eq!(published.node(subject).unwrap().parent(), Some(body));
+    assert_eq!(
+        published.relevant_global(subject).unwrap(),
+        Some(top.global())
     );
+    let dialog = published.node(subject).unwrap().as_dialog().unwrap();
+    let watcher = dialog
+        .close_watcher()
+        .expect("actual original Window registration");
+    assert_eq!(watcher.subject(), subject);
+    assert_eq!(watcher.global(), top.global());
+    assert!(!dialog.has_toggle_task_tracker());
+    assert_eq!(published.incomplete_source_operation(), None);
+    assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
             .dom_manipulation_execution()
@@ -873,21 +880,35 @@ fn hosted_source_open_attribute_publishes_hook_prefix_before_waiting_for_close_w
             .unwrap(),
         0
     );
-    assert_eq!(
-        pending_dialog_service(
-            resume(&mut session, operation),
-            subject,
-            HtmlDialogAction::EstablishCloseWatcher
+    let mut policy = |_: &DomStyleSource| None;
+    assert!(matches!(
+        session.source_execution().resume(
+            &mut session.dom(),
+            operation,
+            source_limits(),
+            &mut DomSourceServices {
+                style_policy: &mut policy,
+                url: None
+            },
+            &cancel
         ),
-        operation
-    );
+        Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+    ));
     let retried = session.snapshot();
     assert_eq!(retried.stamp(), published.stamp());
     assert_eq!(
         retried.node(subject).unwrap().attribute(&"open".into()),
         Some(&"".into())
     );
-    assert_eq!(retried.incomplete_source_operation(), Some(operation));
+    assert_eq!(
+        retried
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .close_watcher(),
+        Some(watcher)
+    );
     assert_eq!(
         session
             .dom_manipulation_execution()
@@ -899,8 +920,14 @@ fn hosted_source_open_attribute_publishes_hook_prefix_before_waiting_for_close_w
         original.node(subject).unwrap().attribute(&"open".into()),
         None
     );
-    // No beforetoggle or toggle queue belongs to direct attribute addition,
-    // and no watcher completion is fabricated here.
+    assert!(
+        !original
+            .node(subject)
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .has_close_watcher()
+    );
 }
 
 #[cfg(any(
@@ -1018,8 +1045,8 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
-            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(dialog.action(), HtmlDialogAction::RememberFocusedElement);
+            assert_eq!(action, HtmlDialogAction::RememberFocusedElement);
         }
         other => panic!("actual queueing must leave Show at its actual next service: {other:?}"),
     }
@@ -1225,8 +1252,8 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
         } => {
             assert_eq!(dialog.operation(), request.operation());
             assert_eq!(dialog.subject(), subject);
-            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
-            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(dialog.action(), HtmlDialogAction::RememberFocusedElement);
+            assert_eq!(action, HtmlDialogAction::RememberFocusedElement);
         }
         other => {
             panic!("adopted Dialog queueing must retain Show at its actual next service: {other:?}")
@@ -1495,8 +1522,8 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         } => {
             assert_eq!(dialog.operation(), parent_request.operation());
             assert_eq!(dialog.subject(), parent);
-            assert_eq!(dialog.action(), HtmlDialogAction::EstablishCloseWatcher);
-            assert_eq!(action, HtmlDialogAction::EstablishCloseWatcher);
+            assert_eq!(dialog.action(), HtmlDialogAction::RememberFocusedElement);
+            assert_eq!(action, HtmlDialogAction::RememberFocusedElement);
         }
         other => panic!(
             "P's authentic queue publication must stop at its actual next service: {other:?}"
@@ -2740,7 +2767,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
     target_os = "ios"
 ))]
 #[test]
-fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_retry() {
+fn native_installation_completes_watcher_hook_with_its_actual_created_identity() {
     let cancel = AtomicBool::new(false);
     let (mut session, top, _) = hosted_queue_fixture();
     let before = session.snapshot();
@@ -2763,6 +2790,8 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
         )
         .unwrap();
     let fragment = builder.finish();
+    assert_eq!(fragment.root().children().len(), 1);
+    let source_subject = fragment.root().children().next().unwrap();
     let target = DomNativeHtmlInstallTarget::new(
         before.document(top.document()).unwrap().stamp(),
         body,
@@ -2786,15 +2815,16 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
             &cancel,
         )
         .unwrap();
-    let DomSourceDriveProgress::Pending {
-        request: DomSourceRequest::Dialog(request),
-        reason: DomSourceUnavailable::Dialog(HtmlDialogAction::EstablishCloseWatcher),
-    } = progress
-    else {
-        panic!("the inserted active native Dialog must retain its actual watcher hook");
+    let DomSourceDriveProgress::Complete(done) = progress else {
+        panic!("real installed Dialog watcher hook must complete");
     };
-    let subject = request.subject();
-    assert_eq!(request.action(), HtmlDialogAction::EstablishCloseWatcher);
+    assert!(!done.cancellation_requested());
+    let installed = done
+        .native_installation()
+        .expect("actual original installation result");
+    let subject = installed
+        .node_for(&source_subject)
+        .expect("actual source-to-native mapping");
     assert!(before.node(subject).is_err());
     let published = session.snapshot();
     assert_eq!(published.node(subject).unwrap().parent(), Some(body));
@@ -2810,14 +2840,17 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
         published.node(body).unwrap().children().len(),
         prior_children + 1
     );
-    assert_eq!(
-        published.incomplete_source_operation(),
-        Some(request.operation())
-    );
-    assert_eq!(
-        session.dom().pending_source_edit().unwrap().phase(),
-        DomSourcePhase::DialogService
-    );
+    let watcher = published
+        .node(subject)
+        .unwrap()
+        .as_dialog()
+        .unwrap()
+        .close_watcher()
+        .expect("actual installed watcher");
+    assert_eq!(watcher.subject(), subject);
+    assert_eq!(watcher.global(), top.global());
+    assert_eq!(published.incomplete_source_operation(), None);
+    assert_eq!(session.dom().pending_source_edit(), None);
     assert_eq!(
         session
             .dom_manipulation_execution()
@@ -2825,14 +2858,19 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
             .unwrap(),
         0
     );
-    assert_eq!(
-        pending_dialog_service(
-            resume(&mut session, request.operation()),
-            subject,
-            HtmlDialogAction::EstablishCloseWatcher
+    assert!(matches!(
+        permission.resume(
+            &mut session.dom(),
+            done.operation(),
+            source_limits(),
+            &mut DomSourceServices {
+                style_policy: &mut policy,
+                url: None
+            },
+            &cancel
         ),
-        request.operation()
-    );
+        Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+    ));
     let retried = session.snapshot();
     assert_eq!(retried.stamp(), published.stamp());
     assert_eq!(
@@ -2843,8 +2881,7 @@ fn native_installation_dialog_hook_uses_its_actual_first_published_identity_on_r
         retried.node(subject).unwrap().attribute(&"open".into()),
         Some(&"".into())
     );
-    // This authentic created-key publication proves neither installation
-    // completion nor a watcher reply; the original named root remains parked.
+    assert_eq!(installed.node_for(&source_subject), Some(subject));
 }
 
 #[cfg(any(

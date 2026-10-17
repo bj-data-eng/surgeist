@@ -46,6 +46,7 @@ impl HostedState {
     pub(super) fn child_creation(
         &mut self,
         request: &DomHostedChildRequest,
+        lease: &surgeist_dom::DomSourceLease<'_>,
         cancel: &AtomicBool,
     ) -> Result<usize, DomHostedRuntimeError> {
         for index in 0..self.children.len() {
@@ -62,7 +63,7 @@ impl HostedState {
                 .len()
                 .checked_add(1)
                 .ok_or(DomHostedRuntimeError::Admission)?;
-            let old = self.retained_bytes(cancel)?;
+            let old = self.source_retained_bytes(lease, cancel)?;
             let requested = required
                 .checked_mul(size_of::<Creation>())
                 .ok_or(DomHostedRuntimeError::Admission)?;
@@ -115,7 +116,7 @@ impl HostedRuntime {
         if state.dom != lease.snapshot().owner() {
             return Err(DomHostedRuntimeError::Binding);
         }
-        let (h, t, c, g) = state.find_global(request.parent_global(), cancel)?;
+        let (h, t, c, g) = state.find_global(request.parent_global(), cancel, || Ok(()))?;
         let group = state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -128,7 +129,7 @@ impl HostedRuntime {
             return Err(DomHostedRuntimeError::Binding);
         }
         let group_root = group.context;
-        let index = state.child_creation(request, cancel)?;
+        let index = state.child_creation(request, lease, cancel)?;
         let HostedState {
             source,
             clock,
@@ -172,9 +173,11 @@ impl HostedState {
         &mut self,
         request: &DomHostedChildRequest,
         cancel: &AtomicBool,
+        mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
     ) -> Result<usize, DomHostedRuntimeError> {
         for index in 0..self.children.len() {
             self.step(cancel)?;
+            admit()?;
             if self.children[index].operation == request.operation()
                 && self.children[index].occurrence == request.occurrence()
             {
@@ -190,6 +193,7 @@ impl HostedRuntime {
         &self,
         child_request: &DomHostedChildRequest,
         request: &surgeist_dom::DomHostedExecutionRequest,
+        lease: &surgeist_dom::DomSourceLease<'_>,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -202,12 +206,12 @@ impl HostedRuntime {
         if parent != child_request.parent_global() {
             return Err(DomHostedRuntimeError::Protocol);
         }
-        let (h, t, _, _) = state.find_global(parent, cancel)?;
-        let index = state.child_index(child_request, cancel)?;
+        let (h, t, _, _) = state.find_global(parent, cancel, || Ok(()))?;
+        let index = state.child_index(child_request, cancel, || Ok(()))?;
         if state.children[index].publication.is_some() {
             return Ok(());
         }
-        let retained = state.retained_bytes(cancel)?;
+        let retained = state.source_retained_bytes(lease, cancel)?;
         let HostedState {
             hosts,
             children,
@@ -221,8 +225,16 @@ impl HostedRuntime {
             .group
             .as_mut()
             .ok_or(DomHostedRuntimeError::Protocol)?;
-        let (cluster, mut added) =
-            agent::ensure_cluster(group, request.origin(), retained, *limits, work, cancel)?;
+        let cluster = agent::find_cluster(
+            group,
+            request.origin(),
+            work,
+            limits.work,
+            cancel,
+            || Ok(()),
+        )?
+        .ok_or(DomHostedRuntimeError::Protocol)?;
+        let mut added = 0usize;
         let sample = child
             .sample
             .as_ref()
@@ -284,8 +296,18 @@ impl HostedRuntime {
             {
                 return Err(DomHostedRuntimeError::Protocol);
             }
+            // The new Window row is an actual additional Runtime mutation,
+            // admitted on the same original Source before either bank changes.
+            spend(work, limits.work, cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
             let mut context = child.context.take().expect("validated child BC object");
             context.global = Some(global);
+            native
+                .windows
+                .rows
+                .push(super::watcher::NativeWindow::fresh(global));
             native.globals.push(records::Global {
                 context,
                 id: global,
@@ -319,8 +341,8 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(child_request, cancel)?;
-        let (h, t, c, g) = state.find_global(request.global(), cancel)?;
+        let index = state.child_index(child_request, cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(request.global(), cancel, || Ok(()))?;
         state.step(cancel)?;
         let HostedState {
             hosts,
@@ -357,8 +379,8 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(child_request, cancel)?;
-        let (h, t, c, g) = state.find_global(request.global(), cancel)?;
+        let index = state.child_index(child_request, cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(request.global(), cancel, || Ok(()))?;
         state.step(cancel)?;
         let HostedState {
             hosts,
@@ -417,7 +439,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(child_request, cancel)?;
+        let index = state.child_index(child_request, cancel, || Ok(()))?;
         let HostedState {
             children,
             source,
@@ -476,7 +498,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(request, cancel)?;
+        let index = state.child_index(request, cancel, || Ok(()))?;
         let HostedState {
             source, children, ..
         } = &mut *state;
@@ -539,7 +561,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(child_request, cancel)?;
+        let index = state.child_index(child_request, cancel, || Ok(()))?;
         let HostedState {
             source, children, ..
         } = &mut *state;
@@ -590,7 +612,7 @@ impl HostedRuntime {
         // Resolve the existing Runtime custody before canonical retirement.
         // Nothing fallible may separate that retirement from clearing its
         // derived, still unpublished policy in this same original row.
-        let index = state.child_index(child, cancel)?;
+        let index = state.child_index(child, cancel, || Ok(()))?;
         let stage = lease
             .qualify_source_url_configuration(child, expected, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
@@ -626,6 +648,14 @@ impl HostedRuntime {
             lease
                 .process_hosted_child_attributes(child, cancel)
                 .map_err(DomHostedRuntimeError::Dom)?;
+            if matches!(
+                lease
+                    .hosted_child_step(child)
+                    .map_err(DomHostedRuntimeError::Dom)?,
+                Step::NativeExecution(_)
+            ) {
+                self.prepare_child_window(lease, child, cancel)?;
+            }
             let mut policy_phase = false;
             match lease
                 .hosted_child_step(child)
@@ -652,7 +682,7 @@ impl HostedRuntime {
                         let mut state = owner
                             .try_borrow_mut()
                             .map_err(|_| DomHostedRuntimeError::Busy)?;
-                        let index = state.child_index(child, cancel)?;
+                        let index = state.child_index(child, cancel, || Ok(()))?;
                         state.children[index].policy.is_some()
                     };
                     if sealed {
@@ -703,7 +733,9 @@ impl HostedRuntime {
                         }
                     }
                 }
-                Step::NativeExecution(request) => self.execute_child(child, request, cancel)?,
+                Step::NativeExecution(request) => {
+                    self.execute_child(child, request, lease, cancel)?
+                }
                 Step::MakeActive(request) => self.activate_child(child, request, cancel)?,
                 Step::FinishLoading(request) => {
                     self.finish_loading_child(child, request, cancel)?
@@ -743,7 +775,8 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let (h, t, parent_cluster, _) = state.find_global(child.parent_global(), cancel)?;
+        let (h, t, parent_cluster, _) =
+            state.find_global(child.parent_global(), cancel, || Ok(()))?;
         let mut queued_index = None;
         {
             let HostedState {
@@ -783,7 +816,7 @@ impl HostedRuntime {
             if count >= state.limits.tasks {
                 return Err(DomHostedRuntimeError::Admission);
             }
-            let retained = state.retained_bytes(cancel)?;
+            let retained = state.source_retained_bytes(lease, cancel)?;
             let HostedState {
                 hosts,
                 limits,
@@ -856,7 +889,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let index = state.child_index(child, cancel)?;
+        let index = state.child_index(child, cancel, || Ok(()))?;
         for _ in index..state.children.len() {
             state.step(cancel)?;
         }
@@ -896,7 +929,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let (h, t, c, _) = state.find_global(child.parent_global(), cancel)?;
+        let (h, t, c, _) = state.find_global(child.parent_global(), cancel, || Ok(()))?;
         let mut found = None;
         {
             let HostedState {
@@ -936,7 +969,7 @@ impl HostedRuntime {
             if count >= state.limits.tasks {
                 return Err(DomHostedRuntimeError::Admission);
             }
-            let retained = state.retained_bytes(cancel)?;
+            let retained = state.source_retained_bytes(lease, cancel)?;
             let HostedState {
                 hosts,
                 work,
@@ -1431,4 +1464,104 @@ mod url_configuration_tests {
     }
 
     mod receipt_tests;
+    mod window_work_tests;
+}
+
+impl HostedRuntime {
+    fn prepare_child_window(
+        &self,
+        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        child: &DomHostedChildRequest,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
+        let (parent, origin) = match lease
+            .hosted_child_step(child)
+            .map_err(DomHostedRuntimeError::Dom)?
+        {
+            surgeist_dom::DomHostedChildStep::NativeExecution(request) => (
+                request
+                    .parent_global()
+                    .ok_or(DomHostedRuntimeError::Protocol)?,
+                request.origin().clone(),
+            ),
+            _ => return Err(DomHostedRuntimeError::Protocol),
+        };
+        if parent != child.parent_global() {
+            return Err(DomHostedRuntimeError::Protocol);
+        }
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let (h, t, _, _) = state.find_global(parent, cancel, || {
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+        })?;
+        let index = state.child_index(child, cancel, || {
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+        })?;
+        if state.children[index].publication.is_some() {
+            return Ok(());
+        }
+        let retained = state.source_retained_bytes(lease, cancel)?;
+        let HostedState {
+            hosts,
+            source,
+            work,
+            limits,
+            ..
+        } = &mut *state;
+        let group = hosts[h].top_levels[t]
+            .group
+            .as_mut()
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        let found = agent::find_cluster(group, &origin, work, limits.work, cancel, || {
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+        })?;
+        let (cluster, added) = if let Some(cluster) = found {
+            (cluster, 0)
+        } else {
+            // The original missing-cluster formation moves the full bank only
+            // when necessary, then inserts one actual agent. Scalar admission
+            // precedes the mutable canonical payload-retention callback.
+            let moves = if group.clusters.len() == group.clusters.capacity() {
+                group.clusters.len()
+            } else {
+                0
+            };
+            lease
+                .admit_hosted_runtime_work(
+                    moves
+                        .checked_add(1)
+                        .ok_or(DomHostedRuntimeError::Admission)?,
+                    cancel,
+                )
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+            agent::form_cluster(group, &origin, retained, *limits, work, cancel, |bytes| {
+                lease.retain_hosted_runtime_payload(source, bytes, cancel)
+            })?
+        };
+        lease
+            .admit_hosted_runtime_work(
+                super::watcher::growth_steps(&group.clusters[cluster].agent.windows.rows)?,
+                cancel,
+            )
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+        super::watcher::reserve_window(
+            &mut group.clusters[cluster].agent,
+            retained
+                .checked_add(added)
+                .ok_or(DomHostedRuntimeError::Admission)?,
+            *limits,
+            work,
+            |bytes| lease.retain_hosted_runtime_payload(source, bytes, cancel),
+            cancel,
+        )?;
+        Ok(())
+    }
 }

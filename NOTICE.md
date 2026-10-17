@@ -675,3 +675,9 @@ retains selected clauses from the existing immutable HTML877d edition under the
 and unchanged complete local license. Specification prose uses CC BY 4.0;
 source-code incorporation uses the separate BSD 3-Clause provision. The literal
 source and its separately linked implementation determination remain distinct.
+
+The [Window manager reference](references/html-close-watcher-manager--877d6146487f.md)
+retains the same edition's complete selected defaults, watcher definition,
+establishment and destruction units as inert literal source. The existing full
+license and [modification notice](licenses/whatwg/NOTICE.md#close-watcher-manager--2026-10-17)
+cover its bounded selection and Markdown framing.

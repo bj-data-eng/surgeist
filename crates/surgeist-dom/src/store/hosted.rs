@@ -1718,3 +1718,31 @@ impl Dom {
         captured_fully_active(graph, document, navigable, || work.step(cancel))
     }
 }
+
+impl DomHostedSource {
+    /// Admit actual native Window-manager backing through the original current
+    /// Source and every observing ancestor, before allocation or replacement.
+    pub fn retain_runtime_payload(
+        &self,
+        dom: &mut Dom,
+        bytes: usize,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomHostedRuntimeRetention, DomError> {
+        dom.validate_hosted_source(self)
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        self.shared
+            .runtime_bytes
+            .load(Ordering::Relaxed)
+            .checked_add(bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        self.shared
+            .runtime_bytes
+            .fetch_add(bytes, Ordering::Relaxed);
+        let retained = crate::DomHostedRuntimeRetention {
+            shared: Arc::downgrade(&self.shared),
+            bytes,
+        };
+        dom.admit_source_owner_payload(cancel)?;
+        Ok(retained)
+    }
+}

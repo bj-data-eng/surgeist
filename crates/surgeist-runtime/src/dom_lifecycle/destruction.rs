@@ -832,7 +832,7 @@ impl HostedState {
         cancel: &AtomicBool,
     ) -> Result<DomHostedTaskProgress, DomHostedRuntimeError> {
         let info = self.destruction.cleanups[index].info;
-        let (h, t, c, _) = self.find_global(info.global, cancel)?;
+        let (h, t, c, _) = self.find_global(info.global, cancel, || Ok(()))?;
         let loop_owner = self.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -868,7 +868,8 @@ impl HostedState {
             }
         }
         let info = self.destruction.cleanups[index].info;
-        let (selected_h, selected_t, selected_c, _) = self.find_global(info.global, cancel)?;
+        let (selected_h, selected_t, selected_c, _) =
+            self.find_global(info.global, cancel, || Ok(()))?;
         let selected_loop = &self.hosts[selected_h].top_levels[selected_t]
             .group
             .as_ref()
@@ -1091,6 +1092,12 @@ impl HostedState {
         {
             spend(&mut self.work, self.limits.work, cancel)?;
             for _ in 0..cluster.agent.globals.len() {
+                spend(&mut self.work, self.limits.work, cancel)?;
+            }
+            // The actual Window phase mark and ordered retained-row compaction
+            // both execute only after this original canonical close succeeds.
+            for _ in 0..cluster.agent.windows.rows.len() {
+                spend(&mut self.work, self.limits.work, cancel)?;
                 spend(&mut self.work, self.limits.work, cancel)?;
             }
         }
@@ -1345,6 +1352,16 @@ fn retire_native_top(
     let group = composition.group.as_mut().expect("actual original group");
     for cluster in &mut group.clusters {
         cluster.agent.globals.retain(|value| value.id != global);
+        for window in &mut cluster.agent.windows.rows {
+            if window.id == global {
+                window.retired = true;
+            }
+        }
+        cluster
+            .agent
+            .windows
+            .rows
+            .retain(|window| !window.retired || window.needed());
         let mut event_loop = cluster.agent.event_loop.borrow_mut();
         event_loop.navigation.retain(|task| {
             !matches!(task,
@@ -1369,6 +1386,7 @@ pub(super) fn prune_closed_composition(host: &mut records::Host, index: usize) -
         && group.clusters.iter().all(|cluster| {
             let event_loop = cluster.agent.event_loop.borrow();
             cluster.agent.globals.is_empty()
+                && cluster.agent.windows.rows.is_empty()
                 && event_loop.navigation.is_empty()
                 && event_loop.current.is_none()
                 && !event_loop.executing
@@ -1385,6 +1403,7 @@ impl State {
         work: &mut u64,
         limit: u64,
         cancel: &AtomicBool,
+        admit: &mut impl FnMut() -> Result<(), DomHostedRuntimeError>,
     ) -> Result<usize, DomHostedRuntimeError> {
         let mut bytes = self
             .invocations
@@ -1396,6 +1415,7 @@ impl State {
             .ok_or(DomHostedRuntimeError::Admission)?;
         for invocation in &self.invocations {
             spend(work, limit, cancel)?;
+            admit()?;
             bytes = bytes
                 .checked_add(
                     invocation

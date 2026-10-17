@@ -1884,6 +1884,9 @@ pub const fn surgeist_html::HtmlChildNavigablePresence::attribute_change_require
 pub const fn surgeist_html::HtmlChildNavigablePresence::content_access(self) -> surgeist_html::HtmlChildNavigableAccessDecision
 pub const fn surgeist_html::HtmlChildNavigablePresence::load_delay(self) -> surgeist_html::HtmlChildNavigableLoadDelayDecision
 pub const fn surgeist_html::HtmlChildNavigablePresence::removal_requires_child_destruction(self) -> bool
+pub enum surgeist_html::HtmlCloseWatcherPlacement
+pub surgeist_html::HtmlCloseWatcherPlacement::LastGroup
+pub surgeist_html::HtmlCloseWatcherPlacement::NewGroup
 pub enum surgeist_html::HtmlClosedBy
 pub surgeist_html::HtmlClosedBy::Any
 pub surgeist_html::HtmlClosedBy::CloseRequest
@@ -4107,6 +4110,16 @@ pub fn surgeist_html::HtmlCanvasNoneState::height_attribute_changed(&mut self, p
 pub const fn surgeist_html::HtmlCanvasNoneState::origin_clean(&self) -> bool
 pub fn surgeist_html::HtmlCanvasNoneState::width(&self) -> surgeist_html::HtmlCanvasBitmapDimension<'_>
 pub fn surgeist_html::HtmlCanvasNoneState::width_attribute_changed(&mut self, parsed: core::option::Option<surgeist_html::HtmlNonNegativeInteger>)
+pub struct surgeist_html::HtmlCloseWatcherManager
+impl surgeist_html::HtmlCloseWatcherManager
+pub const fn surgeist_html::HtmlCloseWatcherManager::allowed_groups(self) -> usize
+pub const fn surgeist_html::HtmlCloseWatcherManager::establishment(self, groups: usize) -> surgeist_html::HtmlCloseWatcherPlacement
+pub const fn surgeist_html::HtmlCloseWatcherManager::fresh() -> Self
+pub const fn surgeist_html::HtmlCloseWatcherManager::next_interaction_allows_new_group(self) -> bool
+pub struct surgeist_html::HtmlCloseWatcherState
+impl surgeist_html::HtmlCloseWatcherState
+pub const fn surgeist_html::HtmlCloseWatcherState::fresh() -> Self
+pub const fn surgeist_html::HtmlCloseWatcherState::running_cancel_action(self) -> bool
 pub struct surgeist_html::HtmlClosedElementState
 impl surgeist_html::HtmlClosedElementState
 pub const fn surgeist_html::HtmlClosedElementState::click_in_progress(&self) -> bool

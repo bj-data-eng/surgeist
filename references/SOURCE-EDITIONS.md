@@ -1023,3 +1023,16 @@ request-close implementation.
 The [conversion record](CONVERSION-REPORT.md#close-watcher-cancel-result--2026-10-17)
 and [WHATWG notice](../licenses/whatwg/NOTICE.md#close-watcher-cancel-result--2026-10-17)
 identify the bounded selection and existing license.
+
+## Window close-watcher manager
+
+The [bounded manager reference](html-close-watcher-manager--877d6146487f.md)
+retains the existing HTML877d Window manager defaults, watcher definition and
+active-membership predicate, complete establishment and destruction algorithms.
+It preserves the literal descriptive cancellation boolean; the separately
+retained [cancel-result interpretation](#close-watcher-cancel-result) remains
+unchanged. User activation and platform processing are outside this selection.
+The [conversion record](CONVERSION-REPORT.md#close-watcher-manager--2026-10-17)
+and [WHATWG notice](../licenses/whatwg/NOTICE.md#close-watcher-manager--2026-10-17)
+record the exact units. No new edition, source identity or implementation
+completion is asserted.

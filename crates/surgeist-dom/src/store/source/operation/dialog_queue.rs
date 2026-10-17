@@ -83,6 +83,7 @@ pub struct DomDialogToggleQueueCommit<'a, 'dom> {
     task: Option<DomDialogToggleTask>,
     canonical: storage::Payload,
     outputs: usize,
+    remaining_phases: u64,
     checkpoint: Option<checkpoint::Checkpoint>,
 }
 impl DomDialogToggleQueueCommit<'_, '_> {
@@ -107,7 +108,7 @@ impl DomDialogToggleQueueCommit<'_, '_> {
         op.event_exposed = true;
         op.dialog_queue = Some(self.plan.info.id);
         op.headroom = Some(headroom::Reservation {
-            remaining_phases: 2,
+            remaining_phases: self.remaining_phases,
         });
         op.command_admitted = true;
         drop(commit);
@@ -289,9 +290,35 @@ impl<'dom> DomSourceLease<'dom> {
                 )?;
                 prepared.changes.push(DomChange::SourceOperation);
             }
+            let document = op.draft.node(frame.subject)?.document;
+            let original_window_active = match self
+                .dom
+                .snapshot()
+                .relevant_global(plan.info.id.target)
+                .map_err(|_| DomError::HostedSourceUnavailable)?
+            {
+                None => false,
+                Some(global) => {
+                    let associated = self
+                        .dom
+                        .snapshot()
+                        .global_document(global)
+                        .map_err(|_| DomError::HostedSourceUnavailable)?;
+                    let key = op.draft.resolve(associated.node().into())?;
+                    op.draft.document_fully_active(key, cancel)?
+                }
+            };
+            let reached_hook = op.draft.document_fully_active(document, cancel)?
+                && op.draft.shadow_connected(frame.subject, cancel)?;
+            if reached_hook {
+                op.draft.admit_dialog_hook_occurrence(cancel)?;
+            }
+            let active_hook = reached_hook && original_window_active;
+            let extra = u64::from(active_hook);
+            let required_phases = 3 + extra;
             if op
                 .phases
-                .checked_add(3)
+                .checked_add(required_phases)
                 .is_none_or(|phases| phases > op.limits.phases)
             {
                 return Err(DomError::SourcePublicationLimit);
@@ -299,7 +326,7 @@ impl<'dom> DomSourceLease<'dom> {
             self.dom
                 .revision
                 .0
-                .checked_add(3)
+                .checked_add(required_phases)
                 .and_then(|revision| revision.checked_add(self.dom.hosted_revisions))
                 .and_then(|revision| {
                     self.dom
@@ -313,7 +340,7 @@ impl<'dom> DomSourceLease<'dom> {
                 .checked_add(prepared.changes.len())
                 .ok_or(DomError::RepresentationExhausted)?;
             if outputs
-                .checked_add(3)
+                .checked_add(3 + usize::from(active_hook))
                 .is_none_or(|outputs| outputs > op.limits.outputs)
             {
                 return Err(DomError::SourceOutputLimit);
@@ -327,7 +354,7 @@ impl<'dom> DomSourceLease<'dom> {
                 destination.absorb(formation);
             }
             let prepared = self.dom.prepare_publication(prepared, cancel)?;
-            Ok((prepared, canonical, outputs))
+            Ok((prepared, canonical, outputs, required_phases - 1))
         })();
         if result.is_err() {
             checkpoint.restore(&mut op.draft);
@@ -335,7 +362,7 @@ impl<'dom> DomSourceLease<'dom> {
             return Err(result.err().expect("failure"));
         }
         self.dom.source_operation = Some(op);
-        let (prepared, canonical, outputs) = result.expect("formed publication");
+        let (prepared, canonical, outputs, remaining_phases) = result.expect("formed publication");
         Ok(DomDialogToggleQueueCommit {
             lease: self,
             prepared: Some(prepared),
@@ -346,6 +373,7 @@ impl<'dom> DomSourceLease<'dom> {
             }),
             canonical,
             outputs,
+            remaining_phases,
             checkpoint: Some(checkpoint),
         })
     }

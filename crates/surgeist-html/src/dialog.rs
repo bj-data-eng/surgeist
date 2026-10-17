@@ -575,3 +575,82 @@ impl HtmlDialogToggleDecision {
         ]
     }
 }
+
+/// Pure manager policy. Runtime owns the ordered groups and watcher records.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlCloseWatcherManager {
+    allowed_groups: usize,
+    next_interaction_allows_new_group: bool,
+}
+/// Placement selected from the actual manager and current group count.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlCloseWatcherPlacement {
+    NewGroup,
+    LastGroup,
+}
+impl HtmlCloseWatcherManager {
+    pub const fn fresh() -> Self {
+        Self {
+            allowed_groups: 1,
+            next_interaction_allows_new_group: true,
+        }
+    }
+    pub const fn allowed_groups(self) -> usize {
+        self.allowed_groups
+    }
+    pub const fn next_interaction_allows_new_group(self) -> bool {
+        self.next_interaction_allows_new_group
+    }
+    pub const fn establishment(self, groups: usize) -> HtmlCloseWatcherPlacement {
+        if groups < self.allowed_groups {
+            HtmlCloseWatcherPlacement::NewGroup
+        } else {
+            HtmlCloseWatcherPlacement::LastGroup
+        }
+    }
+}
+/// Original fresh watcher cancellation state; no invocation route is implied.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlCloseWatcherState {
+    running_cancel_action: bool,
+}
+impl HtmlCloseWatcherState {
+    pub const fn fresh() -> Self {
+        Self {
+            running_cancel_action: false,
+        }
+    }
+    pub const fn running_cancel_action(self) -> bool {
+        self.running_cancel_action
+    }
+}
+
+#[cfg(test)]
+mod close_watcher_tests {
+    use super::*;
+    #[test]
+    fn fresh_manager_places_first_group_then_shares_last_without_enabling_auto_dialog() {
+        let manager = HtmlCloseWatcherManager::fresh();
+        assert_eq!(manager.allowed_groups(), 1);
+        assert!(manager.next_interaction_allows_new_group());
+        assert_eq!(
+            manager.establishment(0),
+            HtmlCloseWatcherPlacement::NewGroup
+        );
+        assert_eq!(
+            manager.establishment(1),
+            HtmlCloseWatcherPlacement::LastGroup
+        );
+        assert!(!HtmlCloseWatcherState::fresh().running_cancel_action());
+        assert!(!dialog_close_watcher_enabled(
+            false,
+            HtmlClosedByState::Auto,
+            false
+        ));
+        assert!(dialog_close_watcher_enabled(
+            false,
+            HtmlClosedByState::Keyword(HtmlClosedBy::CloseRequest),
+            false
+        ));
+    }
+}

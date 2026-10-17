@@ -160,7 +160,7 @@ pub use details::{
     DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
     DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
 };
-pub use dialog::{DomDialog, DomDialogToggleTracker};
+pub use dialog::{DomCloseWatcherId, DomDialog, DomDialogToggleTracker};
 pub use dispatch::{DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits};
 pub use document::DomNativeInputPlatform;
 pub use document::{
@@ -188,9 +188,9 @@ pub use hosted::{
     DomHostedMakeActiveRequest, DomHostedMoment, DomHostedNavigable, DomHostedNavigableId,
     DomHostedOperationId, DomHostedPolicyPublication, DomHostedPolicyRequest,
     DomHostedPreparedChild, DomHostedPreparedTopLevel, DomHostedQueuedHistory,
-    DomHostedRecordLimits, DomHostedResource, DomHostedSource, DomHostedSourceId,
-    DomHostedSourceRevision, DomHostedTopLevelPreparation, DomInitialPermissionsPolicy,
-    DomInitialPermissionsPolicyProfile,
+    DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
+    DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
+    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};

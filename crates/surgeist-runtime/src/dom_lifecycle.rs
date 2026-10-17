@@ -10,6 +10,7 @@ mod history;
 mod policy;
 mod records;
 mod uuid;
+mod watcher;
 pub(crate) use child::SourceProgress as HostedSourceProgress;
 
 use crate::dom_event::DomEventDom;
@@ -482,6 +483,26 @@ impl HostedState {
             &mut self.work,
             self.limits.work,
             cancel,
+            || Ok(()),
+        )
+    }
+    fn source_retained_bytes(
+        &mut self,
+        lease: &surgeist_dom::DomSourceLease<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomHostedRuntimeError> {
+        native_retained_bytes(
+            &self.hosts,
+            &self.children,
+            &self.destruction,
+            &mut self.work,
+            self.limits.work,
+            cancel,
+            || {
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+            },
         )
     }
     fn reserve_host(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {
@@ -586,17 +607,21 @@ impl HostedState {
         &mut self,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
+        mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
     ) -> Result<(usize, usize, usize, usize), DomHostedRuntimeError> {
         for h in 0..self.hosts.len() {
             self.step(cancel)?;
+            admit()?;
             for t in 0..self.hosts[h].top_levels.len() {
                 self.step(cancel)?;
+                admit()?;
                 let clusters = self.hosts[h].top_levels[t]
                     .group
                     .as_ref()
                     .map_or(0, |group| group.clusters.len());
                 for c in 0..clusters {
                     self.step(cancel)?;
+                    admit()?;
                     let count = self.hosts[h].top_levels[t]
                         .group
                         .as_ref()
@@ -607,6 +632,7 @@ impl HostedState {
                         .len();
                     for g in 0..count {
                         self.step(cancel)?;
+                        admit()?;
                         let group = self.hosts[h].top_levels[t]
                             .group
                             .as_ref()
@@ -690,7 +716,7 @@ impl HostedRuntime {
             .global_document(global)
             .map_err(DomHostedRuntimeError::Dom)?;
         let cross_site = state.capture_cross_site(dom, document, cancel)?;
-        let (h, t, c, g) = state.find_global(global, cancel)?;
+        let (h, t, c, g) = state.find_global(global, cancel, || Ok(()))?;
         let native = &state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -812,6 +838,7 @@ fn native_retained_bytes(
     work: &mut u64,
     limit: u64,
     cancel: &AtomicBool,
+    mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
 ) -> Result<usize, DomHostedRuntimeError> {
     let mut bytes = size_of::<RefCell<HostedState>>()
         .checked_add(
@@ -830,10 +857,11 @@ fn native_retained_bytes(
         )
         .ok_or(DomHostedRuntimeError::Admission)?;
     bytes = bytes
-        .checked_add(destruction.retained_bytes(work, limit, cancel)?)
+        .checked_add(destruction.retained_bytes(work, limit, cancel, &mut admit)?)
         .ok_or(DomHostedRuntimeError::Admission)?;
     for host in hosts {
         spend(work, limit, cancel)?;
+        admit()?;
         bytes = bytes
             .checked_add(
                 host.top_levels
@@ -844,6 +872,7 @@ fn native_retained_bytes(
             .ok_or(DomHostedRuntimeError::Admission)?;
         for record in &host.top_levels {
             spend(work, limit, cancel)?;
+            admit()?;
             if let Some(group) = &record.group {
                 bytes = bytes
                     .checked_add(
@@ -875,6 +904,7 @@ fn native_retained_bytes(
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 for cluster in &group.clusters {
                     spend(work, limit, cancel)?;
+                    admit()?;
                     bytes = bytes
                         .checked_add(
                             cluster
@@ -885,9 +915,29 @@ fn native_retained_bytes(
                                 .ok_or(DomHostedRuntimeError::Admission)?,
                         )
                         .ok_or(DomHostedRuntimeError::Admission)?;
+                    bytes = bytes
+                        .checked_add(
+                            cluster
+                                .agent
+                                .windows
+                                .rows
+                                .capacity()
+                                .checked_mul(size_of::<watcher::NativeWindow>())
+                                .ok_or(DomHostedRuntimeError::Admission)?,
+                        )
+                        .ok_or(DomHostedRuntimeError::Admission)?;
+                    for window in &cluster.agent.windows.rows {
+                        spend(work, limit, cancel)?;
+                        admit()?;
+                        bytes = bytes
+                            .checked_add(window.retained_bytes(work, limit, cancel, &mut admit)?)
+                            .ok_or(DomHostedRuntimeError::Admission)?;
+                    }
                     for global in &cluster.agent.globals {
                         spend(work, limit, cancel)?;
+                        admit()?;
                         spend(work, limit, cancel)?;
+                        admit()?;
                         bytes = bytes
                             .checked_add(settings_url_payload_bytes(
                                 &global.settings.creation_url,
@@ -1039,6 +1089,45 @@ fn drive_creation(
             .lease
             .as_mut()
             .expect("retained original creation lease");
+        // Read only the reached phase's origin, then end that canonical loan
+        // before preparing real Runtime banks through current Source admission.
+        let origin = match lease
+            .step(dom.raw_mut())
+            .map_err(DomHostedRuntimeError::Dom)?
+        {
+            DomHostedCreationStep::NativeExecution(request) => Some(request.origin().clone()),
+            _ => None,
+        };
+        if let Some(origin) = origin {
+            let group = host.group.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
+            let (cluster, added) = agent::ensure_cluster(
+                group,
+                &origin,
+                retained_before
+                    .checked_add(retained_added)
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+                limits,
+                work,
+                cancel,
+                |bytes| source.retain_runtime_payload(dom.raw_mut(), bytes, cancel),
+            )?;
+            retained_added = retained_added
+                .checked_add(added)
+                .ok_or(DomHostedRuntimeError::Admission)?;
+            let added = watcher::reserve_window(
+                &mut group.clusters[cluster].agent,
+                retained_before
+                    .checked_add(retained_added)
+                    .ok_or(DomHostedRuntimeError::Admission)?,
+                limits,
+                work,
+                |bytes| source.retain_runtime_payload(dom.raw_mut(), bytes, cancel),
+                cancel,
+            )?;
+            retained_added = retained_added
+                .checked_add(added)
+                .ok_or(DomHostedRuntimeError::Admission)?;
+        }
         let policy_phase;
         match lease
             .step(dom.raw_mut())
@@ -1069,19 +1158,15 @@ fn drive_creation(
                 if group.context != request.browsing_context() {
                     return Err(DomHostedRuntimeError::Protocol);
                 }
-                let (cluster_index, added) = agent::ensure_cluster(
+                let cluster_index = agent::find_cluster(
                     group,
                     request.origin(),
-                    retained_before
-                        .checked_add(retained_added)
-                        .ok_or(DomHostedRuntimeError::Admission)?,
-                    limits,
                     work,
+                    limits.work,
                     cancel,
-                )?;
-                retained_added = retained_added
-                    .checked_add(added)
-                    .ok_or(DomHostedRuntimeError::Admission)?;
+                    || Ok(()),
+                )?
+                .ok_or(DomHostedRuntimeError::Protocol)?;
                 let sample = creation
                     .sample
                     .as_ref()
@@ -1146,6 +1231,10 @@ fn drive_creation(
                     }
                     let mut context = creation.context.take().expect("validated original BC");
                     context.global = Some(global);
+                    agent
+                        .windows
+                        .rows
+                        .push(watcher::NativeWindow::fresh(global));
                     agent.globals.push(records::Global {
                         context,
                         id: global,
@@ -1501,7 +1590,7 @@ impl HostedRuntime {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
         let document = association.document();
-        let (h, t, c, g) = state.find_global(association.global(), cancel)?;
+        let (h, t, c, g) = state.find_global(association.global(), cancel, || Ok(()))?;
         let cluster = &state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -1579,6 +1668,7 @@ impl HostedRuntime {
             &mut state.work,
             limits.work,
             cancel,
+            || Ok(()),
         )?;
         let tasks = native_task_count(&state.hosts, &mut state.work, limits.work, cancel)?;
         spend(&mut state.work, limits.work, cancel)?;
@@ -1681,7 +1771,7 @@ impl HostedRuntime {
             .relevant_global(document.node())
             .map_err(DomHostedRuntimeError::Dom)?
             .ok_or(DomHostedRuntimeError::Binding)?;
-        state.find_global(global, cancel)?;
+        state.find_global(global, cancel, || Ok(()))?;
         if dom
             .raw()
             .global_document(global)
@@ -1797,7 +1887,12 @@ mod constructor_settings_tests {
             let origin = request.origin().clone();
             let retained = state.retained_bytes(&cancel).unwrap();
             {
-                let HostedState { hosts, work, .. } = &mut *state;
+                let HostedState {
+                    hosts,
+                    work,
+                    source,
+                    ..
+                } = &mut *state;
                 agent::ensure_cluster(
                     hosts[0].top_levels[0].group.as_mut().unwrap(),
                     &origin,
@@ -1805,14 +1900,30 @@ mod constructor_settings_tests {
                     limits,
                     work,
                     &cancel,
+                    |bytes| source.retain_runtime_payload(dom.raw_mut(), bytes, &cancel),
                 )
                 .unwrap();
             }
             let retained = state.retained_bytes(&cancel).unwrap();
-            let HostedState { hosts, work, .. } = &mut *state;
+            let HostedState {
+                hosts,
+                work,
+                source,
+                ..
+            } = &mut *state;
             let native_agent =
                 &mut hosts[0].top_levels[0].group.as_mut().unwrap().clusters[0].agent;
-            agent::reserve_global(native_agent, retained, limits, work, &cancel).unwrap();
+            let added =
+                agent::reserve_global(native_agent, retained, limits, work, &cancel).unwrap();
+            watcher::reserve_window(
+                native_agent,
+                retained + added,
+                limits,
+                work,
+                |bytes| source.retain_runtime_payload(dom.raw_mut(), bytes, &cancel),
+                &cancel,
+            )
+            .unwrap();
         }
         limits.storage_bytes = owner.borrow_mut().retained_bytes(&cancel).unwrap();
         hosted.set_limits(&mut dom, limits, &cancel).unwrap();

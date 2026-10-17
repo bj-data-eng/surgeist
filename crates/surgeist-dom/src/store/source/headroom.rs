@@ -218,6 +218,34 @@ impl Draft {
         scan.qualify(self, dom, phases, cancel)
     }
 
+    pub(in crate::store) fn admit_dialog_hook_occurrence(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        self.source_invocation
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(())
+    }
+    pub(in crate::store) fn headroom_dialog_hook(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        let Some(scan) = &mut self.source_headroom else {
+            return Ok(false);
+        };
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        scan.phases = scan
+            .phases
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(true)
+    }
     pub(in crate::store) fn headroom_child_hook(
         &mut self,
         removing: bool,
@@ -891,5 +919,45 @@ mod tests {
             assert!(draft.effects.is_empty());
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), live);
         }
+    }
+}
+
+#[cfg(test)]
+mod dialog_occurrence_tests {
+    use super::*;
+    #[test]
+    fn source_formed_draft_checks_hook_capacity_without_issuing_or_mutating_state() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(16, 4096, 64, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut create = DomBatch::new();
+        let document = create.create_document();
+        let dialog = create.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let done = dom.apply(create, &cancel).unwrap();
+        let subject = done.created(&dialog).unwrap().unwrap();
+        let mut input = DomBatch::new();
+        input.set_attribute(subject, "data-counter-proof", "");
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 16, 4096, 4096, 1);
+        let (mut draft, _, _) =
+            Draft::new_source(&dom, input.owner.clone(), &input.commands, limits, &cancel).unwrap();
+        let stamp = dom.snapshot().stamp();
+        for value in [u64::MAX - 1, u64::MAX] {
+            draft.source_invocation = value;
+            let result = draft.admit_dialog_hook_occurrence(&cancel);
+            if value == u64::MAX {
+                assert_eq!(result, Err(DomError::RepresentationExhausted));
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(draft.source_invocation, value);
+            assert_eq!(dom.snapshot().stamp(), stamp);
+        }
+        draft.source_invocation = 0;
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            draft.admit_dialog_hook_occurrence(&cancel),
+            Err(DomError::Cancelled)
+        );
+        assert_eq!(draft.source_invocation, 0);
     }
 }

@@ -401,7 +401,7 @@ impl Operation {
     }
 }
 impl Dom {
-    pub(in crate::store) fn admit_manipulation_payload(
+    pub(in crate::store) fn admit_source_owner_payload(
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -1290,3 +1290,6 @@ mod admission_tests;
 
 #[cfg(test)]
 mod manipulation_tests;
+
+#[cfg(test)]
+mod watcher_payload_tests;

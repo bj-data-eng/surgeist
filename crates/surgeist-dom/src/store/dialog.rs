@@ -26,11 +26,13 @@ pub(super) struct ShowFrame {
 pub(super) struct HookFrame {
     pub subject: Key,
     pub cursor: HtmlDialogCursor,
+    pub invocation: source::Invocation,
 }
 #[derive(Clone, Copy)]
 pub(in crate::store) struct PendingDialog {
     pub subject: Key,
     pub action: Action,
+    pub invocation: Option<source::Invocation>,
 }
 
 impl Draft {
@@ -183,6 +185,27 @@ impl Draft {
         self.source_admit(0, cancel)
     }
 
+    pub(in crate::store) fn set_dialog_watcher(
+        &mut self,
+        key: Key,
+        watcher: Option<crate::DomCloseWatcherId>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self.dialog_state(key)?.watcher == watcher {
+            return Ok(());
+        }
+        let formation = source::formation::Formation::new(self, cancel)?;
+        if let Some(formation) = &formation {
+            formation.retain_bytes(size_of::<DomDialogState>(), cancel)?;
+        }
+        self.source_step(cancel)?;
+        let mut state = self.dialog_state(key)?.clone();
+        state.watcher = watcher;
+        self.element_mut(key).set_dialog_state(state);
+        drop(formation);
+        self.source_admit(0, cancel)
+    }
     fn dialog_list(&self, document: Key, top_layer: bool) -> Result<&[Key], DomError> {
         match self.node(document)?.interactive_document.as_ref() {
             Some(DocumentInteractiveState::Known {
@@ -264,6 +287,7 @@ impl Draft {
             select::Effect::DialogHook(HookFrame {
                 subject: key,
                 cursor: HtmlDialogCursor::new(operation),
+                invocation: source::Invocation::Unissued,
             }),
             self.effect_scoped,
             cancel,
@@ -283,11 +307,15 @@ impl Draft {
     pub(super) fn pending_dialog_hook(&self) -> Option<PendingDialog> {
         match self.effects.last().map(|frame| &frame.effect) {
             Some(select::Effect::DialogHook(frame))
-                if frame.cursor.action() == Action::EstablishCloseWatcher =>
+                if matches!(
+                    frame.cursor.action(),
+                    Action::EstablishCloseWatcher | Action::DestroyCloseWatcher
+                ) =>
             {
                 Some(PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
+                    invocation: Some(frame.invocation),
                 })
             }
             _ => None,
@@ -299,6 +327,7 @@ impl Draft {
                 self.dialog_show.map(|frame| PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
+                    invocation: None,
                 })
             })
             .filter(|pending| pending.action == action)
@@ -378,13 +407,21 @@ impl Draft {
                     Reply::Applied
                 }
                 Action::ClearModal if !self.dialog_state(key)?.is_modal() => Reply::Applied,
-                Action::EstablishCloseWatcher => {
-                    self.push_effect(
-                        select::Effect::DialogHook(frame),
-                        self.effect_scoped,
-                        cancel,
-                    )?;
-                    return Err(DomError::DialogProcessingUnavailable { action });
+                Action::ClearCloseWatcher => {
+                    self.set_dialog_watcher(key, None, cancel)?;
+                    Reply::Applied
+                }
+                Action::EstablishCloseWatcher | Action::DestroyCloseWatcher => {
+                    if self.headroom_dialog_hook(cancel)? {
+                        Reply::Applied
+                    } else {
+                        self.push_effect(
+                            select::Effect::DialogHook(frame),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                        return Err(DomError::DialogProcessingUnavailable { action });
+                    }
                 }
                 _ => return Err(DomError::DialogProcessingUnavailable { action }),
             };

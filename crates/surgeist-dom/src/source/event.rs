@@ -134,13 +134,14 @@ impl DomSourceEventRequest {
         self.work.cancelable
     }
 }
-/// Actual unsupported Dialog service reached after the bridge. It is not an
-/// acknowledgement or an invitation to supply an arbitrary producer reply.
-#[derive(Clone, Debug)]
+/// Actual Dialog service occurrence reached by the original Source engine.
+/// This immutable request grants no service or acknowledgement authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomSourceDialogRequest {
     pub(crate) operation: DomSourceOperationId,
     pub(crate) subject: NodeId,
     pub(crate) action: HtmlDialogAction,
+    pub(crate) hook: Option<super::watcher::HookOccurrence>,
 }
 impl DomSourceDialogRequest {
     pub fn operation(&self) -> DomSourceOperationId {

@@ -10,13 +10,29 @@ pub(super) fn ensure_cluster(
     limits: DomHostedRuntimeLimits,
     work: &mut u64,
     cancel: &AtomicBool,
+    retain: impl FnMut(usize) -> Result<surgeist_dom::DomHostedRuntimeRetention, surgeist_dom::DomError>,
 ) -> Result<(usize, usize), DomHostedRuntimeError> {
-    for (index, cluster) in group.clusters.iter().enumerate() {
-        spend(work, limits.work, cancel)?;
-        if &cluster.origin == origin {
-            return Ok((index, 0));
-        }
+    if let Some(index) = find_cluster(group, origin, work, limits.work, cancel, || Ok(()))? {
+        return Ok((index, 0));
     }
+    form_cluster(group, origin, retained, limits, work, cancel, retain)
+}
+
+/// Form the actual missing agent after the original lookup found no match.
+pub(super) fn form_cluster(
+    group: &mut records::Group,
+    origin: &surgeist_dom::DomOpaqueOrigin,
+    retained: usize,
+    limits: DomHostedRuntimeLimits,
+    work: &mut u64,
+    cancel: &AtomicBool,
+    mut retain: impl FnMut(
+        usize,
+    )
+        -> Result<surgeist_dom::DomHostedRuntimeRetention, surgeist_dom::DomError>,
+) -> Result<(usize, usize), DomHostedRuntimeError> {
+    let header = retain(super::watcher::WindowBank::header_bytes())
+        .map_err(|error| DomHostedRuntimeError::Dom(DomHostedError::Dom(error)))?;
     let mut added = 0usize;
     if group.clusters.len() == group.clusters.capacity() {
         let required = group
@@ -80,6 +96,7 @@ pub(super) fn ensure_cluster(
         agent: records::NativeAgent {
             event_loop: Rc::new(RefCell::new(records::WindowLoop::new())),
             globals: Vec::new(),
+            windows: super::watcher::WindowBank::new(header),
         },
     });
     Ok((index, total))
@@ -172,7 +189,7 @@ impl HostedState {
             {
                 return Err(DomHostedRuntimeError::Binding);
             }
-            let (h, t, c, g) = self.find_global(global, cancel)?;
+            let (h, t, c, g) = self.find_global(global, cancel, || Ok(()))?;
             let native = &self.hosts[h].top_levels[t]
                 .group
                 .as_ref()
@@ -274,4 +291,22 @@ impl HostedState {
             current = parent_document;
         }
     }
+}
+
+pub(super) fn find_cluster(
+    group: &records::Group,
+    origin: &surgeist_dom::DomOpaqueOrigin,
+    work: &mut u64,
+    limit: u64,
+    cancel: &AtomicBool,
+    mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
+) -> Result<Option<usize>, DomHostedRuntimeError> {
+    for (index, cluster) in group.clusters.iter().enumerate() {
+        spend(work, limit, cancel)?;
+        admit()?;
+        if &cluster.origin == origin {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
 }

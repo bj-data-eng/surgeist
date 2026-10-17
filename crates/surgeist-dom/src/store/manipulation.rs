@@ -58,7 +58,7 @@ impl DomManipulationTaskSource {
             binding: self.binding.clone(),
             bytes,
         };
-        dom.admit_manipulation_payload(cancel)?;
+        dom.admit_source_owner_payload(cancel)?;
         Ok(retained)
     }
 }

@@ -26,9 +26,14 @@ Details toggle events and Dialog Show's initial cancelable beforetoggle,
 including Global capture for hosted Documents. Uncanceled Show publishes its
 actual toggle task and canonical tracker, then publishes `open=""` through the
 ordinary DOM hooks. It waits for remembered focus on an inactive or disconnected
-receiver, or for a close watcher after a connected, fully active receiver enters
-its Document's open-dialog list. The unfinished synchronous Show tail prevents
-queued delivery; later Dialog services remain explicitly unavailable. See
+receiver. For a connected, fully active receiver, it enters the Document's
+open-dialog list, establishes an actual close watcher and then waits for
+remembered focus. Direct Source edits also establish and destroy watchers through
+the original Window manager. Execution retirement preserves that Window while a
+watcher or its unsettled canonical publication still needs it; later open removal
+can finish cleanup on the surviving inactive Dialog. The unfinished synchronous
+Show tail prevents queued delivery. Focus, full Show, request-close and platform
+close-request execution remain unavailable. See
 [DOM orchestration](docs/explanation.md#dom-orchestration) for creation, teardown,
 custody and capability limits.
 

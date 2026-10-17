@@ -1,5 +1,5 @@
 //! Shared canonical source execution and actual temporary custody.
-use super::style::{Frame, Invocation};
+use super::style::Frame;
 use super::*;
 pub(super) mod checkpoint;
 pub(crate) mod formation;
@@ -359,4 +359,11 @@ impl Draft {
         }
         Ok(out)
     }
+}
+
+// Shared Source invocation issuance; only successful exposure consumes an ordinal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::store) enum Invocation {
+    Unissued,
+    Exposed(u64),
 }

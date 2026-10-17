@@ -381,7 +381,13 @@ impl DomSourceRuntime {
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         loop {
             guard.flush(lease, cancel)?;
-            match lease.advance(cancel)? {
+            let settlement = self
+                .hosted
+                .prepare_watcher_settlement(lease, cancel)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+            let advanced = lease.advance(cancel);
+            settlement.finish(&lease.snapshot());
+            match advanced? {
                 DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::Event(request),
@@ -399,6 +405,17 @@ impl DomSourceRuntime {
                         self.dom_manipulation
                             .queue_dialog(lease, &request, cancel)
                             .map_err(DomSourceRuntimeError::DomManipulation)?;
+                        continue;
+                    }
+                    if matches!(
+                        request.action(),
+                        surgeist_html::HtmlDialogAction::EstablishCloseWatcher
+                            | surgeist_html::HtmlDialogAction::DestroyCloseWatcher
+                    ) && self
+                        .hosted
+                        .service_dialog_watcher(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?
+                    {
                         continue;
                     }
                     let reason = DomSourceUnavailable::Dialog(request.action());

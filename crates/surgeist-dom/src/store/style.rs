@@ -12,11 +12,7 @@ pub(super) struct Frame {
     pub(in crate::store) cursor: Cursor,
     pub(in crate::store) invocation: Invocation,
 }
-#[derive(Clone, Copy)]
-pub(in crate::store) enum Invocation {
-    Unissued,
-    Exposed(u64),
-}
+use super::source::Invocation;
 #[derive(Clone, Copy)]
 pub(in crate::store) enum Cursor {
     Update(HtmlStyleUpdateCursor),

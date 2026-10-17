@@ -115,7 +115,7 @@ fn late_handoff(parent_captures: usize) {
         assert!(state.destruction.invocations.is_empty());
         assert!(state.destruction.cleanups.is_empty());
         assert_eq!(
-            state.find_global(child_global, &cancel),
+            state.find_global(child_global, &cancel, || Ok(())),
             Err(DomHostedRuntimeError::TargetNotFound)
         );
         let group = state.hosts[0].top_levels[0].group.as_ref().unwrap();

@@ -522,3 +522,22 @@ linked separately. The [conversion record](../../references/CONVERSION-REPORT.md
 states coverage and fidelity limits. No source script ran; no endorsement,
 replacement standard or browser-conformance claim is implied. Surgeist's own
 license remains unchanged.
+
+## Close-watcher manager — 2026-10-17
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+The [Window manager reference](../../references/html-close-watcher-manager--877d6146487f.md)
+reuses the already selected HTML877d snapshot and the unchanged complete
+[LICENSE](LICENSE): CC BY 4.0 for specification prose and the separate
+BSD 3-Clause provision for portions incorporated into code. Complete original
+SHA-256: `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+
+Changes by Surgeist on 17 October 2026: bounded offline selection, inert literal
+HTML fences, Markdown headings, source hashes, attribution, immutable source
+links and a separately marked reading guide. Each selected source body remains
+byte-identical, including the descriptive cancellation contradiction. The
+[conversion record](../../references/CONVERSION-REPORT.md#close-watcher-manager--2026-10-17)
+states coverage and exact comparisons. No source script or renderer ran; no
+endorsement, new edition or browser-conformance claim is implied. Surgeist's
+own license remains unchanged.

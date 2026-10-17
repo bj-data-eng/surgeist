@@ -104,13 +104,33 @@ event scope. An unfinished nested operation blocks the outer dispatch until the
 child is serviced; completed callbacks are not replayed. Uncanceled Show queues
 its actual null-source toggle task and publishes the canonical tracker before
 adding `open=""` through the ordinary DOM attribute hooks. The reached prefix
-publishes before the next service wait: RememberFocusedElement for an inactive
-or disconnected receiver, or EstablishCloseWatcher after a connected, fully
-active receiver enters its Document's open-dialog list. Direct Source attribute
-edits retain that same watcher hook and the remaining attribute steps. Ordinary
-atomic edits refuse this watcher boundary with `NeedsEventfulOperation` and no
+publishes before the next service. An inactive or disconnected receiver waits at
+RememberFocusedElement. A connected, fully active receiver enters its Document's
+open-dialog list and establishes a close watcher through the actual original
+Window manager before reaching that same focus wait. Direct Source attribute
+and tree edits retain the same watcher hook and remaining source steps. Ordinary
+atomic edits refuse the service boundary with `NeedsEventfulOperation` and no
 publication. The queued task cannot run through an unfinished synchronous tail.
 These publications do not establish completed Show or its event delivery.
+
+Each native Agent owns its Window records separately from execution Globals.
+The Window manager retains actual ordered watcher groups and Dialog-bound action
+descriptors; registration does not require a nonmodal watcher to be enabled.
+Establishment checks the Dialog's original relevant Global and its associated
+Document, so adoption cannot silently select the destination's Window. Source
+accepts the actual registration or destruction through its existing retained
+receipt. Runtime keeps the corresponding record until a read through the current
+canonical owner confirms publication of the exact watcher association or its
+removal. Refused acceptance or publication retains custody without repeating the
+manager effect.
+
+Retiring execution removes the live Global without clearing the surviving
+Dialog's watcher. Open removal and source-required tree cleanup can therefore
+destroy it on the retained original Window even after the Document becomes
+inactive. A retired Window releases when its watcher and publication custody is
+empty; the existing host lifecycle then permits composition cleanup. Watcher
+registration and destruction supply no focus service, request-close invocation
+or platform close-request processing.
 An actual canceled event returns normally even if its callback
 retired the receiver; an uncanceled read of that retired receiver is a typed
 Source failure.

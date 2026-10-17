@@ -57,6 +57,7 @@ pub(super) struct OriginCluster {
 pub(super) struct NativeAgent {
     pub event_loop: Rc<RefCell<WindowLoop>>,
     pub globals: Vec<Global>,
+    pub windows: super::watcher::WindowBank,
 }
 pub(super) struct BrowsingContext {
     pub id: DomHostedBrowsingContextId,

@@ -319,6 +319,7 @@ pub(crate) struct Shared {
     issuance: Mutex<Issuance>,
     bytes: AtomicUsize,
     registries: AtomicUsize,
+    pub(crate) runtime_bytes: AtomicUsize,
 }
 
 /// Weak access to the actual counters owned by the original operation. These
@@ -619,6 +620,7 @@ impl DomHostedSource {
                 id,
                 bytes: AtomicUsize::new(bytes),
                 registries: AtomicUsize::new(0),
+                runtime_bytes: AtomicUsize::new(0),
                 issuance: Mutex::new(Issuance {
                     alive: true,
                     revision: DomHostedSourceRevision(0),
@@ -1915,3 +1917,42 @@ impl DomHostedSource {
 
 #[cfg(test)]
 mod tests;
+
+/// Relative Source projection of actual original Window/watcher allocations.
+/// This weak storage observation grants no execution authority and cannot keep
+/// a disposed issuer alive. Drop represented backing before this guard.
+#[derive(Debug)]
+pub struct DomHostedRuntimeRetention {
+    pub(crate) shared: Weak<Shared>,
+    pub(crate) bytes: usize,
+}
+impl DomHostedRuntimeRetention {
+    /// Merge two actual simultaneous extents of the same original issuer.
+    pub fn absorb(&mut self, mut other: Self) -> Result<(), DomError> {
+        if !self.shared.ptr_eq(&other.shared) {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        self.bytes = self
+            .bytes
+            .checked_add(other.bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        other.bytes = 0;
+        Ok(())
+    }
+}
+impl Drop for DomHostedRuntimeRetention {
+    fn drop(&mut self) {
+        if let Some(shared) = self.shared.upgrade() {
+            shared
+                .runtime_bytes
+                .fetch_sub(self.bytes, Ordering::Relaxed);
+        }
+    }
+}
+impl SourceObservation {
+    pub(crate) fn runtime_bytes(&self) -> usize {
+        self.shared
+            .upgrade()
+            .map_or(0, |shared| shared.runtime_bytes.load(Ordering::Relaxed))
+    }
+}

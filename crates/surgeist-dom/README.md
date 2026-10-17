@@ -952,10 +952,12 @@ Native HTML Dialog exposes retained `returnValue` through `DomNode::as_dialog`.
 `set_dialog_return_value` preserves exact UTF-16 and old snapshots; equal values
 are no-ops. Native clone/import starts with the source-defined fresh return value,
 while adoption preserves the existing value. Ordinary `open` attribute and tree
-hooks consume HTML's rules against the actual closed Document environment and
-canonical Document lists. Their admitted transitions preserve null watcher,
-tracker and request-close state and false modal state. Reached unsupported
-processing refuses atomically.
+hooks consume HTML's rules against the actual Document environment and canonical
+Document lists. `DomDialog::close_watcher` observes the stored optional watcher
+identity; historical snapshots retain their captured association. Runtime owns
+the actual Window manager and its watcher objects. Ordinary atomic edits refuse
+a reached watcher service with `NeedsEventfulOperation` before publication.
+Tracker, modal and request-close state retain their own source-defined rules.
 
 `DomSourceEdit::show_dialog` starts the shared HTML Show cursor and can expose
 its actual cancelable beforetoggle request. A bound event executor acknowledges
@@ -988,13 +990,21 @@ owner. Its exact publication is accepted once; refusal retains it for retry
 without queueing again. Show adds `open=""` through the ordinary attribute hooks
 and publishes the reached prefix. An inactive or disconnected receiver then
 waits at RememberFocusedElement. A connected, fully active receiver enters its
-Document's open-dialog list and waits at EstablishCloseWatcher. Direct Source
-attribute changes retain the same hook and remaining attribute steps at that
-watcher boundary; an ordinary atomic edit instead returns
-`NeedsEventfulOperation` without publication. Retries retain the original
-continuation, and queued delivery cannot bypass the unfinished synchronous tail.
-This bounded entry does not complete positive Show, Close, modal, focus, watcher
-or popover processing.
+Document's open-dialog list and requests EstablishCloseWatcher. Runtime's Source
+driver registers the actual watcher and accepts its exact result through the
+original Source receipt; Show then waits at RememberFocusedElement. Direct
+Source attribute and tree operations use the same hook and retained suffix.
+Without the actual service, the request remains pending. Registration uses the
+Dialog's original relevant Global, independently of its current node-Document;
+adoption does not substitute a new Window.
+
+Open removal and source-required tree cleanup destroy the actual watcher before
+clearing the canonical association. This cleanup remains available after hosted
+execution retirement, which leaves the surviving Dialog and its original Window
+custody intact. Retries retain the original receipt without repeating manager
+effects. Queued delivery cannot bypass an unfinished synchronous tail. This
+bounded entry does not complete positive Show, Close, modal, focus, request-close,
+platform close requests or popover processing.
 
 A started dispatcher registers its actual Node invocation targets through
 `register_dispatch_custody`. Configure aggregate

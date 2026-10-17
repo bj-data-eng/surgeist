@@ -3,6 +3,8 @@
 mod dialog;
 pub(crate) mod dialog_queue;
 pub(in crate::store) mod hosted;
+mod watcher;
+use super::Invocation;
 use super::*;
 use crate::source::*;
 use crate::style::*;
@@ -83,6 +85,11 @@ pub(in crate::store) struct Operation {
     reason = "Exclusive fully admitted parked CSP/publication evidence transfers allocation-free after source publication; boxing adds an allocation at that recovery boundary"
 )]
 enum Receipt {
+    Watcher {
+        request: DomSourceDialogRequest,
+        watcher: crate::DomCloseWatcherId,
+        applied: bool,
+    },
     Inline {
         observation: crate::DomStyleInlineCspObservation,
         bytes: usize,
@@ -158,6 +165,13 @@ impl Dom {
             .ok_or(DomError::RepresentationExhausted)?;
         style
             .checked_add(crate::manipulation::retained(&self.manipulation_tasks)?)
+            .and_then(|bytes| {
+                bytes.checked_add(
+                    self.hosted_source
+                        .as_ref()
+                        .map_or(0, crate::hosted::SourceObservation::runtime_bytes),
+                )
+            })
             .ok_or(DomError::RepresentationExhausted)
     }
     pub(in crate::store) fn require_sync_source_idle(&self) -> Result<(), DomError> {
@@ -1064,7 +1078,11 @@ impl Operation {
         };
         // A proposed ordinal stays private through every fallible formation.
         // Only successful canonical publication/request exposure issues it.
-        let issued_next = match frame.map(|frame| frame.invocation) {
+        let invocation = frame.map(|frame| frame.invocation).or(match target {
+            PublicationTarget::Dialog(pending) => pending.invocation,
+            _ => None,
+        });
+        let issued_next = match invocation {
             Some(Invocation::Unissued) => Some(
                 self.draft
                     .source_invocation
@@ -1200,6 +1218,15 @@ impl Operation {
                 operation: self.id,
                 subject,
                 action: pending.action,
+                hook: pending
+                    .invocation
+                    .map(|invocation| crate::source::watcher::HookOccurrence {
+                        command: self.index,
+                        ordinal: match invocation {
+                            Invocation::Unissued => self.draft.source_invocation,
+                            Invocation::Exposed(ordinal) => ordinal,
+                        },
+                    }),
             })
         } else {
             None
@@ -1374,15 +1401,28 @@ impl Operation {
         self.draft.cancelled_images = None;
         if let Some(next) = issued_next {
             self.draft.source_invocation = next;
-            let Some(select::EffectFrame {
-                effect: select::Effect::Style(actual),
-                ..
-            }) = self.draft.effects.last_mut()
-            else {
-                unreachable!("published Style frame")
-            };
-            actual.invocation =
-                Invocation::Exposed(source.as_ref().expect("issued source").ordinal);
+            match &mut self
+                .draft
+                .effects
+                .last_mut()
+                .expect("exposed actual frame")
+                .effect
+            {
+                select::Effect::Style(actual) => {
+                    actual.invocation =
+                        Invocation::Exposed(source.as_ref().expect("issued Style source").ordinal)
+                }
+                select::Effect::DialogHook(actual) => {
+                    actual.invocation = Invocation::Exposed(
+                        dialog
+                            .as_ref()
+                            .and_then(|request| request.hook)
+                            .expect("issued Hook request")
+                            .ordinal,
+                    )
+                }
+                _ => unreachable!("qualified external invocation"),
+            }
         }
         if let Some(source) = source {
             self.context = Some((source.ordinal, source));
@@ -1480,11 +1520,13 @@ impl DomSourceLease<'_> {
                 return Err(DomError::StyleReceiptMismatch);
             }
         }
+        let custody = self.dom.source_owner_custody_bytes()?;
         let mut op = self
             .dom
             .source_operation
             .take()
             .ok_or(DomError::InvalidSourceOperation)?;
+        op.custody_bytes = custody;
         let result = self.advance_operation(&mut op, cancel);
         if matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
@@ -1588,6 +1630,8 @@ impl DomSourceLease<'_> {
             }
             let checkpoint = op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?;
             let started = op.started;
+            let command_index = op.index;
+            let watcher_applied = op.watcher_receipt_applied();
             let result = (|| {
                 if op.receipt.is_some() {
                     op.apply_receipt(cancel)?;
@@ -1641,6 +1685,7 @@ impl DomSourceLease<'_> {
                     let observed = op.observe_show(self.dom, subject, action, cancel);
                     if observed.is_err() {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                     }
                     return observed;
                 }
@@ -1662,11 +1707,13 @@ impl DomSourceLease<'_> {
                                 operation: op.id,
                                 subject,
                                 action,
+                                hook: None,
                             },
                         )));
                     }
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1681,11 +1728,13 @@ impl DomSourceLease<'_> {
                         Ok(published) => published,
                         Err(error) => {
                             checkpoint.restore(&mut op.draft);
+                            op.restore_watcher_receipt(watcher_applied);
                             op.started = started;
                             return Err(error);
                         }
                     };
                     drop(checkpoint);
+                    op.receipt = None;
                     return Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(
                         published
                             .dialog
@@ -1697,6 +1746,7 @@ impl DomSourceLease<'_> {
                 | Err(DomError::StyleDisabledCompositionRequired) => {
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1707,6 +1757,7 @@ impl DomSourceLease<'_> {
                         op.publication(self.dom, true, PublicationTarget::Style(frame), cancel)
                     {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                         op.started = started;
                         return Err(e);
                     }
@@ -1724,6 +1775,7 @@ impl DomSourceLease<'_> {
                 Err(DomError::HostedCompositionRequired) => {
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                         op.started = started;
                         op.admit_current_command(self.dom, cancel)?;
                         continue;
@@ -1733,6 +1785,7 @@ impl DomSourceLease<'_> {
                         op.publication(self.dom, true, PublicationTarget::None, cancel)
                     {
                         checkpoint.restore(&mut op.draft);
+                        op.restore_watcher_receipt(watcher_applied);
                         op.started = started;
                         return Err(error);
                     }
@@ -1743,11 +1796,11 @@ impl DomSourceLease<'_> {
                 }
                 Err(e) => {
                     checkpoint.restore(&mut op.draft);
+                    op.restore_watcher_receipt(watcher_applied);
                     op.started = started;
                     return Err(e);
                 }
                 Ok(()) => {
-                    drop(checkpoint);
                     if op.draft.dialog_show.is_some() {
                         continue;
                     }
@@ -1756,9 +1809,12 @@ impl DomSourceLease<'_> {
                     if let Some(headroom) = &mut op.headroom {
                         headroom.remaining_phases = 1;
                     }
-                    op.receipt = None;
-                    op.request = None;
-                    op.owner_binding = None;
+
+                    if !matches!(op.receipt, Some(Receipt::Watcher { .. })) {
+                        op.receipt = None;
+                        op.request = None;
+                        op.owner_binding = None;
+                    }
                     if op.index < op.commands.len() && (!op.cancelled || op.started) {
                         op.index += 1;
                         op.started = false;
@@ -1778,9 +1834,25 @@ impl DomSourceLease<'_> {
                             select.finished = true;
                         }
                         let installation_output = op.installation_output(self.dom, cancel)?;
-                        let commit = op
-                            .publication(self.dom, false, PublicationTarget::None, cancel)?
-                            .commit;
+                        let commit = match op.publication(
+                            self.dom,
+                            false,
+                            PublicationTarget::None,
+                            cancel,
+                        ) {
+                            Ok(published) => published.commit,
+                            Err(error) => {
+                                checkpoint.restore(&mut op.draft);
+                                op.restore_watcher_receipt(watcher_applied);
+                                op.started = started;
+                                op.index = command_index;
+                                return Err(error);
+                            }
+                        };
+                        op.receipt = None;
+                        op.request = None;
+                        op.owner_binding = None;
+                        drop(checkpoint);
                         let installation = installation_output.map(|root| {
                             let input = op.installation.as_mut().expect("installation root");
                             let bindings = std::mem::take(&mut input.bindings);
@@ -2271,12 +2343,30 @@ impl DomSourceLease<'_> {
 }
 impl Operation {
     fn apply_receipt(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(Receipt::Watcher {
+            request,
+            watcher,
+            applied,
+        }) = &self.receipt
+        {
+            if *applied {
+                return Ok(());
+            }
+            let request = request.clone();
+            let watcher = *watcher;
+            self.apply_watcher_receipt(request, watcher, cancel)?;
+            if let Some(Receipt::Watcher { applied, .. }) = &mut self.receipt {
+                *applied = true;
+            }
+            return Ok(());
+        }
         let request = self.request.as_ref().ok_or(DomError::StyleProtocol)?;
         let mut frame = self.frame()?;
         if frame.cursor.action() != request.action {
             return Err(DomError::StyleProtocol);
         }
         let reply = match self.receipt.as_ref().expect("actual retained receipt") {
+            Receipt::Watcher { .. } => unreachable!("watcher handled above"),
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
             Receipt::Cssom { revision, sheet } => {
                 let old = self.draft.element(frame.key)?.style_state().expect("Style");
