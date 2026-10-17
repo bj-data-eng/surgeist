@@ -865,6 +865,165 @@ mod tests {
         assert_eq!(dom.pending_details_toggle_intentions(), 0);
     }
     #[test]
+    fn canceled_prepared_subtree_retirement_preserves_intentions_and_retries_exactly_once() {
+        let (mut dom, doc, a, survivor) = fixture();
+        let cancel = AtomicBool::new(false);
+        let history_start = dom.snapshot().stamp();
+        let mut setup = DomBatch::new();
+        let root = setup.create_element_ns(doc, Namespace::html(), "div");
+        let victim = setup.create_element_ns(doc, Namespace::html(), "section");
+        let nested = setup.create_element_ns(doc, Namespace::html(), "details");
+        setup.insert_before(&root, doc, None);
+        setup.insert_before(&victim, &root, None);
+        setup.insert_before(a, &victim, None);
+        setup.insert_before(&nested, a, None);
+        setup.insert_before(survivor, &root, None);
+        setup.set_attribute(a, "open", "");
+        setup.set_attribute(survivor, "open", "");
+        setup.set_attribute(&nested, "open", "");
+        setup.remove_attribute(a, "open");
+        setup.remove_attribute(survivor, "open");
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let root = commit.created(&root).unwrap().unwrap();
+        let victim = commit.created(&victim).unwrap().unwrap();
+        let nested = commit.created(&nested).unwrap().unwrap();
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let history = dom.changes_since(history_start).unwrap();
+        let next = dom.state.next_details_intention;
+        assert_eq!(next, 5);
+        let original = &before.state.details_intentions;
+        assert_eq!(original.len(), 5);
+        // Literal source transition order; no Runtime coalescing or delivery is
+        // supplied by this owning prepare/publication characterization.
+        for (index, (target, old, new)) in [
+            (a, HtmlDetailsState::Closed, HtmlDetailsState::Open),
+            (survivor, HtmlDetailsState::Closed, HtmlDetailsState::Open),
+            (nested, HtmlDetailsState::Closed, HtmlDetailsState::Open),
+            (a, HtmlDetailsState::Open, HtmlDetailsState::Closed),
+            (survivor, HtmlDetailsState::Open, HtmlDetailsState::Closed),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let row = &original[index];
+            assert_eq!(
+                (row.operation.owner, row.operation.serial),
+                (dom.owner, u64::try_from(index).unwrap())
+            );
+            assert_eq!((row.target, row.old, row.new), (target, old, new));
+            assert_eq!(row.queue_association, None);
+        }
+        let destroy = || {
+            let mut edit = DomBatch::new();
+            edit.detach(victim);
+            edit.destroy(victim);
+            edit
+        };
+        let prepared = dom.prepare(destroy(), &cancel).unwrap();
+        for target in [victim, a, nested] {
+            assert!(matches!(
+                prepared.state.node(dom.owner, target),
+                Err(DomError::StaleNode)
+            ));
+            assert!(prepared.changes.contains(&DomChange::Destroyed(target)));
+        }
+        assert_eq!(
+            prepared.state.details_intentions.iter().collect::<Vec<_>>(),
+            vec![&original[1], &original[4]]
+        );
+        let expected_cancellations: Vec<_> = [0, 2, 3]
+            .into_iter()
+            .map(|index| {
+                let row = &original[index];
+                DomChange::DetailsToggleIntentionCancelled {
+                    operation: row.operation,
+                    target: row.target,
+                    old: row.old,
+                    new: row.new,
+                    reason: crate::DomDetailsToggleCancellationReason::TargetDestroyed,
+                }
+            })
+            .collect();
+        for change in &expected_cancellations {
+            assert!(prepared.changes.contains(change));
+        }
+        assert_eq!(prepared.state.next_details_intention, next);
+        // #1240 makes retirement and pending-intention cancellation one atomic
+        // transaction, including refusal at the final real publication gate.
+        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            dom.publish(prepared, &cancel).unwrap_err(),
+            DomError::Cancelled
+        );
+        assert!(Arc::ptr_eq(&dom.state, &before.state));
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(dom.revision, before.revision);
+        assert_eq!(dom.usage(), usage);
+        let unchanged_history = dom.changes_since(history_start).unwrap();
+        assert_eq!(unchanged_history.from(), history.from());
+        assert_eq!(unchanged_history.to(), history.to());
+        assert_eq!(unchanged_history.changes(), history.changes());
+        assert_eq!(dom.state.details_intentions, *original);
+        assert_eq!(dom.state.next_details_intention, next);
+        for id in [doc.node(), root, victim, a, nested, survivor] {
+            assert!(dom.snapshot().node(id).is_ok());
+        }
+        assert_eq!(
+            dom.snapshot().node(root).unwrap().children(),
+            &[victim, survivor]
+        );
+        assert_eq!(dom.snapshot().node(victim).unwrap().children(), &[a]);
+        assert_eq!(dom.snapshot().node(a).unwrap().children(), &[nested]);
+        assert_eq!(dom.snapshot().node(victim).unwrap().parent(), Some(root));
+        assert_eq!(dom.snapshot().node(a).unwrap().parent(), Some(victim));
+        assert_eq!(dom.snapshot().node(nested).unwrap().parent(), Some(a));
+
+        cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+        let retry = dom.prepare(destroy(), &cancel).unwrap();
+        let commit = dom.publish(retry, &cancel).unwrap();
+        for change in &expected_cancellations {
+            assert_eq!(
+                commit
+                    .changes()
+                    .changes()
+                    .iter()
+                    .filter(|actual| *actual == change)
+                    .count(),
+                1
+            );
+        }
+        assert_eq!(
+            commit
+                .changes()
+                .changes()
+                .iter()
+                .filter(|change| matches!(
+                    change,
+                    DomChange::DetailsToggleIntentionCancelled { .. }
+                ))
+                .count(),
+            3
+        );
+        for id in [victim, a, nested] {
+            assert_eq!(dom.snapshot().node(id).unwrap_err(), DomError::StaleNode);
+            assert!(before.node(id).is_ok());
+        }
+        assert_eq!(dom.snapshot().node(root).unwrap().children(), &[survivor]);
+        assert_eq!(dom.state.details_intentions.len(), 2);
+        assert_eq!(dom.state.details_intentions[0], original[1]);
+        assert_eq!(dom.state.details_intentions[1], original[4]);
+        assert_eq!(dom.state.next_details_intention, next);
+        // A later genuine transition receives the next unused operation once,
+        // rather than skipping identities for canceled or retried retirement.
+        let mut edit = DomBatch::new();
+        edit.set_attribute(survivor, "open", "");
+        dom.apply(edit, &cancel).unwrap();
+        assert_eq!(dom.state.details_intentions[2].operation.serial, next);
+        assert_eq!(dom.state.next_details_intention, next + 1);
+        assert_eq!(before.state.details_intentions, *original);
+    }
+    #[test]
     fn late_publication_cancellation_preserves_primary_secondary_and_operation_counter() {
         let (mut dom, doc, a, b) = fixture();
         let cancel = AtomicBool::new(false);
