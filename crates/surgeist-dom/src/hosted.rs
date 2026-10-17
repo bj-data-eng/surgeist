@@ -1736,6 +1736,25 @@ impl DocumentAssociation {
 }
 
 impl SourceObservation {
+    /// Qualify an existing original association's issuer without granting a
+    /// live role or substituting current membership for historical provenance.
+    pub(crate) fn validate_issuer(
+        &self,
+        id: DomHostedSourceId,
+    ) -> Result<DomHostedSourceRevision, DomHostedError> {
+        let shared = self.shared.upgrade().ok_or(DomHostedError::SourceExpired)?;
+        if shared.id != id {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let state = shared
+            .issuance
+            .lock()
+            .map_err(|_| DomHostedError::SourcePoisoned)?;
+        if !state.alive {
+            return Err(DomHostedError::SourceExpired);
+        }
+        Ok(state.revision)
+    }
     pub(crate) fn validate(
         &self,
         id: DomHostedSourceId,

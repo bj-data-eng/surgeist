@@ -95,9 +95,41 @@ pub enum DomSourceStoppedAction {
     Dialog(surgeist_html::HtmlDialogAction),
     CloseWatcher(surgeist_html::HtmlCloseWatcherRequestAction),
 }
+/// A native disposition for one actually reached source assertion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceInvariantReason {
+    MissingDialogCloseWatcher,
+}
+/// Frozen actual assertion basis. Cleanup cannot reinterpret this observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceInvariantFailure {
+    pub(crate) dialog_operation: surgeist_html::HtmlDialogOperation,
+    pub(crate) subject: crate::NodeId,
+    pub(crate) action: surgeist_html::HtmlDialogAction,
+    pub(crate) basis: crate::DomStamp,
+    pub(crate) reason: DomSourceInvariantReason,
+}
+impl DomSourceInvariantFailure {
+    pub const fn dialog_operation(self) -> surgeist_html::HtmlDialogOperation {
+        self.dialog_operation
+    }
+    pub const fn subject(self) -> crate::NodeId {
+        self.subject
+    }
+    pub const fn action(self) -> surgeist_html::HtmlDialogAction {
+        self.action
+    }
+    pub const fn basis(self) -> crate::DomStamp {
+        self.basis
+    }
+    pub const fn reason(self) -> DomSourceInvariantReason {
+        self.reason
+    }
+}
 /// Original native failure whose real invocation cleanup must still settle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceCleanupCause {
+    InvariantFailed(DomSourceInvariantFailure),
     ReceiverRetired {
         subject: crate::NodeId,
         action: DomSourceStoppedAction,

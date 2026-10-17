@@ -120,6 +120,7 @@ impl OperationRoot {
             | Command::RemoveAttribute { node, .. }
             | Command::SetCustomValidity { node, .. }
             | Command::ShowDialog { node }
+            | Command::ShowModalDialog { node }
             | Command::CloseDialog { node, .. }
             | Command::RequestCloseDialog { node, .. }
             | Command::SetDialogReturnValue { node, .. }

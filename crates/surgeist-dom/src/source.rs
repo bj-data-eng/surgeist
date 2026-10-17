@@ -24,7 +24,8 @@ pub use watcher::{
     DomCloseWatcherHistoryWindows, DomCloseWatcherRequestPreparation,
     DomCloseWatcherRequestPublication, DomDialogWatcherPreparation, DomDialogWatcherPublication,
     DomSourceCleanupCause, DomSourceCloseWatcherInvocationId, DomSourceCloseWatcherRequest,
-    DomSourceCloseWatcherStep, DomSourceStoppedAction,
+    DomSourceCloseWatcherStep, DomSourceInvariantFailure, DomSourceInvariantReason,
+    DomSourceStoppedAction,
 };
 
 /// Absolute finite admission for one composed source operation. Resuming does
@@ -228,6 +229,12 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// Invoke standard null-source ShowModal through its native Source prefix.
+    pub fn show_modal_dialog(node: NodeId) -> Self {
+        Self {
+            command: Command::ShowModalDialog { node: node.into() },
+        }
+    }
     /// Request to close this Dialog with the standard null source.
     pub fn request_close_dialog(node: NodeId, result: Option<DocumentString>) -> Self {
         Self {

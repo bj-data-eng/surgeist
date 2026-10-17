@@ -104,6 +104,10 @@ pub enum DomError {
     /// A raise-only Source policy call attempted to reduce an allowance.
     SourceLimitReduction,
     InvalidSourceEvent,
+    SourceInvariantFailed {
+        operation: crate::DomSourceOperationId,
+        failure: crate::DomSourceInvariantFailure,
+    },
     SourceReceiverRetired {
         operation: crate::DomSourceOperationId,
         subject: NodeId,
@@ -2306,6 +2310,15 @@ impl Draft {
                 self.dialog_method_boundary(
                     key,
                     dialog::MethodInput::Close(result.as_ref()),
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::ShowModalDialog { node } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::ShowModal,
                     limits,
                     cancelled,
                 )?;

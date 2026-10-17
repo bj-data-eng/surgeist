@@ -348,6 +348,20 @@ pending cleanup, clears its canonical incomplete marker at actual terminal
 settlement and reports the native failure. It does not turn cancellation into
 an outer early return or manufacture Applied after a failed nested Close.
 
+`show_modal_dialog(receiver)` reuses the same Source driver, dispatcher, element
+task queue and watcher setup. Its bounded positive prefix stops at `SetModal`
+after actual open hooks and a valid watcher assertion; it supplies no modal,
+blocking, top-layer or focus effects. Canceled and post-event early returns use
+the actual producer result. Callback adoption into a connected inactive Document
+can finish the open hook without a watcher. DOM publishes that real prefix and
+returns the selected typed invariant failure, preserving the original task
+association and independent queued work. The original Source operation retains
+the first failure and any incurred cleanup through cancellation, admission
+refusal and lease reacquisition. It does not create a watcher invocation to
+settle an absent watcher or replay completed setup. Receiver retirement during
+started beforetoggle retains authentic dispatch; cancellation and the next
+required live read keep their distinct outcomes.
+
 At task completion, the native loop checks the canonical checkpoint state.
 Pending Slot work cannot be delivered by this bounded contribution: it retains
 the started task and its delivered-event progress with `CheckpointUnavailable`. An actually empty bank

@@ -180,6 +180,9 @@ pub(crate) enum Command {
         node: NodeOperand,
         result: Option<DocumentString>,
     },
+    ShowModalDialog {
+        node: NodeOperand,
+    },
     ShowDialog {
         node: NodeOperand,
     },

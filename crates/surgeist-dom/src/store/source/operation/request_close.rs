@@ -16,45 +16,25 @@ pub(super) struct Call {
     pub(super) nested: bool,
     pub(super) settled: bool,
     pub(super) result: Option<bool>,
-    pub(super) failure: Option<DomSourceCleanupCause>,
-}
-impl DomSourceCleanupCause {
-    pub(super) fn into_error(self, operation: DomSourceOperationId) -> DomError {
-        match self {
-            Self::ReceiverRetired {
-                subject,
-                action: DomSourceStoppedAction::Dialog(action),
-            } => DomError::SourceReceiverRetired {
-                operation,
-                subject,
-                action,
-            },
-            Self::ReceiverRetired {
-                subject,
-                action: DomSourceStoppedAction::CloseWatcher(action),
-            } => DomError::SourceCloseWatcherReceiverRetired {
-                operation,
-                subject,
-                action,
-            },
-        }
-    }
 }
 impl Call {
-    fn step(self) -> DomSourceCloseWatcherStep {
-        if self.failure.is_some() || self.result.is_some() {
+    fn step(self, failure: Option<DomSourceCleanupCause>) -> DomSourceCloseWatcherStep {
+        if failure.is_some() || self.result.is_some() {
             DomSourceCloseWatcherStep::SettleInvocation
         } else {
             DomSourceCloseWatcherStep::Action(self.cursor.action())
         }
     }
-    fn request(self) -> Result<DomSourceCloseWatcherRequest, DomError> {
+    fn request(
+        self,
+        failure: Option<DomSourceCleanupCause>,
+    ) -> Result<DomSourceCloseWatcherRequest, DomError> {
         Ok(DomSourceCloseWatcherRequest {
             invocation: self.invocation,
             watcher: self.watcher,
-            step: self.step(),
+            step: self.step(failure),
             occurrence: self.occurrence.ok_or(DomError::InvalidSourceOperation)?,
-            cause: self.failure,
+            cause: failure,
         })
     }
 }
@@ -66,7 +46,7 @@ impl Operation {
         let call = self.request_close.ok_or(DomError::InvalidSourceOperation)?;
         if call.nested
             || call.settled
-            || call.request()? != *request
+            || call.request(self.failure)? != *request
             || request.operation() != self.id
         {
             return Err(DomError::InvalidSourceOperation);
@@ -116,13 +96,11 @@ impl Operation {
         }
     }
     pub(super) fn fail_request_close(&mut self, cause: DomSourceCleanupCause) {
+        self.remember_failure(cause);
         let call = self
             .request_close
             .as_mut()
             .expect("original requestClose call");
-        if call.failure.is_none() {
-            call.failure = Some(cause);
-        }
         call.nested = false;
         call.occurrence = None;
         self.draft.dialog_method = None;
@@ -366,7 +344,6 @@ impl DomSourceLease<'_> {
             nested: false,
             settled: false,
             result: None,
-            failure: None,
         });
         op.started = true;
         op.receipt = None;
@@ -384,28 +361,21 @@ impl DomSourceLease<'_> {
             }
             let mut call = op.request_close.ok_or(DomError::InvalidSourceOperation)?;
             if call.settled {
-                if call.failure.is_none()
+                if op.failure.is_none()
                     && matches!(
                         self.dom.state.node(self.dom.owner, call.watcher.subject()),
                         Err(DomError::StaleNode)
                     )
                 {
-                    call.failure = Some(DomSourceCleanupCause::ReceiverRetired {
+                    op.remember_failure(DomSourceCleanupCause::ReceiverRetired {
                         subject: call.watcher.subject(),
                         action: DomSourceStoppedAction::Dialog(D::SetForceCloseWatcherEnabled(
                             false,
                         )),
                     });
-                    op.request_close = Some(call);
                 }
-                if let Some(cause) = call.failure {
-                    // The receiver is never resolved here. Current canonical state is
-                    // the only basis for releasing the incomplete-source marker.
-                    op.draft.dialog_method = None;
-                    op.publication(self.dom, false, PublicationTarget::None, cancel)?;
-                    op.receipt = None;
-                    self.complete = true;
-                    return Err(cause.into_error(op.id));
+                if op.failure.is_some() {
+                    return self.finish_source_failure(op, cancel).map(Some);
                 }
                 call.outer
                     .cursor
@@ -418,7 +388,7 @@ impl DomSourceLease<'_> {
                 op.receipt = None;
                 return Ok(None);
             }
-            if call.failure.is_none() && call.result.is_none() {
+            if op.failure.is_none() && call.result.is_none() {
                 let action = call.cursor.action();
                 if matches!(action, A::ReadEnabled | A::RunCloseAction)
                     && matches!(
@@ -492,7 +462,7 @@ impl DomSourceLease<'_> {
                 }
             }
             if call.occurrence.is_some() {
-                return call.request().map(|request| {
+                return call.request(op.failure).map(|request| {
                     Some(DomSourceProgress::Request(DomSourceRequest::CloseWatcher(
                         request,
                     )))
@@ -508,7 +478,7 @@ impl DomSourceLease<'_> {
             call.occurrence = Some(occurrence);
             op.request_close = Some(call);
             op.receipt = None;
-            return call.request().map(|request| {
+            return call.request(op.failure).map(|request| {
                 Some(DomSourceProgress::Request(DomSourceRequest::CloseWatcher(
                     request,
                 )))

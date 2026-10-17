@@ -2,12 +2,14 @@
 //! all mandatory continuation and acknowledged external publication stays in Dom.
 mod dialog;
 pub(crate) mod dialog_queue;
+mod failure;
 mod focus;
 pub(in crate::store) mod hosted;
 mod request_close;
 mod scope;
 #[cfg(test)]
 mod scope_tests;
+mod show_modal;
 mod watcher;
 use super::Invocation;
 use super::*;
@@ -68,6 +70,7 @@ pub(in crate::store) struct Operation {
     dialog_queue: Option<crate::DomElementTaskId>,
     request_close: Option<request_close::Call>,
     request_close_result: Option<DocumentString>,
+    failure: Option<DomSourceCleanupCause>,
     cancelled: bool,
     phases: u64,
     headroom: Option<headroom::Reservation>,
@@ -331,6 +334,7 @@ impl Dom {
             dialog_queue: None,
             request_close: None,
             request_close_result: None,
+            failure: None,
             cancelled: false,
             phases: 0,
             headroom: None,
@@ -653,14 +657,11 @@ impl Operation {
             operation: self.id,
             published: self.published,
             cancelled: self.cancelled,
-            cleanup: self.request_close.and_then(|call| call.failure),
+            cleanup: self.failure,
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
             parent: None,
-            phase: if self
-                .request_close
-                .is_some_and(|call| call.failure.is_some())
-            {
+            phase: if self.failure.is_some() {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.dialog_method.is_some()
                 || self.draft.pending_dialog_hook().is_some()
@@ -1709,6 +1710,9 @@ impl DomSourceLease<'_> {
             )));
         }
         loop {
+            if op.failure.is_some() && op.request_close.is_none() {
+                return self.finish_source_failure(op, cancel);
+            }
             if op.request_close.is_some()
                 && !op.request_close.as_ref().is_some_and(|call| call.nested)
                 && let Some(progress) = self.advance_request_close(op, cancel)?
@@ -1767,6 +1771,9 @@ impl DomSourceLease<'_> {
                         crate::store::dialog::MethodInput::Close(op.request_close_result.as_ref())
                     } else {
                         match &op.commands[op.index] {
+                            Command::ShowModalDialog { .. } => {
+                                crate::store::dialog::MethodInput::ShowModal
+                            }
                             Command::RequestCloseDialog { result, .. } => {
                                 crate::store::dialog::MethodInput::RequestClose(result.as_ref())
                             }
@@ -1797,6 +1804,25 @@ impl DomSourceLease<'_> {
                         op.restore_external_receipt(external_applied);
                     }
                     return observed;
+                }
+                Err(DomError::DialogProcessingUnavailable {
+                    action: surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent,
+                }) if op.is_show_modal_method() => {
+                    // AddOpen and every reached hook finish before this internal
+                    // boundary. Rollback is allowed only before this publication.
+                    if let Err(error) =
+                        op.publication(self.dom, true, PublicationTarget::None, cancel)
+                    {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        return Err(error);
+                    }
+                    drop(checkpoint);
+                    op.started = true;
+                    op.receipt = None;
+                    op.observe_show_modal_assertion(self.dom, cancel)?;
+                    continue;
                 }
                 Err(DomError::DialogProcessingUnavailable {
                     action:
@@ -2743,6 +2769,7 @@ impl Dom {
                 dialog_queue: None,
                 request_close: None,
                 request_close_result: None,
+                failure: None,
                 cancelled: false,
                 phases: 0,
                 headroom: None,

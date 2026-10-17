@@ -143,14 +143,11 @@ impl DialogObservation {
             operation: operation.id,
             published: operation.published,
             cancelled: operation.cancelled,
-            cleanup: operation.request_close.and_then(|call| call.failure),
+            cleanup: operation.failure,
             work: self.usage.work.load(Ordering::Relaxed),
             phases: operation.phases,
             parent: self.request.parent_operation(),
-            phase: if operation
-                .request_close
-                .is_some_and(|call| call.failure.is_some())
-            {
+            phase: if operation.failure.is_some() {
                 DomSourcePhase::PendingCleanup
             } else if self.accepted.is_some() {
                 DomSourcePhase::EventReceiptAccepted
@@ -270,7 +267,7 @@ impl Operation {
         else {
             return Err(DomError::InvalidSourceEvent);
         };
-        if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) } | Command::CloseDialog { node: NodeOperand::Existing(actual), .. } | Command::RequestCloseDialog { node: NodeOperand::Existing(actual), .. }]) if *actual == subject)
+        if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) } | Command::ShowModalDialog { node: NodeOperand::Existing(actual) } | Command::CloseDialog { node: NodeOperand::Existing(actual), .. } | Command::RequestCloseDialog { node: NodeOperand::Existing(actual), .. }]) if *actual == subject)
             || !matches!(
                 source,
                 surgeist_html::HtmlDialogEventSource::Null
@@ -1324,12 +1321,14 @@ impl DomSourceLease<'_> {
             .dispatch_custody_association(&observation.receiver, 0, subject)?
         {
             crate::DomDispatchAssociation::Current(_) => {}
-            crate::DomDispatchAssociation::Retired(_) if operation.request_close.is_some() => {
+            crate::DomDispatchAssociation::Retired(_)
+                if operation.request_close.is_some() || operation.is_show_modal_method() =>
+            {
                 let cause = crate::DomSourceCleanupCause::ReceiverRetired {
                     subject,
                     action: crate::DomSourceStoppedAction::Dialog(action),
                 };
-                return self.rebase_request_close_failure(cause, cancel);
+                return self.rebase_dialog_failure(cause, cancel);
             }
             crate::DomDispatchAssociation::Retired(_) => {
                 let id = operation.id;
@@ -1381,24 +1380,23 @@ impl DomSourceLease<'_> {
         }
         result
     }
-    fn rebase_request_close_failure(
+    fn rebase_dialog_failure(
         &mut self,
         cause: crate::DomSourceCleanupCause,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
         // Failure remains outside Draft rollback. It never supplies a normal
         // nested return or an Applied acknowledgement to RunCloseAction.
-        let call = self
+        let operation = self
             .dom
             .source_operation
             .as_mut()
-            .expect("original operation")
-            .request_close
-            .as_mut()
-            .expect("original call");
-        call.failure = Some(cause);
-        call.nested = false;
-        call.occurrence = None;
+            .expect("original operation");
+        operation.remember_failure(cause);
+        if let Some(call) = &mut operation.request_close {
+            call.nested = false;
+            call.occurrence = None;
+        }
         self.rebase_dialog_observation(None, cancel)
     }
     fn rebase_dialog_observation(
@@ -1437,7 +1435,11 @@ impl DomSourceLease<'_> {
         }
         let key = match draft.resolve(subject.into()) {
             Ok(key) => Some(key),
-            Err(DomError::StaleNode) if operation.request_close.is_some() => None,
+            Err(DomError::StaleNode)
+                if operation.request_close.is_some() || operation.failure.is_some() =>
+            {
+                None
+            }
             Err(error) => return Err(error),
         };
         if let Some(mut frame) = frame {
@@ -1445,7 +1447,7 @@ impl DomSourceLease<'_> {
                 frame.subject = key;
                 draft.dialog_method = Some(frame);
             }
-        } else if operation.request_close.is_none() {
+        } else if matches!(operation.commands, OperationRoot::DialogTask(_)) {
             draft.clear_dialog_toggle_tracker(key.ok_or(DomError::StaleNode)?, cancel)?;
         }
         let custody_bytes = self.dom.source_owner_custody_bytes()?;

@@ -1,6 +1,7 @@
 //! Real Source hooks, original Window membership and affine-effect retries.
 mod close;
 mod request;
+mod show_modal;
 use super::*;
 use crate::{
     DomElementTaskRuntimeLimits, DomHostedTaskProgress, DomHostedTopLevel, DomSession,

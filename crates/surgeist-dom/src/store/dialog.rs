@@ -13,6 +13,8 @@ use surgeist_html::{
 mod empty_popovers;
 #[cfg(test)]
 mod request_close_tests;
+#[cfg(test)]
+mod show_modal_tests;
 
 #[derive(Clone, Copy)]
 pub(super) enum MethodState {
@@ -41,6 +43,7 @@ pub(super) enum MethodLocals {
 #[derive(Clone, Copy)]
 pub(super) enum MethodInput<'a> {
     Show,
+    ShowModal,
     Close(Option<&'a DocumentString>),
     RequestClose(Option<&'a DocumentString>),
 }
@@ -48,6 +51,7 @@ impl MethodInput<'_> {
     fn operation(self) -> Operation {
         match self {
             Self::Show => Operation::Show,
+            Self::ShowModal => Operation::ShowModal,
             Self::RequestClose(_) => Operation::RequestClose,
             Self::Close(result) => Operation::Close {
                 result_present: result.is_some(),
@@ -56,7 +60,7 @@ impl MethodInput<'_> {
     }
     pub(super) fn locals(self) -> MethodLocals {
         match self {
-            Self::Show => MethodLocals::Show {
+            Self::Show | Self::ShowModal => MethodLocals::Show {
                 captured_document: None,
                 popover_endpoint: None,
             },
@@ -112,6 +116,9 @@ impl Draft {
                         .is_some(),
                 ),
                 Action::ReadModal => Reply::Modal(self.dialog_state(key)?.is_modal()),
+                Action::ReadPopoverShowing => {
+                    Reply::PopoverShowing(self.dialog_popover_showing(key, cancel)?)
+                }
                 Action::Complete(HtmlDialogOutcome::Completed) => {
                     self.dialog_method = None;
                     return Ok(());
@@ -257,6 +264,16 @@ impl Draft {
         }
     }
 
+    fn dialog_popover_showing(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        self.dialog_state(key)?;
+        Ok(!self
+            .element(key)?
+            .common_state()
+            .html()
+            .ok_or(DomError::DialogInapplicable)?
+            .popover_is_hidden())
+    }
     pub(in crate::store) fn dialog_state(&self, key: Key) -> Result<&DomDialogState, DomError> {
         let DomNodeKind::Element(element) = &self.node(key)?.kind else {
             return Err(DomError::DialogInapplicable);

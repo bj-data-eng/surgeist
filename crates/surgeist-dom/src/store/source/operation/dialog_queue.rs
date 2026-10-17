@@ -444,10 +444,20 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     let reached_hook = op.draft.document_fully_active(document, cancel)?
                         && op.draft.shadow_connected(frame.subject, cancel)?;
-                    op.draft
-                        .admit_dialog_occurrences(2 + u64::from(reached_hook), cancel)?;
+                    let method_occurrences = if op.is_show_modal_method() { 0 } else { 2 };
+                    op.draft.admit_dialog_occurrences(
+                        method_occurrences + u64::from(reached_hook),
+                        cancel,
+                    )?;
                     let active_hook = reached_hook && original_window_active;
-                    (3 + u64::from(active_hook), 3 + usize::from(active_hook))
+                    let future_outputs = if op.is_show_modal_method() && !reached_hook {
+                        // Actual inactive hook: open attribute, then own marker
+                        // release. This prefix has no remembered-focus write.
+                        2
+                    } else {
+                        3 + usize::from(active_hook)
+                    };
+                    (3 + u64::from(active_hook), future_outputs)
                 }
             };
             if op

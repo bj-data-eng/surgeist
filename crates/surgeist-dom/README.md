@@ -1096,6 +1096,32 @@ typed cause while settlement remains, then clears the canonical incomplete-sourc
 marker and returns the native failure. A surviving receiver receives final false.
 Neither path fabricates a normal nested Close return or event receipt.
 
+`DomSourceEdit::show_modal_dialog(receiver)` runs the standard null-source
+ShowModal prefix. Initial invalid-state checks precede real cancelable
+beforetoggle; after an uncanceled event it checks current open, connection and
+popover-showing state without repeating the activity guard. Genuine canceled
+and post-event early-return branches can complete. The positive prefix queues
+the actual toggle and adds open through its complete ordinary hooks. An actual
+valid watcher then advances to the unsupported `SetModal` wait. This prefix
+does not set modal state, block a Document or add a top-layer entry.
+
+The watcher assertion observes the published canonical prefix. If a callback
+adopted the receiver into a connected inactive Document, its completed open hook
+can leave the watcher null. Proven null yields `SourceInvariantFailed`, carrying
+the exact receiver, ShowModal action, observed stamp and
+`MissingDialogCloseWatcher` reason. It preserves real open, queued work and
+callback effects. Incurred cleanup retains the same failure through
+`PendingCleanup`; terminal release returns that failure rather than retrying
+the assertion after later adoption. A new invocation observes retained open
+nonmodal state and follows the initial InvalidState branch. Missing or unfinished
+setup, stale facts, inconsistent watcher identity and receiver retirement remain
+distinct from this proven invariant failure.
+
+Started ShowModal beforetoggle dispatch retains its real path and receipt through
+receiver retirement. Actual cancellation can complete normally; an uncanceled
+event instead fails at the required ReadOpen. Later prefix failures preserve
+published effects and settle only their incurred original-owner work.
+
 The `dispatch_relevant_global`, `dispatch_global_document` and
 `dispatch_document_fully_active` fronts qualify current hosted reads during an
 actual active Source event scope. They validate the original executor and
@@ -1111,7 +1137,7 @@ Successful Toggle dispatch clears the surviving Dialog's current tracker;
 Close dispatch does not clear it or repeat method effects. Real receiver
 retirement during beforetoggle preserves the started dispatcher and authentic
 receipt, then yields `SourceReceiverRetired` at ReadOpen rather than a synthetic
-absent-open return. Internal Close callers with nonnull source, modal operations,
+absent-open return. Internal Close callers with nonnull source, modal execution,
 positive focusing, platform close requests and general popover
 processing remain separate contributions.
 
