@@ -4366,3 +4366,278 @@ fn dialog_bearing_report_refusal_and_cancellation_leave_maps_unpublished_then_re
             .unwrap(),
     );
 }
+
+#[test]
+fn same_store_input_adoption_preserves_selection_then_uses_destination_platform_for_effects() {
+    use surgeist_html::{
+        HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
+        HtmlInputSelectionDirection as Direction,
+    };
+    let cancel = AtomicBool::new(false);
+    let (mut dom, seed) = setup();
+    let destination_platform =
+        DomNativeInputPlatform::new(Empty::Unsupported, NoneDirection::Unsupported);
+    let destination_environment = DomParsedDocumentEnvironment::headless(
+        seed.origin().clone(),
+        seed.url().clone(),
+        seed.encoding().clone(),
+        seed.encoding_label().clone(),
+        destination_platform,
+    );
+    let destination = install(
+        &mut dom,
+        parse(HtmlSource::utf8("<!doctype html><div></div>")),
+        destination_environment,
+    )
+    .document();
+    let mut batch = DomBatch::new();
+    let source = batch.create_document();
+    let input = batch.create_element_ns(&source, Namespace::html(), "input");
+    batch.set_attribute(&input, "value", "xy");
+    batch.set_input_value(&input, "abcde");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let source = commit.document(&source).unwrap();
+    let input = commit.created(&input).unwrap().unwrap();
+    let before = dom.snapshot();
+    assert_eq!(
+        before
+            .document(source)
+            .unwrap()
+            .metadata()
+            .document_environment()
+            .input_platform(),
+        DomNativeInputPlatform::headless()
+    );
+    assert_eq!(
+        before
+            .document(destination)
+            .unwrap()
+            .metadata()
+            .document_environment()
+            .input_platform(),
+        destination_platform
+    );
+    let selection = before
+        .node(input)
+        .unwrap()
+        .as_input()
+        .unwrap()
+        .state()
+        .selection()
+        .unwrap();
+    assert_eq!(selection.cursor_position(), Some(5));
+    assert_eq!(selection.direction(), Direction::None);
+
+    let mut batch = DomBatch::new();
+    batch.adopt(input, destination);
+    dom.apply(batch, &cancel).unwrap();
+    let adopted = dom.snapshot();
+    assert_eq!(
+        adopted.node(input).unwrap().owner_document(),
+        Some(destination)
+    );
+    assert_eq!(
+        adopted
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection(),
+        Some(selection)
+    );
+    assert_eq!(before.node(input).unwrap().owner_document(), Some(source));
+    assert_eq!(
+        before
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection(),
+        Some(selection)
+    );
+
+    // A genuine value setter changes selection using the then-current target
+    // Document's independently established none-direction policy.
+    let mut batch = DomBatch::new();
+    batch.set_input_value(input, "z\r\nuvw");
+    dom.apply(batch, &cancel).unwrap();
+    let changed = dom.snapshot();
+    let view = changed.node(input).unwrap().as_input().unwrap();
+    assert_eq!(view.value(), "zuvw".encode_utf16().collect::<Vec<_>>());
+    let current = view.state().selection().unwrap();
+    assert_eq!(current.cursor_position(), Some(4));
+    assert_eq!(current.direction(), Direction::Forward);
+    let mut batch = DomBatch::new();
+    batch.reset_input(input);
+    dom.apply(batch, &cancel).unwrap();
+    let reset = dom.snapshot();
+    let view = reset.node(input).unwrap().as_input().unwrap();
+    assert_eq!(view.value(), "xy".encode_utf16().collect::<Vec<_>>());
+    assert!(!view.state().flags().dirty_value());
+    assert_eq!(view.state().selection().unwrap().cursor_position(), Some(2));
+    assert_eq!(
+        view.state().selection().unwrap().direction(),
+        Direction::Forward
+    );
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "checkbox");
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(
+        dom.snapshot()
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection(),
+        None
+    );
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "text");
+    dom.apply(batch, &cancel).unwrap();
+    let final_snapshot = dom.snapshot();
+    let final_selection = final_snapshot
+        .node(input)
+        .unwrap()
+        .as_input()
+        .unwrap()
+        .state()
+        .selection()
+        .unwrap();
+    assert_eq!(final_selection.cursor_position(), Some(0));
+    assert_eq!(final_selection.direction(), Direction::Forward);
+    assert_eq!(
+        adopted
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection(),
+        Some(selection)
+    );
+    assert_eq!(
+        changed
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection(),
+        Some(current)
+    );
+}
+
+#[test]
+fn parsed_input_image_history_transfers_never_entered_absent_empty_and_nonempty_sources() {
+    use surgeist_html::{HtmlInputImagesDisabled, HtmlInputType};
+    use surgeist_html_parser::{HtmlInputImageSource, HtmlParseMetadataStep};
+    for (markup, expected_type, expected_source) in [
+        ("<input src='unobserved'>", HtmlInputType::Text, None),
+        ("<input type=image>", HtmlInputType::Image, Some(None)),
+        (
+            "<input type=image src=''>",
+            HtmlInputType::Image,
+            Some(Some("")),
+        ),
+        (
+            "<input type=image src='A&amp;B'>",
+            HtmlInputType::Image,
+            Some(Some("A&B")),
+        ),
+    ] {
+        let report = parse(HtmlSource::utf8(markup));
+        let mut metadata = report.metadata();
+        let mut produced = None;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(row) => {
+                    if let Some(flags) = row.input_flags() {
+                        assert!(produced.is_none(), "one actual Input source row");
+                        assert_eq!(flags.input_type(), expected_type);
+                        let observed = match row.input_image_source() {
+                            None => None,
+                            Some(HtmlInputImageSource::Absent) => Some(None),
+                            Some(HtmlInputImageSource::Present(raw)) => Some(Some(raw.clone())),
+                        };
+                        let literal =
+                            expected_source.map(|source| source.map(DocumentString::from));
+                        assert_eq!(observed, literal);
+                        let coordinate = row.input_image_coordinate();
+                        assert_eq!(coordinate.is_some(), expected_type == HtmlInputType::Image);
+                        if let Some(coordinate) = coordinate {
+                            assert_eq!((coordinate.x(), coordinate.y()), (0, 0));
+                        }
+                        produced = Some((row.node().id(), observed, coordinate, *flags));
+                    }
+                }
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+            }
+        }
+        let (source, observed, coordinate, flags) = produced.unwrap();
+        let (mut dom, environment) = setup();
+        let installed = install(&mut dom, report.clone(), environment);
+        let input = installed.node_for(&source).unwrap();
+        let original = installed
+            .snapshot()
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap();
+        assert_eq!(
+            installed
+                .snapshot()
+                .document(installed.document())
+                .unwrap()
+                .metadata()
+                .document_environment()
+                .input_images(),
+            HtmlInputImagesDisabled::ExplicitlyDisabled
+        );
+        assert_eq!(original.state().flags(), flags);
+        assert_eq!(
+            original
+                .state()
+                .image_history()
+                .observed_source()
+                .map(|source| source.cloned()),
+            observed
+        );
+        let actual_coordinate = original.state().image_history().coordinate();
+        assert_eq!((actual_coordinate.x(), actual_coordinate.y()), (0, 0));
+        if let Some(coordinate) = coordinate {
+            assert_eq!(actual_coordinate, coordinate);
+        }
+        // A later native transition cannot rewrite the transferred immutable
+        // source history or the original installed snapshot. No image resource,
+        // loading state or event is supplied by these closed source guards.
+        let mut batch = DomBatch::new();
+        batch.set_attribute(input, "type", "image");
+        batch.set_attribute(input, "src", "later-native");
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        assert_eq!(
+            original
+                .state()
+                .image_history()
+                .observed_source()
+                .map(|source| source.cloned()),
+            observed
+        );
+        let current = dom.snapshot();
+        assert_eq!(
+            current
+                .node(input)
+                .unwrap()
+                .as_input()
+                .unwrap()
+                .state()
+                .image_history()
+                .observed_source(),
+            Some(Some(&DocumentString::from("later-native")))
+        );
+        assert_eq!(installed.node_for(&source), Some(input));
+    }
+}
