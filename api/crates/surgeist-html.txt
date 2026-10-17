@@ -2117,6 +2117,30 @@ pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::At
 pub enum surgeist_html::HtmlCrossOriginState
 pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
 pub surgeist_html::HtmlCrossOriginState::NoCors
+pub enum surgeist_html::HtmlCurrentlyFocusedAreaAction
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::CaptureContentActiveDocument
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::CaptureTraversableActiveDocument
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::Complete(surgeist_html::HtmlCurrentlyFocusedAreaOutcome)
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadContentNavigable
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadLoopFocusedArea
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadResultFocusedArea
+pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadSystemFocus
+pub enum surgeist_html::HtmlCurrentlyFocusedAreaError
+pub surgeist_html::HtmlCurrentlyFocusedAreaError::Terminal
+pub surgeist_html::HtmlCurrentlyFocusedAreaError::WrongReply
+impl core::error::Error for surgeist_html::HtmlCurrentlyFocusedAreaError
+impl core::fmt::Display for surgeist_html::HtmlCurrentlyFocusedAreaError
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlCurrentlyFocusedAreaOutcome
+pub surgeist_html::HtmlCurrentlyFocusedAreaOutcome::CandidateDocument
+pub surgeist_html::HtmlCurrentlyFocusedAreaOutcome::CandidateFocusedArea
+pub surgeist_html::HtmlCurrentlyFocusedAreaOutcome::Null
+pub enum surgeist_html::HtmlCurrentlyFocusedAreaReply
+pub surgeist_html::HtmlCurrentlyFocusedAreaReply::Applied
+pub surgeist_html::HtmlCurrentlyFocusedAreaReply::ContentNavigablePresent(bool)
+pub surgeist_html::HtmlCurrentlyFocusedAreaReply::LoopFocusedArea(surgeist_html::HtmlFocusedAreaKind)
+pub surgeist_html::HtmlCurrentlyFocusedAreaReply::ResultFocusedAreaPresent(bool)
+pub surgeist_html::HtmlCurrentlyFocusedAreaReply::SystemFocus(bool)
 pub enum surgeist_html::HtmlCustomCommandError
 pub surgeist_html::HtmlCustomCommandError::BoundaryWhitespace
 pub surgeist_html::HtmlCustomCommandError::MissingPrefix
@@ -2432,6 +2456,10 @@ pub surgeist_html::HtmlFocusDelegateTargetKind::Other
 pub enum surgeist_html::HtmlFocusTriggerKind
 pub surgeist_html::HtmlFocusTriggerKind::Click
 pub surgeist_html::HtmlFocusTriggerKind::Other
+pub enum surgeist_html::HtmlFocusedAreaKind
+pub surgeist_html::HtmlFocusedAreaKind::NavigableContainer
+pub surgeist_html::HtmlFocusedAreaKind::Null
+pub surgeist_html::HtmlFocusedAreaKind::OtherArea
 pub enum surgeist_html::HtmlFormAutocomplete
 pub surgeist_html::HtmlFormAutocomplete::Off
 pub surgeist_html::HtmlFormAutocomplete::On
@@ -4415,6 +4443,13 @@ pub fn surgeist_html::HtmlControlLengthReport::getter_limitation_source_clause(&
 pub fn surgeist_html::HtmlControlLengthReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
 pub fn surgeist_html::HtmlControlLengthReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlControlLengthReport::reflected_getter(&self) -> core::option::Option<i32>
+pub struct surgeist_html::HtmlCurrentlyFocusedAreaCursor
+impl surgeist_html::HtmlCurrentlyFocusedAreaCursor
+pub const fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::action(&self) -> surgeist_html::HtmlCurrentlyFocusedAreaAction
+pub const fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::new() -> Self
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::reply(&mut self, reply: surgeist_html::HtmlCurrentlyFocusedAreaReply) -> core::result::Result<(), surgeist_html::HtmlCurrentlyFocusedAreaError>
+impl core::default::Default for surgeist_html::HtmlCurrentlyFocusedAreaCursor
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::default() -> Self
 pub struct surgeist_html::HtmlCustomCommandKeyword
 impl surgeist_html::HtmlCustomCommandKeyword
 pub fn surgeist_html::HtmlCustomCommandKeyword::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlCustomCommandError>

@@ -141,6 +141,13 @@ source order; invalid replies preserve the cursor. The protocol continues past
 the standard's optional user-preference return. It performs no focusability
 check, attribute-change enqueue or rendering-time autofocus flush.
 
+`HtmlCurrentlyFocusedAreaCursor` resolves the current area of a top-level
+traversable in source order: system focus, its active Document, then actual
+focused navigable-container children. It preserves the separate loop and final
+designation reads and distinguishes null, the candidate Document, and its
+designated area. Consumers retain the actual area and DOM anchor independently;
+the cursor adds no activity filter, native focus state or host routing.
+
 `autofocus_presence` consumes the actual Element name and one
 attribute. It admits the exact HTML, SVG and MathML namespace URIs, then
 recognizes exact null-namespace `autofocus` without inspecting its value.

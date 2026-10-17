@@ -15,6 +15,7 @@ mod child_navigable;
 mod color;
 mod construction;
 mod control_values;
+mod current_focus;
 mod custom_element_state;
 mod custom_names;
 mod details_rules;
@@ -68,6 +69,7 @@ pub use child_navigable::{
 pub use color::*;
 pub use construction::*;
 pub use control_values::*;
+pub use current_focus::*;
 pub use custom_element_state::{HtmlCustomElementState, custom_element_state_without_definition};
 pub use custom_names::{HtmlCustomElementName, HtmlCustomElementNameError};
 pub use details_rules::*;
