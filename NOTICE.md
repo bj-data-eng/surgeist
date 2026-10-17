@@ -689,3 +689,13 @@ retains selected current-source clauses separately from the pinned implementatio
 edition. The [WHATWG attribution and modification notice](licenses/whatwg/NOTICE.md#dialog-modal-assertion-comparison--2026-10-17)
 and unchanged complete license cover its Markdown transcription under CC BY 4.0.
 It supplies no upstream correction, replacement standard or implementation acceptance.
+
+## Native Range association source
+
+The [bounded Selection API reference](references/selection-api-range-association--20260611.md)
+retains complete selected clauses from the W3C Working Draft of 11 June 2026.
+Its [attribution and modification notice](licenses/w3c/NOTICE.md#native-range-association-source)
+and the existing complete [W3C Software and Document License 2023](licenses/w3c/software-license-2023.txt)
+accompany the conversion. The source selection supports #1243's bounded native
+association contract without claiming a complete Selection implementation or
+changing Surgeist's license.

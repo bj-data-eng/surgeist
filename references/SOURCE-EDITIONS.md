@@ -528,6 +528,31 @@ metadata only. The issue records the explicit Surgeist null-range policy
 separately from those source definitions; the source does not specify that
 branch. Non-null ranges retain their actual identity and live-update obligation.
 
+### Native active-Range association
+
+For [#1243](https://github.com/bj-data-eng/surgeist/issues/1243), select the
+[Selection API Working Draft of 11 June 2026](selection-api-range-association--20260611.md)
+for initial association eligibility and retention of Range identity. The original
+complete HTML has SHA-256
+`616183cecb1e25d14ceca692b0279e2c6404b88973c2e94c80757eee40cd0243`.
+The bounded reference retains the complete Definition section, addRange method
+with notes, and Document interface extension.
+
+At initial association, addRange's first step requires the Range's ordinary
+root to be the associated Document. Same node-document membership alone admits
+neither a detached, DocumentFragment nor ShadowRoot root. Once associated, the
+same Range remains associated across supported boundary and tree mutations,
+including changes of root or node-document. This is an initial eligibility
+check, not an ongoing creator-Document invariant.
+
+The issue separately owns native explicit replacement, actual-container
+retirement and KnownNull handling. Browser getSelection's browsing-context
+guard remains literal source evidence; it does not establish native selection
+state or require a live Global for the selected native association operation.
+The current DOM/HTML pins continue to own Range maintenance and designMode.
+This supplement selects no full Selection binding, editor, caret, direction,
+anchor/focus, event or rendering implementation.
+
 ### Initial hosted Permissions Policy creation
 
 For [#1218](https://github.com/bj-data-eng/surgeist/issues/1218), select

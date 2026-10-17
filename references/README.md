@@ -195,3 +195,14 @@ headers. The [selected interpretations](SOURCE-EDITIONS.md#focus-algorithm-edito
 resolve nullable area/chain inputs, the per-entry Document, exclusive event
 target selection and the child Document's actual container entry. Browser stored focus and actual system-focus routing remain
 distinct. The evidence supplies no native positive-focus capability.
+
+## Native active-Range association
+
+The [bounded Selection API reference](selection-api-range-association--20260611.md)
+retains the dated Working Draft's Definition, addRange method with notes, and
+Document interface extension. The [edition selection](SOURCE-EDITIONS.md#native-active-range-association)
+separates initial ordinary-root eligibility from persistence of the same Range
+after later mutation. The native association, explicit retirement and designMode
+contracts remain with [#1243](https://github.com/bj-data-eng/surgeist/issues/1243).
+This reference establishes source requirements; implementation and verification
+remain separate work.

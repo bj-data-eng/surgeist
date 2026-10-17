@@ -1146,3 +1146,20 @@ separately from the literal source. The unchanged complete
 [modification notice](../licenses/whatwg/NOTICE.md#dialog-modal-assertion-comparison--2026-10-17)
 cover the retained prose. This comparison adds no executable material or
 implementation-conformance evidence.
+
+## Selection API Range association — 2026-10-17
+
+The [bounded conversion](selection-api-range-association--20260611.md) uses
+Pandoc 3.1.11.1 and complete selected units from the
+[11 June 2026 Working Draft](https://www.w3.org/TR/2026/WD-selection-api-20260611/):
+Definition, addRange including notes, and the Document interface extension.
+Original HTML SHA-256:
+`616183cecb1e25d14ceca692b0279e2c6404b88973c2e94c80757eee40cd0243`;
+retained Markdown SHA-256:
+`edeaf4aa0d88eaa76c08e34999f4e47fe8519f45f6961dd525786150c01b5d3d`.
+Presentation spans were removed and source links made explicit. The selected
+units have no tables; literal code examples and Document interface IDL remain.
+No source scripts were executed. Other methods and event algorithms lie outside the extract.
+The dated source, bounded native selection and explicit project retirement
+policy remain distinct. The [W3C attribution](../licenses/w3c/NOTICE.md#native-range-association-source)
+and complete local license accompany the conversion.

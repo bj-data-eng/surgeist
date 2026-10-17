@@ -1601,3 +1601,24 @@ syntax, variables, conditions, step order, notes and original RFC citations.
 No source links are rewritten, no renderer or script is run, and no newer RFC
 or full Web Crypto implementation is represented. The repository's own license
 is unchanged.
+
+## Native Range association source
+
+Copyright © 2026 World Wide Web Consortium.
+W3C (World Wide Web Consortium)® liability, trademark and permissive document
+license rules apply.
+
+This software or document includes material copied from or derived from
+[Selection API, W3C Working Draft, 11 June 2026](https://www.w3.org/TR/2026/WD-selection-api-20260611/).
+The [bounded Range association reference](../../references/selection-api-range-association--20260611.md)
+is covered by the complete [W3C Software and Document License 2023](software-license-2023.txt),
+which the exact source links. The source is a Working Draft and work in progress;
+publication does not imply endorsement by W3C or its Members.
+
+Changes by Surgeist on 17 October 2026: bounded Pandoc 3.1.11.1 conversion of the
+complete Definition, addRange method with notes, and Document interface extension;
+presentation spans removed, source links made explicit, and provenance, headings
+and scope labels added. Original complete HTML SHA-256:
+`616183cecb1e25d14ceca692b0279e2c6404b88973c2e94c80757eee40cd0243`.
+No endorsement or complete Selection implementation is represented. Surgeist's
+own license is unchanged.
