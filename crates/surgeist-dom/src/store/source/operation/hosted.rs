@@ -607,43 +607,6 @@ impl DomSourceLease<'_> {
     }
 }
 
-impl Draft {
-    fn hosted_base_record(
-        &self,
-        document: Key,
-        cancel: &AtomicBool,
-    ) -> Result<&surgeist_html_semantics::HtmlBaseUrlRecord, DomError> {
-        self.source_step(cancel)?;
-        let node = self.node(document)?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
-            return Err(DomError::WrongDocument);
-        };
-        let facts = metadata
-            .hosted_inputs
-            .as_ref()
-            .map(|inputs| &inputs.0.facts);
-        let first = match node
-            .base_document
-            .as_ref()
-            .ok_or(DomError::WrongDocument)?
-            .first
-        {
-            None => surgeist_html_semantics::HtmlDocumentFirstBase::Absent,
-            Some(key) => {
-                self.source_step(cancel)?;
-                surgeist_html_semantics::HtmlDocumentFirstBase::Present(
-                    self.node(key)?
-                        .base
-                        .as_ref()
-                        .and_then(|state| state.frozen.as_ref())
-                        .map(|frozen| &frozen.value),
-                )
-            }
-        };
-        surgeist_html_semantics::select_document_base(facts, first)
-            .map_err(|missing| DomError::BaseFacts(crate::DomBaseFactsError::Missing(missing)))
-    }
-}
 impl DomSourceLease<'_> {
     /// Qualify retained, unpublished URL evidence against the current service.
     /// A returned stage needs service before it may advance. Without a service,
@@ -767,7 +730,7 @@ impl DomSourceLease<'_> {
             .facts
             .encoding()
             .ok_or(DomError::SourceUrlUnavailable)?;
-        let base = op.draft.hosted_base_record(document, cancel)?;
+        let base = op.draft.document_base_record(document, cancel)?;
         let raw = op
             .draft
             .control_attribute(key, KnownHtmlAttribute::Src, cancel)?
@@ -928,7 +891,7 @@ impl DomSourceLease<'_> {
         let DomNodeKind::Document(parent) = &op.draft.node(document)?.kind else {
             return Err(DomError::WrongDocument.into());
         };
-        let base = op.draft.hosted_base_record(document, cancel)?;
+        let base = op.draft.document_base_record(document, cancel)?;
         let graph = op
             .draft
             .hosted_history

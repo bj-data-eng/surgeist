@@ -908,6 +908,12 @@ reacquires that exact operation. An acknowledged CSSOM publication survives a
 failed later segment and is not reissued. Cancellation preserves an already
 published phase and its remaining cleanup obligations.
 
+Style captures select the current Document base through the Base owner. Hosted
+Documents consume their actual constructor URL/about-base facts and maintained
+first frozen Base; native closed Documents retain their established about:blank
+fallback. A present but unfrozen first Base remains unavailable. The captured
+base does not use a Settings creation-URL mirror or establish CSP permission.
+
 `DomSourceLimits` bounds represented live bytes, UTF-16 backing capacity,
 cumulative work, phase publications, output records, published native
 identities and simultaneously outstanding nested operations. Storage includes

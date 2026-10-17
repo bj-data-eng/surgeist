@@ -36,6 +36,78 @@ pub(super) fn parsed_document_inputs_match(
     }
 }
 impl Draft {
+    fn document_first_base(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_html_semantics::HtmlDocumentFirstBase<'_>, DomError> {
+        use surgeist_html_semantics::HtmlDocumentFirstBase;
+        self.source_step(cancel)?;
+        let first = self
+            .node(document)?
+            .base_document
+            .as_ref()
+            .ok_or(DomError::WrongDocument)?
+            .first;
+        Ok(match first {
+            None => HtmlDocumentFirstBase::Absent,
+            Some(key) => {
+                self.source_step(cancel)?;
+                HtmlDocumentFirstBase::Present(
+                    self.node(key)?
+                        .base
+                        .as_ref()
+                        .and_then(|state| state.frozen.as_ref())
+                        .map(|frozen| &frozen.value),
+                )
+            }
+        })
+    }
+    /// Select the actual current base using constructor facts and the maintained
+    /// first-Base index. A present but unfrozen Base never becomes fallback.
+    pub(super) fn document_base_record(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<&surgeist_html_semantics::HtmlBaseUrlRecord, DomError> {
+        self.source_step(cancel)?;
+        let metadata = self.document_metadata(document)?;
+        let facts = metadata
+            .hosted_inputs
+            .as_ref()
+            .map(|inputs| &inputs.0.facts);
+        surgeist_html_semantics::select_document_base(
+            facts,
+            self.document_first_base(document, cancel)?,
+        )
+        .map_err(|missing| failure(Failure::Missing(missing)))
+    }
+    /// Serialization for consumers which do not need an opaque URL record.
+    /// Native closed Documents retain their established about:blank fallback;
+    /// hosted Documents select their actual constructor/about-base facts.
+    pub(super) fn document_base_url(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<&DocumentString, DomError> {
+        self.source_step(cancel)?;
+        let metadata = self.document_metadata(document)?;
+        if metadata.hosted_inputs.is_some() {
+            return self
+                .document_base_record(document, cancel)
+                .map(surgeist_html_semantics::HtmlBaseUrlRecord::serialization);
+        }
+        if metadata.document_environment().has_ever_had_navigable()
+            || metadata.url().code_units() != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]
+        {
+            return Err(DomError::NotSupported);
+        }
+        surgeist_html_semantics::select_document_base_serialization(
+            metadata.url(),
+            self.document_first_base(document, cancel)?,
+        )
+        .map_err(|missing| failure(Failure::Missing(missing)))
+    }
     fn base_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let next = self
@@ -604,6 +676,67 @@ mod tests {
         b.insert_before(base, root, None);
         dom.apply(b, &cancel).unwrap();
         (dom, doc, base)
+    }
+    #[test]
+    fn staged_base_consumers_select_the_current_frozen_record_without_constructor_facts() {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, document, base) = fixture();
+        let historical = dom.snapshot();
+        let mut change = DomBatch::new();
+        change.set_attribute(base, "href", "next");
+        dom.apply(change, &cancel).unwrap();
+        let batch = DomBatch::new();
+        let draft = Draft::new(&dom, batch.owner, &cancel).unwrap();
+        let key = draft.resolve(document.into()).unwrap();
+        assert!(
+            draft
+                .document_metadata(key)
+                .unwrap()
+                .hosted_inputs
+                .is_none()
+        );
+        assert_eq!(
+            draft
+                .document_base_record(key, &cancel)
+                .unwrap()
+                .serialization(),
+            &DocumentString::from("https://example.test/next")
+        );
+        assert_eq!(
+            draft.document_base_url(key, &cancel).unwrap(),
+            &DocumentString::from("https://example.test/next")
+        );
+        assert_eq!(
+            historical
+                .document(document)
+                .unwrap()
+                .document_base_url()
+                .unwrap(),
+            &DocumentString::from("https://example.test/target")
+        );
+    }
+    #[test]
+    fn staged_base_consumers_preserve_missing_frozen_state_instead_of_fallback() {
+        let cancel = AtomicBool::new(false);
+        let (dom, document, base) = fixture();
+        let batch = DomBatch::new();
+        let mut draft = Draft::new(&dom, batch.owner, &cancel).unwrap();
+        let key = draft.resolve(document.into()).unwrap();
+        let base = draft.resolve(base.into()).unwrap();
+        // Explicit private unavailable-input guard: this does not claim a
+        // completed public Base freeze or install missing external evidence.
+        draft.node_mut(base).base.as_mut().unwrap().frozen = None;
+        for result in [
+            draft
+                .document_base_record(key, &cancel)
+                .map(|record| record.serialization()),
+            draft.document_base_url(key, &cancel),
+        ] {
+            assert_eq!(
+                result,
+                Err(failure(Failure::Missing(HtmlBaseMissing::FrozenBase)))
+            );
+        }
     }
     fn source_base_alias(bytes: usize) -> Option<source::formation::mutation_observation::Growth> {
         source_base_alias_limits(bytes, 10_000_000)

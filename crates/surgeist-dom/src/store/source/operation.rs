@@ -909,7 +909,7 @@ impl Operation {
         };
         let base_url = self
             .draft
-            .style_document_base(self.draft.node(frame.key)?.document, cancel)?;
+            .document_base_url(self.draft.node(frame.key)?.document, cancel)?;
         let media = self.draft.control_attribute(
             frame.key,
             surgeist_html::KnownHtmlAttribute::Media,

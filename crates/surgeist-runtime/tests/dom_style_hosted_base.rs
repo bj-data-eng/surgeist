@@ -484,36 +484,41 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
     );
     assert_eq!(styles.pending_sheet(0).unwrap(), None);
     assert_eq!(styles.waiting_resources().unwrap(), 0);
-    let queued = hosted
-        .destroy_top_level(&mut session.dom(), top.navigable(), &cancel())
-        .unwrap();
-    finish_hosted(&mut session, top, Some(queued.operation()));
-    hosted
-        .destroy_host(&mut session.dom(), top.host(), &cancel())
-        .unwrap();
-    let retired = session.snapshot();
+    assert!(matches!(
+        hosted
+            .run_next(&mut session.dom(), top.navigable(), &cancel())
+            .unwrap(),
+        DomHostedTaskProgress::Idle
+    ));
+    let settled = session.snapshot();
     assert!(
-        !retired
+        settled
             .document(document)
             .unwrap()
             .is_fully_active()
             .unwrap()
     );
     assert_eq!(
-        retired
+        settled
             .document(document)
             .unwrap()
             .document_base_record()
             .unwrap(),
         &selected
     );
+    // DOM's hosted cleanup guard rejects every still-bound CSSOM root, even
+    // this empty store. There is no public Document-root unbind. Source, Load
+    // and child-history work is settled, but Top/Host remain live resources;
+    // do not start an unsupported retirement or claim graceful completion.
     let session = match session.try_shutdown() {
         DomShutdownOutcome::Pending { session, reason } => {
-            assert_eq!(reason, DomShutdownReason::LiveResources);
+            assert_eq!(reason, DomShutdownReason::HostedLifecycle);
             session
         }
-        other => panic!("empty bound Document CSSOM root still owns a resource: {other:?}"),
+        other => panic!("live hosted resources and bound empty CSSOM root remain: {other:?}"),
     };
+    // Explicit terminal disposal releases the composed owners without
+    // reporting Global destruction or executing synthetic cleanup callbacks.
     drop(session);
     assert!(matches!(
         styles.snapshot(document.node()),

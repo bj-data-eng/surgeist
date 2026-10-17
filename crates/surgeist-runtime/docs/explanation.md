@@ -91,6 +91,14 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+Style capture uses the canonical Document's current Base selection, including
+the actual inherited about-base of an initial child Document. An empty bound
+CSSOM root still retains lifecycle custody: native hosted Document destruction
+refuses while that binding remains. The current public surface has no root
+unbind operation. With a live Host, graceful Session shutdown reports
+`HostedLifecycle`; terminal Session drop releases custody without claiming
+destruction or completion.
+
 For Dialog Show's initial beforetoggle request, call
 `DomSourceRuntime::service_event` with the original request, actual dispatcher
 and explicit canonical/dispatch limits. The Session's finite
