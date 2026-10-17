@@ -174,10 +174,20 @@ The original method retains one complete HTML focusing child. Native own-inert,
 non-root and nondelegating facts can prove the autofocus subject's called
 focusing makes no change. That proof does not complete the outer call: DOM
 next resolves the selected control's actual top Document and compares actual
-origins. A difference returns before autofocus-state writes; a same-origin
-case still requires those writes. Other unavailable work is exposed as the
-precise `DialogFocusing` child action. No positive focus movement or focused-area
-history is inferred.
+origins. A difference returns before autofocus-state writes; the same-origin
+path clears that captured top Document's actual candidates, sets processed=true
+and completes the child. Other unavailable work is exposed as the precise
+`DialogFocusing` child action. No positive focus movement or focused-area history
+is inferred.
+
+Actual ordinary Document-tree insertion runs HTML's separate autofocus cursor
+inside DOM's original effect stack. DOM owns the independently qualified
+per-Document candidate history, actual insertion guards and top-Document
+selection. Enabled permission advances locally. A Window-dependent allow-focus
+step uses the same `DomFocusRequest`, preparation, publication and receipt owner
+as Dialog, qualified to its real insertion occurrence. Runtime retains the
+original result across refusal and retry. Setting the attribute without insertion
+does not enqueue, and rendering-time autofocus flushing is a separate operation.
 
 Each admitted native Window starts never activated. The current HTML event
 surface admits load, error, toggle, beforetoggle and close; physical Window input and

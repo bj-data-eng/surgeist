@@ -292,6 +292,11 @@ fn state_usage(
             payload.bank::<NodeId>(node.children.capacity())?;
             payload.bank::<NodeId>(node.manual_nodes.capacity())?;
             payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
+            if let Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) =
+                &node.autofocus_document
+            {
+                payload.bank::<NodeId>(candidates.capacity())?;
+            }
             if let Some(crate::dialog::DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,

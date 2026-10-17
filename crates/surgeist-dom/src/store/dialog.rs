@@ -17,7 +17,7 @@ mod request_close_tests;
 #[cfg(test)]
 mod show_modal_tests;
 mod top_layer;
-pub(in crate::store) use focusing::{AllowFocusPermission, PendingFocusing};
+pub(in crate::store) use focusing::PendingFocusing;
 
 #[derive(Clone, Copy)]
 pub(super) enum MethodState {
@@ -730,7 +730,7 @@ impl Draft {
                     Reply::Applied
                 }
                 Action::EstablishCloseWatcher | Action::DestroyCloseWatcher => {
-                    if self.headroom_dialog_hook(cancel)? {
+                    if self.headroom_external_hook(cancel)? {
                         Reply::Applied
                     } else {
                         self.push_effect(

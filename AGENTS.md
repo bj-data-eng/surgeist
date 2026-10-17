@@ -187,6 +187,13 @@ Slot delivery and broader modal/resource services remain contribution work; the
 [DOM README](crates/surgeist-dom/README.md) and
 [Runtime explanation](crates/surgeist-runtime/docs/explanation.md#dom-orchestration)
 record the admitted surface and limits.
+DOM also owns independently qualified Document autofocus candidate history and
+processed state. Its ordinary insertion hooks consume HTML's language cursor;
+Runtime supplies required Window observations through the shared affine focus
+bridge. Explicit Element retirement clears exact candidates from every surviving
+Document list; detach/adoption preserve history. Parser interaction disposition
+does not certify autofocus history. Rendering-time flushing and positive focus
+movement remain separate contributions.
 DOM's immutable external focus/hover captures use exact canonical document
 stamps and a separate host source/revision. Runtime directly consumes DOM and
 owns the adapter from its actual surface selections and checked associations.

@@ -10,7 +10,7 @@ const RUNTIME_VISITS: u64 = 19;
 
 struct Parked {
     session: DomSession,
-    request: DomDialogFocusRequest,
+    request: DomFocusRequest,
     parent: Option<DomSourceEventRequest>,
     host: DomHostedHostId,
     original_global: DomHostedGlobalId,
@@ -79,7 +79,7 @@ fn next(
     assert_eq!(request.action(), action);
     Ok(request)
 }
-fn next_allow(lease: &mut DomSourceLease<'_>) -> Result<DomDialogFocusRequest, Failure> {
+fn next_allow(lease: &mut DomSourceLease<'_>) -> Result<DomFocusRequest, Failure> {
     // This setup participates in the canonical-only parent-work search. A real
     // child-exposure refusal must propagate just like the preceding outer
     // requests, rather than panic inside an infallible assertion helper.
@@ -92,7 +92,7 @@ fn next_allow(lease: &mut DomSourceLease<'_>) -> Result<DomDialogFocusRequest, F
         request.action(),
         surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
     );
-    Ok(DomDialogFocusRequest::Allow(request))
+    Ok(DomFocusRequest::AllowDialog(request))
 }
 fn parked(
     work: u64,
@@ -290,9 +290,9 @@ fn parked(
         };
         tasks.queue_dialog(&mut lease, &queue, &cancel)?;
         let remembered = next(&mut lease, HtmlDialogAction::RememberFocusedElement)?;
-        assert!(hosted.service_dialog_focus(
+        assert!(hosted.service_focus(
             &mut lease,
-            &DomDialogFocusRequest::Remember(remembered),
+            &DomFocusRequest::RememberDialog(remembered),
             &cancel
         )?);
         let focusing = next_allow(&mut lease)?;
@@ -340,11 +340,11 @@ fn canonical_prelude(case: &mut Parked) -> Result<(u64, u64), Failure> {
         &AtomicBool::new(false),
     )?;
     let preparation = lease
-        .prepare_dialog_focus(&case.request, source, &AtomicBool::new(false))?
+        .prepare_focus(&case.request, source, &AtomicBool::new(false))?
         .unwrap();
     assert_eq!(
         preparation.target(),
-        DomDialogFocusTarget::RetiredDocumentWindow {
+        DomFocusTarget::RetiredDocumentWindow {
             document: case.current_document,
             global: case.current_global,
             host: case.host,
@@ -438,7 +438,7 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
                 .unwrap();
             assert_eq!(lease.status().spent_work(), scaffold);
             assert!(
-                matches!(hosted.service_dialog_focus(&mut lease, &case.request, &cancel),
+                matches!(hosted.service_focus(&mut lease, &case.request, &cancel),
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit { limit }))) if limit == cap)
             );
             assert_eq!(lease.status().spent_work(), cap);
@@ -483,7 +483,7 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
                 .unwrap();
             let before = owner.borrow().work;
             assert!(matches!(
-                replacement.service_dialog_focus(&mut lease, &case.request, &AtomicBool::new(true)),
+                replacement.service_focus(&mut lease, &case.request, &AtomicBool::new(true)),
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                     DomError::Cancelled
                 ))) | Err(DomHostedRuntimeError::Cancelled)
@@ -492,7 +492,7 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
             assert_eq!(owner.borrow().focus.pending.is_some(), !short);
             assert!(
                 replacement
-                    .service_dialog_focus(&mut lease, &case.request, &cancel)
+                    .service_focus(&mut lease, &case.request, &cancel)
                     .unwrap()
             );
             assert!(owner.borrow().focus.pending.is_none());
@@ -612,12 +612,12 @@ fn pruned_original_window_does_not_become_a_negative_focus_observation() {
         .unwrap();
     {
         let prepared = lease
-            .prepare_dialog_focus(&case.request, &owner.borrow().source, &cancel)
+            .prepare_focus(&case.request, &owner.borrow().source, &cancel)
             .unwrap()
             .unwrap();
         assert_eq!(
             prepared.target(),
-            DomDialogFocusTarget::RetiredDocumentWindow {
+            DomFocusTarget::RetiredDocumentWindow {
                 document: case.current_document,
                 global: case.current_global,
                 host: case.host,
@@ -627,7 +627,7 @@ fn pruned_original_window_does_not_become_a_negative_focus_observation() {
     for _ in 0..2 {
         assert!(
             !hosted
-                .service_dialog_focus(&mut lease, &case.request, &cancel)
+                .service_focus(&mut lease, &case.request, &cancel)
                 .unwrap()
         );
         assert!(owner.borrow().focus.pending.is_none());
@@ -667,7 +667,7 @@ fn denial_hosted_formation_storage_scratch_and_nineteen_visits_admit_exactly() {
                 .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
                 .unwrap();
             assert!(matches!(
-                hosted.service_dialog_focus(&mut lease, &case.request, &cancel),
+                hosted.service_focus(&mut lease, &case.request, &cancel),
                 Err(DomHostedRuntimeError::Admission)
             ));
             assert!(
@@ -691,7 +691,7 @@ fn denial_hosted_formation_storage_scratch_and_nineteen_visits_admit_exactly() {
             .unwrap();
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &case.request, &cancel)
+                .service_focus(&mut lease, &case.request, &cancel)
                 .unwrap()
         );
         assert_eq!(owner.borrow().work - before, RUNTIME_VISITS);
@@ -744,7 +744,7 @@ fn denial_source_bytes_price_temporary_before_ownership_and_release_on_transfer(
         )
         .unwrap();
         let basis = lease.snapshot().stamp();
-        let result = hosted.service_dialog_focus(&mut lease, &case.request, &cancel);
+        let result = hosted.service_focus(&mut lease, &case.request, &cancel);
         if short {
             assert!(matches!(result,
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::ResourceLimit {
@@ -768,7 +768,7 @@ fn denial_source_bytes_price_temporary_before_ownership_and_release_on_transfer(
         if short {
             assert!(
                 hosted
-                    .service_dialog_focus(&mut lease, &case.request, &cancel)
+                    .service_focus(&mut lease, &case.request, &cancel)
                     .unwrap()
             );
         }
@@ -834,7 +834,7 @@ fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
                 .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
                 .unwrap();
             assert!(
-                matches!(hosted.service_dialog_focus(&mut lease, &case.request, &cancel),
+                matches!(hosted.service_focus(&mut lease, &case.request, &cancel),
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit { limit }))) if limit == cap)
             );
             assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
@@ -859,7 +859,7 @@ fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
             .unwrap();
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &case.request, &cancel)
+                .service_focus(&mut lease, &case.request, &cancel)
                 .unwrap()
         );
         if !short {

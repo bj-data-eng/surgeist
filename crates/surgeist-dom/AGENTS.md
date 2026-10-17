@@ -313,6 +313,26 @@ facts remain unavailable; detached flat exclusion does not establish empty inert
 ancestry. Preserve producer
 conservative dependency coverage rather than inventing precise invalidation.
 
+Document autofocus history is independently qualified beside Dialog interaction
+state. Fresh native/hosted Documents initialize empty candidates and processed=false;
+parser interaction proof alone leaves this history unavailable. Consume HTML's
+generic autofocus insertion cursor and its exact expanded-name presence helper,
+including actual SVG/MathML attributes. Qualify the Element's exact HTML/SVG/MathML
+namespace URI; null/custom namespaces do not acquire these semantics from a literal
+attribute. Only ordinary Document-tree insertion
+triggers candidate recording; attributes alone and shadow-connectedness do not.
+Retain captured target/top-Document identities and genuine permission occurrences
+through the original effect/receipt/checkpoint owners. Enabled permission advances
+locally; required Window observations use the same affine focus bridge as Dialog.
+Bound aggregate installed candidate references independently and account actual
+Source backing/checkpoint capacities. Same-origin Dialog focusing clears the
+captured top Document then sets processed=true. Detach/adopt/attribute removal/
+inactivity preserve history. Successful exact Element retirement removes candidates
+from all surviving Documents atomically, preserving processed flags/order and
+emitting Document-state changes. Historical snapshots retain their original
+identities without granting execution. Rendering flush and positive focusing
+remain unavailable.
+
 From repository root through bounded `pisct run`:
 
 ```sh

@@ -59,6 +59,8 @@ pub enum DomSourceUnavailable {
     Dialog(surgeist_html::HtmlDialogAction),
     /// The exact child focusing action still lacks a qualified service.
     DialogFocusing(surgeist_html::HtmlDialogFocusingAction),
+    /// The exact autofocus insertion action still lacks a qualified service.
+    AutofocusInsertion(surgeist_html::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
     /// A reached URL stage has no qualified observation yet.
@@ -483,9 +485,9 @@ impl DomSourceRuntime {
                         surgeist_html::HtmlDialogAction::RememberFocusedElement
                     ) && self
                         .hosted
-                        .service_dialog_focus(
+                        .service_focus(
                             lease,
-                            &surgeist_dom::DomDialogFocusRequest::Remember(request.clone()),
+                            &surgeist_dom::DomFocusRequest::RememberDialog(request.clone()),
                             cancel,
                         )
                         .map_err(DomSourceRuntimeError::Hosted)?
@@ -502,9 +504,9 @@ impl DomSourceRuntime {
                     if request.action() == surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
                         && self
                             .hosted
-                            .service_dialog_focus(
+                            .service_focus(
                                 lease,
-                                &surgeist_dom::DomDialogFocusRequest::Allow(request.clone()),
+                                &surgeist_dom::DomFocusRequest::AllowDialog(request.clone()),
                                 cancel,
                             )
                             .map_err(DomSourceRuntimeError::Hosted)?
@@ -514,6 +516,28 @@ impl DomSourceRuntime {
                     let reason = DomSourceUnavailable::DialogFocusing(request.action());
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::DialogFocusing(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::AutofocusInsertion(request)) => {
+                    if request.action()
+                        == surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+                        && self
+                            .hosted
+                            .service_focus(
+                                lease,
+                                &surgeist_dom::DomFocusRequest::AllowAutofocusInsertion(
+                                    request.clone(),
+                                ),
+                                cancel,
+                            )
+                            .map_err(DomSourceRuntimeError::Hosted)?
+                    {
+                        continue;
+                    }
+                    let reason = DomSourceUnavailable::AutofocusInsertion(request.action());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::AutofocusInsertion(request),
                         reason,
                     });
                 }

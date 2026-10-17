@@ -5,8 +5,8 @@ mod scope;
 mod url;
 pub(crate) use focus::FocusQualification;
 pub use focus::{
-    DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
-    DomDialogFocusRequest, DomDialogFocusTarget, DomSourceDialogFocusingRequest,
+    DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomFocusTarget,
+    DomSourceAutofocusInsertionRequest, DomSourceDialogFocusingRequest,
 };
 pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
@@ -103,6 +103,8 @@ pub enum DomSourcePhase {
     EventReceiptAccepted,
     /// A genuine Dialog action waiting for its qualified external service.
     DialogService,
+    /// A genuine common insertion action awaiting its qualified service.
+    AutofocusInsertionService,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -156,6 +158,7 @@ pub enum DomSourceRequest {
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
     DialogFocusing(DomSourceDialogFocusingRequest),
+    AutofocusInsertion(DomSourceAutofocusInsertionRequest),
     CloseWatcher(DomSourceCloseWatcherRequest),
 }
 /// The final identity produced by one completed creation operation.

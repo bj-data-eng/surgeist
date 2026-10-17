@@ -121,6 +121,22 @@ The outer method completes only after this child completes. The narrow
 no change for an actual own-inert, non-root, nondelegating Dialog subject;
 it supplies no rendering or focus state and does not skip the remaining tail.
 
+`HtmlAutofocusInsertionCursor` owns the separate generic insertion protocol:
+autofocus and ordinary Document-tree membership, captured target Document,
+full activity, sandbox automatic features, allow-focus, captured top Document,
+processed flag, then exact candidate removal and append. Consumers retain actual
+identities and acknowledge completed reads/effects. Negative guards return in
+source order; invalid replies preserve the cursor. The protocol continues past
+the standard's optional user-preference return. It performs no focusability
+check, attribute-change enqueue or rendering-time autofocus flush.
+
+`autofocus_insertion_presence` consumes the actual Element name and one
+attribute. It admits the exact HTML, SVG and MathML namespace URIs, then
+recognizes exact null-namespace `autofocus` without inspecting its value.
+Null and custom Element namespaces do not gain HTML autofocus semantics from
+a literal attribute. Authored attribute reports retain their own applicability
+contract. The consumer admits the actual bounded namespace checks and attribute walk.
+
 The Dialog method cursor's requestClose protocol requires current open, connection and Document-activity
 observations, writes the actual nullable request operands and force-enable
 state, and resets that state after either normal watcher-request result.

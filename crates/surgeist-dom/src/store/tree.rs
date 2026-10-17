@@ -616,6 +616,7 @@ impl Draft {
                             self.dispatch_retirements.push((target, document));
                             self.source_admit(0, cancel)?;
                         }
+                        self.retire_autofocus_candidate(key, cancel)?;
                         let node = match key {
                             Key::Existing(i) => self.existing[i].take(),
                             Key::Created(i) => self.created[i].take(),
@@ -838,7 +839,7 @@ impl Draft {
                         _ => (),
                     }
                 } else {
-                    if stage < 9 {
+                    if stage < 10 {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,
@@ -872,6 +873,7 @@ impl Draft {
                         7 => self.style_tree_change(key, None, limits, cancel)?,
                         8 => self.meta_inserted(key, limits, cancel)?,
                         9 => self.dialog_insertion(key, limits, cancel)?,
+                        10 => self.autofocus_insertion(key, cancel)?,
                         _ => (),
                     }
                 }

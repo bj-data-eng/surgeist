@@ -19,7 +19,7 @@ struct Child {
 struct Ancestor {
     session: DomSession,
     parent: DomSourceEventRequest,
-    child: DomDialogFocusRequest,
+    child: DomFocusRequest,
 }
 fn child_limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4)
@@ -164,7 +164,7 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         };
         assert_eq!(child.action(), HtmlDialogAction::RememberFocusedElement);
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
-        DomDialogFocusRequest::Remember(child)
+        DomFocusRequest::RememberDialog(child)
     };
     if prelude {
         // Match the second actual resume used by the service tests. Its
@@ -178,9 +178,7 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         let source = &owner.borrow().source;
         let payload =
             lease.retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &cancel)?;
-        let preparation = lease
-            .prepare_dialog_focus(&child, source, &cancel)?
-            .unwrap();
+        let preparation = lease.prepare_focus(&child, source, &cancel)?.unwrap();
         let formation = FocusFormation {
             preparation,
             payload,
@@ -266,7 +264,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
         )
         .unwrap();
         let basis = lease.snapshot().stamp();
-        let result = hosted.service_dialog_focus(&mut lease, &child, &AtomicBool::new(false));
+        let result = hosted.service_focus(&mut lease, &child, &AtomicBool::new(false));
         if short {
             assert!(matches!(
                 result,
@@ -289,7 +287,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
         if short {
             assert!(
                 hosted
-                    .service_dialog_focus(&mut lease, &child, &AtomicBool::new(false))
+                    .service_focus(&mut lease, &child, &AtomicBool::new(false))
                     .unwrap()
             );
         }
@@ -335,7 +333,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
                 .unwrap();
             let basis = lease.snapshot().stamp();
             let error = hosted
-                .service_dialog_focus(&mut lease, &child, &cancel)
+                .service_focus(&mut lease, &child, &cancel)
                 .unwrap_err();
             assert!(exhausted(&error, cap), "wrong ancestor refusal: {error:?}");
             assert_eq!(lease.snapshot().stamp(), basis);
@@ -388,11 +386,7 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
             .raw_mut()
             .resume_source_edit(child.operation(), child_limits(), &cancel)
             .unwrap();
-        assert!(
-            hosted
-                .service_dialog_focus(&mut lease, &child, &cancel)
-                .unwrap()
-        );
+        assert!(hosted.service_focus(&mut lease, &child, &cancel).unwrap());
         assert!(owner.borrow().focus.pending.is_none());
         if !short {
             assert_eq!(
@@ -565,11 +559,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
             DomSourceExecutionEntryScope::ExplicitHost(original)
         );
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
-        assert!(
-            hosted
-                .service_dialog_focus(&mut lease, &child, &cancel)
-                .unwrap()
-        );
+        assert!(hosted.service_focus(&mut lease, &child, &cancel).unwrap());
         assert_eq!(allow_request(&mut lease).operation(), child.operation());
         assert_eq!(lease.snapshot().stamp(), basis);
     }

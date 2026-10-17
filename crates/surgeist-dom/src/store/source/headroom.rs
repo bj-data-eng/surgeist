@@ -229,7 +229,7 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         Ok(())
     }
-    pub(in crate::store) fn headroom_dialog_hook(
+    pub(in crate::store) fn headroom_external_hook(
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {

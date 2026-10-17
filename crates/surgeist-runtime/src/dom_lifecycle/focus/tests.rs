@@ -77,7 +77,7 @@ fn fixture() -> (DomSession, DomHostedHostId, NodeId) {
         .unwrap();
     (session, host, subject)
 }
-fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomDialogFocusRequest) {
+fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomFocusRequest) {
     let (mut session, host, subject) = fixture();
     let cancel = AtomicBool::new(false);
     let scope = session.source_execution_scope(host, &cancel).unwrap();
@@ -157,7 +157,7 @@ fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomDialogFocusRequ
             panic!("actual remembered-focus wait required")
         };
         assert_eq!(request.action(), HtmlDialogAction::RememberFocusedElement);
-        DomDialogFocusRequest::Remember(request)
+        DomFocusRequest::RememberDialog(request)
     };
     (session, host, subject, request)
 }
@@ -182,8 +182,8 @@ fn focusing_request(
     assert_eq!(request.action(), action);
     request
 }
-fn allow_request(lease: &mut DomSourceLease<'_>) -> DomDialogFocusRequest {
-    DomDialogFocusRequest::Allow(focusing_request(
+fn allow_request(lease: &mut DomSourceLease<'_>) -> DomFocusRequest {
+    DomFocusRequest::AllowDialog(focusing_request(
         lease,
         surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus,
     ))
@@ -204,7 +204,7 @@ fn producer_scaffold() -> (u64, u64, u64) {
         .unwrap();
     let scaffold = lease.status().spent_work();
     let prepared = lease
-        .prepare_dialog_focus(&request, source, &AtomicBool::new(false))
+        .prepare_focus(&request, source, &AtomicBool::new(false))
         .unwrap()
         .unwrap();
     let preparation = lease.status().spent_work() - scaffold;
@@ -239,7 +239,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             .unwrap();
         assert_eq!(lease.status().spent_work(), scaffold);
         assert!(
-            matches!(hosted.service_dialog_focus(&mut lease,&original,&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
+            matches!(hosted.service_focus(&mut lease,&original,&cancel),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit{limit}))) if limit==cap)
         );
         assert_eq!(lease.snapshot().stamp(), basis);
         assert_eq!(lease.status().spent_work(), cap);
@@ -275,7 +275,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(
             replacement
-                .service_dialog_focus(&mut lease, &original, &cancel)
+                .service_focus(&mut lease, &original, &cancel)
                 .is_err()
         );
         cancel.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -283,7 +283,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
         assert_eq!(owner.borrow().work, after_progress);
         assert!(
             replacement
-                .service_dialog_focus(&mut lease, &original, &cancel)
+                .service_focus(&mut lease, &original, &cancel)
                 .unwrap()
         );
         assert!(owner.borrow().focus.pending.is_none());
@@ -300,7 +300,7 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
             "already-null observation is a semantic no-op"
         );
         assert!(matches!(
-            replacement.service_dialog_focus(&mut lease, &original, &cancel),
+            replacement.service_focus(&mut lease, &original, &cancel),
             Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                 DomError::InvalidSourceOperation
             )))
@@ -342,7 +342,7 @@ fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
             .unwrap();
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &original, &cancel)
+                .service_focus(&mut lease, &original, &cancel)
                 .is_err()
         );
     }
@@ -370,7 +370,7 @@ fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
         .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
         .unwrap();
     assert!(matches!(
-        hosted.service_dialog_focus(&mut lease, &original, &cancel),
+        hosted.service_focus(&mut lease, &original, &cancel),
         Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
             DomError::HostedSourceUnavailable
         )))
@@ -481,7 +481,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
                 .raw_mut()
                 .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
                 .unwrap();
-            let result = hosted.service_dialog_focus(&mut lease, &original, &cancel);
+            let result = hosted.service_focus(&mut lease, &original, &cancel);
             assert!(matches!(result, Err(DomHostedRuntimeError::Admission)));
             assert!(owner.borrow().focus.pending.is_none());
             assert_eq!(lease.snapshot().stamp(), stamp);
@@ -500,7 +500,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
             .unwrap();
         assert!(
             hosted
-                .service_dialog_focus(&mut lease, &original, &cancel)
+                .service_focus(&mut lease, &original, &cancel)
                 .unwrap()
         );
         assert_eq!(owner.borrow().work - before, 3);
@@ -578,7 +578,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
         )
         .unwrap();
         let basis = lease.snapshot().stamp();
-        let result = hosted.service_dialog_focus(&mut lease, &original, &AtomicBool::new(false));
+        let result = hosted.service_focus(&mut lease, &original, &AtomicBool::new(false));
         if short {
             assert!(matches!(
                 result,
@@ -599,7 +599,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
         if short {
             assert!(
                 hosted
-                    .service_dialog_focus(&mut lease, &original, &AtomicBool::new(false))
+                    .service_focus(&mut lease, &original, &AtomicBool::new(false))
                     .unwrap()
             );
         }
@@ -613,7 +613,7 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
 
 mod ancestor;
 
-fn retained_result() -> (DomSession, DomDialogFocusRequest) {
+fn retained_result() -> (DomSession, DomFocusRequest) {
     let (scaffold, preparation, retention) = producer_scaffold();
     let cap = scaffold + preparation + retention + 3;
     let (mut session, _, _, original) = parked(cap);
@@ -629,7 +629,7 @@ fn retained_result() -> (DomSession, DomDialogFocusRequest) {
             )
             .unwrap();
         assert!(
-            matches!(hosted.service_dialog_focus(&mut lease,&original,&AtomicBool::new(false)),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {limit}))) if limit==cap)
+            matches!(hosted.service_focus(&mut lease,&original,&AtomicBool::new(false)),Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {limit}))) if limit==cap)
         );
     }
     assert_eq!(
@@ -669,7 +669,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
             )
             .unwrap();
         assert!(matches!(
-            lease.accept_dialog_focus(
+            lease.accept_focus(
                 &second_request,
                 &second_owner.borrow().source,
                 &mut foreign,
@@ -701,11 +701,7 @@ fn authentic_foreign_publication_refuses_without_consuming_either_original_resul
             .raw_mut()
             .resume_source_edit(original.operation(), source_limits(10_000_000), &cancel)
             .unwrap();
-        assert!(
-            hosted
-                .service_dialog_focus(&mut lease, original, &cancel)
-                .unwrap()
-        );
+        assert!(hosted.service_focus(&mut lease, original, &cancel).unwrap());
         assert!(owner.borrow().focus.pending.is_none());
         assert_eq!(owner.borrow().work, work);
         assert_eq!(allow_request(&mut lease).operation(), original.operation());
@@ -758,7 +754,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
         .unwrap();
     assert!(
         hosted
-            .service_dialog_focus(&mut lease, &original, &cancel)
+            .service_focus(&mut lease, &original, &cancel)
             .unwrap()
     );
     assert_eq!(owner.borrow().work, work);
@@ -779,29 +775,22 @@ fn focus_preparation_rejects_wrong_observation_and_native_focusing_stays_unavail
         .unwrap();
     let stamp = lease.snapshot().stamp();
     let prepared = lease
-        .prepare_dialog_focus(&original, source, &cancel)
+        .prepare_focus(&original, source, &cancel)
         .unwrap()
         .unwrap();
-    assert_eq!(
-        prepared.target(),
-        DomDialogFocusTarget::RememberedHost(host)
-    );
+    assert_eq!(prepared.target(), DomFocusTarget::RememberedHost(host));
     assert!(matches!(
-        prepared.publish(DomDialogFocusObservation::Denied),
+        prepared.publish(DomFocusObservation::Denied),
         Err(DomError::InvalidSourceOperation)
     ));
     assert_eq!(lease.snapshot().stamp(), stamp);
     let prepared = lease
-        .prepare_dialog_focus(&original, source, &cancel)
+        .prepare_focus(&original, source, &cancel)
         .unwrap()
         .unwrap();
-    let mut publication = Some(
-        prepared
-            .publish(DomDialogFocusObservation::KnownNone)
-            .unwrap(),
-    );
+    let mut publication = Some(prepared.publish(DomFocusObservation::KnownNone).unwrap());
     lease
-        .accept_dialog_focus(&original, source, &mut publication, &cancel)
+        .accept_focus(&original, source, &mut publication, &cancel)
         .unwrap();
     assert!(publication.is_none());
     let focusing = allow_request(&mut lease);
@@ -811,12 +800,13 @@ fn focus_preparation_rejects_wrong_observation_and_native_focusing_stays_unavail
     );
     assert!(
         lease
-            .prepare_dialog_focus(&focusing, source, &cancel)
+            .prepare_focus(&focusing, source, &cancel)
             .unwrap()
             .is_none()
     );
     assert_eq!(allow_request(&mut lease), focusing);
 }
 
+mod autofocus;
 mod denial;
 mod policy;

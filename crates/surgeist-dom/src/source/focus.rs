@@ -1,4 +1,4 @@
-//! Affine qualified observations for the original Dialog focusing actions.
+//! Affine focus observations for original method and insertion continuations.
 use crate::{
     DocumentId, DomError, DomHostedGlobalId, DomHostedHostId, DomSourceDialogRequest,
     DomSourceExecutionEntryScope, DomStamp,
@@ -28,31 +28,60 @@ impl DomSourceDialogFocusingRequest {
         self.occurrence.ordinal
     }
 }
-/// The closed affine bridge accepts remembered-focus or a called allow-focus
-/// observation. Permission denial never acknowledges the outer focusing call.
+/// One exact action of an actual common Element insertion continuation.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DomDialogFocusRequest {
-    Remember(DomSourceDialogRequest),
-    Allow(DomSourceDialogFocusingRequest),
+pub struct DomSourceAutofocusInsertionRequest {
+    pub(crate) operation: crate::DomSourceOperationId,
+    pub(crate) subject: crate::NodeId,
+    pub(crate) action: surgeist_html::HtmlAutofocusInsertionAction,
+    pub(crate) occurrence: super::watcher::HookOccurrence,
 }
-impl DomDialogFocusRequest {
+impl DomSourceAutofocusInsertionRequest {
+    pub const fn operation(&self) -> crate::DomSourceOperationId {
+        self.operation
+    }
+    pub const fn subject(&self) -> crate::NodeId {
+        self.subject
+    }
+    pub const fn action(&self) -> surgeist_html::HtmlAutofocusInsertionAction {
+        self.action
+    }
+    pub const fn command(&self) -> usize {
+        self.occurrence.command
+    }
+    pub const fn current_occurrence(&self) -> u64 {
+        self.occurrence.ordinal
+    }
+}
+/// The single affine bridge for remembered focus and allow-focus observations.
+/// A denial fulfills only its exact allow-focus action; the original owner
+/// continues the Dialog child or insertion cursor to its actual terminal state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DomFocusRequest {
+    RememberDialog(DomSourceDialogRequest),
+    AllowDialog(DomSourceDialogFocusingRequest),
+    AllowAutofocusInsertion(DomSourceAutofocusInsertionRequest),
+}
+impl DomFocusRequest {
     pub fn operation(&self) -> crate::DomSourceOperationId {
         match self {
-            Self::Remember(r) => r.operation(),
-            Self::Allow(r) => r.operation(),
+            Self::RememberDialog(r) => r.operation(),
+            Self::AllowDialog(r) => r.operation(),
+            Self::AllowAutofocusInsertion(r) => r.operation(),
         }
     }
     pub fn subject(&self) -> crate::NodeId {
         match self {
-            Self::Remember(r) => r.subject(),
-            Self::Allow(r) => r.subject(),
+            Self::RememberDialog(r) => r.subject(),
+            Self::AllowDialog(r) => r.subject(),
+            Self::AllowAutofocusInsertion(r) => r.subject(),
         }
     }
 }
-/// The actual producer role needed by this exact Dialog action. Observation of
+/// The actual producer role needed by this exact focus request. Observation of
 /// this target grants no execution authority or permission to move focus.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomDialogFocusTarget {
+pub enum DomFocusTarget {
     RememberedHost(DomHostedHostId),
     RetiredDocumentWindow {
         document: DocumentId,
@@ -68,7 +97,7 @@ pub enum DomDialogFocusTarget {
 }
 /// Closed observations supported by the corresponding trusted producer role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomDialogFocusObservation {
+pub enum DomFocusObservation {
     KnownNone,
     Denied,
 }
@@ -90,14 +119,14 @@ pub(crate) enum FocusQualification {
     },
 }
 impl FocusQualification {
-    pub(crate) const fn target(self) -> DomDialogFocusTarget {
+    pub(crate) const fn target(self) -> DomFocusTarget {
         match self {
-            Self::Remembered { host, .. } => DomDialogFocusTarget::RememberedHost(host),
+            Self::Remembered { host, .. } => DomFocusTarget::RememberedHost(host),
             Self::RetiredDocument {
                 document,
                 global,
                 host,
-            } => DomDialogFocusTarget::RetiredDocumentWindow {
+            } => DomFocusTarget::RetiredDocumentWindow {
                 document,
                 global,
                 host,
@@ -106,7 +135,7 @@ impl FocusQualification {
                 document,
                 global,
                 host,
-            } => DomDialogFocusTarget::DeniedDocumentWindow {
+            } => DomFocusTarget::DeniedDocumentWindow {
                 document,
                 global,
                 host,
@@ -124,16 +153,16 @@ impl FocusQualification {
 /// Exact action/occurrence, canonical basis and qualified producer role.
 /// Preparation itself neither observes nor changes system focus.
 #[derive(Debug)]
-pub struct DomDialogFocusPreparation {
-    pub(crate) request: DomDialogFocusRequest,
+pub struct DomFocusPreparation {
+    pub(crate) request: DomFocusRequest,
     pub(crate) qualification: FocusQualification,
     pub(crate) basis: DomStamp,
 }
-impl DomDialogFocusPreparation {
-    pub fn request(&self) -> &DomDialogFocusRequest {
+impl DomFocusPreparation {
+    pub fn request(&self) -> &DomFocusRequest {
         &self.request
     }
-    pub const fn target(&self) -> DomDialogFocusTarget {
+    pub const fn target(&self) -> DomFocusTarget {
         self.qualification.target()
     }
     /// Seal only the observation belonging to this qualified role. KnownNone
@@ -142,22 +171,22 @@ impl DomDialogFocusPreparation {
     /// decision. Neither observation attests positive focusing effects.
     pub fn publish(
         self,
-        observation: DomDialogFocusObservation,
-    ) -> Result<DomDialogFocusPublication, DomError> {
+        observation: DomFocusObservation,
+    ) -> Result<DomFocusPublication, DomError> {
         if !matches!(
             (self.qualification, observation),
             (
                 FocusQualification::Remembered { .. },
-                DomDialogFocusObservation::KnownNone
+                DomFocusObservation::KnownNone
             ) | (
                 FocusQualification::RetiredDocument { .. }
                     | FocusQualification::DeniedDocument { .. },
-                DomDialogFocusObservation::Denied
+                DomFocusObservation::Denied
             )
         ) {
             return Err(DomError::InvalidSourceOperation);
         }
-        Ok(DomDialogFocusPublication {
+        Ok(DomFocusPublication {
             request: self.request,
             qualification: self.qualification,
             basis: self.basis,
@@ -166,13 +195,13 @@ impl DomDialogFocusPreparation {
 }
 /// Move-only observation retained until the exact original Source accepts it.
 #[derive(Debug)]
-pub struct DomDialogFocusPublication {
-    pub(crate) request: DomDialogFocusRequest,
+pub struct DomFocusPublication {
+    pub(crate) request: DomFocusRequest,
     pub(crate) qualification: FocusQualification,
     pub(crate) basis: DomStamp,
 }
-impl DomDialogFocusPublication {
-    pub fn request(&self) -> &DomDialogFocusRequest {
+impl DomFocusPublication {
+    pub fn request(&self) -> &DomFocusRequest {
         &self.request
     }
 }

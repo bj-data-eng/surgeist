@@ -351,6 +351,23 @@ impl DraftNode {
             image: self.image.clone(),
             hyperlink: self.hyperlink.clone(),
             encoding_url_document: self.encoding_url_document.clone(),
+            autofocus_document: self
+                .autofocus_document
+                .as_ref()
+                .map(|state| {
+                    use crate::autofocus::DocumentAutofocusState as F;
+                    Ok::<_, DomError>(match state {
+                        F::Known {
+                            candidates,
+                            processed,
+                        } => F::Known {
+                            candidates: a.copy(candidates, cancel)?,
+                            processed: *processed,
+                        },
+                        F::Unavailable => F::Unavailable,
+                    })
+                })
+                .transpose()?,
             interactive_document: self
                 .interactive_document
                 .as_ref()
@@ -576,6 +593,11 @@ impl Draft {
             add(node.children.capacity(), size_of::<Key>())?;
             add(node.manual_nodes.capacity(), size_of::<Key>())?;
             add(node.assigned_nodes.capacity(), size_of::<Key>())?;
+            if let Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) =
+                &node.autofocus_document
+            {
+                add(candidates.capacity(), size_of::<Key>())?;
+            }
             if let Some(crate::dialog::DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,

@@ -1,8 +1,8 @@
 //! Qualified negative focus observations from actual Host/Window lifetime state.
 use super::*;
 use surgeist_dom::{
-    DomDialogFocusObservation, DomDialogFocusPreparation, DomDialogFocusPublication,
-    DomDialogFocusRequest, DomDialogFocusTarget, DomHostedRuntimeRetention, DomSourceLease,
+    DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomFocusTarget,
+    DomHostedRuntimeRetention, DomSourceLease,
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HostFocusDisposition {
@@ -24,7 +24,7 @@ impl fmt::Debug for DomSourceExecutionScope {
     }
 }
 pub(super) struct FocusState {
-    pub(super) pending: Option<DomDialogFocusPublication>,
+    pub(super) pending: Option<DomFocusPublication>,
     pub(super) host_backing: Option<DomHostedRuntimeRetention>,
     _header: DomHostedRuntimeRetention,
 }
@@ -43,7 +43,7 @@ impl FocusState {
 // Actual temporary producer header; its result moves into the pre-admitted
 // fixed slot before this separate relative formation extent is released.
 struct FocusFormation {
-    preparation: DomDialogFocusPreparation,
+    preparation: DomFocusPreparation,
     payload: DomHostedRuntimeRetention,
 }
 impl HostedRuntime {
@@ -120,10 +120,10 @@ impl HostedRuntime {
         }
         Err(DomHostedRuntimeError::TargetNotFound)
     }
-    pub(crate) fn service_dialog_focus(
+    pub(crate) fn service_focus(
         &self,
         lease: &mut DomSourceLease<'_>,
-        request: &DomDialogFocusRequest,
+        request: &DomFocusRequest,
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -138,7 +138,7 @@ impl HostedRuntime {
                 return Err(DomHostedRuntimeError::OperationPending);
             }
         } else {
-            let remembering = matches!(request, DomDialogFocusRequest::Remember(_));
+            let remembering = matches!(request, DomFocusRequest::RememberDialog(_));
             if remembering {
                 // Missing/unobserved original scope needs no owned formation.
                 let host = match lease
@@ -186,7 +186,7 @@ impl HostedRuntime {
             // keeps its original validation order; this private service is
             // reached only for the drive loop's actual focus occurrence.
             let Some(prepared) = lease
-                .prepare_dialog_focus(request, &state.source, cancel)
+                .prepare_focus(request, &state.source, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
             else {
                 return Ok(false);
@@ -196,8 +196,8 @@ impl HostedRuntime {
                 payload,
             };
             let observation = match formation.preparation.target() {
-                DomDialogFocusTarget::RememberedHost(_) => DomDialogFocusObservation::KnownNone,
-                DomDialogFocusTarget::DeniedDocumentWindow {
+                DomFocusTarget::RememberedHost(_) => DomFocusObservation::KnownNone,
+                DomFocusTarget::DeniedDocumentWindow {
                     document,
                     global,
                     host,
@@ -256,9 +256,9 @@ impl HostedRuntime {
                     {
                         return Ok(false);
                     }
-                    DomDialogFocusObservation::Denied
+                    DomFocusObservation::Denied
                 }
-                DomDialogFocusTarget::RetiredDocumentWindow { global, host, .. } => {
+                DomFocusTarget::RetiredDocumentWindow { global, host, .. } => {
                     let location = match state.find_window(global, cancel, || {
                         lease
                             .admit_hosted_runtime_work(1, cancel)
@@ -287,7 +287,7 @@ impl HostedRuntime {
                     {
                         return Ok(false);
                     }
-                    DomDialogFocusObservation::Denied
+                    DomFocusObservation::Denied
                 }
             };
             state.step(cancel)?;
@@ -311,7 +311,7 @@ impl HostedRuntime {
         }
         let HostedState { source, focus, .. } = &mut *state;
         lease
-            .accept_dialog_focus(request, source, &mut focus.pending, cancel)
+            .accept_focus(request, source, &mut focus.pending, cancel)
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         Ok(true)
     }

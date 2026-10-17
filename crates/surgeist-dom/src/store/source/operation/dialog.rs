@@ -61,6 +61,7 @@ impl std::ops::DerefMut for OperationDraft {
     }
 }
 pub(super) struct Usage {
+    autofocus: usize,
     work: Arc<AtomicU64>,
     base: u64,
     encoding: u64,
@@ -72,6 +73,11 @@ pub(super) struct Usage {
 }
 impl Usage {
     pub(super) fn admit_limits(&self, limits: DomLimits) -> Result<(), DomError> {
+        admit(
+            self.autofocus,
+            limits.autofocus_candidates,
+            DomResource::AutofocusCandidates,
+        )?;
         self.input
             .admit_limits(limits.input_scratch, limits.input_work)?;
         if self.base > limits.base_work {
@@ -422,7 +428,9 @@ impl Operation {
 
         let receiver =
             dom.register_dispatch_custody_with_formation(&[subject], formation.as_ref(), cancel)?;
+        let autofocus = self.draft.autofocus_count(cancel)?;
         let usage = Usage {
+            autofocus,
             work: self.draft.source_work.clone(),
             base: self.draft.base_work.get(),
             encoding: self.draft.encoding_url_work.get(),

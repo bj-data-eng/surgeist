@@ -119,6 +119,7 @@ mod element_tasks;
 pub use element_tasks::{
     DomElementTaskId, DomElementTaskRetention, DomElementTaskSource, DomElementTaskSourceKind,
 };
+mod autofocus;
 mod dialog;
 mod dispatch;
 mod document;
@@ -155,6 +156,7 @@ mod template;
 mod textarea;
 mod view_transition;
 
+pub use autofocus::DomDocumentAutofocus;
 pub use base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
 pub use batch::{CreatedNode, DomBatch, NodeOperand};
 pub use details::{

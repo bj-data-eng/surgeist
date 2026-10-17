@@ -7,6 +7,7 @@
 #![deny(unfulfilled_lint_expectations)]
 
 mod attributes;
+mod autofocus;
 /// Controlled operations over HTML-owned immutable values.
 pub mod bounded;
 mod canvas;
@@ -57,6 +58,7 @@ mod values;
 mod vocabulary;
 
 pub use attributes::*;
+pub use autofocus::*;
 pub use canvas::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState};
 pub use child_navigable::{
     HtmlChildNavigableAccessDecision, HtmlChildNavigableLoadDelayDecision,

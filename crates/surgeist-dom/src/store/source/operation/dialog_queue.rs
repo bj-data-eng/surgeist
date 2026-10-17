@@ -514,7 +514,10 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     (
                         3 + u64::from(active_hook) + u64::from(structural_modal),
-                        future_outputs + modal_outputs,
+                        future_outputs + modal_outputs
+                            // Autofocus history is a distinct canonical domain,
+                            // possibly on a different captured top Document.
+                            + op.draft.dialog_autofocus_tail_outputs(frame.subject, cancel)?,
                     )
                 }
             };

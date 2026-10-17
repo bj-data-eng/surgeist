@@ -10,7 +10,7 @@ impl Operation {
             self.receipt,
             Some(
                 Receipt::Watcher { applied: true, .. }
-                    | Receipt::DialogFocus { applied: true, .. }
+                    | Receipt::Focus { applied: true, .. }
                     | Receipt::CloseWatcher { applied: true, .. }
             )
         )
@@ -18,7 +18,7 @@ impl Operation {
     pub(super) fn restore_external_receipt(&mut self, value: bool) {
         if let Some(
             Receipt::Watcher { applied, .. }
-            | Receipt::DialogFocus { applied, .. }
+            | Receipt::Focus { applied, .. }
             | Receipt::CloseWatcher { applied, .. },
         ) = &mut self.receipt
         {

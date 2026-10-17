@@ -1,15 +1,35 @@
-//! Qualified negative focus observations join the original Show receipt.
+//! Qualified focus observations join the original method or insertion receipt.
 use super::*;
 use crate::{
-    DomDialogFocusPreparation, DomDialogFocusPublication, DomDialogFocusRequest, DomHostedSource,
+    DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomHostedSource,
     DomSourceExecutionEntryScope, source::FocusQualification,
 };
 use surgeist_html::{HtmlDialogAction, HtmlDialogReply};
+enum FocusFrame {
+    Dialog(crate::store::dialog::MethodFrame),
+    Insertion(crate::store::autofocus::Frame),
+}
 impl Operation {
-    fn focus_frame(
-        &self,
-        request: &DomDialogFocusRequest,
-    ) -> Result<crate::store::dialog::MethodFrame, DomError> {
+    fn focus_frame(&self, request: &DomFocusRequest) -> Result<FocusFrame, DomError> {
+        if let DomFocusRequest::AllowAutofocusInsertion(request) = request {
+            let frame = self
+                .draft
+                .pending_autofocus()
+                .ok_or(DomError::InvalidSourceOperation)?;
+            if request.operation() != self.id
+                || self.draft.published_id(frame.subject) != Some(request.subject())
+                || request.action() != surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+                || frame.cursor.action() != request.action()
+                || request.occurrence.command != self.index
+                || !matches!(frame.invocation,Invocation::Exposed(actual) if actual==request.occurrence.ordinal)
+                || frame.target.is_none()
+            {
+                return Err(DomError::InvalidSourceOperation);
+            }
+            self.draft.element(frame.subject)?;
+            return Ok(FocusFrame::Insertion(frame));
+        }
+
         let frame = self
             .draft
             .dialog_method
@@ -20,7 +40,7 @@ impl Operation {
             return Err(DomError::InvalidSourceOperation);
         }
         match request {
-            DomDialogFocusRequest::Remember(request) => {
+            DomFocusRequest::RememberDialog(request) => {
                 let occurrence = request.method().ok_or(DomError::InvalidSourceOperation)?;
                 if request.action() != HtmlDialogAction::RememberFocusedElement
                     || frame.cursor.action() != request.action()
@@ -30,7 +50,7 @@ impl Operation {
                     return Err(DomError::InvalidSourceOperation);
                 }
             }
-            DomDialogFocusRequest::Allow(request) => {
+            DomFocusRequest::AllowDialog(request) => {
                 let child = frame.focusing.ok_or(DomError::InvalidSourceOperation)?;
                 if request.action() != surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
                     || frame.cursor.action() != HtmlDialogAction::RunDialogFocusingSteps
@@ -41,17 +61,20 @@ impl Operation {
                     return Err(DomError::InvalidSourceOperation);
                 }
             }
+            DomFocusRequest::AllowAutofocusInsertion(_) => {
+                unreachable!("handled original insertion")
+            }
         }
         self.draft.dialog_state(frame.subject)?;
-        Ok(frame)
+        Ok(FocusFrame::Dialog(frame))
     }
     fn focus_qualification(
         &self,
-        request: &DomDialogFocusRequest,
+        request: &DomFocusRequest,
         cancel: &AtomicBool,
     ) -> Result<Option<FocusQualification>, DomError> {
         let frame = self.focus_frame(request)?;
-        if matches!(request, DomDialogFocusRequest::Remember(_)) {
+        if matches!(request, DomFocusRequest::RememberDialog(_)) {
             let scope = self.entry_scope.observation();
             return Ok(match scope {
                 DomSourceExecutionEntryScope::ExplicitHost(host)
@@ -62,12 +85,19 @@ impl Operation {
                 _ => None,
             });
         }
+        let document = match frame {
+            FocusFrame::Dialog(frame) => {
+                self.draft.source_step(cancel)?;
+                self.draft.node(frame.subject)?.document
+            }
+            FocusFrame::Insertion(frame) => frame.target.ok_or(DomError::InvalidSourceOperation)?,
+        };
         Ok(
             match self
                 .draft
-                .dialog_allow_focus_permission(frame.subject, cancel)?
+                .document_allow_focus_permission(document, cancel)?
             {
-                crate::store::dialog::AllowFocusPermission::NeedsWindow(qualification) => {
+                crate::store::focus::AllowFocusPermission::NeedsWindow(qualification) => {
                     Some(qualification)
                 }
                 _ => None,
@@ -109,14 +139,33 @@ impl Operation {
         }
         Ok(())
     }
-    pub(super) fn apply_dialog_focus(
+    pub(super) fn apply_focus(
         &mut self,
-        request: &DomDialogFocusRequest,
+        request: &DomFocusRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let mut frame = self.focus_frame(request)?;
+        let frame = self.focus_frame(request)?;
         self.draft.source_step(cancel)?;
-        if matches!(request, DomDialogFocusRequest::Remember(_)) {
+        if let FocusFrame::Insertion(mut frame) = frame {
+            frame
+                .cursor
+                .reply(surgeist_html::HtmlAutofocusInsertionReply::AllowFocus(
+                    false,
+                ))
+                .map_err(DomError::AutofocusInsertionProtocol)?;
+            frame.invocation = Invocation::Unissued;
+            self.draft.source_step(cancel)?;
+            self.draft
+                .effects
+                .last_mut()
+                .ok_or(DomError::InvalidSourceOperation)?
+                .effect = select::Effect::AutofocusInsertion(frame);
+            return Ok(());
+        }
+        let FocusFrame::Dialog(mut frame) = frame else {
+            unreachable!("handled insertion")
+        };
+        if matches!(request, DomFocusRequest::RememberDialog(_)) {
             // An already-null slot remains a semantic no-op.
             self.draft
                 .element_mut(frame.subject)
@@ -144,14 +193,14 @@ impl Operation {
     }
 }
 impl DomSourceLease<'_> {
-    /// Prepare the actual original Show occurrence for its qualified negative
+    /// Prepare the actual original occurrence for its qualified negative
     /// focus producer. Missing evidence remains unavailable.
-    pub fn prepare_dialog_focus(
+    pub fn prepare_focus(
         &self,
-        request: &DomDialogFocusRequest,
+        request: &DomFocusRequest,
         source: &DomHostedSource,
         cancel: &AtomicBool,
-    ) -> Result<Option<DomDialogFocusPreparation>, DomError> {
+    ) -> Result<Option<DomFocusPreparation>, DomError> {
         self.dom
             .validate_hosted_source(source)
             .map_err(|_| DomError::HostedSourceUnavailable)?;
@@ -185,7 +234,7 @@ impl DomSourceLease<'_> {
             return Err(DomError::SourceOutputLimit);
         }
         op.draft.source_admit(0, cancel)?;
-        Ok(Some(DomDialogFocusPreparation {
+        Ok(Some(DomFocusPreparation {
             request: request.clone(),
             qualification,
             basis: self.dom.snapshot().stamp(),
@@ -193,11 +242,11 @@ impl DomSourceLease<'_> {
     }
     /// Transfer the exact authentic observation into the original receipt before
     /// fallible cursor application/publication. Rejection preserves the result.
-    pub fn accept_dialog_focus(
+    pub fn accept_focus(
         &mut self,
-        request: &DomDialogFocusRequest,
+        request: &DomFocusRequest,
         source: &DomHostedSource,
-        publication: &mut Option<DomDialogFocusPublication>,
+        publication: &mut Option<DomFocusPublication>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.dom
@@ -231,7 +280,7 @@ impl DomSourceLease<'_> {
             .expect("qualified original operation");
         op.draft.source_step(cancel)?;
         op.refresh_admission(cancel)?;
-        op.receipt = Some(Receipt::DialogFocus {
+        op.receipt = Some(Receipt::Focus {
             publication: publication.take().expect("qualified authentic observation"),
             applied: false,
         });

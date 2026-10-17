@@ -925,6 +925,7 @@ pub(super) enum SelectAfter {
     OptionCache { option: Key, removing: bool },
 }
 pub(super) enum Effect {
+    AutofocusInsertion(super::autofocus::Frame),
     DialogHook(dialog::HookFrame),
     AttributeSuffix(attributes::AttributeSuffix),
     Style(style::Frame),
@@ -1023,6 +1024,7 @@ impl EffectFrame {
         let retained = self.effect.retained_payload(|| a.step())?;
         let payload = a.effect_payload(retained, cancel)?;
         let effect = match &self.effect {
+            Effect::AutofocusInsertion(frame) => Effect::AutofocusInsertion(*frame),
             Effect::DialogHook(frame) => Effect::DialogHook(*frame),
             Effect::AttributeSuffix(frame) => Effect::AttributeSuffix(frame.clone()),
             Effect::Style(frame) => Effect::Style(*frame),
@@ -1260,6 +1262,9 @@ impl Draft {
                 } = self.effects.pop().expect("admitted nonempty effect");
                 self.effect_scoped = scoped;
                 match effect {
+                    Effect::AutofocusInsertion(frame) => {
+                        self.autofocus_effect(frame, limits, cancel)?
+                    }
                     Effect::DialogHook(frame) => self.dialog_hook_effect(frame, cancel)?,
                     Effect::AttributeSuffix(frame) => {
                         self.attribute_suffix(frame, payload, limits, cancel)?

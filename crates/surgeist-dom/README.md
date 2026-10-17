@@ -1056,9 +1056,42 @@ and actual non-root, nondelegating state. The shared HTML rule covers the
 subject's own scroll regions; it supplies no geometry or guessed focusability.
 The child then reads the selected control's actual current top Document and
 compares origins. A genuine origin difference completes it before autofocus
-writes. Same-origin work waits at `EmptyAutofocusCandidates`; missing no-change
-proof waits at `RunFocusingSteps`, and delegate selection remains an actual
-service requirement. Positive focus movement and restoration remain unavailable.
+writes. For the same origin, the child clears that captured top Document's
+actual candidates, sets its processed flag and completes. Missing no-change proof
+waits at `RunFocusingSteps`, and delegate selection remains an actual service
+requirement. Positive focus movement and restoration remain unavailable.
+
+Each Document retains independently qualified autofocus history. Fresh native
+and hosted Documents begin with an empty candidate list and processed=false;
+parsed interaction provenance alone does not establish that history.
+`DomDocument::autofocus()` reads the candidates, processed flag and snapshot
+stamp from a complete Source basis, with an explicit error for unavailable
+history. It grants no execution authority over a historical candidate.
+
+Actual ordinary Document-tree insertion consumes the HTML insertion cursor,
+qualifying the Element's HTML/SVG/MathML namespace and exact autofocus attribute,
+then checking full activity, sandbox automatic features and
+allow-focus in source order before resolving the actual top Document. If its
+processed flag is false, the exact candidate is removed and appended. The native
+owner elects to continue past the standard's optional user-preference return.
+No focusability check or attribute-only enqueue is added. Shadow-connectedness
+alone is insufficient. Ordinary detach, adoption, attribute removal and inactivity
+preserve candidate history; distinct Documents can retain the same candidate.
+Rendering-time flushing remains unavailable.
+
+Use `DomLimits::with_autofocus_candidates` for a finite aggregate installed
+candidate allowance; the default is zero. `DomUsage::autofocus_candidates()`
+reports actual references across Documents. Source separately admits actual
+backing capacities, checkpoint overlap and cumulative work. Successful explicit
+Element destruction removes its exact identity from every surviving Document's
+candidate list in the same publication, preserving processed flags and survivor
+order. Failed unpublished destruction changes none of those lists; historical
+snapshots retain their original identities without authorizing live access.
+
+The shared `DomFocusRequest` distinguishes remembered Dialog focus, the Dialog
+child's allow-focus action and an actual autofocus insertion allow-focus action.
+`prepare_focus` and `accept_focus` use the same original affine observation
+and receipt owner for all three. An insertion never impersonates a Dialog call.
 
 An explicitly retired hosted Document has no browsing context, so feature
 permission is denied without evaluating policy. Its historical original Window

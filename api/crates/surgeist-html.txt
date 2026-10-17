@@ -1810,6 +1810,32 @@ pub enum surgeist_html::HtmlAutofillFieldIdentity
 pub surgeist_html::HtmlAutofillFieldIdentity::Credential(surgeist_html::HtmlAutocompleteCredential)
 pub surgeist_html::HtmlAutofillFieldIdentity::Detail(surgeist_html::HtmlAutofillField)
 pub surgeist_html::HtmlAutofillFieldIdentity::Setting(surgeist_html::HtmlFormAutocomplete)
+pub enum surgeist_html::HtmlAutofocusInsertionAction
+pub surgeist_html::HtmlAutofocusInsertionAction::AppendCandidate
+pub surgeist_html::HtmlAutofocusInsertionAction::CaptureTargetDocument
+pub surgeist_html::HtmlAutofocusInsertionAction::CaptureTargetTopDocument
+pub surgeist_html::HtmlAutofocusInsertionAction::Complete
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadAutofocus
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadAutofocusProcessed
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadFullyActive
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadInDocumentTree
+pub surgeist_html::HtmlAutofocusInsertionAction::ReadSandboxAutomaticFeatures
+pub surgeist_html::HtmlAutofocusInsertionAction::RemoveCandidate
+pub enum surgeist_html::HtmlAutofocusInsertionError
+pub surgeist_html::HtmlAutofocusInsertionError::Terminal
+pub surgeist_html::HtmlAutofocusInsertionError::WrongReply
+impl core::error::Error for surgeist_html::HtmlAutofocusInsertionError
+impl core::fmt::Display for surgeist_html::HtmlAutofocusInsertionError
+pub fn surgeist_html::HtmlAutofocusInsertionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::HtmlAutofocusInsertionReply
+pub surgeist_html::HtmlAutofocusInsertionReply::AllowFocus(bool)
+pub surgeist_html::HtmlAutofocusInsertionReply::Applied
+pub surgeist_html::HtmlAutofocusInsertionReply::Autofocus(bool)
+pub surgeist_html::HtmlAutofocusInsertionReply::AutofocusProcessed(bool)
+pub surgeist_html::HtmlAutofocusInsertionReply::FullyActive(bool)
+pub surgeist_html::HtmlAutofocusInsertionReply::InDocumentTree(bool)
+pub surgeist_html::HtmlAutofocusInsertionReply::SandboxAutomaticFeatures(bool)
 pub enum surgeist_html::HtmlBlockingTokens
 pub surgeist_html::HtmlBlockingTokens::Empty
 pub surgeist_html::HtmlBlockingTokens::Render
@@ -4172,6 +4198,13 @@ pub struct surgeist_html::HtmlAutocompleteSection
 impl surgeist_html::HtmlAutocompleteSection
 pub fn surgeist_html::HtmlAutocompleteSection::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlAutocompleteSectionError>
 pub fn surgeist_html::HtmlAutocompleteSection::value(&self) -> &surgeist_html::DocumentString
+pub struct surgeist_html::HtmlAutofocusInsertionCursor
+impl surgeist_html::HtmlAutofocusInsertionCursor
+pub const fn surgeist_html::HtmlAutofocusInsertionCursor::action(&self) -> surgeist_html::HtmlAutofocusInsertionAction
+pub const fn surgeist_html::HtmlAutofocusInsertionCursor::new() -> Self
+pub fn surgeist_html::HtmlAutofocusInsertionCursor::reply(&mut self, reply: surgeist_html::HtmlAutofocusInsertionReply) -> core::result::Result<(), surgeist_html::HtmlAutofocusInsertionError>
+impl core::default::Default for surgeist_html::HtmlAutofocusInsertionCursor
+pub fn surgeist_html::HtmlAutofocusInsertionCursor::default() -> Self
 pub struct surgeist_html::HtmlBitmapIconSize
 impl surgeist_html::HtmlBitmapIconSize
 pub fn surgeist_html::HtmlBitmapIconSize::height(&self) -> &surgeist_html::HtmlNonNegativeInteger
@@ -5892,6 +5925,7 @@ pub fn surgeist_html::VocabularySource::revision(self) -> &'static str
 pub const surgeist_html::VOCABULARY_SOURCE: surgeist_html::VocabularySource
 pub const fn surgeist_html::allow_focus_decision(feature_permission: core::option::Option<bool>, transient_activation: core::option::Option<bool>) -> surgeist_html::HtmlAllowFocusDecision
 pub fn surgeist_html::attribute_inventory() -> &'static [surgeist_html::AttributeInventoryRow]
+pub fn surgeist_html::autofocus_insertion_presence(element: &surgeist_html::QualifiedName, attribute: core::option::Option<&surgeist_html::Attribute>) -> bool
 pub fn surgeist_html::blocking_tokens_with<E>(value: core::option::Option<&surgeist_html::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlBlockingTokens, E>
 pub const fn surgeist_html::computed_dialog_closed_by(state: surgeist_html::HtmlClosedByState, modal: bool) -> surgeist_html::HtmlClosedBy
 pub const fn surgeist_html::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::HtmlCustomElementState

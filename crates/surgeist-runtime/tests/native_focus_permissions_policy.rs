@@ -635,21 +635,17 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
 }
 
 #[test]
-fn enabled_autofocus_waits_for_actual_focusing_or_same_origin_autofocus_tail() {
+fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_tail() {
     use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
     for (sandbox, inert, expected) in [
         (
             Some(""),
             false,
-            HtmlDialogFocusingAction::RunFocusingSteps {
+            Some(HtmlDialogFocusingAction::RunFocusingSteps {
                 control: HtmlDialogFocusControl::Subject,
-            },
+            }),
         ),
-        (
-            None,
-            true,
-            HtmlDialogFocusingAction::EmptyAutofocusCandidates,
-        ),
+        (None, true, None),
     ] {
         let (mut session, top) = headless_top();
         let (_, child) = container(
@@ -699,21 +695,41 @@ fn enabled_autofocus_waits_for_actual_focusing_or_same_origin_autofocus_tail() {
             DomSourceDriveProgress::Pending {
                 request: DomSourceRequest::DialogFocusing(request),
                 reason: DomSourceUnavailable::DialogFocusing(action),
-            } => {
-                assert_eq!(action, expected);
-                assert_eq!(request.action(), expected);
+            } if !inert => {
+                assert_eq!(Some(action), expected);
+                assert_eq!(Some(request.action()), expected);
                 assert_eq!(request.subject(), subject);
                 request.operation()
             }
-            other => panic!("the actual unsupported child action must remain pending: {other:?}"),
+            DomSourceDriveProgress::Complete(done) if inert => {
+                assert!(!done.cancellation_requested());
+                done.operation()
+            }
+            other => panic!(
+                "actual focusing remains pending without inert proof; the same-origin no-change path completes its autofocus writes: {other:?}"
+            ),
         };
         assert_eq!(calls, [true]);
         let current = session.snapshot();
-        assert_eq!(current.incomplete_source_operation(), Some(operation));
-        assert!(matches!(
-            current.document(child).unwrap().top_layer(),
-            Err(DomError::IncompleteSourceOperation)
-        ));
+        if inert {
+            assert_eq!(current.incomplete_source_operation(), None);
+            assert!(session.dom().pending_source_edit().is_none());
+            assert_eq!(
+                current
+                    .document(child)
+                    .unwrap()
+                    .top_layer()
+                    .unwrap()
+                    .raw_members(),
+                [subject]
+            );
+        } else {
+            assert_eq!(current.incomplete_source_operation(), Some(operation));
+            assert!(matches!(
+                current.document(child).unwrap().top_layer(),
+                Err(DomError::IncompleteSourceOperation)
+            ));
+        }
         let dialog = current.node(subject).unwrap().as_dialog().unwrap();
         assert!(dialog.is_modal());
         assert!(dialog.has_close_watcher());
@@ -1263,3 +1279,6 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
             .is_empty()
     );
 }
+
+#[path = "native_focus_permissions_policy/autofocus.rs"]
+mod autofocus;

@@ -36,9 +36,12 @@ hidden popover state advances the empty popover steps; proven negative allow-foc
 can complete Show or ShowModal without focus
 movement. Unknown or unsupported actual inputs retain their precise action wait.
 Permitted calls run the HTML focusing child. An own-inert autofocus subject can
-finish called focusing without a change, then return on its actual origin
-difference from the top Document. Delegate, autofocus-state and other unsupported
-work retain their specific child action; no focus movement is inferred.
+finish called focusing without a change, then return on an actual origin
+difference or complete the same-origin top Document's autofocus processing.
+The same affine focus bridge serves real autofocus insertion occurrences through
+DOM's canonical candidate owner. Delegate and other unsupported work retain
+their specific action; no focus movement or rendering-time autofocus flush is
+inferred.
 The standard nonmodal Close method dispatches genuine noncancelable beforetoggle,
 rebases its open read after callbacks, runs full open-removal/watcher hooks, applies
 a supplied return value and queues its independent Close notification when previous

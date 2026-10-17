@@ -72,12 +72,12 @@ fn autofocus_and_own_inert_consume_real_boolean_intrinsics_and_exact_attribute_n
     ] {
         assert!(
             staged
-                .dialog_focus_boolean(subject, selected, attribute, &cancel)
+                .focus_boolean(subject, selected, attribute, &cancel)
                 .unwrap()
         );
         assert!(
             !staged
-                .dialog_focus_boolean(other, selected, attribute, &cancel)
+                .focus_boolean(other, selected, attribute, &cancel)
                 .unwrap()
         );
     }
@@ -130,7 +130,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     let before = measured.source_work.load(Ordering::Relaxed);
     assert!(
         measured
-            .dialog_focus_boolean(
+            .focus_boolean(
                 key,
                 surgeist_html::HtmlBooleanAttribute::Inert,
                 KnownHtmlAttribute::Inert,
@@ -147,7 +147,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     let baseline = staged.source_work.load(Ordering::Relaxed);
     staged.source_limits = Some(limits(baseline + work - 1));
     assert_eq!(
-        staged.dialog_focus_boolean(
+        staged.focus_boolean(
             key,
             surgeist_html::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
@@ -161,7 +161,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     assert_eq!(staged.source_temporary_units.load(Ordering::Relaxed), 0);
     let spent = staged.source_work.load(Ordering::Relaxed);
     assert_eq!(
-        staged.dialog_focus_boolean(
+        staged.focus_boolean(
             key,
             surgeist_html::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
@@ -173,7 +173,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     staged.source_limits = Some(limits(10_000_000));
     assert!(
         staged
-            .dialog_focus_boolean(
+            .focus_boolean(
                 key,
                 surgeist_html::HtmlBooleanAttribute::Inert,
                 KnownHtmlAttribute::Inert,

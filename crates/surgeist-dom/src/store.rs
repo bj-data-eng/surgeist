@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod attributes;
+mod autofocus;
 mod base;
 mod children;
 mod control;
@@ -22,6 +23,7 @@ mod dialog;
 mod dispatch;
 mod document;
 mod element_tasks;
+mod focus;
 mod form;
 pub(crate) mod hosted;
 mod hyperlink;
@@ -55,6 +57,7 @@ use view_transition::DraftTransitions;
 pub enum DomResource {
     ManagedNodes,
     SlotReferences,
+    AutofocusCandidates,
     SlotAssignmentInputs,
     SlotQueryOutput,
     SlotQueryScratch,
@@ -146,6 +149,11 @@ pub enum DomError {
     MarqueeInapplicable,
     DialogInapplicable,
     DialogDocumentStateUnavailable,
+    AutofocusDocumentStateUnavailable,
+    AutofocusInsertionUnavailable {
+        action: surgeist_html::HtmlAutofocusInsertionAction,
+    },
+    AutofocusInsertionProtocol(surgeist_html::HtmlAutofocusInsertionError),
     DialogFocusingUnavailable {
         action: surgeist_html::HtmlDialogFocusingAction,
     },
@@ -271,6 +279,7 @@ pub struct DomLimits {
     units: usize,
     commands: usize,
     slot_references: usize,
+    autofocus_candidates: usize,
     slot_assignment_inputs: usize,
     history_entries: usize,
     history_bytes: usize,
@@ -294,6 +303,19 @@ pub struct DomLimits {
     )>,
 }
 impl DomLimits {
+    /// Aggregate installed candidate references across all Document histories.
+    /// Native empty state needs no allowance; each growing insertion does.
+    pub fn with_autofocus_candidates(mut self, candidates: usize) -> Result<Self, DomError> {
+        if candidates > isize::MAX as usize / size_of::<NodeId>().max(size_of::<Key>()) {
+            return Err(DomError::InvalidLimit(DomResource::AutofocusCandidates));
+        }
+        self.autofocus_candidates = candidates;
+        Ok(self)
+    }
+    pub fn autofocus_candidates(self) -> usize {
+        self.autofocus_candidates
+    }
+
     /// Select explicit finite dispatch-custody allowances; the default is disabled.
     pub fn with_dispatch_custody(mut self, limits: crate::DomDispatchCustodyLimits) -> Self {
         self.dispatch_custody = limits;
@@ -343,6 +365,7 @@ impl DomLimits {
             units,
             commands,
             slot_references,
+            autofocus_candidates: 0,
             slot_assignment_inputs,
             history_entries,
             history_bytes,
@@ -559,6 +582,7 @@ impl DomLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomUsage {
+    autofocus_candidates: usize,
     slot_references: usize,
     nodes: usize,
     units: usize,
@@ -569,6 +593,9 @@ pub struct DomUsage {
     pseudos: usize,
 }
 impl DomUsage {
+    pub fn autofocus_candidates(self) -> usize {
+        self.autofocus_candidates
+    }
     pub fn slot_references(self) -> usize {
         self.slot_references
     }
@@ -615,6 +642,7 @@ pub enum DomChange {
     DocumentBase(DocumentId),
     DocumentMeta(DocumentId),
     DocumentInteractiveState(DocumentId),
+    DocumentAutofocusState(DocumentId),
     DocumentRenderBlocking(DocumentId),
     DocumentEncodingUrlFacts(DocumentId),
     SlotManual(NodeId),
@@ -797,6 +825,7 @@ pub(crate) struct Node {
     pub(crate) hyperlink: Option<crate::hyperlink::HyperlinkState<NodeId>>,
     pub(crate) encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
     pub(crate) interactive_document: Option<crate::dialog::DocumentInteractiveState<NodeId>>,
+    pub(crate) autofocus_document: Option<crate::autofocus::DocumentAutofocusState<NodeId>>,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct Slot {
@@ -941,6 +970,18 @@ impl Dom {
     pub fn usage(&self) -> DomUsage {
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            autofocus_candidates: self
+                .state
+                .slots
+                .iter()
+                .filter_map(|s| s.node.as_ref())
+                .map(|n| match &n.autofocus_document {
+                    Some(crate::autofocus::DocumentAutofocusState::Known {
+                        candidates, ..
+                    }) => candidates.len(),
+                    _ => 0,
+                })
+                .sum(),
             slot_references: self.state.slot_reference_count(),
             transitions,
             records,
@@ -1013,6 +1054,11 @@ impl Dom {
             self.state.slot_reference_count(),
             limits.slot_references,
             DomResource::SlotReferences,
+        )?;
+        admit(
+            self.usage().autofocus_candidates(),
+            limits.autofocus_candidates,
+            DomResource::AutofocusCandidates,
         )?;
         admit(self.state.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(self.state.units, limits.units, DomResource::StringCodeUnits)?;
@@ -1443,6 +1489,7 @@ struct DraftNode {
     hyperlink: Option<crate::hyperlink::HyperlinkState<Key>>,
     encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
     interactive_document: Option<crate::dialog::DocumentInteractiveState<Key>>,
+    autofocus_document: Option<crate::autofocus::DocumentAutofocusState<Key>>,
 }
 struct Draft {
     owner: Arc<BatchIdentity>,
@@ -1612,6 +1659,25 @@ impl Draft {
                         .as_ref()
                         .map(|h| h.map(|id| Key::Existing(id.slot))),
                     encoding_url_document: node.encoding_url_document.clone(),
+                    autofocus_document: node
+                        .autofocus_document
+                        .as_ref()
+                        .map(|state| {
+                            use crate::autofocus::DocumentAutofocusState as A;
+                            Ok::<_, DomError>(match state {
+                                A::Known {
+                                    candidates,
+                                    processed,
+                                } => A::Known {
+                                    candidates: source::initial::map_keys(
+                                        candidates, initial, cancelled,
+                                    )?,
+                                    processed: *processed,
+                                },
+                                A::Unavailable => A::Unavailable,
+                            })
+                        })
+                        .transpose()?,
                     interactive_document: node
                         .interactive_document
                         .as_ref()
@@ -1897,6 +1963,20 @@ impl Draft {
             ),
             _ => None,
         };
+        let autofocus_document = match &kind {
+            DomNodeKind::Document(metadata) => Some(
+                if matches!(
+                    metadata.creation_cause(),
+                    crate::DomDocumentCreationCause::Native
+                        | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+                ) {
+                    crate::autofocus::DocumentAutofocusState::fresh()
+                } else {
+                    crate::autofocus::DocumentAutofocusState::Unavailable
+                },
+            ),
+            _ => None,
+        };
         let template_document = matches!(kind, DomNodeKind::Document(_))
             .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
         let script = matches!(&kind, DomNodeKind::Element(element) if element.is_html_script())
@@ -1972,6 +2052,7 @@ impl Draft {
             hyperlink,
             encoding_url_document,
             interactive_document,
+            autofocus_document,
             base_document,
             parent: None,
             children: Vec::new(),
@@ -2532,6 +2613,11 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
+        admit(
+            self.autofocus_count(cancelled)?,
+            dom.limits.autofocus_candidates,
+            DomResource::AutofocusCandidates,
+        )?;
         let formation = source::formation::Formation::new(self, cancelled)?;
         let budget = formation.as_ref();
         let source::PublicationMap {
@@ -2629,6 +2715,23 @@ impl Draft {
                 image: source.image.as_ref().map(|b| b.map(id)),
                 hyperlink: source.hyperlink.as_ref().map(|h| h.map(id)),
                 encoding_url_document: source.encoding_url_document.clone(),
+                autofocus_document: source
+                    .autofocus_document
+                    .as_ref()
+                    .map(|state| {
+                        use crate::autofocus::DocumentAutofocusState as A;
+                        Ok::<_, DomError>(match state {
+                            A::Known {
+                                candidates,
+                                processed,
+                            } => A::Known {
+                                candidates: map_ids(candidates, &id, budget, cancelled)?,
+                                processed: *processed,
+                            },
+                            A::Unavailable => A::Unavailable,
+                        })
+                    })
+                    .transpose()?,
                 interactive_document: source
                     .interactive_document
                     .as_ref()
@@ -2891,6 +2994,10 @@ fn difference(
                     let change = DomChange::DocumentBase(DocumentId(frozen.document));
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(change);
+                }
+                if node.autofocus_document != current.autofocus_document {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentAutofocusState(DocumentId(id)));
                 }
                 if node.interactive_document != current.interactive_document {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;

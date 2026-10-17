@@ -889,6 +889,12 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
             assert!(open_dialogs.is_empty());
             assert!(top_layer.is_empty());
             assert!(pending_top_layer_removals.is_empty());
+            // The original parser's Dialog-list disposition does not attest
+            // its independently retained autofocus history.
+            assert!(matches!(
+                node.autofocus_document,
+                Some(crate::autofocus::DocumentAutofocusState::Unavailable)
+            ));
         }
         if let DomNodeKind::Element(element) = &node.kind
             && let Some(dialog) = element.dialog_state()
@@ -951,4 +957,12 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
         .unwrap();
     assert_eq!(installed.bindings().len(), mapped);
     assert_ne!(installed.snapshot().stamp(), before.stamp());
+    for binding in installed.bindings() {
+        if let Ok(document) = installed.snapshot().document(DocumentId(binding.node())) {
+            assert_eq!(
+                document.autofocus().unwrap_err(),
+                DomError::AutofocusDocumentStateUnavailable
+            );
+        }
+    }
 }

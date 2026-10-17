@@ -97,8 +97,8 @@ enum Receipt {
         publication: crate::DomCloseWatcherRequestPublication,
         applied: bool,
     },
-    DialogFocus {
-        publication: crate::DomDialogFocusPublication,
+    Focus {
+        publication: crate::DomFocusPublication,
         applied: bool,
     },
     Watcher {
@@ -507,11 +507,13 @@ enum PublicationTarget {
     Style(Frame),
     Dialog(crate::store::dialog::PendingDialog),
     DialogFocusing(crate::store::dialog::PendingFocusing),
+    AutofocusInsertion(crate::store::autofocus::Frame),
 }
 struct PublishedSegment {
     commit: DomCommit,
     dialog: Option<crate::DomSourceDialogRequest>,
     focusing: Option<crate::DomSourceDialogFocusingRequest>,
+    autofocus: Option<crate::DomSourceAutofocusInsertionRequest>,
 }
 impl Operation {
     #[cfg(test)]
@@ -626,6 +628,29 @@ impl Operation {
             limits.details_intentions,
             DomResource::DetailsToggleIntentions,
         )?;
+        // This synchronous policy setter has no cancellation input, like its
+        // existing finite bank checks; do not debit the parked Source Work.
+        let autofocus = draft
+            .existing
+            .iter()
+            .chain(&draft.created)
+            .flatten()
+            .try_fold(0usize, |count, node| {
+                let n = match &node.autofocus_document {
+                    Some(crate::autofocus::DocumentAutofocusState::Known {
+                        candidates, ..
+                    }) => candidates.len(),
+                    _ => 0,
+                };
+                count
+                    .checked_add(n)
+                    .ok_or(DomError::RepresentationExhausted)
+            })?;
+        admit(
+            autofocus,
+            limits.autofocus_candidates,
+            DomResource::AutofocusCandidates,
+        )?;
         let (transitions, records, pseudos) = draft.view_transitions.usage()?;
         admit(
             transitions,
@@ -665,6 +690,8 @@ impl Operation {
             parent: None,
             phase: if self.failure.is_some() {
                 crate::DomSourcePhase::PendingCleanup
+            } else if self.draft.pending_autofocus().is_some() {
+                crate::DomSourcePhase::AutofocusInsertionService
             } else if self.draft.dialog_method.is_some()
                 || self.draft.pending_dialog_hook().is_some()
             {
@@ -1133,6 +1160,7 @@ impl Operation {
         let invocation = frame.map(|frame| frame.invocation).or(match target {
             PublicationTarget::Dialog(pending) => pending.invocation,
             PublicationTarget::DialogFocusing(pending) => Some(pending.invocation),
+            PublicationTarget::AutofocusInsertion(pending) => Some(pending.invocation),
             _ => None,
         });
         let issued_next = match invocation {
@@ -1319,6 +1347,31 @@ impl Operation {
                 operation: self.id,
                 subject,
                 action: pending.action,
+                occurrence: crate::source::watcher::HookOccurrence {
+                    command: self.index,
+                    ordinal: match pending.invocation {
+                        Invocation::Unissued => self.draft.source_invocation,
+                        Invocation::Exposed(ordinal) => ordinal,
+                    },
+                },
+            })
+        } else {
+            None
+        };
+        let autofocus = if let PublicationTarget::AutofocusInsertion(pending) = target {
+            let subject = match pending.subject {
+                Key::Existing(slot) => NodeId {
+                    owner: self.id.owner,
+                    slot,
+                    generation: self.draft.generations[slot],
+                },
+                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+            };
+            prepared.state.node(self.id.owner, subject)?;
+            Some(crate::DomSourceAutofocusInsertionRequest {
+                operation: self.id,
+                subject,
+                action: pending.cursor.action(),
                 occurrence: crate::source::watcher::HookOccurrence {
                     command: self.index,
                     ordinal: match pending.invocation {
@@ -1523,6 +1576,15 @@ impl Operation {
                     .expect("exposed actual frame")
                     .effect
                 {
+                    select::Effect::AutofocusInsertion(actual) => {
+                        actual.invocation = Invocation::Exposed(
+                            autofocus
+                                .as_ref()
+                                .expect("issued insertion request")
+                                .occurrence
+                                .ordinal,
+                        );
+                    }
                     select::Effect::Style(actual) => {
                         actual.invocation = Invocation::Exposed(
                             source.as_ref().expect("issued Style source").ordinal,
@@ -1562,6 +1624,7 @@ impl Operation {
             commit,
             dialog,
             focusing,
+            autofocus,
         })
     }
 }
@@ -1834,6 +1897,42 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::AutofocusInsertionUnavailable { action }) => {
+                    let pending = op
+                        .draft
+                        .pending_autofocus()
+                        .filter(|p| p.cursor.action() == action)
+                        .ok_or(DomError::InvalidSourceOperation)?;
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    op.started = true;
+                    let published = match op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::AutofocusInsertion(pending),
+                        cancel,
+                    ) {
+                        Ok(published) => published,
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            return Err(error);
+                        }
+                    };
+                    drop(checkpoint);
+                    op.receipt = None;
+                    return Ok(DomSourceProgress::Request(
+                        DomSourceRequest::AutofocusInsertion(
+                            published.autofocus.expect("formed insertion request"),
+                        ),
+                    ));
+                }
                 Err(DomError::DialogFocusingUnavailable { action }) => {
                     let pending = op
                         .draft
@@ -2059,7 +2158,7 @@ impl DomSourceLease<'_> {
                         op.receipt,
                         Some(
                             Receipt::Watcher { .. }
-                                | Receipt::DialogFocus { .. }
+                                | Receipt::Focus { .. }
                                 | Receipt::CloseWatcher { .. }
                         )
                     ) {
@@ -2598,7 +2697,7 @@ impl Operation {
         if matches!(self.receipt, Some(Receipt::CloseWatcher { .. })) {
             return self.apply_close_watcher_receipt(cancel);
         }
-        if let Some(Receipt::DialogFocus {
+        if let Some(Receipt::Focus {
             publication,
             applied,
         }) = &self.receipt
@@ -2607,8 +2706,8 @@ impl Operation {
                 return Ok(());
             }
             let request = publication.request.clone();
-            self.apply_dialog_focus(&request, cancel)?;
-            if let Some(Receipt::DialogFocus { applied, .. }) = &mut self.receipt {
+            self.apply_focus(&request, cancel)?;
+            if let Some(Receipt::Focus { applied, .. }) = &mut self.receipt {
                 *applied = true;
             }
             return Ok(());
@@ -2636,9 +2735,7 @@ impl Operation {
             return Err(DomError::StyleProtocol);
         }
         let reply = match self.receipt.as_ref().expect("actual retained receipt") {
-            Receipt::Watcher { .. }
-            | Receipt::DialogFocus { .. }
-            | Receipt::CloseWatcher { .. } => {
+            Receipt::Watcher { .. } | Receipt::Focus { .. } | Receipt::CloseWatcher { .. } => {
                 unreachable!("external receipt handled above")
             }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
@@ -5186,7 +5283,8 @@ pub(in crate::store) mod accounting_tests {
                     DomSourceRequest::Event(_)
                     | DomSourceRequest::Dialog(_)
                     | DomSourceRequest::CloseWatcher(_)
-                    | DomSourceRequest::DialogFocusing(_),
+                    | DomSourceRequest::DialogFocusing(_)
+                    | DomSourceRequest::AutofocusInsertion(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")
                 }
