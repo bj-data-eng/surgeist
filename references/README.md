@@ -192,6 +192,6 @@ native focus producer.
 The [bounded focus witness](webkit-focus-editorial-evidence--73aa6c89e2cb.md)
 retains exact Document, Element and FocusController excerpts with original legal
 headers. The [selected interpretations](SOURCE-EDITIONS.md#focus-algorithm-editorial-gaps)
-resolve nullable area/chain inputs, the per-entry Document and exclusive event
-target selection. Browser stored focus and actual system-focus routing remain
+resolve nullable area/chain inputs, the per-entry Document, exclusive event
+target selection and the child Document's actual container entry. Browser stored focus and actual system-focus routing remain
 distinct. The evidence supplies no native positive-focus capability.

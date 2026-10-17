@@ -245,7 +245,7 @@ linked or adapted into Surgeist by this documentation retention.
 | --- | --- |
 | Source/WebCore/dom/Document.cpp: lines 6630–6682 and 6716–6748 | [Document.cpp header](document-cpp-license-header.txt); [GNU Library GPL version 2 or later](LICENSE-LGPL-2.txt) |
 | Source/WebCore/dom/Element.cpp: lines 4323–4335 | [Element.cpp header](element-cpp-license-header.txt); [GNU Library GPL version 2 or later](LICENSE-LGPL-2.txt) |
-| Source/WebCore/page/FocusController.cpp: complete dispatch helper, lines 409–441 | [Exact two-clause notice](focus-controller-cpp-bsd-2-clause.txt), Copyright (C) 2006, 2007, 2013 Apple Inc. and Copyright (C) 2008 Nuanti Ltd. |
+| Source/WebCore/page/FocusController.cpp: complete dispatch helper, lines 409–441, and scope owner, lines 349–365 | [Exact two-clause notice](focus-controller-cpp-bsd-2-clause.txt), Copyright (C) 2006, 2007, 2013 Apple Inc. and Copyright (C) 2008 Nuanti Ltd. |
 
 The FocusController notice retains its original trailing whitespace verbatim,
 as does its fenced copy; Markdown headings and provenance labels are additions.

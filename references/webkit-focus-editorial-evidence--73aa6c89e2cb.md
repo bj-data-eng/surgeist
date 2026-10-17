@@ -263,3 +263,29 @@ Document updates its own focused Element and dispatches Element focus/blur; Focu
 ## Current standard comparison
 
 The [current HTML focus processing model](https://html.spec.whatwg.org/multipage/interaction.html#focus-update-steps), checked 2026-10-17, retains the nullable anchor projection, the traversable-only current-chain condition, the unbound document in designation, and the ambiguous event-target conditionals. No upstream correction is claimed. The existing retained HTML877d host-facts reference remains the normative source; its literal wording is unchanged.
+
+## Child Document to parent focus scope
+
+Additional original FocusController.cpp lines349–365 at the same pin and hash:
+
+```cpp
+Variant<RefPtr<Element>, RefPtr<Frame>> FocusNavigationScope::owner() const
+{
+    if (m_slotElement)
+        return m_slotElement.get();
+
+    ASSERT(m_treeScopeRootNode);
+    if (RefPtr shadowRoot = dynamicDowncast<ShadowRoot>(*m_treeScopeRootNode))
+        return shadowRoot->host();
+    if (invokerForOpenPopover(m_treeScopeRootNode.get()))
+        return downcast<Element>(m_treeScopeRootNode.get());
+    if (RefPtr frame = m_treeScopeRootNode->document().frame()) {
+        if (RefPtr ownerElement = frame->ownerElement())
+            return RefPtr<Element> { ownerElement };
+        return RefPtr<Frame> { frame->parent() };
+    }
+    return RefPtr<Element> { nullptr };
+}
+```
+
+This scope-navigation helper prefers the actual frame owner Element when present. It corroborates the container-Element boundary; it is not a verbatim implementation of HTML focus-chain. The selected correction in #1220 uses the child navigable’s container and never appends a raw Navigable. Literal pinned HTML chain and navigable/container definitions remain in the existing retained host-facts reference.

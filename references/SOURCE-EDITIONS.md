@@ -1078,7 +1078,7 @@ cover its documentation excerpts; no browser source is compiled or linked.
 
 ## Focus algorithm editorial gaps
 
-[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects four
+[Issue #1220](https://github.com/bj-data-eng/surgeist/issues/1220) selects five
 bounded interpretations of the pinned HTML focus algorithms:
 
 - A known-null currently focused area has no anchor for the delegating shadow
@@ -1093,9 +1093,22 @@ bounded interpretations of the pinned HTML focus algorithms:
 - Select focus/blur event targets by exclusive entry classification: Element
   itself, else Document's actual relevant Global, else null. Classify the entry,
   independently of its DOM anchor, and preserve related-target and event order.
+- When a Document's node navigable has a parent, continue its focus chain through
+  that child navigable's actual container Element. The container's ordinary
+  anchor-to-node-Document step then reaches the parent Document. A known absent
+  node navigable or null parent stops at the current Document. A parent with a
+  missing or unrepresentable container is an unavailable or inconsistent
+  association, not a completed shorter chain. Validate the original child,
+  parent, container, content-navigable and enclosing-Document relations; do not
+  append a Navigable or skip the container entry.
 
 The [pinned browser evidence](webkit-focus-editorial-evidence--73aa6c89e2cb.md)
-corroborates per-Document state and separate Element/Window dispatch. WebKit's
+corroborates per-Document state, separate Element/Window dispatch and the actual
+container boundary for a child focus scope. The pinned chain's Document-to-parent
+wording names a Navigable (raw lines 59798–59801 and 70837–70838), which has no
+defined DOM anchor. The selected container edge follows the child navigable's
+container definition (71050–71053), preserving the container's focus/event entry
+and the chain's enclosing-Document hierarchy. WebKit's
 nullable stored-pointer shadow fast path is not the HTML system-focus-qualified
 current-area algorithm. These interpretations fill the identified source gaps;
 they do not adopt a competing focus store, claim an upstream erratum, or replace
