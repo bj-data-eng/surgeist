@@ -4,6 +4,8 @@
 mod design_mode_tests;
 mod dialog;
 pub(crate) mod dialog_queue;
+#[cfg(test)]
+pub(in crate::store) mod empty_policy_tests;
 mod failure;
 mod focus;
 pub(crate) mod fullscreen;

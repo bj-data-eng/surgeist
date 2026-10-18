@@ -63,11 +63,19 @@ impl DomProcessingInstruction {
         data: DocumentString,
         attributes: Vec<(DocumentString, DocumentString)>,
     ) -> Self {
-        Self {
+        let result = Self {
             target,
             data,
             attributes: Arc::new(attributes),
+        };
+        #[cfg(test)]
+        if crate::store::scale_metrics::ENABLED {
+            crate::store::empty_sequence_observation::allocated::<(DocumentString, DocumentString)>(
+                crate::store::empty_sequence_observation::Kind::PiAttributes,
+                result.attributes.capacity(),
+            );
         }
+        result
     }
 
     pub(crate) fn new(
@@ -149,11 +157,19 @@ impl DomProcessingInstruction {
                 cancelled,
             )?;
         }
-        Ok(Self {
+        let result = Self {
             target,
             data,
             attributes: Arc::new(attributes),
-        })
+        };
+        #[cfg(test)]
+        if crate::store::scale_metrics::ENABLED {
+            crate::store::empty_sequence_observation::allocated::<(DocumentString, DocumentString)>(
+                crate::store::empty_sequence_observation::Kind::PiAttributes,
+                result.attributes.capacity(),
+            );
+        }
+        Ok(result)
     }
 
     pub fn target(&self) -> &DocumentString {

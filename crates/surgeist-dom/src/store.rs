@@ -29,6 +29,8 @@ mod dialog;
 mod dispatch;
 mod document;
 mod element_tasks;
+#[cfg(test)]
+pub(crate) mod empty_sequence_observation;
 mod focus;
 mod form;
 mod fullscreen;

@@ -3,6 +3,7 @@
 //! Arc control blocks and allocator metadata remain opaque and excluded.
 use super::*;
 use std::collections::BTreeMap;
+mod empty_sequence_tests;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct AllocationGraph(BTreeMap<(usize, bool), (&'static str, usize)>);

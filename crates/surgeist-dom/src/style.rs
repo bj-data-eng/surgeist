@@ -321,11 +321,33 @@ impl DomStyleInlineCspObservation {
     /// Attests the complete applicable policy list is empty for this exact
     /// Element/Document/text/nonce capture. Empty policy therefore permits inline CSS.
     pub fn complete_empty(source: &DomStyleSource, policy_revision: u64) -> Self {
-        Self {
+        let result = Self {
             source: source.clone(),
             policies: std::sync::Arc::new(Vec::new()),
             policy_revision,
             allowed: true,
+        };
+        #[cfg(test)]
+        if crate::store::scale_metrics::ENABLED {
+            crate::store::empty_sequence_observation::allocated::<crate::DocumentString>(
+                crate::store::empty_sequence_observation::Kind::StylePolicies,
+                result.policies.capacity(),
+            );
+        }
+        result
+    }
+    #[cfg(test)]
+    pub(crate) fn inspect_policy_allocations(
+        &self,
+        graph: &mut crate::store::compact_tests::AllocationGraph,
+    ) {
+        graph.vector(
+            &self.policies,
+            "style.policies.target",
+            "style.policies.buffer",
+        );
+        for policy in self.policies.iter() {
+            graph.string(policy);
         }
     }
     /// Records an actual external CSP evaluation of the complete supplied policy
