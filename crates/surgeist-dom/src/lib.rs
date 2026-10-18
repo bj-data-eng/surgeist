@@ -138,6 +138,7 @@ mod names;
 mod node_values;
 mod output;
 mod parsed_installation;
+mod range;
 mod reflected;
 mod registry;
 mod script;
@@ -214,6 +215,9 @@ pub use parsed_installation::{
     DomParsedDocumentEnvironment, DomParsedHtmlAssociationReadiness, DomParsedHtmlBinding,
     DomParsedHtmlCapturedBinding, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
     DomParsedHtmlInstallResource, DomParsedHtmlInstallation,
+};
+pub use range::{
+    CreatedRange, DomActiveRangeState, DomRange, DomRangeBoundary, DomRangeId, DomRangeOperand,
 };
 pub use registry::{DomRegistry, DomRegistryId};
 pub use script::DomHtmlScript;

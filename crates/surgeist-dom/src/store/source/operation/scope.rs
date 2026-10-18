@@ -83,6 +83,14 @@ impl OperationRoot {
             Self::Commands(commands) => commands.first(),
         }?;
         match command {
+            Command::CreateRange { document, .. } | Command::SetActiveRange { document, .. } => {
+                existing(document)
+            }
+            // A Range has no permanent receiver Document. Boundary operands
+            // cannot supply an invented hosted entry association for it.
+            Command::SetRangeStart { .. }
+            | Command::SetRangeEnd { .. }
+            | Command::RetireRange(_) => None,
             Command::BindEncodingUrlFacts { basis, .. }
             | Command::BindBaseFacts { basis, .. }
             | Command::ViewTransition { basis, .. } => Some(basis.document().node()),

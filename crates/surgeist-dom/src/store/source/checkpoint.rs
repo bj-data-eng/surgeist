@@ -326,6 +326,7 @@ impl DraftNode {
         };
         Ok(Self {
             relevant_global: self.relevant_global,
+            active_range: self.active_range,
             document: self.document,
             kind: self.kind.clone(),
             parent: self.parent,
@@ -446,6 +447,8 @@ impl Draft {
             .checked_mul(size_of::<select::EffectFrame>())
             .ok_or(DomError::RepresentationExhausted)?;
         let draft = Self {
+            ranges: a.copy(&self.ranges, cancel)?,
+            range_tickets: a.copy(&self.range_tickets, cancel)?,
             owner: self.owner.clone(),
             store: self.store,
             registries: self.registries.clone(),
@@ -560,6 +563,11 @@ impl Draft {
         add(self.created.capacity(), size_of::<Option<DraftNode>>())?;
         add(self.generations.capacity(), size_of::<u64>())?;
         add(self.tickets.capacity(), size_of::<Key>())?;
+        add(self.ranges.capacity(), size_of::<crate::range::Slot<Key>>())?;
+        add(
+            self.range_tickets.capacity(),
+            size_of::<crate::DomRangeId>(),
+        )?;
         add(
             self.dispatch_retirements.capacity(),
             size_of::<(NodeId, Key)>(),

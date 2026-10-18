@@ -7,6 +7,20 @@ with its producer. The crate README states the currently bounded eight-kind
 surface. Do not fabricate missing HTML/control/template/registry/script state
 when extending construction or add compatibility wrappers around retained.
 
+
+Ranges use the same canonical State/Draft/Source owner and revision, with
+separate owner/generation identities and private creation tickets. Qualify the
+initial native empty association from actual controlled Document creation,
+independently of focus/autofocus observations. Keep ordinary-root initial
+eligibility separate from subsequent setter/adoption identity preservation.
+Shared removal/insertion/CharacterData hooks maintain live endpoints; explicit
+retirement clears exact associations after actual container maintenance.
+Discard wholly unpublished retired creations as canonical no-ops. Preserve
+valid endpoints at every Source publication and refuse unsafe compositions in
+the original preflight before any prefix; no incremental offset substitute.
+`cargo test --offline --locked -j 1 -p surgeist-dom --test native_ranges`
+covers the native Range boundary; the owning tests live in `store/range.rs`.
+
 Use the root-selected DOM capture and owning #1074/#1124/#1135 contracts. Node
 document membership, source ownerDocument readback, storage ownership and tree
 root are distinct. Keep generation/revision exhaustion checked and rejected

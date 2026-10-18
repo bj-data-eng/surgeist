@@ -272,6 +272,7 @@ fn state_usage(
     if banks {
         payload.add_bytes(size_of::<State>())?;
         payload.bank::<Slot>(state.slots.capacity())?;
+        payload.bank::<crate::range::Slot<NodeId>>(state.ranges.capacity())?;
         payload.bank::<NodeId>(state.signal_slots.capacity())?;
         payload.bank::<select::Task<NodeId>>(state.native_tasks.capacity())?;
         payload.bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())?;

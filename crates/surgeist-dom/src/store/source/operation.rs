@@ -537,6 +537,7 @@ impl Operation {
             return observation.usage.admit_limits(limits);
         }
         let draft = &self.draft;
+        admit(draft.ranges.len(), limits.ranges, DomResource::Ranges)?;
         admit(draft.nodes, limits.nodes, DomResource::ManagedNodes)?;
         admit(draft.units, limits.units, DomResource::StringCodeUnits)?;
         draft
@@ -1294,13 +1295,27 @@ impl Operation {
             return Err(DomError::SourceOutputLimit.into());
         }
         let ids = std::mem::take(&mut prepared.allocation_ids);
-        let count = ids
+        let mut count = ids
             .iter()
             .enumerate()
             .filter(|(i, id)| {
                 id.is_some() && self.draft.phase_map.as_ref().expect("source map").ids[*i].is_none()
             })
             .count();
+        for (index, slot) in prepared.state.ranges.iter().enumerate() {
+            self.draft.source_step(cancel)?;
+            if slot.record.is_some()
+                && !dom
+                    .state
+                    .ranges
+                    .get(index)
+                    .is_some_and(|old| old.record.is_some() && old.generation == slot.generation)
+            {
+                count = count
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
+        }
         let mut identities = self
             .identities
             .checked_add(u64::try_from(count).map_err(|_| DomError::RepresentationExhausted)?)
@@ -1824,6 +1839,7 @@ impl DomSourceLease<'_> {
                 if matches!(
                     command,
                     Command::Create { .. }
+                        | Command::CreateRange { .. }
                         | Command::Import { .. }
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
@@ -1846,6 +1862,7 @@ impl DomSourceLease<'_> {
             };
             check_cancel(cancel)?;
             let commit = DomCommit {
+                created_ranges: Vec::new(),
                 owner: op.draft.owner.clone(),
                 created: Vec::new(),
                 documents: Vec::new(),

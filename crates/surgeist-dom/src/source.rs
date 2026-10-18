@@ -166,6 +166,7 @@ pub enum DomSourceRequest {
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {
+    Range(crate::DomRangeId),
     Node(NodeId),
     Document(crate::DocumentId),
     ViewTransition(DomViewTransitionId),
@@ -251,6 +252,45 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    pub fn create_range(document: crate::DocumentId) -> Self {
+        Self {
+            command: Command::CreateRange {
+                document: document.into(),
+                ticket: 0,
+            },
+        }
+    }
+    pub fn set_range_start(range: crate::DomRangeId, container: NodeId, offset: usize) -> Self {
+        Self {
+            command: Command::SetRangeStart {
+                range: range.into(),
+                container: container.into(),
+                offset,
+            },
+        }
+    }
+    pub fn set_range_end(range: crate::DomRangeId, container: NodeId, offset: usize) -> Self {
+        Self {
+            command: Command::SetRangeEnd {
+                range: range.into(),
+                container: container.into(),
+                offset,
+            },
+        }
+    }
+    pub fn set_active_range(document: crate::DocumentId, range: Option<crate::DomRangeId>) -> Self {
+        Self {
+            command: Command::SetActiveRange {
+                document: document.into(),
+                range: range.map(Into::into),
+            },
+        }
+    }
+    pub fn retire_range(range: crate::DomRangeId) -> Self {
+        Self {
+            command: Command::RetireRange(range.into()),
+        }
+    }
     /// Invoke standard null-source ShowModal through its native Source prefix.
     pub fn show_modal_dialog(node: NodeId) -> Self {
         Self {

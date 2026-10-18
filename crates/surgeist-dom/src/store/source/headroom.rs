@@ -214,10 +214,12 @@ impl Draft {
                         .schedule_selectedcontent(target, dom.limits, cancel),
                 }
             })();
-            if matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
-                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }))
-                && let Some(scan) = &mut restore.draft.source_headroom
-            {
+            let dialog_wait = matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
+                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }));
+            if dialog_wait {
+                restore.draft.range_publication_ready(cancel)?;
+            }
+            if dialog_wait && let Some(scan) = &mut restore.draft.source_headroom {
                 let stopped = if matches!(
                     &result,
                     Err(DomError::DialogProcessingUnavailable {
@@ -262,6 +264,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
+        if self.source_headroom.is_some() {
+            self.range_publication_ready(cancel)?;
+        }
         let Some(scan) = &mut self.source_headroom else {
             return Ok(false);
         };
@@ -281,6 +286,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
+        if self.source_headroom.is_some() {
+            self.range_publication_ready(cancel)?;
+        }
         let Some(scan) = &mut self.source_headroom else {
             return Ok(false);
         };
@@ -367,6 +375,7 @@ impl Draft {
             if !count {
                 return Ok(());
             }
+            self.range_publication_ready(cancel)?;
             let index = match row {
                 Some(index) => index,
                 None => scan.append(self, key, start, cancel)?,
@@ -896,6 +905,42 @@ mod tests {
             assert!(draft.effects.is_empty());
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), live);
         }
+    }
+
+    #[test]
+    fn retired_ranges_preserve_no_live_range_style_headroom() {
+        let cancel = AtomicBool::new(false);
+        let mut f = fixture();
+        f.dom.limits = f.dom.limits.with_ranges(1).unwrap();
+        let mut setup = DomBatch::new();
+        let first = setup.create_text(f.document, "a {}");
+        setup.insert_before(&first, f.styles[0], None);
+        let range = setup.create_range(f.document);
+        let done = f.dom.apply(setup, &cancel).unwrap();
+        let first = done.created(&first).unwrap().unwrap();
+        let range = done.created_range(&range).unwrap().unwrap();
+        let mut retire = DomBatch::new();
+        retire.retire_range(range);
+        f.dom.apply(retire, &cancel).unwrap();
+        assert_eq!(f.dom.state.ranges.len(), 1);
+        assert!(f.dom.state.ranges[0].record.is_none());
+
+        let mut batch = DomBatch::new();
+        batch.insert_before(first, f.styles[0], None);
+        let mut draft = draft(&f.dom, &batch);
+        let result = draft
+            .admit_source_command_headroom(&f.dom, Entry::Command(&batch.commands[0]), 0, &cancel)
+            .unwrap();
+        // Removal and reinsertion each reserve six possible Style phases;
+        // the retained vacant slot has no endpoint requiring another policy.
+        assert_eq!(result.remaining_phases, 13);
+        assert_eq!(
+            draft
+                .node(Key::Existing(f.styles[0].slot))
+                .unwrap()
+                .children,
+            [Key::Existing(first.slot)]
+        );
     }
 
     #[test]

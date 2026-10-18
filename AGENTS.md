@@ -164,6 +164,11 @@ as `surgeist::dom`; the former `surgeist-retained` package and export are retire
 Native HTML Canvas retains the actual none-context state and dimension hooks;
 native Marquee retains its closed initially-on/index-zero state and start/stop
 operations. Neither supplies rendering resources or animation scheduling.
+DOM owns canonical live Range identities, boundary maintenance, explicit native
+retirement and Document active associations through the same atomic/Source
+owner and snapshots. Initial ordinary-root association eligibility is separate
+from later root changes; this bounded native contract does not establish full
+Selection bindings or focus execution.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
 HTML-semantics adapter builds qualified ordinary and shadow captures, retains
 checked bidirectional identity maps, and invokes producer queries with explicit

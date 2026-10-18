@@ -1213,6 +1213,7 @@ impl DomSourceLease<'_> {
             revision: self.dom.revision,
         };
         let commit = DomCommit {
+            created_ranges: Vec::new(),
             owner: observation.owner.clone(),
             created: Vec::new(),
             documents: Vec::new(),

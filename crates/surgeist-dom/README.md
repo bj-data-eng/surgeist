@@ -59,13 +59,50 @@ Adopting a Document is `NotSupported`; directly adopting a ShadowRoot is
 No mutation invokes
 callbacks, runs scripts or performs host effects.
 
+
+Native live Ranges share the canonical owner, staged publication and revision.
+Select finite retained-slot capacity with `DomLimits::with_ranges`; its default
+is zero. Vacant and generation-exhausted slots count toward that capacity.
+`create_range` starts both boundaries at the actual Document's offset zero
+and resolves its batch ticket only after successful publication. Start/end
+setters use exact UTF-16 offsets for Text, Comment and PI, ordinary child counts
+for other admitted containers, and the DOM-prescribed opposite-endpoint
+collapse. DocumentType cannot be a boundary container.
+
+Each controlled native or initial-hosted Document starts with a known empty
+native active-Range association. Unavailable imported state remains explicit.
+`set_active_range` selects, replaces or clears that one association; initial
+association requires the Range's ordinary root to be that Document. Detached,
+fragment and ShadowRoot roots are initially ineligible even with the same
+node-document. Later valid boundary setters and adoption preserve the same
+association and Range identity across root or node-document changes.
+
+Pre-removal, full-count insertion and CharacterData replacement maintain the
+actual live boundaries at the shared mutation steps, including equal-text
+replacement. Explicit native `retire_range` frees its live record and clears
+every exact matching Document association while retaining boundary nodes.
+Container destruction first runs its real removal maintenance, then retires
+Ranges whose current boundary container is actually destroyed. Detach and
+adoption preserve surviving identities. Retired identities never alias reused
+generations; old snapshots retain their historical boundaries and associations.
+Disassociation and copied-handle drop do not retire a Range.
+
+Ordinary batches keep tree, Range and association changes atomic. Source edits
+use that same owner and retain valid boundaries at every visible publication.
+A multi-child insertion whose prescribed aggregate offset shift would make an
+intermediate external publication invalid refuses with
+`RangePublicationUnavailable` before any prefix or request is exposed.
+Safe intermediate publications retain their actual Source-completeness qualification.
+This bounded native association is distinct from complete browser Selection
+bindings, selection events, editing and focus execution.
+
 PI construction validates the target using the DOM-delegated XML Name
 production and rejects initial data containing `?>`. It does not apply HTML's
 stricter native authoring grammar or reserved-target exclusions. CharacterData
 replacement preserves arbitrary exact units, including `?>`, and recomputes the
 whole-string XML pseudo-attribute map through HTML's shared grammar cursor.
 Invalid pseudo-attributes leave an empty map and preserve raw data. This does
-not implement PI attribute setters, style loading or live ranges. Doctype
+not implement PI attribute setters or style loading. Doctype
 construction uses DOM's relaxed name validation, including valid empty names;
 public and system identifiers remain exact strings. `node_name()` returns the
 source-defined fixed name, qualified Element spelling, PI target or doctype name

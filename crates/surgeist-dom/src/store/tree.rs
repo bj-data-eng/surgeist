@@ -617,6 +617,7 @@ impl Draft {
                             self.source_admit(0, cancel)?;
                         }
                         self.retire_autofocus_candidate(key, cancel)?;
+                        self.retire_range_container(key, cancel)?;
                         let node = match key {
                             Key::Existing(i) => self.existing[i].take(),
                             Key::Created(i) => self.created[i].take(),
@@ -893,6 +894,9 @@ impl Draft {
                     } else {
                         frame.stage = 1;
                         frame.index = 0;
+                        // DOM insert adjusts by the complete insertion list
+                        // before the first per-node adoption/insertion hook.
+                        self.range_insert(frame.parent, frame.before, frame.moving.len(), cancel)?;
                         self.push_effect(
                             select::Effect::Tree(Frame::Insert(frame)),
                             self.effect_scoped,

@@ -64,6 +64,25 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    CreateRange {
+        document: NodeOperand,
+        ticket: usize,
+    },
+    SetRangeStart {
+        range: crate::DomRangeOperand,
+        container: NodeOperand,
+        offset: usize,
+    },
+    SetRangeEnd {
+        range: crate::DomRangeOperand,
+        container: NodeOperand,
+        offset: usize,
+    },
+    SetActiveRange {
+        document: NodeOperand,
+        range: Option<crate::DomRangeOperand>,
+    },
+    RetireRange(crate::DomRangeOperand),
     BindEncodingUrlFacts {
         basis: DomDocumentStamp,
         facts: surgeist_html_semantics::HtmlEncodingUrlParseFacts,
@@ -222,6 +241,7 @@ pub struct DomBatch {
     creations: usize,
     transitions: usize,
     transition_records: usize,
+    ranges: usize,
 }
 
 impl Default for DomBatch {
@@ -267,7 +287,58 @@ impl DomBatch {
             creations: 0,
             transitions: 0,
             transition_records: 0,
+            ranges: 0,
         }
+    }
+    pub fn create_range(&mut self, document: impl Into<NodeOperand>) -> crate::CreatedRange {
+        let ticket = crate::CreatedRange {
+            owner: self.owner.clone(),
+            index: self.ranges,
+        };
+        self.ranges += 1;
+        self.commands.push(Command::CreateRange {
+            document: document.into(),
+            ticket: ticket.index,
+        });
+        ticket
+    }
+    pub fn set_range_start(
+        &mut self,
+        range: impl Into<crate::DomRangeOperand>,
+        container: impl Into<NodeOperand>,
+        offset: usize,
+    ) {
+        self.commands.push(Command::SetRangeStart {
+            range: range.into(),
+            container: container.into(),
+            offset,
+        });
+    }
+    pub fn set_range_end(
+        &mut self,
+        range: impl Into<crate::DomRangeOperand>,
+        container: impl Into<NodeOperand>,
+        offset: usize,
+    ) {
+        self.commands.push(Command::SetRangeEnd {
+            range: range.into(),
+            container: container.into(),
+            offset,
+        });
+    }
+    pub fn set_active_range(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        range: Option<crate::DomRangeOperand>,
+    ) {
+        self.commands.push(Command::SetActiveRange {
+            document: document.into(),
+            range,
+        });
+    }
+    /// Explicitly retires the exact native Range; disassociation alone does not.
+    pub fn retire_range(&mut self, range: impl Into<crate::DomRangeOperand>) {
+        self.commands.push(Command::RetireRange(range.into()));
     }
     /// Initializes structural VT slots from a real CSSOM sheet capture. The
     /// caller owns actual UA-origin placement/document installation evidence.

@@ -219,7 +219,13 @@ impl Draft {
         if !matches!(&self.node(key)?.kind, DomNodeKind::Element(e) if e.style_state().is_some()) {
             return Ok(());
         }
-        if self.headroom_style(key, headroom::Kind::Update, cancel)? {
+        // Without live Ranges, the conservative fixed-counter scan needs no
+        // prospective boundary validation. Otherwise run the original guards
+        // through the first real wait before qualifying that exposure.
+        if self.source_headroom.is_some()
+            && !self.has_live_ranges(cancel)?
+            && self.headroom_style(key, headroom::Kind::Update, cancel)?
+        {
             return Ok(());
         }
         if self.source_limits.is_some() {
@@ -250,12 +256,18 @@ impl Draft {
         check_cancel(cancel)?;
         let action = match frame.cursor {
             Cursor::OwnerAttributes => {
-                self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
-                return Err(DomError::StyleOwnerAttributesCompositionRequired);
+                return self.style_suspend(
+                    frame,
+                    DomError::StyleOwnerAttributesCompositionRequired,
+                    cancel,
+                );
             }
             Cursor::SetDisabled(_) => {
-                self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
-                return Err(DomError::StyleDisabledCompositionRequired);
+                return self.style_suspend(
+                    frame,
+                    DomError::StyleDisabledCompositionRequired,
+                    cancel,
+                );
             }
             Cursor::Complete => return Ok(()),
             Cursor::Update(cursor) => cursor.action(),
@@ -270,10 +282,11 @@ impl Draft {
                     return Err(DomError::StyleProcessingUnavailable);
                 }
                 if state.sheet.is_some() {
-                    self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
-                    return Err(DomError::StyleCompositionRequired(
-                        Action::RemoveAssociatedSheet,
-                    ));
+                    return self.style_suspend(
+                        frame,
+                        DomError::StyleCompositionRequired(Action::RemoveAssociatedSheet),
+                        cancel,
+                    );
                 }
                 Reply::Applied
             }
@@ -300,10 +313,11 @@ impl Draft {
                 match self.style_render_blocking_required(frame.key, cancel)? {
                     Some(required) => Reply::Blocking(required),
                     None => {
-                        self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
-                        return Err(DomError::StyleCompositionRequired(
-                            Action::ReadRenderBlocking,
-                        ));
+                        return self.style_suspend(
+                            frame,
+                            DomError::StyleCompositionRequired(Action::ReadRenderBlocking),
+                            cancel,
+                        );
                     }
                 }
             }
@@ -313,8 +327,11 @@ impl Draft {
             }
             Action::Complete => return Ok(()),
             action => {
-                self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
-                return Err(DomError::StyleCompositionRequired(action));
+                return self.style_suspend(
+                    frame,
+                    DomError::StyleCompositionRequired(action),
+                    cancel,
+                );
             }
         };
         frame
@@ -322,6 +339,26 @@ impl Draft {
             .reply(reply)
             .map_err(|_| DomError::StyleProtocol)?;
         self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)
+    }
+    fn style_suspend(
+        &mut self,
+        frame: Frame,
+        error: DomError,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let kind = match frame.cursor {
+            Cursor::Update(_) => headroom::Kind::Update,
+            Cursor::OwnerAttributes => headroom::Kind::OwnerAttributes,
+            Cursor::SetDisabled(_) => headroom::Kind::SetDisabled,
+            Cursor::Complete => return Err(DomError::StyleProtocol),
+        };
+        // This is the original cursor's first actually reached service wait.
+        // Headroom does not acknowledge a hypothetical external reply.
+        if self.headroom_style(frame.key, kind, cancel)? {
+            return Ok(());
+        }
+        self.push_effect(select::Effect::Style(frame), self.effect_scoped, cancel)?;
+        Err(error)
     }
     pub(super) fn set_style_disabled(
         &mut self,

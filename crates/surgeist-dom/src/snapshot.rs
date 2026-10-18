@@ -27,6 +27,19 @@ pub struct DomSnapshot {
 }
 
 impl DomSnapshot {
+    pub fn range(&self, id: crate::DomRangeId) -> Result<crate::DomRange<'_>, DomError> {
+        if id.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        let record = self
+            .state
+            .ranges
+            .get(id.slot)
+            .filter(|slot| slot.generation == id.generation)
+            .and_then(|slot| slot.record.as_ref())
+            .ok_or(DomError::StaleRange)?;
+        Ok(crate::DomRange { id, record })
+    }
     pub fn incomplete_hosted_operation(&self) -> Option<crate::hosted::DomHostedOperationId> {
         self.state.incomplete_hosted
     }
@@ -93,6 +106,13 @@ pub struct DomDocument<'a> {
 }
 
 impl<'a> DomDocument<'a> {
+    pub fn active_range(self) -> crate::DomActiveRangeState {
+        self.snapshot
+            .state
+            .node(self.snapshot.owner, self.id.0)
+            .expect("captured Document")
+            .active_range
+    }
     pub fn id(self) -> DocumentId {
         self.id
     }

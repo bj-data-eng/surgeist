@@ -36,6 +36,7 @@ mod meta;
 mod navigable;
 mod output;
 pub(crate) mod parsed_installation;
+mod range;
 mod reflected;
 pub(crate) mod registry;
 mod script;
@@ -55,6 +56,7 @@ use view_transition::DraftTransitions;
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
+    Ranges,
     ManagedNodes,
     SlotReferences,
     AutofocusCandidates,
@@ -97,6 +99,9 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    StaleRange,
+    RangeAssociationIneligible,
+    RangePublicationUnavailable,
     /// A reached operation needs a current live hosted owner association.
     HostedSourceUnavailable,
     HostedCompositionRequired,
@@ -278,6 +283,7 @@ impl std::error::Error for DomError {}
 /// Explicit finite admission policy. No hidden or unlimited default is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomLimits {
+    ranges: usize,
     dispatch_custody: crate::DomDispatchCustodyLimits,
     nodes: usize,
     units: usize,
@@ -310,6 +316,20 @@ pub struct DomLimits {
     )>,
 }
 impl DomLimits {
+    /// Maximum retained Range slots, including vacant slots and exhausted generations.
+    pub fn with_ranges(mut self, ranges: usize) -> Result<Self, DomError> {
+        if ranges
+            > isize::MAX as usize
+                / size_of::<crate::range::Slot<Key>>().max(size_of::<crate::range::Slot<NodeId>>())
+        {
+            return Err(DomError::InvalidLimit(DomResource::Ranges));
+        }
+        self.ranges = ranges;
+        Ok(self)
+    }
+    pub fn ranges(self) -> usize {
+        self.ranges
+    }
     /// Aggregate installed candidate references across all Document histories.
     /// Native empty state needs no allowance; each growing insertion does.
     pub fn with_autofocus_candidates(mut self, candidates: usize) -> Result<Self, DomError> {
@@ -367,6 +387,7 @@ impl DomLimits {
             }
         }
         Ok(Self {
+            ranges: 0,
             dispatch_custody: crate::DomDispatchCustodyLimits::default(),
             nodes,
             units,
@@ -629,6 +650,7 @@ impl DomLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomUsage {
+    ranges: usize,
     meta_color_scheme_bytes: usize,
     autofocus_candidates: usize,
     slot_references: usize,
@@ -641,6 +663,9 @@ pub struct DomUsage {
     pseudos: usize,
 }
 impl DomUsage {
+    pub fn ranges(self) -> usize {
+        self.ranges
+    }
     pub const fn meta_color_scheme_retained_bytes(self) -> usize {
         self.meta_color_scheme_bytes
     }
@@ -677,6 +702,10 @@ impl DomUsage {
 /// their entire state. Children includes derived Element-sibling/index changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomChange {
+    RangeCreated(crate::DomRangeId),
+    RangeBoundary(crate::DomRangeId),
+    RangeRetired(crate::DomRangeId),
+    DocumentActiveRange(DocumentId),
     SourceOperation,
     HostedOperationState {
         operation: crate::hosted::DomHostedOperationId,
@@ -776,6 +805,7 @@ impl std::error::Error for DomHistoryError {}
 
 #[derive(Debug)]
 pub struct DomCommit {
+    created_ranges: Vec<Option<crate::DomRangeId>>,
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
     documents: Vec<bool>,
@@ -784,7 +814,22 @@ pub struct DomCommit {
     changes: DomChanges,
 }
 impl DomCommit {
+    pub fn created_range(
+        &self,
+        ticket: &crate::CreatedRange,
+    ) -> Result<Option<crate::DomRangeId>, DomError> {
+        if !Arc::ptr_eq(&self.owner, &ticket.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.created_ranges
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
     pub(crate) fn source_output(&self) -> Option<crate::DomSourceOutput> {
+        if let Some(Some(range)) = self.created_ranges.first() {
+            return Some(crate::DomSourceOutput::Range(*range));
+        }
         if let Some(Some(node)) = self.created.first() {
             return Some(if self.documents.first() == Some(&true) {
                 crate::DomSourceOutput::Document(DocumentId(*node))
@@ -849,6 +894,7 @@ impl DomCommit {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Node {
+    pub(crate) active_range: crate::DomActiveRangeState,
     pub(crate) document: DocumentId,
     pub(crate) relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     pub(crate) kind: DomNodeKind,
@@ -886,6 +932,7 @@ pub(crate) struct Slot {
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct State {
+    pub(crate) ranges: Vec<crate::range::Slot<NodeId>>,
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
     pub(crate) slots: Vec<Slot>,
@@ -976,6 +1023,7 @@ impl Dom {
             revision: DomRevision(0),
             limits,
             state: Arc::new(State {
+                ranges: Vec::new(),
                 incomplete_source: None,
                 incomplete_hosted: None,
                 slots: Vec::new(),
@@ -1021,6 +1069,12 @@ impl Dom {
     pub fn usage(&self) -> DomUsage {
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            ranges: self
+                .state
+                .ranges
+                .iter()
+                .filter(|slot| slot.record.is_some())
+                .count(),
             meta_color_scheme_bytes: self
                 .state
                 .slots
@@ -1080,6 +1134,7 @@ impl Dom {
         {
             return Err(DomError::SourceOperationPending);
         }
+        admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
         if let Some(op) = &self.source_operation {
             op.admit_dom_limits(limits)?;
         }
@@ -1269,6 +1324,7 @@ impl Dom {
     ) -> Result<PreparedPublication, DomError> {
         check_cancel(cancelled)?;
         let Prepared {
+            created_ranges,
             retirements,
             mut state,
             formation,
@@ -1376,6 +1432,7 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            created_ranges,
             state,
             changed,
             revision,
@@ -1395,6 +1452,7 @@ impl Dom {
     }
     fn publish_prepared(&mut self, publication: PreparedPublication) -> DomCommit {
         let PreparedPublication {
+            created_ranges,
             state,
             changed,
             revision,
@@ -1434,6 +1492,7 @@ impl Dom {
             self.active_task = std::sync::Weak::new();
         }
         DomCommit {
+            created_ranges,
             owner,
             created,
             documents,
@@ -1530,6 +1589,7 @@ pub(crate) enum Key {
     Created(usize),
 }
 struct DraftNode {
+    active_range: crate::DomActiveRangeState,
     relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     document: Key,
     kind: DomNodeKind,
@@ -1560,6 +1620,8 @@ struct DraftNode {
     autofocus_document: Option<crate::autofocus::DocumentAutofocusState<Key>>,
 }
 struct Draft {
+    ranges: Vec<crate::range::Slot<Key>>,
+    range_tickets: Vec<crate::DomRangeId>,
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
     registries: Option<Arc<registry::Bank>>,
@@ -1625,6 +1687,7 @@ struct Draft {
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
 }
 pub(crate) struct PreparedPublication {
+    created_ranges: Vec<Option<crate::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
     revision: DomRevision,
@@ -1642,6 +1705,7 @@ pub(crate) struct PreparedPublication {
     _formation: Option<source::formation::Formation>,
 }
 struct Prepared {
+    created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
     formation: Option<source::formation::Formation>,
     allocation_ids: Vec<Option<NodeId>>,
@@ -1702,6 +1766,7 @@ impl Draft {
                     children.push(Key::Existing(id.slot));
                 }
                 Some(DraftNode {
+                    active_range: node.active_range,
                     relevant_global: node.relevant_global,
                     document: Key::Existing(node.document.0.slot),
                     kind: node.kind.clone(),
@@ -1827,7 +1892,21 @@ impl Draft {
         let native_tasks = select::draft_tasks_formed(&dom.state.native_tasks, initial, cancelled)?;
         let details_intentions =
             details::draft_formed(&dom.state.details_intentions, initial, cancelled)?;
+        let mut ranges = Vec::new();
+        source::initial::reserve(&mut ranges, dom.state.ranges.len(), initial, cancelled)?;
+        for slot in &dom.state.ranges {
+            source::initial::step(initial, cancelled)?;
+            ranges.push(crate::range::Slot {
+                generation: slot.generation,
+                retired: slot.retired,
+                record: slot
+                    .record
+                    .map(|record| record.map(|node| Key::Existing(node.slot))),
+            });
+        }
         Ok(Self {
+            ranges,
+            range_tickets: Vec::new(),
             owner,
             #[cfg(test)]
             svg_processing_trace: None,
@@ -1951,6 +2030,7 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         if let Some(parent) = self.node(node)?.parent {
+            self.range_pre_remove(node, parent, cancelled)?;
             self.node_mut(parent)
                 .children
                 .retain(|child| *child != node);
@@ -2111,6 +2191,18 @@ impl Draft {
                 .map(|association| association.global),
         };
         self.created.push(Some(DraftNode {
+            active_range: if matches!(
+                &kind,
+                DomNodeKind::Document(metadata) if matches!(
+                    metadata.creation_cause(),
+                    crate::DomDocumentCreationCause::Native
+                        | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+                )
+            ) {
+                crate::DomActiveRangeState::Known(None)
+            } else {
+                crate::DomActiveRangeState::Unavailable
+            },
             relevant_global,
             document,
             kind,
@@ -2171,6 +2263,42 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::CreateRange { document, ticket } => {
+                let document = self.resolve(document.clone())?;
+                self.create_range(document, *ticket, limits, cancelled)?;
+            }
+            Command::SetRangeStart {
+                range,
+                container,
+                offset,
+            }
+            | Command::SetRangeEnd {
+                range,
+                container,
+                offset,
+            } => {
+                let id = self.resolve_range(range)?;
+                let container = self.resolve(container.clone())?;
+                self.set_range_boundary(
+                    id,
+                    container,
+                    *offset,
+                    matches!(command, Command::SetRangeStart { .. }),
+                    cancelled,
+                )?;
+            }
+            Command::SetActiveRange { document, range } => {
+                let document = self.resolve(document.clone())?;
+                let range = range
+                    .as_ref()
+                    .map(|operand| self.resolve_range(operand))
+                    .transpose()?;
+                self.set_active_range(document, range, cancelled)?;
+            }
+            Command::RetireRange(range) => {
+                let range = self.resolve_range(range)?;
+                self.retire_range(range, cancelled)?;
+            }
             Command::BindEncodingUrlFacts { basis, facts } => {
                 self.bind_encoding_url_facts(*basis, facts, limits, cancelled)?
             }
@@ -2639,6 +2767,7 @@ impl Draft {
                 let target = self.node_mut(node);
                 target.kind = kind;
                 self.units = units;
+                self.range_replace_data(node, offset, removed, data.len(), cancelled)?;
                 drop(formation); // The actual replacement graph now belongs to Draft.
                 if let Some(parent) = self.node(node)?.parent {
                     self.children_changed(parent, limits, cancelled)?;
@@ -2681,6 +2810,7 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
+        self.range_publication_ready(cancelled)?;
         admit(
             self.autofocus_count(cancelled)?,
             dom.limits.autofocus_candidates,
@@ -2748,6 +2878,7 @@ impl Draft {
             source::formation::reserve(&mut children, source.children.len(), budget, cancelled)?;
             children.extend(source.children.iter().copied().map(id));
             slots[slot].node = Some(Node {
+                active_range: source.active_range,
                 relevant_global: source.relevant_global,
                 document: DocumentId(id(source.document)),
                 kind: source.kind.clone(),
@@ -2854,7 +2985,48 @@ impl Draft {
             next: next_details_intention,
         } = self.finish_details(dom, &id, budget, cancelled)?;
         let finished = self.view_transitions.finish(dom.owner, budget, cancelled)?;
+        let mut ranges = Vec::new();
+        source::formation::reserve(&mut ranges, self.ranges.len(), budget, cancelled)?;
+        for (index, slot) in self.ranges.iter().enumerate() {
+            self.source_step(cancelled)?;
+            // An unpublished creation is not a canonical generation. Its
+            // private serial still distinguishes tickets during this batch,
+            // but an absent final record restores the published vacant basis.
+            let (generation, retired) = if slot.record.is_none() {
+                dom.state.ranges.get(index).map_or((0, false), |old| {
+                    (
+                        old.generation,
+                        old.retired || (old.record.is_some() && old.generation == u64::MAX),
+                    )
+                })
+            } else {
+                (slot.generation, slot.retired)
+            };
+            ranges.push(crate::range::Slot {
+                generation,
+                retired,
+                record: slot.record.map(|record| record.map(id)),
+            });
+        }
+        while ranges.len() > dom.state.ranges.len()
+            && ranges.last().is_some_and(|slot| slot.record.is_none())
+        {
+            self.source_step(cancelled)?;
+            ranges.pop();
+        }
+        let mut created_ranges = Vec::new();
+        source::formation::reserve(
+            &mut created_ranges,
+            self.range_tickets.len(),
+            budget,
+            cancelled,
+        )?;
+        for range in &self.range_tickets {
+            self.source_step(cancelled)?;
+            created_ranges.push(self.range_record(*range).ok().map(|_| *range));
+        }
         let state = State {
+            ranges,
             incomplete_source: None,
             incomplete_hosted: dom.state.incomplete_hosted,
             slots,
@@ -2956,6 +3128,7 @@ impl Draft {
         }
         Ok((
             Prepared {
+                created_ranges,
                 retirements,
                 formation,
                 allocation_ids: allocated_ids,
@@ -3005,6 +3178,45 @@ fn difference(
     cancelled: &AtomicBool,
 ) -> Result<Vec<DomChange>, DomError> {
     let mut changes = Vec::new();
+    for index in 0..old.ranges.len().max(new.ranges.len()) {
+        check_cancel(cancelled)?;
+        if let Some(budget) = budget {
+            budget.retain_bytes(0, cancelled)?;
+        }
+        let before = old
+            .ranges
+            .get(index)
+            .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
+        let after = new
+            .ranges
+            .get(index)
+            .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
+        let same = before.zip(after).is_some_and(|(a, b)| a.0 == b.0);
+        if let Some((generation, record)) = before {
+            let id = crate::DomRangeId {
+                owner,
+                slot: index,
+                generation,
+            };
+            if same {
+                if record != after.expect("same Range").1 {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::RangeBoundary(id));
+                }
+            } else {
+                source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                changes.push(DomChange::RangeRetired(id));
+            }
+        }
+        if !same && let Some((generation, _)) = after {
+            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+            changes.push(DomChange::RangeCreated(crate::DomRangeId {
+                owner,
+                slot: index,
+                generation,
+            }));
+        }
+    }
     for index in 0..old.slots.len().max(new.slots.len()) {
         let before = old
             .slots
@@ -3023,6 +3235,10 @@ fn difference(
             };
             if same {
                 let current = after.expect("same live identity").1;
+                if node.active_range != current.active_range {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentActiveRange(DocumentId(id)));
+                }
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (&node.kind, &current.kind)
                     && before.captured_in_view_transition() != after.captured_in_view_transition()
