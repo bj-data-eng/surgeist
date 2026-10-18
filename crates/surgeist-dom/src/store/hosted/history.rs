@@ -1504,6 +1504,7 @@ impl Dom {
 
 #[cfg(test)]
 mod tests {
+    mod document_index_tests;
     use crate::DomSourceLimits;
     // Real issuer IDs and native Document identity payloads exercise this data
     // owner. They do not attest hosted Globals, entropy, loops or external jobs.
