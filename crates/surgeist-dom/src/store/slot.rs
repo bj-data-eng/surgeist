@@ -20,14 +20,14 @@ impl Tree for Draft {
 }
 impl State {
     pub(super) fn slot_reference_count(&self) -> usize {
-        self.slots
-            .iter()
-            .filter_map(|s| s.node.as_ref())
-            .fold(self.signal_slots.len(), |sum, n| {
+        self.slots.values().filter_map(|s| s.node.as_ref()).fold(
+            self.signal_slots.len(),
+            |sum, n| {
                 sum.checked_add(n.manual_nodes.len())
                     .and_then(|sum| sum.checked_add(n.assigned_nodes.len()))
                     .expect("admitted reference count")
-            })
+            },
+        )
     }
 }
 impl Draft {

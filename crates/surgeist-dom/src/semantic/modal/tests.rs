@@ -66,19 +66,19 @@ fn unavailable_history_stays_missing_and_actual_raw_dialog_blocks_in_both_contex
         let (mut source, document, dialog) = fixture();
         // Mutate only an exclusively owned private fixture: unavailable history
         // and a positive raw blocker, without a public setter or modal success.
-        let node = Arc::get_mut(&mut source.state).unwrap().slots[document.node().slot]
-            .node
-            .as_mut()
-            .unwrap();
-        node.interactive_document = match disposition {
-            0 => Some(DocumentInteractiveState::Unavailable),
-            1 => Some(DocumentInteractiveState::Known {
-                open_dialogs: Vec::new(),
-                top_layer: vec![dialog],
-                pending_top_layer_removals: Vec::new(),
-            }),
-            _ => None,
-        };
+        Arc::get_mut(&mut source.state)
+            .unwrap()
+            .mutate_slot(document.node().slot, |slot| {
+                slot.node.as_mut().unwrap().interactive_document = match disposition {
+                    0 => Some(DocumentInteractiveState::Unavailable),
+                    1 => Some(DocumentInteractiveState::Known {
+                        open_dialogs: Vec::new().into(),
+                        top_layer: vec![dialog].into(),
+                        pending_top_layer_removals: Vec::new().into(),
+                    }),
+                    _ => None,
+                };
+            });
         let initial = capture(&source, document);
         let supplemented = capture(&source, document)
             .with_slot_semantics(slot_limits(), &AtomicBool::new(false))
@@ -128,15 +128,16 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
     let omitted = commit.created(&omitted).unwrap().unwrap();
     let mut source = dom.snapshot();
     drop(dom);
-    Arc::get_mut(&mut source.state).unwrap().slots[documents[1].node().slot]
-        .node
-        .as_mut()
+    Arc::get_mut(&mut source.state)
         .unwrap()
-        .interactive_document = Some(DocumentInteractiveState::Known {
-        open_dialogs: Vec::new(),
-        top_layer: vec![omitted],
-        pending_top_layer_removals: Vec::new(),
-    });
+        .mutate_slot(documents[1].node().slot, |slot| {
+            slot.node.as_mut().unwrap().interactive_document =
+                Some(DocumentInteractiveState::Known {
+                    open_dialogs: Vec::new().into(),
+                    top_layer: vec![omitted].into(),
+                    pending_top_layer_removals: Vec::new().into(),
+                });
+        });
     // Deliberately partial, but real, Document-only producer coverage. Omitting
     // the second Document's member does not qualify its raw list as empty.
     let mut builder = HtmlCaptureBuilder::new(

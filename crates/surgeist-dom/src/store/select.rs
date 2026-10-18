@@ -2223,7 +2223,10 @@ mod tests {
             ));
             assert!(prepared.changes.contains(&DomChange::Destroyed(id)));
         }
-        assert_eq!(prepared.state.native_tasks, vec![original[1], original[3]]);
+        assert_eq!(
+            prepared.state.native_tasks.as_slice(),
+            &[original[1], original[3]]
+        );
         assert_eq!(prepared.state.next_task, next + 1);
         let cancellations: Vec<_> = prepared
             .changes
@@ -2277,7 +2280,10 @@ mod tests {
             .copied()
             .collect();
         assert_eq!(published_cancellations, expected_cancellations);
-        assert_eq!(dom.state.native_tasks, vec![original[1], original[3]]);
+        assert_eq!(
+            dom.state.native_tasks.as_slice(),
+            &[original[1], original[3]]
+        );
         assert_eq!(dom.state.next_task, next + 1);
         assert_eq!(handed.authorization.status(), 2);
         assert_eq!(before.state.native_tasks, original);

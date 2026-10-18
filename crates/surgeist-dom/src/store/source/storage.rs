@@ -166,7 +166,7 @@ pub(in crate::store) fn kind(
 }
 struct Related<'a, K> {
     base: Option<&'a crate::base::BaseState<K>>,
-    base_document: Option<&'a crate::base::BaseDocument<K>>,
+    base_facts: Option<&'a surgeist_html_semantics::HtmlParseBaseFacts>,
     hyperlink: Option<&'a crate::hyperlink::HyperlinkState<K>>,
     encoding_url_document: Option<&'a crate::hyperlink::EncodingUrlDocument>,
     image: Option<&'a crate::image::ImageState<K>>,
@@ -184,9 +184,7 @@ fn related<K>(
         step()?;
         payload.producer(frozen.value.retained_storage_usage())?;
     }
-    if let Some(document) = related.base_document
-        && let Some(facts) = &document.facts
-    {
+    if let Some(facts) = related.base_facts {
         step()?;
         payload.producer(facts.retained_storage_usage())?;
     }
@@ -252,7 +250,10 @@ fn node_usage(
     payload.append(related(
         Related {
             base: node.base.as_ref(),
-            base_document: node.base_document.as_ref(),
+            base_facts: node
+                .base_document
+                .as_ref()
+                .and_then(|document| document.facts.as_ref()),
             hyperlink: node.hyperlink.as_ref(),
             encoding_url_document: node.encoding_url_document.as_ref(),
             image: node.image.as_ref(),
@@ -260,6 +261,69 @@ fn node_usage(
         },
         names_bank,
         step,
+    )?)?;
+    Ok(payload)
+}
+pub(in crate::store) fn canonical_slot(
+    slot: &Slot,
+    mut step: impl FnMut() -> Result<(), DomError>,
+) -> Result<Payload, DomError> {
+    let mut payload = Payload::default();
+    payload.add_bytes(size_of::<Slot>())?;
+    if let Some(node) = &slot.node {
+        payload.append(canonical_node(node, true, &mut step)?)?;
+    }
+    Ok(payload)
+}
+fn canonical_node(
+    node: &Node,
+    banks: bool,
+    mut step: impl FnMut() -> Result<(), DomError>,
+) -> Result<Payload, DomError> {
+    let mut payload = Payload::default();
+    step()?;
+    payload.append(kind(&node.kind, &mut step)?)?;
+    if banks {
+        // Each immutable sequence retains its Vec header outside Node.
+        payload.add_bytes(4 * size_of::<Vec<NodeId>>())?;
+        payload.bank::<crate::DomFullscreenEvent>(node.fullscreen_events.capacity())?;
+        payload.bank::<NodeId>(node.children.capacity())?;
+        payload.bank::<NodeId>(node.manual_nodes.capacity())?;
+        payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
+        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+            payload.add_bytes(size_of::<Vec<NodeId>>())?;
+            payload.bank::<NodeId>(candidates.capacity())?;
+        }
+        if let Some(canonical::Interactive::Known {
+            open_dialogs,
+            top_layer,
+            pending_top_layer_removals,
+        }) = &node.interactive_document
+        {
+            payload.add_bytes(3 * size_of::<Vec<NodeId>>())?;
+            payload.bank::<NodeId>(open_dialogs.capacity())?;
+            payload.bank::<NodeId>(top_layer.capacity())?;
+            payload.bank::<NodeId>(pending_top_layer_removals.capacity())?;
+        }
+        if let Some(document) = &node.base_document {
+            payload.add_bytes(size_of::<Vec<NodeId>>())?;
+            payload.bank::<NodeId>(document.render_blocking.capacity())?;
+        }
+    }
+    payload.append(related(
+        Related {
+            base: node.base.as_ref(),
+            base_facts: node
+                .base_document
+                .as_ref()
+                .and_then(|document| document.facts.as_ref()),
+            hyperlink: node.hyperlink.as_ref(),
+            encoding_url_document: node.encoding_url_document.as_ref(),
+            image: node.image.as_ref(),
+            form_past_names: node.form_past_names.as_ref(),
+        },
+        banks,
+        &mut step,
     )?)?;
     Ok(payload)
 }
@@ -271,8 +335,12 @@ fn state_usage(
     let mut payload = Payload::default();
     if banks {
         payload.add_bytes(size_of::<State>())?;
-        payload.bank::<Slot>(state.slots.capacity())?;
-        payload.bank::<crate::range::Slot<NodeId>>(state.ranges.capacity())?;
+        payload.add_bytes(state.slots.index_charge().bytes)?;
+        payload.add_bytes(state.slots.totals().bytes)?;
+        payload.add_units(state.slots.totals().units)?;
+        payload.add_bytes(state.ranges.index_charge().bytes)?;
+        payload.add_bytes(state.ranges.totals().bytes)?;
+        payload.add_bytes(3 * size_of::<Vec<NodeId>>())?;
         payload.bank::<NodeId>(state.signal_slots.capacity())?;
         payload.bank::<select::Task<NodeId>>(state.native_tasks.capacity())?;
         payload.bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())?;
@@ -286,47 +354,13 @@ fn state_usage(
             payload.add_bytes(registries.retained_payload_bytes(&mut step)?)?;
         }
     }
-    for node in state.slots.iter().filter_map(|slot| slot.node.as_ref()) {
-        step()?;
-        payload.append(kind(&node.kind, &mut step)?)?;
-        if banks {
-            payload.bank::<crate::DomFullscreenEvent>(node.fullscreen_events.capacity())?;
-            payload.bank::<NodeId>(node.children.capacity())?;
-            payload.bank::<NodeId>(node.manual_nodes.capacity())?;
-            payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
-            if let Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) =
-                &node.autofocus_document
-            {
-                payload.bank::<NodeId>(candidates.capacity())?;
-            }
-            if let Some(crate::dialog::DocumentInteractiveState::Known {
-                open_dialogs,
-                top_layer,
-                pending_top_layer_removals,
-            }) = &node.interactive_document
-            {
-                payload.bank::<NodeId>(open_dialogs.capacity())?;
-                payload.bank::<NodeId>(top_layer.capacity())?;
-                payload.bank::<NodeId>(pending_top_layer_removals.capacity())?;
-            }
-            if let Some(document) = &node.base_document {
-                payload.bank::<NodeId>(document.render_blocking.capacity())?;
-            }
+    if !banks {
+        for node in state.slots.values().filter_map(|slot| slot.node.as_ref()) {
+            payload.append(canonical_node(node, false, &mut step)?)?;
         }
-        payload.append(related(
-            Related {
-                base: node.base.as_ref(),
-                base_document: node.base_document.as_ref(),
-                hyperlink: node.hyperlink.as_ref(),
-                encoding_url_document: node.encoding_url_document.as_ref(),
-                image: node.image.as_ref(),
-                form_past_names: node.form_past_names.as_ref(),
-            },
-            banks,
-            &mut step,
-        )?)?;
     }
     if banks {
+        payload.add_bytes(2 * size_of::<Vec<crate::view_transition::Transition>>())?;
         payload.bank::<crate::DomDocumentViewTransitions>(
             state.view_transitions.documents.capacity(),
         )?;
@@ -337,6 +371,7 @@ fn state_usage(
     for transition in &state.view_transitions.transitions {
         step()?;
         if banks {
+            payload.add_bytes(size_of::<Vec<crate::view_transition::Record>>())?;
             payload.bank::<crate::view_transition::Record>(transition.records.capacity())?;
         }
         for record in &transition.records {
@@ -528,7 +563,7 @@ mod tests {
         let payload = related(
             Related {
                 base: None,
-                base_document: None,
+                base_facts: None,
                 hyperlink: Some(&hyperlink),
                 encoding_url_document: None,
                 image: None,

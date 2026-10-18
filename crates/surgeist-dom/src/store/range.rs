@@ -2,7 +2,25 @@
 use super::*;
 use crate::range::{Boundary, Record};
 use crate::{DomActiveRangeState, DomRangeId, DomRangeOperand};
-use std::cmp::Ordering as Position;
+use std::{
+    cmp::{Ordering as Position, Reverse},
+    collections::BinaryHeap,
+};
+
+/// Temporary ordered frontier while the Draft still materializes Range slots.
+pub(super) type Vacancies = BinaryHeap<Reverse<usize>>;
+
+pub(super) fn form_vacancies(
+    slots: Vec<Reverse<usize>>,
+    mut step: impl FnMut() -> Result<(), DomError>,
+) -> Result<Vacancies, DomError> {
+    // Bottom-up heap formation performs at most two comparisons per entry.
+    for _ in &slots {
+        step()?;
+        step()?;
+    }
+    Ok(Vacancies::from(slots))
+}
 
 #[cfg(test)]
 mod admission_tests;
@@ -47,6 +65,31 @@ mod allocation_observation {
 }
 
 impl Draft {
+    fn range_vacancy_work(&self, entries: usize, cancel: &AtomicBool) -> Result<(), DomError> {
+        // Heap operations visit a bounded root-to-leaf path. Prepay both integer
+        // comparisons at each possible level before the infallible mutation.
+        for _ in 0..(usize::BITS - entries.leading_zeros()) {
+            self.source_step(cancel)?;
+            self.source_step(cancel)?;
+        }
+        Ok(())
+    }
+
+    fn reserve_range_vacancy(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        let amount = self.source_reserve_amount::<Reverse<usize>>(
+            self.range_vacancies.len(),
+            self.range_vacancies.capacity(),
+            1,
+            cancel,
+        )?;
+        match amount {
+            Some(amount) => self.range_vacancies.try_reserve_exact(amount),
+            None => self.range_vacancies.try_reserve(1),
+        }
+        .map_err(|_| DomError::AllocationFailed)?;
+        self.source_admit(0, cancel)
+    }
+
     pub(super) fn range_record(&self, id: DomRangeId) -> Result<Record<Key>, DomError> {
         if id.owner != self.store {
             return Err(DomError::ForeignOwner);
@@ -190,42 +233,37 @@ impl Draft {
         if ticket != self.range_tickets.len() {
             return Err(DomError::UnavailableCreation);
         }
-        let mut available = None;
-        for index in 0..self.ranges.len() {
+        let available = self.range_vacancies.peek().map(|slot| slot.0);
+        let (index, generation, append) = if let Some(index) = available {
+            self.source_step(cancel)?;
             #[cfg(test)]
             allocation_observation::visit();
-            self.source_step(cancel)?;
             let slot = &self.ranges[index];
-            if slot.record.is_none() && !slot.retired && slot.generation < u64::MAX {
-                available = Some(index);
-                break;
-            }
-        }
-        let index = match available {
-            Some(index) => index,
-            None => {
-                admit(
-                    self.ranges
-                        .len()
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?,
-                    limits.ranges,
-                    DomResource::Ranges,
-                )?;
-                let amount = self.source_reserve_amount::<crate::range::Slot<Key>>(
-                    self.ranges.len(),
-                    self.ranges.capacity(),
-                    1,
-                    cancel,
-                )?;
-                source::reserve_bank(&mut self.ranges, 1, amount)?;
-                self.ranges.push(crate::range::Slot {
-                    generation: 0,
-                    retired: false,
-                    record: None,
-                });
-                self.ranges.len() - 1
-            }
+            debug_assert!(slot.record.is_none() && !slot.retired && slot.generation < u64::MAX);
+            (
+                index,
+                slot.generation
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                false,
+            )
+        } else {
+            admit(
+                self.ranges
+                    .len()
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                limits.ranges,
+                DomResource::Ranges,
+            )?;
+            let amount = self.source_reserve_amount::<crate::range::Slot<Key>>(
+                self.ranges.len(),
+                self.ranges.capacity(),
+                1,
+                cancel,
+            )?;
+            source::reserve_bank(&mut self.ranges, 1, amount)?;
+            (self.ranges.len(), 1, true)
         };
         let amount = self.source_reserve_amount::<DomRangeId>(
             self.range_tickets.len(),
@@ -235,11 +273,22 @@ impl Draft {
         )?;
         source::reserve_bank(&mut self.range_tickets, 1, amount)?;
         self.source_admit(0, cancel)?;
+        if append {
+            self.ranges.push(crate::range::Slot {
+                generation,
+                retired: false,
+                record: None,
+            });
+        } else {
+            self.range_vacancy_work(self.range_vacancies.len(), cancel)?;
+            let selected = self
+                .range_vacancies
+                .pop()
+                .expect("selected vacant Range slot");
+            debug_assert_eq!(selected.0, index);
+        }
         let slot = &mut self.ranges[index];
-        slot.generation = slot
-            .generation
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
+        slot.generation = generation;
         let boundary = Boundary {
             container: document,
             offset: 0,
@@ -320,9 +369,20 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.range_record(id)?;
+        if id.generation < u64::MAX {
+            self.reserve_range_vacancy(cancel)?;
+            let entries = self
+                .range_vacancies
+                .len()
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?;
+            self.range_vacancy_work(entries, cancel)?;
+        }
         self.ranges[id.slot].record = None;
         if id.generation == u64::MAX {
             self.ranges[id.slot].retired = true;
+        } else {
+            self.range_vacancies.push(Reverse(id.slot));
         }
         for index in 0..self.existing.len() {
             self.source_step(cancel)?;

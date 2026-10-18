@@ -848,7 +848,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
 
 #[test]
 fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_atomic() {
-    use crate::dialog::DocumentInteractiveState;
+    use crate::store::canonical::Interactive as DocumentInteractiveState;
     let cancel = AtomicBool::new(false);
     let mut dom =
         Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
@@ -893,7 +893,7 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
             // its independently retained autofocus history.
             assert!(matches!(
                 node.autofocus_document,
-                Some(crate::autofocus::DocumentAutofocusState::Unavailable)
+                Some(crate::store::canonical::Autofocus::Unavailable)
             ));
         }
         if let DomNodeKind::Element(element) = &node.kind

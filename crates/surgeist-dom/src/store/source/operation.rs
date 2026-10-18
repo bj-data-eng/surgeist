@@ -1361,7 +1361,7 @@ impl Operation {
                 id.is_some() && self.draft.phase_map.as_ref().expect("source map").ids[*i].is_none()
             })
             .count();
-        for (index, slot) in prepared.state.ranges.iter().enumerate() {
+        for (index, slot) in prepared.state.ranges.values().enumerate() {
             self.draft.source_step(cancel)?;
             if slot.record.is_some()
                 && !dom
@@ -5436,7 +5436,7 @@ pub(in crate::store) mod accounting_tests {
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
         let prepared = draft.finish(lease.dom, &cancel).unwrap();
         // This is the actual populated candidate, not a requested final size.
-        assert!(prepared.state.slots.iter().any(|slot| matches!(slot.node.as_ref().map(|n| &n.kind), Some(DomNodeKind::Text(value)) if value.len() == units)));
+        assert!(prepared.state.slots.values().any(|slot| matches!(slot.node.as_ref().map(|n| &n.kind), Some(DomNodeKind::Text(value)) if value.len() == units)));
         assert!(
             draft.source_formation_bytes.load(Ordering::Relaxed)
                 >= units * size_of::<u16>() + size_of::<Vec<u16>>(),
@@ -5466,7 +5466,7 @@ pub(in crate::store) mod accounting_tests {
             let occurrence = dom
                 .state
                 .slots
-                .iter()
+                .values()
                 .filter_map(|slot| slot.node.as_ref())
                 .map(|node| match &node.kind {
                     DomNodeKind::Document(metadata) => {

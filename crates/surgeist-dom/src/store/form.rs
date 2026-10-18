@@ -151,12 +151,10 @@ mod tests {
             },
         ];
         let state = Arc::get_mut(&mut dom.state).unwrap();
-        state.slots[form.slot]
-            .node
-            .as_mut()
-            .unwrap()
-            .form_past_names = Some(FormPastNames {
-            entries: Arc::new(names),
+        state.mutate_slot(form.slot, |slot| {
+            slot.node.as_mut().unwrap().form_past_names = Some(FormPastNames {
+                entries: Arc::new(names),
+            });
         });
         state.units += 12; // 5 + 3 + 4 exact UTF-16 code units.
         (dom, d, form, button, field)

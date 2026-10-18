@@ -1,6 +1,6 @@
 //! Qualified canonical Document modal facts, independent of flat-node coverage.
 use super::*;
-use crate::dialog::DocumentInteractiveState;
+use crate::store::canonical::Interactive as DocumentInteractiveState;
 use surgeist_html_semantics::{
     HtmlDocumentModalBlocking, HtmlDocumentModalFact, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
     HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact,

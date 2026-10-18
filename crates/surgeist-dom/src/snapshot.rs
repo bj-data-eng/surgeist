@@ -84,17 +84,13 @@ impl DomSnapshot {
     }
     /// Every managed node, including detached nodes. Arena order is unspecified.
     pub fn nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.state
-            .slots
-            .iter()
-            .enumerate()
-            .filter_map(|(slot, value)| {
-                value.node.as_ref().map(|_| NodeId {
-                    owner: self.owner,
-                    slot,
-                    generation: value.generation,
-                })
+        self.state.slots.iter().filter_map(|(slot, value)| {
+            value.node.as_ref().map(|_| NodeId {
+                owner: self.owner,
+                slot,
+                generation: value.generation,
             })
+        })
     }
 }
 

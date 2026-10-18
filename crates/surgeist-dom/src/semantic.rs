@@ -475,7 +475,7 @@ impl DomSnapshot {
         // Charge every arena slot, including destroyed/retired entries which
         // the public live-node iterator skips. Sparse snapshots still require
         // bounded scanning and cancellation polling.
-        for (index, slot) in self.state.slots.iter().enumerate() {
+        for (index, slot) in self.state.slots.iter() {
             control.charge(1)?;
             let Some(value) = &slot.node else {
                 continue;

@@ -451,6 +451,10 @@ impl Draft {
             fullscreen_exit: self.fullscreen_exit,
             fullscreen_work_custody: self.fullscreen_work_custody,
             ranges: a.copy(&self.ranges, cancel)?,
+            range_vacancies: range::form_vacancies(
+                a.copy(self.range_vacancies.as_slice(), cancel)?,
+                || self.source_step(cancel),
+            )?,
             range_tickets: a.copy(&self.range_tickets, cancel)?,
             owner: self.owner.clone(),
             store: self.store,
@@ -571,6 +575,10 @@ impl Draft {
         add(self.generations.capacity(), size_of::<u64>())?;
         add(self.tickets.capacity(), size_of::<Key>())?;
         add(self.ranges.capacity(), size_of::<crate::range::Slot<Key>>())?;
+        add(
+            self.range_vacancies.capacity(),
+            size_of::<std::cmp::Reverse<usize>>(),
+        )?;
         add(
             self.range_tickets.capacity(),
             size_of::<crate::DomRangeId>(),

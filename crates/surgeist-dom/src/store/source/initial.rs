@@ -197,13 +197,10 @@ pub(in crate::store) fn copy<T: Copy>(
     Ok(out)
 }
 pub(in crate::store) fn base_document(
-    source: &crate::base::BaseDocument<NodeId>,
+    source: &canonical::BaseDocument,
     initial: Option<&Initial>,
     cancel: &AtomicBool,
 ) -> Result<crate::base::BaseDocument<Key>, DomError> {
-    if initial.is_none() {
-        return source.map(|id| Key::Existing(id.slot));
-    }
     Ok(crate::base::BaseDocument {
         facts: source.facts.clone(),
         first: source.first.map(|id| Key::Existing(id.slot)),

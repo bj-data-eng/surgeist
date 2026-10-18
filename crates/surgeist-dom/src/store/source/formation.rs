@@ -581,6 +581,23 @@ pub(in crate::store) mod candidate_observation {
             + mapped * size_of::<NodeId>();
         let mut text = false;
         for node in slots.iter().filter_map(|slot| slot.node.as_ref()) {
+            bytes += 4 * size_of::<Vec<NodeId>>();
+            if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+                bytes += size_of::<Vec<NodeId>>() + candidates.capacity() * size_of::<NodeId>();
+            }
+            if let Some(canonical::Interactive::Known {
+                open_dialogs,
+                top_layer,
+                pending_top_layer_removals,
+            }) = &node.interactive_document
+            {
+                bytes += 3 * size_of::<Vec<NodeId>>()
+                    + (open_dialogs.capacity()
+                        + top_layer.capacity()
+                        + pending_top_layer_removals.capacity())
+                        * size_of::<NodeId>();
+            }
+
             bytes += node.children.capacity() * size_of::<NodeId>()
                 + node.manual_nodes.capacity() * size_of::<NodeId>()
                 + node.assigned_nodes.capacity() * size_of::<NodeId>();
@@ -597,7 +614,8 @@ pub(in crate::store) mod candidate_observation {
             }
             if let Some(document) = &node.base_document {
                 assert!(document.facts.is_none());
-                bytes += document.render_blocking.capacity() * size_of::<NodeId>();
+                bytes += size_of::<Vec<NodeId>>()
+                    + document.render_blocking.capacity() * size_of::<NodeId>();
             }
             assert!(
                 node.image.is_none()

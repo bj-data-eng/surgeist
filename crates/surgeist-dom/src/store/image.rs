@@ -882,15 +882,13 @@ mod tests {
     #[test]
     fn checked_invocation_exhaustion_refuses_without_wrapping_or_publishing_attributes() {
         let (mut dom, img) = fixture();
-        let image = Arc::get_mut(&mut dom.state).unwrap().slots[img.slot]
-            .node
-            .as_mut()
+        Arc::get_mut(&mut dom.state)
             .unwrap()
-            .image
-            .as_mut()
-            .unwrap();
-        image.high_water = u64::MAX;
-        image.waiting.as_mut().unwrap().invocation = u64::MAX;
+            .mutate_slot(img.slot, |slot| {
+                let image = slot.node.as_mut().unwrap().image.as_mut().unwrap();
+                image.high_water = u64::MAX;
+                image.waiting.as_mut().unwrap().invocation = u64::MAX;
+            });
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();

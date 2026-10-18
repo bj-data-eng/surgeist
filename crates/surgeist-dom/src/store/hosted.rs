@@ -1386,8 +1386,7 @@ impl Dom {
         // unloading is suppressed for an initial child. Canonical fullscreen
         // membership cannot be certified settled by retiring the hosted graph.
         let captured = self.state.node(self.owner, document.node())?;
-        let Some(crate::dialog::DocumentInteractiveState::Known { top_layer, .. }) =
-            &captured.interactive_document
+        let Some(canonical::Interactive::Known { top_layer, .. }) = &captured.interactive_document
         else {
             return Err(DomError::FullscreenModelUnavailable {
                 step: crate::DomFullscreenModelStep::ReadTopLayer,

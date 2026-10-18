@@ -131,39 +131,121 @@ fn original_source_checkpoint_restores_allocation_order_without_refunding_work()
     )
     .unwrap()
     .0;
+    // Capture an already populated frontier, rather than an empty allocator.
+    draft.retire_range(original[0], &cancel).unwrap();
+    draft.retire_range(original[2], &cancel).unwrap();
     let checkpoint = draft
         .source_checkpoint(draft.source_other_bytes, 0, &cancel)
         .unwrap();
     let key = Key::Existing(document.0.slot);
-    draft.retire_range(original[0], &cancel).unwrap();
-    draft.create_range(key, 0, dom.limits, &cancel).unwrap();
-    draft.create_range(key, 1, dom.limits, &cancel).unwrap();
+    for ticket in 0..3 {
+        draft
+            .create_range(key, ticket, dom.limits, &cancel)
+            .unwrap();
+    }
     assert_eq!(
-        (draft.range_tickets[0].slot, draft.range_tickets[1].slot),
-        (0, 64)
+        draft
+            .range_tickets
+            .iter()
+            .map(|id| (id.slot, id.generation))
+            .collect::<Vec<_>>(),
+        [(0, 2), (2, 2), (64, 1)]
     );
     let spent = draft.source_work.load(Ordering::Relaxed);
     checkpoint.restore(&mut draft);
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
     assert!(draft.range_tickets.is_empty());
     assert_eq!(draft.ranges.len(), 64);
-    assert!(draft.range_record(original[0]).is_ok());
-    draft.retire_range(original[0], &cancel).unwrap();
-    draft.create_range(key, 0, dom.limits, &cancel).unwrap();
-    draft.create_range(key, 1, dom.limits, &cancel).unwrap();
+    assert!(matches!(
+        draft.range_record(original[0]),
+        Err(DomError::StaleRange)
+    ));
+    assert!(matches!(
+        draft.range_record(original[2]),
+        Err(DomError::StaleRange)
+    ));
+    for ticket in 0..3 {
+        draft
+            .create_range(key, ticket, dom.limits, &cancel)
+            .unwrap();
+    }
     assert_eq!(
-        (
-            draft.range_tickets[0].slot,
-            draft.range_tickets[0].generation
-        ),
-        (0, 2)
-    );
-    assert_eq!(
-        (
-            draft.range_tickets[1].slot,
-            draft.range_tickets[1].generation
-        ),
-        (64, 1)
+        draft
+            .range_tickets
+            .iter()
+            .map(|id| (id.slot, id.generation))
+            .collect::<Vec<_>>(),
+        [(0, 2), (2, 2), (64, 1)]
     );
     assert!(draft.source_work.load(Ordering::Relaxed) > spent);
+}
+
+#[test]
+fn formed_vacancy_frontier_prices_actual_capacity_and_simultaneous_checkpoint_copy() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _, original) = occupied_ranges();
+    let mut retirement = DomBatch::new();
+    retirement.retire_range(original[1]);
+    retirement.retire_range(original[7]);
+    dom.apply(retirement, &cancel).unwrap();
+    let commands = DomBatch::new();
+    let policy = crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut draft = Draft::new_source(
+        &dom,
+        commands.owner.clone(),
+        &commands.commands,
+        policy,
+        &cancel,
+    )
+    .unwrap()
+    .0;
+    assert_eq!(draft.range_vacancies.len(), 2);
+    assert_eq!(draft.range_vacancies.peek(), Some(&Reverse(1)));
+    // Initial formation owns the actual reserved backing even though only two
+    // entries are eligible. Removing that one bank isolates its control debit.
+    let frontier = std::mem::take(&mut draft.range_vacancies);
+    let without = draft.source_storage_bytes(&cancel).unwrap();
+    let bytes = frontier.capacity() * std::mem::size_of::<Reverse<usize>>();
+    assert!(bytes >= 2 * std::mem::size_of::<usize>());
+    draft.range_vacancies = frontier;
+    assert_eq!(
+        draft.source_storage_bytes(&cancel).unwrap(),
+        without + bytes
+    );
+    // Independently reserve exactly the checkpoint's two requested entries.
+    let mut probe = Vec::<Reverse<usize>>::new();
+    probe.try_reserve_exact(2).unwrap();
+    let copied_bytes = probe.capacity() * std::mem::size_of::<Reverse<usize>>();
+    let baseline = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+    let mut limit = policy;
+    limit.retained_bytes = baseline + copied_bytes - 1;
+    draft.source_limits = Some(limit);
+    {
+        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
+        assert!(matches!(
+            admission.copy(draft.range_vacancies.as_slice(), &cancel),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedBytes,
+                ..
+            })
+        ));
+    }
+    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+    limit.retained_bytes += 1;
+    draft.source_limits = Some(limit);
+    {
+        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
+        let copied = admission
+            .copy(draft.range_vacancies.as_slice(), &cancel)
+            .unwrap();
+        let frontier = form_vacancies(copied, || draft.source_step(&cancel)).unwrap();
+        assert_eq!(frontier.into_sorted_vec(), [Reverse(7), Reverse(1)]);
+        let charge = admission.finish();
+        assert_eq!(
+            draft.select_temporary_bytes.load(Ordering::Relaxed),
+            copied_bytes
+        );
+        drop(charge);
+    }
+    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
 }

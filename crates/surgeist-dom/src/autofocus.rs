@@ -40,7 +40,7 @@ impl<'a> DomDocument<'a> {
         self.snapshot.require_complete_source()?;
         let node = self.snapshot.node(self.id.node())?;
         match node.node.autofocus_document.as_ref() {
-            Some(DocumentAutofocusState::Known {
+            Some(crate::store::canonical::Autofocus::Known {
                 candidates,
                 processed,
             }) => Ok(DomDocumentAutofocus {

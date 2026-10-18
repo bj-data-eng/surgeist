@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn attribute_change_keeps_canonical_relationship_backing_and_untouched_records() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element_ns(
+        &document,
+        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        "div",
+    );
+    let child = batch.create_text(&document, "child");
+    batch.insert_before(&child, &parent, None);
+    batch.insert_before(&parent, &document, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let parent = commit.created(&parent).unwrap().unwrap();
+    let child = commit.created(&child).unwrap().unwrap();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(parent, "id", "changed");
+    dom.apply(batch, &cancel).unwrap();
+    let old = before.state.slots[parent.slot].node.as_ref().unwrap();
+    let new = dom.state.slots[parent.slot].node.as_ref().unwrap();
+    assert_eq!(old.children.as_slice(), &[child]);
+    assert_eq!(new.children.as_slice(), &[child]);
+    assert!(old.children.shares_backing(&new.children));
+    assert!(old.manual_nodes.shares_backing(&new.manual_nodes));
+    assert!(old.assigned_nodes.shares_backing(&new.assigned_nodes));
+    assert!(old.fullscreen_events.shares_backing(&new.fullscreen_events));
+    assert!(Arc::ptr_eq(
+        before.state.slots.get_shared(child.slot).unwrap(),
+        dom.state.slots.get_shared(child.slot).unwrap()
+    ));
+}
+
+#[test]
 fn cancelled_family_publication_preserves_dimensions_marquee_slots_history_and_allocations() {
     let mut dom = dom();
     let cancel = AtomicBool::new(false);
@@ -290,7 +325,9 @@ fn generation_exhaustion_retires_the_slot_instead_of_reusing_identity() {
         .created(&text)
         .unwrap()
         .unwrap();
-    Arc::get_mut(&mut dom.state).unwrap().slots[text.slot].generation = u64::MAX;
+    Arc::get_mut(&mut dom.state)
+        .unwrap()
+        .mutate_slot(text.slot, |slot| slot.generation = u64::MAX);
     let exhausted = NodeId {
         generation: u64::MAX,
         ..text

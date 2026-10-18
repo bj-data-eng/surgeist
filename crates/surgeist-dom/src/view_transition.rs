@@ -223,22 +223,22 @@ pub(crate) struct Record {
 pub(crate) struct Transition {
     pub id: DomViewTransitionId,
     pub document: DocumentId,
-    pub records: Vec<Record>,
+    pub records: crate::store::SharedVec<Record>,
     pub setup: bool,
     pub root_captured: bool,
     pub next_record: u64,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct ViewTransitions {
-    pub documents: Vec<DomDocumentViewTransitions>,
-    pub transitions: Vec<Transition>,
+    pub documents: crate::store::SharedVec<DomDocumentViewTransitions>,
+    pub transitions: crate::store::SharedVec<Transition>,
     pub next_transition: u64,
 }
 impl ViewTransitions {
     pub fn new() -> Self {
         Self {
-            documents: Vec::new(),
-            transitions: Vec::new(),
+            documents: crate::store::SharedVec::default(),
+            transitions: crate::store::SharedVec::default(),
             next_transition: 0,
         }
     }

@@ -48,7 +48,7 @@ impl<'a> DomDocument<'a> {
         self.snapshot.require_complete_source()?;
         let node = self.snapshot.node(self.id.node())?;
         match node.node.interactive_document.as_ref() {
-            Some(crate::dialog::DocumentInteractiveState::Known {
+            Some(crate::store::canonical::Interactive::Known {
                 top_layer,
                 pending_top_layer_removals,
                 ..

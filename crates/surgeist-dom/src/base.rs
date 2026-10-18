@@ -87,21 +87,6 @@ impl<K> BaseDocument<K> {
             render_blocking: Vec::new(),
         }
     }
-    pub(crate) fn map<T>(&self, map: impl Fn(K) -> T) -> Result<BaseDocument<T>, crate::DomError>
-    where
-        K: Copy,
-    {
-        let mut render_blocking = Vec::new();
-        render_blocking
-            .try_reserve_exact(self.render_blocking.len())
-            .map_err(|_| crate::DomError::AllocationFailed)?;
-        render_blocking.extend(self.render_blocking.iter().copied().map(&map));
-        Ok(BaseDocument {
-            facts: self.facts.clone(),
-            first: self.first.map(map),
-            render_blocking,
-        })
-    }
     pub(crate) fn units(&self) -> usize {
         self.facts
             .as_ref()

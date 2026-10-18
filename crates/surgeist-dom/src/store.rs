@@ -15,7 +15,9 @@ use crate::{
 
 mod attributes;
 mod autofocus;
+mod bank;
 mod base;
+pub(crate) mod canonical;
 mod children;
 mod control;
 mod design_mode;
@@ -45,6 +47,7 @@ pub(crate) mod registry;
 mod script;
 mod select;
 mod shadow;
+mod shared;
 mod slot;
 pub(crate) mod source;
 pub(crate) mod style;
@@ -54,6 +57,7 @@ mod textarea;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
+pub(crate) use shared::SharedVec;
 use view_transition::DraftTransitions;
 
 /// Configured capacity whose admission would be exceeded.
@@ -950,22 +954,23 @@ impl DomCommit {
     }
 }
 
+#[cfg_attr(test, derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub(crate) struct Node {
-    pub(crate) fullscreen_events: Vec<crate::DomFullscreenEvent>,
+    pub(crate) fullscreen_events: SharedVec<crate::DomFullscreenEvent>,
     pub(crate) active_range: crate::DomActiveRangeState,
     pub(crate) document: DocumentId,
     pub(crate) relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     pub(crate) kind: DomNodeKind,
     pub(crate) parent: Option<NodeId>,
-    pub(crate) children: Vec<NodeId>,
+    pub(crate) children: SharedVec<NodeId>,
     pub(crate) shadow_root: Option<NodeId>,
     pub(crate) host: Option<NodeId>,
     pub(crate) template_contents: Option<NodeId>,
     pub(crate) template_patch: Option<crate::template::TemplatePatch<NodeId>>,
     pub(crate) template_document: Option<crate::template::TemplateDocument<NodeId>>,
-    pub(crate) manual_nodes: Vec<NodeId>,
-    pub(crate) assigned_nodes: Vec<NodeId>,
+    pub(crate) manual_nodes: SharedVec<NodeId>,
+    pub(crate) assigned_nodes: SharedVec<NodeId>,
     pub(crate) manual_slot: Option<NodeId>,
     pub(crate) assigned_slot: Option<NodeId>,
     pub(crate) reflected_targets: Option<crate::reflected::ReflectedTargets<NodeId>>,
@@ -975,14 +980,15 @@ pub(crate) struct Node {
     pub(crate) script: Option<crate::script::ScriptState<NodeId>>,
     pub(crate) style_parser_document: Option<NodeId>,
     pub(crate) base: Option<crate::base::BaseState<NodeId>>,
-    pub(crate) base_document: Option<crate::base::BaseDocument<NodeId>>,
+    pub(crate) base_document: Option<canonical::BaseDocument>,
     pub(crate) link: Option<crate::base::LinkState<NodeId>>,
     pub(crate) image: Option<crate::image::ImageState<NodeId>>,
     pub(crate) hyperlink: Option<crate::hyperlink::HyperlinkState<NodeId>>,
     pub(crate) encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
-    pub(crate) interactive_document: Option<crate::dialog::DocumentInteractiveState<NodeId>>,
-    pub(crate) autofocus_document: Option<crate::autofocus::DocumentAutofocusState<NodeId>>,
+    pub(crate) interactive_document: Option<canonical::Interactive>,
+    pub(crate) autofocus_document: Option<canonical::Autofocus>,
 }
+#[cfg_attr(test, derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub(crate) struct Slot {
     pub(crate) generation: u64,
@@ -991,24 +997,44 @@ pub(crate) struct Slot {
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct State {
-    pub(crate) ranges: Vec<crate::range::Slot<NodeId>>,
+    pub(crate) ranges: bank::Bank<crate::range::Slot<NodeId>>,
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
-    pub(crate) slots: Vec<Slot>,
+    pub(crate) slots: bank::Bank<Slot>,
     pub(crate) registries: Option<Arc<registry::Bank>>,
     pub(crate) hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
     pub(crate) hosted_history: Option<Arc<hosted::history::Graph>>,
     pub(crate) view_transitions: ViewTransitions,
-    pub(crate) signal_slots: Vec<NodeId>,
+    pub(crate) signal_slots: SharedVec<NodeId>,
     pub(crate) notification_queued: bool,
-    native_tasks: Vec<select::Task<NodeId>>,
+    native_tasks: SharedVec<select::Task<NodeId>>,
     next_task: u64,
-    pub(crate) details_intentions: Vec<crate::DomDetailsToggleIntention>,
+    pub(crate) details_intentions: SharedVec<crate::DomDetailsToggleIntention>,
     next_details_intention: u64,
     nodes: usize,
     units: usize,
 }
 impl State {
+    #[cfg(test)]
+    pub(crate) fn mutate_slot(&mut self, index: usize, change: impl FnOnce(&mut Slot)) {
+        let mut slot = self.slots[index].clone();
+        change(&mut slot);
+        let payload = source::storage::canonical_slot(&slot, || Ok(())).unwrap();
+        let reusable = slot.node.is_none() && !slot.retired;
+        self.slots
+            .set(
+                index,
+                Arc::new(slot),
+                reusable,
+                bank::Totals {
+                    bytes: payload.bytes,
+                    units: payload.units,
+                    occurrences: 1,
+                },
+            )
+            .unwrap();
+    }
+
     pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
         if id.owner != owner {
             return Err(DomError::ForeignOwner);
@@ -1086,19 +1112,19 @@ impl Dom {
             revision: DomRevision(0),
             limits,
             state: Arc::new(State {
-                ranges: Vec::new(),
+                ranges: bank::Bank::default(),
                 incomplete_source: None,
                 incomplete_hosted: None,
-                slots: Vec::new(),
+                slots: bank::Bank::default(),
                 registries: None,
                 hosted_globals: None,
                 hosted_history: None,
                 view_transitions: ViewTransitions::new(),
-                signal_slots: Vec::new(),
+                signal_slots: SharedVec::default(),
                 notification_queued: false,
-                native_tasks: Vec::new(),
+                native_tasks: SharedVec::default(),
                 next_task: 0,
-                details_intentions: Vec::new(),
+                details_intentions: SharedVec::default(),
                 next_details_intention: 0,
                 nodes: 0,
                 units: 0,
@@ -1135,13 +1161,13 @@ impl Dom {
             ranges: self
                 .state
                 .ranges
-                .iter()
+                .values()
                 .filter(|slot| slot.record.is_some())
                 .count(),
             meta_color_scheme_bytes: self
                 .state
                 .slots
-                .iter()
+                .values()
                 .filter_map(|slot| slot.node.as_ref())
                 .map(|node| match &node.kind {
                     DomNodeKind::Document(metadata) => metadata.meta_color_scheme_bytes(),
@@ -1151,12 +1177,10 @@ impl Dom {
             autofocus_candidates: self
                 .state
                 .slots
-                .iter()
+                .values()
                 .filter_map(|s| s.node.as_ref())
                 .map(|n| match &n.autofocus_document {
-                    Some(crate::autofocus::DocumentAutofocusState::Known {
-                        candidates, ..
-                    }) => candidates.len(),
+                    Some(canonical::Autofocus::Known { candidates, .. }) => candidates.len(),
                     _ => 0,
                 })
                 .sum(),
@@ -1206,7 +1230,7 @@ impl Dom {
         let events = self
             .state
             .slots
-            .iter()
+            .values()
             .filter_map(|slot| slot.node.as_ref())
             .try_fold(0usize, |count, node| {
                 count
@@ -1236,11 +1260,12 @@ impl Dom {
                     )
                     .ok_or(DomError::RepresentationExhausted)?;
                 records = records
-                    .checked_add(
-                        node.base_document
+                    .checked_add(node.base_document.as_ref().map_or(0, |document| {
+                        document
+                            .facts
                             .as_ref()
-                            .map_or(0, crate::base::BaseDocument::records),
-                    )
+                            .map_or(0, |facts| facts.formation_usage().record_capacity())
+                    }))
                     .ok_or(DomError::RepresentationExhausted)?;
             }
         }
@@ -1708,6 +1733,7 @@ struct Draft {
     // An actual published parallel invocation retains this same Work atom.
     fullscreen_work_custody: Option<crate::DomFullscreenExitId>,
     ranges: Vec<crate::range::Slot<Key>>,
+    range_vacancies: range::Vacancies,
     range_tickets: Vec<crate::DomRangeId>,
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
@@ -1883,18 +1909,20 @@ impl Draft {
                         .autofocus_document
                         .as_ref()
                         .map(|state| {
-                            use crate::autofocus::DocumentAutofocusState as A;
+                            use canonical::Autofocus as A;
                             Ok::<_, DomError>(match state {
                                 A::Known {
                                     candidates,
                                     processed,
-                                } => A::Known {
+                                } => crate::autofocus::DocumentAutofocusState::Known {
                                     candidates: source::initial::map_keys(
                                         candidates, initial, cancelled,
                                     )?,
                                     processed: *processed,
                                 },
-                                A::Unavailable => A::Unavailable,
+                                A::Unavailable => {
+                                    crate::autofocus::DocumentAutofocusState::Unavailable
+                                }
                             })
                         })
                         .transpose()?,
@@ -1907,13 +1935,13 @@ impl Draft {
                         .interactive_document
                         .as_ref()
                         .map(|state| {
-                            use crate::dialog::DocumentInteractiveState as Interactive;
+                            use canonical::Interactive;
                             Ok::<_, DomError>(match state {
                                 Interactive::Known {
                                     open_dialogs,
                                     top_layer,
                                     pending_top_layer_removals,
-                                } => Interactive::Known {
+                                } => crate::dialog::DocumentInteractiveState::Known {
                                     open_dialogs: source::initial::map_keys(
                                         open_dialogs,
                                         initial,
@@ -1928,7 +1956,9 @@ impl Draft {
                                         cancelled,
                                     )?,
                                 },
-                                Interactive::Unavailable => Interactive::Unavailable,
+                                Interactive::Unavailable => {
+                                    crate::dialog::DocumentInteractiveState::Unavailable
+                                }
                             })
                         })
                         .transpose()?,
@@ -1986,8 +2016,20 @@ impl Draft {
             details::draft_formed(&dom.state.details_intentions, initial, cancelled)?;
         let mut ranges = Vec::new();
         source::initial::reserve(&mut ranges, dom.state.ranges.len(), initial, cancelled)?;
-        for slot in &dom.state.ranges {
+        let mut range_vacancies = Vec::new();
+        if dom.state.ranges.lowest_vacant().is_some() {
+            source::initial::reserve(
+                &mut range_vacancies,
+                dom.state.ranges.len(),
+                initial,
+                cancelled,
+            )?;
+        }
+        for (index, slot) in dom.state.ranges.iter() {
             source::initial::step(initial, cancelled)?;
+            if slot.record.is_none() && !slot.retired && slot.generation < u64::MAX {
+                range_vacancies.push(std::cmp::Reverse(index));
+            }
             ranges.push(crate::range::Slot {
                 generation: slot.generation,
                 retired: slot.retired,
@@ -1996,8 +2038,12 @@ impl Draft {
                     .map(|record| record.map(|node| Key::Existing(node.slot))),
             });
         }
+        let range_vacancies = range::form_vacancies(range_vacancies, || {
+            source::initial::step(initial, cancelled)
+        })?;
         Ok(Self {
             ranges,
+            range_vacancies,
             range_tickets: Vec::new(),
             owner,
             #[cfg(test)]
@@ -2988,6 +3034,21 @@ impl Draft {
                 let payload =
                     source::storage::candidate_node(source, || self.source_step(cancelled))?;
                 budget.retain_payload(payload, cancelled)?;
+                let headers = 4usize
+                    + usize::from(source.base_document.is_some())
+                    + usize::from(matches!(
+                        &source.autofocus_document,
+                        Some(crate::autofocus::DocumentAutofocusState::Known { .. })
+                    ))
+                    + if matches!(
+                        &source.interactive_document,
+                        Some(crate::dialog::DocumentInteractiveState::Known { .. })
+                    ) {
+                        3
+                    } else {
+                        0
+                    };
+                budget.retain_bytes(headers * size_of::<Vec<NodeId>>(), cancelled)?;
             }
             let mut children = Vec::new();
             source::formation::reserve(&mut children, source.children.len(), budget, cancelled)?;
@@ -3005,9 +3066,9 @@ impl Draft {
                 template_contents: source.template_contents.map(id),
                 template_patch: source.template_patch.map(|p| p.map(id)),
                 template_document: source.template_document.map(|value| value.map(id)),
-                children,
-                manual_nodes: map_ids(&source.manual_nodes, &id, budget, cancelled)?,
-                assigned_nodes: map_ids(&source.assigned_nodes, &id, budget, cancelled)?,
+                children: children.into(),
+                manual_nodes: map_ids(&source.manual_nodes, &id, budget, cancelled)?.into(),
+                assigned_nodes: map_ids(&source.assigned_nodes, &id, budget, cancelled)?.into(),
                 manual_slot: source.manual_slot.map(id),
                 assigned_slot: source.assigned_slot.map(id),
                 reflected_targets: source.reflected_targets.map(|targets| targets.map(id)),
@@ -3018,10 +3079,11 @@ impl Draft {
                     .base_document
                     .as_ref()
                     .map(|b| {
-                        Ok::<_, DomError>(crate::base::BaseDocument {
+                        Ok::<_, DomError>(canonical::BaseDocument {
                             facts: b.facts.clone(),
                             first: b.first.map(id),
-                            render_blocking: map_ids(&b.render_blocking, &id, budget, cancelled)?,
+                            render_blocking: map_ids(&b.render_blocking, &id, budget, cancelled)?
+                                .into(),
                         })
                     })
                     .transpose()?,
@@ -3038,15 +3100,16 @@ impl Draft {
                             A::Known {
                                 candidates,
                                 processed,
-                            } => A::Known {
-                                candidates: map_ids(candidates, &id, budget, cancelled)?,
+                            } => canonical::Autofocus::Known {
+                                candidates: map_ids(candidates, &id, budget, cancelled)?.into(),
                                 processed: *processed,
                             },
-                            A::Unavailable => A::Unavailable,
+                            A::Unavailable => canonical::Autofocus::Unavailable,
                         })
                     })
                     .transpose()?,
-                fullscreen_events: copy_records(&source.fullscreen_events, budget, cancelled)?,
+                fullscreen_events: copy_records(&source.fullscreen_events, budget, cancelled)?
+                    .into(),
                 interactive_document: source
                     .interactive_document
                     .as_ref()
@@ -3057,17 +3120,18 @@ impl Draft {
                                 open_dialogs,
                                 top_layer,
                                 pending_top_layer_removals,
-                            } => Interactive::Known {
-                                open_dialogs: map_ids(open_dialogs, &id, budget, cancelled)?,
-                                top_layer: map_ids(top_layer, &id, budget, cancelled)?,
+                            } => canonical::Interactive::Known {
+                                open_dialogs: map_ids(open_dialogs, &id, budget, cancelled)?.into(),
+                                top_layer: map_ids(top_layer, &id, budget, cancelled)?.into(),
                                 pending_top_layer_removals: map_ids(
                                     pending_top_layer_removals,
                                     &id,
                                     budget,
                                     cancelled,
-                                )?,
+                                )?
+                                .into(),
                             },
-                            Interactive::Unavailable => Interactive::Unavailable,
+                            Interactive::Unavailable => canonical::Interactive::Unavailable,
                         })
                     })
                     .transpose()?,
@@ -3100,7 +3164,12 @@ impl Draft {
             cancellations: details_cancellations,
             next: next_details_intention,
         } = self.finish_details(dom, &id, budget, cancelled)?;
-        let finished = self.view_transitions.finish(dom.owner, budget, cancelled)?;
+        let finished = self.view_transitions.finish(
+            dom.owner,
+            &dom.state.view_transitions,
+            budget,
+            cancelled,
+        )?;
         let mut ranges = Vec::new();
         source::formation::reserve(&mut ranges, self.ranges.len(), budget, cancelled)?;
         for (index, slot) in self.ranges.iter().enumerate() {
@@ -3141,7 +3210,37 @@ impl Draft {
             self.source_step(cancelled)?;
             created_ranges.push(self.range_record(*range).ok().map(|_| *range));
         }
-        let state = State {
+        for (index, slot) in slots.iter_mut().enumerate() {
+            self.source_step(cancelled)?;
+            if let (Some(candidate), Some(original)) = (
+                slot.node.as_mut(),
+                dom.state
+                    .slots
+                    .get(index)
+                    .and_then(|slot| slot.node.as_ref()),
+            ) {
+                self.reuse_equal_node_backings(candidate, original, budget, cancelled)?;
+            }
+        }
+        let slots = self.seal_bank(slots, &dom.state.slots, budget, cancelled, |slot| {
+            Ok((
+                slot.node.is_none() && !slot.retired,
+                source::storage::canonical_slot(slot, || self.source_step(cancelled))?,
+            ))
+        })?;
+        let ranges = self.seal_bank(ranges, &dom.state.ranges, budget, cancelled, |slot| {
+            Ok((
+                slot.record.is_none() && !slot.retired && slot.generation < u64::MAX,
+                source::storage::Payload {
+                    bytes: size_of::<crate::range::Slot<NodeId>>(),
+                    units: 0,
+                },
+            ))
+        })?;
+        if let Some(budget) = budget {
+            budget.retain_bytes(3 * size_of::<Vec<NodeId>>(), cancelled)?;
+        }
+        let mut state = State {
             ranges,
             incomplete_source: None,
             incomplete_hosted: dom.state.incomplete_hosted,
@@ -3150,15 +3249,35 @@ impl Draft {
             hosted_globals: self.hosted_globals.clone(),
             hosted_history: self.hosted_history.clone(),
             view_transitions: finished.value,
-            signal_slots: self.map_public_ids(&self.signal_slots, &id, budget, cancelled)?,
+            signal_slots: self
+                .map_public_ids(&self.signal_slots, &id, budget, cancelled)?
+                .into(),
             notification_queued: self.notification_queued,
-            native_tasks,
+            native_tasks: native_tasks.into(),
             next_task,
-            details_intentions,
+            details_intentions: details_intentions.into(),
             next_details_intention,
             nodes: self.public_nodes(),
             units: self.public_units(cancelled)?,
         };
+        source::reuse_sequence(
+            &mut state.signal_slots,
+            &dom.state.signal_slots,
+            budget,
+            cancelled,
+        )?;
+        source::reuse_sequence(
+            &mut state.native_tasks,
+            &dom.state.native_tasks,
+            budget,
+            cancelled,
+        )?;
+        source::reuse_sequence(
+            &mut state.details_intentions,
+            &dom.state.details_intentions,
+            budget,
+            cancelled,
+        )?;
         let mut changes = difference(dom.owner, &dom.state, &state, budget, cancelled)?;
         if let Some(cancelled_images) = &self.cancelled_images {
             for item in cancelled_images.iter() {
@@ -3519,7 +3638,7 @@ fn difference(
         }
     }
     let has_template = |state: &State| {
-        state.slots.iter().any(|slot| {
+        state.slots.values().any(|slot| {
             slot.node.as_ref().is_some_and(|node| {
                 node.template_contents.is_some()
                     || node.template_document.is_some_and(|state| {
@@ -3529,7 +3648,7 @@ fn difference(
             })
         })
     };
-    let cache_changed = old.slots.iter().zip(&new.slots).any(|(a, b)| {
+    let cache_changed = old.slots.values().zip(&new.slots).any(|(a, b)| {
         a.node.as_ref().zip(b.node.as_ref()).is_some_and(|(a, b)| {
             a.template_document != b.template_document
                 || a.template_contents != b.template_contents
@@ -3556,7 +3675,7 @@ fn difference(
     // structural edit can affect a managed shadow tree. Ordinary-only stores
     // retain their existing precise change contract.
     let has_shadow = |state: &State| {
-        state.slots.iter().any(|slot| {
+        state.slots.values().any(|slot| {
             slot.node
                 .as_ref()
                 .is_some_and(|node| matches!(node.kind, DomNodeKind::ShadowRoot(_)))
@@ -3593,7 +3712,7 @@ fn difference(
     }
     if !changes.is_empty()
         && [old, new].iter().any(|state| {
-            state.slots.iter().any(|s| {
+            state.slots.values().any(|s| {
                 s.node
                     .as_ref()
                     .is_some_and(|n| crate::slot::is_slot(&n.kind))

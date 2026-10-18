@@ -337,6 +337,7 @@ impl DraftTransitions {
     pub(super) fn finish(
         &self,
         owner: DomOwnerId,
+        original: &ViewTransitions,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FinishedTransitions, DomError> {
@@ -403,6 +404,13 @@ impl DraftTransitions {
                     captured: r.captured,
                 });
             }
+            if let Some(budget) = budget {
+                budget.retain_bytes(size_of::<Vec<Record>>(), cancel)?;
+            }
+            let mut records = SharedVec::from(records);
+            if let Some(old) = original.transitions.iter().find(|old| old.id == id) {
+                source::reuse_sequence(&mut records, &old.records, budget, cancel)?;
+            }
             transitions.push(Transition {
                 id,
                 document: t.document,
@@ -423,6 +431,13 @@ impl DraftTransitions {
             };
             documents.push(value);
         }
+        if let Some(budget) = budget {
+            budget.retain_bytes(2 * size_of::<Vec<Transition>>(), cancel)?;
+        }
+        let mut documents = SharedVec::from(documents);
+        let mut transitions = SharedVec::from(transitions);
+        source::reuse_sequence(&mut documents, &original.documents, budget, cancel)?;
+        source::reuse_sequence(&mut transitions, &original.transitions, budget, cancel)?;
         Ok(FinishedTransitions {
             value: ViewTransitions {
                 documents,
@@ -1434,11 +1449,12 @@ mod tests {
             .view_transition(&ticket)
             .unwrap()
             .unwrap();
+        let mut transitions = dom.state.view_transitions.transitions.as_slice().to_vec();
+        transitions[0].next_record = u64::MAX;
         Arc::get_mut(&mut dom.state)
             .unwrap()
             .view_transitions
-            .transitions[0]
-            .next_record = u64::MAX;
+            .transitions = transitions.into();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();

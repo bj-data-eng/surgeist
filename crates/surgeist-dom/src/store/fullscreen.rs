@@ -215,7 +215,7 @@ pub(super) fn captured_facts(
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<(Option<NodeId>, bool, bool)>, DomError> {
-    let Some(DocumentInteractiveState::Known { top_layer, .. }) = &document.interactive_document
+    let Some(canonical::Interactive::Known { top_layer, .. }) = &document.interactive_document
     else {
         return Ok(None);
     };

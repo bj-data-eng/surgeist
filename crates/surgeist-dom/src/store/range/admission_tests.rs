@@ -74,7 +74,7 @@ fn actual_range_banks_tickets_and_created_identity_output_are_independently_pric
     // a negative Range charge. Other fixture node payload/banks remain equal;
     // the changed association is inline in the already-priced node.
     assert_eq!(dom.state.slots.len(), empty_state.slots.len());
-    for (after, before) in dom.state.slots.iter().zip(&empty_state.slots) {
+    for (after, before) in dom.state.slots.values().zip(&empty_state.slots) {
         let after = after.node.as_ref().unwrap();
         let before = before.node.as_ref().unwrap();
         assert_eq!(after.kind, before.kind);
@@ -100,9 +100,9 @@ fn actual_range_banks_tickets_and_created_identity_output_are_independently_pric
         dom.state.details_intentions.capacity(),
         empty_state.details_intentions.capacity()
     );
-    let old_node_slots = empty_state.slots.capacity() * size_of::<Slot>();
-    let new_node_slots = dom.state.slots.capacity() * size_of::<Slot>();
-    let canonical_bank = dom.state.ranges.capacity() * size_of::<crate::range::Slot<NodeId>>();
+    let old_node_slots = empty_state.slots.index_charge().bytes;
+    let new_node_slots = dom.state.slots.index_charge().bytes;
+    let canonical_bank = dom.state.ranges.index_charge().bytes + dom.state.ranges.totals().bytes;
     assert_eq!(
         canonical_bytes + old_node_slots,
         old_canonical_bytes + new_node_slots + canonical_bank

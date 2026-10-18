@@ -191,14 +191,14 @@ mod tests {
         .unwrap();
         let state = Arc::get_mut(&mut f.dom.state).unwrap();
         state.hosted_history = Some(graph);
-        let DomNodeKind::Element(element) =
-            &mut state.slots[f.container.slot].node.as_mut().unwrap().kind
-        else {
-            panic!("native Iframe container")
-        };
-        element
-            .establish_child_navigable(Some(child.navigable))
-            .unwrap();
+        state.mutate_slot(f.container.slot, |slot| {
+            let DomNodeKind::Element(element) = &mut slot.node.as_mut().unwrap().kind else {
+                panic!("native Iframe container")
+            };
+            element
+                .establish_child_navigable(Some(child.navigable))
+                .unwrap();
+        });
         (f, parent, child, work)
     }
 
