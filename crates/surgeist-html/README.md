@@ -265,9 +265,23 @@ The inline owner layout is reported separately.
 Root sessions and nested marks support consumer rollback. The consumer's root
 guard aborts on Drop unless moved into publication; its nested mark guard accepts
 on Drop or restores explicitly. Prepare and validate both concrete pools' seals
-before committing either. Admit `root_work`, `mark_work` and `seal_work` before
+before committing either. Admit each concrete pool's fixed `disposal_work()`
+**before constructing that pool**, even an empty one: a refused finalization
+must still be able to destroy it without another admission callback. This pays
+whole-owner cleanup of initialized slots/undo records, current and retained old
+Weak entries, and page/log backing, including sealed owners. It does not pay
+payload destruction through Weak references, which retain no strong payload.
+Admit `root_work`, `mark_work` and `seal_work` before
 their respective preparation calls, and each mutation layout's `closing_work`
-before committing it. This prepays cleanup without a failure-time callback.
+before performing it. In particular, Prepare prepays its provisional Weak and
+new page/log cleanup before reserving anything, and Upgrade prepays temporary
+strong-candidate cleanup before upgrading. Those payments follow the storage
+through abandonment, staleness, errors or ownership transfer, independent of
+external strong-owner liveness. Attribute candidates include their initialized
+records and nested string handles; primitive UTF-16 elements require no drop
+traversal. Disposal describes record/release bounds, not copies, reads, spare
+capacity traversal or opaque allocator/Arc internals. No failure-time callback
+is needed.
 Closing valid authority allocates nothing and issues no new qualifier. Private
 capacity/counter exhaustion bypasses sharing; inability to issue a nested mark
 suspends further mutations for that root.

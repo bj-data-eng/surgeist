@@ -1,7 +1,53 @@
 //! New API characterization: no preimplementation callable pool existed.
 use super::*;
 use crate::{Namespace, QualifiedName};
-use std::sync::Mutex;
+use std::{cell::Cell, sync::Mutex};
+
+#[derive(Clone, Copy, Default)]
+struct Cleanup {
+    slots: usize,
+    entries: usize,
+}
+thread_local! {
+    static CLEANUP: Cell<Option<Cleanup>> = const { Cell::new(None) };
+}
+struct ObserveCleanup;
+impl ObserveCleanup {
+    fn start() -> Self {
+        CLEANUP.with(|observed| {
+            assert!(observed.get().is_none(), "cleanup observer already active");
+            observed.set(Some(Cleanup::default()));
+        });
+        Self
+    }
+    fn reset(&self) {
+        CLEANUP.with(|observed| observed.set(Some(Cleanup::default())));
+    }
+    fn read(&self) -> Cleanup {
+        CLEANUP.with(|observed| observed.get().unwrap())
+    }
+}
+impl Drop for ObserveCleanup {
+    fn drop(&mut self) {
+        CLEANUP.with(|observed| observed.set(None));
+    }
+}
+pub(super) fn observe_slot_drop() {
+    CLEANUP.with(|observed| {
+        if let Some(mut cleanup) = observed.get() {
+            cleanup.slots += 1;
+            observed.set(Some(cleanup));
+        }
+    });
+}
+pub(super) fn observe_entry_drop() {
+    CLEANUP.with(|observed| {
+        if let Some(mut cleanup) = observed.get() {
+            cleanup.entries += 1;
+            observed.set(Some(cleanup));
+        }
+    });
+}
 
 #[derive(Debug, Eq, PartialEq)]
 enum Stop {
@@ -54,7 +100,10 @@ impl Budget {
             + immediate.provider_calls()
             + immediate.reserve_bytes()
             + closing.record_visits()
-            + closing.copied_bytes();
+            + closing.inspected_bytes()
+            + closing.copied_bytes()
+            + closing.provider_calls()
+            + closing.reserve_bytes();
         if work > self.work {
             return Err(Stop::Work);
         }
@@ -689,6 +738,8 @@ fn candidate_output_moves_its_reservation_and_drops_data_before_the_receipt() {
     while let Some(action) = pool.next_action(owner.as_mut().unwrap()).unwrap() {
         Budget::default().admit(&action).unwrap();
         if action.phase == Phase::Upgrade {
+            assert!(action.layout().closing_work().record_visits() >= 1);
+            assert!(action.layout().closing_work().provider_calls() >= 2);
             // The receipt exists BEFORE upgrade. A real consumer uses its own
             // admitted affine debit here; this guard checks release ordering.
             receipt = Some(Receipt {
@@ -856,12 +907,23 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
             2 * PAGE * size_of::<Slot<DocumentString>>() + LOG * size_of::<Undo<DocumentString>>();
         let transition =
             2 * (size_of::<Undo<DocumentString>>() + size_of::<Slot<DocumentString>>());
+        // Each of four upgrades prepays one Vec target and at most two
+        // releases. A Prepare additionally owns an initialized page, one Weak,
+        // and up to three release calls, even if the caller never commits it.
+        let temporary_cleanup = CANDIDATES * 3 + PAGE + 1 + 3;
         assert!(budget.inspected <= reads);
         assert!(budget.visits <= visits);
         assert!(budget.upgrades <= CANDIDATES);
         assert!(
             usize::MAX - budget.work
-                <= reads + visits + 1 + CANDIDATES + 3 + allocation + transition
+                <= reads
+                    + visits
+                    + 1
+                    + CANDIDATES
+                    + 3
+                    + allocation
+                    + transition
+                    + temporary_cleanup
         );
         assert_eq!(pool.heap_usage(), raw(&pool.inner));
         assert!(pool.heap_usage().bytes() <= MAX_METADATA_BYTES);
@@ -1507,3 +1569,491 @@ abandoned_preparation_cleanup!(
     bank(vec![name(Namespace::none(), None, &[97], &[0xd800, 0])]),
     shared_attributes
 );
+
+fn string_before<'a>(
+    pool: &mut HtmlStringPool,
+    input: &'a DocumentString,
+    offer: bool,
+    phase: Phase,
+) -> (HtmlStringPoolOperation<'a>, HtmlValuePoolAction) {
+    let mut operation = if offer {
+        pool.offer(input)
+    } else {
+        pool.probe(input)
+    };
+    loop {
+        let action = pool.next_action(&mut operation).unwrap().unwrap();
+        Budget::default().admit(&action).unwrap();
+        if action.phase == phase {
+            return (operation, action);
+        }
+        match action.kind() {
+            HtmlValuePoolActionKind::Read => {
+                operation.read(action).unwrap();
+            }
+            HtmlValuePoolActionKind::Pool => {
+                pool.perform(&mut operation, action).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn prepared_cleanup_covers_real_page_drop_when_the_following_log_reserve_refuses() {
+    let observed = ObserveCleanup::start();
+    let mut pool = HtmlStringPool::new();
+    pool.inner.refuse_log_reserve = true;
+    let root = pool.begin_root().unwrap();
+    let input = DocumentString::from("partial allocation");
+    let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
+    let closing = action.layout().closing_work();
+    assert_eq!(
+        pool.perform(&mut operation, action).unwrap(),
+        HtmlValuePoolProgress::Finished
+    );
+    let cleanup = observed.read();
+    assert_eq!(cleanup.slots, 8, "the real initialized page was destroyed");
+    assert_eq!(cleanup.entries, 0, "refusal preceded Weak creation");
+    assert!(closing.record_visits() >= cleanup.slots);
+    assert!(closing.provider_calls() >= 1, "the page backing was freed");
+    assert_eq!(closing.copied_bytes(), 0);
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(pool.heap_usage().bytes(), 0);
+    drop(operation);
+    pool.abort_root(root).unwrap();
+}
+
+#[test]
+fn prepared_cleanup_survives_abandonment_staleness_rejection_and_root_close() {
+    let observed = ObserveCleanup::start();
+    for mode in 0..7 {
+        let mut pool = HtmlStringPool::new();
+        let mut root = Some(pool.begin_root().unwrap());
+        let input = DocumentString::from("prepared");
+        let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
+        let closing = action.layout().closing_work();
+        pool.perform(&mut operation, action).unwrap();
+        assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+        observed.reset();
+        match mode {
+            0 => {} // Dropping the caller-owned operation abandons Commit.
+            1 => {
+                let newer = pool.probe(&input);
+                assert!(pool.next_action(&mut operation).unwrap().is_none());
+                drop(newer);
+            }
+            2 => {
+                // A changed optional byte cap rejects the already allocated
+                // candidate. Its storage must drop before its receipt releases.
+                pool.inner.metadata_limit = 0;
+                let commit = pool.next_action(&mut operation).unwrap().unwrap();
+                Budget::default().admit(&commit).unwrap();
+                pool.perform(&mut operation, commit).unwrap();
+            }
+            3 => {
+                pool.abort_root(root.take().unwrap()).unwrap();
+                assert!(pool.next_action(&mut operation).unwrap().is_none());
+            }
+            4 | 5 => {
+                let commit = pool.next_action(&mut operation).unwrap().unwrap();
+                let mut budget = Budget {
+                    cancel: mode == 4,
+                    work: 0,
+                    ..Budget::default()
+                };
+                assert_eq!(
+                    budget.admit(&commit).unwrap_err(),
+                    if mode == 4 {
+                        Stop::Cancelled
+                    } else {
+                        Stop::Work
+                    }
+                );
+            }
+            6 => {
+                let commit = pool.next_action(&mut operation).unwrap().unwrap();
+                assert_eq!(
+                    operation.read(commit).unwrap_err(),
+                    HtmlValuePoolError::WrongAction
+                );
+            }
+            _ => unreachable!(),
+        }
+        drop(operation);
+        let cleanup = observed.read();
+        assert_eq!(cleanup.slots, 8);
+        assert_eq!(cleanup.entries, 1);
+        assert!(closing.record_visits() >= cleanup.slots + cleanup.entries);
+        assert!(closing.provider_calls() >= 3, "Weak/page/log releases");
+        assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+        assert_eq!(pool.heap_usage().bytes(), 0);
+        if let Some(root) = root {
+            pool.abort_root(root).unwrap();
+        }
+    }
+}
+
+#[test]
+fn string_upgrade_prepays_last_strong_cleanup_on_abandonment_and_stale_action() {
+    for mode in 0..4 {
+        let mut pool = HtmlStringPool::new();
+        let original = DocumentString::from_utf16(vec![0xd800, 0, 65]);
+        let target = Arc::downgrade(original.shared_code_units());
+        seed_string(&mut pool, &original);
+        let input = DocumentString::from_utf16(vec![0xd800, 0, 65]);
+        let (mut operation, action) = string_before(&mut pool, &input, false, Phase::Upgrade);
+        let closing = action.layout().closing_work();
+        assert_eq!(
+            pool.perform(&mut operation, action).unwrap(),
+            HtmlValuePoolProgress::CandidateAcquired
+        );
+        drop(original);
+        assert!(
+            target.upgrade().is_some(),
+            "the operation is the last strong owner"
+        );
+        match mode {
+            0 => {}
+            1 => {
+                let newer = pool.probe(&input);
+                assert!(pool.next_action(&mut operation).unwrap().is_none());
+                drop(newer);
+            }
+            2 => {
+                let comparison = pool.next_action(&mut operation).unwrap().unwrap();
+                let mut budget = Budget {
+                    cancel: true,
+                    ..Budget::default()
+                };
+                assert_eq!(budget.admit(&comparison).unwrap_err(), Stop::Cancelled);
+            }
+            3 => {
+                let comparison = pool.next_action(&mut operation).unwrap().unwrap();
+                assert_eq!(
+                    pool.perform(&mut operation, comparison).unwrap_err(),
+                    HtmlValuePoolError::WrongAction
+                );
+            }
+            _ => unreachable!(),
+        }
+        drop(operation);
+        assert!(target.upgrade().is_none());
+        assert!(closing.record_visits() >= 1);
+        assert!(
+            closing.provider_calls() >= 2,
+            "Vec target and UTF-16 backing"
+        );
+        assert_eq!(closing.copied_bytes(), 0);
+        assert_eq!(input.code_units(), &[0xd800, 0, 65]);
+    }
+}
+
+#[test]
+fn preparation_cleanup_work_refuses_one_short_then_retries_the_same_action_exactly() {
+    let observed = ObserveCleanup::start();
+    let mut pool = HtmlStringPool::new();
+    let root = pool.begin_root().unwrap();
+    let input = DocumentString::from_utf16(vec![0xd800, 0, 65]);
+    let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
+    // First Prepare initializes eight Slots and reserves 128 Undo records.
+    // Immediate work has one visit and three providers (page/log/downgrade).
+    // Cleanup visits the eight Slots and one Entry and can release three
+    // allocations. Destruction performs no element copies or reads.
+    let initialized = 8 * size_of::<Slot<DocumentString>>();
+    let reserved = initialized + 128 * size_of::<Undo<DocumentString>>();
+    let exact = 1 + initialized + 3 + reserved + 8 + 1 + 3;
+    let mut short = Budget {
+        work: exact - 1,
+        ..Budget::default()
+    };
+    assert_eq!(short.admit(&action).unwrap_err(), Stop::Work);
+    assert_eq!(observed.read().slots, 0);
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(pool.heap_usage().bytes(), 0);
+    let mut admitted = Budget {
+        work: exact,
+        ..Budget::default()
+    };
+    admitted.admit(&action).unwrap();
+    assert_eq!(admitted.work, 0);
+    pool.perform(&mut operation, action).unwrap();
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+    drop(operation);
+    assert_eq!(observed.read().slots, 8);
+    assert_eq!(observed.read().entries, 1);
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    pool.abort_root(root).unwrap();
+}
+
+#[test]
+fn attribute_upgrade_prepays_last_strong_bank_and_every_nested_string_handle() {
+    fn full_bank() -> OrderedAttributes {
+        bank(
+            (0..64)
+                .map(|n| {
+                    name(
+                        Namespace::from_uri(DocumentString::from(format!("uri:{n}"))),
+                        Some(DocumentString::from(format!("p{n}"))),
+                        &format!("a{n}").encode_utf16().collect::<Vec<_>>(),
+                        &[0xd800, n, 0],
+                    )
+                })
+                .collect(),
+        )
+    }
+    let mut pool = HtmlAttributePool::new();
+    let original = full_bank();
+    let target = Arc::downgrade(original.shared_attributes());
+    let nested: Vec<_> = original
+        .iter()
+        .flat_map(|attribute| {
+            [
+                attribute.name().namespace().uri().unwrap(),
+                attribute.name().prefix().unwrap(),
+                attribute.name().local_name(),
+                attribute.value(),
+            ]
+            .map(|string| Arc::downgrade(string.shared_code_units()))
+        })
+        .collect();
+    assert_eq!(nested.len(), 256);
+    seed_attributes(&mut pool, &original);
+    let input = full_bank();
+    let mut operation = pool.probe(&input);
+    let closing = loop {
+        let action = pool.next_action(&mut operation).unwrap().unwrap();
+        Budget::default().admit(&action).unwrap();
+        if action.phase == Phase::Upgrade {
+            let closing = action.layout().closing_work();
+            assert_eq!(
+                pool.perform(&mut operation, action).unwrap(),
+                HtmlValuePoolProgress::CandidateAcquired
+            );
+            break closing;
+        }
+        match action.kind() {
+            HtmlValuePoolActionKind::Read => {
+                operation.read(action).unwrap();
+            }
+            HtmlValuePoolActionKind::Pool => {
+                pool.perform(&mut operation, action).unwrap();
+            }
+        }
+    };
+    drop(original);
+    assert!(target.upgrade().is_some());
+    assert!(nested.iter().all(|weak| weak.upgrade().is_some()));
+    drop(operation);
+    assert!(target.upgrade().is_none());
+    assert!(nested.iter().all(|weak| weak.upgrade().is_none()));
+    assert!(closing.record_visits() >= 1 + 64 + 256);
+    assert!(closing.provider_calls() >= 2 * (1 + 256));
+    assert_eq!(closing.copied_bytes(), 0);
+    assert_eq!(closing.inspected_bytes(), 0);
+    assert_eq!(input.len(), 64);
+    assert_eq!(input.as_slice()[63].value().code_units(), &[0xd800, 63, 0]);
+}
+
+// A consumer must admit the associated allowance before invoking the real
+// constructor. The pool deliberately receives neither the callback nor policy.
+fn construct_prepaid<T>(
+    work: HtmlValuePoolWork,
+    remaining: &mut usize,
+    construct: impl FnOnce() -> T,
+) -> Result<T, Stop> {
+    assert_eq!(work.copied_bytes(), 0);
+    assert_eq!(work.inspected_bytes(), 0);
+    assert_eq!(work.reserve_bytes(), 0);
+    let required = work.record_visits() + work.provider_calls();
+    if required > *remaining {
+        return Err(Stop::Work);
+    }
+    *remaining -= required;
+    Ok(construct())
+}
+
+#[test]
+fn disposal_allowance_is_admitted_before_construction_exactly_or_refused_one_short() {
+    macro_rules! check {
+        ($pool:ty) => {{
+            let work = <$pool>::disposal_work();
+            let required = work.record_visits() + work.provider_calls();
+            let constructed = Cell::new(0);
+            let mut short = required - 1;
+            assert!(matches!(
+                construct_prepaid(work, &mut short, || {
+                    constructed.set(constructed.get() + 1);
+                    <$pool>::new()
+                }),
+                Err(Stop::Work)
+            ));
+            assert_eq!(constructed.get(), 0, "refusal precedes owner existence");
+            assert_eq!(short, required - 1);
+            let mut exact = required;
+            let owner = construct_prepaid(work, &mut exact, || {
+                constructed.set(constructed.get() + 1);
+                <$pool>::new()
+            })
+            .unwrap();
+            assert_eq!(constructed.get(), 1);
+            assert_eq!(exact, 0);
+            drop(owner); // No admission callback occurs after construction.
+        }};
+    }
+    check!(HtmlStringPool);
+    check!(HtmlAttributePool);
+}
+
+#[test]
+fn prepaid_disposal_bounds_empty_sealed_active_undo_and_replaced_owner_drops() {
+    let observed = ObserveCleanup::start();
+    for state in 0..5 {
+        // Admit the independent allowance BEFORE either real construction.
+        let disposal = HtmlStringPool::disposal_work();
+        let mut remaining = disposal.record_visits() + disposal.provider_calls();
+        let mut pool = construct_prepaid(disposal, &mut remaining, HtmlStringPool::new).unwrap();
+        assert_eq!(remaining, 0);
+        pool.inner.collision = true;
+        let values: Vec<_> = (0..132)
+            .map(|n| DocumentString::from(format!("held:{n}")))
+            .collect();
+        let mut _authority = None;
+        if state != 0 {
+            let root = pool.begin_root().unwrap();
+            for value in &values[..4] {
+                assert!(matches!(
+                    strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+                    Outcome::Offered
+                ));
+            }
+            let seal = pool.prepare_seal(root).unwrap();
+            pool.seal(seal).unwrap();
+        }
+        if matches!(state, 2 | 4) {
+            _authority = Some(pool.begin_root().unwrap());
+            let end = if state == 4 { 132 } else { 8 };
+            for value in &values[4..end] {
+                assert!(matches!(
+                    strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+                    Outcome::Offered
+                ));
+            }
+        }
+        let slots: usize = pool.inner.pages.iter().flatten().map(Vec::len).sum();
+        let entries: usize = values
+            .iter()
+            .map(|value| Arc::weak_count(value.shared_code_units()))
+            .sum();
+        let undo = pool.inner.log.len();
+        let pages = pool.inner.pages.iter().flatten().count();
+        let backings = pages + usize::from(pool.inner.log.capacity() != 0);
+        observed.reset();
+        if state == 3 {
+            let replacement_disposal = HtmlStringPool::disposal_work();
+            let mut remaining =
+                replacement_disposal.record_visits() + replacement_disposal.provider_calls();
+            let replacement =
+                construct_prepaid(replacement_disposal, &mut remaining, HtmlStringPool::new)
+                    .unwrap();
+            assert_eq!(remaining, 0);
+            let old = std::mem::replace(&mut pool, replacement);
+            drop(old);
+        } else {
+            drop(pool);
+        }
+        let cleanup = observed.read();
+        assert_eq!(cleanup.slots, slots);
+        assert_eq!(cleanup.entries, entries);
+        assert!(disposal.record_visits() >= slots + entries + undo);
+        assert!(disposal.provider_calls() >= entries + backings);
+        assert_eq!(disposal.copied_bytes(), 0);
+        assert_eq!(disposal.inspected_bytes(), 0);
+        assert_eq!(disposal.reserve_bytes(), 0);
+        assert!(
+            values
+                .iter()
+                .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
+        );
+        assert_eq!(
+            values[131].code_units(),
+            "held:131".encode_utf16().collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn prepaid_attribute_disposal_drops_only_metadata_and_preserves_held_report_like_values() {
+    let observed = ObserveCleanup::start();
+    for state in 0..5 {
+        let disposal = HtmlAttributePool::disposal_work();
+        let mut remaining = disposal.record_visits() + disposal.provider_calls();
+        let mut pool = construct_prepaid(disposal, &mut remaining, HtmlAttributePool::new).unwrap();
+        assert_eq!(remaining, 0);
+        pool.inner.collision = true;
+        let values: Vec<_> = (0..132)
+            .map(|n| bank(vec![name(Namespace::none(), None, &[97], &[n, 0xd800])]))
+            .collect();
+        let mut _authority = None;
+        if state != 0 {
+            let root = pool.begin_root().unwrap();
+            for value in &values[..4] {
+                assert!(matches!(
+                    attributes(&mut pool, value, true, &mut Budget::default()).unwrap(),
+                    Outcome::Offered
+                ));
+            }
+            let seal = pool.prepare_seal(root).unwrap();
+            pool.seal(seal).unwrap();
+        }
+        if matches!(state, 2 | 4) {
+            _authority = Some(pool.begin_root().unwrap());
+            let end = if state == 4 { 132 } else { 8 };
+            for value in &values[4..end] {
+                assert!(matches!(
+                    attributes(&mut pool, value, true, &mut Budget::default()).unwrap(),
+                    Outcome::Offered
+                ));
+            }
+        }
+        let slots: usize = pool.inner.pages.iter().flatten().map(Vec::len).sum();
+        let entries: usize = values
+            .iter()
+            .map(|value| Arc::weak_count(value.shared_attributes()))
+            .sum();
+        let undo = pool.inner.log.len();
+        let backings =
+            pool.inner.pages.iter().flatten().count() + usize::from(pool.inner.log.capacity() != 0);
+        observed.reset();
+        if state == 3 {
+            let work = HtmlAttributePool::disposal_work();
+            let mut remaining = work.record_visits() + work.provider_calls();
+            let replacement =
+                construct_prepaid(work, &mut remaining, HtmlAttributePool::new).unwrap();
+            assert_eq!(remaining, 0);
+            let old = std::mem::replace(&mut pool, replacement);
+            drop(old);
+        } else {
+            drop(pool);
+        }
+        let cleanup = observed.read();
+        assert_eq!(cleanup.slots, slots);
+        assert_eq!(cleanup.entries, entries);
+        assert!(disposal.record_visits() >= slots + entries + undo);
+        assert!(disposal.provider_calls() >= entries + backings);
+        assert!(
+            values
+                .iter()
+                .all(|value| Arc::weak_count(value.shared_attributes()) == 0)
+        );
+        // Destroying weak metadata must leave every immutable bank, its raw
+        // surrogate-containing value, and its nested backing readable.
+        for (n, value) in values.iter().enumerate() {
+            assert_eq!(value.len(), 1);
+            assert_eq!(value.as_slice()[0].name().local_name().code_units(), &[97]);
+            assert_eq!(
+                value.as_slice()[0].value().code_units(),
+                &[n as u16, 0xd800]
+            );
+        }
+    }
+}

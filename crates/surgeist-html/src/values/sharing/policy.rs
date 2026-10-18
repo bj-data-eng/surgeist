@@ -19,6 +19,7 @@ pub(super) trait Value: Sized {
     fn from_shared(value: Arc<Vec<Self::Item>>) -> Self;
     fn eligible(&self) -> bool;
     fn read(&self, cursor: &mut Cursor) -> Result<Read, HtmlValuePoolError>;
+    fn candidate_cleanup_work() -> HtmlValuePoolWork;
 }
 struct Entry<T: Value> {
     weak: Weak<Vec<T::Item>>,
@@ -28,6 +29,18 @@ struct Entry<T: Value> {
 }
 struct Slot<T: Value> {
     entry: Option<Entry<T>>,
+}
+#[cfg(test)]
+impl<T: Value> Drop for Slot<T> {
+    fn drop(&mut self) {
+        tests::observe_slot_drop();
+    }
+}
+#[cfg(test)]
+impl<T: Value> Drop for Entry<T> {
+    fn drop(&mut self) {
+        tests::observe_entry_drop();
+    }
 }
 struct Undo<T: Value> {
     slot: usize,
@@ -69,6 +82,8 @@ pub(super) struct Pool<T: Value> {
     metadata_limit: usize,
     #[cfg(test)]
     collision: bool,
+    #[cfg(test)]
+    refuse_log_reserve: bool,
 }
 pub(super) struct Operation<'a, T: Value> {
     input: &'a T,
@@ -108,6 +123,8 @@ impl<T: Value> Pool<T> {
             metadata_limit: MAX_METADATA_BYTES,
             #[cfg(test)]
             collision: false,
+            #[cfg(test)]
+            refuse_log_reserve: false,
         }
     }
     pub(super) fn usage(&self) -> HtmlValuePoolUsage {
@@ -259,6 +276,9 @@ impl<T: Value> Pool<T> {
                 layout.candidate = entry.payload;
                 layout.work.record_visits = 1;
                 layout.work.provider_calls = 1;
+                // The upgraded alias may become the last strong owner at any
+                // later comparison, error, abandonment or output transfer.
+                layout.closing_work = T::candidate_cleanup_work();
             }
             Phase::Prepare => {
                 let Some(root) = &self.root else {
@@ -292,6 +312,15 @@ impl<T: Value> Pool<T> {
                 layout.work.provider_calls = 1 + usize::from(page != 0) + usize::from(log != 0);
                 layout.work.reserve_bytes =
                     page * size_of::<Slot<T>>() + log * size_of::<Undo<T>>();
+                // Charge before either reserve: if the second reserve fails,
+                // the initialized page already needs destruction. On success
+                // the same allowance follows this Weak/page/log through their
+                // provisional or committed owner until they are destroyed.
+                layout.closing_work = HtmlValuePoolWork {
+                    record_visits: 1 + page,
+                    provider_calls: 1 + usize::from(page != 0) + usize::from(log != 0),
+                    ..HtmlValuePoolWork::default()
+                };
             }
             Phase::Commit => {
                 layout.pool = op.prepared.as_ref().expect("prepared mutation").usage;
@@ -406,7 +435,17 @@ impl<T: Value> Pool<T> {
         };
         let log = if self.log.capacity() == 0 {
             let mut log = Vec::new();
-            if log.try_reserve_exact(LOG).is_err() {
+            // The private test controller produces std's capacity error after
+            // the real page was initialized; it does not simulate host OOM.
+            #[cfg(test)]
+            let requested = if self.refuse_log_reserve {
+                usize::MAX
+            } else {
+                LOG
+            };
+            #[cfg(not(test))]
+            let requested = LOG;
+            if log.try_reserve_exact(requested).is_err() {
                 op.bypass();
                 return Ok(HtmlValuePoolProgress::Finished);
             }
@@ -808,6 +847,18 @@ pub(super) fn root_work() -> HtmlValuePoolWork {
     HtmlValuePoolWork {
         record_visits: 2,
         copied_bytes: 2 * size_of::<Root>(),
+        ..HtmlValuePoolWork::default()
+    }
+}
+pub(super) fn disposal_work() -> HtmlValuePoolWork {
+    let slots = PAGES * PAGE;
+    // Final Drop traverses initialized Slots and Undo records, each retaining
+    // at most one Entry/Weak. Spare Vec capacity is not initialized work. Each
+    // Weak can release one target allocation; each nonempty backing can free
+    // once. No live payload or element buffer is retained by a Weak.
+    HtmlValuePoolWork {
+        record_visits: 2 * (slots + LOG),
+        provider_calls: slots + LOG + PAGES + 1,
         ..HtmlValuePoolWork::default()
     }
 }

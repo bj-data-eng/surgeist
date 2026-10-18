@@ -94,8 +94,11 @@ impl HtmlValuePoolLayout {
     pub fn work(self) -> HtmlValuePoolWork {
         self.work
     }
-    /// Prepaid work for later inverse restoration or retirement. Charge this
-    /// before the mutation so cleanup never calls admission after a refusal.
+    /// Prepaid work for storage introduced by this action and for later inverse
+    /// restoration or retirement. Charge this before performing the action,
+    /// including a Prepare or Upgrade: abandoning its provisional storage or
+    /// temporary strong candidate must never require failure-time admission.
+    /// Payment remains spent when the value moves into another owner.
     pub fn closing_work(self) -> HtmlValuePoolWork {
         self.closing_work
     }
@@ -323,6 +326,15 @@ impl Value for DocumentString {
     fn eligible(&self) -> bool {
         self.len() <= policy::MAX_UNITS && self.shared_code_units().capacity() <= policy::MAX_UNITS
     }
+    fn candidate_cleanup_work() -> HtmlValuePoolWork {
+        // A last strong alias destroys the Vec target and can free its buffer
+        // and shared target. u16 has no per-element drop traversal.
+        HtmlValuePoolWork {
+            record_visits: 1,
+            provider_calls: 2,
+            ..HtmlValuePoolWork::default()
+        }
+    }
     fn read(&self, cursor: &mut Cursor) -> Result<Read, HtmlValuePoolError> {
         let result = read_string(self, cursor, 1)?;
         cursor.started = true;
@@ -341,6 +353,18 @@ impl Value for OrderedAttributes {
     fn eligible(&self) -> bool {
         self.len() <= policy::MAX_ATTRIBUTES
             && self.shared_attributes().capacity() <= policy::MAX_ATTRIBUTES
+    }
+    fn candidate_cleanup_work() -> HtmlValuePoolWork {
+        // Each initialized Attribute has up to four DocumentString handles:
+        // namespace URI, prefix, local name and value. Independently of caller
+        // liveness, each can be the last strong alias of a Vec<u16>. The bank
+        // itself has one Vec target and buffer. This is a length bound, not a
+        // claim that spare capacity or UTF-16 units run element destructors.
+        HtmlValuePoolWork {
+            record_visits: 1 + policy::MAX_ATTRIBUTES * 5,
+            provider_calls: 2 + policy::MAX_ATTRIBUTES * 8,
+            ..HtmlValuePoolWork::default()
+        }
     }
     fn read(&self, cursor: &mut Cursor) -> Result<Read, HtmlValuePoolError> {
         if !cursor.started {
@@ -414,6 +438,15 @@ macro_rules! concrete_pool {
             /// Actual inline owner layout, independent of dynamic pool storage.
             pub fn inline_bytes() -> usize {
                 size_of::<Self>()
+            }
+            /// Fixed upper bound for destroying this whole owner in any state.
+            /// Admit once BEFORE constructing it, including an empty owner.
+            /// This covers live/old Weak entries, initialized pages and undo
+            /// records, and backing release, even after sealing. It is separate
+            /// from root metadata and each action's temporary/inverse work.
+            /// Drop invokes no admission callback and issues no qualifier.
+            pub fn disposal_work() -> HtmlValuePoolWork {
+                policy::disposal_work()
             }
             /// Admit before beginning root authority; includes its fixed close.
             pub fn root_work() -> HtmlValuePoolWork {

@@ -863,6 +863,7 @@ pub fn surgeist_html::bounded::HtmlAttributePool::abort_root(&mut self, root: su
 pub fn surgeist_html::bounded::HtmlAttributePool::abort_seal(&mut self, seal: surgeist_html::bounded::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolChange, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlAttributePool::accept_mark(&mut self, mark: surgeist_html::bounded::HtmlValuePoolMark) -> core::result::Result<(), surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlAttributePool::begin_root(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlValuePoolRoot>
+pub fn surgeist_html::bounded::HtmlAttributePool::disposal_work() -> surgeist_html::bounded::HtmlValuePoolWork
 pub fn surgeist_html::bounded::HtmlAttributePool::heap_usage(&self) -> surgeist_html::bounded::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::HtmlAttributePool::inline_bytes() -> usize
 pub fn surgeist_html::bounded::HtmlAttributePool::mark(&mut self, root: &surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlValuePoolMark>, surgeist_html::bounded::HtmlValuePoolError>
@@ -1326,6 +1327,7 @@ pub fn surgeist_html::bounded::HtmlStringPool::abort_root(&mut self, root: surge
 pub fn surgeist_html::bounded::HtmlStringPool::abort_seal(&mut self, seal: surgeist_html::bounded::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolChange, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlStringPool::accept_mark(&mut self, mark: surgeist_html::bounded::HtmlValuePoolMark) -> core::result::Result<(), surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlStringPool::begin_root(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlValuePoolRoot>
+pub fn surgeist_html::bounded::HtmlStringPool::disposal_work() -> surgeist_html::bounded::HtmlValuePoolWork
 pub fn surgeist_html::bounded::HtmlStringPool::heap_usage(&self) -> surgeist_html::bounded::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::HtmlStringPool::inline_bytes() -> usize
 pub fn surgeist_html::bounded::HtmlStringPool::mark(&mut self, root: &surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlValuePoolMark>, surgeist_html::bounded::HtmlValuePoolError>
