@@ -183,6 +183,19 @@ pub(in crate::store) fn map_keys(
     }
     Ok(out)
 }
+pub(in crate::store) fn copy<T: Copy>(
+    source: &[T],
+    initial: Option<&Initial>,
+    cancel: &AtomicBool,
+) -> Result<Vec<T>, DomError> {
+    let mut out = Vec::new();
+    reserve(&mut out, source.len(), initial, cancel)?;
+    for value in source {
+        step(initial, cancel)?;
+        out.push(*value);
+    }
+    Ok(out)
+}
 pub(in crate::store) fn base_document(
     source: &crate::base::BaseDocument<NodeId>,
     initial: Option<&Initial>,
@@ -326,6 +339,10 @@ impl Draft {
         retained.add_bytes(dom.history_bytes)?;
         retained.add_bytes(dom.source_retained_stack_bytes()?)?;
         retained.add_bytes(dom.source_owner_custody_bytes()?)?;
+        retained.units = retained
+            .units
+            .checked_add(dom.fullscreen_custody_units()?)
+            .ok_or(DomError::RepresentationExhausted)?;
         retained.add_bytes(dom.source_dispatch_custody_bytes(|| initial.step(cancel))?)?;
         retained.add_bytes(owner_bytes)?;
         retained.bank::<Command>(command_capacity)?;
@@ -351,6 +368,8 @@ impl Draft {
         )?;
         let mut draft = Self::new_formed(dom, owner, Some(&initial), cancel)?;
         if let Some(work) = shared_work {
+            draft.fullscreen_work_custody =
+                dom.fullscreen_work_custody(&work, || initial.step(cancel))?;
             draft.source_work = work;
         }
         draft.source_other_bytes = retained.bytes;

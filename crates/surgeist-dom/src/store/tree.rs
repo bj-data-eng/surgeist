@@ -11,6 +11,12 @@ pub(super) struct Insertion {
     _observation: scratch_observation::Moving,
 }
 pub(super) enum Frame {
+    FullscreenRemoving {
+        document: Key,
+        flagged: select::ScratchVec<Key>,
+        index: usize,
+        returned: bool,
+    },
     Destroy {
         closure: select::ScratchVec<Key>,
         index: usize,
@@ -55,6 +61,17 @@ impl Frame {
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         Ok(match self {
+            Self::FullscreenRemoving {
+                document,
+                flagged,
+                index,
+                returned,
+            } => Self::FullscreenRemoving {
+                document: *document,
+                flagged: flagged.checkpoint(a, cancel)?,
+                index: *index,
+                returned: *returned,
+            },
             Self::Destroy {
                 closure,
                 index,
@@ -536,7 +553,8 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.fullscreen_removing_steps(root, cancel)?;
+        let document = self.node(root)?.document;
+        let flagged = self.fullscreen_removing_members(root, cancel)?;
         let mut pending = self.effect_vec();
         self.select_reserve(&mut pending, 1, cancel)?;
         pending.push(root);
@@ -545,6 +563,16 @@ impl Draft {
                 root,
                 old_parent: Some(old_parent),
                 pending,
+            }),
+            self.effect_scoped,
+            cancel,
+        )?;
+        self.push_effect(
+            select::Effect::Tree(Frame::FullscreenRemoving {
+                document,
+                flagged,
+                index: 0,
+                returned: false,
             }),
             self.effect_scoped,
             cancel,
@@ -559,6 +587,53 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         match frame {
+            Frame::FullscreenRemoving {
+                document,
+                flagged,
+                index,
+                returned,
+            } => {
+                if let Some(&key) = flagged.get(index) {
+                    self.source_step(cancel)?;
+                    if !returned && self.fullscreen_model_target(document, cancel)? == Some(key) {
+                        if self.source_limits.is_none()
+                            && self.document_fully_active(document, cancel)?
+                        {
+                            return Err(DomError::FullscreenModelUnavailable {
+                                step: crate::DomFullscreenModelStep::ExitFullscreen,
+                            });
+                        }
+                        // Save the real outer removal continuation before the
+                        // called method can expose its step8 handoff.
+                        self.push_effect(
+                            select::Effect::Tree(Frame::FullscreenRemoving {
+                                document,
+                                flagged,
+                                index,
+                                returned: true,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                        self.exit_fullscreen_boundary(document, false, cancel)?;
+                    } else {
+                        if !returned {
+                            self.unfullscreen_element_model(key, cancel)?;
+                        }
+                        self.remove_top_layer_immediately(key, cancel)?;
+                        self.push_effect(
+                            select::Effect::Tree(Frame::FullscreenRemoving {
+                                document,
+                                flagged,
+                                index: index + 1,
+                                returned: false,
+                            }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                }
+            }
             Frame::Destroy {
                 closure,
                 index,

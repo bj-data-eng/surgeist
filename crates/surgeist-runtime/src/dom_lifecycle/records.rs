@@ -26,6 +26,7 @@ pub(super) struct Group {
     pub context: DomHostedBrowsingContextId,
     pub traversal: super::history::Traversal,
     pub completions: Vec<super::destruction::Completion>,
+    pub fullscreen: super::fullscreen::Jobs,
     // This is also the group's historical origin->origin-keyed cluster entry.
     // The opaque identity is preserved even when requestsOAC is false.
     pub clusters: Vec<OriginCluster>,

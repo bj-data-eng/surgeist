@@ -59,6 +59,8 @@ use view_transition::DraftTransitions;
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
+    FullscreenExits,
+    FullscreenEvents,
     Ranges,
     ManagedNodes,
     SlotReferences,
@@ -102,6 +104,20 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    StaleFullscreenExit,
+    FullscreenExitHandoffRequired,
+    FullscreenExitAssertionFailed {
+        document: DocumentId,
+    },
+    FullscreenExitCompositionUnsupported {
+        document: DocumentId,
+        fact: crate::DomFullscreenExitFact,
+    },
+    FullscreenExitDocumentRetired {
+        invocation: crate::DomFullscreenExitId,
+        document: DocumentId,
+        step: crate::DomFullscreenExitStep,
+    },
     FullscreenModelUnavailable {
         step: crate::DomFullscreenModelStep,
     },
@@ -297,6 +313,8 @@ impl std::error::Error for DomError {}
 /// Explicit finite admission policy. No hidden or unlimited default is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomLimits {
+    fullscreen_exits: usize,
+    fullscreen_events: usize,
     ranges: usize,
     dispatch_custody: crate::DomDispatchCustodyLimits,
     nodes: usize,
@@ -330,6 +348,26 @@ pub struct DomLimits {
     )>,
 }
 impl DomLimits {
+    pub fn with_fullscreen_exits(mut self, count: usize) -> Result<Self, DomError> {
+        if count > isize::MAX as usize / size_of::<fullscreen::exit::Invocation>() {
+            return Err(DomError::InvalidLimit(DomResource::FullscreenExits));
+        }
+        self.fullscreen_exits = count;
+        Ok(self)
+    }
+    pub fn with_fullscreen_events(mut self, count: usize) -> Result<Self, DomError> {
+        if count > isize::MAX as usize / size_of::<crate::DomFullscreenEvent>() {
+            return Err(DomError::InvalidLimit(DomResource::FullscreenEvents));
+        }
+        self.fullscreen_events = count;
+        Ok(self)
+    }
+    pub const fn fullscreen_exits(self) -> usize {
+        self.fullscreen_exits
+    }
+    pub const fn fullscreen_events(self) -> usize {
+        self.fullscreen_events
+    }
     /// Maximum retained Range slots, including vacant slots and exhausted generations.
     pub fn with_ranges(mut self, ranges: usize) -> Result<Self, DomError> {
         if ranges
@@ -401,6 +439,8 @@ impl DomLimits {
             }
         }
         Ok(Self {
+            fullscreen_exits: 0,
+            fullscreen_events: 0,
             ranges: 0,
             dispatch_custody: crate::DomDispatchCustodyLimits::default(),
             nodes,
@@ -739,6 +779,7 @@ pub enum DomChange {
     DocumentInteractiveState(DocumentId),
     /// Raw-derived fullscreen, simple-document or keyboard-lock facts changed.
     DocumentFullscreenState(DocumentId),
+    DocumentFullscreenEvents(DocumentId),
     DocumentAutofocusState(DocumentId),
     DocumentRenderBlocking(DocumentId),
     DocumentEncodingUrlFacts(DocumentId),
@@ -911,6 +952,7 @@ impl DomCommit {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Node {
+    pub(crate) fullscreen_events: Vec<crate::DomFullscreenEvent>,
     pub(crate) active_range: crate::DomActiveRangeState,
     pub(crate) document: DocumentId,
     pub(crate) relevant_global: Option<crate::hosted::DomHostedGlobalId>,
@@ -996,6 +1038,8 @@ fn discard_history(mut history: Option<Box<HistoryEntry>>) {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
+    fullscreen_exits: Vec<fullscreen::exit::Invocation>,
+    next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
     owner: DomOwnerId,
@@ -1034,6 +1078,8 @@ impl Dom {
         input: crate::DomNativeInputPlatform,
     ) -> Result<Self, DomError> {
         Ok(Self {
+            fullscreen_exits: Vec::new(),
+            next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             element_tasks: None,
             owner: DomOwnerId::allocate()?,
@@ -1152,6 +1198,26 @@ impl Dom {
             return Err(DomError::SourceOperationPending);
         }
         admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
+        admit(
+            self.fullscreen_exits.len(),
+            limits.fullscreen_exits,
+            DomResource::FullscreenExits,
+        )?;
+        let events = self
+            .state
+            .slots
+            .iter()
+            .filter_map(|slot| slot.node.as_ref())
+            .try_fold(0usize, |count, node| {
+                count
+                    .checked_add(node.fullscreen_events.len())
+                    .ok_or(DomError::RepresentationExhausted)
+            })?;
+        admit(
+            events,
+            limits.fullscreen_events,
+            DomResource::FullscreenEvents,
+        )?;
         if let Some(op) = &self.source_operation {
             op.admit_dom_limits(limits)?;
         }
@@ -1606,6 +1672,7 @@ pub(crate) enum Key {
     Created(usize),
 }
 struct DraftNode {
+    fullscreen_events: Vec<crate::DomFullscreenEvent>,
     active_range: crate::DomActiveRangeState,
     relevant_global: Option<crate::hosted::DomHostedGlobalId>,
     document: Key,
@@ -1637,6 +1704,9 @@ struct DraftNode {
     autofocus_document: Option<crate::autofocus::DocumentAutofocusState<Key>>,
 }
 struct Draft {
+    fullscreen_exit: Option<fullscreen::exit::Frame>,
+    // An actual published parallel invocation retains this same Work atom.
+    fullscreen_work_custody: Option<crate::DomFullscreenExitId>,
     ranges: Vec<crate::range::Slot<Key>>,
     range_tickets: Vec<crate::DomRangeId>,
     owner: Arc<BatchIdentity>,
@@ -1828,6 +1898,11 @@ impl Draft {
                             })
                         })
                         .transpose()?,
+                    fullscreen_events: source::initial::copy(
+                        &node.fullscreen_events,
+                        initial,
+                        cancelled,
+                    )?,
                     interactive_document: node
                         .interactive_document
                         .as_ref()
@@ -1955,6 +2030,8 @@ impl Draft {
             source_invocation: 0,
             source_headroom: None,
             method: None,
+            fullscreen_exit: None,
+            fullscreen_work_custody: None,
             dispatch_retirements: Vec::new(),
             phase_map: None,
             base_work: std::cell::Cell::new(0),
@@ -2208,6 +2285,7 @@ impl Draft {
                 .map(|association| association.global),
         };
         self.created.push(Some(DraftNode {
+            fullscreen_events: Vec::new(),
             active_range: if matches!(
                 &kind,
                 DomNodeKind::Document(metadata) if matches!(
@@ -2280,6 +2358,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::ExitFullscreen { document } => {
+                let document = self.resolve(document.clone())?;
+                self.exit_fullscreen_boundary(document, true, cancelled)?;
+            }
             Command::FullscreenElementModel { node } => {
                 let node = self.resolve(node.clone())?;
                 self.fullscreen_element_model(node, cancelled)?;
@@ -2964,6 +3046,7 @@ impl Draft {
                         })
                     })
                     .transpose()?,
+                fullscreen_events: copy_records(&source.fullscreen_events, budget, cancelled)?,
                 interactive_document: source
                     .interactive_document
                     .as_ref()
@@ -3177,6 +3260,19 @@ impl Draft {
         ))
     }
 }
+fn copy_records<T: Copy>(
+    source: &[T],
+    budget: Option<&source::formation::Formation>,
+    cancel: &AtomicBool,
+) -> Result<Vec<T>, DomError> {
+    let mut out = Vec::new();
+    source::formation::reserve(&mut out, source.len(), budget, cancel)?;
+    for value in source {
+        source::formation::step(budget, cancel)?;
+        out.push(*value);
+    }
+    Ok(out)
+}
 fn map_ids(
     keys: &[Key],
     id: &impl Fn(Key) -> NodeId,
@@ -3329,6 +3425,10 @@ fn difference(
                 if node.interactive_document != current.interactive_document {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(DomChange::DocumentInteractiveState(DocumentId(id)));
+                }
+                if node.fullscreen_events != current.fullscreen_events {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFullscreenEvents(DocumentId(id)));
                 }
                 if matches!(node.kind, DomNodeKind::Document(_))
                     && fullscreen::captured_facts(old, node, owner, budget, cancelled)?

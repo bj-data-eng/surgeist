@@ -8,6 +8,7 @@ use super::*;
 pub(super) enum Frame {
     Dialog(dialog::MethodFrame),
     DesignMode(design_mode::Frame),
+    FullscreenExit(Option<crate::DomFullscreenExitReturn>),
 }
 impl Frame {
     pub(super) fn checkpoint(
@@ -16,6 +17,10 @@ impl Frame {
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
         match self {
+            Self::FullscreenExit(result) => {
+                check_cancel(cancel)?;
+                Ok(Self::FullscreenExit(*result))
+            }
             Self::Dialog(frame) => Ok(Self::Dialog(frame.checkpoint(admission, cancel)?)),
             Self::DesignMode(frame) => {
                 check_cancel(cancel)?;
@@ -25,6 +30,7 @@ impl Frame {
     }
     pub(super) fn is_running(&self) -> bool {
         match self {
+            Self::FullscreenExit(result) => result.is_none(),
             Self::Dialog(_) => true,
             Self::DesignMode(frame) => {
                 frame.cursor.action() != surgeist_html::HtmlDesignModeAction::Complete

@@ -177,6 +177,9 @@ The native fullscreen model shares canonical raw/pending top-layer state and
 UA-rule inputs, with namespace-independent flags and retargeted immutable views.
 Its removal, adoption and hosted-destruction guards retain actual unfinished
 exit obligations; model completion does not establish platform fullscreen.
+Source exit retains one DOM-owned parallel invocation with Runtime scheduling
+custody and canonical ordered events. Its orientation wait permits independent
+edits; a pending return does not establish completed exit or event delivery.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
 HTML-semantics adapter builds qualified ordinary and shadow captures, retains
 checked bidirectional identity maps, and invokes producer queries with explicit

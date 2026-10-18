@@ -198,7 +198,7 @@ impl Draft {
                 checkpoint: Some(checkpoint),
             };
             restore.draft.source_headroom = Some(Scan::new());
-            let result = (|| {
+            let mut result = (|| {
                 restore.draft.seed_headroom(cancel)?;
                 match entry {
                     Entry::Command(command) => restore.draft.apply(command, dom.limits, cancel),
@@ -214,6 +214,27 @@ impl Draft {
                         .schedule_selectedcontent(target, dom.limits, cancel),
                 }
             })();
+            while matches!(result, Err(DomError::FullscreenExitHandoffRequired)) {
+                restore.draft.fullscreen_exit_prefix(dom.limits, cancel)?;
+                restore.draft.range_publication_ready(cancel)?;
+                let scan = restore
+                    .draft
+                    .source_headroom
+                    .as_mut()
+                    .expect("original scan");
+                // Handoff publication plus the invocation's retained mandatory
+                // credit. The enclosing command's close remains separate.
+                scan.phases = scan
+                    .phases
+                    .checked_add(2)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                scan.invocations = scan
+                    .invocations
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                restore.draft.fullscreen_exit = None;
+                result = restore.draft.run_effects(dom.limits, cancel);
+            }
             let dialog_wait = matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
                 if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }));
             let design_mode_wait = matches!(&result, Err(DomError::DesignModeProcessingUnavailable { step })

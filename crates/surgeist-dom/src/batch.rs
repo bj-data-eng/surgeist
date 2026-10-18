@@ -64,6 +64,9 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    ExitFullscreen {
+        document: NodeOperand,
+    },
     FullscreenElementModel {
         node: NodeOperand,
     },

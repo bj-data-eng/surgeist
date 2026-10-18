@@ -2,9 +2,10 @@
 use super::*;
 use crate::DomFullscreenModelStep as Step;
 use crate::dialog::DocumentInteractiveState;
+pub(in crate::store) mod exit;
 
 impl Draft {
-    fn fullscreen_raw_members(
+    pub(in crate::store) fn fullscreen_raw_members(
         &self,
         document: Key,
         cancel: &AtomicBool,
@@ -21,7 +22,7 @@ impl Draft {
             }),
         }
     }
-    fn fullscreen_model_target(
+    pub(in crate::store) fn fullscreen_model_target(
         &self,
         document: Key,
         cancel: &AtomicBool,
@@ -82,12 +83,11 @@ impl Draft {
         }
         Ok(())
     }
-    pub(super) fn fullscreen_removing_steps(
+    pub(super) fn fullscreen_removing_members(
         &mut self,
         root: Key,
         cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        let document = self.node(root)?.document;
+    ) -> Result<select::ScratchVec<Key>, DomError> {
         let mut pending = self.effect_vec();
         let mut flagged = self.effect_vec();
         self.select_reserve(&mut pending, 1, cancel)?;
@@ -109,23 +109,7 @@ impl Draft {
                 pending.push(shadow);
             }
         }
-        // No external call is admitted by this model unit. The whole static walk
-        // completes locally or refuses before this canonical segment publishes.
-        for &key in flagged.iter() {
-            self.source_step(cancel)?;
-            if self.fullscreen_model_target(document, cancel)? == Some(key) {
-                if self.document_fully_active(document, cancel)? {
-                    return Err(DomError::FullscreenModelUnavailable {
-                        step: Step::ExitFullscreen,
-                    });
-                }
-                // The actual inactive ExitFullscreen rejection leaves flags set.
-            } else {
-                self.unfullscreen_element_model(key, cancel)?;
-            }
-            self.remove_top_layer_immediately(key, cancel)?;
-        }
-        Ok(())
+        Ok(flagged)
     }
     pub(super) fn retire_fullscreen_membership(
         &mut self,

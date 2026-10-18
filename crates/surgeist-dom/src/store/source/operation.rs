@@ -6,6 +6,7 @@ mod dialog;
 pub(crate) mod dialog_queue;
 mod failure;
 mod focus;
+pub(crate) mod fullscreen;
 #[cfg(test)]
 mod fullscreen_tests;
 pub(in crate::store) mod hosted;
@@ -94,6 +95,7 @@ pub(in crate::store) struct Operation {
     command_storage: storage::Payload,
     canonical_history_bytes: usize,
     custody_bytes: usize,
+    custody_units: usize,
     canonical_aux_bytes: usize,
 }
 #[expect(
@@ -187,8 +189,10 @@ impl Dom {
                 )
             })
             .ok_or(DomError::RepresentationExhausted)?;
+        let fullscreen = self.fullscreen_custody_bytes()?;
         style
             .checked_add(crate::element_tasks::retained(&self.element_tasks)?)
+            .and_then(|bytes| bytes.checked_add(fullscreen))
             .and_then(|bytes| {
                 bytes.checked_add(
                     self.hosted_source
@@ -362,6 +366,7 @@ impl Dom {
             canonical_history_bytes: self.history_bytes,
             command_storage,
             custody_bytes: 0,
+            custody_units: self.fullscreen_custody_units()?,
             canonical_aux_bytes,
         });
         let admitted = (|| {
@@ -449,6 +454,7 @@ impl Dom {
             .checked_add(size_of::<crate::store::dispatch::CustodyBank>())
             .ok_or(DomError::RepresentationExhausted)?;
         let custody_bytes = self.source_owner_custody_bytes()?;
+        let custody_units = self.fullscreen_custody_units()?;
         let protected = self.source_reserved_closing(cancel)?;
         let dispatch = &self.dispatch_custody;
         let op = self
@@ -457,6 +463,7 @@ impl Dom {
             .filter(|o| o.id == id)
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody_bytes;
+        op.custody_units = custody_units;
         // Bounds are absolute; original spent work never resets on resume.
         if limits.work < op.draft.source_work.load(Ordering::Relaxed)
             || limits.phases
@@ -655,6 +662,21 @@ impl Operation {
             limits.details_intentions,
             DomResource::DetailsToggleIntentions,
         )?;
+        let fullscreen_events = draft
+            .existing
+            .iter()
+            .chain(&draft.created)
+            .flatten()
+            .try_fold(0usize, |count, node| {
+                count
+                    .checked_add(node.fullscreen_events.len())
+                    .ok_or(DomError::RepresentationExhausted)
+            })?;
+        admit(
+            fullscreen_events,
+            limits.fullscreen_events,
+            DomResource::FullscreenEvents,
+        )?;
         // This synchronous policy setter has no cancellation input, like its
         // existing finite bank checks; do not debit the parked Source Work.
         let autofocus = draft
@@ -717,6 +739,8 @@ impl Operation {
             parent: None,
             phase: if self.failure.is_some() {
                 crate::DomSourcePhase::PendingCleanup
+            } else if self.draft.fullscreen_exit.is_some() {
+                crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
                 crate::DomSourcePhase::AutofocusInsertionService
             } else if matches!(self.draft.method.as_ref(), Some(crate::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::HtmlDesignModeAction::Complete)
@@ -832,6 +856,7 @@ impl Operation {
                     .checked_add(self.command_storage.units)
                     .ok_or(DomError::RepresentationExhausted)?,
             )
+            .and_then(|units| units.checked_add(self.custody_units))
             .ok_or(DomError::RepresentationExhausted)?;
         if let Some((_, source)) = &self.context {
             units = units
@@ -1189,6 +1214,28 @@ impl Operation {
         )>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, crate::hosted::DomHostedError> {
+        let segment = self.prepare_segment(dom, incomplete, target, hosted, cancel)?;
+        let permit = hosted
+            .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
+            .transpose()?;
+        let published = segment.publish(self, dom);
+        if let Some(permit) = permit {
+            permit.commit();
+        }
+        Ok(published)
+    }
+    fn prepare_segment(
+        &mut self,
+        dom: &mut Dom,
+        incomplete: bool,
+        target: PublicationTarget,
+        hosted: Option<(
+            &crate::DomHostedSource,
+            &crate::hosted::Request,
+            crate::DomHostedSourceRevision,
+        )>,
+        cancel: &AtomicBool,
+    ) -> Result<SegmentPublication, crate::hosted::DomHostedError> {
         let frame = match target {
             PublicationTarget::Style(frame) => Some(frame),
             _ => None,
@@ -1618,24 +1665,86 @@ impl Operation {
         {
             return Err(DomError::StyleProtocol.into());
         }
-        let permit = hosted
-            .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
-            .transpose()?;
         let owner_custody = dom.source_owner_custody_bytes()?;
-        let commit = dom.publish(prepared, cancel)?;
-        self.draft.dispatch_retirements.clear();
-        if let Some(permit) = permit {
-            permit.commit();
-        }
-        if self.hosted_global.take().is_some() {
-            self.draft.hosted_globals = dom.state.hosted_globals.clone();
+        let prepared = dom.prepare_publication(prepared, cancel)?;
+        Ok(SegmentPublication {
+            prepared,
+            owner_custody,
+            canonical_storage,
+            canonical_history_bytes,
+            ids,
+            issued_next,
+            source,
+            request,
+            child,
+            historical,
+            outputs,
+            identities,
+            changed,
+            dialog,
+            focusing,
+            focus_delegate,
+            autofocus,
+            design_mode,
+        })
+    }
+}
+
+// The original Source publication, prepared without callbacks or canonical writes.
+// Its affine owner can join an admitted Runtime row before this exact commit.
+struct SegmentPublication {
+    prepared: PreparedPublication,
+    owner_custody: usize,
+    canonical_storage: storage::Payload,
+    canonical_history_bytes: usize,
+    ids: Vec<Option<NodeId>>,
+    issued_next: Option<u64>,
+    source: Option<Arc<DomStyleSource>>,
+    request: Option<DomStyleRequest>,
+    child: Option<hosted::Child>,
+    historical: Vec<Option<NodeId>>,
+    outputs: usize,
+    identities: u64,
+    changed: bool,
+    dialog: Option<crate::DomSourceDialogRequest>,
+    focusing: Option<crate::DomSourceDialogFocusingRequest>,
+    focus_delegate: Option<crate::DomSourceFocusDelegateRequest>,
+    autofocus: Option<crate::DomSourceAutofocusInsertionRequest>,
+    design_mode: Option<crate::DomSourceDesignModeRequest>,
+}
+impl SegmentPublication {
+    fn publish(self, op: &mut Operation, dom: &mut Dom) -> PublishedSegment {
+        let Self {
+            prepared,
+            owner_custody,
+            canonical_storage,
+            canonical_history_bytes,
+            ids,
+            issued_next,
+            source,
+            request,
+            child,
+            historical,
+            outputs,
+            identities,
+            changed,
+            dialog,
+            focusing,
+            focus_delegate,
+            autofocus,
+            design_mode,
+        } = self;
+        let commit = dom.publish_prepared(prepared);
+        op.draft.dispatch_retirements.clear();
+        if op.hosted_global.take().is_some() {
+            op.draft.hosted_globals = dom.state.hosted_globals.clone();
         }
         // Retirement only removes entries; capacity is retained and this cannot
         // overflow after the same table was admitted before publication.
-        self.custody_bytes = owner_custody;
-        self.canonical_storage = canonical_storage;
-        self.canonical_history_bytes = canonical_history_bytes;
-        self.draft
+        op.custody_bytes = owner_custody;
+        op.canonical_storage = canonical_storage;
+        op.canonical_history_bytes = canonical_history_bytes;
+        op.draft
             .phase_map
             .as_mut()
             .expect("source map")
@@ -1647,7 +1756,7 @@ impl Operation {
                     *old = new;
                 }
             });
-        let draft: &mut Draft = &mut self.draft;
+        let draft: &mut Draft = &mut op.draft;
         let private = &draft.phase_map.as_ref().expect("source map").private;
         let mut published = dom.state.native_tasks.iter();
         for pending in &mut draft.native_tasks {
@@ -1664,21 +1773,21 @@ impl Operation {
                 *serial = Some(*actual);
             }
         }
-        self.draft.view_transitions.acknowledge_publication(
+        op.draft.view_transitions.acknowledge_publication(
             &dom.state.view_transitions,
             &commit.transition_ids,
             &commit.record_ids,
         );
-        self.draft
+        op.draft
             .acknowledge_details_publication(&dom.state.details_intentions);
-        self.draft.cancelled_signals.clear();
-        self.draft.cancelled_selects.clear();
-        self.draft.cancelled_details.clear();
-        self.draft.cancelled_images = None;
+        op.draft.cancelled_signals.clear();
+        op.draft.cancelled_selects.clear();
+        op.draft.cancelled_details.clear();
+        op.draft.cancelled_images = None;
         if let Some(next) = issued_next {
-            self.draft.source_invocation = next;
+            op.draft.source_invocation = next;
             if let Some(occurrence) = dialog.as_ref().and_then(|request| request.method()) {
-                let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+                let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_mut()
                 else {
                     unreachable!("exposed actual Dialog");
                 };
@@ -1692,7 +1801,7 @@ impl Operation {
                         .map(|request| request.occurrence.ordinal)
                 })
             {
-                let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+                let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_mut()
                 else {
                     unreachable!("called Dialog frame");
                 };
@@ -1702,14 +1811,13 @@ impl Operation {
                     .expect("actual focusing child")
                     .invocation = Invocation::Exposed(ordinal);
             } else if let Some(request) = &design_mode {
-                let Some(crate::store::method::Frame::DesignMode(frame)) =
-                    self.draft.method.as_mut()
+                let Some(crate::store::method::Frame::DesignMode(frame)) = op.draft.method.as_mut()
                 else {
                     unreachable!("original designMode frame");
                 };
                 frame.invocation = Invocation::Exposed(request.occurrence.ordinal);
             } else {
-                match &mut self
+                match &mut op
                     .draft
                     .effects
                     .last_mut()
@@ -1744,32 +1852,33 @@ impl Operation {
             }
         }
         if let Some(source) = source {
-            self.context = Some((source.ordinal, source));
+            op.context = Some((source.ordinal, source));
         }
-        self.request = request;
+        op.request = request;
         if let Some(child) = child {
-            self.draft.source_invocation = child.request.occurrence;
-            self.draft.hosted_pending = None;
-            self.child = Some(child);
+            op.draft.source_invocation = child.request.occurrence;
+            op.draft.hosted_pending = None;
+            op.child = Some(child);
         }
-        self.historical = historical;
-        self.outputs = outputs;
-        self.identities = identities;
-        if changed && let Some(headroom) = &mut self.headroom {
+        op.historical = historical;
+        op.outputs = outputs;
+        op.identities = identities;
+        if changed && let Some(headroom) = &mut op.headroom {
             headroom.remaining_phases -= 1;
         }
-        self.phases += u64::from(changed);
-        self.published = true;
-        Ok(PublishedSegment {
+        op.phases += u64::from(changed);
+        op.published = true;
+        PublishedSegment {
             commit,
             dialog,
             focusing,
             focus_delegate,
             autofocus,
             design_mode,
-        })
+        }
     }
 }
+
 impl DomSourceLease<'_> {
     pub fn status(&self) -> DomSourceStatus {
         self.dom.pending_source_edit().expect("live lease")
@@ -1863,6 +1972,7 @@ impl DomSourceLease<'_> {
             .take()
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody;
+        op.custody_units = self.dom.fullscreen_custody_units()?;
         let result = self.advance_operation(&mut op, cancel);
         if self.complete || matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
@@ -1941,6 +2051,7 @@ impl DomSourceLease<'_> {
                 installation: None,
                 dialog_toggle_disposition: None,
                 design_mode_range_disposition: None,
+                fullscreen_exit_return: None,
             }));
         }
         if op.child.as_ref().is_some_and(hosted::Child::returned) {
@@ -1957,6 +2068,13 @@ impl DomSourceLease<'_> {
             return Ok(DomSourceProgress::Request(DomSourceRequest::Style(
                 request.clone(),
             )));
+        }
+        if op.draft.fullscreen_exit.is_some() {
+            let request = op.fullscreen_handoff_request(self.dom, cancel)?;
+            op.event_exposed = true;
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::FullscreenExitHandoff(request),
+            ));
         }
         loop {
             if op.failure.is_some() && op.request_close.is_none() {
@@ -2015,6 +2133,15 @@ impl DomSourceLease<'_> {
                     )
                 } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
                     op.draft.run_effects(self.dom.limits, cancel)
+                } else if matches!(
+                    op.draft.method,
+                    Some(crate::store::method::Frame::FullscreenExit(_))
+                ) {
+                    let Command::ExitFullscreen { document } = &op.commands[op.index] else {
+                        return Err(DomError::InvalidSourceOperation);
+                    };
+                    let document = op.draft.resolve(document.clone())?;
+                    op.draft.exit_fullscreen_boundary(document, true, cancel)
                 } else if let Some(crate::store::method::Frame::DesignMode(frame)) =
                     op.draft.method.as_ref()
                 {
@@ -2058,6 +2185,30 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::FullscreenExitHandoffRequired) => {
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    let request = match op.fullscreen_handoff_request(self.dom, cancel) {
+                        Ok(request) => request,
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.started = started;
+                            return Err(error);
+                        }
+                    };
+                    op.started = true;
+                    // An exposed handoff is retained even before any tree write.
+                    op.event_exposed = true;
+                    drop(checkpoint);
+                    return Ok(DomSourceProgress::Request(
+                        DomSourceRequest::FullscreenExitHandoff(request),
+                    ));
+                }
                 Err(DomError::DesignModeProcessingUnavailable { step }) => {
                     let pending = op
                         .draft
@@ -2357,14 +2508,17 @@ impl DomSourceLease<'_> {
                         op.receipt = None;
                         continue;
                     }
-                    let completed_design_mode = matches!(
+                    let completed_method = matches!(
                         op.draft.method,
-                        Some(crate::store::method::Frame::DesignMode(_))
+                        Some(
+                            crate::store::method::Frame::DesignMode(_)
+                                | crate::store::method::Frame::FullscreenExit(_)
+                        )
                     );
                     // A local setter has already finished its actual writes.
                     // Preserve that exact completed draft/result across final
                     // admission refusal, instead of restoring its entry cursor.
-                    let checkpoint = if completed_design_mode {
+                    let checkpoint = if completed_method {
                         drop(checkpoint);
                         op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?
                     } else {
@@ -2393,7 +2547,7 @@ impl DomSourceLease<'_> {
                         op.started = false;
                         op.command_admitted = false;
                         op.context = None;
-                        if op.index < op.commands.len() && completed_design_mode {
+                        if op.index < op.commands.len() && completed_method {
                             op.draft.method = None;
                         }
                     }
@@ -2462,6 +2616,12 @@ impl DomSourceLease<'_> {
                             published: std::mem::take(&mut op.historical),
                             commit,
                             installation,
+                            fullscreen_exit_return: match op.draft.method.as_ref() {
+                                Some(crate::store::method::Frame::FullscreenExit(result)) => {
+                                    *result
+                                }
+                                _ => None,
+                            },
                             design_mode_range_disposition: match op.draft.method.as_ref() {
                                 Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
                                 _ => None,
@@ -3193,6 +3353,7 @@ impl Dom {
                 canonical_history_bytes: self.history_bytes,
                 command_storage: storage::Payload::default(),
                 custody_bytes: self.source_owner_custody_bytes().map_err(Error::Target)?,
+                custody_units: self.fullscreen_custody_units().map_err(Error::Target)?,
                 canonical_aux_bytes,
             });
             operation.refresh_admission(cancel).map_err(Error::Target)?;
@@ -5515,6 +5676,7 @@ pub(in crate::store) mod accounting_tests {
                     | DomSourceRequest::DialogFocusing(_)
                     | DomSourceRequest::FocusDelegate(_)
                     | DomSourceRequest::DesignMode(_)
+                    | DomSourceRequest::FullscreenExitHandoff(_)
                     | DomSourceRequest::AutofocusInsertion(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")

@@ -506,6 +506,7 @@ impl Operation {
         self.canonical_history_bytes = 0;
         self.command_storage = storage::Payload::default();
         self.custody_bytes = 0;
+        self.custody_units = 0;
         Ok(DomSourceProgress::Request(DomSourceRequest::Event(request)))
     }
 }
@@ -520,6 +521,7 @@ impl Dom {
         let total = self.source_observation_total(storage::Payload::default(), cancel)?;
         self.admit_source_observers(total, cancel)?;
         let custody = self.source_owner_custody_bytes()?;
+        let custody_units = self.fullscreen_custody_units()?;
         let Some(operation) = self.source_operation.as_mut() else {
             return Ok(());
         };
@@ -527,11 +529,16 @@ impl Dom {
             return Ok(());
         }
         let old = operation.custody_bytes;
+        let old_units = operation.custody_units;
         let old_other = operation.draft.source_other_bytes;
+        let old_other_units = operation.draft.source_other_units;
         operation.custody_bytes = custody;
+        operation.custody_units = custody_units;
         if let Err(error) = operation.refresh_admission(cancel) {
             operation.custody_bytes = old;
+            operation.custody_units = old_units;
             operation.draft.source_other_bytes = old_other;
+            operation.draft.source_other_units = old_other_units;
             return Err(error);
         }
         Ok(())
@@ -778,6 +785,10 @@ impl Dom {
         payload.append(extra)?;
         payload.add_bytes(self.history_bytes)?;
         payload.add_bytes(self.source_owner_custody_bytes()?)?;
+        payload.units = payload
+            .units
+            .checked_add(self.fullscreen_custody_units()?)
+            .ok_or(DomError::RepresentationExhausted)?;
         payload.add_bytes(
             self.source_dispatch_custody_bytes(|| self.step_source_observers(cancel))?,
         )?;
@@ -1181,6 +1192,14 @@ impl Dom {
                 .checked_add(reserved.remaining_phases)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
+        for invocation in &self.fullscreen_exits {
+            // Reserved closing space is accounting, not execution of a parked
+            // invocation. Unrelated canonical edits do not spend its Work.
+            check_cancel(cancel)?;
+            remaining = remaining
+                .checked_add(invocation.closing_credit)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
         Ok(remaining)
     }
 }
@@ -1224,6 +1243,7 @@ impl DomSourceLease<'_> {
             },
         };
         let result = DomSourceProgress::Complete(DomSourceCompletion {
+            fullscreen_exit_return: None,
             operation: operation.id,
             commit,
             cancelled: canceled_operation || operation.cancelled,
@@ -1523,6 +1543,7 @@ impl DomSourceLease<'_> {
             draft.clear_dialog_toggle_tracker(key.ok_or(DomError::StaleNode)?, cancel)?;
         }
         let custody_bytes = self.dom.source_owner_custody_bytes()?;
+        let custody_units = self.dom.fullscreen_custody_units()?;
         let mut operation = self.dom.source_operation.take().expect("retained observer");
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
         let OperationDraft::Observed(observation) = old else {
@@ -1544,6 +1565,7 @@ impl DomSourceLease<'_> {
         operation.command_storage = command;
         operation.canonical_history_bytes = self.dom.history_bytes;
         operation.custody_bytes = custody_bytes;
+        operation.custody_units = custody_units;
         operation.limits = observation.limits;
         drop(observation.receiver);
         if operation.request_close.is_some() {

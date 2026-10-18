@@ -3401,6 +3401,11 @@ mod tests {
                         panic!("Style fixture cannot request a designMode service")
                     }
                     DomSourceProgress::Request(
+                        surgeist_dom::DomSourceRequest::FullscreenExitHandoff(_),
+                    ) => {
+                        panic!("Style fixture cannot request a fullscreen exit handoff")
+                    }
+                    DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)
                         | surgeist_dom::DomSourceRequest::DialogFocusing(_)

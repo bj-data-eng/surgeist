@@ -88,6 +88,24 @@ impl<'a> DomEventDom<'a> {
     pub fn pending_source_edit(&self) -> Option<surgeist_dom::DomSourceStatus> {
         self.dom.pending_source_edit()
     }
+    /// Live canonical invocation observation, without execution or reply authority.
+    pub fn fullscreen_exit_status(
+        &self,
+        invocation: surgeist_dom::DomFullscreenExitId,
+    ) -> Result<surgeist_dom::DomFullscreenExitStatus, DomError> {
+        self.dom.fullscreen_exit_status(invocation)
+    }
+    /// Atomically transfers the recorded Document's actual pending fullscreen
+    /// tuples. This does not choose targets or deliver events.
+    pub fn take_fullscreen_events(
+        &mut self,
+        document: surgeist_dom::DocumentId,
+        max_output: usize,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomFullscreenEventBatch, DomError> {
+        self.dom
+            .take_fullscreen_events(document, max_output, cancel)
+    }
     /// Reissues an independently owned capability to an already retained current
     /// root; it cannot replace the store or establish a new association.
     pub fn style_cssom_root(

@@ -150,6 +150,9 @@ impl HostedRuntime {
         if empty && let Some(progress) = state.pump_destruction(dom, traversable, None, cancel)? {
             return Ok(progress);
         }
+        if empty && let Some(progress) = state.pump_fullscreen(dom, h, t, cancel)? {
+            return Ok(progress);
+        }
         let operation = {
             let group = state.hosts[h].top_levels[t]
                 .group

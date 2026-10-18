@@ -335,6 +335,24 @@ membership does not block cleanup. This guard supplies no platform full-exit
 result. The [DOM model](../../surgeist-dom/README.md) owns the state and model
 operations.
 
+Native `exit_fullscreen` hands parallel scheduling custody to an admitted row in
+the same traversable owner. DOM retains the exact invocation and source locals;
+Runtime retains its ID and routing. Job storage and any reached canonical event
+must be admitted before the synchronous prefix publishes. The checked fence
+secures the job before releasing this call's Source exclusion, while an enclosing
+operation keeps its own guard and continues its synchronous tail.
+
+The first shared-scheduler drive reports `FullscreenExitPending` at the actual
+orientation requirement and parks without a current WindowLoop task or canonical
+borrow. Real History and destruction work continues normally. An otherwise
+non-runnable group with retained parallel work reports `Quiescent`; `Idle` still
+means no remaining queued obligation. Parked rows remain in task/storage counts
+and cannot be lost by group pruning, permission drop or a replaced executor.
+No extra checkpoint turn is fabricated for parallel work. The current absence
+of an orientation service remains pending; Window's committed fullscreen bit is
+not a receipt. See the [DOM contract](../../surgeist-dom/README.md) for native
+returns, canonical event transfer and the remaining platform boundary.
+
 Surviving Documents retain their canonical metadata, registry and fixed platform
 policy after hosted teardown. Ordinary DOM edits can use those facts while
 current hosted settings and execution remain unavailable. Actual retirement

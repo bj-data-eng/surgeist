@@ -173,7 +173,11 @@ pub use document::{
     DomOpaqueOrigin, DomRegistryBinding,
 };
 pub use element::{DomElement, DomElementDefinition};
-pub use fullscreen::DomFullscreenModelStep;
+pub use fullscreen::{
+    DomFullscreenEvent, DomFullscreenEventBatch, DomFullscreenEventKind, DomFullscreenExitFact,
+    DomFullscreenExitId, DomFullscreenExitReturn, DomFullscreenExitStatus, DomFullscreenExitStep,
+    DomFullscreenModelStep,
+};
 pub use host::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
@@ -275,6 +279,9 @@ pub use fieldset::{DomFieldset, DomFieldsetState};
 pub use form::DomForm;
 
 pub use store::source::operation::DomSourceLease;
+pub use store::source::operation::fullscreen::{
+    DomFullscreenExitHandoffCommit, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
+};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,

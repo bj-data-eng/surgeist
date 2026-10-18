@@ -112,6 +112,8 @@ pub enum DomSourcePhase {
     AutofocusInsertionService,
     /// The original designMode setter awaits an actual selection/focus service.
     DesignModeService,
+    /// Exact step8 scheduling join, before any invocation prefix is published.
+    FullscreenExitHandoff,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -160,6 +162,7 @@ impl DomSourceStatus {
 /// The actual service reached by the retained canonical source engine.
 #[derive(Clone, Debug)]
 pub enum DomSourceRequest {
+    FullscreenExitHandoff(crate::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
     HostedChild(crate::DomHostedChildRequest),
     Event(DomSourceEventRequest),
@@ -199,6 +202,7 @@ pub enum DomDialogToggleTaskDisposition {
 }
 #[derive(Debug)]
 pub struct DomSourceCompletion {
+    pub(crate) fullscreen_exit_return: Option<crate::DomFullscreenExitReturn>,
     pub(crate) operation: DomSourceOperationId,
     pub(crate) commit: crate::DomCommit,
     pub(crate) cancelled: bool,
@@ -208,6 +212,9 @@ pub struct DomSourceCompletion {
     pub(crate) design_mode_range_disposition: Option<DomDesignModeRangeDisposition>,
 }
 impl DomSourceCompletion {
+    pub const fn fullscreen_exit_return(&self) -> Option<crate::DomFullscreenExitReturn> {
+        self.fullscreen_exit_return
+    }
     /// The completed reset branch of a false-to-on setter. `None` means off,
     /// invalid, already-on or another operation, never an unknown completed reset.
     pub const fn design_mode_range_disposition(&self) -> Option<DomDesignModeRangeDisposition> {
@@ -269,6 +276,13 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    pub fn exit_fullscreen(document: crate::DocumentId) -> Self {
+        Self {
+            command: Command::ExitFullscreen {
+                document: document.into(),
+            },
+        }
+    }
     /// The native model operation, without requestFullscreen platform admission.
     pub fn fullscreen_element_model(node: NodeId) -> Self {
         Self {

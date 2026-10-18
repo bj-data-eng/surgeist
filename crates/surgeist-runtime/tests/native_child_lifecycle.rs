@@ -540,6 +540,10 @@ fn pump_one_history(
             .unwrap();
         let operation = match progress {
             DomHostedTaskProgress::Idle => panic!("queued history must not disappear"),
+            DomHostedTaskProgress::Quiescent
+            | DomHostedTaskProgress::FullscreenExitPending { .. } => {
+                panic!("history fixture has no parallel fullscreen invocation")
+            }
             DomHostedTaskProgress::Pending { operation, .. }
             | DomHostedTaskProgress::CanceledDocumentDestroyed { operation, .. } => operation,
             DomHostedTaskProgress::Executed {

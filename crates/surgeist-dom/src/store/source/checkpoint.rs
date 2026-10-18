@@ -369,6 +369,7 @@ impl DraftNode {
                     })
                 })
                 .transpose()?,
+            fullscreen_events: a.copy(&self.fullscreen_events, cancel)?,
             interactive_document: self
                 .interactive_document
                 .as_ref()
@@ -447,6 +448,8 @@ impl Draft {
             .checked_mul(size_of::<select::EffectFrame>())
             .ok_or(DomError::RepresentationExhausted)?;
         let draft = Self {
+            fullscreen_exit: self.fullscreen_exit,
+            fullscreen_work_custody: self.fullscreen_work_custody,
             ranges: a.copy(&self.ranges, cancel)?,
             range_tickets: a.copy(&self.range_tickets, cancel)?,
             owner: self.owner.clone(),
@@ -524,7 +527,11 @@ impl Draft {
                 .as_ref()
                 .map(|v| v.checkpoint(&mut a, cancel))
                 .transpose()?,
-            source_work: Arc::new(AtomicU64::new(self.source_work.load(Ordering::Relaxed))),
+            source_work: if self.fullscreen_work_custody.is_some() {
+                self.source_work.clone()
+            } else {
+                Arc::new(AtomicU64::new(self.source_work.load(Ordering::Relaxed)))
+            },
             source_ancestors: self.source_ancestors.clone(),
             source_formation_bytes: self.source_formation_bytes.clone(),
             source_temporary_units: self.source_temporary_units.clone(),
@@ -603,6 +610,10 @@ impl Draft {
             self.source_step(cancel)?;
             payload.append(super::storage::node(node, || self.source_step(cancel))?)?;
             add(node.children.capacity(), size_of::<Key>())?;
+            add(
+                node.fullscreen_events.capacity(),
+                size_of::<crate::DomFullscreenEvent>(),
+            )?;
             add(node.manual_nodes.capacity(), size_of::<Key>())?;
             add(node.assigned_nodes.capacity(), size_of::<Key>())?;
             if let Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) =

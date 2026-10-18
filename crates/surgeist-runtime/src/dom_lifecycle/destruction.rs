@@ -1383,6 +1383,7 @@ pub(super) fn prune_closed_composition(host: &mut records::Host, index: usize) -
     }
     let group = composition.group.as_ref().expect("actual retained group");
     let empty = group.traversal.rows.is_empty()
+        && group.fullscreen.rows.is_empty()
         && group.clusters.iter().all(|cluster| {
             let event_loop = cluster.agent.event_loop.borrow();
             cluster.agent.globals.is_empty()

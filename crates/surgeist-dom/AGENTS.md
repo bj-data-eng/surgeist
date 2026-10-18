@@ -339,6 +339,20 @@ guard. Reuse original finite Work, scratch and Source publication ownership.
 The focused public checks are `native_fullscreen_model` and Runtime's
 `dom_fullscreen_model`; model commands do not supply requestFullscreen services.
 
+Native Source `exit_fullscreen` returns an actual local TypeError rejection or
+hands the same exact invocation to pre-admitted Runtime scheduling custody.
+Keep its private ancestor collection and selected Document/resize source locals;
+queue the real disconnected change tuple before unfullscreening. Secure the
+prepared canonical/Runtime handoff before releasing this synchronous exclusion,
+preserving any enclosing Source guard and its ordinary tail. Park only the
+continuation, never an old Draft or global mutation lock. Price optional exit
+slots, aggregate historical events and actual backing/checkpoint overlap; later
+independent edits include parked storage and original cumulative work.
+The actual orientation requirement remains pending without a real service.
+Canonical event drain transfers admitted immutable evidence, not delivery.
+Hosted teardown is not canonical Document identity retirement. The focused
+checks are `native_fullscreen_exit` and Runtime's `dom_fullscreen_exit`.
+
 Retain exact two-way subject mapping,
 document/host qualification and unavailable external facts. Native absent
 browsing context proves scripting disabled independently of XML/HTML class.

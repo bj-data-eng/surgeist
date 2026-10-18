@@ -7,6 +7,7 @@ mod child;
 mod clock;
 mod destruction;
 mod focus;
+mod fullscreen;
 mod history;
 mod policy;
 mod records;
@@ -33,7 +34,8 @@ use surgeist_dom::{
 pub struct DomHostedRuntimeLimits {
     /// Canonical role, registry, operation and source-work admission.
     pub canonical: DomHostedLimits,
-    /// Actual lifecycle/navigation task rows, including retained running work.
+    /// Actual lifecycle/navigation and reserved, runnable or parked parallel
+    /// exit rows, including retained running work.
     /// Details owns its own DOM-manipulation task-source bank and count bound.
     pub tasks: usize,
     /// Actual native owner/record/task/output backing, including spare capacity.
@@ -192,6 +194,16 @@ pub enum DomHostedTaskWait {
 pub enum DomHostedTaskProgress {
     /// This qualified traversable has no remaining queued execution obligation.
     Idle,
+    /// No task is runnable; the group still owns passive parallel exit work.
+    Quiescent,
+    /// The actual parallel invocation reached its unavailable orientation action.
+    /// This observation grants no execution or service-reply authority.
+    FullscreenExitPending {
+        /// Exact canonical invocation retained by the DOM owner.
+        invocation: surgeist_dom::DomFullscreenExitId,
+        /// The reached source action, without a service acknowledgment.
+        step: surgeist_dom::DomFullscreenExitStep,
+    },
     /// The same original operation and queue head remain retained.
     Pending {
         /// Actual canonical lifecycle operation owning this continuation.
@@ -228,11 +240,11 @@ pub enum DomHostedTaskProgress {
 }
 
 impl DomHostedTaskProgress {
-    /// The actual original operation owning this outcome; an idle queue has no
-    /// operation to acknowledge, resume or compare with a later FIFO task.
+    /// The lifecycle operation owning this outcome. Parallel exit observations
+    /// use their distinct exit identity rather than a lifecycle operation ID.
     pub const fn operation(self) -> Option<surgeist_dom::DomHostedOperationId> {
         match self {
-            Self::Idle => None,
+            Self::Idle | Self::Quiescent | Self::FullscreenExitPending { .. } => None,
             Self::Pending { operation, .. }
             | Self::Executed { operation, .. }
             | Self::CanceledDocumentDestroyed { operation, .. }
@@ -870,18 +882,32 @@ fn native_task_count(
     limit: u64,
     cancel: &AtomicBool,
 ) -> Result<usize, DomHostedRuntimeError> {
+    native_task_count_admitted(hosts, work, limit, cancel, || Ok(()))
+}
+fn native_task_count_admitted(
+    hosts: &[records::Host],
+    work: &mut u64,
+    limit: u64,
+    cancel: &AtomicBool,
+    mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
+) -> Result<usize, DomHostedRuntimeError> {
     let mut count = 0usize;
     for host in hosts {
         spend(work, limit, cancel)?;
+        admit()?;
         for record in &host.top_levels {
             spend(work, limit, cancel)?;
+            admit()?;
             if let Some(group) = &record.group {
                 spend(work, limit, cancel)?;
+                admit()?;
                 count = count
                     .checked_add(group.traversal.rows.len())
+                    .and_then(|count| count.checked_add(group.fullscreen.rows.len()))
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 for cluster in &group.clusters {
                     spend(work, limit, cancel)?;
+                    admit()?;
                     count = count
                         .checked_add(
                             cluster
@@ -943,6 +969,9 @@ fn native_retained_bytes(
             spend(work, limit, cancel)?;
             admit()?;
             if let Some(group) = &record.group {
+                bytes = bytes
+                    .checked_add(group.fullscreen.retained_bytes()?)
+                    .ok_or(DomHostedRuntimeError::Admission)?;
                 bytes = bytes
                     .checked_add(
                         group
@@ -1126,6 +1155,7 @@ fn drive_creation(
                 clusters: Vec::new(),
                 traversal: history::Traversal::new(),
                 completions: Vec::new(),
+                fullscreen: fullscreen::Jobs::new(),
             });
             creation.context = Some(records::BrowsingContext {
                 id: preparation.browsing_context(),

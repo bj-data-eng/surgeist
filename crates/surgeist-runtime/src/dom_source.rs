@@ -484,6 +484,11 @@ impl DomSourceRuntime {
             let advanced = lease.advance(cancel);
             settlement.finish(&lease.snapshot());
             match advanced? {
+                DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) => {
+                    self.hosted
+                        .service_fullscreen_exit_handoff(lease, &request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                }
                 DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::Event(request),

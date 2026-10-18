@@ -290,6 +290,7 @@ fn state_usage(
         step()?;
         payload.append(kind(&node.kind, &mut step)?)?;
         if banks {
+            payload.bank::<crate::DomFullscreenEvent>(node.fullscreen_events.capacity())?;
             payload.bank::<NodeId>(node.children.capacity())?;
             payload.bank::<NodeId>(node.manual_nodes.capacity())?;
             payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
