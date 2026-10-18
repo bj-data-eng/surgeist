@@ -165,12 +165,10 @@ struct Related<'a, K> {
     hyperlink: Option<&'a crate::hyperlink::HyperlinkState<K>>,
     encoding_url_document: Option<&'a crate::hyperlink::EncodingUrlDocument>,
     image: Option<&'a crate::image::ImageState<K>>,
-    form_past_names: Option<&'a crate::form::FormPastNames<K>>,
 }
 #[cfg(test)]
 fn related<K>(
     related: Related<'_, K>,
-    names_bank: bool,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
     let mut payload = Payload::default();
@@ -209,19 +207,6 @@ fn related<K>(
         step()?;
         payload.string(image.native.current_request().current_url())?;
     }
-    if let Some(names) = related.form_past_names {
-        step()?;
-        if names.entries.has_backing() {
-            payload.add_bytes(size_of::<Vec<crate::form::FormPastName<K>>>())?;
-        }
-        if names_bank {
-            payload.bank::<crate::form::FormPastName<K>>(names.entries.capacity())?;
-        }
-        for entry in names.entries.iter() {
-            step()?;
-            payload.string(&entry.name)?;
-        }
-    }
     Ok(payload)
 }
 
@@ -242,19 +227,6 @@ pub(in crate::store) fn canonical_slot(
 }
 #[cfg(test)]
 pub(in crate::store) fn refresh_node_receipts(node: &mut Node) -> Result<(), DomError> {
-    let mut names = Payload::default();
-    let mut units = 0usize;
-    if let Some(values) = &node.form_past_names {
-        names.add_bytes(values.entries.retained_bytes()?)?;
-        for entry in values.entries.iter() {
-            names.string(&entry.name)?;
-            units = units
-                .checked_add(entry.name.len())
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-    }
-    node.receipts.names = custody::Usage::new(names.bytes, names.units);
-    node.receipts.name_units = units;
     let payload = canonical_node(node, true, || Ok(()))?;
     node.receipts.payload = custody::Usage::new(payload.bytes, payload.units);
     node.receipts.fields = transaction::NodeFields::from_canonical(node).usage(|| Ok(()))?;
@@ -302,9 +274,7 @@ pub(in crate::store) fn canonical_node(
             hyperlink: node.hyperlink.as_ref(),
             encoding_url_document: node.encoding_url_document.as_ref(),
             image: node.image.as_ref(),
-            form_past_names: node.form_past_names.as_ref(),
         },
-        banks,
         &mut step,
     )?)?;
     Ok(payload)
@@ -510,9 +480,7 @@ mod tests {
                 hyperlink: Some(&hyperlink),
                 encoding_url_document: None,
                 image: None,
-                form_past_names: None,
             },
-            true,
             || Ok(()),
         )
         .unwrap();

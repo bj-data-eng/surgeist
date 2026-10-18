@@ -133,18 +133,19 @@ impl StateCustody {
             }
             let auxiliary =
                 super::auxiliary::Auxiliary::adopt(state, registry, &mut admit, &mut step)?;
-            let slots = state.slots.adopt_controlled(
-                registry,
-                |slot| {
-                    step()?;
-                    custody::Usage::new(size_of::<Slot>(), 0).checked_add(
-                        slot.node
-                            .as_ref()
-                            .map_or(custody::Usage::ZERO, |node| node.receipts.payload),
-                    )
-                },
-                &mut admit,
-            )?;
+            let slots = {
+                let slot_admit = std::cell::RefCell::new(&mut admit);
+                state.slots.adopt_controlled(
+                    registry,
+                    |slot| {
+                        step()?;
+                        payload::describe_slot(slot, registry, |next| {
+                            (*slot_admit.borrow_mut())(next)
+                        })
+                    },
+                    |next| (*slot_admit.borrow_mut())(next),
+                )?
+            };
             let ranges = state.ranges.adopt_controlled(
                 registry,
                 |_| {

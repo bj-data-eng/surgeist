@@ -153,10 +153,7 @@ impl NodeFields {
             reflected_targets: node.reflected_targets.map(|v| v.map(key)),
             control_owner: node.control_owner.map(key),
             option_select: node.option_select.map(key),
-            form_past_names: node
-                .form_past_names
-                .as_ref()
-                .map(|v| super::Names::canonical(v, node.receipts.names, node.receipts.name_units)),
+            form_past_names: node.form_past_names.as_ref().map(super::Names::canonical),
             script: node.script.map(|v| v.map(key)),
             style_parser_document: node.style_parser_document.map(key),
             base: node.base.as_ref().map(|v| v.map(key)),
@@ -227,10 +224,6 @@ impl NodeFields {
         }
         if let Some(image) = &self.image {
             payload.string(image.native.current_request().current_url())?;
-        }
-        if let Some(names) = &self.form_past_names {
-            payload.add_bytes(names.usage().bytes())?;
-            payload.add_units(names.usage().units())?;
         }
         Ok(payload)
     }

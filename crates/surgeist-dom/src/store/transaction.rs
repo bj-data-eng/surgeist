@@ -12,7 +12,7 @@ pub(in crate::store) mod family_discovery;
 mod fields;
 pub(in crate::store) mod inbound;
 mod journal;
-mod names;
+pub(in crate::store) mod names;
 pub(in crate::store) mod nodes;
 pub(in crate::store) mod ordered_members;
 mod publication;
@@ -59,8 +59,6 @@ pub(in crate::store) struct RelationChange<'a> {
 pub(crate) struct NodeReceipts {
     pub fields: custody::Usage,
     pub payload: custody::Usage,
-    pub names: custody::Usage,
-    pub name_units: usize,
 }
 
 /// Proof of the actual canonical publication fence. It contains no root,

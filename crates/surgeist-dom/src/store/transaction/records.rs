@@ -113,27 +113,27 @@ impl<'a> NamesRead<'a> {
     }
     pub fn len(&self) -> usize {
         match self {
-            Self::Canonical(values) | Self::AliasedCanonical(values, _) => values.entries.len(),
-            Self::Staged(values) | Self::AliasedStaged(values, _) => values.entries.len(),
+            Self::Canonical(values) | Self::AliasedCanonical(values, _) => values.entries().len(),
+            Self::Staged(values) | Self::AliasedStaged(values, _) => values.entries().len(),
         }
     }
     pub fn iter(&self) -> impl ExactSizeIterator<Item = NameRead<'_>> {
         (0..self.len()).map(|index| match self {
             Self::Canonical(values) => NameRead {
-                name: &values.entries[index].name,
-                target: Key::Existing(values.entries[index].target),
+                name: &values.entries()[index].name,
+                target: Key::Existing(values.entries()[index].target),
             },
             Self::Staged(values) => NameRead {
-                name: &values.entries[index].name,
-                target: values.entries[index].target,
+                name: &values.entries()[index].name,
+                target: values.entries()[index].target,
             },
             Self::AliasedCanonical(values, ctx) => NameRead {
-                name: &values.entries[index].name,
-                target: source::alias_id(values.entries[index].target, ctx),
+                name: &values.entries()[index].name,
+                target: source::alias_id(values.entries()[index].target, ctx),
             },
             Self::AliasedStaged(values, ctx) => NameRead {
-                name: &values.entries[index].name,
-                target: source::alias_key(values.entries[index].target, ctx),
+                name: &values.entries()[index].name,
+                target: source::alias_key(values.entries()[index].target, ctx),
             },
         })
     }

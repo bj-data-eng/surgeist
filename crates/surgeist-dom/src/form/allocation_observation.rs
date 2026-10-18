@@ -14,8 +14,8 @@ thread_local! {
     static ACTIVE: Cell<Option<Counts>> = const { Cell::new(None) };
 }
 
-pub(super) fn constructed<K>(value: &crate::store::SharedVec<FormPastName<K>>) {
-    if !value.has_backing() {
+pub(super) fn constructed<K>(value: &super::FormPastNames<K>) {
+    if value.payload().is_none() {
         return;
     }
     ACTIVE.with(|active| {
@@ -23,7 +23,7 @@ pub(super) fn constructed<K>(value: &crate::store::SharedVec<FormPastName<K>>) {
             counts.targets = counts.targets.checked_add(1).expect("actual Form targets");
             counts.target_bytes = counts
                 .target_bytes
-                .checked_add(size_of::<Vec<FormPastName<K>>>())
+                .checked_add(size_of::<crate::store::payload::Payload<super::History<K>>>())
                 .expect("actual Form target bytes");
             counts.capacity_bytes = value
                 .capacity()

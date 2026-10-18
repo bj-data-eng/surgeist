@@ -40,6 +40,7 @@ pages shared by snapshots. These receipts grant no host execution authority.
 | --- | --- |
 | Canonical State | Its body and retained queue-field backing occurrences. Absent queues add no out-of-line storage. Bank records, pages and auxiliary graphs have their own custody. |
 | Persistent page or record | Actual new page storage, or record body and its payload-field occurrences, admitted before controlled retention. Shared descendants keep their existing debit. |
+| Retained Form history | One typed payload body, actual entry capacity and conservative name-field occurrences. Known-empty history has no payload. Slot controls own its child custody; another Slot or staged alias of that payload does not charge its contents again. |
 | Additional bank-root or savepoint alias | Actual holder and control storage. Sharing a root or copying record handles does not materialize its reachable records again. |
 | Changed transaction field or selected sequence | The new materialized field/backing, while the previous occurrence remains charged for as long as canonical state or rollback still retains it. |
 | Candidate publication | The union of candidate, base, rollback and output ownership. Overlapping persistent roots do not justify adding their complete standalone summaries. |
@@ -54,6 +55,15 @@ owners. It holds weak accounting sidecars, rather than weak semantic records.
 Registry paths, sidecar targets, release records and retained capacity have their
 own admitted storage. Cleanup releases only objects whose controlled ownership
 has actually ended.
+
+The [typed payload owner](../src/store/payload.rs) reserves a fresh identity
+before retaining or allocating a new body. Its pending holder keeps incoming
+Formation credits beside the data through refusal, then transfers them into the
+existing registry. Form history uses this owner; its receipt is excluded from
+the Slot's shallow descriptor. Projecting changed identity-bearing entries
+creates a new payload while the staged and previous versions remain controlled.
+Historical adoption borrows that same immutable payload and its cached receipt;
+the external semantic handle itself carries no custody.
 
 Revision history uses closed chunks of 32 entries with direct oldest and newest
 access. Publication prepares its insertion, actual oldest-entry evictions and

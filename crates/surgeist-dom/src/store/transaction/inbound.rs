@@ -415,11 +415,11 @@ fn same_names(old: Option<NamesRead<'_>>, next: Option<&super::Names>) -> bool {
         (
             Some(NamesRead::Canonical(old) | NamesRead::AliasedCanonical(old, _)),
             Some(NamesBacking::Canonical(next)),
-        ) => old.entries.same_storage(&next.entries),
+        ) => old.same_storage(next),
         (
             Some(NamesRead::Staged(old) | NamesRead::AliasedStaged(old, _)),
             Some(NamesBacking::Staged(next)),
-        ) => old.entries.same_storage(&next.entries),
+        ) => old.same_storage(next),
         _ => false,
     }
 }

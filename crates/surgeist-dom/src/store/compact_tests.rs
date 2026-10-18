@@ -56,16 +56,19 @@ impl AllocationGraph {
         }
         self.string(value.local_name());
     }
-    fn merge(&mut self, other: &Self) {
+    pub(in crate::store) fn merge(&mut self, other: &Self) {
         for ((address, _), (kind, bytes)) in &other.0 {
             self.allocation(*address, kind, *bytes);
         }
     }
-    fn bytes(&self) -> usize {
+    pub(in crate::store) fn bytes(&self) -> usize {
         self.0
             .values()
             .try_fold(0usize, |sum, (_, bytes)| sum.checked_add(*bytes))
             .expect("raw graph extent")
+    }
+    pub(in crate::store) fn allocations(&self) -> usize {
+        self.0.len()
     }
     fn count(&self, kind: &str) -> usize {
         self.0.values().filter(|(k, _)| *k == kind).count()
@@ -151,12 +154,8 @@ fn node_storage(state: &Arc<State>) -> AllocationGraph {
         }
         node.fullscreen_events.inspect_raw_allocations(&mut graph);
         if let Some(names) = &node.form_past_names {
-            names.entries.inspect_named_allocations(
-                &mut graph,
-                "form.names.target",
-                "form.names.buffer",
-            );
-            for entry in names.entries.iter() {
+            names.inspect_allocations(&mut graph);
+            for entry in names.entries().iter() {
                 graph.string(&entry.name);
             }
         }
@@ -350,11 +349,7 @@ fn native_known_empty_form_history_has_no_target_allocation() {
         .unwrap()
         .form_past_names
     {
-        names.entries.inspect_named_allocations(
-            &mut graph,
-            "form.names.target",
-            "form.names.buffer",
-        );
+        names.inspect_allocations(&mut graph);
     }
     let actual = observation.finish();
     assert_eq!(
@@ -460,35 +455,31 @@ fn reserved_and_populated_form_history_preserve_storage_order_and_clones() {
         if let Some(observation) = observation {
             let actual = observation.finish();
             assert_eq!(actual.targets, 1);
-            assert_eq!(actual.target_bytes, size_of::<Vec<FormPastName<usize>>>());
+            assert_eq!(
+                actual.target_bytes,
+                size_of::<payload::Payload<crate::form::History<usize>>>()
+            );
             assert_eq!(
                 actual.capacity_bytes,
                 capacity * size_of::<FormPastName<usize>>()
             );
         }
         let mut graph = AllocationGraph::default();
-        names.entries.inspect_named_allocations(
-            &mut graph,
-            "form.names.target",
-            "form.names.buffer",
-        );
+        names.inspect_allocations(&mut graph);
         let before = graph.clone();
-        clone.entries.inspect_named_allocations(
-            &mut graph,
-            "form.names.target",
-            "form.names.buffer",
-        );
+        clone.inspect_allocations(&mut graph);
         assert_eq!(graph, before);
         assert_eq!(graph.count("form.names.target"), 1);
         assert_eq!(graph.count("form.names.buffer"), 1);
         assert_eq!(
             graph.bytes(),
-            size_of::<Vec<FormPastName<usize>>>() + capacity * size_of::<FormPastName<usize>>()
+            size_of::<payload::Payload<crate::form::History<usize>>>()
+                + capacity * size_of::<FormPastName<usize>>()
         );
         drop(names);
-        assert_eq!(clone.entries.capacity(), capacity);
+        assert_eq!(clone.capacity(), capacity);
         let actual: Vec<_> = clone
-            .entries
+            .entries()
             .iter()
             .map(|entry| (entry.name.clone(), entry.target))
             .collect();

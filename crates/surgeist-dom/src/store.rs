@@ -48,6 +48,7 @@ mod navigable;
 mod oracle_tests;
 mod output;
 pub(crate) mod parsed_installation;
+pub(crate) mod payload;
 mod range;
 mod reflected;
 pub(crate) mod registry;
@@ -2567,7 +2568,7 @@ impl Draft {
         }
         let form_past_names =
             matches!(kind.value(), DomNodeKind::Element(element) if element.form_state().is_some())
-                .then(crate::form::FormPastNames::fresh);
+                .then(transaction::Names::fresh);
         let interactive_document = match kind.value() {
             DomNodeKind::Document(metadata) => Some(
                 if matches!(
@@ -2671,9 +2672,7 @@ impl Draft {
             reflected_targets,
             control_owner: None,
             option_select: None,
-            form_past_names: form_past_names
-                .map(|v| transaction::Names::staged(v, || self.source_step(cancel)))
-                .transpose()?,
+            form_past_names,
         };
         let ledger = self.custody_ledger().clone();
         let node = DraftNode::fresh(fields, incoming, &ledger, |usage| {

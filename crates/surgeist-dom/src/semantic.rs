@@ -549,7 +549,7 @@ impl DomSnapshot {
                 }
             }
             if let Some(map) = &node.node.form_past_names {
-                for entry in map.entries.iter() {
+                for entry in map.entries().iter() {
                     control.charge(1)?;
                     control.include(&mut planned, entry.target, false)?;
                 }

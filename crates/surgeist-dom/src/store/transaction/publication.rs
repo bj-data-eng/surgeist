@@ -165,7 +165,7 @@ impl Draft {
         key: Key,
         map: &impl Fn(Key) -> NodeId,
         cancel: &AtomicBool,
-    ) -> Result<custody::Held<Slot>, DomError> {
+    ) -> Result<FormedSlot, DomError> {
         let source = self.node(key)?;
         if source
             .base
@@ -180,40 +180,11 @@ impl Draft {
         }
         let private = self.records_for(key);
         let fields = private.fields.value();
-        let mut field_usage = private
+        let field_usage = private
             .fields
             .debit()
             .usage()
             .checked_sub(custody::Usage::new(size_of::<super::NodeFields>(), 0))?;
-        let mut names_receipt = custody::Usage::ZERO;
-        let mut names_units = 0usize;
-        if let Some(names) = &fields.form_past_names {
-            names_units = names.logical_units();
-            let old = names.usage();
-            names_receipt = match &names.backing {
-                super::names::NamesBacking::Canonical(_) => old,
-                super::names::NamesBacking::Staged(values) => {
-                    let old_backing = values.entries.retained_bytes()?;
-                    let new_bank = values
-                        .entries
-                        .len()
-                        .checked_mul(size_of::<crate::form::FormPastName<NodeId>>())
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    let new_backing = if values.entries.is_empty() {
-                        0
-                    } else {
-                        size_of::<Vec<crate::form::FormPastName<NodeId>>>()
-                            .checked_add(new_bank)
-                            .ok_or(DomError::RepresentationExhausted)?
-                    };
-                    old.checked_replace(
-                        custody::Usage::new(old_backing, 0),
-                        custody::Usage::new(new_backing, 0),
-                    )?
-                }
-            };
-            field_usage = field_usage.checked_replace(old, names_receipt)?;
-        }
         let mut payload = field_usage;
         payload = add_sequence(payload, source.children)?;
         payload = add_sequence(payload, source.manual_nodes)?;
@@ -242,58 +213,13 @@ impl Draft {
         let form_past_names = fields
             .form_past_names
             .as_ref()
-            .map(|names| match &names.backing {
-                super::names::NamesBacking::Canonical(values) => Ok(values.clone()),
-                super::names::NamesBacking::Staged(values) => {
-                    let mut out = Vec::new();
-                    out.try_reserve_exact(values.entries.len())
-                        .map_err(|_| DomError::AllocationFailed)?;
-                    #[cfg(test)]
-                    if scale_metrics::ENABLED && out.capacity() != 0 {
-                        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-                            bytes: out.capacity() * size_of::<crate::form::FormPastName<NodeId>>(),
-                        });
-                    }
-                    let extra = (out.capacity() - values.entries.len())
-                        .checked_mul(size_of::<crate::form::FormPastName<NodeId>>())
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    if extra != 0 {
-                        debit.grow(custody::Usage::new(extra, 0), |usage| {
-                            self.admit_custody_usage(usage, cancel)
-                        })?;
-                        names_receipt = names_receipt.checked_add(custody::Usage::new(extra, 0))?;
-                        field_usage = field_usage.checked_add(custody::Usage::new(extra, 0))?;
-                        payload = payload.checked_add(custody::Usage::new(extra, 0))?;
-                    }
-                    #[cfg(test)]
-                    let mut copied = CopyObservation::default();
-                    for entry in values.entries.iter() {
-                        self.source_step(cancel)?;
-                        out.push(crate::form::FormPastName {
-                            name: entry.name.clone(),
-                            target: map(entry.target),
-                        });
-                        #[cfg(test)]
-                        copied.pushed::<crate::form::FormPastName<NodeId>>();
-                    }
-                    let names = crate::form::FormPastNames::from_entries(out);
-                    #[cfg(test)]
-                    if scale_metrics::ENABLED && names.entries.has_backing() {
-                        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-                            bytes: size_of::<Vec<crate::form::FormPastName<NodeId>>>(),
-                        });
-                    }
-                    Ok(names)
-                }
-            })
+            .map(|names| names.project(self, map, cancel))
             .transpose()?;
         let node = Node {
             receipts: NodeReceipts {
                 fields: field_usage
                     .checked_add(custody::Usage::new(size_of::<super::NodeFields>(), 0))?,
                 payload,
-                names: names_receipt,
-                name_units: names_units,
             },
             active_range: source.active_range,
             relevant_global: source.relevant_global,
@@ -313,7 +239,7 @@ impl Draft {
             reflected_targets: source.reflected_targets.map(|v| v.map(map)),
             control_owner: source.control_owner.map(map),
             option_select: source.option_select.map(map),
-            form_past_names,
+            form_past_names: form_past_names.as_ref().map(|names| names.value.clone()),
             script: source.script.map(|v| v.map(map)),
             style_parser_document: source.style_parser_document.map(map),
             base: source.base.map(|v| crate::base::BaseState {
@@ -395,17 +321,24 @@ impl Draft {
         let mut node = node;
         node.receipts.payload = payload;
         let id = map(key);
-        Ok(custody::Held::new(
-            Slot {
-                generation: id.generation,
-                retired: false,
-                node: Some(node),
-            },
-            debit,
-        ))
+        Ok(FormedSlot {
+            value: custody::Held::new(
+                Slot {
+                    generation: id.generation,
+                    retired: false,
+                    node: Some(node),
+                },
+                debit,
+            ),
+            names: form_past_names.and_then(|names| names.custody),
+        })
     }
 }
 
+struct FormedSlot {
+    value: custody::Held<Slot>,
+    names: Option<bank::ObjectCustody>,
+}
 struct NodePublication {
     slots: bank::Bank<Slot>,
     custody: bank::BankCustody<Slot>,
@@ -419,20 +352,30 @@ impl Draft {
         slots: &mut bank::Bank<Slot>,
         custody: &mut bank::BankCustody<Slot>,
         index: usize,
-        mut held: custody::Held<Slot>,
+        mut formed: FormedSlot,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if slots.get(index) == Some(held.value()) {
+        if slots.get(index) == Some(formed.value.value()) {
             return Ok(());
         }
-        let payload = source::storage::canonical_slot(held.value(), || self.source_step(cancel))?;
-        let reusable = held.value().node.is_none() && !held.value().retired;
-        let shared = held
+        let payload =
+            source::storage::canonical_slot(formed.value.value(), || self.source_step(cancel))?;
+        let reusable = formed.value.value().node.is_none() && !formed.value.value().retired;
+        let dependency =
+            payload::slot_dependency(formed.value.value(), self.custody_registry(), |next| {
+                self.admit_custody_usage(next, cancel)
+            })?;
+        let shared = formed
+            .value
             .debit_mut()
             .share(|usage| self.admit_custody_usage(usage, cancel))?;
-        let (value, zero) = held.into_parts();
+        let (value, zero) = formed.value.into_parts();
         drop(zero);
-        let record = bank::ControlledRecord::from_parts(bank::Record::new(value)?, shared);
+        let mut record = bank::ControlledRecord::from_parts(bank::Record::new(value)?, shared);
+        if let Some(dependency) = dependency {
+            record = record.with_dependency(dependency);
+        }
+        drop(formed.names);
         let (next, nextcustody) = slots.set_controlled(
             custody,
             index,
@@ -486,7 +429,10 @@ impl Draft {
                     &mut slots,
                     &mut custody,
                     index,
-                    custody::Held::new(slot, debit),
+                    FormedSlot {
+                        value: custody::Held::new(slot, debit),
+                        names: None,
+                    },
                     cancel,
                 )?;
             }
@@ -510,7 +456,10 @@ impl Draft {
                         &mut slots,
                         &mut custody,
                         id.slot,
-                        custody::Held::new(slot, debit),
+                        FormedSlot {
+                            value: custody::Held::new(slot, debit),
+                            names: None,
+                        },
                         cancel,
                     )?;
                 }
@@ -1662,36 +1611,36 @@ mod tests {
                 target: Key::Existing(button),
             });
         }
-        let names = super::super::names::Names::staged(
-            crate::form::FormPastNames::from_entries(entries),
-            || draft.source_step(&cancel),
-        )
-        .unwrap();
+        let names = super::super::names::Names::staged(entries, None, &draft, &cancel).unwrap();
         draft
             .with_node_fields_formed(Key::Existing(form), &cancel, None, |fields| {
                 fields.form_past_names = Some(names);
             })
             .unwrap();
         draft.units += 13;
-        let (formed, counters) =
-            measured(|| draft.form_node(Key::Existing(form), &existing, &cancel));
-        let formed = formed.unwrap();
-        let names = formed
+        let selected = draft
+            .records_for(Key::Existing(form))
+            .fields
             .value()
-            .node
-            .as_ref()
-            .unwrap()
             .form_past_names
             .as_ref()
             .unwrap();
+        // This is the actual publication materialization phase. Registration
+        // follows in PreparedNames::seal, outside this observation; both raw
+        // allocations survive here, so no cumulative temporary is omitted.
+        let (pending, counters) =
+            measured(|| selected.prepare_projection(&draft, &existing, &cancel));
+        let super::super::names::PreparedNames::Pending(pending) = pending.unwrap() else {
+            panic!("selected staged map")
+        };
+        let names = &pending.value().value;
         assert_eq!(names.entries.len(), 3);
         assert!(names.entries.iter().all(|entry| entry.target == button));
-        assert_eq!(counters.structural_allocations, 2);
-        assert_eq!(
-            counters.structural_bytes,
-            names.entries.capacity() * size_of::<crate::form::FormPastName<NodeId>>()
-                + size_of::<Vec<crate::form::FormPastName<NodeId>>>()
-        );
+        let mut graph = compact_tests::AllocationGraph::default();
+        pending.inspect_target(&mut graph);
+        graph.buffer(&names.entries, "form.names.buffer");
+        assert_eq!(counters.structural_allocations, graph.allocations());
+        assert_eq!(counters.structural_bytes, graph.bytes());
         assert_eq!(
             counters.sequence_materialized_bytes,
             3 * size_of::<crate::form::FormPastName<NodeId>>()

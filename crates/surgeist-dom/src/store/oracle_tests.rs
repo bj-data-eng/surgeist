@@ -180,13 +180,15 @@ fn full_kind_payload(kind: &DomNodeKind) -> source::storage::Payload {
 fn full_names_payload(node: &super::Node) -> source::storage::Payload {
     let mut out = source::storage::Payload::default();
     if let Some(names) = &node.form_past_names {
-        if names.entries.has_backing() {
-            out.add_bytes(size_of::<Vec<crate::form::FormPastName<NodeId>>>())
-                .unwrap();
-        }
-        out.bank::<crate::form::FormPastName<NodeId>>(names.entries.capacity())
+        if names.payload().is_some() {
+            out.add_bytes(size_of::<
+                super::payload::Payload<crate::form::History<NodeId>>,
+            >())
             .unwrap();
-        for entry in names.entries.iter() {
+        }
+        out.bank::<crate::form::FormPastName<NodeId>>(names.capacity())
+            .unwrap();
+        for entry in names.entries().iter() {
             out.string(&entry.name).unwrap();
         }
     }
@@ -228,7 +230,6 @@ fn full_fields_payload(node: &super::Node) -> source::storage::Payload {
         out.string(image.native.current_request().current_url())
             .unwrap();
     }
-    out.append(full_names_payload(node)).unwrap();
     out
 }
 fn sequence<T>(out: &mut source::storage::Payload, values: &super::SharedVec<T>) {
@@ -471,7 +472,7 @@ fn full_usage(dom: &Dom) -> DomUsage {
             add(&mut usage.units, facts.formation_usage().utf16_extent());
         }
         if let Some(names) = &node.form_past_names {
-            for name in names.entries.iter() {
+            for name in names.entries().iter() {
                 add(&mut usage.units, name.name.len());
             }
         }
@@ -748,7 +749,7 @@ fn assert_inbound(owner: DomOwnerId, state: &State) {
             }
         }
         if let Some(names) = &node.form_past_names {
-            for value in names.entries.iter() {
+            for value in names.entries().iter() {
                 reference(value.target);
             }
         }
@@ -1851,13 +1852,17 @@ fn validate_full_state(owner: DomOwnerId, state: &State) {
         );
         let names = full_names_payload(node);
         assert_eq!(
-            node.receipts.names,
+            node.form_past_names
+                .as_ref()
+                .map_or(custody::Usage::ZERO, |names| names.own_usage()),
             custody::Usage::new(names.bytes, names.units)
         );
         assert_eq!(
-            node.receipts.name_units,
+            node.form_past_names
+                .as_ref()
+                .map_or(0, |names| names.logical_units()),
             node.form_past_names.as_ref().map_or(0, |names| names
-                .entries
+                .entries()
                 .iter()
                 .map(|entry| entry.name.len())
                 .sum())

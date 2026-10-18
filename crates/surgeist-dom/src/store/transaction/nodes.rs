@@ -7,11 +7,15 @@ use super::{
 impl DraftNode {
     fn capture(
         node: &Node,
-        ledger: &custody::Ledger,
+        registry: &bank::CustodyRegistry,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
+        let ledger = registry.ledger();
         let fields_debit = ledger.retain(node.receipts.fields, &mut admit)?;
-        let fields = NodeFields::from_canonical(node);
+        let mut fields = NodeFields::from_canonical(node);
+        if let Some(names) = &mut fields.form_past_names {
+            names.adopt(registry, &mut admit)?;
+        }
         #[cfg(test)]
         if scale_metrics::ENABLED {
             scale_metrics::record(scale_metrics::Event::RecordMaterialized {
@@ -166,10 +170,11 @@ impl Draft {
                     .as_ref()
                     .and_then(|m| m.ids.get(index))
                     .ok_or(DomError::StaleNode)?;
-                let ledger = self.custody_ledger().clone();
-                let node = DraftNode::capture(self.base.node(self.store, id)?, &ledger, |usage| {
-                    self.admit_custody_usage(usage, cancel)
-                })?;
+                let node = DraftNode::capture(
+                    self.base.node(self.store, id)?,
+                    self.custody_registry(),
+                    |usage| self.admit_custody_usage(usage, cancel),
+                )?;
                 self.set_created_dirty(index, true, cancel)?;
                 let undo = self.prepare_undo(cancel)?;
                 self.created[index] = Some(node);
@@ -185,10 +190,11 @@ impl Draft {
         }
         self.reserve_record_arena(cancel)?;
         let undo = self.prepare_undo(cancel)?;
-        let ledger = self.custody_ledger().clone();
-        let node = DraftNode::capture(self.base.node(self.store, id)?, &ledger, |usage| {
-            self.admit_custody_usage(usage, cancel)
-        })?;
+        let node = DraftNode::capture(
+            self.base.node(self.store, id)?,
+            self.custody_registry(),
+            |usage| self.admit_custody_usage(usage, cancel),
+        )?;
         let index = self.records.len();
         let record = bank::ControlledRecord::new(
             index,
