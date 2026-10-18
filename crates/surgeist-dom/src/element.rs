@@ -102,6 +102,43 @@ impl PartialEq for DomElement {
 impl Eq for DomElement {}
 
 impl DomElement {
+    #[cfg(test)]
+    pub(crate) fn inspect_compact_baseline(
+        &self,
+        graph: &mut crate::store::compact_tests::AllocationGraph,
+    ) {
+        graph.name(&self.name);
+        graph.vector(
+            self.attributes.shared_attributes(),
+            "attributes.target",
+            "attributes.buffer",
+        );
+        for attribute in self.attributes.iter() {
+            graph.name(attribute.name());
+            graph.string(attribute.value());
+        }
+        for value in [self.saved_is.as_ref(), self.nonce.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            graph.string(value);
+        }
+        match &self.family {
+            NativeFamily::Common | NativeFamily::Form(_) => {}
+            NativeFamily::Canvas(value) => {
+                assert_eq!(
+                    **value,
+                    HtmlCanvasNoneState::fresh(),
+                    "this raw baseline covers the actual fresh Canvas body"
+                );
+                graph.target(value, "native.canvas");
+            }
+            _ => panic!(
+                "compact baseline must explicitly describe this native family's owned allocations"
+            ),
+        }
+    }
+
     pub(crate) fn attributes_payload(
         &self,
     ) -> Result<crate::store::source::storage::Payload, DomError> {

@@ -159,6 +159,14 @@ impl Ledger {
     }
 
     #[cfg(test)]
+    pub(in crate::store) fn inspect_raw_allocations(
+        &self,
+        graph: &mut super::compact_tests::AllocationGraph,
+    ) {
+        graph.target(&self.total, "control.ledger");
+    }
+
+    #[cfg(test)]
     pub fn measurement_identity(&self) -> usize {
         Arc::as_ptr(&self.total) as usize
     }

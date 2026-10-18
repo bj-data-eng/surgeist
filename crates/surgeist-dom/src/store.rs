@@ -19,6 +19,8 @@ mod bank;
 mod base;
 pub(crate) mod canonical;
 mod children;
+#[cfg(test)]
+pub(crate) mod compact_tests;
 mod control;
 mod custody;
 mod design_mode;

@@ -1,6 +1,8 @@
 //! Form scalar readback and the canonical identity-bearing past names map.
 use crate::{DocumentString, DomNode, NodeId};
 use std::sync::Arc;
+#[cfg(test)]
+pub(crate) mod allocation_observation;
 
 /// Checked native Form view at one immutable canonical revision.
 #[derive(Clone, Copy, Debug)]
@@ -42,8 +44,11 @@ pub(crate) struct FormPastName<K> {
 }
 impl<K> FormPastNames<K> {
     pub(crate) fn fresh() -> Self {
-        Self {
-            entries: Arc::new(Vec::new()),
+        let entries = Arc::new(Vec::new());
+        #[cfg(test)]
+        if crate::store::scale_metrics::ENABLED {
+            allocation_observation::constructed(&entries);
         }
+        Self { entries }
     }
 }

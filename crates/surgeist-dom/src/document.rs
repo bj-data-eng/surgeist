@@ -461,6 +461,32 @@ impl DomDocumentMetadata {
     pub fn creation_cause(&self) -> &DomDocumentCreationCause {
         &self.cause
     }
+    #[cfg(test)]
+    pub(crate) fn inspect_compact_baseline(
+        &self,
+        graph: &mut crate::store::compact_tests::AllocationGraph,
+    ) {
+        assert!(matches!(self.cause, DomDocumentCreationCause::Native));
+        assert!(self.hosted_inputs.is_none());
+        for value in [&self.content_type, &self.encoding, &self.url] {
+            graph.string(value);
+        }
+        match &self.origin.0 {
+            OpaqueOriginBacking::Native(value) => graph.target(value, "document.origin"),
+            OpaqueOriginBacking::ParsedFragment(_) => panic!("native baseline origin"),
+        }
+        if let Some(language) = self
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.pragma_language.as_ref())
+        {
+            graph.string(language);
+        }
+        assert!(
+            self.meta_color_scheme.as_ref().is_none_or(Option::is_none),
+            "baseline has no CSS report payload"
+        );
+    }
     /// Consume the original completed fragment-parser constructor proof. Its
     /// source origin is retained directly; target input and UI association
     /// qualification are established independently by this controlled creator.

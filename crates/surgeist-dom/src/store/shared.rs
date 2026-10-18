@@ -43,6 +43,16 @@ impl<T> SharedVec<T> {
         self.0.is_some()
     }
 
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_raw_allocations(
+        &self,
+        graph: &mut super::compact_tests::AllocationGraph,
+    ) {
+        if let Some(values) = &self.0 {
+            graph.vector(values, "sequence.target", "sequence.buffer");
+        }
+    }
+
     /// The retained target body and actual buffer, excluding Arc metadata.
     pub(crate) fn retained_bytes(&self) -> Result<usize, super::DomError> {
         if !self.has_backing() {

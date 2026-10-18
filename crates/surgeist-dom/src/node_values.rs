@@ -24,6 +24,24 @@ pub struct DomProcessingInstruction {
 }
 
 impl DomProcessingInstruction {
+    #[cfg(test)]
+    pub(crate) fn inspect_compact_baseline(
+        &self,
+        graph: &mut crate::store::compact_tests::AllocationGraph,
+    ) {
+        graph.string(&self.target);
+        graph.string(&self.data);
+        graph.vector(
+            &self.attributes,
+            "pi.attributes.target",
+            "pi.attributes.buffer",
+        );
+        for (name, value) in self.attributes.iter() {
+            graph.string(name);
+            graph.string(value);
+        }
+    }
+
     pub(crate) fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,

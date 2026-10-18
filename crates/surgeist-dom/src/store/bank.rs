@@ -1163,6 +1163,120 @@ impl CustodyRegistry {
     /// Actual registry allocations/weak occurrences, independently enumerated
     /// for tests. It deliberately never reads a Debit or cached Usage value.
     #[cfg(test)]
+    pub(in crate::store) fn inspect_raw_allocations(
+        &self,
+        graph: &mut super::compact_tests::AllocationGraph,
+    ) {
+        use super::compact_tests::AllocationGraph;
+        fn release(value: &ReleaseTicket, graph: &mut AllocationGraph) {
+            if let Some(node) = &value.node {
+                graph.allocation(
+                    &**node as *const ReleaseNode as usize,
+                    "control.release",
+                    size_of::<ReleaseNode>(),
+                );
+            }
+        }
+        fn record(value: &Arc<RecordCustody>, graph: &mut AllocationGraph) {
+            graph.target(value, "control.record");
+            graph.allocation(
+                value._payload.allocation_identity(),
+                "control.debit",
+                size_of::<Debit>(),
+            );
+            release(&value.release, graph);
+            if let Some(dependency) = &value.dependency {
+                graph.target(&dependency.value, "control.dependency");
+                graph.allocation(
+                    dependency.debit.allocation_identity(),
+                    "control.debit",
+                    size_of::<Debit>(),
+                );
+            }
+            if let Some(attachment) = value.attachment.lock().unwrap().as_ref() {
+                let target = attachment.target.upgrade().expect("this baseline observes live attached frontiers; dead erased targets need a separately qualified raw extent");
+                graph.target(&target, "control.attachment");
+            }
+        }
+        fn node(value: &RegistryNode, graph: &mut AllocationGraph, live: &mut Vec<LiveCustody>) {
+            graph.allocation(
+                value as *const RegistryNode as usize,
+                "registry.node",
+                size_of::<RegistryNode>(),
+            );
+            match value {
+                RegistryNode::Branch { children, .. } => {
+                    graph.buffer(children, "registry.children");
+                    for child in children.iter().flatten() {
+                        node(child, graph, live);
+                    }
+                }
+                RegistryNode::Leaf { entries, .. } => {
+                    graph.buffer(entries, "registry.entries");
+                    for entry in entries.iter().flatten() {
+                        match &entry.custody {
+                            WeakCustody::Page(weak) => {
+                                graph.allocation(
+                                    weak.as_ptr() as usize,
+                                    "control.page",
+                                    size_of::<PageCustody>(),
+                                );
+                                if let Some(value) = weak.upgrade() {
+                                    live.push(LiveCustody::Page(value));
+                                }
+                            }
+                            WeakCustody::Record(weak) => {
+                                graph.allocation(
+                                    weak.as_ptr() as usize,
+                                    "control.record",
+                                    size_of::<RecordCustody>(),
+                                );
+                                if let Some(value) = weak.upgrade() {
+                                    live.push(LiveCustody::Record(value));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        graph.target(&self.state, "registry.state");
+        self.ledger.inspect_raw_allocations(graph);
+        let mut live = Vec::new();
+        let state = self.lock();
+        for root in [&state.pages, &state.records].into_iter().flatten() {
+            node(root, graph, &mut live);
+        }
+        let mut released = state.released.as_deref();
+        while let Some(value) = released {
+            graph.allocation(
+                value as *const ReleaseNode as usize,
+                "control.release",
+                size_of::<ReleaseNode>(),
+            );
+            released = value.next.as_deref();
+        }
+        // An upgraded last alias can release its preallocated ticket. Drop
+        // these observations only after releasing the original registry lock.
+        drop(state);
+        for value in live {
+            match value {
+                LiveCustody::Page(value) => {
+                    release(&value.release, graph);
+                    if let Some(payload) = &value._payload {
+                        graph.allocation(
+                            payload.allocation_identity(),
+                            "control.debit",
+                            size_of::<Debit>(),
+                        );
+                    }
+                }
+                LiveCustody::Record(value) => record(&value, graph),
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub(in crate::store) fn inspect_storage(&self) -> Usage {
         fn node_bytes(node: &RegistryNode) -> usize {
             size_of::<RegistryNode>()
@@ -2378,6 +2492,33 @@ impl<T> Bank<T> {
         graph.checked_index_charge()?;
         graph.checked_record_totals()?;
         Ok(graph)
+    }
+
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_raw_allocations(
+        &self,
+        graph: &mut super::compact_tests::AllocationGraph,
+    ) {
+        fn visit<T>(page: &Arc<Page<T>>, graph: &mut super::compact_tests::AllocationGraph) {
+            graph.target(page, "bank.page");
+            match &page.contents {
+                Contents::Leaf(entries) => {
+                    graph.buffer(entries, "bank.leaf");
+                    for entry in entries.iter().flatten() {
+                        graph.target(&entry.value, "bank.record");
+                    }
+                }
+                Contents::Branch(children) => {
+                    graph.buffer(children, "bank.branch");
+                    for child in children.iter().flatten() {
+                        visit(child, graph);
+                    }
+                }
+            }
+        }
+        if let Some(root) = &self.root {
+            visit(root, graph);
+        }
     }
 
     #[cfg(test)]
