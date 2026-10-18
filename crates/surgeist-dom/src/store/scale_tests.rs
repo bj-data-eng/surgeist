@@ -69,10 +69,12 @@ fn selected_sizes() -> Vec<usize> {
     sizes
 }
 
-// Finite fixture configuration for the real two-million-node owner: the
+// Default finite fixture configuration for the real two-million-node owner: the
 // observed one-million baseline is 9.39 GB. 32 GB permits that larger canonical
 // baseline plus selected-operation headroom; it is no measured-work oracle or
-// admission-threshold assertion. Actual usage and refusal remain production-owned.
+// admission-threshold assertion. The local SourceAttribute case below adds its
+// actual existing owner's cached baseline, since attached relations increase
+// that baseline. Actual usage and refusal remain production-owned.
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(
         usize::try_from(32_000_000_000u64).expect("scale qualification requires a 64-bit host"),
@@ -657,6 +659,30 @@ fn measure_edit(fixture: &mut Fixture, edit: Edit, sample: usize) -> Duration {
         }
         Edit::SourceAttribute => (false, Some(DomChange::Attributes(fixture.target))),
     };
+    // This local edit has no disjoint input owner. Read the actual already
+    // charged baseline in O(1), outside measurement, and retain the unchanged
+    // finite 32 GB allowance as additional selected-operation headroom.
+    let local_source_limits = matches!(edit, Edit::SourceAttribute).then(|| {
+        let baseline = fixture.dom.custody_registry.total().bytes();
+        let headroom = source_limits();
+        let absolute_bytes = baseline
+            .checked_add(headroom.retained_bytes())
+            .expect("local Source fixture policy fits the host word");
+        let limits = DomSourceLimits::new(
+            absolute_bytes,
+            headroom.retained_string_code_units(),
+            headroom.work(),
+            headroom.phase_publications(),
+            headroom.output_records(),
+            headroom.published_native_identities(),
+            headroom.nested_operations(),
+        );
+        eprintln!(
+            "scale local_source_policy baseline_bytes={baseline} additional_headroom_bytes={} absolute_bytes={absolute_bytes} limits={limits:?}",
+            headroom.retained_bytes()
+        );
+        limits
+    });
     let measurement = if scale_metrics::ENABLED {
         Some(Measurement::begin().unwrap())
     } else {
@@ -664,7 +690,7 @@ fn measure_edit(fixture: &mut Fixture, edit: Edit, sample: usize) -> Duration {
     };
     let started = Instant::now();
     let (elapsed, changes) = if matches!(edit, Edit::SourceAttribute) {
-        let limits = source_limits();
+        let limits = local_source_limits.expect("selected local Source policy");
         let cancel = AtomicBool::new(false);
         let mut lease = fixture
             .dom
