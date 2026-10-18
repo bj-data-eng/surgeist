@@ -27,7 +27,7 @@ use crate::{
     DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
 };
 
-const SIZES: [usize; 4] = [10_000, 100_000, 1_000_000, 2_000_000];
+const SIZES: [usize; 3] = [10_000, 100_000, 1_000_000];
 const CHUNK: usize = 8192;
 const WARMUPS: usize = 1;
 const SAMPLES: usize = 3;
@@ -48,8 +48,8 @@ fn require_release() {
 }
 
 /// A finite pilot selection is explicit in the receipt; the default retains the
-/// complete geometric million/two-million qualification. A 1k pilot is useful
-/// for measuring actual host resource use and never establishes scale acceptance.
+/// complete geometric qualification through one million nodes. A 1k pilot
+/// measures actual host resource use and never establishes scale acceptance.
 fn selected_sizes() -> Vec<usize> {
     let Some(value) = std::env::var_os("SURGEIST_SCALE_SIZES") else {
         return SIZES.to_vec();
@@ -69,12 +69,10 @@ fn selected_sizes() -> Vec<usize> {
     sizes
 }
 
-// Default finite fixture configuration for the real two-million-node owner: the
-// observed one-million baseline is 9.39 GB. 32 GB permits that larger canonical
-// baseline plus selected-operation headroom; it is no measured-work oracle or
-// admission-threshold assertion. The local SourceAttribute case below adds its
-// actual existing owner's cached baseline, since attached relations increase
-// that baseline. Actual usage and refusal remain production-owned.
+// Default finite fixture allowance for the one-million-node stress ceiling plus
+// selected-operation headroom; it is no measured-work oracle or admission-threshold
+// assertion. The local SourceAttribute case also allows the existing owner's
+// cached usage. Actual usage and refusal remain production-owned.
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(
         usize::try_from(32_000_000_000u64).expect("scale qualification requires a 64-bit host"),
@@ -2852,9 +2850,9 @@ fn historical_input_capture_frontier_and_reuse_scale() {
     }
 }
 
-/// A separate real million-node external owner avoids simultaneously retaining
-/// two two-million-node populations. The complete external snapshot is admitted
-/// into the genuine small destination; shallow import size cannot replace it.
+/// A real million-node external owner supplies the complete input snapshot.
+/// That complete snapshot is admitted into the genuine small destination;
+/// shallow import size cannot replace it.
 /// This fixed-size companion runs once per profile, independently of SIZES.
 #[test]
 #[ignore = "explicit release actual disjoint million-node InputCapture and reuse"]

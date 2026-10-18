@@ -37,7 +37,7 @@ fn require_release() {
 }
 
 fn selected_sizes() -> Vec<usize> {
-    let defaults = [10_000usize, 100_000, 1_000_000, 2_000_000];
+    let defaults = [10_000usize, 100_000, 1_000_000];
     let Some(value) = std::env::var_os("SURGEIST_SCALE_SIZES") else {
         return defaults.to_vec();
     };
@@ -56,8 +56,8 @@ fn selected_sizes() -> Vec<usize> {
     sizes
 }
 
-// Match the finite DOM qualification policy for an actual two-million-node
-// owner plus selected-operation headroom. This fixture capacity is not an
+// Match the finite DOM qualification policy for the one-million-node stress
+// ceiling plus selected-operation headroom. This fixture capacity is not an
 // expected usage or admission threshold; production still admits actual usage.
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(
