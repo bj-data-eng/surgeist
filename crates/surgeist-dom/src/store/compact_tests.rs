@@ -5,10 +5,13 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct AllocationGraph(BTreeMap<usize, (&'static str, usize)>);
+pub(crate) struct AllocationGraph(BTreeMap<(usize, bool), (&'static str, usize)>);
 impl AllocationGraph {
     pub(crate) fn allocation(&mut self, address: usize, kind: &'static str, bytes: usize) {
-        if let Some(previous) = self.0.insert(address, (kind, bytes)) {
+        // A zero-sized Arc target can sit one-past its opaque control block,
+        // at the same address as a separate nonzero allocation. Keep the real
+        // target count and zero extent without inferring that control block.
+        if let Some(previous) = self.0.insert((address, bytes == 0), (kind, bytes)) {
             assert_eq!(
                 previous,
                 (kind, bytes),
@@ -54,7 +57,7 @@ impl AllocationGraph {
         self.string(value.local_name());
     }
     fn merge(&mut self, other: &Self) {
-        for (address, (kind, bytes)) in &other.0 {
+        for ((address, _), (kind, bytes)) in &other.0 {
             self.allocation(*address, kind, *bytes);
         }
     }
@@ -76,6 +79,39 @@ impl AllocationGraph {
         }
         out
     }
+}
+
+#[test]
+fn zero_extent_target_addresses_do_not_alias_nonzero_storage() {
+    let origin = Arc::new(());
+    let address = Arc::as_ptr(&origin) as usize;
+    let mut graph = AllocationGraph::default();
+    graph.target(&origin, "document.origin");
+    // Feed the observed collision shape directly: graph descriptors may share
+    // an address while their zero/nonzero extents identify different storage.
+    // This does not rely on the allocator arranging adjacent allocations.
+    graph.allocation(address, "string.buffer", 80);
+    assert_eq!(graph.count("document.origin"), 1);
+    assert_eq!(graph.count("string.buffer"), 1);
+    assert_eq!(graph.summary()["document.origin"], (1, 0));
+    assert_eq!(graph.bytes(), 80);
+    let before = graph.clone();
+    graph.target(&origin.clone(), "document.origin");
+    graph.merge(&before);
+    assert_eq!(graph, before);
+}
+
+#[test]
+#[should_panic(expected = "one live allocation has one raw extent")]
+fn nonzero_allocation_aliases_reject_conflicting_extents() {
+    let values = Vec::<u8>::with_capacity(17);
+    let mut graph = AllocationGraph::default();
+    graph.buffer(&values, "string.buffer");
+    graph.allocation(
+        values.as_ptr() as usize,
+        "string.buffer",
+        values.capacity() + 1,
+    );
 }
 
 fn limits() -> DomLimits {
@@ -115,7 +151,11 @@ fn node_storage(state: &Arc<State>) -> AllocationGraph {
         }
         node.fullscreen_events.inspect_raw_allocations(&mut graph);
         if let Some(names) = &node.form_past_names {
-            graph.vector(&names.entries, "form.names.target", "form.names.buffer");
+            names.entries.inspect_named_allocations(
+                &mut graph,
+                "form.names.target",
+                "form.names.buffer",
+            );
             for entry in names.entries.iter() {
                 graph.string(&entry.name);
             }
@@ -310,7 +350,11 @@ fn native_known_empty_form_history_has_no_target_allocation() {
         .unwrap()
         .form_past_names
     {
-        graph.vector(&names.entries, "form.names.target", "form.names.buffer");
+        names.entries.inspect_named_allocations(
+            &mut graph,
+            "form.names.target",
+            "form.names.buffer",
+        );
     }
     let actual = observation.finish();
     assert_eq!(
@@ -350,14 +394,31 @@ fn reserved_and_populated_form_history_preserve_storage_order_and_clones() {
             });
         }
         let capacity = entries.capacity();
-        let names = FormPastNames {
-            entries: Arc::new(entries),
-        };
+        let observation =
+            scale_metrics::ENABLED.then(crate::form::allocation_observation::Observation::begin);
+        let names = FormPastNames::from_entries(entries);
         let clone = names.clone();
+        if let Some(observation) = observation {
+            let actual = observation.finish();
+            assert_eq!(actual.targets, 1);
+            assert_eq!(actual.target_bytes, size_of::<Vec<FormPastName<usize>>>());
+            assert_eq!(
+                actual.capacity_bytes,
+                capacity * size_of::<FormPastName<usize>>()
+            );
+        }
         let mut graph = AllocationGraph::default();
-        graph.vector(&names.entries, "form.names.target", "form.names.buffer");
+        names.entries.inspect_named_allocations(
+            &mut graph,
+            "form.names.target",
+            "form.names.buffer",
+        );
         let before = graph.clone();
-        graph.vector(&clone.entries, "form.names.target", "form.names.buffer");
+        clone.entries.inspect_named_allocations(
+            &mut graph,
+            "form.names.target",
+            "form.names.buffer",
+        );
         assert_eq!(graph, before);
         assert_eq!(graph.count("form.names.target"), 1);
         assert_eq!(graph.count("form.names.buffer"), 1);

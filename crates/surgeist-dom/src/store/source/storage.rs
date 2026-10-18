@@ -211,7 +211,9 @@ fn related<K>(
     }
     if let Some(names) = related.form_past_names {
         step()?;
-        payload.add_bytes(size_of::<Vec<crate::form::FormPastName<K>>>())?;
+        if names.entries.has_backing() {
+            payload.add_bytes(size_of::<Vec<crate::form::FormPastName<K>>>())?;
+        }
         if names_bank {
             payload.bank::<crate::form::FormPastName<K>>(names.entries.capacity())?;
         }
@@ -243,8 +245,7 @@ pub(in crate::store) fn refresh_node_receipts(node: &mut Node) -> Result<(), Dom
     let mut names = Payload::default();
     let mut units = 0usize;
     if let Some(values) = &node.form_past_names {
-        names.add_bytes(size_of::<Vec<crate::form::FormPastName<NodeId>>>())?;
-        names.bank::<crate::form::FormPastName<NodeId>>(values.entries.capacity())?;
+        names.add_bytes(values.entries.retained_bytes()?)?;
         for entry in values.entries.iter() {
             names.string(&entry.name)?;
             units = units

@@ -415,11 +415,11 @@ fn same_names(old: Option<NamesRead<'_>>, next: Option<&super::Names>) -> bool {
         (
             Some(NamesRead::Canonical(old) | NamesRead::AliasedCanonical(old, _)),
             Some(NamesBacking::Canonical(next)),
-        ) => Arc::ptr_eq(&old.entries, &next.entries),
+        ) => old.entries.same_storage(&next.entries),
         (
             Some(NamesRead::Staged(old) | NamesRead::AliasedStaged(old, _)),
             Some(NamesBacking::Staged(next)),
-        ) => Arc::ptr_eq(&old.entries, &next.entries),
+        ) => old.entries.same_storage(&next.entries),
         _ => false,
     }
 }

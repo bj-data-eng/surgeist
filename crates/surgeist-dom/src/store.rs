@@ -2560,14 +2560,10 @@ impl Draft {
             _ => None,
         };
         let related_formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(budget) = &related_formation {
-            if matches!(kind.value(), DomNodeKind::Element(element) if element.form_state().is_some())
-            {
-                budget.retain_bytes(size_of::<Vec<crate::form::FormPastName<Key>>>(), cancel)?;
-            }
-            if matches!(kind.value(), DomNodeKind::Element(element) if element.is_img()) {
-                budget.retain_bytes(size_of::<Vec<u16>>(), cancel)?;
-            }
+        if let Some(budget) = &related_formation
+            && matches!(kind.value(), DomNodeKind::Element(element) if element.is_img())
+        {
+            budget.retain_bytes(size_of::<Vec<u16>>(), cancel)?;
         }
         let form_past_names =
             matches!(kind.value(), DomNodeKind::Element(element) if element.form_state().is_some())

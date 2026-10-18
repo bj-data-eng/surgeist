@@ -38,7 +38,9 @@ impl Draft {
         let mut entries = Vec::new();
         let formation = source::formation::Formation::new(self, cancel)?;
         source::formation::reserve(&mut entries, retained, formation.as_ref(), cancel)?;
-        if let Some(budget) = &formation {
+        if let Some(budget) = &formation
+            && entries.capacity() != 0
+        {
             budget.retain_bytes(size_of::<Vec<FormPastName<Key>>>(), cancel)?;
         }
         for entry in source.iter() {
@@ -57,12 +59,9 @@ impl Draft {
                 entry_writes.pushed::<FormPastName<Key>>();
             }
         }
-        let names = transaction::Names::staged(
-            FormPastNames {
-                entries: Arc::new(entries),
-            },
-            || self.source_step(cancel),
-        )?;
+        let names = transaction::Names::staged(FormPastNames::from_entries(entries), || {
+            self.source_step(cancel)
+        })?;
         self.with_node_fields_formed(owner, cancel, formation, |fields| {
             fields.form_past_names = Some(names)
         })?;
@@ -138,12 +137,9 @@ mod tests {
         // inbound occurrence index and paired custody describing the old map.
         let cancel = AtomicBool::new(false);
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
-        let names = transaction::Names::staged(
-            FormPastNames {
-                entries: Arc::new(names),
-            },
-            || draft.source_step(&cancel),
-        )
+        let names = transaction::Names::staged(FormPastNames::from_entries(names), || {
+            draft.source_step(&cancel)
+        })
         .unwrap();
         draft
             .with_node_fields_formed(Key::Existing(form), &cancel, None, |fields| {

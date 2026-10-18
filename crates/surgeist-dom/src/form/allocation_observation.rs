@@ -1,7 +1,8 @@
-//! Thread-local observation immediately after the actual fresh history target
-//! is allocated. No address or record is retained by this observer.
+//! Thread-local observation immediately after constructing actual history
+//! backing. Absence emits nothing; clones do not construct a target. No address
+//! or record is retained by this observer.
 use super::FormPastName;
-use std::{cell::Cell, marker::PhantomData, rc::Rc, sync::Arc};
+use std::{cell::Cell, marker::PhantomData, rc::Rc};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Counts {
@@ -13,7 +14,10 @@ thread_local! {
     static ACTIVE: Cell<Option<Counts>> = const { Cell::new(None) };
 }
 
-pub(super) fn constructed<K>(value: &Arc<Vec<FormPastName<K>>>) {
+pub(super) fn constructed<K>(value: &crate::store::SharedVec<FormPastName<K>>) {
+    if !value.has_backing() {
+        return;
+    }
     ACTIVE.with(|active| {
         if let Some(mut counts) = active.get() {
             counts.targets = counts.targets.checked_add(1).expect("actual Form targets");

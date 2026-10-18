@@ -193,19 +193,22 @@ impl Draft {
             names_receipt = match &names.backing {
                 super::names::NamesBacking::Canonical(_) => old,
                 super::names::NamesBacking::Staged(values) => {
-                    let old_bank = values
-                        .entries
-                        .capacity()
-                        .checked_mul(size_of::<crate::form::FormPastName<Key>>())
-                        .ok_or(DomError::RepresentationExhausted)?;
+                    let old_backing = values.entries.retained_bytes()?;
                     let new_bank = values
                         .entries
                         .len()
                         .checked_mul(size_of::<crate::form::FormPastName<NodeId>>())
                         .ok_or(DomError::RepresentationExhausted)?;
+                    let new_backing = if values.entries.is_empty() {
+                        0
+                    } else {
+                        size_of::<Vec<crate::form::FormPastName<NodeId>>>()
+                            .checked_add(new_bank)
+                            .ok_or(DomError::RepresentationExhausted)?
+                    };
                     old.checked_replace(
-                        custody::Usage::new(old_bank, 0),
-                        custody::Usage::new(new_bank, 0),
+                        custody::Usage::new(old_backing, 0),
+                        custody::Usage::new(new_backing, 0),
                     )?
                 }
             };
@@ -260,6 +263,7 @@ impl Draft {
                         })?;
                         names_receipt = names_receipt.checked_add(custody::Usage::new(extra, 0))?;
                         field_usage = field_usage.checked_add(custody::Usage::new(extra, 0))?;
+                        payload = payload.checked_add(custody::Usage::new(extra, 0))?;
                     }
                     #[cfg(test)]
                     let mut copied = CopyObservation::default();
@@ -272,14 +276,14 @@ impl Draft {
                         #[cfg(test)]
                         copied.pushed::<crate::form::FormPastName<NodeId>>();
                     }
-                    let entries = Arc::new(out);
+                    let names = crate::form::FormPastNames::from_entries(out);
                     #[cfg(test)]
-                    if scale_metrics::ENABLED {
+                    if scale_metrics::ENABLED && names.entries.has_backing() {
                         scale_metrics::record(scale_metrics::Event::StructuralAllocation {
                             bytes: size_of::<Vec<crate::form::FormPastName<NodeId>>>(),
                         });
                     }
-                    Ok(crate::form::FormPastNames { entries })
+                    Ok(names)
                 }
             })
             .transpose()?;
@@ -1659,9 +1663,7 @@ mod tests {
             });
         }
         let names = super::super::names::Names::staged(
-            crate::form::FormPastNames {
-                entries: Arc::new(entries),
-            },
+            crate::form::FormPastNames::from_entries(entries),
             || draft.source_step(&cancel),
         )
         .unwrap();

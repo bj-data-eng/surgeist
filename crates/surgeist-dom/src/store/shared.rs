@@ -48,8 +48,18 @@ impl<T> SharedVec<T> {
         &self,
         graph: &mut super::compact_tests::AllocationGraph,
     ) {
+        self.inspect_named_allocations(graph, "sequence.target", "sequence.buffer");
+    }
+
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_named_allocations(
+        &self,
+        graph: &mut super::compact_tests::AllocationGraph,
+        target: &'static str,
+        buffer: &'static str,
+    ) {
         if let Some(values) = &self.0 {
-            graph.vector(values, "sequence.target", "sequence.buffer");
+            graph.vector(values, target, buffer);
         }
     }
 

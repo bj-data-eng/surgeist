@@ -180,8 +180,10 @@ fn full_kind_payload(kind: &DomNodeKind) -> source::storage::Payload {
 fn full_names_payload(node: &super::Node) -> source::storage::Payload {
     let mut out = source::storage::Payload::default();
     if let Some(names) = &node.form_past_names {
-        out.add_bytes(size_of::<Vec<crate::form::FormPastName<NodeId>>>())
-            .unwrap();
+        if names.entries.has_backing() {
+            out.add_bytes(size_of::<Vec<crate::form::FormPastName<NodeId>>>())
+                .unwrap();
+        }
         out.bank::<crate::form::FormPastName<NodeId>>(names.entries.capacity())
             .unwrap();
         for entry in names.entries.iter() {
