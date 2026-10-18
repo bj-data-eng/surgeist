@@ -873,3 +873,7 @@ pub(super) fn mark_work() -> HtmlValuePoolWork {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "retention_tests.rs"]
+mod retention_tests;
