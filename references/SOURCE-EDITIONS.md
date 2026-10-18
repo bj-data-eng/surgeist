@@ -4,6 +4,15 @@ The reference collection records the full selected source scope of [CSS Snapshot
 
 This mapping describes the repository at `104bff510075d1acb59c23bb9491c7a368b7d05a`. The [catalog](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/specs/catalog.json) selects editions under its existing 2026-09-10 publication-cutoff policy; [conformance metadata](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs) records source attribution and declared subsets. They are separate evidence: catalog membership and a registry entry do not prove implementation. The full pinned Snapshot scope remains the target even where the catalog or implementation has no corresponding production. The [source catalog](SOURCE-CATALOG.md) identifies each retained text or metadata-only representation.
 
+## DOM memory-layout implementation witness
+
+The [Blink element-data sharing witness](blink-element-data-sharing--4ea1cdf4aa65.md)
+retains the complete `element_data.h` at Chromium revision
+`4ea1cdf4aa6506a7dfea0f18dc2f47110adf81f5`. It supports the separate DOM
+memory-layout investigation of immutable attribute sharing. It is not a new
+HTML edition or an expansion of #1258, and does not replace existing Blink pins
+used for other source questions.
+
 ## Edition differences
 
 Rows below distinguish the Snapshot bibliography from current selected/provenance editions. Unlisted same-edition documents retain their exact identities; overlapping definitions and feature-scoped imports still need their own boundaries.

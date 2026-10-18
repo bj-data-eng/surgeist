@@ -1,5 +1,11 @@
 # Exact source catalog
 
+## DOM memory-layout witness — 2026-10-18
+
+| Source | Exact snapshot | Complete original source SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [Blink element data](blink-element-data-sharing--4ea1cdf4aa65.md) | [Chromium 4ea1cdf4aa6506a7dfea0f18dc2f47110adf81f5](https://chromium.googlesource.com/chromium/src/+/4ea1cdf4aa6506a7dfea0f18dc2f47110adf81f5/third_party/blink/renderer/core/dom/element_data.h) | cfd99b292bc7106e9fe4770257bf9c73e05f1a68d4ffb5cad44b317456f232cf | complete immutable source in Markdown, including original copyright, license and disclaimer; separate memory investigation, no language-edition change |
+
 395 retained source identities: 260 full documents/source witnesses, 107 partial witnesses, and 28 metadata-only records. Four metadata-only records are coverage exceptions: Unicode UAX 29 revision 47 and UAX 9 revision 52 report text is withheld under report-specific terms; the pinned WebKit CSSProperties witness is withheld because file-specific redistribution terms remain unverified; and RFC 5646 technical excerpts are withheld while their permission provenance remains unresolved. The other metadata-only records retain dated CSSWG minutes, discussion comments, the bounded WebKit Autofill.cpp witness and the nine WebKit Frame-sandbox files as corroborating URL/hash or Git-blob provenance without redistributed source text; these are not rights restrictions. Partial witnesses identify complete selected clauses or exact source excerpts, with explicit bounds. Additional bounded renderings of Grid 2, Conditional 5, Content 3 and Blink css_properties.json5 share source identities already represented elsewhere in the collection. Source hashes identify complete original snapshots, API responses or source files, not excerpt or converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
