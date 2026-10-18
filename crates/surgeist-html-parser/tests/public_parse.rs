@@ -1939,3 +1939,360 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         assert_eq!(report.usage(), &usage);
     }
 }
+
+fn value_sharing_report(fragment: bool, markup: &str) -> surgeist_html_parser::HtmlParseReport {
+    let literal = if fragment {
+        markup.to_owned()
+    } else {
+        format!("<!doctype html>{markup}")
+    };
+    let source = HtmlSource::utf8(literal.clone());
+    let identity = source.identity().clone();
+    let report = if fragment {
+        let context = fragment_context();
+        let capture = context.capture().identity().clone();
+        let request = HtmlFragmentParseRequest::new(source, context, limits()).unwrap();
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        cancellation.cancel();
+        assert!(report.document().is_none());
+        assert!(report.fragment().is_some());
+        assert_eq!(report.context().unwrap().capture().identity(), &capture);
+        report
+    } else {
+        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let cancellation = request.cancellation().clone();
+        let report = request.parse().unwrap();
+        cancellation.cancel();
+        assert_eq!(
+            report.document().unwrap().mode(),
+            HtmlDocumentMode::NoQuirks
+        );
+        assert!(report.fragment().is_none());
+        report
+    };
+    assert_eq!(report.source().identity(), &identity);
+    assert_eq!(report.source().as_utf8(), Some(literal.as_str()));
+    report
+}
+
+fn value_sharing_node<'a>(
+    report: &'a surgeist_html_parser::HtmlParseReport,
+    id: &HtmlNodeId,
+) -> HtmlNode<'a> {
+    if let Some(document) = report.document() {
+        document.node(id).unwrap()
+    } else {
+        report.fragment().unwrap().node(id).unwrap()
+    }
+}
+
+fn value_sharing_elements(
+    report: &surgeist_html_parser::HtmlParseReport,
+    local_name: &str,
+) -> Vec<HtmlNodeId> {
+    let root = if let Some(document) = report.document() {
+        document.root()
+    } else {
+        report.fragment().unwrap().root()
+    };
+    let expected = DocumentString::from(local_name);
+    let mut pending = vec![root.id()];
+    let mut found = Vec::new();
+    while let Some(id) = pending.pop() {
+        let node = value_sharing_node(report, &id);
+        if matches!(node.kind(), HtmlNodeKind::Element(element) if element.name().local_name() == &expected)
+        {
+            found.push(id);
+        }
+        let children: Vec<_> = node.children().collect();
+        pending.extend(children.into_iter().rev());
+    }
+    found
+}
+
+fn value_sharing_element<'a>(
+    report: &'a surgeist_html_parser::HtmlParseReport,
+    id: &HtmlNodeId,
+) -> &'a HtmlElement {
+    let HtmlNodeKind::Element(element) = value_sharing_node(report, id).kind() else {
+        panic!("literal Element")
+    };
+    assert_eq!(element.name().namespace(), &Namespace::html());
+    assert!(element.name().prefix().is_none());
+    element
+}
+
+fn value_sharing_text<'a>(
+    report: &'a surgeist_html_parser::HtmlParseReport,
+    parent: &HtmlNodeId,
+) -> (HtmlNodeId, &'a DocumentString) {
+    let children: Vec<_> = value_sharing_node(report, parent).children().collect();
+    assert_eq!(children.len(), 1);
+    let HtmlNodeKind::Text(text) = value_sharing_node(report, &children[0]).kind() else {
+        panic!("literal Text")
+    };
+    (children[0].clone(), text)
+}
+
+fn assert_value_sharing_origin(
+    report: &surgeist_html_parser::HtmlParseReport,
+    id: &HtmlNodeId,
+    field: HtmlParseField,
+    source_start: usize,
+    source_end: usize,
+    kind: HtmlParseOriginKind,
+) {
+    let rows = report.associations();
+    let mut actual = Vec::new();
+    for index in 0..rows.len() {
+        let row = rows.row(index).unwrap();
+        if row.relation() == HtmlParseAssociationRelation::Output
+            && let HtmlParseDestination::Field {
+                node,
+                field: actual_field,
+            } = row.destination()
+            && node.id() == *id
+            && actual_field == field
+        {
+            let source = row.source().unwrap();
+            assert_eq!(source.source(), report.source().identity());
+            assert!(row.group().is_some());
+            actual.push((
+                row.start(),
+                row.end(),
+                source.start(),
+                source.end(),
+                row.origin_kind().unwrap(),
+            ));
+        }
+    }
+    assert_eq!(actual, [(0, 1, source_start, source_end, kind)]);
+}
+
+fn assert_equal_report_attribute_banks(fragment: bool) {
+    let report = value_sharing_report(
+        fragment,
+        "<table><tbody><tr><td class=k title=v>A</td><td class=k title=v>B</td></tr></tbody></table>",
+    );
+    let cells = value_sharing_elements(&report, "td");
+    assert_eq!(cells.len(), 2);
+    assert_ne!(cells[0], cells[1]);
+    let elements = [&cells[0], &cells[1]].map(|id| value_sharing_element(&report, id));
+    let literal = report.source().as_utf8().unwrap();
+    let class_sources: Vec<_> = literal
+        .match_indices("class=k")
+        .map(|(i, _)| i + 6)
+        .collect();
+    let title_sources: Vec<_> = literal
+        .match_indices("title=v")
+        .map(|(i, _)| i + 6)
+        .collect();
+    assert_eq!(class_sources.len(), 2);
+    assert_eq!(title_sources.len(), 2);
+    let mut text_ids = Vec::new();
+    for index in 0..2 {
+        let attributes = elements[index].attributes();
+        assert_eq!(attributes.len(), 2);
+        for (ordinal, (name, value)) in [("class", "k"), ("title", "v")].into_iter().enumerate() {
+            let attribute = &attributes.as_slice()[ordinal];
+            assert_eq!(attribute.name().namespace(), &Namespace::none());
+            assert!(attribute.name().prefix().is_none());
+            assert_eq!(attribute.name().local_name(), &DocumentString::from(name));
+            assert_eq!(attribute.value(), &DocumentString::from(value));
+            let source = if ordinal == 0 {
+                class_sources[index]
+            } else {
+                title_sources[index]
+            };
+            assert_value_sharing_origin(
+                &report,
+                &cells[index],
+                HtmlParseField::AttributeValue(ordinal),
+                source,
+                source + 1,
+                HtmlParseOriginKind::Literal,
+            );
+        }
+        let (id, text) = value_sharing_text(&report, &cells[index]);
+        let expected = if index == 0 { "A" } else { "B" };
+        assert_eq!(text, &DocumentString::from(expected));
+        let source = literal
+            .find(if index == 0 { ">A<" } else { ">B<" })
+            .unwrap()
+            + 1;
+        assert_value_sharing_origin(
+            &report,
+            &id,
+            HtmlParseField::Text,
+            source,
+            source + 1,
+            HtmlParseOriginKind::Literal,
+        );
+        text_ids.push(id);
+    }
+    assert_ne!(text_ids[0], text_ids[1]);
+    // The report itself must share complete banks; later DOM copies cannot
+    // reclaim duplicate backing retained by this original immutable owner.
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0].attributes().shared_attributes(),
+        elements[1].attributes().shared_attributes(),
+    ));
+}
+
+fn assert_distinct_report_banks_share_strings(fragment: bool) {
+    let report = value_sharing_report(fragment, "<p id=a class=k></p><p id=b class=k></p>");
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 2);
+    assert_ne!(paragraphs[0], paragraphs[1]);
+    let elements = [&paragraphs[0], &paragraphs[1]].map(|id| value_sharing_element(&report, id));
+    let literal = report.source().as_utf8().unwrap();
+    let class_sources: Vec<_> = literal
+        .match_indices("class=k")
+        .map(|(i, _)| i + 6)
+        .collect();
+    assert_eq!(class_sources.len(), 2);
+    for index in 0..2 {
+        let attributes = elements[index].attributes();
+        assert_eq!(attributes.len(), 2);
+        for (ordinal, name) in ["id", "class"].into_iter().enumerate() {
+            let attribute = &attributes.as_slice()[ordinal];
+            assert_eq!(attribute.name().namespace(), &Namespace::none());
+            assert!(attribute.name().prefix().is_none());
+            assert_eq!(attribute.name().local_name(), &DocumentString::from(name));
+        }
+        assert_eq!(
+            attributes.as_slice()[0].value(),
+            &DocumentString::from(if index == 0 { "a" } else { "b" })
+        );
+        assert_eq!(attributes.as_slice()[1].value(), &DocumentString::from("k"));
+        assert_eq!(
+            value_sharing_node(&report, &paragraphs[index])
+                .children()
+                .count(),
+            0
+        );
+        let id_source = literal
+            .find(if index == 0 { "id=a" } else { "id=b" })
+            .unwrap()
+            + 3;
+        assert_value_sharing_origin(
+            &report,
+            &paragraphs[index],
+            HtmlParseField::AttributeValue(0),
+            id_source,
+            id_source + 1,
+            HtmlParseOriginKind::Literal,
+        );
+        assert_value_sharing_origin(
+            &report,
+            &paragraphs[index],
+            HtmlParseField::AttributeValue(1),
+            class_sources[index],
+            class_sources[index] + 1,
+            HtmlParseOriginKind::Literal,
+        );
+    }
+    assert!(!std::sync::Arc::ptr_eq(
+        elements[0].attributes().shared_attributes(),
+        elements[1].attributes().shared_attributes()
+    ));
+    let attributes = elements.map(HtmlElement::attributes);
+    assert!(std::sync::Arc::ptr_eq(
+        attributes[0].as_slice()[1].value().shared_code_units(),
+        attributes[1].as_slice()[1].value().shared_code_units()
+    ));
+    for ordinal in 0..2 {
+        assert!(std::sync::Arc::ptr_eq(
+            attributes[0].as_slice()[ordinal]
+                .name()
+                .local_name()
+                .shared_code_units(),
+            attributes[1].as_slice()[ordinal]
+                .name()
+                .local_name()
+                .shared_code_units()
+        ));
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0].name().local_name().shared_code_units(),
+        elements[1].name().local_name().shared_code_units()
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0]
+            .name()
+            .namespace()
+            .uri()
+            .unwrap()
+            .shared_code_units(),
+        elements[1]
+            .name()
+            .namespace()
+            .uri()
+            .unwrap()
+            .shared_code_units()
+    ));
+}
+
+fn assert_independent_report_text_shares_strings(fragment: bool) {
+    let report = value_sharing_report(fragment, "<p>X</p><p>&#88;</p>");
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 2);
+    assert_ne!(paragraphs[0], paragraphs[1]);
+    let (first_id, first) = value_sharing_text(&report, &paragraphs[0]);
+    let (second_id, second) = value_sharing_text(&report, &paragraphs[1]);
+    assert_ne!(first_id, second_id);
+    assert_eq!(first.code_units(), &[88]);
+    assert_eq!(second.code_units(), &[88]);
+    let prefix = if fragment { 0 } else { "<!doctype html>".len() };
+    assert_value_sharing_origin(
+        &report,
+        &first_id,
+        HtmlParseField::Text,
+        prefix + 3,
+        prefix + 4,
+        HtmlParseOriginKind::Literal,
+    );
+    assert_value_sharing_origin(
+        &report,
+        &second_id,
+        HtmlParseField::Text,
+        prefix + 11,
+        prefix + 16,
+        HtmlParseOriginKind::CharacterReference,
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        first.shared_code_units(),
+        second.shared_code_units()
+    ));
+}
+
+#[test]
+fn report_value_sharing_equal_attribute_banks_in_document() {
+    assert_equal_report_attribute_banks(false);
+}
+
+#[test]
+fn report_value_sharing_equal_attribute_banks_in_fragment() {
+    assert_equal_report_attribute_banks(true);
+}
+
+#[test]
+fn report_value_sharing_distinct_banks_share_components_in_document() {
+    assert_distinct_report_banks_share_strings(false);
+}
+
+#[test]
+fn report_value_sharing_distinct_banks_share_components_in_fragment() {
+    assert_distinct_report_banks_share_strings(true);
+}
+
+#[test]
+fn report_value_sharing_independent_text_in_document() {
+    assert_independent_report_text_shares_strings(false);
+}
+
+#[test]
+fn report_value_sharing_independent_text_in_fragment() {
+    assert_independent_report_text_shares_strings(true);
+}
