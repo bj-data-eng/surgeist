@@ -815,3 +815,12 @@ keeps those clauses distinct from the native retirement policy under #1243.
 | Source | Exact snapshot | Complete original source SHA-256 | Representation |
 | --- | --- | --- | --- |
 | [Selection API Range association](selection-api-range-association--20260611.md) | [W3C Working Draft, 11 June 2026](https://www.w3.org/TR/2026/WD-selection-api-20260611/) | 616183cecb1e25d14ceca692b0279e2c6404b88973c2e94c80757eee40cd0243 | partial readable HTML conversion; complete Definition section, addRange method with notes, and Document interface extension |
+
+## Layered DOM sharing witnesses — 2026-10-18
+
+| Source | Exact snapshot | Complete original SHA-256 | Representation |
+| --- | --- | --- | --- |
+| [blink: third_party/blink/renderer/core/dom/node_rare_data.h](blink-layered-dom-sharing--389904a08e57.md) | [immutable revision 389904a08e57](https://chromium.googlesource.com/chromium/src/+/389904a08e57a6725bb7e1bdf6d567e9eead3585/third_party/blink/renderer/core/dom/node_rare_data.h) | 1cf7d054c88507419d0d959fe5ceaa61b9e9c80ddeb93e7a59c886165529aaad | complete unchanged source and legal header in Markdown |
+| [blink: third_party/blink/renderer/core/dom/attribute.h](blink-layered-dom-sharing--389904a08e57.md) | [immutable revision 389904a08e57](https://chromium.googlesource.com/chromium/src/+/389904a08e57a6725bb7e1bdf6d567e9eead3585/third_party/blink/renderer/core/dom/attribute.h) | c776337b433632a2598245c088bfec29cfb66ff1eea1e73826cc55fa93895e0d | complete unchanged source and legal header in Markdown |
+| [webkit: Source/WebCore/dom/Attribute.h](webkit-layered-dom-sharing--5b2e266b2aa8.md) | [immutable revision 5b2e266b2aa8](https://github.com/WebKit/WebKit/blob/5b2e266b2aa847ac2a5c4636c328666d9da862bd/Source/WebCore/dom/Attribute.h) | c030d3d07fe30aa0d64c20e91904262fb8cb0653d619bf5e8540d74eaec0bdb2 | complete unchanged source and legal header in Markdown |
+| [webkit: Source/WebCore/dom/ElementData.h](webkit-layered-dom-sharing--5b2e266b2aa8.md) | [immutable revision 5b2e266b2aa8](https://github.com/WebKit/WebKit/blob/5b2e266b2aa847ac2a5c4636c328666d9da862bd/Source/WebCore/dom/ElementData.h) | 545f86661a1f6676618c658e8496f330770a6b0daea42dd5c4031890b4e4a1ee | complete unchanged source and legal header in Markdown |

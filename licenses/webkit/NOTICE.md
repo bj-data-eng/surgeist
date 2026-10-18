@@ -249,3 +249,7 @@ linked or adapted into Surgeist by this documentation retention.
 
 The FocusController notice retains its original trailing whitespace verbatim,
 as does its fenced copy; Markdown headings and provenance labels are additions.
+
+## Layered DOM sharing headers
+
+The [bounded source witness](../../references/webkit-layered-dom-sharing--5b2e266b2aa8.md) retains complete original headers and their file-specific copyright/license notices. Attribute.h retains GNU Library General Public License version 2-or-later notices; the companion sparse-state or ElementData header retains its original BSD-style notice. These are reference-only copies, not compiled implementation or a license substitution. Immutable revisions and original byte hashes are recorded with the source.

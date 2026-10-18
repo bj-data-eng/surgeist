@@ -88,3 +88,7 @@ These bounded source references retain complete original file-level copyright an
 | [third_party/blink/renderer/modules/accessibility/ax_node_object.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/modules/accessibility/ax_node_object.cc); [bounded accessibility witness](../../references/blink-css-generated-alternative--7984f9d11800--1fb5fe3f70d1.md) | [ax_node_object-generated-alternative-bsd-header.txt](ax_node_object-generated-alternative-bsd-header.txt); exact original file-specific three-clause BSD notice |
 
 File-specific terms remain distinct. In particular, the generated-alternative accessibility files carry their own original three-clause BSD notices; those are not replaced by a generic project license. Applicable GNU Library GPL version 2-or-later declarations retain the complete license text, while Chromium project BSD declarations reuse the exact retained root LICENSE. These copies are not compiled or linked into Surgeist.
+
+## Layered DOM sharing headers
+
+The [bounded source witness](../../references/blink-layered-dom-sharing--389904a08e57.md) retains complete original headers and their file-specific copyright/license notices. Attribute.h retains GNU Library General Public License version 2-or-later notices; the companion sparse-state or ElementData header retains its original BSD-style notice. These are reference-only copies, not compiled implementation or a license substitution. Immutable revisions and original byte hashes are recorded with the source.

@@ -1159,3 +1159,7 @@ they do not adopt a competing focus store, claim an upstream erratum, or replace
 the pinned edition. The dated current-standard comparison records the same gaps.
 Original legal material is covered by the
 [WebKit attribution](../licenses/webkit/NOTICE.md#focus-editorial-gap-evidence).
+
+## Layered DOM sharing investigation
+
+The [Blink witness](blink-layered-dom-sharing--389904a08e57.md) and [WebKit witness](webkit-layered-dom-sharing--5b2e266b2aa8.md) retain sparse rare-state and attribute-storage headers. WebKit’s four-entry vector belongs to UniqueElementData; ShareableElementData uses a separate sized attribute array. These are representation comparisons, not HTML edition changes, new #1264 requirements, or performance results. Original file-specific licenses remain in each source block and the existing Chromium/WebKit legal collection applies.
