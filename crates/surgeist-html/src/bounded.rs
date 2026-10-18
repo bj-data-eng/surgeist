@@ -32,6 +32,7 @@ pub use crate::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
+pub use crate::values::sharing::*;
 
 pub use crate::construction::bounded::*;
 

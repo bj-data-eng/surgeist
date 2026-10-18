@@ -364,3 +364,4 @@ impl fmt::Display for DuplicateAttributeError {
 impl Error for DuplicateAttributeError {}
 
 pub(crate) mod bounded;
+pub(crate) mod sharing;

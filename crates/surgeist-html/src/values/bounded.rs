@@ -219,6 +219,17 @@ impl HtmlAttributeValidationAction<'_> {
 pub struct HtmlValidatedAttributes {
     storage: HtmlAttributeStorage,
 }
+impl From<OrderedAttributes> for HtmlValidatedAttributes {
+    /// Transfers an existing expanded-name proof with its original backing.
+    /// No comparison, allocation, clone or validation is performed.
+    fn from(value: OrderedAttributes) -> Self {
+        Self {
+            storage: HtmlAttributeStorage {
+                attributes: value.into_shared_attributes(),
+            },
+        }
+    }
+}
 
 impl HtmlValidatedAttributes {
     /// Borrows the exact validated order without publishing or copying storage.

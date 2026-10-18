@@ -246,6 +246,38 @@ validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree
 records, allocation identities and mutable backing remain private.
 
+`bounded::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
+weak sharing of those immutable values. Probe a complete validated attribute
+bank before processing component strings; offer only the final formed bank.
+Exact ordered names, prefix presence and raw UTF-16 decide equality. Public
+backing/capacity observations and expanded-name validation are unchanged.
+
+Pool actions are owned scalar tokens. Describe under the consumer's owner lock,
+release that lock to admit the action's work/storage and poll cancellation, then
+perform a pool action under the lock or a read action outside it. No producer
+method calls consumer code. A temporary candidate occurrence is admitted before
+Weak upgrade and keeps that receipt through comparison and output transfer.
+Pool layouts report absolute heap extent, including bounded undo and known Vec
+target-allocation space for every retained Weak occurrence; opaque Arc/allocator
+internals are excluded. Dead Weak entries do not retain element-buffer charges.
+The inline owner layout is reported separately.
+
+Root sessions and nested marks support consumer rollback. The consumer's root
+guard aborts on Drop unless moved into publication; its nested mark guard accepts
+on Drop or restores explicitly. Prepare and validate both concrete pools' seals
+before committing either. Admit `root_work`, `mark_work` and `seal_work` before
+their respective preparation calls, and each mutation layout's `closing_work`
+before committing it. This prepays cleanup without a failure-time callback.
+Closing valid authority allocates nothing and issues no new qualifier. Private
+capacity/counter exhaustion bypasses sharing; inability to issue a nested mark
+suspends further mutations for that root.
+The paired adapter calls `suspend_mutations` on the other root as well after
+restoring its acquired mark, so the checkpoint has no later unlogged pool delta.
+Mandatory work, custody and cancellation failures remain the consumer's explicit
+errors. Pooling
+does not authorize replacing an existing semantic no-op or releasing immutable
+report custody. Parser and DOM integration remain with those consumers.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh
