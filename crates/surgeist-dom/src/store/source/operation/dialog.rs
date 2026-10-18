@@ -288,12 +288,10 @@ impl Operation {
         {
             return Err(DomError::InvalidSourceEvent);
         }
-        let frame = self
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceEvent)?
-            .before_focusing()?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_ref() else {
+            return Err(DomError::InvalidSourceEvent);
+        };
+        let frame = frame.before_focusing()?;
         self.observe_dialog_event(
             dom,
             DialogFiring {
@@ -1232,6 +1230,7 @@ impl DomSourceLease<'_> {
             published: Vec::new(),
             installation: None,
             dialog_toggle_disposition,
+            design_mode_range_disposition: None,
         });
         observation.request.work.stage.store(4, Ordering::Relaxed);
         self.complete = true;
@@ -1518,7 +1517,7 @@ impl DomSourceLease<'_> {
         if let Some(mut frame) = frame {
             if let Some(key) = key {
                 frame.subject = key;
-                draft.dialog_method = Some(frame);
+                draft.method = Some(crate::store::method::Frame::Dialog(frame));
             }
         } else if matches!(operation.commands, OperationRoot::DialogTask(_)) {
             draft.clear_dialog_toggle_tracker(key.ok_or(DomError::StaleNode)?, cancel)?;

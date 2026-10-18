@@ -62,6 +62,8 @@ pub enum DomSourceUnavailable {
     DialogFocusing(surgeist_html::HtmlDialogFocusingAction),
     /// Exact unsupported fact in an original called focus-delegate traversal.
     FocusDelegate(surgeist_dom::DomSourceFocusDelegateStep),
+    /// The original designMode invocation needs this exact qualified service.
+    DesignMode(surgeist_dom::DomSourceDesignModeStep),
     /// The exact autofocus insertion action still lacks a qualified service.
     AutofocusInsertion(surgeist_html::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
@@ -71,6 +73,10 @@ pub enum DomSourceUnavailable {
 }
 
 /// The requested operation returned, or its exact next request remains parked.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Move the original Source completion inline without allocating after canonical publication"
+)]
 #[derive(Debug)]
 pub enum DomSourceDriveProgress {
     /// The one command or named feature operation completed its mandatory hooks.
@@ -557,6 +563,13 @@ impl DomSourceRuntime {
                     let reason = DomSourceUnavailable::FocusDelegate(request.step());
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::FocusDelegate(request),
+                        reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::DesignMode(request)) => {
+                    let reason = DomSourceUnavailable::DesignMode(request.step());
+                    return Ok(DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::DesignMode(request),
                         reason,
                     });
                 }

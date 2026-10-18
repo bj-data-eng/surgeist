@@ -461,8 +461,8 @@ impl Draft {
             source_other_units: self.source_other_units,
             source_invocation: self.source_invocation,
             source_headroom: None,
-            dialog_method: self
-                .dialog_method
+            method: self
+                .method
                 .as_ref()
                 .map(|frame| frame.checkpoint(&mut a, cancel))
                 .transpose()?,

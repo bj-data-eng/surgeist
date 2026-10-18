@@ -169,6 +169,10 @@ retirement and Document active associations through the same atomic/Source
 owner and snapshots. Initial ordinary-root association eligibility is separate
 from later root changes; this bounded native contract does not establish full
 Selection bindings or focus execution.
+The native designMode setter uses HTML's interpreter in the original DOM Source
+owner, retaining actual Range reset and unavailable generic focusing work.
+Null-root local completion and canonical enabled-state readback do not certify
+positive focus movement or a pending setter's composed completion.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
 HTML-semantics adapter builds qualified ordinary and shadow captures, retains
 checked bidirectional identity maps, and invokes producer queries with explicit

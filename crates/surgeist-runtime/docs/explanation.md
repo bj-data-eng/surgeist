@@ -91,6 +91,15 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+The same driver returns actual local designMode completion, including DOM's
+`NoActiveRange` or exact `RangeReset` result. An unavailable active association
+or generic focusing action is forwarded unchanged as a pending designMode
+request with its typed unavailable reason. Runtime preserves DOM's published
+enabled/reset prefix and original operation across cancellation and resumption;
+it does not infer a focus result from surface selections or acknowledge a
+missing service. Positive generic focus execution remains a separate
+contribution.
+
 Style capture uses the canonical Document's current Base selection, including
 the actual inherited about-base of an initial child Document. An empty bound
 CSSOM root still retains lifecycle custody: native hosted Document destruction

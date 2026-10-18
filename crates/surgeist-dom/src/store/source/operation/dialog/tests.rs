@@ -202,14 +202,16 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
     assert_eq!(caller.action(), HtmlDialogAction::CaptureCloseWatcher);
     let mut operation = lease.dom.source_operation.take().unwrap();
     let key = operation.draft.resolve(subject.into()).unwrap();
-    operation.draft.dialog_method = Some(crate::store::dialog::MethodFrame {
-        subject: key,
-        cursor: caller,
-        state: crate::store::dialog::MethodState::Ready,
-        invocation: Invocation::Unissued,
-        locals: crate::store::dialog::MethodLocals::RequestClose { watcher: None },
-        focusing: None,
-    });
+    operation.draft.method = Some(crate::store::method::Frame::Dialog(
+        crate::store::dialog::MethodFrame {
+            subject: key,
+            cursor: caller,
+            state: crate::store::dialog::MethodState::Ready,
+            invocation: Invocation::Unissued,
+            locals: crate::store::dialog::MethodLocals::RequestClose { watcher: None },
+            focusing: None,
+        },
+    ));
     let Command::RequestCloseDialog { result, .. } = &operation.commands[0] else {
         panic!("original requestClose input");
     };

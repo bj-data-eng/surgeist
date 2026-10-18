@@ -314,7 +314,15 @@ GlobalInheritance owner, including supplemental Documents, with explicit finite
 subject/work bounds applied independently per producer formation. Preserve the
 typed errors and actual host/capture/revision qualifications. No external
 spellcheck defaults, range ownership or executed focus is established by this
-readback; the ordered setter requires those separate real owners.
+readback. Native `set_design_mode` consumes the HTML-owned interpreter through
+the original closed method slot beside Dialog. Retain completed method results
+through final admission refusal. Drive enable, fresh actual association and
+same-Range Document-zero reset before reading the current document element.
+Local null-root completion needs no intermediate publication; actual unavailable
+association or generic focusing calls retain their precise Source requirement
+and mandatory tail. Keep cancellation, revisions, checkpoints and output custody
+with that owner. No echo reset receipt, fabricated eligibility or Dialog inert
+shortcut supplies the missing generic focus execution.
 
 Retain exact two-way subject mapping,
 document/host qualification and unavailable external facts. Native absent

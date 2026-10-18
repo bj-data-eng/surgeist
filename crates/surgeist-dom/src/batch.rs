@@ -64,6 +64,10 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    SetDesignMode {
+        document: NodeOperand,
+        value: DocumentString,
+    },
     CreateRange {
         document: NodeOperand,
         ticket: usize,
@@ -251,6 +255,18 @@ impl Default for DomBatch {
 }
 
 impl DomBatch {
+    /// Runs HTML's ordered designMode setter. A reached unavailable selection
+    /// or focus effect refuses this entire atomic batch.
+    pub fn set_design_mode(
+        &mut self,
+        document: impl Into<NodeOperand>,
+        value: impl Into<DocumentString>,
+    ) {
+        self.commands.push(Command::SetDesignMode {
+            document: document.into(),
+            value: value.into(),
+        });
+    }
     /// Qualifies encoding-URL observations against this exact Document's
     /// already-bound encoding, current Document base URL and full revision.
     /// This changes no existing hyperlink cache or Document metadata.

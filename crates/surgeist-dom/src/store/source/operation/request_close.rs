@@ -120,7 +120,7 @@ impl Operation {
             .expect("original requestClose call");
         call.nested = false;
         call.occurrence = None;
-        self.draft.dialog_method = None;
+        self.draft.method = None;
         self.receipt = None;
     }
 }
@@ -327,12 +327,10 @@ impl DomSourceLease<'_> {
         if op.request_close.is_some() {
             return Err(DomError::InvalidSourceOperation);
         }
-        let outer = op
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?
-            .before_focusing()?;
+        let Some(crate::store::method::Frame::Dialog(outer)) = op.draft.method.as_ref() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let outer = outer.before_focusing()?;
         let crate::store::dialog::MethodLocals::RequestClose {
             watcher: Some(watcher),
         } = outer.locals
@@ -406,7 +404,7 @@ impl DomSourceLease<'_> {
                         call.result.ok_or(DomError::InvalidSourceOperation)?,
                     ))
                     .map_err(DomError::DialogProtocol)?;
-                op.draft.dialog_method = Some(call.outer);
+                op.draft.method = Some(crate::store::method::Frame::Dialog(call.outer));
                 op.request_close = None;
                 op.receipt = None;
                 return Ok(None);
@@ -458,18 +456,20 @@ impl DomSourceLease<'_> {
                         op.request_close_result = result;
                         call.nested = true;
                         call.occurrence = None;
-                        op.draft.dialog_method = Some(crate::store::dialog::MethodFrame {
-                            subject: key,
-                            cursor: surgeist_html::HtmlDialogCursor::new(
-                                surgeist_html::HtmlDialogOperation::Close {
-                                    result_present: op.request_close_result.is_some(),
-                                },
-                            ),
-                            state: crate::store::dialog::MethodState::Ready,
-                            invocation: Invocation::Unissued,
-                            locals: crate::store::dialog::MethodLocals::Close,
-                            focusing: None,
-                        });
+                        op.draft.method = Some(crate::store::method::Frame::Dialog(
+                            crate::store::dialog::MethodFrame {
+                                subject: key,
+                                cursor: surgeist_html::HtmlDialogCursor::new(
+                                    surgeist_html::HtmlDialogOperation::Close {
+                                        result_present: op.request_close_result.is_some(),
+                                    },
+                                ),
+                                state: crate::store::dialog::MethodState::Ready,
+                                invocation: Invocation::Unissued,
+                                locals: crate::store::dialog::MethodLocals::Close,
+                                focusing: None,
+                            },
+                        ));
                         op.request_close = Some(call);
                         op.receipt = None;
                         drop(formation);

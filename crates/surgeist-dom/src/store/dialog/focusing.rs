@@ -35,7 +35,9 @@ impl Draft {
         Ok(call.advance(self, subject, cancel)? == Some(false))
     }
     pub(in crate::store) fn pending_focusing(&self) -> Option<PendingFocusing> {
-        let frame = self.dialog_method.as_ref()?;
+        let method::Frame::Dialog(frame) = self.method.as_ref()? else {
+            return None;
+        };
         if frame.cursor.action() != Action::RunDialogFocusingSteps {
             return None;
         }

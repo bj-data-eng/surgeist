@@ -224,8 +224,11 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
             event.operation()
         );
         let op = dom.source_operation.as_ref().unwrap();
+        let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_ref() else {
+            panic!("original Dialog frame");
+        };
         assert_eq!(
-            op.draft.dialog_method.as_ref().unwrap().cursor.action(),
+            frame.cursor.action(),
             surgeist_html::HtmlDialogAction::QueueToggle {
                 old: surgeist_html::HtmlDialogState::Closed,
                 new: surgeist_html::HtmlDialogState::Open,
@@ -296,16 +299,9 @@ fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effec
                 .source_invocation,
             u64::MAX - remaining
         );
-        assert!(matches!(
-            dom.source_operation
-                .as_ref()
-                .unwrap()
-                .draft
-                .dialog_method
-                .as_ref()
-                .unwrap()
-                .invocation,
-            Invocation::Unissued
-        ));
+        assert!(
+            matches!(dom.source_operation.as_ref().unwrap().draft.method.as_ref(),
+            Some(crate::store::method::Frame::Dialog(frame)) if matches!(frame.invocation, Invocation::Unissued))
+        );
     }
 }

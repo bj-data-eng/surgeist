@@ -14,11 +14,9 @@ impl Operation {
         dom: &Dom,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let frame = self
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_ref() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if !self.is_show_modal_method()
             || frame.cursor.action() != HtmlDialogAction::AssertCloseWatcherPresent
             || !matches!(frame.state, crate::store::dialog::MethodState::Ready)
@@ -69,10 +67,10 @@ impl Operation {
             .ok_or(DomError::HostedSourceUnavailable)?
             .validate_issuer(watcher.global.source())
             .map_err(|_| DomError::HostedSourceUnavailable)?;
-        self.draft
-            .dialog_method
-            .as_mut()
-            .expect("qualified method")
+        let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        frame
             .cursor
             .reply(HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;

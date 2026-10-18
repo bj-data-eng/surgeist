@@ -515,6 +515,27 @@ impl DomDocumentMetadata {
     pub const fn design_mode_enabled(&self) -> bool {
         self.design_mode_enabled
     }
+    pub(crate) fn set_design_mode_enabled(&mut self, enabled: bool) {
+        self.design_mode_enabled = enabled;
+    }
+    pub(crate) fn same_nondesign_mode_state(&self, other: &Self) -> bool {
+        self.class == other.class
+            && self.content_type == other.content_type
+            && self.encoding == other.encoding
+            && self.url == other.url
+            && self.origin == other.origin
+            && self.mode == other.mode
+            && self.allow_declarative_shadow_roots == other.allow_declarative_shadow_roots
+            && self.registry == other.registry
+            && self.environment == other.environment
+            && self.cause == other.cause
+            && self.meta == other.meta
+            && self.meta_theme_color == other.meta_theme_color
+            && self.meta_color_scheme == other.meta_color_scheme
+            && self.policy == other.policy
+            && self.meta_ui == other.meta_ui
+            && self.hosted_inputs == other.hosted_inputs
+    }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots
     }

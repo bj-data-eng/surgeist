@@ -660,7 +660,10 @@ fn parent_result_rebases_once_after_actual_child_and_distinct_callback_overlap()
                     // NOT evidence that QueueToggle was already reached.
                     assert!(operation.event_exposed);
                     assert_eq!(operation.status().phase(), DomSourcePhase::DialogService);
-                    let frame = draft.dialog_method.as_ref().unwrap();
+                    let Some(crate::store::method::Frame::Dialog(frame)) = draft.method.as_ref()
+                    else {
+                        panic!("original Dialog frame");
+                    };
                     assert_eq!(draft.published_id(frame.subject), Some(subject));
                     assert_eq!(frame.cursor.action(), HtmlDialogAction::ReadOpen);
                     assert!(matches!(frame.invocation, Invocation::Unissued));

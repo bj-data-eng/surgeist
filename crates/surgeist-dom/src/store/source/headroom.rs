@@ -216,8 +216,23 @@ impl Draft {
             })();
             let dialog_wait = matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
                 if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }));
-            if dialog_wait {
+            let design_mode_wait = matches!(&result, Err(DomError::DesignModeProcessingUnavailable { step })
+                if restore.draft.pending_design_mode().is_some_and(|pending| pending.step == *step));
+            if dialog_wait || design_mode_wait {
                 restore.draft.range_publication_ready(cancel)?;
+            }
+            if design_mode_wait && let Some(scan) = &mut restore.draft.source_headroom {
+                // Only an actual unavailable selection/focusing action exposes
+                // one prefix. Its local flag/reset writes coalesce there; the
+                // same original operation still owes its final publication.
+                scan.phases = scan
+                    .phases
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                scan.invocations = scan
+                    .invocations
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
             }
             if dialog_wait && let Some(scan) = &mut restore.draft.source_headroom {
                 let stopped = if matches!(
@@ -243,6 +258,7 @@ impl Draft {
         let scan = scan.ok_or(DomError::StyleProtocol)?;
         match result {
             Err(DomError::DialogProcessingUnavailable { .. }) if scan.dialog_wait => {}
+            Err(DomError::DesignModeProcessingUnavailable { .. }) => {}
             result => result?,
         }
         scan.qualify(self, dom, phases, cancel)

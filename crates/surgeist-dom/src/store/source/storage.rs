@@ -394,6 +394,7 @@ pub(in crate::store) fn commands(
                 title: Some(value), ..
             }
             | Command::SetTextareaValue { value, .. }
+            | Command::SetDesignMode { value, .. }
             | Command::SetTextareaDefaultValue { value, .. }
             | Command::SetInputValue { value, .. }
             | Command::SetCustomValidity { value, .. }

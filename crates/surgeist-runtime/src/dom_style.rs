@@ -3397,6 +3397,9 @@ mod tests {
                     DomSourceProgress::Request(surgeist_dom::DomSourceRequest::HostedChild(_)) => {
                         panic!("Style fixture cannot request a hosted child")
                     }
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::DesignMode(_)) => {
+                        panic!("Style fixture cannot request a designMode service")
+                    }
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::Event(_)
                         | surgeist_dom::DomSourceRequest::Dialog(_)

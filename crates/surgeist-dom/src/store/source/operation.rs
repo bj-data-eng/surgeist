@@ -1,5 +1,7 @@
 //! One canonical retained synchronous source operation. The lease grants access;
 //! all mandatory continuation and acknowledged external publication stays in Dom.
+#[cfg(test)]
+mod design_mode_tests;
 mod dialog;
 pub(crate) mod dialog_queue;
 mod failure;
@@ -516,6 +518,7 @@ enum PublicationTarget {
     Dialog(crate::store::dialog::PendingDialog),
     DialogFocusing(crate::store::dialog::PendingFocusing),
     AutofocusInsertion(crate::store::autofocus::Frame),
+    DesignMode(crate::store::design_mode::Pending),
 }
 struct PublishedSegment {
     commit: DomCommit,
@@ -523,6 +526,7 @@ struct PublishedSegment {
     focusing: Option<crate::DomSourceDialogFocusingRequest>,
     focus_delegate: Option<crate::DomSourceFocusDelegateRequest>,
     autofocus: Option<crate::DomSourceAutofocusInsertionRequest>,
+    design_mode: Option<crate::DomSourceDesignModeRequest>,
 }
 impl Operation {
     #[cfg(test)]
@@ -713,8 +717,13 @@ impl Operation {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.pending_autofocus().is_some() {
                 crate::DomSourcePhase::AutofocusInsertionService
-            } else if self.draft.dialog_method.is_some()
-                || self.draft.pending_dialog_hook().is_some()
+            } else if matches!(self.draft.method.as_ref(), Some(crate::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::HtmlDesignModeAction::Complete)
+            {
+                crate::DomSourcePhase::DesignModeService
+            } else if matches!(
+                self.draft.method,
+                Some(crate::store::method::Frame::Dialog(_))
+            ) || self.draft.pending_dialog_hook().is_some()
             {
                 crate::DomSourcePhase::DialogService
             } else {
@@ -1188,6 +1197,7 @@ impl Operation {
             PublicationTarget::Dialog(pending) => pending.invocation,
             PublicationTarget::DialogFocusing(pending) => Some(pending.invocation),
             PublicationTarget::AutofocusInsertion(pending) => Some(pending.invocation),
+            PublicationTarget::DesignMode(pending) => Some(pending.invocation),
             _ => None,
         });
         let issued_next = match invocation {
@@ -1457,6 +1467,44 @@ impl Operation {
         } else {
             None
         };
+        let design_mode = if let PublicationTarget::DesignMode(pending) = target {
+            let mapped = |key| -> Result<NodeId, DomError> {
+                self.draft.source_step(cancel)?;
+                let id = match key {
+                    Key::Existing(slot) => NodeId {
+                        owner: self.id.owner,
+                        slot,
+                        generation: self.draft.generations[slot],
+                    },
+                    Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                };
+                prepared.state.node(self.id.owner, id)?;
+                Ok(id)
+            };
+            let document = mapped(pending.document)?;
+            if !matches!(
+                prepared.state.node(self.id.owner, document)?.kind,
+                DomNodeKind::Document(_)
+            ) {
+                return Err(DomError::WrongNodeKind.into());
+            }
+            Some(crate::DomSourceDesignModeRequest {
+                operation: self.id,
+                document: DocumentId(document),
+                step: pending.step,
+                target: pending.target.map(mapped).transpose()?,
+                range: pending.range,
+                occurrence: crate::source::watcher::HookOccurrence {
+                    command: self.index,
+                    ordinal: match pending.invocation {
+                        Invocation::Unissued => self.draft.source_invocation,
+                        Invocation::Exposed(ordinal) => ordinal,
+                    },
+                },
+            })
+        } else {
+            None
+        };
         // Form every source-time input against this PRIVATE final mapping.
         // A refusal here retains the previous receipt and rolls back the segment;
         // no published command is stranded behind input allocation or lookup.
@@ -1628,11 +1676,11 @@ impl Operation {
         if let Some(next) = issued_next {
             self.draft.source_invocation = next;
             if let Some(occurrence) = dialog.as_ref().and_then(|request| request.method()) {
-                self.draft
-                    .dialog_method
-                    .as_mut()
-                    .expect("exposed actual Show")
-                    .invocation = Invocation::Exposed(occurrence.ordinal);
+                let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+                else {
+                    unreachable!("exposed actual Dialog");
+                };
+                frame.invocation = Invocation::Exposed(occurrence.ordinal);
             } else if let Some(ordinal) = focusing
                 .as_ref()
                 .map(|request| request.occurrence.ordinal)
@@ -1642,14 +1690,22 @@ impl Operation {
                         .map(|request| request.occurrence.ordinal)
                 })
             {
-                self.draft
-                    .dialog_method
-                    .as_mut()
-                    .expect("called Dialog frame")
+                let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+                else {
+                    unreachable!("called Dialog frame");
+                };
+                frame
                     .focusing
                     .as_mut()
                     .expect("actual focusing child")
                     .invocation = Invocation::Exposed(ordinal);
+            } else if let Some(request) = &design_mode {
+                let Some(crate::store::method::Frame::DesignMode(frame)) =
+                    self.draft.method.as_mut()
+                else {
+                    unreachable!("original designMode frame");
+                };
+                frame.invocation = Invocation::Exposed(request.occurrence.ordinal);
             } else {
                 match &mut self
                     .draft
@@ -1708,6 +1764,7 @@ impl Operation {
             focusing,
             focus_delegate,
             autofocus,
+            design_mode,
         })
     }
 }
@@ -1881,6 +1938,7 @@ impl DomSourceLease<'_> {
                 commit,
                 installation: None,
                 dialog_toggle_disposition: None,
+                design_mode_range_disposition: None,
             }));
         }
         if op.child.as_ref().is_some_and(hosted::Child::returned) {
@@ -1955,9 +2013,22 @@ impl DomSourceLease<'_> {
                     )
                 } else if op.started && op.draft.effects.len() > op.draft.effect_floor {
                     op.draft.run_effects(self.dom.limits, cancel)
-                } else if let Some(subject) =
-                    op.draft.dialog_method.as_ref().map(|frame| frame.subject)
+                } else if let Some(crate::store::method::Frame::DesignMode(frame)) =
+                    op.draft.method.as_ref()
                 {
+                    if frame.cursor.action() == surgeist_html::HtmlDesignModeAction::Complete {
+                        Ok(())
+                    } else {
+                        let document = frame.document;
+                        let Command::SetDesignMode { value, .. } = &op.commands[op.index] else {
+                            return Err(DomError::InvalidSourceOperation);
+                        };
+                        op.draft.design_mode_boundary(document, value, cancel)
+                    }
+                } else if let Some(crate::store::method::Frame::Dialog(frame)) =
+                    op.draft.method.as_ref()
+                {
+                    let subject = frame.subject;
                     let input = if op.request_close.as_ref().is_some_and(|call| call.nested) {
                         crate::store::dialog::MethodInput::Close(op.request_close_result.as_ref())
                     } else {
@@ -1985,6 +2056,41 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::DesignModeProcessingUnavailable { step }) => {
+                    let pending = op
+                        .draft
+                        .pending_design_mode()
+                        .filter(|pending| pending.step == step)
+                        .ok_or(DomError::InvalidSourceOperation)?;
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
+                    op.started = true;
+                    let published = match op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::DesignMode(pending),
+                        cancel,
+                    ) {
+                        Ok(published) => published,
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            return Err(error);
+                        }
+                    };
+                    drop(checkpoint);
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::DesignMode(
+                        published
+                            .design_mode
+                            .expect("published original designMode requirement"),
+                    )));
+                }
                 Err(DomError::AutofocusInsertionUnavailable { action }) => {
                     let pending = op
                         .draft
@@ -2228,7 +2334,12 @@ impl DomSourceLease<'_> {
                     return Err(e);
                 }
                 Ok(()) => {
-                    if op.draft.dialog_method.is_some() {
+                    if op
+                        .draft
+                        .method
+                        .as_ref()
+                        .is_some_and(crate::store::method::Frame::is_running)
+                    {
                         continue;
                     }
                     if op.request_close.as_ref().is_some_and(|call| call.nested) {
@@ -2237,11 +2348,26 @@ impl DomSourceLease<'_> {
                         call.cursor
                             .reply(surgeist_html::HtmlCloseWatcherRequestReply::Applied)
                             .map_err(DomError::CloseWatcherProtocol)?;
-                        op.draft.dialog_method = Some(call.outer.before_focusing()?);
+                        op.draft.method = Some(crate::store::method::Frame::Dialog(
+                            call.outer.before_focusing()?,
+                        ));
                         op.request_close_result = None;
                         op.receipt = None;
                         continue;
                     }
+                    let completed_design_mode = matches!(
+                        op.draft.method,
+                        Some(crate::store::method::Frame::DesignMode(_))
+                    );
+                    // A local setter has already finished its actual writes.
+                    // Preserve that exact completed draft/result across final
+                    // admission refusal, instead of restoring its entry cursor.
+                    let checkpoint = if completed_design_mode {
+                        drop(checkpoint);
+                        op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?
+                    } else {
+                        checkpoint
+                    };
                     // The real current command has drained. Excess conservative
                     // capacity is released while one actual final close remains.
                     if let Some(headroom) = &mut op.headroom {
@@ -2265,6 +2391,9 @@ impl DomSourceLease<'_> {
                         op.started = false;
                         op.command_admitted = false;
                         op.context = None;
+                        if op.index < op.commands.len() && completed_design_mode {
+                            op.draft.method = None;
+                        }
                     }
                     if op.index == op.commands.len() || op.cancelled {
                         // Complete fallible installation output before touching
@@ -2331,6 +2460,10 @@ impl DomSourceLease<'_> {
                             published: std::mem::take(&mut op.historical),
                             commit,
                             installation,
+                            design_mode_range_disposition: match op.draft.method.as_ref() {
+                                Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
+                                _ => None,
+                            },
                             // A task enters this Segment only after its actual
                             // accepted observation rebases through tracker clear.
                             // Retired targets and pre-dispatch cancellation finish
@@ -5379,6 +5512,7 @@ pub(in crate::store) mod accounting_tests {
                     | DomSourceRequest::CloseWatcher(_)
                     | DomSourceRequest::DialogFocusing(_)
                     | DomSourceRequest::FocusDelegate(_)
+                    | DomSourceRequest::DesignMode(_)
                     | DomSourceRequest::AutofocusInsertion(_),
                 )) => {
                     panic!("Slot assignment fixture has no eventful Dialog operation")

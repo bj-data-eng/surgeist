@@ -214,11 +214,10 @@ impl<'dom> DomSourceLease<'dom> {
             .as_ref()
             .filter(|operation| operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        let frame = operation
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = operation.draft.method.as_ref()
+        else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if operation.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
         {
@@ -256,11 +255,9 @@ impl<'dom> DomSourceLease<'dom> {
             .as_mut()
             .filter(|op| op.id == self.id && request.operation == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        let frame = op
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_ref() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if op.draft.published_id(frame.subject) != Some(request.subject)
             || frame.cursor.action() != request.action
             || op.dialog_queue.is_some()
@@ -351,11 +348,10 @@ impl<'dom> DomSourceLease<'dom> {
                 )?;
             }
             let (subject, locals) = {
-                let frame = op
-                    .draft
-                    .dialog_method
-                    .as_ref()
-                    .expect("qualified Dialog frame");
+                let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_ref()
+                else {
+                    return Err(DomError::InvalidSourceOperation);
+                };
                 (frame.subject, frame.locals)
             };
             if let DomDialogTaskInfo::Toggle(info) = plan.info {
@@ -605,11 +601,9 @@ impl<'dom> DomSourceLease<'dom> {
             .as_mut()
             .filter(|op| op.id == self.id && request.operation == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
-        let frame = op
-            .draft
-            .dialog_method
-            .as_mut()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_mut() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if candidate.operation != self.id
             || op.dialog_queue != Some(candidate.task)
             || candidate.task.target() != request.subject
@@ -618,10 +612,10 @@ impl<'dom> DomSourceLease<'dom> {
             return Err(DomError::InvalidSourceOperation);
         }
         op.draft.source_step(cancel)?;
-        op.draft
-            .dialog_method
-            .as_mut()
-            .expect("frame")
+        let Some(crate::store::method::Frame::Dialog(frame)) = op.draft.method.as_mut() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        frame
             .cursor
             .reply(surgeist_html::HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;

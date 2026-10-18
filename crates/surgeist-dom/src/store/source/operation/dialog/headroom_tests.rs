@@ -231,14 +231,16 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
         }
         let mut operation = lease.dom.source_operation.take().unwrap();
         let key = operation.draft.resolve(subject.into()).unwrap();
-        operation.draft.dialog_method = Some(crate::store::dialog::MethodFrame {
-            subject: key,
-            cursor: caller,
-            state: crate::store::dialog::MethodState::Ready,
-            invocation: Invocation::Unissued,
-            locals: crate::store::dialog::MethodLocals::RequestClose { watcher: None },
-            focusing: None,
-        });
+        operation.draft.method = Some(crate::store::method::Frame::Dialog(
+            crate::store::dialog::MethodFrame {
+                subject: key,
+                cursor: caller,
+                state: crate::store::dialog::MethodState::Ready,
+                invocation: Invocation::Unissued,
+                locals: crate::store::dialog::MethodLocals::RequestClose { watcher: None },
+                focusing: None,
+            },
+        ));
         let Command::RequestCloseDialog { result, .. } = &operation.commands[0] else {
             panic!("original method input");
         };

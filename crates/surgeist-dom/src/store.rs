@@ -18,6 +18,7 @@ mod autofocus;
 mod base;
 mod children;
 mod control;
+mod design_mode;
 mod details;
 mod dialog;
 mod dispatch;
@@ -33,6 +34,7 @@ mod input;
 mod input_processing;
 mod installation;
 mod meta;
+mod method;
 mod navigable;
 mod output;
 pub(crate) mod parsed_installation;
@@ -161,6 +163,10 @@ pub enum DomError {
         action: surgeist_html::HtmlAutofocusInsertionAction,
     },
     AutofocusInsertionProtocol(surgeist_html::HtmlAutofocusInsertionError),
+    DesignModeProcessingUnavailable {
+        step: crate::DomSourceDesignModeStep,
+    },
+    DesignModeProtocol(surgeist_html::HtmlDesignModeError),
     DialogFocusingUnavailable {
         action: surgeist_html::HtmlDialogFocusingAction,
     },
@@ -706,6 +712,7 @@ pub enum DomChange {
     RangeBoundary(crate::DomRangeId),
     RangeRetired(crate::DomRangeId),
     DocumentActiveRange(DocumentId),
+    DocumentDesignMode(DocumentId),
     SourceOperation,
     HostedOperationState {
         operation: crate::hosted::DomHostedOperationId,
@@ -1641,7 +1648,7 @@ struct Draft {
     source_other_units: usize,
     source_invocation: u64,
     source_headroom: Option<source::headroom::Scan>,
-    dialog_method: Option<dialog::MethodFrame>,
+    method: Option<method::Frame>,
     dispatch_retirements: Vec<(NodeId, Key)>,
     phase_map: Option<source::PhaseMap>,
     base_work: std::cell::Cell<u64>,
@@ -1937,7 +1944,7 @@ impl Draft {
             source_other_units: 0,
             source_invocation: 0,
             source_headroom: None,
-            dialog_method: None,
+            method: None,
             dispatch_retirements: Vec::new(),
             phase_map: None,
             base_work: std::cell::Cell::new(0),
@@ -2263,6 +2270,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::SetDesignMode { document, value } => {
+                let document = self.resolve(document.clone())?;
+                self.design_mode_boundary(document, value, cancelled)?;
+            }
             Command::CreateRange { document, ticket } => {
                 let document = self.resolve(document.clone())?;
                 self.create_range(document, *ticket, limits, cancelled)?;
@@ -3239,6 +3250,13 @@ fn difference(
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(DomChange::DocumentActiveRange(DocumentId(id)));
                 }
+                if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
+                    (&node.kind, &current.kind)
+                    && before.design_mode_enabled() != after.design_mode_enabled()
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentDesignMode(DocumentId(id)));
+                }
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (&node.kind, &current.kind)
                     && before.captured_in_view_transition() != after.captured_in_view_transition()
@@ -3251,6 +3269,9 @@ fn difference(
                 let intrinsic_changed = match (&node.kind, &current.kind) {
                     (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
                         before.attributes() != after.attributes()
+                    }
+                    (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
+                        !before.same_nondesign_mode_state(after)
                     }
                     _ => node.kind != current.kind,
                 };

@@ -137,17 +137,24 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.dialog_state(key)?;
-        let mut frame = self.dialog_method.take().unwrap_or(MethodFrame {
-            subject: key,
-            cursor: HtmlDialogCursor::new(input.operation()),
-            state: MethodState::Ready,
-            invocation: source::Invocation::Unissued,
-            locals: input.locals(),
-            focusing: None,
-        });
+        let mut frame = match self.method.take() {
+            Some(method::Frame::Dialog(frame)) => frame,
+            Some(other) => {
+                self.method = Some(other);
+                return Err(DomError::InvalidSourceOperation);
+            }
+            None => MethodFrame {
+                subject: key,
+                cursor: HtmlDialogCursor::new(input.operation()),
+                state: MethodState::Ready,
+                invocation: source::Invocation::Unissued,
+                locals: input.locals(),
+                focusing: None,
+            },
+        };
         let result = self.drive_dialog_method(&mut frame, key, input, limits, cancel);
         if !matches!(result, Ok(true)) {
-            self.dialog_method = Some(frame);
+            self.method = Some(method::Frame::Dialog(frame));
         }
         result.map(|_| ())
     }
@@ -675,7 +682,10 @@ impl Draft {
     pub(super) fn pending_dialog(&self, action: Action) -> Option<PendingDialog> {
         self.pending_dialog_hook()
             .or_else(|| {
-                self.dialog_method.as_ref().map(|frame| PendingDialog {
+                let Some(method::Frame::Dialog(frame)) = self.method.as_ref() else {
+                    return None;
+                };
+                Some(PendingDialog {
                     subject: frame.subject,
                     action: frame.cursor.action(),
                     invocation: matches!(frame.cursor.action(), Action::RememberFocusedElement)

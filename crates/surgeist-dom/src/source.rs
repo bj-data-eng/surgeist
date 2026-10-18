@@ -1,5 +1,9 @@
 //! One requested canonical edit and its retained source continuation.
+mod design_mode;
 pub(crate) mod event;
+pub use design_mode::{
+    DomDesignModeRangeDisposition, DomSourceDesignModeRequest, DomSourceDesignModeStep,
+};
 mod focus;
 mod scope;
 mod url;
@@ -106,6 +110,8 @@ pub enum DomSourcePhase {
     DialogService,
     /// A genuine common insertion action awaiting its qualified service.
     AutofocusInsertionService,
+    /// The original designMode setter awaits an actual selection/focus service.
+    DesignModeService,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -162,6 +168,7 @@ pub enum DomSourceRequest {
     FocusDelegate(DomSourceFocusDelegateRequest),
     AutofocusInsertion(DomSourceAutofocusInsertionRequest),
     CloseWatcher(DomSourceCloseWatcherRequest),
+    DesignMode(DomSourceDesignModeRequest),
 }
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,6 +180,10 @@ pub enum DomSourceOutput {
     ViewTransitionRecord(DomViewTransitionRecordId),
 }
 /// A service boundary or the completion of one requested source operation.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Move the owned completion inline without adding allocation after canonical publication"
+)]
 #[derive(Debug)]
 pub enum DomSourceProgress {
     Request(DomSourceRequest),
@@ -194,8 +205,14 @@ pub struct DomSourceCompletion {
     pub(crate) published: Vec<Option<NodeId>>,
     pub(crate) installation: Option<crate::DomNativeHtmlInstallation>,
     pub(crate) dialog_toggle_disposition: Option<DomDialogToggleTaskDisposition>,
+    pub(crate) design_mode_range_disposition: Option<DomDesignModeRangeDisposition>,
 }
 impl DomSourceCompletion {
+    /// The completed reset branch of a false-to-on setter. `None` means off,
+    /// invalid, already-on or another operation, never an unknown completed reset.
+    pub const fn design_mode_range_disposition(&self) -> Option<DomDesignModeRangeDisposition> {
+        self.design_mode_range_disposition
+    }
     /// Completed post-dispatch Toggle cleanup. `None` means another operation
     /// or cancellation before dispatch; it never means an unknown serviced
     /// Toggle outcome. Cancellation requested after dispatch does not suppress
@@ -252,6 +269,15 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// Retains the original ordered setter across a reached unavailable service.
+    pub fn set_design_mode(document: crate::DocumentId, value: impl Into<DocumentString>) -> Self {
+        Self {
+            command: Command::SetDesignMode {
+                document: document.into(),
+                value: value.into(),
+            },
+        }
+    }
     pub fn create_range(document: crate::DocumentId) -> Self {
         Self {
             command: Command::CreateRange {

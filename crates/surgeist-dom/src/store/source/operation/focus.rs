@@ -30,11 +30,9 @@ impl Operation {
             return Ok(FocusFrame::Insertion(frame));
         }
 
-        let frame = self
-            .draft
-            .dialog_method
-            .as_ref()
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_ref() else {
+            return Err(DomError::InvalidSourceOperation);
+        };
         if request.operation() != self.id
             || self.draft.published_id(frame.subject) != Some(request.subject())
         {
@@ -174,18 +172,21 @@ impl Operation {
             self.draft
                 .element_mut(subject)
                 .remember_no_focused_element();
-            let frame = self.draft.dialog_method.as_mut().expect("qualified method");
+            let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+            else {
+                return Err(DomError::InvalidSourceOperation);
+            };
             frame
                 .cursor
                 .reply(HtmlDialogReply::Applied)
                 .map_err(DomError::DialogProtocol)?;
             frame.invocation = Invocation::Unissued;
         } else {
-            let called = self
-                .draft
-                .dialog_method
-                .as_mut()
-                .expect("qualified method")
+            let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
+            else {
+                return Err(DomError::InvalidSourceOperation);
+            };
+            let called = frame
                 .focusing
                 .as_mut()
                 .ok_or(DomError::InvalidSourceOperation)?;

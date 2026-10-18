@@ -117,6 +117,7 @@ impl OperationRoot {
             | Command::SetTextareaValue { node, .. }
             | Command::SetTextareaDefaultValue { node, .. }
             | Command::ResetTextarea { node }
+            | Command::SetDesignMode { document: node, .. }
             | Command::SetInputValue { node, .. }
             | Command::SetInputChecked { node, .. }
             | Command::SetInputIndeterminate { node, .. }
