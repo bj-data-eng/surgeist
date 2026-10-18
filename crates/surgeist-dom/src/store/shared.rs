@@ -1,6 +1,11 @@
 //! Immutable sequence backing shared by canonical records and captures.
 use std::{ops::Deref, sync::Arc};
 
+#[cfg(test)]
+mod allocation_observation;
+#[cfg(test)]
+mod storage_tests;
+
 #[derive(Debug)]
 pub(crate) struct SharedVec<T>(Arc<Vec<T>>);
 
@@ -21,7 +26,12 @@ impl<T> SharedVec<T> {
 }
 impl<T> From<Vec<T>> for SharedVec<T> {
     fn from(value: Vec<T>) -> Self {
-        Self(Arc::new(value))
+        let backing = Arc::new(value);
+        #[cfg(test)]
+        if super::scale_metrics::ENABLED {
+            allocation_observation::allocated::<T>(backing.capacity());
+        }
+        Self(backing)
     }
 }
 impl<T> Deref for SharedVec<T> {

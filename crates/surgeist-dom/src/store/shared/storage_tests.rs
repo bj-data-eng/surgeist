@@ -1,0 +1,316 @@
+use super::{SharedVec, allocation_observation::Observation};
+use crate::store::{
+    self, Dom, DomBatch, DomError, DomLimits, DomResource, Key, Slot, bank, custody, transaction,
+};
+use std::{
+    mem::size_of,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+#[test]
+#[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1; select explicitly"]
+fn zero_capacity_construction_and_clones_allocate_no_sequence_targets() {
+    let observation = Observation::begin();
+    let first = SharedVec::<u32>::default();
+    let second = SharedVec::<u32>::from(Vec::new());
+    let before_clones = observation.counts();
+    let capture = first.clone();
+    let capture_again = capture.clone();
+    assert_eq!(observation.counts(), before_clones);
+    assert_eq!(&first[..], &[]);
+    assert_eq!(first.capacity(), 0);
+    assert_eq!(second.capacity(), 0);
+    assert_eq!(first, second);
+    drop(first);
+    drop(capture);
+    assert!(capture_again.is_empty());
+    let actual = observation.finish();
+    assert_eq!(
+        actual.headers, 0,
+        "zero-capacity lists have no Arc<Vec> target"
+    );
+    assert_eq!(actual.zero_capacity_headers, 0);
+    assert_eq!(actual.header_bytes, 0);
+    assert_eq!(actual.retained_capacity_bytes, 0);
+}
+
+#[test]
+#[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1; select explicitly"]
+fn allocation_observation_records_real_reserved_and_populated_targets() {
+    let mut reserved = Vec::<u16>::new();
+    reserved.try_reserve_exact(37).unwrap();
+    let capacity = reserved.capacity();
+    let populated = vec![7u16, 11, 13];
+    let populated_capacity = populated.capacity();
+    let observation = Observation::begin();
+    let reserved = SharedVec::from(reserved);
+    let populated = SharedVec::from(populated);
+    let capture = reserved.clone();
+    let actual = observation.finish();
+    assert_eq!(actual.headers, 2);
+    assert_eq!(actual.zero_capacity_headers, 0);
+    assert_eq!(actual.header_bytes, 2 * size_of::<Vec<u16>>());
+    assert_eq!(
+        actual.retained_capacity_bytes,
+        (capacity + populated_capacity) * size_of::<u16>()
+    );
+    assert!(capture.shares_backing(&reserved));
+    assert_eq!(&populated[..], &[7, 11, 13]);
+}
+
+#[test]
+fn reserved_empty_preserves_capacity_identity_and_clone_lifetime() {
+    let mut raw = Vec::<u64>::new();
+    raw.try_reserve_exact(37).unwrap();
+    let capacity = raw.capacity();
+    let pointer = raw.as_ptr();
+    let first = SharedVec::from(raw);
+    let clone = first.clone();
+    assert!(first.is_empty());
+    assert_eq!(first.capacity(), capacity);
+    assert_eq!(first.as_ptr(), pointer);
+    assert!(first.shares_backing(&clone));
+    let other = SharedVec::from(Vec::<u64>::with_capacity(capacity));
+    assert_eq!(first, other);
+    assert!(!first.shares_backing(&other));
+    let absent = SharedVec::<u64>::default();
+    assert_eq!(first, absent);
+    assert!(!first.shares_backing(&absent));
+    drop(first);
+    assert_eq!(clone.capacity(), capacity);
+    assert_eq!(clone.as_ptr(), pointer);
+    assert_eq!((&clone).into_iter().count(), 0);
+}
+
+#[test]
+fn zero_capacity_canonical_sequence_retains_no_backing_occurrence() {
+    let empty = SharedVec::<u32>::default();
+    let ledger = custody::Ledger::default();
+    let sequence =
+        transaction::Sequence::canonical(&empty, std::convert::identity, &ledger, |_| Ok(()))
+            .unwrap();
+    assert!(sequence.view().is_empty());
+    assert_eq!(sequence.receipt(), custody::Usage::ZERO);
+    assert_eq!(ledger.total(), custody::Usage::ZERO);
+}
+
+#[test]
+fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity() {
+    let mut raw = Vec::<u32>::new();
+    raw.try_reserve_exact(7).unwrap();
+    let capacity = raw.capacity();
+    let original = SharedVec::from(raw);
+    let ledger = custody::Ledger::default();
+    let mut sequence =
+        transaction::Sequence::canonical(&original, std::convert::identity, &ledger, |_| Ok(()))
+            .unwrap();
+    let before = ledger.total();
+    assert_eq!(
+        before,
+        custody::Usage::new(size_of::<Vec<u32>>() + capacity * size_of::<u32>(), 0)
+    );
+    let requested = 2 * size_of::<u32>();
+    let exact = before.bytes() + requested;
+    let result = sequence.insert(
+        0,
+        &[8, 13],
+        true,
+        &ledger,
+        |usage| {
+            if usage.bytes() > exact - 1 {
+                Err(DomError::ResourceLimit {
+                    resource: DomResource::SourceRetainedBytes,
+                    limit: exact - 1,
+                })
+            } else {
+                Ok(())
+            }
+        },
+        || Ok(()),
+    );
+    assert!(matches!(
+        result,
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            ..
+        })
+    ));
+    assert_eq!(ledger.total(), before);
+    assert!(
+        sequence
+            .canonical_backing()
+            .unwrap()
+            .shares_backing(&original)
+    );
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(
+        sequence.insert(
+            0,
+            &[8, 13],
+            true,
+            &ledger,
+            |_| Ok(()),
+            || store::check_cancel(&cancelled)
+        ),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(ledger.total(), before);
+    let inverse = sequence
+        .insert(
+            0,
+            &[8, 13],
+            true,
+            &ledger,
+            |usage| {
+                if usage.bytes() > exact {
+                    Err(DomError::ResourceLimit {
+                        resource: DomResource::SourceRetainedBytes,
+                        limit: exact,
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+            || Ok(()),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(sequence.view().iter().collect::<Vec<_>>(), [8, 13]);
+    let selected_capacity = sequence.capacity();
+    assert_eq!(ledger.total(), custody::Usage::new(exact, 0));
+    sequence
+        .remove(0, 2, false, &ledger, |_| Ok(()), || Ok(()))
+        .unwrap();
+    assert!(sequence.view().is_empty());
+    assert_eq!(sequence.capacity(), selected_capacity);
+    sequence.restore(inverse);
+    assert_eq!(sequence.capacity(), capacity);
+    assert!(
+        sequence
+            .canonical_backing()
+            .unwrap()
+            .shares_backing(&original)
+    );
+    assert_eq!(ledger.total(), before);
+}
+
+#[test]
+#[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1; select explicitly"]
+fn canonical_empty_node_lists_allocate_no_shared_targets_and_snapshots_only_alias() {
+    let observation = Observation::begin();
+    let mut dom = Dom::new(DomLimits::new(16, 4096, 64, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element(&document, "plain");
+    let text = batch.create_text(&document, "text");
+    let comment = batch.create_comment(&document, "comment");
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let ids = [&element, &text, &comment].map(|ticket| commit.created(ticket).unwrap().unwrap());
+    let before_snapshots = observation.counts();
+    let snapshot = dom.snapshot();
+    let snapshot_clone = snapshot.clone();
+    assert_eq!(observation.counts(), before_snapshots);
+    for id in ids {
+        let node = snapshot_clone.state.slots[id.slot].node.as_ref().unwrap();
+        for values in [&node.children, &node.manual_nodes, &node.assigned_nodes] {
+            assert!(values.is_empty());
+            assert_eq!(values.capacity(), 0);
+        }
+        assert!(node.fullscreen_events.is_empty());
+        assert_eq!(node.fullscreen_events.capacity(), 0);
+    }
+    let graph = dom
+        .state
+        .slots
+        .inspect_graph(|_| {
+            Ok(bank::Totals {
+                bytes: size_of::<Slot>(),
+                units: 0,
+                occurrences: 1,
+            })
+        })
+        .unwrap();
+    let actual = observation.finish();
+    eprintln!(
+        "actual_shared_targets={actual:?}; remaining_canonical_slot_bank_pages={} records={}",
+        graph.pages().count(),
+        graph.records().count()
+    );
+    assert!(graph.pages().count() > 0);
+    assert_eq!(graph.records().count(), 4);
+    assert_eq!(
+        actual.zero_capacity_headers, 0,
+        "canonical empty lists have no sequence target allocation"
+    );
+}
+
+#[test]
+fn ordinary_source_and_rollback_preserve_empty_snapshots_and_noop_roots() {
+    let cancel = AtomicBool::new(false);
+    let limits = DomLimits::new(16, 4096, 64, 0, 0, 16, 1_000_000).unwrap();
+    let mut dom = Dom::new(limits).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element(&document, "root");
+    let child = batch.create_text(&document, "child");
+    let done = dom.apply(batch, &cancel).unwrap();
+    let root = done.created(&root).unwrap().unwrap();
+    let child = done.created(&child).unwrap().unwrap();
+    let empty = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.insert_before(child, root, None);
+    dom.apply(batch, &cancel).unwrap();
+    let populated = dom.snapshot();
+    assert!(empty.node(root).unwrap().children().is_empty());
+    assert_eq!(populated.node(root).unwrap().children(), [child]);
+    let policy = crate::DomSourceLimits::new(64_000_000, 1_000_000, 10_000_000, 16, 64, 64, 1);
+    let mut source = dom
+        .begin_source_edit(crate::DomSourceEdit::detach(child), policy, &cancel)
+        .unwrap();
+    assert!(matches!(
+        source.advance(&cancel).unwrap(),
+        crate::DomSourceProgress::Complete(_)
+    ));
+    drop(source);
+    assert!(dom.snapshot().node(root).unwrap().children().is_empty());
+    assert_eq!(populated.node(root).unwrap().children(), [child]);
+    let batch = DomBatch::new();
+    let mut draft = store::Draft::new_source(&dom, batch.owner, &batch.commands, policy, &cancel)
+        .unwrap()
+        .0;
+    let original = dom.state.clone();
+    let stamp = dom.snapshot().stamp();
+    let mark = draft
+        .source_checkpoint(draft.source_other_bytes, draft.source_other_units, &cancel)
+        .unwrap();
+    draft
+        .pre_insert(
+            Key::Existing(child),
+            Key::Existing(root),
+            None,
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(
+        draft
+            .node(Key::Existing(root))
+            .unwrap()
+            .children
+            .iter()
+            .collect::<Vec<_>>(),
+        [Key::Existing(child)]
+    );
+    let spent = draft.source_work.load(Ordering::Relaxed);
+    mark.restore(&mut draft);
+    assert!(draft.node(Key::Existing(root)).unwrap().children.is_empty());
+    assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
+    let prepared = draft.finish(&dom, &cancel).unwrap();
+    let commit = dom.publish(prepared, &cancel).unwrap();
+    assert!(commit.changes().changes().is_empty());
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert!(Arc::ptr_eq(&dom.state, &original));
+}
