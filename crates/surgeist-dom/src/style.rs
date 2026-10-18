@@ -313,7 +313,7 @@ impl DomStyleRequest {
 #[derive(Clone, Debug)]
 pub struct DomStyleInlineCspObservation {
     pub(crate) source: DomStyleSource,
-    pub(crate) policies: std::sync::Arc<Vec<crate::DocumentString>>,
+    pub(crate) policies: crate::store::SharedVec<crate::DocumentString>,
     pub(crate) policy_revision: u64,
     pub(crate) allowed: bool,
 }
@@ -323,12 +323,12 @@ impl DomStyleInlineCspObservation {
     pub fn complete_empty(source: &DomStyleSource, policy_revision: u64) -> Self {
         let result = Self {
             source: source.clone(),
-            policies: std::sync::Arc::new(Vec::new()),
+            policies: crate::store::SharedVec::default(),
             policy_revision,
             allowed: true,
         };
         #[cfg(test)]
-        if crate::store::scale_metrics::ENABLED {
+        if crate::store::scale_metrics::ENABLED && result.policies.has_backing() {
             crate::store::empty_sequence_observation::allocated::<crate::DocumentString>(
                 crate::store::empty_sequence_observation::Kind::StylePolicies,
                 result.policies.capacity(),
@@ -341,8 +341,8 @@ impl DomStyleInlineCspObservation {
         &self,
         graph: &mut crate::store::compact_tests::AllocationGraph,
     ) {
-        graph.vector(
-            &self.policies,
+        self.policies.inspect_named_allocations(
+            graph,
             "style.policies.target",
             "style.policies.buffer",
         );
@@ -360,7 +360,7 @@ impl DomStyleInlineCspObservation {
     ) -> Self {
         Self {
             source: source.clone(),
-            policies,
+            policies: crate::store::SharedVec::from_shared(policies),
             policy_revision,
             allowed,
         }

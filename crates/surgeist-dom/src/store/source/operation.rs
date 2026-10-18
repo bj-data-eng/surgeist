@@ -2483,16 +2483,8 @@ impl DomSourceLease<'_> {
             .retained_bytes()?
             .checked_sub(size_of::<DomStyleSource>())
             .ok_or(DomError::RepresentationExhausted)?;
-        let mut bytes = size_of::<Vec<DocumentString>>()
-            .checked_add(source_bytes)
-            .ok_or(DomError::RepresentationExhausted)?
-            .checked_add(
-                observation
-                    .policies
-                    .capacity()
-                    .checked_mul(size_of::<DocumentString>())
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
+        let mut bytes = source_bytes
+            .checked_add(observation.policies.retained_bytes()?)
             .ok_or(DomError::RepresentationExhausted)?;
         op.draft.source_admit(bytes, cancel)?;
         let mut units = observation.source.retained_units()?;

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::atomic::AtomicBool;
 
 use surgeist_html::bounded::{
     HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
@@ -11,7 +11,7 @@ use crate::store::source::{
     formation::{self, Formation},
     storage::Payload,
 };
-use crate::{DocumentString, DomError};
+use crate::{DocumentString, DomError, store::SharedVec};
 use std::mem::size_of;
 
 /// Canonical PI target, CharacterData and the map derived from that exact data.
@@ -20,7 +20,7 @@ use std::mem::size_of;
 pub struct DomProcessingInstruction {
     target: DocumentString,
     data: DocumentString,
-    attributes: Arc<Vec<(DocumentString, DocumentString)>>,
+    attributes: SharedVec<(DocumentString, DocumentString)>,
 }
 
 impl DomProcessingInstruction {
@@ -31,8 +31,8 @@ impl DomProcessingInstruction {
     ) {
         graph.string(&self.target);
         graph.string(&self.data);
-        graph.vector(
-            &self.attributes,
+        self.attributes.inspect_named_allocations(
+            graph,
             "pi.attributes.target",
             "pi.attributes.buffer",
         );
@@ -49,8 +49,7 @@ impl DomProcessingInstruction {
         let mut payload = crate::store::source::storage::Payload::default();
         payload.string(&self.target)?;
         payload.string(&self.data)?;
-        payload.add_bytes(std::mem::size_of::<Vec<(DocumentString, DocumentString)>>())?;
-        payload.bank::<(DocumentString, DocumentString)>(self.attributes.capacity())?;
+        payload.add_bytes(self.attributes.retained_bytes()?)?;
         for (name, value) in self.attributes.iter() {
             step()?;
             payload.string(name)?;
@@ -66,10 +65,10 @@ impl DomProcessingInstruction {
         let result = Self {
             target,
             data,
-            attributes: Arc::new(attributes),
+            attributes: SharedVec::from(attributes),
         };
         #[cfg(test)]
-        if crate::store::scale_metrics::ENABLED {
+        if crate::store::scale_metrics::ENABLED && result.attributes.has_backing() {
             crate::store::empty_sequence_observation::allocated::<(DocumentString, DocumentString)>(
                 crate::store::empty_sequence_observation::Kind::PiAttributes,
                 result.attributes.capacity(),
@@ -151,7 +150,9 @@ impl DomProcessingInstruction {
         let target = formation::share(target, budget, cancelled)?;
         let data = formation::share(data, budget, cancelled)?;
         let attributes = parse_attributes(&data, budget, cancelled)?;
-        if let Some(budget) = budget {
+        if let Some(budget) = budget
+            && attributes.capacity() != 0
+        {
             budget.retain_bytes(
                 size_of::<Vec<(DocumentString, DocumentString)>>(),
                 cancelled,
@@ -160,10 +161,10 @@ impl DomProcessingInstruction {
         let result = Self {
             target,
             data,
-            attributes: Arc::new(attributes),
+            attributes: SharedVec::from(attributes),
         };
         #[cfg(test)]
-        if crate::store::scale_metrics::ENABLED {
+        if crate::store::scale_metrics::ENABLED && result.attributes.has_backing() {
             crate::store::empty_sequence_observation::allocated::<(DocumentString, DocumentString)>(
                 crate::store::empty_sequence_observation::Kind::PiAttributes,
                 result.attributes.capacity(),

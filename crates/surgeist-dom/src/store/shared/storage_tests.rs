@@ -95,6 +95,27 @@ fn reserved_empty_preserves_capacity_identity_and_clone_lifetime() {
 }
 
 #[test]
+fn supplied_zero_capacity_target_keeps_its_identity_and_owner() {
+    let raw = Arc::new(Vec::<u32>::new());
+    let weak = Arc::downgrade(&raw);
+    let target = Arc::as_ptr(&raw);
+    let values = SharedVec::from_shared(raw);
+    let clone = values.clone();
+    let absent = SharedVec::<u32>::default();
+    assert_eq!(values.capacity(), 0);
+    assert!(values.has_backing());
+    assert!(values.same_storage(&clone));
+    assert!(!values.same_storage(&absent));
+    assert_eq!(values, absent);
+    assert_eq!(values.retained_bytes().unwrap(), size_of::<Vec<u32>>());
+    assert_eq!(Arc::as_ptr(&weak.upgrade().unwrap()), target);
+    drop(values);
+    assert!(weak.upgrade().is_some());
+    drop(clone);
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
 fn zero_capacity_canonical_sequence_retains_no_backing_occurrence() {
     let empty = SharedVec::<u32>::default();
     let ledger = custody::Ledger::default();

@@ -22,6 +22,13 @@ impl<T> Default for SharedVec<T> {
     }
 }
 impl<T> SharedVec<T> {
+    /// Retain an existing shared target exactly, including a zero-capacity one.
+    /// The caller's target already exists, so this transfer never normalizes it
+    /// to absence or allocates another target.
+    pub(crate) fn from_shared(backing: Arc<Vec<T>>) -> Self {
+        Self(Some(backing))
+    }
+
     /// Absence is one neutral storage state, rather than a backing identity.
     pub(crate) fn same_storage(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
@@ -52,7 +59,7 @@ impl<T> SharedVec<T> {
     }
 
     #[cfg(test)]
-    pub(in crate::store) fn inspect_named_allocations(
+    pub(crate) fn inspect_named_allocations(
         &self,
         graph: &mut super::compact_tests::AllocationGraph,
         target: &'static str,
