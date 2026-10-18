@@ -457,4 +457,6 @@ impl Dom {
 }
 
 #[cfg(test)]
+mod incremental_tests;
+#[cfg(test)]
 mod tests;
