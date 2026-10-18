@@ -375,6 +375,15 @@ fn native_known_empty_form_history_has_no_target_allocation() {
 }
 
 #[test]
+fn absent_and_reserved_empty_form_history_are_content_equal() {
+    use crate::form::{FormPastName, FormPastNames};
+    let absent = FormPastNames::<usize>::fresh();
+    let reserved = FormPastNames::from_entries(Vec::<FormPastName<usize>>::with_capacity(7));
+    assert_eq!(absent, reserved);
+    assert_eq!(reserved, absent);
+}
+
+#[test]
 fn reserved_and_populated_form_history_preserve_storage_order_and_clones() {
     use crate::form::{FormPastName, FormPastNames};
     for populated in [false, true] {
