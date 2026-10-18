@@ -51,6 +51,8 @@ mod shared;
 mod slot;
 pub(crate) mod source;
 pub(crate) mod style;
+#[cfg(test)]
+mod style_custody_tests;
 mod svg_script;
 mod template;
 mod textarea;
@@ -1523,6 +1525,8 @@ impl Dom {
         // The retirement scan is admitted before the publication fence. The
         // matching post-publication retain only drops exact retired handles.
         for _ in &self.style_cssom_roots {
+            #[cfg(test)]
+            style_custody_tests::observe(style_custody_tests::Site::Publication);
             if let Some(budget) = &formation {
                 budget.retain_bytes(0, cancelled)?;
             } else {
@@ -1581,8 +1585,11 @@ impl Dom {
             self.state = state;
             // Exact generation retirement releases canonical custody. Detach,
             // adoption and historical snapshots do not retire the live root.
-            self.style_cssom_roots
-                .retain(|root| self.state.node(self.owner, root.root()).is_ok());
+            self.style_cssom_roots.retain(|root| {
+                #[cfg(test)]
+                style_custody_tests::observe(style_custody_tests::Site::Retention);
+                self.state.node(self.owner, root.root()).is_ok()
+            });
             self.revision = revision;
             if let Some(mut entry) = entry {
                 entry.older = self.history.take();

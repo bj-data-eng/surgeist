@@ -172,7 +172,13 @@ impl Dom {
         Ok(self
             .style_cssom_roots
             .iter()
-            .find(|entry| entry.root() == root)
+            .find(|entry| {
+                #[cfg(test)]
+                crate::store::style_custody_tests::observe(
+                    crate::store::style_custody_tests::Site::Lookup,
+                );
+                entry.root() == root
+            })
             .map(DomStyleCssomRoot::duplicate))
     }
     pub(in crate::store) fn source_owner_custody_bytes(&self) -> Result<usize, DomError> {
@@ -2735,6 +2741,10 @@ impl DomSourceLease<'_> {
         }
         op.refresh_admission(cancel)?;
         for existing in &self.dom.style_cssom_roots {
+            #[cfg(test)]
+            crate::store::style_custody_tests::observe(
+                crate::store::style_custody_tests::Site::BindingLookup,
+            );
             op.draft.source_step(cancel)?;
             if existing.root() == root.root() {
                 return if existing.same_owner(root) {
@@ -2770,6 +2780,10 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::RepresentationExhausted)?;
         op.draft.source_admit(additional, cancel)?;
         for existing in &self.dom.style_cssom_roots {
+            #[cfg(test)]
+            crate::store::style_custody_tests::observe(
+                crate::store::style_custody_tests::Site::BindingCopy,
+            );
             op.draft.source_step(cancel)?;
             replacement.push(existing.duplicate());
         }
@@ -2798,6 +2812,10 @@ impl DomSourceLease<'_> {
         // This allocation-free access has no cancellation argument. It still
         // consumes the current operation's absolute source-work allowance.
         for root in &self.dom.style_cssom_roots {
+            #[cfg(test)]
+            crate::store::style_custody_tests::observe(
+                crate::store::style_custody_tests::Site::LeaseLookup,
+            );
             op.draft.source_step(&AtomicBool::new(false))?;
             if Some(root.root()) == expected.cssom_root() {
                 return Ok(root.duplicate());
