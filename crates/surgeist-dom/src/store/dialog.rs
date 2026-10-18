@@ -284,7 +284,7 @@ impl Draft {
                     // This algorithm reads the receiver's then-current Document,
                     // independently of the show-local Document captured above.
                     let document = self.dialog_method_node_document(key, cancel)?;
-                    if !self.dialog_method_known_empty_popovers(document, cancel)? {
+                    if !self.document_known_empty_popovers(document, cancel)? {
                         return Err(DomError::DialogProcessingUnavailable { action });
                     }
                     let MethodLocals::Show {
@@ -311,7 +311,7 @@ impl Draft {
                         return Err(DomError::DialogProcessingUnavailable { action });
                     };
                     if popover_endpoint.is_some()
-                        || !self.dialog_method_known_empty_popovers(document, cancel)?
+                        || !self.document_known_empty_popovers(document, cancel)?
                     {
                         return Err(DomError::DialogProcessingUnavailable { action });
                     }

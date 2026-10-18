@@ -42,11 +42,7 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     );
     // Exercise the real list owner, independently of active watcher eligibility.
     draft.dialog_list_add(document, subject, &cancel).unwrap();
-    assert!(
-        draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
 
     // This is an unpublished negative raw-state fixture, not a claim that a
     // modal/popover producer or full Show inserted this genuine Element.
@@ -66,11 +62,7 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     *top_layer = members;
     drop(formation);
     draft.source_admit(0, &cancel).unwrap();
-    assert!(
-        draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
     let Some(DocumentInteractiveState::Known { top_layer, .. }) =
         draft.node_mut(document).interactive_document.as_mut()
     else {
@@ -78,23 +70,11 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     };
     top_layer.clear();
     assert_eq!(top_layer.capacity(), 1);
-    assert!(
-        draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
     draft.node_mut(document).interactive_document = Some(DocumentInteractiveState::Unavailable);
-    assert!(
-        !draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
     draft.node_mut(document).interactive_document = None;
-    assert!(
-        !draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
     assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
     assert!(
@@ -135,12 +115,12 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     // the previously captured exact Document, never substitute this new one.
     assert!(
         draft
-            .dialog_method_known_empty_popovers(current, &cancel)
+            .document_known_empty_popovers(current, &cancel)
             .unwrap()
     );
     assert!(
         !draft
-            .dialog_method_known_empty_popovers(captured, &cancel)
+            .document_known_empty_popovers(captured, &cancel)
             .unwrap()
     );
     assert_eq!(before.node(dialog).unwrap().owner_document(), Some(first));
@@ -168,21 +148,17 @@ fn captured_document_qualification_rejects_actual_foreign_and_wrong_generation()
     )
     .unwrap();
     assert_eq!(
-        draft.dialog_method_known_empty_popovers(wrong_generation, &cancel),
+        draft.document_known_empty_popovers(wrong_generation, &cancel),
         Err(DomError::StaleNode)
     );
     assert_eq!(
-        draft.dialog_method_known_empty_popovers(foreign, &cancel),
+        draft.document_known_empty_popovers(foreign, &cancel),
         Err(DomError::ForeignOwner)
     );
+    assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
     assert!(
         draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
-    assert!(
-        draft
-            .dialog_method_known_empty_popovers(second, &cancel)
+            .document_known_empty_popovers(second, &cancel)
             .unwrap()
     );
 }
@@ -216,7 +192,7 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
                     .map(|_| ())
             } else {
                 draft
-                    .dialog_method_known_empty_popovers(first, &cancel)
+                    .document_known_empty_popovers(first, &cancel)
                     .map(|_| ())
             };
             assert_eq!(cancelled, Err(DomError::Cancelled));
@@ -228,7 +204,7 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
                     .map(|document| assert_eq!(document, first))
             } else {
                 draft
-                    .dialog_method_known_empty_popovers(first, &cancel)
+                    .document_known_empty_popovers(first, &cancel)
                     .map(|empty| assert!(empty))
             };
             if short {
@@ -242,11 +218,7 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
                 draft.dialog_method_node_document(subject, &cancel).unwrap(),
                 first
             );
-            assert!(
-                draft
-                    .dialog_method_known_empty_popovers(first, &cancel)
-                    .unwrap()
-            );
+            assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
             assert_eq!(draft.source_storage_bytes(&cancel).unwrap(), storage);
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
@@ -283,7 +255,7 @@ fn original_checkpoint_restores_actual_adoption_and_keeps_spent_work_for_retry()
     let spent = draft.source_work.load(Ordering::Relaxed);
     cancel.store(true, Ordering::Relaxed);
     assert_eq!(
-        draft.dialog_method_known_empty_popovers(captured, &cancel),
+        draft.document_known_empty_popovers(captured, &cancel),
         Err(DomError::Cancelled)
     );
     checkpoint.restore(&mut draft);
@@ -293,11 +265,7 @@ fn original_checkpoint_restores_actual_adoption_and_keeps_spent_work_for_retry()
         draft.dialog_method_node_document(subject, &cancel).unwrap(),
         first
     );
-    assert!(
-        draft
-            .dialog_method_known_empty_popovers(first, &cancel)
-            .unwrap()
-    );
+    assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
     assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
 }

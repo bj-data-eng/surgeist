@@ -6,6 +6,8 @@ mod dialog;
 pub(crate) mod dialog_queue;
 mod failure;
 mod focus;
+#[cfg(test)]
+mod fullscreen_tests;
 pub(in crate::store) mod hosted;
 mod request_close;
 mod scope;

@@ -251,6 +251,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.preflight_top_layer_adoption(node, document, true, cancelled)?;
         self.push_effect(
             select::Effect::Tree(Frame::AdoptAfterRemoval { node, document }),
             self.effect_scoped,
@@ -269,6 +270,7 @@ impl Draft {
         if self.node(node)?.document == document {
             return Ok(());
         }
+        self.preflight_top_layer_adoption(node, document, false, cancelled)?;
         let mut pending = self.effect_vec();
         self.select_reserve(&mut pending, 1, cancelled)?;
         pending.push((node, document));
@@ -534,6 +536,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.fullscreen_removing_steps(root, cancel)?;
         let mut pending = self.effect_vec();
         self.select_reserve(&mut pending, 1, cancel)?;
         pending.push(root);
@@ -617,6 +620,7 @@ impl Draft {
                             self.source_admit(0, cancel)?;
                         }
                         self.retire_autofocus_candidate(key, cancel)?;
+                        self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;
                         let node = match key {
                             Key::Existing(i) => self.existing[i].take(),

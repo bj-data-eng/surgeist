@@ -126,6 +126,7 @@ mod document;
 mod element;
 mod fieldset;
 mod form;
+mod fullscreen;
 mod host;
 mod hosted;
 mod hyperlink;
@@ -172,6 +173,7 @@ pub use document::{
     DomOpaqueOrigin, DomRegistryBinding,
 };
 pub use element::{DomElement, DomElementDefinition};
+pub use fullscreen::DomFullscreenModelStep;
 pub use host::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,

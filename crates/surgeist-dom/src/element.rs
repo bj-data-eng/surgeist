@@ -34,6 +34,8 @@ pub struct DomElement {
     family: NativeFamily,
     content_navigable: Option<crate::DomHostedNavigableId>,
     captured_in_view_transition: bool,
+    fullscreen: bool,
+    keyboard_lock: bool,
 }
 
 impl DomElement {
@@ -66,6 +68,8 @@ impl DomElement {
             family,
             content_navigable: None,
             captured_in_view_transition: false,
+            fullscreen: false,
+            keyboard_lock: false,
         }
     }
     pub(crate) fn native_components(
@@ -212,6 +216,8 @@ impl DomElement {
             family,
             content_navigable: self.content_navigable,
             captured_in_view_transition: self.captured_in_view_transition,
+            fullscreen: self.fullscreen,
+            keyboard_lock: self.keyboard_lock,
         })
     }
     fn initialize(
@@ -381,6 +387,8 @@ impl DomElement {
             family,
             content_navigable: None,
             captured_in_view_transition: false,
+            fullscreen: false,
+            keyboard_lock: false,
         })
     }
     pub(crate) fn is_template(&self) -> bool {
@@ -730,6 +738,28 @@ impl DomElement {
     pub fn captured_in_view_transition(&self) -> bool {
         self.captured_in_view_transition
     }
+    pub fn fullscreen_flag(&self) -> bool {
+        self.fullscreen
+    }
+    pub fn keyboard_lock_flag(&self) -> bool {
+        self.keyboard_lock
+    }
+    pub fn iframe_fullscreen_flag(&self) -> Option<bool> {
+        match &self.family {
+            NativeFamily::Iframe(state) => Some(state.fullscreen),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_fullscreen_flag(&mut self) {
+        self.fullscreen = true;
+    }
+    pub(crate) fn clear_fullscreen_flags(&mut self) {
+        self.fullscreen = false;
+        self.keyboard_lock = false;
+        if let NativeFamily::Iframe(state) = &mut self.family {
+            state.fullscreen = false;
+        }
+    }
     pub(crate) fn set_captured_in_view_transition(&mut self, captured: bool) {
         self.captured_in_view_transition = captured;
     }
@@ -742,6 +772,8 @@ impl DomElement {
             && self.common == other.common
             && self.nonce == other.nonce
             && self.family == other.family
+            && self.fullscreen == other.fullscreen
+            && self.keyboard_lock == other.keyboard_lock
     }
     pub fn name(&self) -> &QualifiedName {
         &self.name

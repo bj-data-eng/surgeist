@@ -3,6 +3,33 @@ use super::*;
 use crate::template::TemplateDocument;
 
 impl Draft {
+    /// Read HTML's actual appropriate-owner choice without allocating a new
+    /// owner merely to qualify adoption. None denotes the fresh-owner branch.
+    pub(super) fn template_adoption_owner(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Key>, DomError> {
+        self.source_step(cancel)?;
+        let state = self
+            .node(document)?
+            .template_document
+            .ok_or(DomError::WrongDocument)?;
+        Ok(
+            match surgeist_html::template_contents_owner_document(
+                matches!(state, TemplateDocument::InertTemplate),
+                state.inert().is_some(),
+            ) {
+                surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument => Some(document),
+                surgeist_html::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
+                    state.inert()
+                }
+                surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
+                    None
+                }
+            },
+        )
+    }
     pub(super) fn owned_template_contents(
         &self,
         template: Key,

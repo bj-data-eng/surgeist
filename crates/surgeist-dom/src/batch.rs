@@ -64,6 +64,15 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    FullscreenElementModel {
+        node: NodeOperand,
+    },
+    UnfullscreenElementModel {
+        node: NodeOperand,
+    },
+    UnfullscreenDocumentModel {
+        document: NodeOperand,
+    },
     SetDesignMode {
         document: NodeOperand,
         value: DocumentString,
@@ -255,6 +264,21 @@ impl Default for DomBatch {
 }
 
 impl DomBatch {
+    /// Runs the native fullscreen model, without requestFullscreen eligibility
+    /// or platform admission. Unavailable popover work refuses the atomic batch.
+    pub fn fullscreen_element_model(&mut self, node: impl Into<NodeOperand>) {
+        self.commands
+            .push(Command::FullscreenElementModel { node: node.into() });
+    }
+    pub fn unfullscreen_element_model(&mut self, node: impl Into<NodeOperand>) {
+        self.commands
+            .push(Command::UnfullscreenElementModel { node: node.into() });
+    }
+    pub fn unfullscreen_document_model(&mut self, document: impl Into<NodeOperand>) {
+        self.commands.push(Command::UnfullscreenDocumentModel {
+            document: document.into(),
+        });
+    }
     /// Runs HTML's ordered designMode setter. A reached unavailable selection
     /// or focus effect refuses this entire atomic batch.
     pub fn set_design_mode(

@@ -17,12 +17,14 @@ use surgeist_html::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct IframeState {
+    pub(super) fullscreen: bool,
     pub(super) initial: HtmlIframeInitialState,
     pub(super) sandbox: surgeist_html::HtmlSandboxFlags,
 }
 impl IframeState {
     pub(crate) fn fresh() -> Self {
         Self {
+            fullscreen: false,
             initial: HtmlIframeInitialState::fresh(),
             sandbox: surgeist_html::HtmlSandboxFlags::empty(),
         }

@@ -325,6 +325,16 @@ snapshots retain their original Document identities. Live-child membership and
 retained history custody are separate: a queued creation-history closure still
 runs after removal without restoring the live container relation.
 
+Document destruction includes unloading cleanup even when no unload event is
+fired, including initial Frame/Iframe children. DOM's canonical cleanup check
+retains `FullyExitFullscreen` when the actual raw top layer still selects a
+fullscreen element. The same queued invocation remains pending before Document
+retirement, history clearing and destruction proof. Explicit native model
+unfullscreening can permit its next `run_next` retry; a flag outside raw
+membership does not block cleanup. This guard supplies no platform full-exit
+result. The [DOM model](../../surgeist-dom/README.md) owns the state and model
+operations.
+
 Surviving Documents retain their canonical metadata, registry and fixed platform
 policy after hosted teardown. Ordinary DOM edits can use those facts while
 current hosted settings and execution remain unavailable. Actual retirement

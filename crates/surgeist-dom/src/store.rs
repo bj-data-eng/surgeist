@@ -26,6 +26,7 @@ mod document;
 mod element_tasks;
 mod focus;
 mod form;
+mod fullscreen;
 pub(crate) mod hosted;
 mod hyperlink;
 mod image;
@@ -101,6 +102,13 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    FullscreenModelUnavailable {
+        step: crate::DomFullscreenModelStep,
+    },
+    TopLayerAdoptionUnavailable {
+        subject: Option<NodeId>,
+        old_document: Option<DocumentId>,
+    },
     StaleRange,
     RangeAssociationIneligible,
     RangePublicationUnavailable,
@@ -729,6 +737,8 @@ pub enum DomChange {
     DocumentBase(DocumentId),
     DocumentMeta(DocumentId),
     DocumentInteractiveState(DocumentId),
+    /// Raw-derived fullscreen, simple-document or keyboard-lock facts changed.
+    DocumentFullscreenState(DocumentId),
     DocumentAutofocusState(DocumentId),
     DocumentRenderBlocking(DocumentId),
     DocumentEncodingUrlFacts(DocumentId),
@@ -2270,6 +2280,18 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::FullscreenElementModel { node } => {
+                let node = self.resolve(node.clone())?;
+                self.fullscreen_element_model(node, cancelled)?;
+            }
+            Command::UnfullscreenElementModel { node } => {
+                let node = self.resolve(node.clone())?;
+                self.unfullscreen_element_model(node, cancelled)?;
+            }
+            Command::UnfullscreenDocumentModel { document } => {
+                let document = self.resolve(document.clone())?;
+                self.unfullscreen_document_model(document, cancelled)?;
+            }
             Command::SetDesignMode { document, value } => {
                 let document = self.resolve(document.clone())?;
                 self.design_mode_boundary(document, value, cancelled)?;
@@ -3307,6 +3329,13 @@ fn difference(
                 if node.interactive_document != current.interactive_document {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(DomChange::DocumentInteractiveState(DocumentId(id)));
+                }
+                if matches!(node.kind, DomNodeKind::Document(_))
+                    && fullscreen::captured_facts(old, node, owner, budget, cancelled)?
+                        != fullscreen::captured_facts(new, current, owner, budget, cancelled)?
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFullscreenState(DocumentId(id)));
                 }
                 if node.base_document != current.base_document {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;

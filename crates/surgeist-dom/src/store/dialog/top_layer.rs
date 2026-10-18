@@ -2,7 +2,7 @@
 use super::*;
 
 impl Draft {
-    pub(super) fn add_top_layer(
+    pub(in crate::store) fn add_top_layer(
         &mut self,
         subject: Key,
         cancel: &AtomicBool,
@@ -26,7 +26,7 @@ impl Draft {
         }
         self.dialog_list_append(document, subject, DialogList::Raw, cancel)
     }
-    pub(super) fn request_top_layer_removal(
+    pub(in crate::store) fn request_top_layer_removal(
         &mut self,
         subject: Key,
         cancel: &AtomicBool,
@@ -41,7 +41,7 @@ impl Draft {
         }
         self.dialog_list_append(document, subject, DialogList::Pending, cancel)
     }
-    pub(super) fn remove_top_layer_immediately(
+    pub(in crate::store) fn remove_top_layer_immediately(
         &mut self,
         subject: Key,
         cancel: &AtomicBool,

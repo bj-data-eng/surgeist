@@ -1304,6 +1304,53 @@ affine scope releases its rows, while the bounded weak index charges remaining
 headers until reclamation. This mechanism is independent of snapshots and
 change history and preserves the standalone owner's `Send` contract.
 
+`DomBatch::fullscreen_element_model`, `unfullscreen_element_model` and
+`unfullscreen_document_model`, with matching `DomSourceEdit` constructors,
+implement the [native Fullscreen model](../../references/fullscreen--7c38d773117aa1e6bfa13754afe77483f40c908f--7d8cd68e63c0.md).
+Every Element namespace has initially unset fullscreen and keyboard-lock flags;
+only an actual HTML Iframe has its separate iframe fullscreen flag. Immutable
+Element getters expose those values. DOM clone/import initializes fresh flags,
+while snapshots and adoption preserve current state.
+
+The model shares the canonical raw/pending top layer and UA-rule producer.
+The current closed HTML common state proves empty showing Auto/Hint lists when
+the Document's list history is qualified. Fullscreening then sets the flag,
+removes membership immediately and appends at the top; repeating it reorders the
+member. Unfullscreening clears all applicable flags and removes membership.
+Document unfullscreening visits every flagged raw member. Unknown history
+remains unavailable. These helpers admit detached Elements and implement neither
+`requestFullscreen` eligibility nor platform execution or event delivery.
+
+`DomDocument::fullscreen_model_element`, legacy `fullscreen`,
+`is_simple_fullscreen_document` and `keyboard_lock_active` derive from flagged
+raw membership. `DomDocument::fullscreen_element` and
+`DomShadowRoot::fullscreen_element` instead apply the standard retargeting and
+ordinary-tree checks, including closed shadows and disconnected hosts. Detached
+raw membership can therefore make legacy `fullscreen` true while the standard
+getter returns null. These views require a complete Source basis. Flag changes
+produce `ElementState` and derived `DocumentFullscreenState` evidence, including
+when raw membership itself is unchanged.
+
+Ordinary removal visits the static flagged shadow-inclusive list in source
+order. The current fullscreen element invokes exit; other flagged entries
+unfullscreen. Inactive exit rejects before clearing its flags, after which the
+removing steps still remove lingering membership. Active exit remains a precise
+`FullscreenModelUnavailable` requirement. Atomic failure preserves the original
+state. Cross-Document adoption refuses residual old-Document raw or pending
+membership that its actual source path cannot clean. The check covers ordinary
+and shadow descendants and separately adopted Template contents, including
+insertion/replacement. Same-Document adoption and flags without membership do
+not trigger that refusal. Explicit model unfullscreening can permit a later
+adoption; adoption does not silently add that operation.
+
+Hosted Document destruction runs unloading cleanup even when unload events are
+suppressed. Before retiring the Document or clearing history, its original
+cleanup owner requires a null raw-derived fullscreen element. A non-null result
+retains `FullyExitFullscreen` and the same queued cleanup for retry; flag-only
+Elements outside raw membership do not block it. Actual unfullscreening permits
+the queued destruction to continue. General full-exit, platform, orientation
+and fullscreen event services remain separate contributions.
+
 Native HTML Template owns a separate real DocumentFragment. Its checked
 `DomNode::as_template()` view exposes contents and the HTML-owned known-null native
 insertion state. Its structural `contents()` read returns `Result<NodeId, DomError>`;

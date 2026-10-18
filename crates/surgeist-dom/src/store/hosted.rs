@@ -1382,6 +1382,30 @@ impl Dom {
     ) -> Result<(), DomHostedError> {
         self.require_source_idle()?;
         let work = &operation.request().work;
+        // HTML's destroy-Document path runs unloading cleanup even when event
+        // unloading is suppressed for an initial child. Canonical fullscreen
+        // membership cannot be certified settled by retiring the hosted graph.
+        let captured = self.state.node(self.owner, document.node())?;
+        let Some(crate::dialog::DocumentInteractiveState::Known { top_layer, .. }) =
+            &captured.interactive_document
+        else {
+            return Err(DomError::FullscreenModelUnavailable {
+                step: crate::DomFullscreenModelStep::ReadTopLayer,
+            }
+            .into());
+        };
+        for &id in top_layer.iter().rev() {
+            work.step(cancel)?;
+            let DomNodeKind::Element(element) = &self.state.node(self.owner, id)?.kind else {
+                return Err(DomError::WrongNodeKind.into());
+            };
+            if element.fullscreen_flag() {
+                return Err(DomError::FullscreenModelUnavailable {
+                    step: crate::DomFullscreenModelStep::FullyExitFullscreen,
+                }
+                .into());
+            }
+        }
         // Mutable CSSOM custody is reconciled by its actual owner, never by a
         // lifecycle metadata transition. Unrelated Documents remain usable.
         for root in &self.style_cssom_roots {

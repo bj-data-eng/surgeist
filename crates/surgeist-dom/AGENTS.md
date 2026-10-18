@@ -324,6 +324,21 @@ and mandatory tail. Keep cancellation, revisions, checkpoints and output custody
 with that owner. No echo reset receipt, fabricated eligibility or Dialog inert
 shortcut supplies the missing generic focus execution.
 
+Native fullscreen model commands share the raw/pending top-layer owner and its
+UA-rule producer. Keep every Element namespace eligible for model flags and
+the iframe flag restricted to its actual family. Preserve fresh DOM clone/import
+versus snapshot/adoption state, raw-derived versus standard retargeted getters,
+and derived Document change coverage when membership is unchanged. Removing
+steps distinguish inactive exit rejection from unfullscreening. Qualify the
+entire changing adoption closure before migration, including actual Template
+owners; refuse residual old-Document raw or pending membership precisely.
+Hosted destroy cleanup must retain a real non-null fullscreen full-exit
+obligation before retirement/history clearing, even without unload events.
+Unknown history is not empty; flag-only state without membership is not that
+guard. Reuse original finite Work, scratch and Source publication ownership.
+The focused public checks are `native_fullscreen_model` and Runtime's
+`dom_fullscreen_model`; model commands do not supply requestFullscreen services.
+
 Retain exact two-way subject mapping,
 document/host qualification and unavailable external facts. Native absent
 browsing context proves scripting disabled independently of XML/HTML class.

@@ -118,6 +118,9 @@ impl OperationRoot {
             | Command::SetTextareaDefaultValue { node, .. }
             | Command::ResetTextarea { node }
             | Command::SetDesignMode { document: node, .. }
+            | Command::FullscreenElementModel { node }
+            | Command::UnfullscreenElementModel { node }
+            | Command::UnfullscreenDocumentModel { document: node }
             | Command::SetInputValue { node, .. }
             | Command::SetInputChecked { node, .. }
             | Command::SetInputIndeterminate { node, .. }

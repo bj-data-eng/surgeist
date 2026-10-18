@@ -348,7 +348,7 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
     let mut staged = draft(&dom);
     assert!(
         staged
-            .dialog_method_known_empty_popovers(document, &cancel())
+            .document_known_empty_popovers(document, &cancel())
             .unwrap()
     );
     let key = staged.resolve(document.node().into()).unwrap();
@@ -359,7 +359,7 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
     );
     assert!(
         !staged
-            .dialog_method_known_empty_popovers(document, &cancel())
+            .document_known_empty_popovers(document, &cancel())
             .unwrap()
     );
     assert_eq!(

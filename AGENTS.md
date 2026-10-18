@@ -173,6 +173,10 @@ The native designMode setter uses HTML's interpreter in the original DOM Source
 owner, retaining actual Range reset and unavailable generic focusing work.
 Null-root local completion and canonical enabled-state readback do not certify
 positive focus movement or a pending setter's composed completion.
+The native fullscreen model shares canonical raw/pending top-layer state and
+UA-rule inputs, with namespace-independent flags and retargeted immutable views.
+Its removal, adoption and hosted-destruction guards retain actual unfinished
+exit obligations; model completion does not establish platform fullscreen.
 DOM depends directly on HTML and consumes its exact `DocumentString`. Its direct
 HTML-semantics adapter builds qualified ordinary and shadow captures, retains
 checked bidirectional identity maps, and invokes producer queries with explicit

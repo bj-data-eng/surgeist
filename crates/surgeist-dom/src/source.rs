@@ -269,6 +269,24 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 impl DomSourceEdit {
+    /// The native model operation, without requestFullscreen platform admission.
+    pub fn fullscreen_element_model(node: NodeId) -> Self {
+        Self {
+            command: Command::FullscreenElementModel { node: node.into() },
+        }
+    }
+    pub fn unfullscreen_element_model(node: NodeId) -> Self {
+        Self {
+            command: Command::UnfullscreenElementModel { node: node.into() },
+        }
+    }
+    pub fn unfullscreen_document_model(document: crate::DocumentId) -> Self {
+        Self {
+            command: Command::UnfullscreenDocumentModel {
+                document: document.into(),
+            },
+        }
+    }
     /// Retains the original ordered setter across a reached unavailable service.
     pub fn set_design_mode(document: crate::DocumentId, value: impl Into<DocumentString>) -> Self {
         Self {

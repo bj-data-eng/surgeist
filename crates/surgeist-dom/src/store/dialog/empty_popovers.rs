@@ -1,4 +1,4 @@
-//! Read-only empty branches of the original Show popover algorithms.
+//! Shared canonical empty-list proof and the original Show document adapter.
 use super::*;
 
 impl Draft {
@@ -19,13 +19,21 @@ impl Draft {
             .ok_or(DomError::UnavailableCreation)
     }
 
-    pub(super) fn dialog_method_known_empty_popovers(
+    pub(in crate::store) fn document_known_empty_popovers(
         &self,
         document: DocumentId,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
         let document = self.resolve(document.node().into())?;
+        self.known_empty_popover_lists(document, cancel)
+    }
+
+    pub(in crate::store) fn known_empty_popover_lists(
+        &self,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
         let node = self.node(document)?;
         if !matches!(&node.kind, DomNodeKind::Document(_)) {
