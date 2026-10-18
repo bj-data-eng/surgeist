@@ -22,6 +22,11 @@ established capacity-based charge, even when two fields share backing. UTF-16
 backing capacity also contributes retained units. Allocator metadata and Arc
 control blocks remain excluded.
 
+Canonical sequences with zero capacity have no shared backing or out-of-line
+charge. A reserved empty sequence retains its actual buffer and Vec header;
+clones keep that backing. Sequence contents are borrowed as slices, and the
+first write prepares its admitted replacement before changing the selected field.
+
 The [custody primitives](../src/store/custody.rs) attach an admitted debit to
 controlled ownership. Shared receipts represent aliases of the same materialized
 record or page. Their last controlled owner releases that debit. Immutable
@@ -33,7 +38,7 @@ pages shared by snapshots. These receipts grant no host execution authority.
 
 | Retained object | Charge and lifetime |
 | --- | --- |
-| Canonical State | Its body and three actual queue-field occurrences. Bank records, pages and auxiliary graphs have their own custody. |
+| Canonical State | Its body and retained queue-field backing occurrences. Absent queues add no out-of-line storage. Bank records, pages and auxiliary graphs have their own custody. |
 | Persistent page or record | Actual new page storage, or record body and its payload-field occurrences, admitted before controlled retention. Shared descendants keep their existing debit. |
 | Additional bank-root or savepoint alias | Actual holder and control storage. Sharing a root or copying record handles does not materialize its reachable records again. |
 | Changed transaction field or selected sequence | The new materialized field/backing, while the previous occurrence remains charged for as long as canonical state or rollback still retains it. |

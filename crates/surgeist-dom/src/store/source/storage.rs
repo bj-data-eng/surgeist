@@ -270,15 +270,12 @@ pub(in crate::store) fn canonical_node(
     step()?;
     payload.append(kind(&node.kind, &mut step)?)?;
     if banks {
-        // Each immutable sequence retains its Vec header outside Node.
-        payload.add_bytes(4 * size_of::<Vec<NodeId>>())?;
-        payload.bank::<crate::DomFullscreenEvent>(node.fullscreen_events.capacity())?;
-        payload.bank::<NodeId>(node.children.capacity())?;
-        payload.bank::<NodeId>(node.manual_nodes.capacity())?;
-        payload.bank::<NodeId>(node.assigned_nodes.capacity())?;
+        payload.add_bytes(node.fullscreen_events.retained_bytes()?)?;
+        payload.add_bytes(node.children.retained_bytes()?)?;
+        payload.add_bytes(node.manual_nodes.retained_bytes()?)?;
+        payload.add_bytes(node.assigned_nodes.retained_bytes()?)?;
         if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
-            payload.add_bytes(size_of::<Vec<NodeId>>())?;
-            payload.bank::<NodeId>(candidates.capacity())?;
+            payload.add_bytes(candidates.retained_bytes()?)?;
         }
         if let Some(canonical::Interactive::Known {
             open_dialogs,
@@ -286,14 +283,12 @@ pub(in crate::store) fn canonical_node(
             pending_top_layer_removals,
         }) = &node.interactive_document
         {
-            payload.add_bytes(3 * size_of::<Vec<NodeId>>())?;
-            payload.bank::<NodeId>(open_dialogs.capacity())?;
-            payload.bank::<NodeId>(top_layer.capacity())?;
-            payload.bank::<NodeId>(pending_top_layer_removals.capacity())?;
+            payload.add_bytes(open_dialogs.retained_bytes()?)?;
+            payload.add_bytes(top_layer.retained_bytes()?)?;
+            payload.add_bytes(pending_top_layer_removals.retained_bytes()?)?;
         }
         if let Some(document) = &node.base_document {
-            payload.add_bytes(size_of::<Vec<NodeId>>())?;
-            payload.bank::<NodeId>(document.render_blocking.capacity())?;
+            payload.add_bytes(document.render_blocking.retained_bytes()?)?;
         }
     }
     payload.append(related(

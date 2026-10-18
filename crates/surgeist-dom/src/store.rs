@@ -3567,7 +3567,7 @@ fn sparse_difference(
                         (
                             Some(canonical::Interactive::Known { top_layer: a, .. }),
                             Some(canonical::Interactive::Known { top_layer: b, .. }),
-                        ) => a.shares_backing(b),
+                        ) => a.same_storage(b),
                         (
                             Some(canonical::Interactive::Unavailable),
                             Some(canonical::Interactive::Unavailable),

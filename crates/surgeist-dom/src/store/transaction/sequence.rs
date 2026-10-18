@@ -101,9 +101,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
         ledger: &Ledger,
         admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let bytes = capacity_bytes::<C>(values.capacity())?
-            .checked_add(size_of::<Vec<C>>())
-            .ok_or(DomError::RepresentationExhausted)?;
+        let bytes = values.retained_bytes()?;
         let debit = ledger.retain(Usage::new(bytes, 0), admit)?;
         Ok(Self {
             backing: Backing::Canonical(Held::new(values.clone(), debit)),
@@ -695,12 +693,7 @@ mod tests {
         let counters = measurement.finish(Hooks::default()).unwrap();
         assert!(matches!(refused, Err(DomError::Cancelled)));
         assert_eq!(sequence.view().iter().collect::<Vec<_>>(), vec![3, 5, 8]);
-        assert!(
-            sequence
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&values)
-        );
+        assert!(sequence.canonical_backing().unwrap().same_storage(&values));
         assert_eq!(ledger.total(), before);
         assert_eq!(counters.structural_allocations, 1);
         assert!(counters.structural_bytes >= 5 * size_of::<u64>());

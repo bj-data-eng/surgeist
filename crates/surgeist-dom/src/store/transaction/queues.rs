@@ -239,11 +239,15 @@ impl<S, C> QueueAck<S, C> {
         if selected > values.len() {
             return Err(DomError::RepresentationExhausted);
         }
-        let bytes = values
-            .capacity()
-            .checked_mul(size_of::<C>())
-            .and_then(|n| n.checked_add(size_of::<Vec<C>>()))
-            .ok_or(DomError::RepresentationExhausted)?;
+        let bytes = if values.capacity() == 0 {
+            0
+        } else {
+            values
+                .capacity()
+                .checked_mul(size_of::<C>())
+                .and_then(|n| n.checked_add(size_of::<Vec<C>>()))
+                .ok_or(DomError::RepresentationExhausted)?
+        };
         let debit = ledger.retain(custody::Usage::new(bytes, 0), admit)?;
         let output_debit = budget.and_then(|budget| {
             budget
@@ -255,9 +259,11 @@ impl<S, C> QueueAck<S, C> {
         });
         let published = SharedVec::from(values);
         #[cfg(test)]
-        metric(scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<Vec<C>>(),
-        });
+        if published.has_backing() {
+            metric(scale_metrics::Event::StructuralAllocation {
+                bytes: size_of::<Vec<C>>(),
+            });
+        }
         self.published = Some(Published {
             values: custody::Held::new(published.clone(), debit),
             selected,
@@ -401,11 +407,7 @@ impl<C, S: Copy> LazyQueue<C, S> {
         registry: &bank::CustodyRegistry,
         admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let bytes = values
-            .capacity()
-            .checked_mul(size_of::<C>())
-            .and_then(|n| n.checked_add(size_of::<Vec<C>>()))
-            .ok_or(DomError::RepresentationExhausted)?;
+        let bytes = values.retained_bytes()?;
         let debit = registry
             .ledger()
             .retain(custody::Usage::new(bytes, 0), admit)?;
@@ -2097,6 +2099,72 @@ mod tests {
         .unwrap();
         (registry, values, queue)
     }
+
+    #[test]
+    fn empty_queue_capture_and_publication_charge_only_retained_backings() {
+        for capacity in [0, 11] {
+            let registry = bank::CustodyRegistry::new(&custody::Ledger::default(), accept).unwrap();
+            registry.reconcile_releases();
+            let baseline = registry.ledger().total();
+            let raw = Vec::<Affine>::with_capacity(capacity);
+            let actual_capacity = raw.capacity();
+            let values = SharedVec::from(raw);
+            let expected = custody::Usage::new(
+                if actual_capacity == 0 {
+                    0
+                } else {
+                    size_of::<Vec<Affine>>() + actual_capacity * size_of::<Affine>()
+                },
+                0,
+            );
+            let queue = LazyQueue::capture(
+                &values,
+                Model {
+                    map,
+                    measure: one::<u64>,
+                    target: no_target,
+                    document: no_document,
+                },
+                0,
+                None,
+                &registry,
+                accept,
+            )
+            .unwrap();
+            assert!(queue.canonical_backing().unwrap().same_storage(&values));
+            assert_eq!(
+                registry.ledger().total(),
+                baseline.checked_add(expected).unwrap()
+            );
+            drop(queue);
+            assert_eq!(registry.ledger().total(), baseline);
+
+            let mut ack = QueueAck::<u64, Affine>::prepare(0, registry.ledger(), accept).unwrap();
+            let raw = Vec::<Affine>::with_capacity(capacity);
+            let published_capacity = raw.capacity();
+            let published_usage = custody::Usage::new(
+                if published_capacity == 0 {
+                    0
+                } else {
+                    size_of::<Vec<Affine>>() + published_capacity * size_of::<Affine>()
+                },
+                0,
+            );
+            let output = ack
+                .publish_values(raw, 0, None, registry.ledger(), accept)
+                .unwrap();
+            assert!(output.values.is_empty());
+            assert_eq!(output.values.capacity(), published_capacity);
+            assert_eq!(output.values.has_backing(), capacity != 0);
+            assert_eq!(
+                registry.ledger().total(),
+                baseline.checked_add(published_usage).unwrap()
+            );
+            drop(output);
+            drop(ack);
+            assert_eq!(registry.ledger().total(), baseline);
+        }
+    }
     #[test]
     fn counters_distinguish_retained_backing_actual_reads_and_materialized_queue_capacity() {
         if !scale_metrics::ENABLED {
@@ -2106,7 +2174,7 @@ mod tests {
         let (registry, original, mut queue) = fixture(vec![Affine(1), Affine(2), Affine(3)]);
         let observation = Measurement::begin().unwrap();
         let retained = queue.canonical_backing().unwrap().clone();
-        assert!(retained.shares_backing(&original));
+        assert!(retained.same_storage(&original));
         assert_eq!(queue.counts().selected, 3);
         let counters = observation.finish(Hooks::default()).unwrap();
         assert_eq!(counters.structural_allocations, 0);
@@ -2628,10 +2696,7 @@ mod tests {
         // the private row remains in the actual local staged sequence.
         let debit = draft
             .custody_ledger()
-            .retain(
-                custody::Usage::new(size_of::<Vec<select::Task<NodeId>>>(), 0),
-                accept,
-            )
+            .retain(custody::Usage::ZERO, accept)
             .unwrap();
         draft.native_tasks.0.published = Some(Published {
             values: custody::Held::new(SharedVec::from(Vec::new()), debit),
@@ -2933,12 +2998,7 @@ mod tests {
         values.extend([Affine(3), Affine(5)]);
         let (_registry, canonical, queue) = fixture(values);
         assert_eq!(MAPPED.get(), 0);
-        assert!(
-            queue
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&canonical)
-        );
+        assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
         assert_eq!(queue.capacity(), 4096);
         assert_eq!(queue.get(1), Some(5));
         assert_eq!(MAPPED.get(), 1);
@@ -3086,12 +3146,7 @@ mod tests {
         assert!(clean_records.shares_root(&records));
         queue.restore(outer);
         assert_eq!(queue.target_count(first), 0);
-        assert!(
-            queue
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&canonical)
-        );
+        assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
     }
     #[test]
     fn staged_appends_touch_only_incoming_values_and_nested_inverses_restore_capacity() {
@@ -3115,12 +3170,7 @@ mod tests {
         assert_eq!(queue.capacity(), capacity);
         assert_eq!(queue.staged_values().unwrap(), [3, 5, 8]);
         queue.restore(outer);
-        assert!(
-            queue
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&canonical)
-        );
+        assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
         assert_eq!(queue.counts().selected, 2);
     }
     #[test]
@@ -3138,12 +3188,7 @@ mod tests {
             ),
             Err(DomError::Cancelled)
         ));
-        assert!(
-            queue
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&canonical)
-        );
+        assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
         assert_eq!(
             queue.counts(),
             QueueCounts {
@@ -3161,12 +3206,7 @@ mod tests {
             .prepare_insert(2, &[8], |_| Ok(None), registry.ledger(), accept, || Ok(()))
             .unwrap();
         assert!(registry.total().bytes() > before.bytes());
-        assert!(
-            queue
-                .canonical_backing()
-                .unwrap()
-                .shares_backing(&canonical)
-        );
+        assert!(queue.canonical_backing().unwrap().same_storage(&canonical));
         // Dropping the provisional token does not commit a queue write.
         drop(prepared);
         assert_eq!(registry.total(), before);
@@ -3273,7 +3313,7 @@ mod tests {
             queue
                 .canonical_backing()
                 .unwrap()
-                .shares_backing(&published.values)
+                .same_storage(&published.values)
         );
         assert_eq!(MAPPED.get(), 0);
         let inverse = queue
@@ -3286,7 +3326,7 @@ mod tests {
             queue
                 .canonical_backing()
                 .unwrap()
-                .shares_backing(&published.values)
+                .same_storage(&published.values)
         );
         assert_eq!(queue.staged_values().unwrap(), [3, 5, 8]);
     }

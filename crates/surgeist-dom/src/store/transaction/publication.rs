@@ -37,29 +37,30 @@ impl Drop for CopyObservation {
 fn add_sequence<C, S>(
     usage: custody::Usage,
     view: SequenceView<'_, C, S>,
-    width: usize,
-    header: usize,
 ) -> Result<custody::Usage, DomError>
 where
     C: Copy,
     S: Copy,
 {
-    let capacity = match view {
+    let bytes = match view {
         SequenceView::Canonical(values, _) | SequenceView::AliasedCanonical(values, _, _, _) => {
-            values.capacity()
+            values.retained_bytes()?
         }
-        SequenceView::Staged(values) | SequenceView::AliasedStaged(values, _, _) => values.len(),
+        SequenceView::Staged(values) | SequenceView::AliasedStaged(values, _, _) => {
+            // Publication allocates a replacement for the selected values. A
+            // zero-capacity replacement has no immutable target body.
+            if values.is_empty() && size_of::<C>() != 0 {
+                0
+            } else {
+                values
+                    .len()
+                    .checked_mul(size_of::<C>())
+                    .and_then(|bytes| bytes.checked_add(size_of::<Vec<C>>()))
+                    .ok_or(DomError::RepresentationExhausted)?
+            }
+        }
     };
-    usage.checked_add(custody::Usage::new(
-        header
-            .checked_add(
-                capacity
-                    .checked_mul(width)
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
-            .ok_or(DomError::RepresentationExhausted)?,
-        0,
-    ))
+    usage.checked_add(custody::Usage::new(bytes, 0))
 }
 fn keys(
     view: SequenceView<'_, NodeId, Key>,
@@ -103,7 +104,7 @@ fn keys(
     }
     let values = SharedVec::from(values);
     #[cfg(test)]
-    if scale_metrics::ENABLED {
+    if scale_metrics::ENABLED && values.has_backing() {
         scale_metrics::record(scale_metrics::Event::StructuralAllocation {
             bytes: size_of::<Vec<NodeId>>(),
         });
@@ -151,7 +152,7 @@ fn events(
     }
     let values = SharedVec::from(values);
     #[cfg(test)]
-    if scale_metrics::ENABLED {
+    if scale_metrics::ENABLED && values.has_backing() {
         scale_metrics::record(scale_metrics::Event::StructuralAllocation {
             bytes: size_of::<Vec<crate::DomFullscreenEvent>>(),
         });
@@ -211,45 +212,15 @@ impl Draft {
             field_usage = field_usage.checked_replace(old, names_receipt)?;
         }
         let mut payload = field_usage;
-        payload = add_sequence(
-            payload,
-            source.children,
-            size_of::<NodeId>(),
-            size_of::<Vec<NodeId>>(),
-        )?;
-        payload = add_sequence(
-            payload,
-            source.manual_nodes,
-            size_of::<NodeId>(),
-            size_of::<Vec<NodeId>>(),
-        )?;
-        payload = add_sequence(
-            payload,
-            source.assigned_nodes,
-            size_of::<NodeId>(),
-            size_of::<Vec<NodeId>>(),
-        )?;
-        payload = add_sequence(
-            payload,
-            source.fullscreen_events,
-            size_of::<crate::DomFullscreenEvent>(),
-            size_of::<Vec<crate::DomFullscreenEvent>>(),
-        )?;
+        payload = add_sequence(payload, source.children)?;
+        payload = add_sequence(payload, source.manual_nodes)?;
+        payload = add_sequence(payload, source.assigned_nodes)?;
+        payload = add_sequence(payload, source.fullscreen_events)?;
         if let Some(base) = &source.base_document {
-            payload = add_sequence(
-                payload,
-                base.render_blocking,
-                size_of::<NodeId>(),
-                size_of::<Vec<NodeId>>(),
-            )?;
+            payload = add_sequence(payload, base.render_blocking)?;
         }
         if let Some(super::AutofocusRead::Known { candidates, .. }) = source.autofocus_document {
-            payload = add_sequence(
-                payload,
-                candidates,
-                size_of::<NodeId>(),
-                size_of::<Vec<NodeId>>(),
-            )?;
+            payload = add_sequence(payload, candidates)?;
         }
         if let Some(super::InteractiveRead::Known {
             open_dialogs,
@@ -258,8 +229,7 @@ impl Draft {
         }) = source.interactive_document
         {
             for seq in [open_dialogs, top_layer, pending_top_layer_removals] {
-                payload =
-                    add_sequence(payload, seq, size_of::<NodeId>(), size_of::<Vec<NodeId>>())?;
+                payload = add_sequence(payload, seq)?;
             }
         }
         let total = payload.checked_add(custody::Usage::new(size_of::<Slot>(), 0))?;
@@ -674,6 +644,9 @@ impl State {
             size_of::<select::Task<NodeId>>(),
             size_of::<crate::DomDetailsToggleIntention>(),
         ]) {
+            if capacity == 0 {
+                continue;
+            }
             usage = usage.checked_add(custody::Usage::new(
                 size_of::<Vec<NodeId>>()
                     .checked_add(
@@ -1220,7 +1193,7 @@ impl Draft {
                     .get(slot)
                     .and_then(|s| s.node.as_ref())
                     .expect("selected Document");
-                if a.children.shares_backing(&b.children) {
+                if a.children.same_storage(&b.children) {
                     continue;
                 }
             }
@@ -1381,6 +1354,95 @@ mod tests {
     }
 
     #[test]
+    fn publication_distinguishes_absent_and_reserved_empty_sequences() {
+        let (dom, _, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        for capacity in [0, 17] {
+            let raw = Vec::<NodeId>::with_capacity(capacity);
+            let actual_capacity = raw.capacity();
+            let expected = custody::Usage::new(
+                if actual_capacity == 0 {
+                    0
+                } else {
+                    size_of::<Vec<NodeId>>() + actual_capacity * size_of::<NodeId>()
+                },
+                0,
+            );
+            let values = SharedVec::from(raw);
+            let view = SequenceView::Canonical(&values, Key::Existing);
+            assert_eq!(add_sequence(custody::Usage::ZERO, view).unwrap(), expected);
+            let mut debit = draft.custody_ledger().retain(expected, |_| Ok(())).unwrap();
+            let alias = keys(view, &existing, &mut debit, &draft, &cancel).unwrap();
+            assert!(alias.same_storage(&values));
+            assert_eq!(alias.capacity(), actual_capacity);
+            assert_eq!(debit.usage(), expected);
+        }
+
+        let operands = Vec::<Key>::new();
+        let staged = SequenceView::Staged(&operands);
+        assert_eq!(
+            add_sequence(custody::Usage::ZERO, staged).unwrap(),
+            custody::Usage::ZERO
+        );
+        let mut debit = draft
+            .custody_ledger()
+            .retain(custody::Usage::ZERO, |_| Ok(()))
+            .unwrap();
+        let values = keys(staged, &existing, &mut debit, &draft, &cancel).unwrap();
+        assert!(!values.has_backing());
+        assert_eq!(debit.usage(), custody::Usage::ZERO);
+        let operands = Vec::<crate::DomFullscreenEvent>::new();
+        let staged = SequenceView::Staged(&operands);
+        assert_eq!(
+            add_sequence(custody::Usage::ZERO, staged).unwrap(),
+            custody::Usage::ZERO
+        );
+        let values = events(staged, &mut debit, &draft, &cancel).unwrap();
+        assert!(!values.has_backing());
+        assert_eq!(debit.usage(), custody::Usage::ZERO);
+        assert_eq!(
+            State::root_usage_for_capacities([0; 3]).unwrap(),
+            custody::Usage::new(size_of::<State>(), 0)
+        );
+    }
+
+    #[test]
+    fn empty_publication_has_no_target_body_or_buffer_allocation_event() {
+        if !scale_metrics::ENABLED {
+            return;
+        }
+        let (dom, _, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        let operands = Vec::<Key>::new();
+        let mut debit = draft
+            .custody_ledger()
+            .retain(custody::Usage::ZERO, |_| Ok(()))
+            .unwrap();
+        let (values, counters) = measured(|| {
+            keys(
+                SequenceView::Staged(&operands),
+                &existing,
+                &mut debit,
+                &draft,
+                &cancel,
+            )
+        });
+        assert!(!values.unwrap().has_backing());
+        assert_eq!(counters.structural_allocations, 0);
+        assert_eq!(counters.structural_bytes, 0);
+        assert_eq!(counters.sequence_materializations, 0);
+        let operands = Vec::<crate::DomFullscreenEvent>::new();
+        let (values, counters) =
+            measured(|| events(SequenceView::Staged(&operands), &mut debit, &draft, &cancel));
+        assert!(!values.unwrap().has_backing());
+        assert_eq!(counters.structural_allocations, 0);
+        assert_eq!(counters.structural_bytes, 0);
+        assert_eq!(counters.sequence_materializations, 0);
+    }
+
+    #[test]
     fn key_and_event_publication_report_actual_capacity_and_retain_aliases_without_allocation() {
         if !scale_metrics::ENABLED {
             return;
@@ -1446,7 +1508,7 @@ mod tests {
                 &cancel,
             )
         });
-        assert!(alias.unwrap().shares_backing(&values));
+        assert!(alias.unwrap().same_storage(&values));
         drop(alias_debit);
         assert_eq!(counters.structural_allocations, 0);
         assert_eq!(counters.sequence_materialized_bytes, 0);
@@ -1506,7 +1568,7 @@ mod tests {
                 &cancel,
             )
         });
-        assert!(alias.unwrap().shares_backing(&values));
+        assert!(alias.unwrap().same_storage(&values));
         drop(alias_debit);
         assert_eq!(counters.structural_allocations, 0);
         assert_eq!(counters.sequence_materialized_bytes, 0);

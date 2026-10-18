@@ -23,6 +23,9 @@ fn zero_capacity_construction_and_clones_allocate_no_sequence_targets() {
     assert_eq!(&first[..], &[]);
     assert_eq!(first.capacity(), 0);
     assert_eq!(second.capacity(), 0);
+    assert!(first.same_storage(&second));
+    assert!(!first.has_backing());
+    assert_eq!(first.retained_bytes().unwrap(), 0);
     assert_eq!(first, second);
     drop(first);
     drop(capture);
@@ -57,7 +60,7 @@ fn allocation_observation_records_real_reserved_and_populated_targets() {
         actual.retained_capacity_bytes,
         (capacity + populated_capacity) * size_of::<u16>()
     );
-    assert!(capture.shares_backing(&reserved));
+    assert!(capture.same_storage(&reserved));
     assert_eq!(&populated[..], &[7, 11, 13]);
 }
 
@@ -70,15 +73,21 @@ fn reserved_empty_preserves_capacity_identity_and_clone_lifetime() {
     let first = SharedVec::from(raw);
     let clone = first.clone();
     assert!(first.is_empty());
+    assert!(first.has_backing());
     assert_eq!(first.capacity(), capacity);
     assert_eq!(first.as_ptr(), pointer);
-    assert!(first.shares_backing(&clone));
+    assert!(first.same_storage(&clone));
     let other = SharedVec::from(Vec::<u64>::with_capacity(capacity));
     assert_eq!(first, other);
-    assert!(!first.shares_backing(&other));
+    assert!(!first.same_storage(&other));
     let absent = SharedVec::<u64>::default();
     assert_eq!(first, absent);
-    assert!(!first.shares_backing(&absent));
+    assert!(!first.same_storage(&absent));
+    assert!(!absent.has_backing());
+    assert_eq!(
+        first.retained_bytes().unwrap(),
+        size_of::<Vec<u64>>() + capacity * size_of::<u64>()
+    );
     drop(first);
     assert_eq!(clone.capacity(), capacity);
     assert_eq!(clone.as_ptr(), pointer);
@@ -95,6 +104,95 @@ fn zero_capacity_canonical_sequence_retains_no_backing_occurrence() {
     assert!(sequence.view().is_empty());
     assert_eq!(sequence.receipt(), custody::Usage::ZERO);
     assert_eq!(ledger.total(), custody::Usage::ZERO);
+}
+
+#[test]
+fn zero_sized_values_keep_vec_capacity_without_requiring_element_clone() {
+    struct Value;
+    let raw = vec![Value];
+    let capacity = raw.capacity();
+    let values = SharedVec::from(raw);
+    let clone = values.clone();
+    assert_eq!(size_of::<Value>(), 0);
+    assert_eq!(capacity, usize::MAX);
+    assert_eq!(clone.capacity(), capacity);
+    assert_eq!(clone.len(), 1);
+    assert!(clone.same_storage(&values));
+    assert!(clone.has_backing());
+    assert_eq!(clone.retained_bytes().unwrap(), size_of::<Vec<Value>>());
+    drop(values);
+    assert_eq!(clone.len(), 1);
+
+    let empty = SharedVec::<()>::default();
+    assert!(empty.is_empty());
+    assert_eq!(empty.capacity(), Vec::<()>::new().capacity());
+    assert!(empty.has_backing());
+    assert_eq!(empty.retained_bytes().unwrap(), size_of::<Vec<()>>());
+}
+
+#[test]
+fn absent_first_write_refuses_one_short_and_rollback_restores_absence() {
+    let original = SharedVec::<u32>::default();
+    let ledger = custody::Ledger::default();
+    let mut sequence =
+        transaction::Sequence::canonical(&original, std::convert::identity, &ledger, |_| Ok(()))
+            .unwrap();
+    let exact = size_of::<u32>();
+    assert!(matches!(
+        sequence.insert(
+            0,
+            &[13],
+            true,
+            &ledger,
+            |usage| store::admit(usage.bytes(), exact - 1, DomResource::SourceRetainedBytes),
+            || Ok(())
+        ),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            ..
+        })
+    ));
+    assert_eq!(ledger.total(), custody::Usage::ZERO);
+    assert!(
+        sequence
+            .canonical_backing()
+            .unwrap()
+            .same_storage(&original)
+    );
+    assert!(matches!(
+        sequence.insert(
+            0,
+            &[13],
+            true,
+            &ledger,
+            |_| Ok(()),
+            || Err(DomError::Cancelled)
+        ),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(ledger.total(), custody::Usage::ZERO);
+    let inverse = sequence
+        .insert(
+            0,
+            &[13],
+            true,
+            &ledger,
+            |usage| store::admit(usage.bytes(), exact, DomResource::SourceRetainedBytes),
+            || Ok(()),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(sequence.view().first(), Some(13));
+    assert_eq!(ledger.total(), custody::Usage::new(exact, 0));
+    sequence.restore(inverse);
+    assert_eq!(ledger.total(), custody::Usage::ZERO);
+    assert!(!sequence.canonical_backing().unwrap().has_backing());
+    assert!(
+        sequence
+            .canonical_backing()
+            .unwrap()
+            .same_storage(&original)
+    );
 }
 
 #[test]
@@ -143,7 +241,7 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
         sequence
             .canonical_backing()
             .unwrap()
-            .shares_backing(&original)
+            .same_storage(&original)
     );
     let cancelled = AtomicBool::new(true);
     assert!(matches!(
@@ -192,7 +290,7 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
         sequence
             .canonical_backing()
             .unwrap()
-            .shares_backing(&original)
+            .same_storage(&original)
     );
     assert_eq!(ledger.total(), before);
 }

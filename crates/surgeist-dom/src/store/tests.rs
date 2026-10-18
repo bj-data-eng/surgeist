@@ -25,10 +25,10 @@ fn attribute_change_keeps_canonical_relationship_backing_and_untouched_records()
     let new = dom.state.slots[parent.slot].node.as_ref().unwrap();
     assert_eq!(old.children.as_slice(), &[child]);
     assert_eq!(new.children.as_slice(), &[child]);
-    assert!(old.children.shares_backing(&new.children));
-    assert!(old.manual_nodes.shares_backing(&new.manual_nodes));
-    assert!(old.assigned_nodes.shares_backing(&new.assigned_nodes));
-    assert!(old.fullscreen_events.shares_backing(&new.fullscreen_events));
+    assert!(old.children.same_storage(&new.children));
+    assert!(old.manual_nodes.same_storage(&new.manual_nodes));
+    assert!(old.assigned_nodes.same_storage(&new.assigned_nodes));
+    assert!(old.fullscreen_events.same_storage(&new.fullscreen_events));
     assert!(Arc::ptr_eq(
         before.state.slots.get_shared(child.slot).unwrap(),
         dom.state.slots.get_shared(child.slot).unwrap()

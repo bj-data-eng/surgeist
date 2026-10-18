@@ -5551,9 +5551,9 @@ pub(in crate::store) mod accounting_tests {
         let op = lease.dom.source_operation.as_mut().unwrap();
         op.draft.custody_registry().reconcile_releases();
         let baseline = op.draft.custody_ledger().total().bytes() + op.draft.source_other_bytes;
-        // This materialized State has three empty canonical queue fields.
+        // This materialized State has three absent canonical queue backings.
         // The payload bank and its padded Text remain original Arc aliases.
-        let candidate = size_of::<State>() + 3 * size_of::<Vec<NodeId>>();
+        let candidate = size_of::<State>();
         let exact = baseline + candidate;
         op.draft.source_limits.as_mut().unwrap().retained_bytes = exact - 1;
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;

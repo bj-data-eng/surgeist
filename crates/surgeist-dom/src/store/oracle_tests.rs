@@ -230,8 +230,10 @@ fn full_fields_payload(node: &super::Node) -> source::storage::Payload {
     out
 }
 fn sequence<T>(out: &mut source::storage::Payload, values: &super::SharedVec<T>) {
-    out.add_bytes(size_of::<Vec<T>>()).unwrap();
-    out.bank::<T>(values.capacity()).unwrap();
+    if values.has_backing() {
+        out.add_bytes(size_of::<Vec<T>>()).unwrap();
+        out.bank::<T>(values.capacity()).unwrap();
+    }
 }
 fn full_node_payload(node: &super::Node) -> source::storage::Payload {
     let mut out = full_fields_payload(node);
@@ -389,16 +391,9 @@ fn range_index_charge(state: &State) -> bank::IndexCharge {
 fn full_root_payload(state: &State) -> source::storage::Payload {
     let mut payload = source::storage::Payload::default();
     payload.add_bytes(size_of::<State>()).unwrap();
-    payload.add_bytes(3 * size_of::<Vec<NodeId>>()).unwrap();
-    payload
-        .bank::<NodeId>(state.signal_slots.capacity())
-        .unwrap();
-    payload
-        .bank::<super::select::Task<NodeId>>(state.native_tasks.capacity())
-        .unwrap();
-    payload
-        .bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())
-        .unwrap();
+    sequence(&mut payload, &state.signal_slots);
+    sequence(&mut payload, &state.native_tasks);
+    sequence(&mut payload, &state.details_intentions);
 
     payload
 }

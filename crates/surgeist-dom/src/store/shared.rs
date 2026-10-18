@@ -1,4 +1,6 @@
 //! Immutable sequence backing shared by canonical records and captures.
+//! Only zero-capacity Vecs normalize to absence. Reserved empty buffers and
+//! zero-sized-element Vec capacities retain their real shared target.
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
@@ -7,11 +9,11 @@ mod allocation_observation;
 mod storage_tests;
 
 #[derive(Debug)]
-pub(crate) struct SharedVec<T>(Arc<Vec<T>>);
+pub(crate) struct SharedVec<T>(Option<Arc<Vec<T>>>);
 
 impl<T> Clone for SharedVec<T> {
     fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
+        Self(self.0.clone())
     }
 }
 impl<T> Default for SharedVec<T> {
@@ -20,29 +22,60 @@ impl<T> Default for SharedVec<T> {
     }
 }
 impl<T> SharedVec<T> {
-    pub(crate) fn shares_backing(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+    /// Absence is one neutral storage state, rather than a backing identity.
+    pub(crate) fn same_storage(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn as_slice(&self) -> &[T] {
+        self.0.as_deref().map_or(&[], Vec::as_slice)
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.0.as_deref().map_or(0, Vec::capacity)
+    }
+
+    pub(crate) fn has_backing(&self) -> bool {
+        self.0.is_some()
+    }
+
+    /// The retained target body and actual buffer, excluding Arc metadata.
+    pub(crate) fn retained_bytes(&self) -> Result<usize, super::DomError> {
+        if !self.has_backing() {
+            return Ok(0);
+        }
+        self.capacity()
+            .checked_mul(size_of::<T>())
+            .and_then(|bytes| bytes.checked_add(size_of::<Vec<T>>()))
+            .ok_or(super::DomError::RepresentationExhausted)
     }
 }
 impl<T> From<Vec<T>> for SharedVec<T> {
     fn from(value: Vec<T>) -> Self {
+        if value.capacity() == 0 {
+            return Self(None);
+        }
         let backing = Arc::new(value);
         #[cfg(test)]
         if super::scale_metrics::ENABLED {
             allocation_observation::allocated::<T>(backing.capacity());
         }
-        Self(backing)
+        Self(Some(backing))
     }
 }
 impl<T> Deref for SharedVec<T> {
-    type Target = Vec<T>;
+    type Target = [T];
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.as_slice()
     }
 }
 impl<T: PartialEq> PartialEq for SharedVec<T> {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) || self.0 == other.0
+        self.same_storage(other) || self.as_slice() == other.as_slice()
     }
 }
 impl<T: Eq> Eq for SharedVec<T> {}
@@ -50,7 +83,7 @@ impl<'a, T> IntoIterator for &'a SharedVec<T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.as_slice().iter()
     }
 }
 
