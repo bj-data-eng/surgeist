@@ -1510,6 +1510,53 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
 
+    #[test]
+    fn history_outer_bank_fixed_row_work_is_bounded() {
+        fn measure(unrelated: usize) -> u64 {
+            let cancel = AtomicBool::new(false);
+            let mut fixture = Fixture::new();
+            let (top, _, work) = fixture.issue(0);
+            let mut graph = {
+                let context = Context::new(&fixture.source, &work, &cancel, 0);
+                Graph::initial(None, fixture.input(top, None), &context).unwrap()
+            };
+            drop(work);
+            for _ in 0..unrelated {
+                let (creation, _, work) = fixture.issue(2);
+                let context = Context::new(&fixture.source, &work, &cancel, 0);
+                graph =
+                    Graph::initial(Some(&graph), fixture.input(creation, None), &context).unwrap();
+            }
+            let (child, operation, work) = fixture.issue(1);
+            let context = Context::new(&fixture.source, &work, &cancel, 0);
+            graph =
+                Graph::initial(Some(&graph), fixture.input(child, Some(top)), &context).unwrap();
+            let before = work.spent.load(Ordering::Relaxed);
+            let changed = graph
+                .mark_creation_queued(child.navigable, operation, &context)
+                .unwrap();
+            let steps = work.spent.load(Ordering::Relaxed) - before;
+            assert_eq!(
+                graph.navigable(child.navigable).unwrap().creation_operation,
+                None
+            );
+            assert_eq!(
+                changed
+                    .navigable(child.navigable)
+                    .unwrap()
+                    .creation_operation,
+                Some(operation)
+            );
+            steps
+        }
+        let small_steps = measure(0);
+        let large_steps = measure(48);
+        assert!(
+            large_steps <= small_steps + 64,
+            "one history row change spent {large_steps} steps with 48 unrelated rows, versus {small_steps} without them"
+        );
+    }
+
     struct Fixture {
         dom: Dom,
         source: DomHostedSource,

@@ -98,3 +98,42 @@ fn registry_replacement_refuses_candidate_backing_above_scratch_even_when_produc
     );
     assert!(work.spent.load(Ordering::Relaxed) > spent_before);
 }
+
+#[test]
+fn registry_outer_bank_append_work_is_bounded() {
+    let cancel = AtomicBool::new(false);
+    let owner = DomOwnerId::allocate().unwrap();
+    let source = DomHostedSource::new(
+        DomHostedSourceId { owner, serial: 0 },
+        DomHostedLimits::new(
+            DomHostedRecordLimits::new(64, 64, 64, 64, 64, 64, 64),
+            64_000_000,
+            64_000_000,
+            10_000_000,
+        ),
+        &cancel,
+    )
+    .unwrap();
+    let work = source.work(&cancel).unwrap();
+    let (mut bank, first) = Bank::form(None, owner, &source, &work, None, &cancel).unwrap();
+    let first_capture = bank.get(first).unwrap().capture.identity().clone();
+    let before = work.spent.load(Ordering::Relaxed);
+    let (small, _) = Bank::form(Some(&bank), owner, &source, &work, None, &cancel).unwrap();
+    let small_steps = work.spent.load(Ordering::Relaxed) - before;
+    drop(small);
+    for _ in 1..48 {
+        bank = Bank::form(Some(&bank), owner, &source, &work, None, &cancel)
+            .unwrap()
+            .0;
+    }
+    let before = work.spent.load(Ordering::Relaxed);
+    let (large, id) = Bank::form(Some(&bank), owner, &source, &work, None, &cancel).unwrap();
+    let large_steps = work.spent.load(Ordering::Relaxed) - before;
+    assert_eq!(id.slot, 48);
+    assert_eq!(large.get(first).unwrap().capture.identity(), &first_capture);
+    assert!(bank.get(id).is_err());
+    assert!(
+        large_steps <= small_steps + 24,
+        "one registry append spent {large_steps} steps after 48 unrelated records, versus {small_steps} after one"
+    );
+}

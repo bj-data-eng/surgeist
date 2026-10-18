@@ -422,3 +422,85 @@ fn global_index_historical_capture_survives_real_role_slot_generation_reuse() {
     assert_eq!(captured.document(prior), Ok(fixture.documents[0]));
     assert_eq!(new.document(current), Ok(fixture.documents[1]));
 }
+
+#[test]
+fn global_outer_bank_sparse_establishment_work_is_bounded() {
+    let cancel = cancellation();
+    let mut fixture = Fixture::new();
+    fixture
+        .source
+        .set_limits(
+            DomHostedLimits::new(
+                DomHostedRecordLimits::new(128, 128, 128, 128, 128, 128, 128),
+                64_000_000,
+                64_000_000,
+                10_000_000,
+            ),
+            &cancel,
+        )
+        .unwrap();
+    let (first, first_work) = fixture.global();
+    let before = first_work.spent.load(Ordering::Relaxed);
+    let small = establish(
+        &fixture,
+        None,
+        first,
+        fixture.documents[0],
+        &first_work,
+        &cancel,
+    )
+    .unwrap();
+    let small_steps = first_work.spent.load(Ordering::Relaxed) - before;
+    let mut dense = small.clone();
+    drop(first_work);
+    let mut final_global = None;
+    for index in 0..64 {
+        let (last, last_work) = fixture.global();
+        if index < 63 {
+            dense = establish(
+                &fixture,
+                Some(&dense),
+                last,
+                fixture.documents[0],
+                &last_work,
+                &cancel,
+            )
+            .unwrap();
+        } else {
+            final_global = Some((last, last_work));
+        }
+    }
+    let (last, last_work) = final_global.unwrap();
+    let before = last_work.spent.load(Ordering::Relaxed);
+    let sparse = establish(
+        &fixture,
+        None,
+        last,
+        fixture.documents[1],
+        &last_work,
+        &cancel,
+    )
+    .unwrap();
+    let sparse_steps = last_work.spent.load(Ordering::Relaxed) - before;
+    let before = last_work.spent.load(Ordering::Relaxed);
+    let extended = establish(
+        &fixture,
+        Some(&dense),
+        last,
+        fixture.documents[1],
+        &last_work,
+        &cancel,
+    )
+    .unwrap();
+    let extension_steps = last_work.spent.load(Ordering::Relaxed) - before;
+    assert_eq!(sparse.document(last).unwrap(), fixture.documents[1]);
+    assert!(sparse.document(first).is_err());
+    assert_eq!(small.document(first).unwrap(), fixture.documents[0]);
+    assert_eq!(extended.document(first).unwrap(), fixture.documents[0]);
+    assert_eq!(extended.document(last).unwrap(), fixture.documents[1]);
+    assert!(dense.document(last).is_err());
+    assert!(
+        sparse_steps <= small_steps + 24 && extension_steps <= small_steps + 24,
+        "one Global establishment spent {sparse_steps} steps across 64 holes and {extension_steps} after 64 unrelated rows, versus {small_steps} without either"
+    );
+}
