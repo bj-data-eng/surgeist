@@ -40,6 +40,179 @@ struct IndexedRow {
     index: usize,
 }
 
+/// Finite fresh-scope fixture policy, priced from owning types rather than a
+/// measured peak. Only the flat, fresh generation-zero qualification uses it.
+#[cfg(test)]
+pub(in crate::store) fn scale_fresh_limits(n: usize) -> DomDispatchCustodyLimits {
+    assert_eq!(usize::BITS, 64, "qualification word-width premise");
+    assert_eq!(LAST_GENERATION_PART, 1, "two generation index parts");
+    assert!(n > 0);
+    let capacity = n
+        .checked_next_power_of_two()
+        .expect("fixture capacity fits");
+    let depth = |mut index: usize| {
+        let mut depth = 1usize;
+        while index >= 16 {
+            index /= 16;
+            depth += 1;
+        }
+        depth
+    };
+    let row_depth = depth(n - 1);
+    let target_depth = depth(n.checked_add(4).expect("last fresh slot fits"));
+    let sum = |values: &[usize]| {
+        values
+            .iter()
+            .try_fold(0usize, |total, value| total.checked_add(*value))
+            .expect("typed fixture sum fits")
+    };
+    let mul = |a: usize, b: usize| a.checked_mul(b).expect("typed fixture product fits");
+    // C covers actual CleanupRow and pre-box Row capacities only after the
+    // scoped setup verifier confirms them on this host. It is not a Vec API
+    // guarantee. Extra Row/ReleaseNode bodies cover boxing coexistence.
+    let headers = sum(&[
+        mul(capacity, size_of::<CleanupRow>()),
+        mul(mul(2, capacity), size_of::<Row>()),
+        size_of::<ScopeRecord>(),
+        size_of::<Scope>(),
+        mul(2, size_of::<ReleaseNode>()),
+        mul(2, size_of::<Mutex<Ledger>>()),
+    ]);
+    let per_target = sum(&[
+        size_of::<IndexedRow>(),
+        size_of::<TargetBucket>(),
+        mul(2, size_of::<Generation>()),
+        mul(row_depth, bank::scale_full_page_bytes::<IndexedRow>()),
+        mul(2, bank::scale_full_page_bytes::<Generation>()),
+    ]);
+    // Final target paths plus two simultaneous selected-path/root-growth
+    // overlaps; the fresh original bank contributes no retained base.
+    let bytes = sum(&[
+        headers,
+        bank::scale_full_page_bytes::<ScopeRecord>(),
+        mul(
+            mul(n.checked_add(2).unwrap(), target_depth),
+            bank::scale_full_page_bytes::<TargetBucket>(),
+        ),
+        mul(n, per_target),
+    ]);
+    let work = u64::try_from(n).unwrap().checked_mul(128).unwrap();
+    // register validation/rows/records plus edit_generation's two singleton
+    // parts and old/new selected native paths; no whole-bank search is priced.
+    let per_target_steps = sum(&[8, mul(2, sum(&[row_depth, 2, mul(2, target_depth)]))]);
+    let work_bound = u64::try_from(sum(&[16, mul(n, per_target_steps)])).unwrap();
+    assert!(
+        work_bound <= work,
+        "unchanged finite work covers the fresh callgraph"
+    );
+    eprintln!(
+        "scale dispatch_setup_policy targets={n} capacity_premise={capacity} row_depth={row_depth} target_depth={target_depth} headers={headers} per_target={per_target} scratch_and_retained_bytes={bytes} work={work} source_derived_work_bound={work_bound} policy_not_oracle=true"
+    );
+    DomDispatchCustodyLimits::new(1, n, bytes, bytes, work).unwrap()
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct ScaleReserves {
+    bound: usize,
+    cleanup: Option<usize>,
+    rows: Option<usize>,
+    release: Option<usize>,
+}
+#[cfg(test)]
+thread_local! {
+    static SCALE_RESERVES: std::cell::RefCell<Option<ScaleReserves>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+#[cfg(test)]
+pub(in crate::store) struct ScaleSetupVerification {
+    pages: Option<bank::ScalePageCapacityVerification>,
+}
+#[cfg(test)]
+impl ScaleSetupVerification {
+    pub fn begin(dom: &Dom, targets: &[NodeId]) -> Self {
+        let bank = &dom.dispatch_custody;
+        assert_eq!(bank.scopes.record_count(), 0);
+        assert_eq!(bank.targets.record_count(), 0);
+        assert!(bank.ledger.is_none());
+        assert_eq!(bank.next_row, 0);
+        for (index, target) in targets.iter().enumerate() {
+            assert_eq!(target.owner, dom.owner);
+            assert_eq!(target.slot, index.checked_add(5).unwrap());
+            assert_eq!(target.generation, 0);
+        }
+        if !scale_metrics::ENABLED {
+            eprintln!(
+                "scale dispatch_setup_capacity_verification=reuse_instrumented_same_types_toolchain_allocator public_admission_still_enforced=true"
+            );
+            return Self { pages: None };
+        }
+        SCALE_RESERVES.with(|state| {
+            assert!(state.borrow().is_none());
+        });
+        let pages = bank::ScalePageCapacityVerification::begin();
+        SCALE_RESERVES.with(|state| {
+            *state.borrow_mut() = Some(ScaleReserves {
+                bound: targets.len().checked_next_power_of_two().unwrap(),
+                ..ScaleReserves::default()
+            });
+        });
+        Self { pages: Some(pages) }
+    }
+    pub fn finish(mut self) {
+        if let Some(pages) = self.pages.take() {
+            let pages = pages.finish();
+            let reserves = SCALE_RESERVES.with(|state| state.borrow_mut().take().unwrap());
+            assert!(pages > 0);
+            let cleanup = reserves.cleanup.expect("actual cleanup reserve observed");
+            let rows = reserves.rows.expect("actual row reserve observed");
+            let release = reserves.release.expect("actual release reserve observed");
+            eprintln!(
+                "scale dispatch_setup_capacity_verification=actual setup_only=true pages_verified={pages} cleanup_capacity={cleanup} row_capacity={rows} release_capacity={release} capacity_bound={} typed_page_charge_premise=true",
+                reserves.bound
+            );
+        }
+    }
+}
+#[cfg(test)]
+impl Drop for ScaleSetupVerification {
+    fn drop(&mut self) {
+        if scale_metrics::ENABLED {
+            SCALE_RESERVES.with(|state| {
+                state.borrow_mut().take();
+            });
+        }
+    }
+}
+#[cfg(test)]
+fn scale_verify_reserve<T>(capacity: usize) {
+    SCALE_RESERVES.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state.as_mut() else { return };
+        let (observed, bound) = if std::any::type_name::<T>() == std::any::type_name::<CleanupRow>()
+        {
+            (&mut state.cleanup, state.bound)
+        } else if std::any::type_name::<T>() == std::any::type_name::<Row>() {
+            (&mut state.rows, state.bound)
+        } else {
+            assert_eq!(
+                std::any::type_name::<T>(),
+                std::any::type_name::<ReleaseNode>()
+            );
+            (&mut state.release, 1)
+        };
+        assert!(
+            capacity <= bound,
+            "actual setup reserve exceeds capacity premise"
+        );
+        assert!(
+            observed.replace(capacity).is_none(),
+            "one actual reserve of each owning type"
+        );
+    });
+}
+
 /// Actual staged association, resolved by the original Draft's final mapping.
 pub(super) struct Retirement {
     pub target: NodeId,
@@ -188,6 +361,10 @@ fn reserve<T>(count: usize, allocation: &mut Allocation<'_, '_>) -> Result<Vec<T
     values
         .try_reserve_exact(count)
         .map_err(|_| DomError::AllocationFailed)?;
+    #[cfg(test)]
+    if scale_metrics::ENABLED {
+        scale_verify_reserve::<T>(values.capacity());
+    }
     let actual = bytes::<T>(values.capacity())?;
     #[cfg(test)]
     record_allocation(actual);

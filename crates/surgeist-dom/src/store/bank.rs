@@ -111,6 +111,61 @@ struct Page<T> {
     _producer: Option<crate::hosted::Retained>,
 }
 
+/// Qualification-only layout allowance, independent of observed allocations.
+#[cfg(test)]
+pub(in crate::store) fn scale_full_page_bytes<T>() -> usize {
+    assert_eq!(WIDTH, 16, "qualification radix premise");
+    size_of::<Page<T>>()
+        .checked_add(
+            WIDTH
+                .checked_mul(size_of::<Option<Entry<T>>>().max(size_of::<Option<Arc<Page<T>>>>()))
+                .expect("typed qualification page backing fits"),
+        )
+        .expect("typed qualification page fits")
+}
+
+#[cfg(test)]
+thread_local! {
+    static SCALE_PAGE_VERIFICATION: std::cell::Cell<Option<usize>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+/// Scoped observation of actual setup pages, including superseded candidates.
+#[cfg(test)]
+pub(in crate::store) struct ScalePageCapacityVerification;
+#[cfg(test)]
+impl ScalePageCapacityVerification {
+    pub fn begin() -> Self {
+        SCALE_PAGE_VERIFICATION.with(|state| {
+            assert!(state.get().is_none(), "one setup observer");
+            state.set(Some(0));
+        });
+        Self
+    }
+    pub fn finish(self) -> usize {
+        SCALE_PAGE_VERIFICATION.with(|state| state.get().expect("active setup observer"))
+    }
+}
+#[cfg(test)]
+impl Drop for ScalePageCapacityVerification {
+    fn drop(&mut self) {
+        SCALE_PAGE_VERIFICATION.with(|state| state.set(None));
+    }
+}
+#[cfg(test)]
+fn scale_verify_page<T>(actual_own_bytes: usize) {
+    SCALE_PAGE_VERIFICATION.with(|state| {
+        if let Some(count) = state.get() {
+            assert!(
+                actual_own_bytes <= scale_full_page_bytes::<T>(),
+                "actual setup page exceeds the typed full-page capacity premise"
+            );
+            state.set(Some(count.checked_add(1).expect("setup page count fits")));
+        }
+    });
+}
+
 #[cfg(test)]
 impl<T> Drop for Page<T> {
     fn drop(&mut self) {
@@ -3025,6 +3080,10 @@ fn make_page_with_producer<T>(
         index: own,
         ..Summary::default()
     };
+    #[cfg(test)]
+    if super::scale_metrics::ENABLED {
+        scale_verify_page::<T>(own.bytes);
+    }
     match &candidate.contents {
         Contents::Leaf(entries) => {
             for (index, entry) in entries.iter().enumerate() {

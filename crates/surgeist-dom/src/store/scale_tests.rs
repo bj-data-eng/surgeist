@@ -296,19 +296,11 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
         .unwrap()
         .with_select_processing(select_tasks, 16_000_000, 10_000_000)
         .unwrap()
-        .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(
-                usize::from(dispatch_targets > 0),
-                dispatch_targets,
-                dispatch_targets.checked_mul(256).unwrap(),
-                dispatch_targets.checked_mul(256).unwrap(),
-                u64::try_from(dispatch_targets)
-                    .unwrap()
-                    .checked_mul(128)
-                    .unwrap(),
-            )
-            .unwrap(),
-        );
+        .with_dispatch_custody(if dispatch_targets == 0 {
+            DomDispatchCustodyLimits::default()
+        } else {
+            super::dispatch::scale_fresh_limits(dispatch_targets)
+        });
     let (mut dom, fullscreen_source, fullscreen_document) = if invocation_count > 0 {
         // Use the original DOM issuer boundary, including native hosted
         // permissions/history. This supplies no Runtime or orientation service.
@@ -533,10 +525,12 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
     let dispatch = if dispatch_ids.is_empty() {
         None
     } else {
-        Some(
-            dom.register_dispatch_custody(&dispatch_ids, &AtomicBool::new(false))
-                .unwrap(),
-        )
+        let verification = super::dispatch::ScaleSetupVerification::begin(&dom, &dispatch_ids);
+        let custody = dom
+            .register_dispatch_custody(&dispatch_ids, &AtomicBool::new(false))
+            .unwrap();
+        verification.finish();
+        Some(custody)
     };
     drop(dispatch_ids);
     for ids in fullscreen_members.chunks(CHUNK) {
