@@ -8,6 +8,8 @@ use std::cmp::Ordering as Position;
 mod admission_tests;
 #[cfg(test)]
 mod allocation_tests;
+#[cfg(test)]
+mod position_tests;
 
 #[cfg(test)]
 mod allocation_observation {
@@ -198,6 +200,64 @@ impl Draft {
                 return Ok(Some(
                     self.range_child_index(parent, child, cancel)?
                         .cmp(&self.range_child_index(parent, other, cancel)?),
+                ));
+            }
+            child = parent;
+        }
+    }
+    /// Independent publication oracle: locate children in raw semantic order,
+    /// without consulting the maintained child-position index.
+    #[cfg(test)]
+    fn raw_range_child_index(
+        &self,
+        parent: Key,
+        child: Key,
+        cancel: &AtomicBool,
+    ) -> Result<usize, DomError> {
+        for (index, candidate) in self.node(parent)?.children.iter().enumerate() {
+            self.source_step(cancel)?;
+            if candidate == child {
+                return Ok(index);
+            }
+        }
+        Err(DomError::HierarchyRequest)
+    }
+    #[cfg(test)]
+    fn raw_range_position(
+        &self,
+        a: Boundary<Key>,
+        b: Boundary<Key>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Position>, DomError> {
+        if a.container == b.container {
+            return Ok(Some(a.offset.cmp(&b.offset)));
+        }
+        if self.range_root(a.container, cancel)? != self.range_root(b.container, cancel)? {
+            return Ok(None);
+        }
+        if self.range_inclusive_ancestor(a.container, b.container, cancel)? {
+            let child = self.range_child_under(a.container, b.container, cancel)?;
+            let index = self.raw_range_child_index(a.container, child, cancel)?;
+            return Ok(Some(if a.offset <= index {
+                Position::Less
+            } else {
+                Position::Greater
+            }));
+        }
+        if self.range_inclusive_ancestor(b.container, a.container, cancel)? {
+            return self
+                .raw_range_position(b, a, cancel)
+                .map(|position| position.map(Position::reverse));
+        }
+        let mut child = a.container;
+        loop {
+            self.source_step(cancel)?;
+            let parent = self.node(child)?.parent.ok_or(DomError::HierarchyRequest)?;
+            if self.range_inclusive_ancestor(parent, b.container, cancel)? {
+                let other = self.range_child_under(parent, b.container, cancel)?;
+                return Ok(Some(
+                    self.raw_range_child_index(parent, child, cancel)?
+                        .cmp(&self.raw_range_child_index(parent, other, cancel)?),
                 ));
             }
             child = parent;
@@ -548,7 +608,7 @@ impl Draft {
             if record.start.offset > self.range_node_length(record.start.container)?
                 || record.end.offset > self.range_node_length(record.end.container)?
                 || !matches!(
-                    self.range_position(record.start, record.end, cancel)?,
+                    self.raw_range_position(record.start, record.end, cancel)?,
                     Some(Position::Less | Position::Equal)
                 )
             {
