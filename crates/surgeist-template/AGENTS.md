@@ -1,10 +1,9 @@
-# surgeist-template Local Guide
+# surgeist-template Crate Guide
 
-This crate is part of the Surgeist repository and product Cargo workspace.
-Read [../../AGENTS.md](../../AGENTS.md) first for workflow, architecture, shared
-verification/resource limits, and API generation. This supplement records local
-facts; it grants no additional authority. The root guide prohibits executable
-`unsafe` in all Surgeist-owned Rust.
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+This supplement records crate facts and grants no additional authority.
+
+## Product Boundary
 
 This crate owns strict template parsing, registry-driven validation, and Rust source
 generation and native authored AST construction. Expressions remain symbolic.
@@ -23,35 +22,26 @@ the caller applies the batch, and DOM owns actual native-family/identity/limit
 admission. Keep HTML template contents an explicit unsupported target until its
 canonical association is available. No expression evaluation is supplied.
 
-## Sources
+## Discover The Current Structure
 
-[Cargo.toml](Cargo.toml) owns local package/feature facts;
-[../../Cargo.toml](../../Cargo.toml) and [../../Cargo.lock](../../Cargo.lock)
-own product workspace membership and dependency resolution. Public source remains
-authoritative; root-owned API audits are generated through
-[../../api/generator](../../api/generator), never hand-edited or copied here.
-
-| Fact | Source |
+| Fact | Authoritative source |
 | --- | --- |
-| Package identity, version, edition, dependencies, features, and targets | `Cargo.toml` |
-| Public front door and reexports | `src/lib.rs` |
-| Template syntax and authored structure | `src/parser.rs`, `src/lexer.rs`, and `src/ast.rs` |
-| Expression syntax and name constraints | `src/expr.rs` and `src/name.rs` |
-| Registry contracts and validated structure | `src/validate.rs` |
-| Rust source generation | `src/render.rs` |
-| HTML inventory registry and static DOM composition | `src/validate.rs`, `src/dom.rs`, `tests/html_dom.rs` |
-| Diagnostic kinds and source positions | `src/error.rs` and `src/span.rs` |
-| Human documentation and navigation | `README.md` and its linked guides in `docs/` |
-| Focused verification | Tracked `#[cfg(test)]` modules in `src/` and `tests/template_v1.rs` |
-| Project licensing and third-party attribution | `LICENSE`, the license field in `Cargo.toml`, and `NOTICE.md` |
+| Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
+| Public front door and reexports | [src/lib.rs](src/lib.rs) |
+| Template syntax and authored structure | [src/parser.rs](src/parser.rs), [src/lexer.rs](src/lexer.rs), and [src/ast.rs](src/ast.rs) |
+| Expression syntax and name constraints | [src/expr.rs](src/expr.rs) and [src/name.rs](src/name.rs) |
+| Registry contracts and validated structure | [src/validate.rs](src/validate.rs) |
+| Rust source generation | [src/render.rs](src/render.rs) |
+| HTML inventory registry and static DOM composition | [src/validate.rs](src/validate.rs), [src/dom.rs](src/dom.rs), [tests/html_dom.rs](tests/html_dom.rs) |
+| Diagnostic kinds and source positions | [src/error.rs](src/error.rs) and [src/span.rs](src/span.rs) |
+| Focused verification | Tracked `#[cfg(test)]` modules in [src/](src/) and [tests/template_v1.rs](tests/template_v1.rs) |
 
-## Local Verification
+[README.md](README.md) links usage, contract and attribution documentation.
 
-Run the applicable commands from this crate directory, one package at a time,
-using the root guide's process/resource policy and already-present tooling.
-Cargo build/check/test commands may use `--offline --locked` to preserve the
-shared product resolution; command inventory is not a requirement to run every
-suite for each change.
+## Command Inventory
+
+Select affected checks under the root process/resource policy; commands below
+run from this crate directory.
 
 Verification includes source-module tests, `tests/template_v1.rs` and
 `tests/native_ast.rs`, `tests/html_dom.rs` and the static adapter's doc example.
@@ -60,8 +50,8 @@ executes actual generated Rust against the real facade. Keep generated Rust safe
 and validated-template expressions symbolic.
 
 ```sh
-cargo check -p surgeist-template
-cargo test -p surgeist-template
-cargo clippy -p surgeist-template --all-targets -- -F unsafe-code -D warnings
-cargo fmt -p surgeist-template --check
+cargo check -j 1 -p surgeist-template
+cargo test -j 1 -p surgeist-template
+cargo clippy -j 1 -p surgeist-template --all-targets -- -F unsafe-code -D warnings
+cargo fmt -p surgeist-template -- --check
 ```

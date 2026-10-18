@@ -8,7 +8,8 @@ without a native window or task executor.
 
 Use a local Surgeist checkout with Rust `1.97` or newer and Cargo
 already available. The [manifest](../Cargo.toml) declares edition `2024`, a
-minimum Rust version of `1.97`, no dependencies, and no enabled default features.
+minimum Rust version of `1.97`, dependencies and an empty default feature set.
+The shared lockfile and required dependencies must already be available.
 The proof below uses offline mode and does not acquire tooling or dependencies.
 
 ## Run the first proof
@@ -18,7 +19,7 @@ The proof below uses offline mode and does not acquire tooling or dependencies.
 2. Run the existing focused test:
 
    ```sh
-   cargo test --offline -p surgeist-runtime --lib tests::runtime_forwards_task_work_as_intents_without_executing_it -- --exact
+   cargo test --offline --locked -j 1 -p surgeist-runtime --lib tests::runtime_forwards_task_work_as_intents_without_executing_it -- --exact
    ```
 
 3. Confirm that Cargo reports one passed test and zero failures. The test name
@@ -35,6 +36,6 @@ If the compiler is older than the manifest's minimum or required tooling is
 unavailable, resolve that local prerequisite before retrying. If compilation or
 the assertion fails, keep the command output as the failure evidence.
 
-Continue with the [intent ownership example](how-to.md#emit-work-for-root-adapters)
+Continue with the [intent ownership example](how-to.md#emit-work-for-adapters)
 to see task, resource, and service effects together. The [reference](reference.md)
 lists the broader local checks.

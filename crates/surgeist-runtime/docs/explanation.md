@@ -1,27 +1,23 @@
 # Explanation
 
-## Runtime and root adapters
+## Runtime and adapters
 
-`surgeist-runtime` owns app orchestration, events and effects, lifecycle,
-invalidation, frame scheduling, and provenance. A reducer describes state changes
-and work; runtime validates and records the orchestration result. Root `surgeist`
-owns the facade and adapters that connect those results to concrete Surgeist
-crates. Runtime consumes the lower-level contracts used by its own adapters
-directly. The [public reexports](../src/lib.rs) expose runtime-owned contracts,
-and the [manifest](../Cargo.toml) declares those dependencies.
+`surgeist-runtime` owns app orchestration, events/effects, lifecycle,
+invalidation, frame scheduling and provenance. Reducers describe state changes
+and work; Runtime validates and records the result. Each consuming subsystem owns
+its adapters to the lower-level contracts it uses. Runtime consumes those
+contracts directly. Its [public reexports](../src/lib.rs) expose Runtime-owned
+contracts and its [manifest](../Cargo.toml) declares the dependencies; root
+`surgeist` owns facade composition.
 
-The task boundary is concrete: runtime emits abstract task intents and accepts
-task-originated app inputs. Concrete task execution, cancellation, lifecycle,
-progress coalescing, and Tokio integration belong to `surgeist-task`. Root owns
-the adapter that lowers runtime task intents into task crate requests and maps
-task events back into runtime queues.
-
-Root owns facade composition; each consuming subsystem owns its integration
-with the lower-level contracts it uses. Parsing, style resolution, layout
-algorithms, text shaping, rendering backends and OS window event loops remain
-outside this crate. `AppLoop` is a deterministic application drain wrapper;
-the bounded native DOM loop has its own lifecycle owner. This separation lets the
-[intent example](how-to.md#emit-work-for-root-adapters) exercise orchestration
+Runtime emits abstract task intents and accepts task-originated app inputs.
+Concrete task execution, cancellation, lifecycle, progress coalescing and Tokio
+integration belong to `surgeist-task`. The integrating adapter lowers intents
+into task requests and maps task events back into Runtime queues. Parsing, style
+resolution, layout algorithms, text shaping, rendering backends and OS window
+event loops retain their respective owners. `AppLoop` wraps deterministic
+application draining; the bounded native DOM loop has its own lifecycle owner.
+The [intent example](how-to.md#emit-work-for-adapters) exercises orchestration
 without those concrete systems.
 
 ## Explicit commits and effect outcomes
@@ -68,11 +64,18 @@ without discarding later invalidations or regressing rendered state. The
 [surface contracts](../src/surface.rs) define the lifecycle transitions and
 acknowledgement errors.
 
+The [canonical DOM host adapter](../src/dom_host.rs) associates
+generation-qualified surface elements with canonical DOM elements and publishes
+Runtime's exact focus/hover selections. These selections do not establish complete
+HTML focus processing, native activity or pointer-device state. Host publication
+revisions are independent of render invalidations and acknowledgements.
+
 ## DOM orchestration
 
 `DomSession` owns the original canonical `Dom`, CSSOM resources, DOM manipulation
 task state, Source event continuations and native hosted lifecycle. Its explicit
-`DomSessionLimits` admits each domain's actual storage and work.
+`DomSessionLimits` admits each domain's actual storage and work. Edit through
+`dom()`; Style execution retains CSSOM resources, notifications and readback.
 `source_execution()`, `style_execution()`,
 `element_task_execution()` and `hosted_execution()` return weak permissions into
 that same session. Dropping or reacquiring a permission preserves the original
@@ -91,14 +94,20 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+`DomSourceRuntime::complete_select` validates the original Session owners before
+consuming a canonical Select task. Retirement returns
+`DomSelectCompletionProgress::Skipped` without requiring live Style services or
+an execution scope. Live work returns `Source` with ordinary drive progress;
+`resume_select` resumes the same pending operation and task authorization.
+Neither entry drains the native task queue or creates another task loop.
+
 The same driver returns actual local designMode completion, including DOM's
 `NoActiveRange` or exact `RangeReset` result. An unavailable active association
 or generic focusing action is forwarded unchanged as a pending designMode
 request with its typed unavailable reason. Runtime preserves DOM's published
 enabled/reset prefix and original operation across cancellation and resumption;
 it does not infer a focus result from surface selections or acknowledge a
-missing service. Positive generic focus execution remains a separate
-contribution.
+missing service. Positive generic focus execution is unavailable.
 
 Style capture uses the canonical Document's current Base selection, including
 the actual inherited about-base of an initial child Document. An empty bound
@@ -269,8 +278,9 @@ until their actual custody is dropped.
 The native dispatcher retains an immutable event path and once-only progress
 across suspension. Style and Details use this shared dispatcher while retaining
 their own task rules. Callbacks receive controlled canonical access. Public
-observations do not retain the dispatcher or session, and terminal disposal does
-not dispatch callbacks or manufacture a completion receipt. For graceful
+observations do not retain the dispatcher or session. Dropping the Session
+releases its custody without delivering callbacks or claiming completion;
+independent public root capabilities may retain their Store. For graceful
 shutdown, `try_shutdown` returns `DomShutdownOutcome::Pending` with the whole
 session when obligations remain.
 
@@ -414,8 +424,8 @@ finishes its retained path and authentic receipt before the method reports
 `SourceReceiverRetired` at its required ReadOpen. Retirement is not an absent-open
 result or cancellation. Detach, adoption and failed destruction retain their
 ordinary source checks. Internal command or watcher Close callers with nonnull
-source, source retargeting and their additional lifetime requirements remain
-contribution work.
+source, source retargeting and their additional lifetime requirements are
+unsupported.
 
 `request_close_dialog(receiver, result)` runs standard null-source requestClose
 through the same Source owner. Current open, connectedness and Document activity
@@ -478,7 +488,7 @@ started beforetoggle retains authentic dispatch; cancellation and the next
 required live read keep their distinct outcomes.
 
 At task completion, the native loop checks the canonical checkpoint state.
-Pending Slot work cannot be delivered by this bounded contribution: it retains
+Pending Slot work cannot be delivered by this native loop: it retains
 the started task and its delivered-event progress with `CheckpointUnavailable`. An actually empty bank
 can complete the native checkpoint. This does not implement mutation observers,
 JavaScript jobs or Slot delivery.
@@ -536,7 +546,7 @@ a host can distinguish a completed turn from an empty runtime.
 bridge requests a future host turn; it must neither synchronously send or drain
 through the same proxy nor wait for that drain. Partial draining requests a
 continuation wake. A failed continuation is reported with remaining work so the
-root adapter can arrange another turn. The host owns the concrete scheduling
+host adapter can arrange another turn. The host owns the concrete scheduling
 mechanism; [proxy.rs](../src/proxy.rs) owns the delivery contract.
 
 ## Resource values, subscriptions, and service mailboxes

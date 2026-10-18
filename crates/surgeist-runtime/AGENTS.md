@@ -1,10 +1,9 @@
-# surgeist-runtime Local Guide
+# surgeist-runtime Crate Guide
 
-This crate is part of the Surgeist repository and product Cargo workspace.
-Read [../../AGENTS.md](../../AGENTS.md) first for workflow, architecture, shared
-verification/resource limits, and API generation. This supplement records local
-facts; it grants no additional authority. The root guide prohibits executable
-`unsafe` in all Surgeist-owned Rust.
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+This supplement records crate facts and grants no additional authority.
+
+## Product Boundary
 
 This crate owns app orchestration, events/effects, lifecycle, invalidation, frame
 scheduling, and provenance. Domain parsers, resolvers, algorithms, backends, and
@@ -15,36 +14,28 @@ Consume sibling public front doors. Runtime owns its adapters to lower-level
 contracts, including the canonical DOM host capture join; root owns workspace
 wiring and facade composition.
 
-## Sources
+## Discover The Current Structure
 
-[Cargo.toml](Cargo.toml) owns local package/feature facts;
-[../../Cargo.toml](../../Cargo.toml) and [../../Cargo.lock](../../Cargo.lock)
-own product workspace membership and dependency resolution. Public source remains
-authoritative; root-owned API audits are generated through
-[../../api/generator](../../api/generator), never hand-edited or copied here.
-
-| Fact | Source |
+| Fact | Authoritative source |
 | --- | --- |
-| Package identity, edition, MSRV, dependencies, features, and targets | `Cargo.toml` |
-| Public front door and exported surface | `src/lib.rs` and its reexports |
-| Behavior and domain boundary | `README.md` and implementation under `src/` |
-| User documentation | `README.md` and the documentation pages it links |
-| Focused verification | `src/tests.rs`, test modules in `src/resource.rs` and `src/coord.rs`, and private fixtures in `src/testing.rs` |
+| Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
+| Public front door and exported surface | [src/lib.rs](src/lib.rs) and its reexports |
+| Behavior and domain boundary | [README.md](README.md) and implementation under [src/](src/) |
+| Focused verification | [src/tests.rs](src/tests.rs), test modules in [src/resource.rs](src/resource.rs) and [src/coord.rs](src/coord.rs), and private fixtures in [src/testing.rs](src/testing.rs) |
 
-## Local Verification
+[README.md](README.md) links usage, contract and attribution documentation.
 
-Run the applicable commands from this crate directory, one package at a time,
-using the root guide's process/resource policy and already-present tooling.
-Cargo build/check/test commands may use `--offline --locked` to preserve the
-shared product resolution; command inventory is not a requirement to run every
-suite for each change.
+## Command Inventory
+
+Select affected checks under the root process/resource policy; commands below
+run from this crate directory.
 
 Focused evidence is in `src/tests.rs`, `src/resource.rs`, and `src/coord.rs`;
 private fixtures live in `src/testing.rs`.
 
 ```sh
-cargo check -p surgeist-runtime
-cargo test -p surgeist-runtime
-cargo clippy -p surgeist-runtime --all-targets -- -F unsafe-code -D warnings
-cargo fmt -p surgeist-runtime --check
+cargo check -j 1 -p surgeist-runtime
+cargo test -j 1 -p surgeist-runtime
+cargo clippy -j 1 -p surgeist-runtime --all-targets -- -F unsafe-code -D warnings
+cargo fmt -p surgeist-runtime -- --check
 ```

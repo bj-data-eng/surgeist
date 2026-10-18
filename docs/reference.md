@@ -22,8 +22,7 @@ MSRV, dependencies, and features.
 
 [`surgeist-dom`](../crates/surgeist-dom/README.md) is the canonical tree dependency
 exposed directly as `surgeist::dom`. Native authoring and Template's concrete
-HTML adapter use its ordinary batch owner. Removal of `surgeist::retained` and
-the old package is a breaking public API change; no compatibility alias remains.
+HTML adapter use its ordinary batch owner.
 
 ## Facade Modules
 

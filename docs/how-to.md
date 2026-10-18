@@ -68,6 +68,25 @@ CSS corpus API. The companion `surgeist-generator.css-corpus.txt` artifact uses
 diagnostic identify it as `surgeist-generator [css-corpus]`; the browser feature
 is disabled for this profile.
 
+### Check The API Tool
+
+API-tool commands use its separate workspace. The environment also limits nested
+rustdoc builds to one job. These are tool-maintenance checks, separate from
+ordinary product tests.
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml
+CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --list
+CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --check
+```
+
+When profile handling changes, select the ignored real rustdoc fixture
+separately. Unset `CARGO_TARGET_DIR` so it owns/removes its nested output.
+
+```sh
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
+```
+
 ## Refresh Audits After An Authorized Source Change
 
 Refresh from the changed source in this repository through the generator. To

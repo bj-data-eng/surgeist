@@ -1,7 +1,10 @@
-# surgeist-fuzz
+# surgeist-fuzz Crate Guide
 
-Follow the [repository guide](../../AGENTS.md). This crate owns shared fuzz
-contracts, bounded generation mechanics, safe process execution, immutable
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+[Cargo.toml](Cargo.toml), [src/lib.rs](src/lib.rs) and [README.md](README.md)
+own package facts, the public front door and capability/verification guidance.
+
+This crate owns shared fuzz contracts, bounded generation mechanics, safe process execution, immutable
 evidence, same-failure reduction and local campaign control. Semantic cases,
 expectations, codecs, domain reductions and requirement references stay in the
 consuming crate's `fuzz/` package. Generic forests here are fixture topology,
@@ -13,7 +16,7 @@ libFuzzer. The controlled author fixture under `tests/fixtures/subject/` is a
 standalone test workspace, with its own lockfile and no production membership.
 It verifies the implementor workflow without adding product requirements.
 
-## Focused checks
+## Command Inventory
 
 Use one Cargo job and the repository process discipline. Framework checks are:
 

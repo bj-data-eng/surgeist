@@ -27,10 +27,10 @@ optional audit tools have additional prerequisites described in their sources.
    cd surgeist
    ```
 
-   All 15 crates under `crates/` are ordinary tracked source directories in this
+   Crates under `crates/` are ordinary tracked source directories in this
    repository. No separate crate checkout initialization is required.
 
-2. From the root directory, run the serial library check:
+2. From the root directory, run the focused library check:
 
    ```sh
    cargo test --offline --locked -j 1 -p surgeist --lib

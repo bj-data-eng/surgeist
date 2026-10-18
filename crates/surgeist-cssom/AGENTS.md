@@ -1,17 +1,22 @@
-# CSSOM crate guide
+# surgeist-cssom Crate Guide
 
-Apply the root repository guide and focused PISCT skills. This crate owns live
-authored CSS state, its CSS integration adapter, immutable captures and atomic
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+[Cargo.toml](Cargo.toml), [src/lib.rs](src/lib.rs) and [README.md](README.md)
+own package facts, the public front door and capability/verification guidance.
+
+This crate owns live authored CSS state, its CSS integration adapter, immutable captures and atomic
 publication. CSS owns syntax/value grammar, contextual admission and formatting.
 This crate does not own root bindings, evaluation, cascade, layout or scheduling.
 
-The intentional public front door is `src/lib.rs`; `README.md` records lifecycle,
-quotas, source guards, current edit scope and downstream coverage. Integration
-tests are public consumers, and `examples/snapshot_consumer.rs` is executable.
+[README.md](README.md) records lifecycle, quotas, source guards and edit scope.
+Integration tests are public consumers; [examples/snapshot_consumer.rs](examples/snapshot_consumer.rs)
+is executable.
 Keep current checked payloads separate from original source occurrences. Never
 reconstruct edited selected declarations by expanding their original shorthands.
 
-Focused checks, through bounded `pisct run` and a checkout-owned target:
+## Command Inventory
+
+Select affected checks under the root process/resource policy:
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-cssom

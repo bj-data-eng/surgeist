@@ -4,7 +4,7 @@ These procedures assume the [first proof](getting-started.md) passes. They use
 the public `surgeist_runtime` reexports; the linked source owns the exact API and
 error contracts.
 
-## Emit work for root adapters
+## Emit work for adapters
 
 For a reducer that requests task, resource, or service work, return a successful
 `ReducerResult` carrying a `ReducerCommit` with the desired effects. Enqueue a
@@ -53,9 +53,9 @@ assert!(matches!(outcomes.intents()[2], RuntimeIntent::StartService(_)));
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The assertions verify three forwarded intents in their emitted order. Root
-`surgeist` lowers them through concrete adapters into sibling crates, then returns
-their resulting inputs through the runtime task and service queues. Forwarding
+The assertions verify three forwarded intents in their emitted order. The
+integrating consumer lowers them through concrete adapters into sibling crates
+and returns their resulting inputs through the Runtime task and service queues. Forwarding
 does not mean the requested work has completed. See [effect.rs](../src/effect.rs)
 and [runtime.rs](../src/runtime.rs) for the supported dispositions.
 

@@ -52,18 +52,17 @@ an accepted input that displaced the returned oldest message. Enabling
 
 ## Local verification commands
 
-The existing baseline command inventory is:
+Select affected checks under the [repository process/resource policy](../../../AGENTS.md#command-inventory):
 
 ```sh
-cargo check -p surgeist-runtime
-cargo test -p surgeist-runtime
-cargo clippy -p surgeist-runtime --all-targets -- -F unsafe-code -D warnings
-cargo fmt -p surgeist-runtime --check
+cargo check --offline --locked -j 1 -p surgeist-runtime
+cargo test --offline --locked -j 1 -p surgeist-runtime
+cargo clippy --offline --locked -j 1 -p surgeist-runtime --all-targets -- -F unsafe-code -D warnings
+cargo fmt -p surgeist-runtime -- --check
 ```
 
 These check compilation, unit tests and doctests, all-target lint results with
-unsafe code forbidden and warnings denied, and formatting. Cargo checks can use
-`--offline` after `check`, `test`, or `clippy` to prevent network acquisition.
+unsafe code forbidden and warnings denied, and formatting. Offline checks require the locked dependencies to be available.
 Clippy and formatting require their corresponding tools to be available locally.
 The source-backed first-success command is in [getting started](getting-started.md).
 

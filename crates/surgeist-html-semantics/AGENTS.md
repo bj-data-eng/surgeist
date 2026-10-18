@@ -1,13 +1,18 @@
-# surgeist-html-semantics crate guide
+# surgeist-html-semantics Crate Guide
 
-Apply the root repository guide and focused PISCT skills. This crate owns
-capture identity/facts, construction-to-capture import, external observations and bounded semantic query sessions.
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+[Cargo.toml](Cargo.toml), [src/lib.rs](src/lib.rs) and [README.md](README.md)
+own package facts, the public front door and capability/verification guidance.
+
+This crate owns capture identity/facts, construction-to-capture import, external observations and bounded semantic query sessions.
 Use the [HTML value owner](../surgeist-html/AGENTS.md) public contracts directly;
 never expose private storage or duplicate its local algorithms. The
 [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior; retained implementation provenance is separate.
 
-Through bounded `pisct run`, from repository root:
+## Command Inventory
+
+Select affected checks under the root process/resource policy, from repository root:
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-html-semantics
@@ -17,8 +22,7 @@ cargo fmt --all -- --check
 ```
 
 Preserve exact source/fact identities, first reached failure, actual retained
-allocations and explicit cleanup. Root owns API audit generation. See the
-[crate README](README.md) for supported capability limits and attribution.
+allocations and explicit cleanup. See [README.md](README.md) for capability limits and attribution.
 
 Shadow-root capture takes its actual Document independently of the associated
 host. Internal DOM replacement/adoption can change the root's node document

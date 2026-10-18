@@ -1,10 +1,9 @@
-# surgeist-layout Local Guide
+# surgeist-layout Crate Guide
 
-This crate is part of the Surgeist repository and product Cargo workspace.
-Read [../../AGENTS.md](../../AGENTS.md) first for workflow, architecture, shared
-verification/resource limits, and API generation. This supplement records local
-facts; it grants no additional authority. The root guide prohibits executable
-`unsafe` in all Surgeist-owned Rust.
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+This supplement records crate facts and grants no additional authority.
+
+## Product Boundary
 
 This crate owns normalized layout-ready inputs, layout algorithms, physical node and
 inline-fragment geometry, scroll geometry, sizing, caches, transactional
@@ -14,38 +13,27 @@ CSS parsing/style resolution, retained identity, text shaping, rendering, and
 live scrolling remain outside this crate. The private fixture adapter is a
 constrained test bridge, not another CSS front door.
 
-Consume sibling public front doors. Cross-crate lowering and composition remain
-at the root boundary defined by the root guide.
+## Discover The Current Structure
 
-## Sources
-
-[Cargo.toml](Cargo.toml) owns local package/feature facts;
-[../../Cargo.toml](../../Cargo.toml) and [../../Cargo.lock](../../Cargo.lock)
-own product workspace membership and dependency resolution. Public source remains
-authoritative; root-owned API audits are generated through
-[../../api/generator](../../api/generator), never hand-edited or copied here.
-
-| Fact | Source |
+| Fact | Authoritative source |
 | --- | --- |
-| Package identity, edition, MSRV, dependencies, features, targets, and package exclusions | `Cargo.toml`; exact resolved dependency versions in [../../Cargo.lock](../../Cargo.lock) |
-| Public front door and reexports | `src/lib.rs` and the definitions it reexports |
-| Implemented behavior and module ownership | `src/`; human navigation in `README.md` and `docs/` |
-| Host traversal, measurement, cache, and batch-application contracts | `src/tree.rs`, `src/measurement.rs`, `src/cache.rs`, `src/output.rs`, and `src/engine/` |
-| Focused verification | Tracked test modules under `src/`, `src/test_support/`, and the `tests/layout.rs` integration target |
-| Task recipes and composed checks | `Justfile`, `scripts/run-cargo-task.sh`, `scripts/run-verification.sh`, and `scripts/run-browser-parity-task.sh` |
-| Browser source pins, launch settings, fixture inventory, and declared accounting | `tests/layout/browser_parity/corpus.toml` |
-| Fixture procedures and private measurement protocol | `tests/layout/browser_parity/README.md` and `tests/layout/browser_parity/measurement-protocol.md` |
-| Generator target and supported commands | `Cargo.toml`, `tests/bin/surgeist-layout-generate.rs`, and `tests/bin/surgeist-layout-generate/cli.rs` |
-| Optional audit catalog and its separate tooling | `tools/surgeist-layout-audits/README.md`, `tools/surgeist-layout-audits/Cargo.toml`, and `tools/surgeist-layout-audits/rust-toolchain.toml` |
-| Project license and third-party attribution | `LICENSE`, `NOTICE.md`, and the local license material linked from the notice |
+| Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
+| Public front door and reexports | [src/lib.rs](src/lib.rs) and the definitions it reexports |
+| Implemented behavior and module ownership | [src/](src/); human navigation in [README.md](README.md) and [docs/](docs/) |
+| Host traversal, measurement, cache, and batch-application contracts | [src/tree.rs](src/tree.rs), [src/measurement.rs](src/measurement.rs), [src/cache.rs](src/cache.rs), [src/output.rs](src/output.rs), and [src/engine/](src/engine/) |
+| Focused verification | Tracked test modules under [src/](src/), [src/test_support/](src/test_support/), and the [tests/layout.rs](tests/layout.rs) integration target |
+| Task recipes and composed checks | [Justfile](Justfile), [scripts/run-cargo-task.sh](scripts/run-cargo-task.sh), [scripts/run-verification.sh](scripts/run-verification.sh), and [scripts/run-browser-parity-task.sh](scripts/run-browser-parity-task.sh) |
+| Browser source pins, launch settings, fixture inventory, and declared accounting | [tests/layout/browser_parity/corpus.toml](tests/layout/browser_parity/corpus.toml) |
+| Fixture procedures and private measurement protocol | [tests/layout/browser_parity/README.md](tests/layout/browser_parity/README.md) and [tests/layout/browser_parity/measurement-protocol.md](tests/layout/browser_parity/measurement-protocol.md) |
+| Generator target and supported commands | [Cargo.toml](Cargo.toml), [tests/bin/surgeist-layout-generate.rs](tests/bin/surgeist-layout-generate.rs), and [tests/bin/surgeist-layout-generate/cli.rs](tests/bin/surgeist-layout-generate/cli.rs) |
+| Optional audit catalog and its separate tooling | [tools/surgeist-layout-audits/README.md](tools/surgeist-layout-audits/README.md), [tools/surgeist-layout-audits/Cargo.toml](tools/surgeist-layout-audits/Cargo.toml), and [tools/surgeist-layout-audits/rust-toolchain.toml](tools/surgeist-layout-audits/rust-toolchain.toml) |
 
-## Local Verification
+[README.md](README.md) links usage, contract and attribution documentation.
 
-Run the applicable commands from this crate directory, one package at a time,
-using the root guide's process/resource policy and already-present tooling.
-Cargo build/check/test commands may use `--offline --locked` to preserve the
-shared product resolution; command inventory is not a requirement to run every
-suite for each change.
+## Command Inventory
+
+Select affected checks under the root process/resource policy; commands below
+run from this crate directory.
 
 The optional generator uses the local `surgeist-generator` browser engine.
 Its binary/helper tests require Node.js; browser acquisition/generation/import
@@ -59,17 +47,17 @@ The two deep-nesting tests in `src/sizing.rs` each construct 100,000 nodes; isol
 them from an initial bounded test run under the root resource policy.
 
 ```sh
-cargo check --offline --locked -p surgeist-layout
-cargo test --offline --locked -p surgeist-layout
-cargo clippy --offline --locked -p surgeist-layout --all-targets -- -F unsafe-code -D warnings
-cargo fmt -p surgeist-layout --check
+cargo check -j 1 --offline --locked -p surgeist-layout
+cargo test -j 1 --offline --locked -p surgeist-layout
+cargo clippy -j 1 --offline --locked -p surgeist-layout --all-targets -- -F unsafe-code -D warnings
+cargo fmt -p surgeist-layout -- --check
 ```
 
 ```sh
-env -u SURGEIST_PARITY_FILTER cargo test --offline --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml -- --ignored
+env -u SURGEIST_PARITY_FILTER cargo test -j 1 --offline --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml -- --ignored
 ```
 
 ```sh
-cargo test --offline --locked -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate
-cargo run --offline --locked -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- check-corpus
+cargo test -j 1 --offline --locked -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate
+cargo run -j 1 --offline --locked -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- check-corpus
 ```

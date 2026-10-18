@@ -2,183 +2,104 @@
 
 ## One Repository, Distinct Crate Boundaries
 
-Surgeist keeps reusable UI contracts in separate crates while developing their
-implementations in one Git repository and product Cargo workspace. Root owns
-the facade, domain implementations, shared tooling, and integration. A change
-to several participating crates can therefore share a source revision, review,
-and dependency resolution without publishing intermediate crate candidates.
+Surgeist develops its facade, domain crates and shared tooling in one Git
+repository and product Cargo workspace. Cross-crate changes can share a source
+revision and dependency resolution while retaining separate semantic owners.
 
-Domain ownership still matters. The
-[architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
-uses direct subsystem dependencies: each consumer owns integration with its
-lower-level inputs, alongside its algorithms, models and backend adapters.
-CSSOM owns its CSS integration; DOM owns its HTML integration.
-Tests exercise those actual dependencies without requiring the application
-facade. Runtime owns scheduling and coherent publication; the facade provides
-application builders, reexports and bootstrap. `surgeist-test` owns
-shared verification contracts. `surgeist-generator` supplies CSS corpus tooling
-and browser-corpus mechanics, while layout keeps its semantic conversion and
-adapter. Neither support crate is a facade production dependency.
+The [architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
+uses direct subsystem dependencies. Each consumer owns its integration with
+lower-level inputs and tests those actual contracts without requiring the
+facade. CSSOM owns its CSS adapter; DOM owns its HTML adapters; Runtime owns
+scheduling and coherent publication. The facade exposes the production crates.
+The [repository guide](../AGENTS.md#product-boundary) records these boundaries.
 
-The [repository guide](../AGENTS.md#product-boundary) defines these boundaries.
-Models remain typed and composable, production dependencies remain directional
-and acyclic, and symbolic values remain unresolved until their owning layer has
-the necessary context. A shared repository does not resolve mismatched models,
-feature incompatibilities, or missing integration behavior by itself.
+Shared source does not make every model or feature combination interoperable.
+Dependencies remain acyclic, each semantic phase has one owner, and authored
+symbolic values remain unresolved until that owner has the required context.
 
-The previous style crate and facade module are removed. CSSOM consumes the public
-CSS producers and owns their adapter into live authored state. It provides stable
-identities, immutable snapshots, revisions and atomic edits for headless
-declaration, rule, stylesheet and MediaList operations. The
-[CSSOM crate guide](../crates/surgeist-cssom/README.md) explains the supported
-extension operations, explicit host facts and source-qualified formatting limits.
-Root host bindings and full product CSSOM conformance remain separate work.
-`surgeist-html` supplies exact HTML values, native builders and the immutable
-construction owner shared by native authoring and `surgeist-html-parser`.
-`surgeist-html-semantics` owns captures, qualified intrinsic queries and the
-explicit adapter from those same construction results. Its explicitly pinned HTML standard defines
-behavior; adapted html5ever source supplies implementation provenance. The
-[HTML parser guide](../crates/surgeist-html-parser/README.md) records the decoded-Unicode
-document/fragment entry operations, admission and external capability boundaries.
-The parser owns its direct integration with CSS source color operations and Color's
-numerical owner, retaining one original parser controller and source binding.
-Separate CSS parse banks and numerical digit storage are admitted through that
-controller; generated values are installed after serialization and cleanup.
-Implementation changes for safe Rust, source mapping and work limits do not
-define a separate HTML dialect.
+### Language Values, Authored State And Live Identity
 
-The [dependency-free numerical Color owner](../crates/surgeist-color/README.md)
-is implemented and consumed directly by CSS and the HTML parser adapter.
-Its [integration contract](reference/color-crate-contracts.md) explains the
-source-qualified CSS boundary. The separate contracts for
-[HTML values, parsing and qualified semantics](reference/html-crate-contracts.md)
-are implemented as three packages with direct acyclic dependencies. Manifests
-and source establish those boundaries; no old-package reexports are retained.
+[CSS](../crates/surgeist-css/README.md) owns authored syntax, recovery and
+source/fact-qualified resolution. [Color](../crates/surgeist-color/README.md)
+owns numerical color operations. [CSSOM](../crates/surgeist-cssom/README.md)
+adapts CSS into live authored declarations, rules, stylesheets and MediaLists,
+with stable identities, immutable snapshots and atomic edits.
 
-[`surgeist-dom`](../crates/surgeist-dom/README.md) begins the sole owner of live
-document identity, mutation and snapshots with native XML/HTML Documents, namespaced
-Elements, ordinary DocumentFragment, ShadowRoot, Text, Comment, ProcessingInstruction and
-DocumentType nodes. Ordered namespaced attributes
-and same-store adoption use that same mutation owner. Import copies a checked
-immutable source capture into fresh target identities, including across stores.
-It consumes HTML's
-exact UTF-16 `DocumentString` directly. Atomic batches, finite caller limits,
-canonical native Document metadata and owned snapshots establish the foundation.
-Namespace-aware creation consumes HTML-owned common initialization requirements;
-applicable nonce slots remain separate from content attributes through edits,
-cloning and import. A native document retains its actual null browsing context
-and never-navigable state independently of its XML class. Remaining special
-family hooks, XML DOMImplementation creation and slot/flat relations remain
-contribution work.
-`create_html_document` builds the complete native HTML skeleton through the same
-atomic owner, using the origin of an actual associated Document. Omitted title
-differs from a supplied empty title. Current node-document class governs Element
-creation and checked attribute lookup. This entry supplies no parser, Window or
-host lifecycle, and complete immutable HTML installation remains separate work.
-Native HTML Canvas retains none-context state and shared dimension/reset hooks;
-native Marquee retains its closed initially-on/index-zero state and start/stop
-edits. These native families supply no renderer context, pixels or animation loop.
-Native shadow roots share the same identity and mutation owner, with reciprocal
-host links distinct from ordinary children. Adoption, clonable-root import and
-owned destruction preserve those boundaries; closed-root presentation does not
-erase canonical ownership.
-DOM also validates immutable external focus/hover selection captures against an
-exact canonical document stamp. Runtime owns the direct adapter from its actual
-surface selections, with checked associations between surface elements and DOM
-nodes. Host source identity and revisions stay separate from canonical edits and
-render acknowledgements. These selections do not establish full HTML focus or
-pointer processing.
-DOM also owns structural view-transition records and generated pseudo identities.
-It consumes CSS's checked names and records qualified ordinary CSSOM sheet/rule
-identities. Captured flags, retained participant references and state changes use
-the same canonical snapshots and atomic edits. Runtime owns actual image,
-geometry and style captures and validates their join before composed publication;
-the structural DOM state alone certifies no rendered transition or CSSOM effect.
-DOM directly adapts its immutable ordinary and shadow snapshots into HTML semantic
-captures, with checked bidirectional identities and an optional qualified host
-capture. Queries use the HTML producer session and its availability envelope;
-canonical and host revisions retain their separate meanings. Actual root and host
-node-documents are preserved independently, including after internal replacement.
-Association closure can include supplemental documents and ancestors without
-claiming their unrelated child trees are complete. Installing completed
-HTML construction values and the remaining specialized capture domains is
-continuing integration work. Native authoring
-uses the same HTML value contracts without serializing and reparsing strings.
-Template keeps strict syntax, symbolic expressions, component validation and
-executable typed Rust generation. It derives a closed native registry from shared
-HTML metadata with explicit template form policy and queues concrete HTML through
-ordinary DOM edits. Template contents need an explicit supported contents target;
-symbolic nodes remain unresolved. It does not evaluate a new language or own a
-second live tree.
-Selectors will own matching, cascade will own precedence and rollback, and style
-will compute values from DOM and CSSOM captures. HTML-owned work is scheduled
-first; completing DOM integration requires both HTML and DOM. The
-[repository guide](../AGENTS.md#product-boundary) distinguishes these planned
-boundaries from the implemented workspace.
+[HTML](../crates/surgeist-html/README.md) owns shared values, language rules,
+native builders and immutable construction. Its
+[parser](../crates/surgeist-html-parser/README.md) owns decoded-Unicode ingestion
+and direct CSS/Color integration; [semantics](../crates/surgeist-html-semantics/README.md)
+owns qualified captures and intrinsic queries. Pinned standards define behavior;
+upstream implementation revisions identify provenance. These are separate
+responsibilities within one HTML language contract.
+
+[DOM](../crates/surgeist-dom/README.md) is the canonical live tree owner.
+Atomic batches and Source continuations operate on the same identities, state,
+snapshots and change history. DOM consumes shared HTML values and qualified
+construction/parser results through its own adapters. Immutable HTML results
+are inputs to installation, not a competing live DOM.
+
+Ordinary parentage, shadow/Template ownership and node-document membership are
+distinct relations. DOM preserves their actual identities through edits, import
+and capture. Semantic and external host captures retain separate qualification
+and revision domains; a historical observation does not authorize live execution.
+The owning crate documentation describes supported operations and precise
+capability limits.
+
+[Template](../crates/surgeist-template/README.md) owns strict syntax, symbolic
+expressions, component validation and Rust generation. Its HTML-backed registry
+queues concrete authoring through ordinary DOM edits. DOM remains the tree owner;
+Runtime supplies scheduling. Matching, cascade and computed style remain planned
+downstream owners rather than implicit responsibilities of these producers.
 
 ## Facade And Integration
 
-The facade directly reexports the production crates through their public front
-doors. Its `app` and `runtime` modules both expose `surgeist-runtime`. The complete
-layered integration, application examples, and native development harness
-remain planned work. The shared source boundary supports integration work;
-it does not supply an integrated UI application by itself.
+The facade reexports production crates through their public front doors.
+Its `app` and `runtime` modules both expose `surgeist-runtime`; `surgeist::dom`
+exposes the canonical DOM. The facade is a convenient entry point, not an
+integration intermediary required between lower-level crates.
 
-`surgeist::dom` directly exposes the canonical owner. The former
-`surgeist::retained` export and `surgeist-retained` package are removed, a breaking
-public API replacement without a compatibility alias. Production inventory found
-only the old root dependency and wildcard reexport; no running caller required
-retained's route, hook or projection protocols. Those unused protocols have no
-replacement API or parallel tree. Ordinary DOM identity, edits and old captures,
-the Runtime host join and caller-owned keyed materialization preserve the required
-concrete behavior through their actual owners. The
-[keyed composition witness](../crates/surgeist-runtime/tests/keyed_dom_materialization.rs)
-keeps logical item keys separate from live NodeIds and publishes staged maps only
-after successful canonical edits; Runtime request state is a separate owner.
-The [public facade test](../tests/dom_authoring.rs) composes native HTML namespace
-construction, template edits and immutable old snapshots without an HTML parser.
+Runtime's `DomSession` coordinates the canonical DOM, Style resources, element
+tasks, Source event continuations and native hosted lifecycle. Runtime owns
+delivery and input policy; DOM owns canonical relations. Its
+[orchestration explanation](../crates/surgeist-runtime/docs/explanation.md#dom-orchestration)
+states the actual host/service boundaries, including unfinished work.
 
-Runtime's present adapter publishes exact surface focus/hover selections through
-checked element-to-NodeId associations. Active state, pointer capture, input
-modality, full HTML/subwidget focus and broader event/retargeting behavior remain
-with the actual host/semantic owners under [#1124](https://github.com/bj-data-eng/surgeist/issues/1124)
-and feature contracts [#136](https://github.com/bj-data-eng/surgeist/issues/136) /
-[#382](https://github.com/bj-data-eng/surgeist/issues/382). DOM supplies canonical
-relations; Runtime owns delivery and input policy. Slot/flat capture work also
-remains under #1124; eligibility stays with CSS/style/layout and host policy
-under [#172](https://github.com/bj-data-eng/surgeist/issues/172). Complete immutable
-HTML installation remains [#1135](https://github.com/bj-data-eng/surgeist/issues/1135).
-Retirement of unused retained machinery does not complete those broader contracts.
-
-Source, tests, fixtures, and legal material stay with their owning crates.
-[NOTICE.md](../NOTICE.md) records attribution and source provenance. Issues and
-the GitHub Project record current work under the
-[repository administration guidance](../.agents/skills/surgeist-admin/SKILL.md).
+Caller-owned keyed materialization keeps logical item keys distinct from live
+NodeIds and publishes staged maps after successful canonical edits. The
+[keyed example test](../crates/surgeist-runtime/tests/keyed_dom_materialization.rs)
+exercises that composition; the
+[facade authoring test](../tests/dom_authoring.rs) composes native HTML, Template
+edits and retained snapshots. These demonstrate their selected contracts,
+not an integrated UI application. Complete application examples and a native
+development harness remain planned.
 
 ## Workspace Membership And Verification Are Separate
 
-All product workspace packages share one committed root lockfile. The facade is
-the sole default member, keeping unqualified root commands focused. Explicit package
-selection exposes the rest of the workspace without automatically running its
-CPU-heavy layout suites, GPU tests, platform hosts, or browser tooling.
+Product packages share one root lockfile. The facade is the sole default member,
+so unqualified Cargo commands do not select every crate's tests. Package,
+feature and platform checks are chosen for the affected boundary under the
+[command inventory](../AGENTS.md#command-inventory).
 
-The [command inventory](../AGENTS.md#command-inventory) selects checks for each
-affected domain and supported feature/platform configuration. Facade success
-does not establish correctness for every crate.
+`surgeist-test` owns shared verification contracts. `surgeist-generator` owns
+CSS/browser-corpus mechanics; consumers keep semantic expectations and adapters.
+`surgeist-fuzz` supplies bounded campaign/process/evidence tooling while
+consumers own their cases and regressions. These tools are outside facade
+production dependencies and default verification.
 
-The API generator stays in a separate Cargo workspace because its rustdoc
-toolchain and dependencies serve source auditing. The optional layout Dylint
-catalog also stays separate because it uses compiler-internal nightly tooling
-for explicitly selected audit questions. Neither expands ordinary product
-workspace verification.
+The API generator and optional layout Dylint catalog are separate workspaces.
+Their rustdoc/compiler tooling serves explicit audits, not ordinary product
+execution. Workspace membership alone establishes neither feature compatibility
+nor browser, GPU or platform conformance.
 
 ## Why API Audits Stay Central
 
-One API generator owns the facade and crate audit set. It discovers source
-directories directly and includes support crates as audit inputs. Generated
-text makes source changes inspectable, but it is neither the source of truth
-nor a complete behavioral or compatibility test. Source and corresponding
-generated changes are reviewed in the same repository change.
+One root-owned generator discovers crate manifests and renders facade/crate API
+audits. Source is authoritative; generated text supports inspection but is not
+a behavioral or compatibility proof. Source changes and corresponding audit
+changes are reviewed together.
 
-Use the [reference](reference.md) to locate current interfaces and the
-[how-to guide](how-to.md) for maintenance procedures.
+Use [Reference](reference.md) for interfaces and source locations, and
+[How-to](how-to.md) for maintenance procedures. [NOTICE.md](../NOTICE.md) owns
+attribution and source provenance. Issues and the GitHub Project track current
+work under [repository administration](../.agents/skills/surgeist-admin/SKILL.md).

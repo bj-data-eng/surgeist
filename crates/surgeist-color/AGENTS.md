@@ -1,8 +1,6 @@
-# surgeist-color Local Guide
+# surgeist-color Crate Guide
 
-Read [../../AGENTS.md](../../AGENTS.md) for repository ownership and delivery.
-This supplement records the numerical boundary and focused checks; it grants no
-additional authority.
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
 
 This crate owns checked numerical color/space values, intrinsic conversion,
 interpolation, numerical transformations, resolved serialization, finite
@@ -17,21 +15,17 @@ their adapters and publication.
 citations live with the conversion/serialization implementation and in the
 [selected source editions](../../references/SOURCE-EDITIONS.md#html-color-delegation-and-intrinsic-contrast-policy).
 The [README](README.md), [native example](examples/native.rs), inline tests and
-[integration tests](tests/) demonstrate supported behavior. Root owns generated
-[API audits](../../api/crates/surgeist-color.txt); do not hand-edit them.
+[integration tests](tests/) demonstrate supported behavior.
 
 Operations and caller-owned digits borrow the actual independent numerical
 anchor. Preserve admission before numerical work, record access and output,
 refusal without ownership loss, explicit recovery, and the actual compiled
 layout descriptions. Reuse one numerical/formatting implementation for ordinary
-and controlled APIs. Do not copy kernels into consumers or retain moved-path
-compatibility exports.
+and controlled APIs. Do not copy kernels into consumers.
 
-## Focused verification
+## Command Inventory
 
-Use the root process/resource policy with already-present offline tooling.
-Select affected checks; this is an inventory, not a requirement to repeat every
-check for a prose edit.
+Select affected checks under the root process/resource policy.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-color

@@ -1,7 +1,10 @@
-# HTML values crate guide
+# surgeist-html Crate Guide
 
-Apply the root repository guide and focused PISCT skills. HTML owns language
-values, local rules, native builders, controlled construction and immutable
+Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
+[Cargo.toml](Cargo.toml), [src/lib.rs](src/lib.rs) and [README.md](README.md)
+own package facts, the public front door and capability/verification guidance.
+
+HTML owns language values, local rules, native builders, controlled construction and immutable
 results. [Parser](../surgeist-html-parser/AGENTS.md) and
 [semantics](../surgeist-html-semantics/AGENTS.md) consume its public root and
 bounded front doors directly. The [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
@@ -13,7 +16,9 @@ value or captured external Document supplies no such qualification. If controlle
 construction gains a design-mode transition, update the readback to retain its
 actual current state rather than continuing to return an initial value.
 
-Through bounded `pisct run`, from repository root:
+## Command Inventory
+
+Select affected checks under the root process/resource policy, from repository root:
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-html
@@ -22,8 +27,8 @@ python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 cargo fmt --all -- --check
 ```
 
-Vocabulary generation stays here. Parser character references and semantic bidi
-data/generators stay with their actual owners. Root owns generated API audits.
+Vocabulary generation stays here; parser character references and semantic bidi
+data/generators stay with their actual owners.
 
 Slot assignment owns only the HTML manual-intent transition. Consumers retain
 actual IDs/ordered sets and execute the final target-root DOM assignment step;
