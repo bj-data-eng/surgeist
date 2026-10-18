@@ -27,10 +27,8 @@ fn update(change: impl FnOnce(&mut Counts)) {
 struct Probe;
 impl Probe {
     fn start() -> Self {
-        assert!(
-            super::super::scale_metrics::ENABLED,
-            "Details discovery requires enabled counters"
-        );
+        super::super::scale_metrics::require_enabled()
+            .expect("Details discovery requires enabled counters");
         ACTIVE.with(|active| {
             assert!(active.get().is_none(), "Details discovery already active");
             active.set(Some(Counts::default()));

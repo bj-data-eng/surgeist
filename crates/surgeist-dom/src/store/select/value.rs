@@ -3,6 +3,7 @@ use super::*;
 use source::checkpoint::Charge;
 use source::storage::Payload;
 use surgeist_html_semantics::*;
+mod rows;
 
 /// The actual returned occurrence drops before its accounting permission.
 pub(super) struct Value {
@@ -245,6 +246,7 @@ impl Draft {
         let _entries_header =
             self.option_value_header::<(Key, HtmlCaptureBuilderSubject)>(cancel)?;
         let mut entries = self.select_vec();
+        let mut rows = rows::Rows::new(self, cancel)?;
         let mut next = Some(key);
         while let Some(current) = next {
             self.select_step(cancel)?;
@@ -301,7 +303,9 @@ impl Draft {
                 _ => return Err(DomError::SelectProtocol),
             }?;
             self.select_reserve(&mut entries, 1, cancel)?;
+            let ordinal = entries.len();
             entries.push((current, subject));
+            rows.insert(self, current, ordinal, cancel)?;
             #[cfg(test)]
             if super::super::scale_metrics::ENABLED {
                 super::discovery_observation::record(
@@ -319,22 +323,9 @@ impl Draft {
             let _children_header = self.option_value_header::<HtmlCaptureBuilderSubject>(cancel)?;
             let mut children = self.select_vec();
             for child in self.node(*current)?.children.iter() {
-                let mut found = None;
-                for (candidate, subject) in entries.iter() {
-                    self.select_step(cancel)?;
-                    #[cfg(test)]
-                    if super::super::scale_metrics::ENABLED {
-                        super::discovery_observation::record(
-                            super::discovery_observation::Event::MapCompared,
-                        );
-                    }
-                    if *candidate == child {
-                        found = Some(subject.clone());
-                        break;
-                    }
-                }
+                let ordinal = rows.get(self, child, cancel)?;
                 self.select_reserve(&mut children, 1, cancel)?;
-                children.push(found.ok_or(DomError::SelectProtocol)?);
+                children.push(entries[ordinal].1.clone());
                 #[cfg(test)]
                 if super::super::scale_metrics::ENABLED {
                     super::discovery_observation::record(

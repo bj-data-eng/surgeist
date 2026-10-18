@@ -1449,16 +1449,20 @@ impl DomSourceLease<'_> {
                 parent: original.parent,
             };
             let handoff_formation = formation::Formation::new(&operation.draft, cancel)?;
-            if let Some(formation) = &handoff_formation {
-                formation.retain_bytes(size_of::<canonical::Operation>(), cancel)?;
-            }
             let bank = self.dom.hosted_operations.prepare(
                 original.key.operation.slot,
                 &original.work,
                 source,
                 0,
                 handoff_formation.as_ref(),
+                canonical::operations::BodyCredit::Borrowed(&queued.retained),
+                canonical::operations::Projection::default(),
                 cancel,
+            )?;
+            crate::hosted::admit(
+                bank.operation_scratch_bytes()?,
+                source.limits().scratch_bytes(),
+                DomHostedResource::ScratchBytes,
             )?;
             let input_bytes = operation.input_bytes()?;
             let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
@@ -1498,7 +1502,10 @@ impl DomSourceLease<'_> {
                 checkpoint.restore(&mut operation.draft);
                 return Err(error);
             }
-            let Phase::Queue(queued) = std::mem::replace(&mut child.phase, Phase::Returned) else {
+            let transfer = bank
+                .into_ready()
+                .with_payload(std::mem::replace(&mut child.phase, Phase::Returned));
+            let Phase::Queue(queued) = transfer.payload() else {
                 unreachable!("published exact queued child")
             };
             let permission = DomHostedQueuedHistory {
@@ -1509,16 +1516,18 @@ impl DomSourceLease<'_> {
             let creation = queued.packet.creation;
             let continuation =
                 canonical::queue::Continuation::creation(next, creation, queued.packet.traversable);
-            self.dom.hosted_operations.insert_prepared(
-                bank,
+            let transfer = transfer.into_operation(|phase| {
+                let Phase::Queue(queued) = phase else {
+                    unreachable!("same queued child")
+                };
                 canonical::Operation {
                     origin: queued.origin,
                     policy: queued.policy,
                     phase: canonical::CreationPhase::Queued(continuation),
                     _retained: queued.retained,
-                },
-                false,
-            );
+                }
+            });
+            let installed = self.dom.hosted_operations.insert_prepared(transfer, false);
             if source
                 .active_work
                 .upgrade()
@@ -1528,6 +1537,13 @@ impl DomSourceLease<'_> {
             }
             child.phase = Phase::Attributes { work };
             child.handoff_charge = handoff_formation.map(formation::Formation::into_charge);
+            if let Some(installed) = installed {
+                child
+                    .handoff_charge
+                    .as_mut()
+                    .expect("same original Source handoff")
+                    .merge(installed);
+            }
             publication.take();
             Ok(permission)
         })();
@@ -1656,16 +1672,20 @@ impl DomSourceLease<'_> {
                     parent: original.parent,
                 };
                 let handoff_formation = formation::Formation::new(&operation.draft, cancel)?;
-                if let Some(formation) = &handoff_formation {
-                    formation.retain_bytes(size_of::<canonical::Operation>(), cancel)?;
-                }
                 let bank = self.dom.hosted_operations.prepare(
                     original.key.operation.slot,
                     &original.work,
                     source,
                     0,
                     handoff_formation.as_ref(),
+                    canonical::operations::BodyCredit::Borrowed(&removal.retained),
+                    canonical::operations::Projection::default(),
                     cancel,
+                )?;
+                crate::hosted::admit(
+                    bank.operation_scratch_bytes()?,
+                    source.limits().scratch_bytes(),
+                    DomHostedResource::ScratchBytes,
                 )?;
                 let input_bytes = operation.input_bytes()?;
                 let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
@@ -1721,8 +1741,10 @@ impl DomSourceLease<'_> {
                     checkpoint.restore(&mut operation.draft);
                     return Err(error);
                 }
-                let Phase::Removing(removal) = std::mem::replace(&mut child.phase, Phase::Returned)
-                else {
+                let transfer = bank
+                    .into_ready()
+                    .with_payload(std::mem::replace(&mut child.phase, Phase::Returned));
+                let Phase::Removing(removal) = transfer.payload() else {
                     unreachable!("published exact removal")
                 };
                 let work = next.work.clone();
@@ -1734,19 +1756,31 @@ impl DomSourceLease<'_> {
                 };
                 let continuation =
                     canonical::queue::Continuation::removal(next, creation, traversable);
-                self.dom.hosted_operations.insert_prepared(
-                    bank,
-                    canonical::Operation {
-                        origin: removal.origin,
-                        policy: None,
-                        phase: canonical::CreationPhase::Queued(continuation),
-                        _retained: removal.retained,
-                    },
-                    false,
-                );
+                let (transfer, removal_packet) = transfer.into_operation_and(|phase| {
+                    let Phase::Removing(removal) = phase else {
+                        unreachable!("same removal")
+                    };
+                    (
+                        canonical::Operation {
+                            origin: removal.origin,
+                            policy: None,
+                            phase: canonical::CreationPhase::Queued(continuation),
+                            _retained: removal.retained,
+                        },
+                        removal.packet,
+                    )
+                });
+                let installed = self.dom.hosted_operations.insert_prepared(transfer, false);
                 child.handoff_charge = handoff_formation.map(formation::Formation::into_charge);
+                if let Some(installed) = installed {
+                    child
+                        .handoff_charge
+                        .as_mut()
+                        .expect("same original Source handoff")
+                        .merge(installed);
+                }
                 child.phase = Phase::RemovalPublished(RemovalPublished {
-                    packet: removal.packet,
+                    packet: removal_packet,
                     key: packet.key,
                     history,
                     creation,

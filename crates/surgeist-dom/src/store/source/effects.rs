@@ -38,6 +38,23 @@ impl ScratchRetained {
         target.store(next, Ordering::Relaxed);
         Ok(Self { mirrors, bytes })
     }
+    /// Reclassify this owner's exact surviving storage after its allocation
+    /// gate already admitted every prospective overlap. Other scratch owners
+    /// may change independently while the selected owner is executing.
+    pub(in crate::store) fn replace_admitted(&mut self, bytes: usize) {
+        let target = self.mirrors.temporary();
+        let growth = bytes.saturating_sub(self.bytes);
+        let shrink = self.bytes.saturating_sub(bytes);
+        let before = target.load(Ordering::Relaxed);
+        before
+            .checked_add(growth)
+            .and_then(|value| value.checked_sub(shrink))
+            .expect("preadmitted owned Select scratch extent");
+        target.fetch_add(growth, Ordering::Relaxed);
+        let before = target.fetch_sub(shrink, Ordering::Relaxed);
+        assert!(before >= shrink, "owned Select scratch backing");
+        self.bytes = bytes;
+    }
 }
 impl Drop for ScratchRetained {
     fn drop(&mut self) {

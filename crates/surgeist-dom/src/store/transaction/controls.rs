@@ -7,6 +7,7 @@
 //! the group's string or searches unrelated groups.
 use super::super::*;
 use super::NodeFields;
+use super::exact_forest::{self, Forest, KeyView, Suffix};
 
 #[derive(Clone, Debug)]
 struct Facts {
@@ -45,9 +46,8 @@ impl Facts {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum IndexNode {
-    Branch { bit: usize, children: [usize; 2] },
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Leaf {
     Group { representative: Key, members: usize },
     Member(Key),
 }
@@ -66,7 +66,7 @@ pub(in crate::store) struct ControlIndex {
     owner: Option<DomOwnerId>,
     existing: bank::Bank<Facts>,
     created: bank::Bank<Facts>,
-    nodes: bank::Bank<IndexNode>,
+    nodes: Forest<Leaf>,
     roots: [Option<usize>; 3],
 }
 
@@ -74,7 +74,7 @@ pub(in crate::store) struct ControlIndex {
 pub(in crate::store) struct ControlCustody {
     existing: bank::BankCustody<Facts>,
     created: bank::BankCustody<Facts>,
-    nodes: bank::BankCustody<IndexNode>,
+    nodes: exact_forest::Custody<Leaf>,
 }
 
 #[derive(Clone, Default)]
@@ -198,98 +198,42 @@ fn key_words(key: Key) -> [u64; 3] {
         Key::Created(index) => [1, index as u64, 0],
     }
 }
-struct Encoded<'a> {
-    words: [u64; 7],
-    count: usize,
-    name: &'a [u16],
+fn member_key(key: Key) -> KeyView<'static, 7> {
+    let mut words = [0; 7];
+    words[..3].copy_from_slice(&key_words(key));
+    KeyView {
+        words,
+        used: 3,
+        suffix: Suffix::None,
+    }
 }
-impl<'a> Encoded<'a> {
-    fn member(key: Key) -> Self {
-        let mut words = [0; 7];
-        words[..3].copy_from_slice(&key_words(key));
-        Self {
-            words,
-            count: 3,
-            name: &[],
-        }
-    }
-    fn group(fact: &'a Facts, kind: GroupKind) -> Self {
-        let mut words = [0; 7];
-        match kind {
-            GroupKind::Document => {
-                words[..3].copy_from_slice(&key_words(fact.document));
-                Self {
-                    words,
-                    count: 3,
-                    name: &[],
-                }
-            }
-            GroupKind::Tree => {
-                words[..3].copy_from_slice(&key_words(fact.root));
-                Self {
-                    words,
-                    count: 3,
-                    name: &[],
-                }
-            }
-            GroupKind::Radio => {
-                words[..3].copy_from_slice(&key_words(fact.root));
-                if let Some(owner) = fact.owner {
-                    words[3] = 1;
-                    words[4..7].copy_from_slice(&key_words(owner));
-                }
-                Self {
-                    words,
-                    count: 7,
-                    name: fact.name.as_ref().map_or(&[], |v| v.code_units()),
-                }
+fn group_key(fact: &Facts, kind: GroupKind) -> KeyView<'_, 7> {
+    let mut words = [0; 7];
+    match kind {
+        GroupKind::Document | GroupKind::Tree => {
+            words[..3].copy_from_slice(&key_words(match kind {
+                GroupKind::Document => fact.document,
+                GroupKind::Tree => fact.root,
+                GroupKind::Radio => unreachable!(),
+            }));
+            KeyView {
+                words,
+                used: 3,
+                suffix: Suffix::None,
             }
         }
-    }
-    fn bit(&self, bit: usize) -> usize {
-        let fixed = self.count * 64;
-        if bit < fixed {
-            return ((self.words[bit / 64] >> (63 - bit % 64)) & 1) as usize;
-        }
-        // UTF-16 + 1 uses seventeen bits, reserving zero as a terminator.
-        let position = bit - fixed;
-        let symbol = self
-            .name
-            .get(position / 17)
-            .map_or(0, |unit| u32::from(*unit) + 1);
-        ((symbol >> (16 - position % 17)) & 1) as usize
-    }
-    fn difference(
-        &self,
-        other: &Self,
-        step: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<Option<usize>, DomError> {
-        assert_eq!(self.count, other.count, "one trie has one key shape");
-        for i in 0..self.count {
-            step()?;
-            let difference = self.words[i] ^ other.words[i];
-            if difference != 0 {
-                return Ok(Some(i * 64 + difference.leading_zeros() as usize));
+        GroupKind::Radio => {
+            words[..3].copy_from_slice(&key_words(fact.root));
+            if let Some(owner) = fact.owner {
+                words[3] = 1;
+                words[4..7].copy_from_slice(&key_words(owner));
+            }
+            KeyView {
+                words,
+                used: 7,
+                suffix: Suffix::Utf16(fact.name.as_ref().map_or(&[], |value| value.code_units())),
             }
         }
-        for position in 0..=self.name.len().min(other.name.len()) {
-            step()?;
-            let a = self.name.get(position).map_or(0, |v| u32::from(*v) + 1);
-            let b = other.name.get(position).map_or(0, |v| u32::from(*v) + 1);
-            if a != b {
-                let offset = position
-                    .checked_mul(17)
-                    .and_then(|v| v.checked_add((a ^ b).leading_zeros() as usize - 15))
-                    .ok_or(DomError::RepresentationExhausted)?;
-                return self
-                    .count
-                    .checked_mul(64)
-                    .and_then(|v| v.checked_add(offset))
-                    .map(Some)
-                    .ok_or(DomError::RepresentationExhausted);
-            }
-        }
-        Ok(None)
     }
 }
 
@@ -306,47 +250,29 @@ impl ControlIndex {
         }?;
         (fact.key == key).then_some(fact)
     }
-    fn leaf_key(&self, node: usize, trie: Trie) -> Encoded<'_> {
-        match (*self.nodes.get(node).expect("live control trie edge"), trie) {
-            (IndexNode::Member(key), Trie::Members) => Encoded::member(key),
-            (IndexNode::Group { representative, .. }, Trie::Group(kind)) => Encoded::group(
+    fn leaf_key(&self, value: Leaf, trie: Trie) -> Result<KeyView<'_, 7>, DomError> {
+        Ok(match (value, trie) {
+            (Leaf::Member(key), Trie::Members) => member_key(key),
+            (Leaf::Group { representative, .. }, Trie::Group(kind)) => group_key(
                 self.fact(representative)
                     .expect("group representative remains a member"),
                 kind,
             ),
             _ => unreachable!("control trie leaf shape"),
-        }
-    }
-    fn leaf(
-        &self,
-        root: usize,
-        target: &Encoded<'_>,
-        step: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<usize, DomError> {
-        let mut current = root;
-        loop {
-            step()?;
-            match self.nodes.get(current).expect("live control trie path") {
-                IndexNode::Branch { bit, children } => current = children[target.bit(*bit)],
-                _ => return Ok(current),
-            }
-        }
+        })
     }
     fn group(
         &self,
         fact: &Facts,
         kind: GroupKind,
         step: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<Option<usize>, DomError> {
-        let Some(root) = self.roots[kind as usize] else {
-            return Ok(None);
-        };
-        let target = Encoded::group(fact, kind);
-        let leaf = self.leaf(root, &target, step)?;
-        Ok(target
-            .difference(&self.leaf_key(leaf, Trie::Group(kind)), step)?
-            .is_none()
-            .then_some(leaf))
+    ) -> Result<Option<Leaf>, DomError> {
+        self.nodes.lookup(
+            self.roots[kind as usize],
+            &group_key(fact, kind),
+            |leaf| self.leaf_key(leaf, Trie::Group(kind)),
+            step,
+        )
     }
     pub fn adopt_custody(
         &self,
@@ -371,14 +297,7 @@ impl ControlIndex {
             },
             &mut *admit,
         )?;
-        let nodes = self.nodes.adopt_controlled(
-            registry,
-            |_| {
-                step()?;
-                Ok(custody::Usage::new(size_of::<IndexNode>(), 0))
-            },
-            admit,
-        )?;
+        let nodes = self.nodes.adopt_custody(registry, admit, step)?;
         Ok(ControlCustody {
             existing,
             created,
@@ -403,13 +322,7 @@ impl ControlIndex {
         };
         let mut graph = self.existing.inspect_graph(facts)?;
         graph.merge(&self.created.inspect_graph(facts)?)?;
-        graph.merge(&self.nodes.inspect_graph(|_| {
-            Ok(bank::Totals {
-                bytes: size_of::<IndexNode>(),
-                units: 0,
-                occurrences: 1,
-            })
-        })?)?;
+        graph.merge(&self.nodes.inspect_graph()?)?;
         Ok(graph)
     }
     #[cfg(test)]
@@ -417,7 +330,7 @@ impl ControlIndex {
         [
             (self.existing.totals(), self.existing.index_charge()),
             (self.created.totals(), self.created.index_charge()),
-            (self.nodes.totals(), self.nodes.index_charge()),
+            self.nodes.inspect_summaries(),
         ]
     }
     #[cfg(test)]
@@ -438,17 +351,17 @@ impl ControlIndex {
     }
     #[cfg(test)]
     pub fn inspect_groups(&self) -> Vec<ControlGroupInspection> {
-        fn leaves(nodes: &bank::Bank<IndexNode>, root: usize) -> Vec<IndexNode> {
+        fn leaves(nodes: &Forest<Leaf>, root: usize) -> Vec<Leaf> {
             let mut pending = vec![root];
             let mut seen = std::collections::BTreeSet::new();
             let mut leaves = Vec::new();
             while let Some(index) = pending.pop() {
                 assert!(seen.insert(index), "acyclic raw control trie");
-                match *nodes.get(index).expect("actual control edge") {
-                    IndexNode::Branch { children, .. } => {
+                match nodes.node(index).expect("actual control edge") {
+                    exact_forest::Node::Branch { children, .. } => {
                         pending.extend(children.into_iter().rev())
                     }
-                    leaf => leaves.push(leaf),
+                    exact_forest::Node::Leaf(leaf) => leaves.push(leaf),
                 }
             }
             leaves
@@ -457,7 +370,7 @@ impl ControlIndex {
         for kind in GROUPS {
             if let Some(root) = self.roots[kind as usize] {
                 for leaf in leaves(&self.nodes, root) {
-                    let IndexNode::Group {
+                    let Leaf::Group {
                         representative,
                         members,
                     } = leaf
@@ -467,7 +380,7 @@ impl ControlIndex {
                     let members = leaves(&self.nodes, members)
                         .into_iter()
                         .map(|leaf| match leaf {
-                            IndexNode::Member(key) => key,
+                            Leaf::Member(key) => key,
                             _ => panic!("member trie leaf"),
                         })
                         .collect();
@@ -513,142 +426,32 @@ pub(in crate::store) struct ControlGroupInspection {
 }
 
 impl Version {
-    fn node(
+    fn trie_change(
         &mut self,
-        index: usize,
-        value: IndexNode,
+        root: exact_forest::Root,
+        key: &KeyView<'_, 7>,
+        value: Option<Leaf>,
+        trie: Trie,
         edit: &mut Editing<'_>,
-    ) -> Result<(), DomError> {
-        set(
-            &mut self.index.nodes,
-            &mut self.custody.nodes,
-            index,
+    ) -> Result<exact_forest::Root, DomError> {
+        let change = self.index.nodes.change(
+            &self.custody.nodes,
+            root,
+            key,
             value,
-            custody::Usage::new(size_of::<IndexNode>(), 0),
-            edit,
-        )
-    }
-    fn allocate(&mut self, value: IndexNode, edit: &mut Editing<'_>) -> Result<usize, DomError> {
-        let index = self
-            .index
-            .nodes
-            .lowest_vacant()
-            .unwrap_or(self.index.nodes.len());
-        self.node(index, value, edit)?;
-        Ok(index)
-    }
-    fn remove_node(&mut self, index: usize, edit: &mut Editing<'_>) -> Result<(), DomError> {
-        remove(&mut self.index.nodes, &mut self.custody.nodes, index, edit)
-    }
-    fn link(
-        &mut self,
-        parent: Option<(usize, usize)>,
-        child: usize,
-        root: &mut Option<usize>,
-        edit: &mut Editing<'_>,
-    ) -> Result<(), DomError> {
-        if let Some((index, side)) = parent {
-            let IndexNode::Branch { bit, mut children } =
-                *self.index.nodes.get(index).expect("parent branch")
-            else {
-                unreachable!()
-            };
-            children[side] = child;
-            self.node(index, IndexNode::Branch { bit, children }, edit)
-        } else {
-            *root = Some(child);
-            Ok(())
-        }
-    }
-    fn insert(
-        &mut self,
-        mut root: Option<usize>,
-        value: IndexNode,
-        trie: Trie,
-        edit: &mut Editing<'_>,
-    ) -> Result<usize, DomError> {
-        let target = match (&value, trie) {
-            (IndexNode::Member(key), Trie::Members) => Encoded::member(*key),
-            (IndexNode::Group { representative, .. }, Trie::Group(kind)) => Encoded::group(
-                self.index.fact(*representative).expect("new group fact"),
-                kind,
-            ),
-            _ => unreachable!("new trie leaf"),
-        };
-        let Some(original) = root else {
-            return self.allocate(value, edit);
-        };
-        let leaf = self.index.leaf(original, &target, edit.step)?;
-        let Some(bit) = target.difference(&self.index.leaf_key(leaf, trie), edit.step)? else {
-            return Ok(original);
-        };
-        let side = target.bit(bit);
-        let mut current = original;
-        let mut parent = None;
-        loop {
-            (edit.step)()?;
-            match *self.index.nodes.get(current).expect("insertion path") {
-                IndexNode::Branch {
-                    bit: previous,
-                    children,
-                } if previous < bit => {
-                    let side = target.bit(previous);
-                    parent = Some((current, side));
-                    current = children[side];
-                }
-                _ => break,
-            }
-        }
-        let leaf = self.allocate(value, edit)?;
-        let mut children = [current; 2];
-        children[side] = leaf;
-        let branch = self.allocate(IndexNode::Branch { bit, children }, edit)?;
-        self.link(parent, branch, &mut root, edit)?;
-        Ok(root.expect("inserted root"))
-    }
-    fn delete(
-        &mut self,
-        mut root: Option<usize>,
-        target: &Encoded<'_>,
-        trie: Trie,
-        edit: &mut Editing<'_>,
-    ) -> Result<Option<usize>, DomError> {
-        let Some(original) = root else {
-            return Ok(None);
-        };
-        let mut current = original;
-        let mut parent = None;
-        let mut grandparent = None;
-        loop {
-            (edit.step)()?;
-            match *self.index.nodes.get(current).expect("deletion path") {
-                IndexNode::Branch { bit, children } => {
-                    grandparent = parent;
-                    let side = target.bit(bit);
-                    parent = Some((current, side));
-                    current = children[side];
-                }
-                _ => break,
-            }
-        }
-        if target
-            .difference(&self.index.leaf_key(current, trie), edit.step)?
-            .is_some()
-        {
-            return Ok(root);
-        }
-        if let Some((index, side)) = parent {
-            let IndexNode::Branch { children, .. } = *self.index.nodes.get(index).expect("parent")
-            else {
-                unreachable!()
-            };
-            self.link(grandparent, children[1 - side], &mut root, edit)?;
-            self.remove_node(index, edit)?;
-        } else {
-            root = None;
-        }
-        self.remove_node(current, edit)?;
-        Ok(root)
+            |leaf| self.index.leaf_key(leaf, trie),
+            exact_forest::Edit {
+                registry: edit.registry,
+                admit: &mut *edit.admit,
+                step: &mut *edit.step,
+            },
+        )?;
+        let old = std::mem::replace(&mut self.index.nodes, change.forest);
+        let old_custody = std::mem::replace(&mut self.custody.nodes, change.custody);
+        drop(old);
+        drop(old_custody);
+        edit.registry.reconcile_releases();
+        Ok(change.root)
     }
     fn membership(
         &mut self,
@@ -661,80 +464,52 @@ impl Version {
             return Ok(());
         }
         let group = self.index.group(fact, kind, edit.step)?;
-        if present {
-            if let Some(index) = group {
-                let IndexNode::Group {
-                    representative,
-                    members,
-                } = *self.index.nodes.get(index).expect("group")
-                else {
-                    unreachable!()
-                };
-                let members = self.insert(
-                    Some(members),
-                    IndexNode::Member(fact.key),
-                    Trie::Members,
-                    edit,
-                )?;
-                self.node(
-                    index,
-                    IndexNode::Group {
-                        representative,
-                        members,
-                    },
-                    edit,
-                )?;
-            } else {
-                let members = self.allocate(IndexNode::Member(fact.key), edit)?;
-                self.index.roots[kind as usize] = Some(self.insert(
-                    self.index.roots[kind as usize],
-                    IndexNode::Group {
-                        representative: fact.key,
-                        members,
-                    },
-                    Trie::Group(kind),
-                    edit,
-                )?);
-            }
-        } else if let Some(index) = group {
-            let IndexNode::Group {
+        let (representative, members) = match group {
+            Some(Leaf::Group {
                 representative,
                 members,
-            } = *self.index.nodes.get(index).expect("group")
-            else {
-                unreachable!()
-            };
-            match self.delete(
-                Some(members),
-                &Encoded::member(fact.key),
-                Trie::Members,
-                edit,
-            )? {
-                Some(members) => {
-                    let representative = if representative == fact.key {
-                        first_member(&self.index.nodes, members, edit.step)?
-                    } else {
-                        representative
-                    };
-                    self.node(
-                        index,
-                        IndexNode::Group {
-                            representative,
-                            members,
-                        },
-                        edit,
-                    )?;
-                }
-                None => {
-                    self.index.roots[kind as usize] = self.delete(
-                        self.index.roots[kind as usize],
-                        &Encoded::group(fact, kind),
-                        Trie::Group(kind),
-                        edit,
-                    )?;
-                }
-            }
+            }) => (representative, Some(members)),
+            None => (fact.key, None),
+            _ => unreachable!("control group leaf"),
+        };
+        if !present && group.is_none() {
+            return Ok(());
         }
+        let members = self.trie_change(
+            members,
+            &member_key(fact.key),
+            present.then_some(Leaf::Member(fact.key)),
+            Trie::Members,
+            edit,
+        )?;
+        let value = if let Some(members) = members {
+            let representative = if !present && representative == fact.key {
+                match self
+                    .index
+                    .nodes
+                    .first(Some(members), edit.step)?
+                    .expect("nonempty members")
+                {
+                    Leaf::Member(key) => key,
+                    _ => unreachable!("member leaf"),
+                }
+            } else {
+                representative
+            };
+            Some(Leaf::Group {
+                representative,
+                members,
+            })
+        } else {
+            None
+        };
+        self.index.roots[kind as usize] = self.trie_change(
+            self.index.roots[kind as usize],
+            &group_key(fact, kind),
+            value,
+            Trie::Group(kind),
+            edit,
+        )?;
         Ok(())
     }
     fn qualify(&mut self, fact: &Facts) -> Result<(), DomError> {
@@ -865,26 +640,21 @@ impl Version {
 }
 
 fn first_member(
-    nodes: &bank::Bank<IndexNode>,
-    mut root: usize,
+    nodes: &Forest<Leaf>,
+    root: exact_forest::Root,
     step: &mut dyn FnMut() -> Result<(), DomError>,
-) -> Result<Key, DomError> {
-    loop {
-        step()?;
-        match nodes.get(root).expect("member tree") {
-            IndexNode::Branch { children, .. } => root = children[0],
-            IndexNode::Member(key) => return Ok(*key),
-            _ => unreachable!("member leaf"),
-        }
-    }
+) -> Result<Option<Key>, DomError> {
+    Ok(nodes.first(root, step)?.map(|leaf| match leaf {
+        Leaf::Member(key) => key,
+        _ => unreachable!("member leaf"),
+    }))
 }
 
-/// The selected semantic/custody aliases remain stable while original
-/// controllers change the live index. No unrelated participant is copied.
+/// Selected roots retain their paired custody while original controllers edit.
 pub(in crate::store) struct Participants {
-    nodes: bank::Bank<IndexNode>,
-    root: Option<usize>,
-    custody: bank::BankCustody<IndexNode>,
+    nodes: Forest<Leaf>,
+    root: exact_forest::Root,
+    custody: exact_forest::Custody<Leaf>,
     registry: bank::CustodyRegistry,
 }
 impl Drop for Participants {
@@ -895,8 +665,8 @@ impl Drop for Participants {
     }
 }
 pub(in crate::store) struct Members<'a> {
-    nodes: &'a bank::Bank<IndexNode>,
-    root: Option<usize>,
+    nodes: &'a Forest<Leaf>,
+    root: exact_forest::Root,
     next: Option<Key>,
 }
 impl Participants {
@@ -907,10 +677,7 @@ impl Participants {
         Ok(Members {
             nodes: &self.nodes,
             root: self.root,
-            next: self
-                .root
-                .map(|root| first_member(&self.nodes, root, &mut step))
-                .transpose()?,
+            next: first_member(&self.nodes, self.root, &mut step)?,
         })
     }
 }
@@ -922,26 +689,13 @@ impl Members<'_> {
         let Some(value) = self.next else {
             return Ok(None);
         };
-        let target = Encoded::member(value);
-        let mut current = self.root.expect("nonempty members");
-        let mut successor = None;
-        loop {
-            step()?;
-            match self.nodes.get(current).expect("member successor path") {
-                IndexNode::Branch { bit, children } => {
-                    let side = target.bit(*bit);
-                    if side == 0 {
-                        successor = Some(children[1]);
-                    }
-                    current = children[side];
-                }
-                IndexNode::Member(_) => break,
+        self.next = self
+            .nodes
+            .after(self.root, &member_key(value), &mut step)?
+            .map(|leaf| match leaf {
+                Leaf::Member(key) => key,
                 _ => unreachable!("member leaf"),
-            }
-        }
-        self.next = successor
-            .map(|root| first_member(self.nodes, root, &mut step))
-            .transpose()?;
+            });
         Ok(Some(value))
     }
 }
@@ -1253,18 +1007,9 @@ impl Draft {
             .current
             .index
             .group(fact, kind, &mut || self.source_step(cancel))?;
-        let root = group.map(|index| {
-            match self
-                .controls
-                .current
-                .index
-                .nodes
-                .get(index)
-                .expect("selected control group")
-            {
-                IndexNode::Group { members, .. } => *members,
-                _ => unreachable!(),
-            }
+        let root = group.map(|leaf| match leaf {
+            Leaf::Group { members, .. } => members,
+            _ => unreachable!("group leaf"),
         });
         Ok(Participants {
             nodes: self.controls.current.index.nodes.clone(),
@@ -1393,9 +1138,9 @@ mod tests {
             Ok(())
         };
         let group = version.index.group(fact, kind, &mut step).unwrap();
-        let root = group.map(|index| match version.index.nodes.get(index).unwrap() {
-            IndexNode::Group { members, .. } => *members,
-            _ => unreachable!(),
+        let root = group.map(|leaf| match leaf {
+            Leaf::Group { members, .. } => members,
+            _ => unreachable!("group leaf"),
         });
         let participants = Participants {
             nodes: version.index.nodes.clone(),
@@ -1503,7 +1248,7 @@ mod tests {
                 .0
                 .is_empty()
         );
-        assert_eq!(version.index.nodes.record_count(), 0);
+        assert_eq!(version.index.nodes.inspect_summaries().0.occurrences, 0);
         let graph = version.index.inspect_graph().unwrap();
         assert_eq!(graph.index_charge().bytes, 0);
         assert_eq!(graph.record_totals().occurrences, 0);

@@ -76,6 +76,33 @@ impl Charge {
             }
         }
     }
+    /// Release an unused portion after its represented storage has already
+    /// been destroyed. The surviving allocation remains beside this affine
+    /// receipt. This subset transfer never allocates, admits, or grows custody,
+    /// so it is valid in an infallible post-publication handoff.
+    pub(in crate::store) fn shrink_to_payload(&mut self, payload: super::storage::Payload) {
+        let bytes = self
+            .bytes
+            .checked_sub(payload.bytes)
+            .expect("surviving Source bytes are a preadmitted subset");
+        let units = self
+            .units
+            .checked_sub(payload.units)
+            .expect("surviving Source units are a preadmitted subset");
+        if bytes != 0 || units != 0 {
+            drop(
+                self.debit
+                    .as_mut()
+                    .expect("owned Source payload")
+                    .split(custody::Usage::new(bytes, units))
+                    .expect("unused Source payload component"),
+            );
+        }
+        self.live.fetch_sub(bytes, Ordering::Relaxed);
+        self.live_units.fetch_sub(units, Ordering::Relaxed);
+        self.bytes = payload.bytes;
+        self.units = payload.units;
+    }
     /// Reclassify the exact current graph of an original controlled producer.
     /// Its call must already have admitted all allocation/overlap against an
     /// envelope derived from this same ledger, with this charge excluded once.
@@ -242,5 +269,99 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
         Ok(self.controlled_storage_usage(cancel)?.bytes())
+    }
+}
+
+#[cfg(test)]
+mod subset_tests {
+    use super::*;
+
+    #[test]
+    fn dropped_spares_shrink_and_merge_without_admission_or_refunding_work() {
+        let cancel = AtomicBool::new(false);
+        let dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 0, 0).unwrap()).unwrap();
+        let batch = DomBatch::new();
+        let mut draft = Draft::new_source(
+            &dom,
+            batch.owner,
+            &batch.commands,
+            crate::DomSourceLimits::new(16_000_000, 100_000, 1_000_000, 16, 64, 64, 1),
+            &cancel,
+        )
+        .unwrap()
+        .0;
+        draft.custody_registry().reconcile_releases();
+        let ledger = draft.custody_ledger().clone();
+        let baseline = ledger.total();
+        let mirrors = (
+            draft.source_formation_bytes.load(Ordering::Relaxed),
+            draft.source_temporary_units.load(Ordering::Relaxed),
+        );
+        let first = super::super::formation::Formation::new(&draft, &cancel)
+            .unwrap()
+            .unwrap();
+        let second = super::super::formation::Formation::new(&draft, &cancel)
+            .unwrap()
+            .unwrap();
+        let mut kept = Vec::new();
+        let mut spare = Vec::new();
+        let mut other = Vec::new();
+        super::super::formation::reserve_utf16(&mut kept, 7, Some(&first), &cancel).unwrap();
+        super::super::formation::reserve_utf16(&mut spare, 19, Some(&first), &cancel).unwrap();
+        super::super::formation::reserve_utf16(&mut other, 3, Some(&second), &cancel).unwrap();
+        kept.extend_from_slice(&[1, 2, 3]);
+        other.push(4);
+        let kept_units = kept.capacity();
+        let other_units = other.capacity();
+        struct Buffers {
+            kept: Vec<u16>,
+            spare: Vec<u16>,
+            other: Vec<u16>,
+            primary: Charge,
+            secondary: Option<Charge>,
+        }
+        let mut buffers = Buffers {
+            kept,
+            spare,
+            other,
+            primary: first.into_charge(),
+            secondary: Some(second.into_charge()),
+        };
+        let spent = draft.source_work.load(Ordering::Relaxed);
+        draft.source_limits.as_mut().unwrap().work = spent;
+        draft.source_limits.as_mut().unwrap().retained_bytes = baseline.bytes();
+        draft.source_limits.as_mut().unwrap().retained_units = baseline.units();
+        cancel.store(true, Ordering::Relaxed);
+        // The unused allocation is destroyed while its original receipt still
+        // owns it. Only then may the infallible subset handoff release surplus.
+        drop(std::mem::take(&mut buffers.spare));
+        buffers
+            .primary
+            .shrink_to_payload(super::super::storage::Payload {
+                bytes: kept_units * size_of::<u16>(),
+                units: kept_units,
+            });
+        let remaining = custody::Usage::new(
+            (kept_units + other_units) * size_of::<u16>(),
+            kept_units + other_units,
+        );
+        assert_eq!(ledger.total(), baseline.checked_add(remaining).unwrap());
+        buffers.primary.merge(buffers.secondary.take().unwrap());
+        assert_eq!(ledger.total(), baseline.checked_add(remaining).unwrap());
+        assert_eq!(buffers.primary.bytes, remaining.bytes());
+        assert_eq!(buffers.primary.units, remaining.units());
+        assert_eq!(buffers.kept, [1, 2, 3]);
+        assert_eq!(buffers.other, [4]);
+        assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
+        drop(buffers);
+        assert_eq!(ledger.total(), baseline);
+        assert_eq!(
+            draft.source_formation_bytes.load(Ordering::Relaxed),
+            mirrors.0
+        );
+        assert_eq!(
+            draft.source_temporary_units.load(Ordering::Relaxed),
+            mirrors.1
+        );
     }
 }

@@ -72,6 +72,13 @@ impl Draft {
     ) -> Result<(), DomError> {
         #[cfg(test)]
         let _observation = scale_metrics::ENABLED.then(|| tests::DocumentRead::begin(self));
+        self.fullscreen_raw_members(document, cancel)?;
+        if !self.role_facts.has_any(
+            transaction::role_facts::Role::FullscreenFlagged,
+            self.live_key(document),
+        ) {
+            return Ok(());
+        }
         let mut flagged = self.effect_vec();
         for key in self.fullscreen_raw_members(document, cancel)?.iter() {
             self.source_step(cancel)?;
@@ -158,20 +165,25 @@ impl Draft {
             if target != Some(node.document)
                 && !removal_covers
                 && matches!(node.kind, DomNodeKind::Element(_))
-                && let Some(transaction::InteractiveRead::Known {
-                    top_layer,
-                    pending_top_layer_removals,
-                    ..
-                }) = self.node(node.document)?.interactive_document
+                && let Some(transaction::InteractiveRead::Known { .. }) =
+                    self.node(node.document)?.interactive_document
             {
-                for member in top_layer.iter().chain(pending_top_layer_removals.iter()) {
-                    self.source_step(cancel)?;
-                    if member == key {
-                        return Err(DomError::TopLayerAdoptionUnavailable {
-                            subject: self.published_id(key),
-                            old_document: self.published_id(node.document).map(DocumentId),
-                        });
-                    }
+                self.source_step(cancel)?;
+                if self.role_facts.count(
+                    transaction::role_facts::Role::TopLayer,
+                    self.live_key(node.document),
+                    self.live_key(key),
+                ) != 0
+                    || self.role_facts.count(
+                        transaction::role_facts::Role::PendingTopLayerRemovals,
+                        self.live_key(node.document),
+                        self.live_key(key),
+                    ) != 0
+                {
+                    return Err(DomError::TopLayerAdoptionUnavailable {
+                        subject: self.published_id(key),
+                        old_document: self.published_id(node.document).map(DocumentId),
+                    });
                 }
             }
             self.select_reserve(&mut pending, node.children.len(), cancel)?;

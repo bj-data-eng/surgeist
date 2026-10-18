@@ -52,6 +52,24 @@ fn policy() -> DomSourceLimits {
     DomSourceLimits::new(256_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 1)
 }
 
+// Adequate fixture configuration, not an operation-cost oracle: existing owner
+// storage is already controlled, and the original fixed 256 MB is additional
+// preparation/old-new overlap headroom. Work and discovery assertions remain
+// independent of these capacity-based storage inputs.
+fn owner_preparation_policy(dom: &Dom) -> crate::DomSourceLimits {
+    let baseline = dom.custody_registry.ledger().total().bytes();
+    let mut configured = policy();
+    let additional = configured.retained_bytes;
+    configured.retained_bytes = baseline
+        .checked_add(additional)
+        .expect("fixture owner baseline and preparation allowance");
+    eprintln!(
+        "discovery fixture storage: preoperation_owner={baseline}, additional={additional}, total={}",
+        configured.retained_bytes
+    );
+    configured
+}
+
 #[test]
 #[ignore = "requires an instrumented DOM build; isolates post-CSSOM body discovery"]
 fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_children() {
@@ -65,10 +83,7 @@ fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_childre
     // 256 envelope admits those participants without pricing a scan from its
     // observation. At unrelated=256, the two comment lists alone add 512 reads.
     const FIXED_BODY_WORK: u64 = 256;
-    assert!(
-        scale_metrics::ENABLED,
-        "compile with SURGEIST_DOM_STORAGE_COUNTERS=1"
-    );
+    scale_metrics::require_enabled().expect("compile with SURGEIST_DOM_STORAGE_COUNTERS=1");
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256, 4096] {
         for body_present in [false, true] {
@@ -101,10 +116,11 @@ fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_childre
             let setup = dom.apply(batch, &cancel).unwrap();
             let style = setup.created(&style).unwrap().unwrap();
             let old = dom.snapshot();
+            let command_policy = owner_preparation_policy(&dom);
             let mut lease = dom
                 .begin_source_edit(
                     DomSourceEdit::insert_before(style, head, None),
-                    policy(),
+                    command_policy,
                     &cancel,
                 )
                 .unwrap();

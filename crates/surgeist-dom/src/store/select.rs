@@ -542,39 +542,27 @@ impl Draft {
             discovery_observation::record(discovery_observation::Event::OptionsEntered);
         }
         let mut result = self.select_vec();
-        let mut pending = self.select_vec();
-        self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
-        for child in self.node(key)?.children.iter().rev() {
-            self.source_step(cancel)?;
-            pending.push((child, false));
-        }
-        while !pending.is_empty() {
-            self.source_step(cancel)?;
-            let (key, group) = pending.pop().expect("admitted pending option");
+        let group = self.families.options(self.live_key(key));
+        let mut next = self
+            .families
+            .first(group, &mut || self.select_step(cancel))?;
+        while let Some(key) = next {
             self.select_step(cancel)?;
-            let tag = self.tag(key)?;
             #[cfg(test)]
             if super::scale_metrics::ENABLED {
                 discovery_observation::record(discovery_observation::Event::OptionCandidate);
             }
-            match select_option_rule(tag, group) {
-                HtmlSelectOptionRule::IncludeAndPrune => {
-                    self.select_reserve(&mut result, 1, cancel)?;
-                    result.push(key);
-                    #[cfg(test)]
-                    if super::scale_metrics::ENABLED {
-                        discovery_observation::record(discovery_observation::Event::OptionMember);
-                    }
-                }
-                HtmlSelectOptionRule::Prune => (),
-                HtmlSelectOptionRule::Descend => {
-                    self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
-                    for child in self.node(key)?.children.iter().rev() {
-                        self.source_step(cancel)?;
-                        pending.push((child, group || tag == Some(Tag::Optgroup)));
-                    }
-                }
+            self.select_reserve(&mut result, 1, cancel)?;
+            result.push(key);
+            #[cfg(test)]
+            if super::scale_metrics::ENABLED {
+                discovery_observation::record(discovery_observation::Event::OptionMember);
             }
+            next = self
+                .families
+                .after(group, key, self.order_view(), &mut || {
+                    self.select_step(cancel)
+                })?;
         }
         Ok(result)
     }
@@ -1539,24 +1527,27 @@ impl Draft {
             discovery_observation::record(discovery_observation::Event::TargetsEntered);
         }
         let mut targets = self.select_vec();
-        let mut next = Some(select);
+        let group = self.families.targets(self.live_key(select));
+        let mut next = self
+            .families
+            .first(group, &mut || self.select_step(cancel))?;
         while let Some(key) = next {
             self.select_step(cancel)?;
             #[cfg(test)]
             if super::scale_metrics::ENABLED {
                 discovery_observation::record(discovery_observation::Event::TargetCandidate);
             }
-            if self.tag(key)? == Some(Tag::Selectedcontent)
-                && !self.element(key)?.selectedcontent_disabled().expect("SC")
-            {
-                self.select_reserve(&mut targets, 1, cancel)?;
-                targets.push(key);
-                #[cfg(test)]
-                if super::scale_metrics::ENABLED {
-                    discovery_observation::record(discovery_observation::Event::TargetMember);
-                }
+            self.select_reserve(&mut targets, 1, cancel)?;
+            targets.push(key);
+            #[cfg(test)]
+            if super::scale_metrics::ENABLED {
+                discovery_observation::record(discovery_observation::Event::TargetMember);
             }
-            next = crate::slot::next_admitted(self, select, key, &mut || self.select_step(cancel))?;
+            next = self
+                .families
+                .after(group, key, self.order_view(), &mut || {
+                    self.select_step(cancel)
+                })?;
         }
         self.push_effect(
             Effect::Update {

@@ -274,10 +274,24 @@ impl Draft {
         resize_debit(next.debit_mut(), usage, |usage| {
             self.admit_custody_usage(usage, cancel)
         })?;
-        let undo = self.prepare_undo_slots(6, cancel)? && undo;
+        let undo = self.prepare_undo_slots(10, cancel)? && undo;
         let inbound = self.prepare_inbound_fields(key, next.value(), cancel)?;
         let controls = self.prepare_control_fields(key, next.value(), cancel)?;
         let slots = self.prepare_slot_fields(key, next.value(), cancel)?;
+        let next_read = NodeRead::staged_fields(self.records_for(key), next.value());
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self))
+            .changed(key, next_read);
+        let discovery = self.prepare_discovery_node(
+            super::NodeChange {
+                key,
+                before: Some(self.node(key)?),
+                after: Some(next_read),
+            },
+            order,
+            cancel,
+        )?;
         let previous_document = self.node(key)?.document;
         let next_document = next.value().document;
         let queue_documents = if previous_document != next_document {
@@ -333,6 +347,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         if undo {
             self.journal.push_prepared(Undo::Fields {
                 key,
@@ -449,13 +464,11 @@ impl Draft {
         let counts = self.relation_counts(field, old, next)?;
         let private_counts = self.private_relation_counts(key, field, old, next)?;
         let undo = self.prepare_undo_slots(
-            2 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children)),
             cancel,
         )?;
         let inbound =
             self.prepare_inbound_delta(key, std::iter::empty(), values.iter().copied(), cancel)?;
-        #[cfg(test)]
-        super::queues::admission_observation::before_relation(self, key, field);
         #[cfg(test)]
         let growth = if matches!(field, RelationField::Children)
             && (self.records_for(key).children.canonical_backing().is_some()
@@ -474,6 +487,23 @@ impl Draft {
         } else {
             None
         };
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self));
+        let discovery = self.prepare_discovery_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index,
+                removed: 0,
+                added: values,
+            },
+            order,
+            cancel,
+        )?;
+        #[cfg(test)]
+        super::queues::admission_observation::before_relation(self, key, field);
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
         let inverse = self.private_node_mut(key).relation_mut(field).insert(
@@ -498,6 +528,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -525,7 +556,7 @@ impl Draft {
         let counts = self.relation_counts(field, old, next)?;
         let private_counts = self.private_relation_counts(key, field, old, next)?;
         let undo = self.prepare_undo_slots(
-            2 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children)),
             cancel,
         )?;
         let view = self.relation_view(key, field);
@@ -544,6 +575,21 @@ impl Draft {
         } else {
             None
         };
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self));
+        let discovery = self.prepare_discovery_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index,
+                removed: count,
+                added: &[],
+            },
+            order,
+            cancel,
+        )?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
         let inverse = self.private_node_mut(key).relation_mut(field).remove(
@@ -561,6 +607,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -586,7 +633,7 @@ impl Draft {
         let counts = self.relation_counts(field, old, values.len())?;
         let private_counts = self.private_relation_counts(key, field, old, values.len())?;
         let undo = self.prepare_undo_slots(
-            2 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children)),
             cancel,
         )?;
         let inbound = self.prepare_inbound_delta(
@@ -600,6 +647,21 @@ impl Draft {
         } else {
             None
         };
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self));
+        let discovery = self.prepare_discovery_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index: 0,
+                removed: old,
+                added: &values,
+            },
+            order,
+            cancel,
+        )?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
         let receipt = custody::Usage::new(
@@ -619,6 +681,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -825,10 +888,23 @@ impl Draft {
         let style =
             matches!(self.node(key)?.kind,DomNodeKind::Element(e) if e.style_state().is_some());
         let document = self.node(key)?.document;
-        let undo = self.prepare_undo_slots(5, cancel)?;
+        let undo = self.prepare_undo_slots(9, cancel)?;
         let inbound = self.prepare_inbound_node(key, self.node(key)?, false, cancel)?;
         let controls = self.prepare_control_retired(key, cancel)?;
         let slots = self.prepare_slot_retired(key, cancel)?;
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self))
+            .removed(key);
+        let discovery = self.prepare_discovery_node(
+            super::NodeChange {
+                key,
+                before: Some(self.node(key)?),
+                after: None,
+            },
+            order,
+            cancel,
+        )?;
         let private = self.is_private(key);
         let next_private_counts = if private {
             self.private_counts
@@ -860,6 +936,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let old = match key {
             Key::Existing(id) => self.records[*self
                 .existing
@@ -1087,7 +1164,7 @@ impl Draft {
         let counts = self.relation_counts(field, old, owned.values().len())?;
         let private_counts = self.private_relation_counts(key, field, old, owned.values().len())?;
         let undo = self.prepare_undo_slots(
-            2 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children)),
             cancel,
         )?;
         let inbound = self.prepare_inbound_delta(
@@ -1101,6 +1178,21 @@ impl Draft {
         } else {
             None
         };
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self));
+        let discovery = self.prepare_discovery_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index: 0,
+                removed: old,
+                added: owned.values(),
+            },
+            order,
+            cancel,
+        )?;
         let ledger = self.custody_ledger().clone();
         let values = owned.into_held(&ledger, |usage| self.admit_custody_usage(usage, cancel))?;
         let (values, debit) = values.into_parts();
@@ -1112,6 +1204,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {

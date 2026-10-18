@@ -48,13 +48,28 @@ fn policy() -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(256_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 2)
 }
 
+// Adequate fixture configuration, not an operation-cost oracle: existing owner
+// storage is already controlled, and the original fixed 256 MB is additional
+// preparation/old-new overlap headroom. Work and discovery assertions remain
+// independent of these capacity-based storage inputs.
+fn owner_preparation_policy(dom: &Dom) -> crate::DomSourceLimits {
+    let baseline = dom.custody_registry.ledger().total().bytes();
+    let mut configured = policy();
+    let additional = configured.retained_bytes;
+    configured.retained_bytes = baseline
+        .checked_add(additional)
+        .expect("fixture owner baseline and preparation allowance");
+    eprintln!(
+        "discovery fixture storage: preoperation_owner={baseline}, additional={additional}, total={}",
+        configured.retained_bytes
+    );
+    configured
+}
+
 #[test]
 #[ignore = "requires an instrumented DOM build; observes actual Show popover queries"]
 fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() {
-    assert!(
-        scale_metrics::ENABLED,
-        "compile with SURGEIST_DOM_STORAGE_COUNTERS=1"
-    );
+    scale_metrics::require_enabled().expect("compile with SURGEIST_DOM_STORAGE_COUNTERS=1");
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256, 4096] {
         let mut dom = Dom::new(
@@ -86,15 +101,10 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
             .iter()
             .map(|ticket| setup.created(ticket).unwrap().unwrap())
             .collect();
-        let batch = DomBatch::new();
-        let (mut staged, _) = Draft::new_source(
-            &dom,
-            batch.owner.clone(),
-            &batch.commands,
-            policy(),
-            &cancel,
-        )
-        .unwrap();
+        // Population establishes canonical native Raw roles only. It does not
+        // claim to execute a public Source command or measure its preparation.
+        // The actual Show below retains the finite Source policy and receipts.
+        let mut staged = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         for member in &members {
             let key = staged.resolve((*member).into()).unwrap();
             // Real raw relation owner, not a claim these Elements were shown.
@@ -125,9 +135,14 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         let mut queue = Vec::new();
         queue.try_reserve_exact(1).unwrap();
         assert_eq!(queue.capacity(), 1);
+        let command_policy = owner_preparation_policy(&dom);
         let event = {
             let mut lease = dom
-                .begin_source_edit(crate::DomSourceEdit::show_dialog(dialog), policy(), &cancel)
+                .begin_source_edit(
+                    crate::DomSourceEdit::show_dialog(dialog),
+                    command_policy,
+                    &cancel,
+                )
                 .unwrap();
             lease
                 .bind_execution_host(&host_source, host, &cancel)
@@ -156,7 +171,7 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
                 .unwrap(),
         );
         let mut lease = dom
-            .resume_source_edit(event.operation(), policy(), &cancel)
+            .resume_source_edit(event.operation(), command_policy, &cancel)
             .unwrap();
         lease
             .accept_source_event(&event, &mut publication, &cancel)

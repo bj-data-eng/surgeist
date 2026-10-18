@@ -2,6 +2,8 @@ use super::super::bank::{
     BankCustody, ControlledRecord, CustodyRegistry, Dependency, RecordDescription, Totals,
 };
 use super::super::custody::Usage;
+use super::super::transaction::exact_forest;
+use super::membership::{MembershipCustody, OwnedMembership};
 use super::*;
 
 // Semantic roots precede their matching owner-only custody on every drop path.
@@ -180,6 +182,7 @@ pub(in crate::store) struct DraftTransition {
     pub key: TransitionKey,
     pub document: DocumentId,
     base: Pair<Record>,
+    membership: OwnedMembership,
     changed: Pair<DraftRecord>,
     created: Pair<DraftRecord>,
     pub setup: bool,
@@ -194,6 +197,7 @@ impl DraftTransition {
             key,
             document,
             base: Pair::default(),
+            membership: OwnedMembership::default(),
             changed: Pair::default(),
             created: Pair::default(),
             setup: false,
@@ -238,21 +242,91 @@ impl DraftTransition {
     pub fn record_count(&self) -> usize {
         self.base.value.record_count() + self.created.value.record_count()
     }
+    pub fn name_owner(
+        &self,
+        name: &surgeist_css::CssViewTransitionIdent,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<RecordKey>, DomError> {
+        self.membership
+            .value
+            .name_owner(name, |key| Ok(self.record(key)?.name.as_ref()), step)
+    }
+    pub fn element_owner(
+        &self,
+        node: NodeId,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<RecordKey>, DomError> {
+        self.membership.value.element_owner(
+            node,
+            |key| {
+                self.record(key)?
+                    .branches
+                    .new_element()
+                    .ok_or(DomError::RepresentationExhausted)
+            },
+            step,
+        )
+    }
     pub fn change_record(
         &mut self,
         key: RecordKey,
         registry: &CustodyRegistry,
         admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
         change: impl FnOnce(RecordRead<'_>) -> DraftRecord,
     ) -> Result<(), DomError> {
-        let original = self.clone();
-        let read = original.record(key)?;
+        let read = self.record(key)?;
+        let old_element = read.branches.new_element();
         let usage = record_usage::<DraftRecord>(read.name)?;
+        let mut next = self.clone();
         let (table, index) = match key {
-            RecordKey::Existing(id) => (&mut self.changed, generation(id.generation)?),
-            RecordKey::Created(ticket) => (&mut self.created, ticket),
+            RecordKey::Existing(id) => (&mut next.changed, generation(id.generation)?),
+            RecordKey::Created(ticket) => (&mut next.created, ticket),
         };
-        table.set(index, usage, registry, admit, || Ok(change(read)))
+        table.set(index, usage, registry, admit, || Ok(change(read)))?;
+        let new_element = next.record(key)?.branches.new_element();
+        if old_element != new_element {
+            let mut membership = next.membership.clone();
+            if let Some(node) = old_element {
+                membership.replace_element(
+                    node,
+                    Some(key),
+                    None,
+                    |key| {
+                        self.record(key)?
+                            .branches
+                            .new_element()
+                            .ok_or(DomError::RepresentationExhausted)
+                    },
+                    exact_forest::Edit {
+                        registry,
+                        admit: &mut *admit,
+                        step: &mut *step,
+                    },
+                )?;
+            }
+            if let Some(node) = new_element {
+                membership.replace_element(
+                    node,
+                    None,
+                    Some(key),
+                    |key| {
+                        next.record(key)?
+                            .branches
+                            .new_element()
+                            .ok_or(DomError::RepresentationExhausted)
+                    },
+                    exact_forest::Edit {
+                        registry,
+                        admit: &mut *admit,
+                        step: &mut *step,
+                    },
+                )?;
+            }
+            next.membership = membership;
+        }
+        *self = next;
+        Ok(())
     }
     pub fn append_record(
         &mut self,
@@ -260,6 +334,7 @@ impl DraftTransition {
         name: &Arc<surgeist_css::CssViewTransitionIdent>,
         registry: &CustodyRegistry,
         admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
         observe: impl FnOnce() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
         let incoming = record_usage::<()>(name)?;
@@ -270,12 +345,12 @@ impl DraftTransition {
         held.debit_mut()
             .grow(inline::<DraftRecord>(), &mut *admit)?;
         let shared = held.debit_mut().share(&mut *admit)?;
-        let (name, empty) = held.into_parts();
+        let (owned_name, empty) = held.into_parts();
         drop(empty);
         let record = ControlledRecord::from_parts(
             reserved.materialize(DraftRecord {
                 key: RecordKey::Created(ticket),
-                name,
+                name: owned_name,
                 branches: DomViewTransitionBranches::Pending,
                 rules: None,
                 captured: [false; 4],
@@ -283,8 +358,9 @@ impl DraftTransition {
             shared,
         );
         let usage = record_usage::<DraftRecord>(record.value().name.as_ref())?;
-        let (value, custody) = self.created.value.set_controlled(
-            &self.created.custody,
+        let mut next = self.clone();
+        let (value, custody) = next.created.value.set_controlled(
+            &next.created.custody,
             ticket,
             record,
             false,
@@ -294,10 +370,24 @@ impl DraftTransition {
                 occurrences: 1,
             },
             registry,
-            admit,
+            &mut *admit,
         )?;
-        self.created.value = value;
-        self.created.custody = custody;
+        next.created.value = value;
+        next.created.custody = custody;
+        let mut membership = next.membership.clone();
+        membership.replace_name(
+            name,
+            None,
+            RecordKey::Created(ticket),
+            |key| Ok(next.record(key)?.name.as_ref()),
+            exact_forest::Edit {
+                registry,
+                admit: &mut *admit,
+                step,
+            },
+        )?;
+        next.membership = membership;
+        *self = next;
         Ok(())
     }
 }
@@ -412,12 +502,16 @@ impl DraftTransitions {
                     .controlled_record(&self.base_custody.transitions, index)
                     .expect("canonical transition has custody");
                 let records = record
-                    .dependency::<Pair<Record>>()
+                    .dependency::<TransitionChildren>()
                     .expect("transition custody retains its participant roots");
                 Ok(DraftTransition {
                     key,
                     document: value.document,
-                    base: Pair::clone(&records),
+                    base: records.records.clone(),
+                    membership: OwnedMembership {
+                        value: value.membership.clone(),
+                        custody: records.membership.clone(),
+                    },
                     changed: Pair::default(),
                     created: Pair::default(),
                     setup: value.setup,
@@ -974,8 +1068,29 @@ impl DraftTransitions {
 // the changed-ID buffer carries its own affine charge through consumption.
 struct SealedTransition {
     value: Transition,
-    records: Pair<Record>,
+    records: TransitionChildren,
     changes: custody::Held<Vec<DomViewTransitionRecordId>>,
+}
+#[derive(Clone)]
+struct TransitionChildren {
+    records: Pair<Record>,
+    membership: MembershipCustody,
+}
+impl DraftTransition {
+    fn sealed_record<'a>(
+        &'a self,
+        records: &'a Bank<Record>,
+        key: RecordKey,
+    ) -> Result<RecordRead<'a>, DomError> {
+        match key {
+            RecordKey::Existing(id) => records
+                .get(generation(id.generation)?)
+                .filter(|record| record.id == id)
+                .map(RecordRead::from)
+                .ok_or(DomError::StaleViewTransitionRecord),
+            RecordKey::Created(_) => self.record(key),
+        }
+    }
 }
 impl DraftTransition {
     fn seal(
@@ -988,6 +1103,7 @@ impl DraftTransition {
         step: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<SealedTransition, DomError> {
         let mut pair = self.base.clone();
+        let mut membership = self.membership.clone();
         let mut next_record = self.next_record;
         #[cfg(test)]
         let mut written = crate::store::CopyObservation::default();
@@ -1060,6 +1176,35 @@ impl DraftTransition {
                     })
                 },
             )?;
+            membership.replace_name(
+                &selected.name,
+                Some(RecordKey::Created(ticket)),
+                RecordKey::Existing(record_id),
+                |key| Ok(self.sealed_record(&pair.value, key)?.name.as_ref()),
+                exact_forest::Edit {
+                    registry,
+                    admit: &mut *admit,
+                    step: &mut *step,
+                },
+            )?;
+            if let Some(node) = selected.branches.new_element() {
+                membership.replace_element(
+                    node,
+                    Some(RecordKey::Created(ticket)),
+                    Some(RecordKey::Existing(record_id)),
+                    |key| {
+                        self.sealed_record(&pair.value, key)?
+                            .branches
+                            .new_element()
+                            .ok_or(DomError::RepresentationExhausted)
+                    },
+                    exact_forest::Edit {
+                        registry,
+                        admit: &mut *admit,
+                        step: &mut *step,
+                    },
+                )?;
+            }
             changed.push(record_id);
             #[cfg(test)]
             written.pushed::<DomViewTransitionRecordId>();
@@ -1070,6 +1215,7 @@ impl DraftTransition {
             id,
             document: self.document,
             records: pair.value.clone(),
+            membership: membership.value,
             setup: self.setup,
             root_captured: self.root_captured,
             next_record,
@@ -1078,7 +1224,10 @@ impl DraftTransition {
         };
         Ok(SealedTransition {
             value,
-            records: pair,
+            records: TransitionChildren {
+                records: pair,
+                membership: membership.custody,
+            },
             changes: custody::Held::new(changed, scratch),
         })
     }
@@ -1097,7 +1246,9 @@ fn transition_fields_equal(old: &Transition, new: &Transition) -> bool {
         && old.next_record == new.next_record
 }
 fn transition_usage(value: &Transition) -> Result<Usage, DomError> {
-    inline::<Transition>().checked_add(bank_usage(&value.records)?)
+    inline::<Transition>()
+        .checked_add(bank_usage(&value.records)?)?
+        .checked_add(value.membership.heap_usage()?)
 }
 fn bank_usage<T>(value: &Bank<T>) -> Result<Usage, DomError> {
     Usage::new(value.index_charge().bytes, 0)
@@ -1138,9 +1289,19 @@ impl ViewTransitions {
                     value: transition.records.clone(),
                     custody,
                 };
-                let dependency = Dependency::new(pair, registry.ledger(), |usage| {
-                    admission.borrow_mut()(usage)
-                })?;
+                let membership = transition.membership.adopt_custody(
+                    registry,
+                    &mut |usage| admission.borrow_mut()(usage),
+                    &mut step,
+                )?;
+                let dependency = Dependency::new(
+                    TransitionChildren {
+                        records: pair,
+                        membership,
+                    },
+                    registry.ledger(),
+                    |usage| admission.borrow_mut()(usage),
+                )?;
                 Ok(RecordDescription::with_dependency(
                     inline::<Transition>(),
                     dependency,
@@ -1375,10 +1536,12 @@ pub(in crate::store) fn set_next_record_for_test(
     value.next_record = next;
     let summary = transition_usage(&value).unwrap();
     let previous = pair.value.controlled_record(&pair.custody, index).unwrap();
-    let child = previous.dependency::<Pair<Record>>().unwrap();
-    let dependency = Dependency::new(Pair::clone(&child), dom.custody_registry.ledger(), |_| {
-        Ok(())
-    })
+    let child = previous.dependency::<TransitionChildren>().unwrap();
+    let dependency = Dependency::new(
+        TransitionChildren::clone(&child),
+        dom.custody_registry.ledger(),
+        |_| Ok(()),
+    )
     .unwrap();
     pair.write(
         index,

@@ -308,6 +308,12 @@ fn full_transition_payload(
             }
         }))
         .unwrap();
+        let graph = transition.membership.inspect_graph().unwrap();
+        own.append(source::storage::Payload {
+            bytes: graph.index_charge().bytes + graph.record_totals().bytes,
+            units: graph.record_totals().units,
+        })
+        .unwrap();
         own
     }))
     .unwrap();
@@ -1137,11 +1143,454 @@ fn assert_slot_participants(owner: DomOwnerId, state: &State) {
         add(&mut index.bytes, charge.bytes);
         add(&mut index.pages, charge.pages);
     }
-    // The producer inspector enumerates actual six-bank Page capacities and
-    // fixed record bodies, independently of these cached summary actuals.
+    // The producer inspector enumerates actual Page capacities and record
+    // bodies, independently of these cached summary actuals.
     let physical = state.slot_index.inspect_graph().unwrap();
     assert_eq!(totals, physical.record_totals());
     assert_eq!(index, physical.index_charge());
+}
+
+/// Reconstruct exact names from actual null-namespace attributes. Empty and
+/// missing names share the default group; physical field occurrences are
+/// independently checked by the raw graph inspector.
+fn assert_slot_names(owner: DomOwnerId, state: &State) {
+    fn name(node: &super::Node, attribute: &[u16]) -> Option<DocumentString> {
+        let DomNodeKind::Element(element) = &node.kind else {
+            return None;
+        };
+        element
+            .attributes()
+            .iter()
+            .find(|value| {
+                value.name().namespace().uri().is_none()
+                    && value.name().local_name().code_units() == attribute
+            })
+            .map(|value| value.value().clone())
+            .filter(|value| !value.is_empty())
+    }
+    let order = |id| {
+        ancestor_path(state, owner, id)
+            .windows(2)
+            .map(|edge| {
+                state
+                    .node(owner, edge[0])
+                    .unwrap()
+                    .children
+                    .iter()
+                    .position(|&child| child == edge[1])
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut facts = HashMap::new();
+    let mut groups = HashMap::<(usize, NodeId, Option<DocumentString>), Vec<NodeId>>::new();
+    for (index, slot) in state.slots.iter() {
+        let Some(node) = &slot.node else { continue };
+        let id = NodeId {
+            owner,
+            slot: index,
+            generation: slot.generation,
+        };
+        let slot = if matches!(&node.kind,DomNodeKind::Element(element) if element.is_slot()) {
+            let root = *ancestor_path(state, owner, id).first().unwrap();
+            Some((root, name(node, &[110, 97, 109, 101])))
+        } else {
+            None
+        };
+        let light = if matches!(node.kind, DomNodeKind::Element(_) | DomNodeKind::Text(_)) {
+            node.parent.and_then(|parent|{
+                let host=state.node(owner,parent).unwrap();
+                let shadow=host.shadow_root.and_then(|root|state.node(owner,root).ok())?;
+                (matches!(&shadow.kind,DomNodeKind::ShadowRoot(value) if value.slot_assignment()==crate::HtmlSlotAssignment::Named)&&shadow.host==Some(parent))
+                    .then(||(parent,name(node,&[115,108,111,116])))
+            })
+        } else {
+            None
+        };
+        for (kind, value) in [(0, &slot), (1, &light)] {
+            if let Some((scope, value)) = value {
+                groups
+                    .entry((kind, *scope, value.clone()))
+                    .or_default()
+                    .push(id);
+            }
+        }
+        if slot.is_some() || light.is_some() {
+            assert!(facts.insert(id, (slot, light)).is_none());
+        }
+    }
+    for members in groups.values_mut() {
+        members.sort_by_key(|&id| order(id));
+    }
+    let mut actual_facts = HashMap::new();
+    for fact in state.slot_index.named.inspect_facts() {
+        let map =
+            |name: transaction::slot_names::NameInspection| (canonical_key(name.scope), name.value);
+        assert!(
+            actual_facts
+                .insert(
+                    canonical_key(fact.key),
+                    (fact.slot.map(map), fact.light.map(map))
+                )
+                .is_none()
+        );
+    }
+    assert_eq!(actual_facts, facts);
+    let mut actual_groups = HashMap::new();
+    for group in state.slot_index.named.inspect_groups().unwrap() {
+        assert!(
+            actual_groups
+                .insert(
+                    (group.kind, canonical_key(group.scope), group.value),
+                    group
+                        .members
+                        .into_iter()
+                        .map(canonical_key)
+                        .collect::<Vec<_>>()
+                )
+                .is_none()
+        );
+    }
+    assert_eq!(actual_groups, groups);
+}
+
+/// Canonical shadow edges precede ordinary children. Template ownership does
+/// not join an ordinary tree. Null child-navigable content is still a real
+/// container participant, independent of hosted graph-parent agreement.
+fn assert_hosted_containers(owner: DomOwnerId, state: &State) {
+    let mut roots = Vec::new();
+    for (index, slot) in state.slots.iter() {
+        let Some(node) = &slot.node else { continue };
+        if node.parent.is_some() {
+            continue;
+        }
+        if matches!(node.kind, DomNodeKind::ShadowRoot(_))
+            && node.host.is_some_and(|host| {
+                state.node(owner, host).unwrap().shadow_root
+                    == Some(NodeId {
+                        owner,
+                        slot: index,
+                        generation: slot.generation,
+                    })
+            })
+        {
+            continue;
+        }
+        roots.push(NodeId {
+            owner,
+            slot: index,
+            generation: slot.generation,
+        });
+    }
+    let mut expected = HashMap::<NodeId, Vec<NodeId>>::new();
+    let mut visited = HashSet::new();
+    for root in roots {
+        let mut pending = vec![root];
+        while let Some(id) = pending.pop() {
+            assert!(
+                visited.insert(id),
+                "canonical shadow-inclusive closure visited once"
+            );
+            let node = state.node(owner, id).unwrap();
+            if matches!(&node.kind,DomNodeKind::Element(element) if element.child_navigable().is_some())
+            {
+                expected.entry(root).or_default().push(id);
+            }
+            pending.extend(node.children.iter().rev().copied());
+            if let Some(shadow) = node.shadow_root {
+                pending.push(shadow);
+            }
+        }
+    }
+    assert_eq!(
+        visited.len(),
+        state
+            .slots
+            .iter()
+            .filter(|(_, slot)| slot.node.is_some())
+            .count()
+    );
+    let mut actual_members = HashSet::new();
+    for (root, member) in state.container_index.inspect_members() {
+        assert!(actual_members.insert((canonical_key(root), canonical_key(member))));
+    }
+    let expected_members = expected
+        .iter()
+        .flat_map(|(&root, members)| members.iter().map(move |&member| (root, member)))
+        .collect::<HashSet<_>>();
+    assert_eq!(actual_members, expected_members);
+    let order = transaction::ordered_members::OrderView::state(state, owner);
+    for (root, members) in expected {
+        let root = super::Key::Existing(root);
+        let mut next = state.container_index.first(root, &mut || Ok(())).unwrap();
+        for member in members {
+            assert_eq!(next, Some(super::Key::Existing(member)));
+            next = state
+                .container_index
+                .after(root, super::Key::Existing(member), order, &mut || Ok(()))
+                .unwrap();
+        }
+        assert_eq!(
+            next, None,
+            "no additional container after independently enumerated closure"
+        );
+    }
+    let graph = state.container_index.inspect_graph().unwrap();
+    assert_eq!(
+        state.container_index.retained_usage().unwrap(),
+        custody::Usage::new(
+            graph.index_charge().bytes + graph.record_totals().bytes,
+            graph.record_totals().units
+        )
+    );
+}
+
+/// Family expectations use raw ordinary ancestry and actual names/native bits.
+/// Option's cached nearest Select and the production membership cursors are not
+/// inputs to this recomputation.
+fn assert_family_discovery(owner: DomOwnerId, state: &State) {
+    use surgeist_html::KnownHtmlElement as Tag;
+    use transaction::family_discovery::FactKindInspection as Kind;
+    let tag = |id| match &state.node(owner, id).unwrap().kind {
+        DomNodeKind::Element(element) => Tag::from_name(element.name()),
+        _ => None,
+    };
+    let order = |id| {
+        ancestor_path(state, owner, id)
+            .windows(2)
+            .map(|edge| {
+                state
+                    .node(owner, edge[0])
+                    .unwrap()
+                    .children
+                    .iter()
+                    .position(|&child| child == edge[1])
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut facts = HashMap::new();
+    let mut groups = HashMap::<(usize, NodeId, Option<DocumentString>), Vec<NodeId>>::new();
+    for (index, slot) in state.slots.iter() {
+        let Some(node) = &slot.node else { continue };
+        let DomNodeKind::Element(element) = &node.kind else {
+            continue;
+        };
+        let id = NodeId {
+            owner,
+            slot: index,
+            generation: slot.generation,
+        };
+        let mut root = id;
+        let mut name = None;
+        let mut select = None;
+        let kind = match Tag::from_name(element.name()) {
+            Some(Tag::Details) => {
+                name = element
+                    .attributes()
+                    .iter()
+                    .find(|attribute| {
+                        attribute.name().namespace().uri().is_none()
+                            && attribute.name().local_name().code_units() == [110, 97, 109, 101]
+                    })
+                    .map(|attribute| attribute.value().clone())
+                    .filter(|value| !value.is_empty());
+                if name.is_none() {
+                    continue;
+                }
+                root = *ancestor_path(state, owner, id).first().unwrap();
+                groups
+                    .entry((Kind::Details as usize, root, name.clone()))
+                    .or_default()
+                    .push(id);
+                Kind::Details
+            }
+            Some(Tag::Option) => {
+                let mut parent = node.parent;
+                let mut optgroup = false;
+                while let Some(ancestor) = parent {
+                    match tag(ancestor) {
+                        Some(Tag::Datalist | Tag::Hr | Tag::Option) => break,
+                        Some(Tag::Optgroup) if optgroup => break,
+                        Some(Tag::Optgroup) => optgroup = true,
+                        Some(Tag::Select) => {
+                            select = Some(ancestor);
+                            break;
+                        }
+                        _ => (),
+                    }
+                    parent = state.node(owner, ancestor).unwrap().parent;
+                }
+                if let Some(select) = select {
+                    groups
+                        .entry((Kind::Option as usize, select, None))
+                        .or_default()
+                        .push(id);
+                }
+                Kind::Option
+            }
+            Some(Tag::Selectedcontent) if element.selectedcontent_disabled() == Some(false) => {
+                let mut parent = node.parent;
+                while let Some(ancestor) = parent {
+                    if tag(ancestor) == Some(Tag::Select) {
+                        groups
+                            .entry((Kind::Target as usize, ancestor, None))
+                            .or_default()
+                            .push(id);
+                    }
+                    parent = state.node(owner, ancestor).unwrap().parent;
+                }
+                Kind::Target
+            }
+            _ => continue,
+        };
+        assert!(
+            facts
+                .insert(id, (kind as usize, root, name, select))
+                .is_none()
+        );
+    }
+    for members in groups.values_mut() {
+        members.sort_by_key(|&id| order(id));
+    }
+    let mut actual_facts = HashMap::new();
+    for fact in state.family_index.inspect_facts() {
+        assert!(
+            actual_facts
+                .insert(
+                    canonical_key(fact.key),
+                    (
+                        fact.kind as usize,
+                        canonical_key(fact.root),
+                        fact.name,
+                        fact.select.map(canonical_key)
+                    )
+                )
+                .is_none()
+        );
+    }
+    assert_eq!(actual_facts, facts);
+    let mut actual_groups = HashMap::new();
+    for group in state.family_index.inspect_groups().unwrap() {
+        assert!(
+            actual_groups
+                .insert(
+                    (group.kind as usize, canonical_key(group.owner), group.name),
+                    group
+                        .members
+                        .into_iter()
+                        .map(canonical_key)
+                        .collect::<Vec<_>>()
+                )
+                .is_none()
+        );
+    }
+    assert_eq!(actual_groups, groups);
+    let graph = state.family_index.inspect_graph().unwrap();
+    assert_eq!(
+        state.family_index.heap_usage().unwrap(),
+        custody::Usage::new(
+            graph.index_charge().bytes + graph.record_totals().bytes,
+            graph.record_totals().units
+        )
+    );
+}
+
+/// Recount each role from the actual canonical relation owning that fact.
+/// In particular Raw top-layer ownership can differ from node-document after
+/// adoption; multiplicity and role identity are not collapsed together.
+fn assert_role_facts(owner: DomOwnerId, state: &State) {
+    use transaction::role_facts::Role;
+    let mut expected = HashMap::<(usize, NodeId, NodeId), usize>::new();
+    let mut occurrence = |role: Role, source: NodeId, target: NodeId| {
+        *expected.entry((role as usize, source, target)).or_default() += 1;
+    };
+    for (index, slot) in state.slots.iter() {
+        let Some(node) = &slot.node else { continue };
+        let source = NodeId {
+            owner,
+            slot: index,
+            generation: slot.generation,
+        };
+        if let Some(base) = &node.base_document {
+            for &target in base.render_blocking.iter() {
+                occurrence(Role::RenderBlocking, source, target);
+            }
+        }
+        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+            for &target in candidates.iter() {
+                occurrence(Role::AutofocusCandidates, source, target);
+            }
+        }
+        if let Some(canonical::Interactive::Known {
+            open_dialogs,
+            top_layer,
+            pending_top_layer_removals,
+        }) = &node.interactive_document
+        {
+            for (role, values) in [
+                (Role::OpenDialogs, open_dialogs),
+                (Role::TopLayer, top_layer),
+                (Role::PendingTopLayerRemovals, pending_top_layer_removals),
+            ] {
+                for &target in values.iter() {
+                    occurrence(role, source, target);
+                }
+            }
+            for &target in top_layer.iter() {
+                if let DomNodeKind::Element(element) = &state.node(owner, target).unwrap().kind {
+                    if element
+                        .common_state()
+                        .html()
+                        .is_some_and(|html| !html.popover_is_hidden())
+                    {
+                        occurrence(Role::ShowingPopover, source, target);
+                    }
+                    if element.fullscreen_flag() {
+                        occurrence(Role::FullscreenFlagged, source, target);
+                    }
+                }
+            }
+        }
+        for &target in node.children.iter() {
+            let selected = state.node(owner, target).unwrap();
+            if let DomNodeKind::Element(element) = &selected.kind {
+                if matches!(node.kind, DomNodeKind::Document(_)) {
+                    occurrence(Role::DocumentElement, source, target);
+                }
+                let name = element.name();
+                if name.namespace() == &crate::Namespace::html()
+                    && matches!(
+                        name.local_name().code_units(),
+                        [98, 111, 100, 121] | [102, 114, 97, 109, 101, 115, 101, 116]
+                    )
+                {
+                    occurrence(Role::BodyChild, source, target);
+                }
+            }
+        }
+    }
+    let mut actual = HashMap::new();
+    for (role, source, target, count) in state.role_facts.inspect_relations() {
+        assert_ne!(count, 0);
+        assert!(
+            actual
+                .insert(
+                    (role as usize, canonical_key(source), canonical_key(target)),
+                    count
+                )
+                .is_none()
+        );
+    }
+    assert_eq!(actual, expected);
+    let graph = state.role_facts.inspect_graph().unwrap();
+    assert_eq!(
+        state.role_facts.retained_usage(),
+        custody::Usage::new(
+            graph.index_charge().bytes + graph.record_totals().bytes,
+            graph.record_totals().units
+        )
+    );
 }
 
 fn assert_transition_indexes(owner: DomOwnerId, state: &State) {
@@ -1171,6 +1620,86 @@ fn assert_transition_indexes(owner: DomOwnerId, state: &State) {
                 );
             }
         }
+        // Expected inverse coverage comes only from actual canonical records.
+        // Raw leaves must be published full identities; ticket numbers belong
+        // exclusively to a particular private operation.
+        use super::view_transition::RecordKey;
+        let (name_leaves, element_leaves) = transition.membership.inspect_entries();
+        let published = |key| match key {
+            RecordKey::Existing(id) => id,
+            RecordKey::Created(_) => panic!("private record ticket in canonical inverse"),
+        };
+        let name_count = name_leaves.len();
+        let element_count = element_leaves.len();
+        let actual_names = name_leaves
+            .into_iter()
+            .map(published)
+            .collect::<HashSet<_>>();
+        let actual_elements = element_leaves
+            .into_iter()
+            .map(published)
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            actual_names.len(),
+            name_count,
+            "no duplicate name inverse leaves"
+        );
+        assert_eq!(
+            actual_elements.len(),
+            element_count,
+            "no duplicate element inverse leaves"
+        );
+        let mut names = HashSet::new();
+        let mut elements = HashSet::new();
+        let mut expected_names = HashSet::new();
+        let mut expected_elements = HashSet::new();
+        let record = |key| {
+            let id = published(key);
+            let selected = transition
+                .records
+                .get(usize::try_from(id.generation).unwrap())
+                .unwrap();
+            assert_eq!(selected.id, id);
+            selected
+        };
+        for (_, selected) in transition.records.iter() {
+            assert!(
+                names.insert(selected.name.as_str()),
+                "exact CSS name is unique within transition"
+            );
+            expected_names.insert(selected.id);
+            assert_eq!(
+                transition
+                    .membership
+                    .name_owner(
+                        &selected.name,
+                        |key| Ok(record(key).name.as_ref()),
+                        &mut || Ok(())
+                    )
+                    .unwrap(),
+                Some(RecordKey::Existing(selected.id))
+            );
+            if let Some(node) = selected.branches.new_element() {
+                assert!(
+                    elements.insert(node),
+                    "full element identity has one claimant"
+                );
+                expected_elements.insert(selected.id);
+                assert_eq!(
+                    transition
+                        .membership
+                        .element_owner(
+                            node,
+                            |key| Ok(record(key).branches.new_element().unwrap()),
+                            &mut || Ok(())
+                        )
+                        .unwrap(),
+                    Some(RecordKey::Existing(selected.id))
+                );
+            }
+        }
+        assert_eq!(actual_names, expected_names);
+        assert_eq!(actual_elements, expected_elements);
         assert_eq!(transition.name_units, units);
         assert_eq!(transition.pseudos, own_pseudos);
         assert_eq!(
@@ -1469,7 +1998,11 @@ pub(super) fn assert_full_canonical(dom: &Dom) {
     assert_queue_targets(dom.owner(), &dom.state);
     assert_control_index(dom.owner(), &dom.state);
     assert_slot_participants(dom.owner(), &dom.state);
+    assert_slot_names(dom.owner(), &dom.state);
     assert_transition_indexes(dom.owner(), &dom.state);
+    assert_role_facts(dom.owner(), &dom.state);
+    assert_family_discovery(dom.owner(), &dom.state);
+    assert_hosted_containers(dom.owner(), &dom.state);
     assert_auxiliary_payloads(dom);
 }
 

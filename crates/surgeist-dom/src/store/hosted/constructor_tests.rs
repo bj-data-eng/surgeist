@@ -30,9 +30,10 @@ fn prepared_top_level() -> (Dom, DomHostedSource, Option<DomHostedPreparedTopLev
 #[test]
 fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() {
     let c = cancel();
-    let capacity = {
+    let (row_backing, issuer_scratch) = {
         let (dom, source, prepared) = prepared_top_level();
         let work = &prepared.as_ref().unwrap().preparation.work;
+        let credit = source.retain(size_of::<Operation>(), &c).unwrap();
         let bank = dom
             .hosted_operations
             .prepare(
@@ -41,16 +42,22 @@ fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() 
                 &source,
                 0,
                 None,
+                operations::BodyCredit::Owned(credit),
+                operations::Projection::default(),
                 &c,
             )
             .unwrap();
-        bank.candidate_capacity().unwrap()
+        (
+            bank.inspect_new_storage_bytes(),
+            source.next_operation_reservation_scratch_bytes_for_fixture(),
+        )
     };
-    // Operation and PreparedRows are simultaneous arguments to the real
-    // canonical insertion. PreparedRows includes its candidate owner inline;
-    // only the replacement row backing is additional.
-    let row_backing = capacity * size_of::<Option<Box<Operation>>>();
-    let exact = size_of::<Operation>() + size_of::<operations::PreparedRows>() + row_backing;
+    // PreparedRows owns empty paths inline and their raw allocations out of line.
+    // Both the final Operation and the issuer reservation coexist with those
+    // paths at distinct real stages; their larger stage sets the exact peak.
+    let exact = size_of::<operations::PreparedRows>()
+        + row_backing
+        + size_of::<Operation>().max(issuer_scratch);
     for allowance in [exact, exact - 1] {
         let (mut dom, mut source, mut prepared) = prepared_top_level();
         let limits_before = source.limits();
@@ -74,7 +81,7 @@ fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() 
         match dom.begin_hosted_top_level(&mut source, &mut prepared, &c) {
             Ok(lease) if allowance == exact => {
                 assert!(prepared.is_none());
-                assert_eq!(dom.hosted_operations.row_capacity(), capacity);
+                assert_eq!(dom.hosted_operations.inspect_storage_bytes(), row_backing);
                 let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap()
                 else {
                     panic!("actual Policy operation")
@@ -92,7 +99,7 @@ fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() 
                 assert_eq!(dom.revision, canonical_revision);
                 assert_eq!(dom.hosted_revisions, reserved + 5);
                 eprintln!(
-                    "exact Policy installation succeeded: operation_header={}, prepared_header={}, row_backing={row_backing}, exact={exact}",
+                    "exact Policy installation succeeded: operation_header={}, prepared_header={}, row_backing={row_backing}, issuer_scratch={issuer_scratch}, exact={exact}",
                     size_of::<Operation>(),
                     size_of::<operations::PreparedRows>()
                 );
@@ -108,7 +115,7 @@ fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() 
                 assert_eq!(dom.hosted_revisions, reserved);
             }
             Ok(lease) => panic!(
-                "one-short final Policy payload admitted: operation={:?}, operation_header={}, prepared_header={}, row_backing={row_backing}, exact={exact}",
+                "one-short final Policy payload admitted: operation={:?}, operation_header={}, prepared_header={}, row_backing={row_backing}, issuer_scratch={issuer_scratch}, exact={exact}",
                 lease.operation,
                 size_of::<Operation>(),
                 size_of::<operations::PreparedRows>()

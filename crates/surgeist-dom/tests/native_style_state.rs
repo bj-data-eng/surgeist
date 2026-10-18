@@ -95,86 +95,117 @@ fn first_external_phase_reserves_its_required_closing_publication() {
 }
 
 #[test]
-fn unrelated_actual_attribute_backing_is_admitted_with_the_retained_source_operation() {
-    fn minimum_bytes(spare: usize) -> (usize, usize) {
-        let mut low = 0;
-        let mut high = 1_000_000;
-        let mut actual_capacity = 0;
-        while low < high {
-            let allowance = low + (high - low) / 2;
-            let cancel = AtomicBool::new(false);
-            let mut dom = dom();
-            let mut batch = DomBatch::new();
-            let document = batch.create_document();
-            let parent = batch.create_element_ns(&document, Namespace::html(), "div");
-            let style = batch.create_element_ns(&document, Namespace::html(), "style");
-            let mut raw = Vec::with_capacity(spare);
-            raw.push(b'x' as u16);
-            batch.set_attribute(
-                &parent,
-                "data-retained",
-                surgeist_dom::DocumentString::from_utf16(raw),
+fn source_retained_bytes_cover_actual_spare_attribute_backing() {
+    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress, NodeId};
+
+    fn expose_csp(
+        dom: &mut Dom,
+        parent: NodeId,
+        style: NodeId,
+        bytes: usize,
+    ) -> Result<(), DomError> {
+        let cancel = AtomicBool::new(false);
+        let mut lease = dom.begin_source_edit(
+            DomSourceEdit::insert_before(style, parent, None),
+            DomSourceLimits::new(bytes, 16_000_000, 10_000_000, 128, 4096, 4096, 1),
+            &cancel,
+        )?;
+        let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+            lease.advance(&cancel)?
+        else {
+            panic!("the actual inline CSP request is required");
+        };
+        assert_eq!(request.source().element(), style);
+        assert_eq!(
+            request.action(),
+            surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+        );
+        Ok(())
+    }
+
+    // This allowance is below the padded backing alone, not a claimed exact
+    // operation peak. Fresh owners have different custody-index geometry, so
+    // their admission thresholds cannot be compared or binary-searched together.
+    const PADDED: usize = 1_048_576;
+    let mut padded_byte_limit = None;
+    for spare in [PADDED, 1] {
+        let cancel = AtomicBool::new(false);
+        let mut dom =
+            Dom::new(DomLimits::new(128, 4_194_304, 512, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let parent = batch.create_element_ns(&document, Namespace::html(), "div");
+        let style = batch.create_element_ns(&document, Namespace::html(), "style");
+        let mut raw = Vec::with_capacity(spare);
+        raw.push(u16::from(b'x'));
+        batch.set_attribute(
+            &parent,
+            "data-retained",
+            surgeist_dom::DocumentString::from_utf16(raw),
+        );
+        batch.insert_before(&parent, &document, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let parent = commit.created(&parent).unwrap().unwrap();
+        let style = commit.created(&style).unwrap().unwrap();
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let retained = before
+            .node(parent)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"data-retained".into())
+            .unwrap();
+        assert_eq!(retained.code_units(), &[u16::from(b'x')]);
+        let actual_capacity = retained.shared_code_units().capacity();
+        let byte_limit = if spare == PADDED {
+            let limit = actual_capacity
+                .checked_mul(std::mem::size_of::<u16>())
+                .unwrap()
+                - 1;
+            padded_byte_limit = Some(limit);
+            limit
+        } else {
+            padded_byte_limit.unwrap()
+        };
+        let result = expose_csp(&mut dom, parent, style, byte_limit);
+        if spare == PADDED {
+            assert_eq!(
+                result,
+                Err(DomError::ResourceLimit {
+                    resource: DomResource::SourceRetainedBytes,
+                    limit: byte_limit,
+                })
             );
-            batch.insert_before(&parent, &document, None);
-            let commit = dom.apply(batch, &cancel).unwrap();
-            let parent = commit.created(&parent).unwrap().unwrap();
-            let style = commit.created(&style).unwrap().unwrap();
-            let before = dom.snapshot();
-            actual_capacity = before
+            assert_eq!(dom.snapshot().stamp(), before.stamp());
+            assert_eq!(dom.usage(), usage);
+            assert_eq!(dom.snapshot().node(style).unwrap().parent(), None);
+            assert!(dom.pending_source_edit().is_none());
+            assert!(
+                dom.changes_since(before.stamp())
+                    .unwrap()
+                    .changes()
+                    .is_empty()
+            );
+            // Retry this same canonical owner with a generous finite policy.
+            expose_csp(&mut dom, parent, style, 16_000_000).unwrap();
+        } else {
+            // Equal one-unit semantics with compact backing fit the same policy.
+            result.unwrap();
+        }
+        for snapshot in [&before, &dom.snapshot()] {
+            let retained = snapshot
                 .node(parent)
                 .unwrap()
                 .as_element()
                 .unwrap()
-                .attributes()
-                .iter()
-                .find(|attribute| {
-                    attribute
-                        .name()
-                        .local_name()
-                        .code_units()
-                        .iter()
-                        .copied()
-                        .eq("data-retained".encode_utf16())
-                })
-                .unwrap()
-                .value()
-                .shared_code_units()
-                .capacity();
-            let edit = DomSourceEdit::insert_before(style, parent, None);
-            let limits = surgeist_dom::DomSourceLimits::new(
-                allowance, 1_000_000, 10_000_000, 128, 4096, 4096, 1,
-            );
-            let admitted = match dom.begin_source_edit(edit, limits, &cancel) {
-                Ok(mut lease) => match lease.advance(&cancel) {
-                    Ok(surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
-                        true
-                    }
-                    Err(DomError::ResourceLimit {
-                        resource: surgeist_dom::DomResource::SourceRetainedBytes,
-                        ..
-                    }) => false,
-                    other => panic!("unexpected admission: {other:?}"),
-                },
-                Err(DomError::ResourceLimit {
-                    resource: surgeist_dom::DomResource::SourceRetainedBytes,
-                    ..
-                }) => false,
-                Err(other) => panic!("unexpected admission: {other:?}"),
-            };
-            if admitted {
-                high = allowance;
-            } else {
-                assert_eq!(dom.snapshot().stamp(), before.stamp());
-                assert_eq!(dom.snapshot().node(style).unwrap().parent(), None);
-                low = allowance + 1;
-            }
+                .attribute(&"data-retained".into())
+                .unwrap();
+            assert_eq!(retained.code_units(), &[u16::from(b'x')]);
+            assert_eq!(retained.shared_code_units().capacity(), actual_capacity);
         }
-        (actual_capacity, low)
+        assert_eq!(before.node(style).unwrap().parent(), None);
     }
-    let (compact_capacity, compact) = minimum_bytes(1);
-    let (padded_capacity, padded) = minimum_bytes(8192);
-    assert!(padded_capacity > compact_capacity);
-    assert!(padded - compact >= (padded_capacity - compact_capacity) * std::mem::size_of::<u16>());
 }
 
 fn dom() -> Dom {

@@ -201,14 +201,23 @@ impl Fixture {
     }
     fn queued_history(&mut self, work: Arc<Work>) -> DomHostedOperationId {
         let slot = self.source.next_operation_slot(&work, &cancel()).unwrap();
-        let bank = self
-            .dom
-            .hosted_operations
-            .prepare(slot, &work, &self.source, 0, None, &cancel())
-            .unwrap();
         let retained = self
             .source
             .retain(size_of::<Operation>(), &cancel())
+            .unwrap();
+        let bank = self
+            .dom
+            .hosted_operations
+            .prepare(
+                slot,
+                &work,
+                &self.source,
+                0,
+                None,
+                operations::BodyCredit::Owned(retained),
+                operations::Projection::default(),
+                &cancel(),
+            )
             .unwrap();
         let id = self
             .source
@@ -232,20 +241,23 @@ impl Fixture {
             .metadata()
             .origin()
             .clone();
-        self.dom.hosted_operations.insert_prepared(
-            bank,
-            Operation {
-                origin,
-                policy: None,
-                phase: CreationPhase::Queued(queue::Continuation::removal(
-                    request,
-                    self.creation,
-                    self.creation.navigable,
-                )),
-                _retained: retained,
-            },
+        let (bank, retained) = bank.into_owned();
+        drop(self.dom.hosted_operations.insert_prepared(
+            operations::Transfer::new(
+                bank,
+                Operation {
+                    origin,
+                    policy: None,
+                    phase: CreationPhase::Queued(queue::Continuation::removal(
+                        request,
+                        self.creation,
+                        self.creation.navigable,
+                    )),
+                    _retained: retained,
+                },
+            ),
             false,
-        );
+        ));
         id
     }
 }
@@ -480,9 +492,16 @@ fn empty_preparation_ignores_historical_rows_and_borrowed_restore_is_infallible(
         let result: Result<(), DomHostedError> =
             f.dom.with_hosted_operation(id, |dom, operation| {
                 assert!(Arc::ptr_eq(&operation.request().work, &work));
-                let prepared =
-                    dom.hosted_operations
-                        .prepare(id.slot, &work, source, 0, None, &cancel())?;
+                let prepared = dom.hosted_operations.prepare(
+                    id.slot,
+                    &work,
+                    source,
+                    0,
+                    None,
+                    operations::BodyCredit::Borrowed(&operation._retained),
+                    operations::Projection::default(),
+                    &cancel(),
+                )?;
                 assert_eq!(prepared.backing_bytes().unwrap(), 0);
                 drop(prepared);
                 Err(DomError::Cancelled.into())
@@ -812,4 +831,127 @@ fn operation_lookup_rejects_wrong_generation_source_and_reused_identity() {
         &f.dom.hosted_operation(reused).unwrap().request().work,
         &work
     ));
+}
+
+/// These are the existing owning controller/issuer APIs, not an attestation of
+/// Window cleanup or public navigation completion. Every row has genuine issued
+/// identities; the storage owner is explicitly retired by its original helper.
+fn retained_controller_cycles(complete: bool, narrow: bool) {
+    let mut f = Fixture::new();
+    let mut baseline = None;
+    let mut slots = None;
+    let mut last_history = None;
+    for cycle in 0..8 {
+        let work = f.work();
+        let history = f.queued_history(work.clone());
+        let invocation = f.install(f.creation, work.clone(), Some(history));
+        if let Some((history_slot, invocation_slot)) = slots {
+            assert_eq!(
+                (history.slot, invocation.slot),
+                (history_slot, invocation_slot)
+            );
+        } else {
+            slots = Some((history.slot, invocation.slot));
+        }
+        if let Some(previous) = last_history {
+            assert!(history.generation > previous);
+        }
+        last_history = Some(history.generation);
+        let before = f.source.retained_storage_bytes();
+        let physical = f.dom.hosted_operations.inspect_storage_bytes();
+        // Temporary take/restore is distinct: it must retain the exact original
+        // row and every admitted path even when no query may see the held row.
+        f.dom
+            .with_hosted_operation(invocation, |_, operation| {
+                assert_eq!(operation.request().key.operation, invocation);
+                assert!(Arc::ptr_eq(&operation.request().work, &work));
+                Ok(OperationResult::Retain(()))
+            })
+            .unwrap();
+        assert_eq!(f.source.retained_storage_bytes(), before);
+        assert_eq!(f.dom.hosted_operations.inspect_storage_bytes(), physical);
+        assert!(Arc::ptr_eq(
+            &phase(&f, invocation).request.request.work,
+            &work
+        ));
+        let cleanup = if narrow {
+            let source = &mut f.source;
+            Some(
+                f.dom
+                    .with_hosted_operation(invocation, |dom, operation| {
+                        let CreationPhase::Invocation(row) = &operation.phase else {
+                            panic!("actual original invocation")
+                        };
+                        let cleanup = dom.install_hosted_cleanup(
+                            source,
+                            invocation,
+                            row,
+                            &operation.origin,
+                            &cancel(),
+                        )?;
+                        let CreationPhase::Invocation(row) = &mut operation.phase else {
+                            unreachable!()
+                        };
+                        row.request.cleanup = Some(cleanup);
+                        Ok(OperationResult::Retain(cleanup))
+                    })
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+        if narrow {
+            f.dom.settle_hosted_history_completion(invocation, history);
+            assert!(phase(&f, invocation).history == HistoryDependency::Settled(history));
+            assert_eq!(phase(&f, invocation).request.cleanup, cleanup);
+        }
+        if complete {
+            f.dom
+                .with_hosted_operation(invocation, |_, operation| {
+                    assert_eq!(operation.request().key.operation, invocation);
+                    Ok(OperationResult::Complete(()))
+                })
+                .unwrap();
+            f.source
+                .retire(
+                    Role::Operation,
+                    invocation.source,
+                    invocation.slot,
+                    invocation.generation,
+                    &cancel(),
+                )
+                .unwrap();
+        } else {
+            f.retire_rows(&[invocation]);
+        }
+        f.retire_rows(&[history]);
+        if let Some(cleanup) = cleanup {
+            f.retire_rows(&[cleanup]);
+        }
+        drop(work);
+        let settled = (
+            f.source.retained_storage_bytes(),
+            f.dom.hosted_operations.inspect_storage_bytes(),
+        );
+        if let Some(expected) = baseline {
+            assert_eq!(
+                settled, expected,
+                "fixed issuer slots after cycle {cycle}; permanent retirement must release generation-qualified index suffixes"
+            );
+        } else {
+            baseline = Some(settled);
+        }
+    }
+}
+#[test]
+fn permanent_controller_remove_reclaims_retired_generation_paths_at_fixed_slot_extent() {
+    retained_controller_cycles(false, false);
+}
+#[test]
+fn permanent_controller_finish_reclaims_retired_generation_paths_at_fixed_slot_extent() {
+    retained_controller_cycles(true, false);
+}
+#[test]
+fn permanently_removed_narrowed_projections_release_the_original_allowed_paths() {
+    retained_controller_cycles(false, true);
 }

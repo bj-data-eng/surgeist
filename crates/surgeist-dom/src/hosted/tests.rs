@@ -3,6 +3,20 @@ use super::*;
 use std::mem::size_of;
 
 impl DomHostedSource {
+    /// Raw physical next issuer-path witness for sibling constructor tests.
+    /// This creates only empty storage, without an identity, revision or Work.
+    pub(crate) fn next_operation_reservation_scratch_bytes_for_fixture(&self) -> usize {
+        let state = self.lock().unwrap();
+        let bank = &state.banks[Role::Operation.index()];
+        let index = bank.lowest_vacant().unwrap_or_else(|| bank.len());
+        if bank.get(index).is_some() {
+            return 0;
+        }
+        let path = bank
+            .reserve(index, |_| Ok::<Option<Retained>, DomHostedError>(None))
+            .unwrap();
+        size_of::<crate::store::EmptyPath<IdentitySlot>>() + path.inspect_storage_bytes()
+    }
     /// Canonical-owner fixtures need a genuinely metered, live Global token.
     /// This issues only that identity: no Window, constructor phase or external
     /// execution effect is asserted, and no canonical revision is reserved.
@@ -52,17 +66,24 @@ fn retained(source: &DomHostedSource) -> usize {
 fn hosted_operation_issuance_keeps_the_callers_live_candidate_in_scratch() {
     let c = cancellation();
     let configured = limits(record_limits(1, 1));
-    // Observe only the original Vec's physical capacity. The expected scratch
-    // sum below is independently built from these concrete owner extents.
-    let capacity = {
-        let mut issuer = source(configured);
-        let work = issuer.work(&c).unwrap();
-        issuer.begin_operation(&work, 2, 0, &c).unwrap();
-        issuer.lock().unwrap().banks[Role::Operation.index()].capacity()
+    // The reservation owns only empty path allocations. Independently enumerate
+    // its actual page backing and Slot body; no resident row is copied.
+    let reservation_bytes = {
+        let bank = crate::store::OwnedBank::<IdentitySlot>::default();
+        let reservation = bank
+            .reserve(0, |_| Ok::<Option<Retained>, DomHostedError>(None))
+            .unwrap();
+        let raw = reservation.inspect_storage_bytes();
+        assert_eq!(
+            raw,
+            crate::store::OwnedBank::<IdentitySlot>::inspect_first_reservation_bytes()
+        );
+        assert_eq!(reservation.charge().bytes, raw);
+        raw
     };
     let caller = vec![0u8; 17];
     let caller_bytes = size_of::<Vec<u8>>() + caller.capacity();
-    let replacement = size_of::<Vec<IdentitySlot>>() + capacity * size_of::<IdentitySlot>();
+    let replacement = size_of::<crate::store::EmptyPath<IdentitySlot>>() + reservation_bytes;
     let exact = caller_bytes + replacement;
     for allowance in [exact - 1, exact] {
         let mut issuer = source(configured);
@@ -106,8 +127,8 @@ fn hosted_operation_issuance_keeps_the_callers_live_candidate_in_scratch() {
         } else {
             let operation = result.unwrap();
             assert_eq!(
-                issuer.lock().unwrap().banks[Role::Operation.index()].capacity(),
-                capacity
+                issuer.lock().unwrap().banks[Role::Operation.index()].inspect_storage_bytes(),
+                reservation_bytes
             );
             let request = Request {
                 key: RequestKey {
@@ -266,7 +287,7 @@ fn hosted_cancelled_seal_preserves_the_exact_prepared_envelope_and_work() {
     let state = source.lock().unwrap();
     assert_eq!(
         state.banks[Role::BrowsingContext.index()]
-            .iter()
+            .values()
             .filter(|slot| slot.live)
             .count(),
         1
@@ -280,7 +301,7 @@ fn hosted_record_bounds_reject_before_issuing_or_growing_another_row() {
     let host = source.issue_host(&cancel).unwrap();
     let revision = source.revision().unwrap();
     let bytes = retained(&source);
-    let capacity = source.lock().unwrap().banks[Role::Host.index()].capacity();
+    let storage = source.lock().unwrap().banks[Role::Host.index()].inspect_storage_bytes();
     assert_eq!(
         source.issue_host(&cancel),
         Err(DomHostedError::Limit {
@@ -291,8 +312,8 @@ fn hosted_record_bounds_reject_before_issuing_or_growing_another_row() {
     assert_eq!(source.revision().unwrap(), revision);
     assert_eq!(retained(&source), bytes);
     assert_eq!(
-        source.lock().unwrap().banks[Role::Host.index()].capacity(),
-        capacity
+        source.lock().unwrap().banks[Role::Host.index()].inspect_storage_bytes(),
+        storage
     );
     let prepared = source.prepare_top_level(host, &cancel).unwrap();
     assert!(matches!(
@@ -355,20 +376,30 @@ fn hosted_fixed_owner_and_work_payload_have_exact_byte_boundaries() {
 }
 
 #[test]
-fn hosted_growth_counts_actual_spare_capacity_and_old_new_overlap() {
+fn hosted_growth_counts_actual_pages_and_empty_path_overlap_without_copying_old_rows() {
     let cancel = cancellation();
     let mut source = source(limits(record_limits(usize::MAX, 1)));
     source.issue_host(&cancel).unwrap();
-    let capacity = source.lock().unwrap().banks[Role::Host.index()].capacity();
-    // Fill the real first bank without assuming allocator capacity granularity.
-    for _ in 1..capacity {
+    let width = crate::store::OwnedBank::<IdentitySlot>::inspect_leaf_width();
+    // Fill the actual first leaf, including retained inactive/retired row slots.
+    for _ in 1..width {
         source.issue_host(&cancel).unwrap();
     }
-    let old_bytes = capacity * size_of::<IdentitySlot>();
+    let (old_bytes, requested) = {
+        let state = source.lock().unwrap();
+        let bank = &state.banks[Role::Host.index()];
+        let reservation = bank
+            .reserve(width, |_| Ok::<Option<Retained>, DomHostedError>(None))
+            .unwrap();
+        let requested = reservation.inspect_storage_bytes();
+        assert_eq!(reservation.charge().bytes, requested);
+        (bank.inspect_storage_bytes(), requested)
+    };
     let fixed = size_of::<Shared>();
     let work = size_of::<Work>() + 2 * size_of::<AtomicU64>();
     assert_eq!(retained(&source), fixed + old_bytes);
-    let requested = (capacity + 1) * size_of::<IdentitySlot>();
+    // Existing pages stay resident while the genuine new empty path is admitted.
+    // There is no replacement backing or copied-old-row quota in OwnedBank.
     let refusal_limit = fixed + work + old_bytes + requested - 1;
     let old_limits = source.limits();
     source
@@ -391,18 +422,23 @@ fn hosted_growth_counts_actual_spare_capacity_and_old_new_overlap() {
         })
     );
     let state = source.lock().unwrap();
-    assert_eq!(state.banks[Role::Host.index()].len(), capacity);
-    assert_eq!(state.banks[Role::Host.index()].capacity(), capacity);
+    assert_eq!(state.banks[Role::Host.index()].len(), width);
+    assert_eq!(
+        state.banks[Role::Host.index()].inspect_storage_bytes(),
+        old_bytes
+    );
     drop(state);
     assert_eq!(source.revision().unwrap(), revision);
     assert_eq!(retained(&source), fixed + old_bytes);
     source.set_limits(old_limits, &cancel).unwrap();
-    source.issue_host(&cancel).unwrap();
-    let actual = source.lock().unwrap().banks[Role::Host.index()].capacity();
-    assert_eq!(
-        retained(&source),
-        fixed + actual * size_of::<IdentitySlot>()
-    );
+    let added = source.issue_host(&cancel).unwrap();
+    assert_eq!(added.slot, width);
+    let state = source.lock().unwrap();
+    let actual = state.banks[Role::Host.index()].inspect_storage_bytes();
+    assert_eq!(state.banks[Role::Host.index()].len(), width + 1);
+    assert_eq!(actual, old_bytes + requested);
+    drop(state);
+    assert_eq!(retained(&source), fixed + actual);
 }
 
 #[test]
@@ -871,7 +907,7 @@ fn hosted_record_refusal_rolls_back_reservation_but_not_original_work() {
     );
     assert_eq!(fixture.source.lock().unwrap().reserved_revisions, 0);
     assert_eq!(
-        fixture.source.lock().unwrap().banks[Role::Operation.index()].capacity(),
+        fixture.source.lock().unwrap().banks[Role::Operation.index()].inspect_storage_bytes(),
         0
     );
     assert_eq!(fixture.source.revision().unwrap(), revision);

@@ -21,6 +21,30 @@ fn tree_relations(
 
 impl Tree for Draft {
     type Key = Key;
+    fn named_slot(
+        &self,
+        root: Key,
+        node: Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        self.slot_names
+            .named_slot(self.live_key(root), self.live_key(node), work)
+    }
+    fn named_light(
+        &self,
+        slot: Key,
+        host: Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+        visit: &mut dyn FnMut(Key) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        self.slot_names.visit_light(
+            self.live_key(slot),
+            self.live_key(host),
+            self.order_view(),
+            work,
+            visit,
+        )
+    }
     #[cfg(test)]
     fn ordinal_successor_read(&self) {
         ordinal_successor_read();
@@ -59,6 +83,40 @@ impl Tree for Draft {
     }
 }
 impl State {
+    pub(crate) fn slot_named_slot(
+        &self,
+        root: NodeId,
+        node: NodeId,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<NodeId>, DomError> {
+        self.slot_index
+            .named
+            .named_slot(Key::Existing(root), Key::Existing(node), work)?
+            .map(|key| match key {
+                Key::Existing(id) => Ok(id),
+                Key::Created(_) => Err(DomError::UnavailableCreation),
+            })
+            .transpose()
+    }
+    pub(crate) fn slot_named_light(
+        &self,
+        owner: DomOwnerId,
+        slot: NodeId,
+        host: NodeId,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+        visit: &mut dyn FnMut(NodeId) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        self.slot_index.named.visit_light(
+            Key::Existing(slot),
+            Key::Existing(host),
+            transaction::ordered_members::OrderView::state(self, owner),
+            work,
+            &mut |key| match key {
+                Key::Existing(id) => visit(id),
+                Key::Created(_) => Err(DomError::UnavailableCreation),
+            },
+        )
+    }
     #[cfg(test)]
     pub(crate) fn slot_ordinal_successor_read(&self) {
         ordinal_successor_read();

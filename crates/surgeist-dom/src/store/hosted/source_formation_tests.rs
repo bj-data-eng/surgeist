@@ -147,9 +147,12 @@ fn assert_released(draft: &Draft, fixture: &Fixture, original: usize) {
 #[test]
 fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
     let mut f = Fixture::new();
+    let before_credit = f.used();
+    let credit = f.source.retain(size_of::<Operation>(), &cancel()).unwrap();
     let mut draft = f.draft();
     let (base_bytes, base_units) = base(&draft);
     let original = f.used();
+    let resident_storage = f.dom.hosted_operations.inspect_storage_bytes();
     let source_revision = f.source.revision().unwrap();
     let canonical_revision = f.dom.revision;
     let slot = f.source.next_operation_slot(&f.work, &cancel()).unwrap();
@@ -157,24 +160,37 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
     // This is the original canonical bank and issuer Work. A genuine native
     // Document supplies the Draft payload; no hosted Global or activity state
     // is invented to exercise this preparation boundary.
-    let capacity = {
+    let backing = {
         let formation = Formation::new(&draft, &cancel()).unwrap().unwrap();
         let prepared = f
             .dom
             .hosted_operations
-            .prepare(slot, &f.work, &f.source, 0, Some(&formation), &cancel())
+            .prepare(
+                slot,
+                &f.work,
+                &f.source,
+                0,
+                Some(&formation),
+                operations::BodyCredit::Borrowed(&credit),
+                operations::Projection::default(),
+                &cancel(),
+            )
             .unwrap();
-        let capacity = prepared.candidate_capacity().expect("actual bank growth");
+        let backing = prepared.inspect_new_storage_bytes();
+        assert!(backing > 0, "the actual new empty destination path");
         drop(prepared);
         drop(formation);
         assert_released(&draft, &f, original);
-        capacity
+        assert_eq!(
+            f.dom.hosted_operations.inspect_storage_bytes(),
+            resident_storage
+        );
+        backing
     };
-    // PreparedRows owns Option<Operations> inline. Its one header includes
-    // that candidate owner; only the new Vec backing lies out of line. The old
-    // retained canonical bank is already owned and stays in its own domain.
+    // The one PreparedRows header includes its empty-path owner. Its actual
+    // newly allocated pages, Slot and holder excess remain out of line; resident
+    // canonical rows are neither copied nor charged as another occurrence.
     let header = size_of::<operations::PreparedRows>();
-    let backing = capacity * size_of::<Option<Box<Operation>>>();
     let exact = header + backing;
     for allowance in [exact - 1, exact] {
         draft.source_limits = Some(source_limits(base_bytes + allowance, base_units, 1_000_000));
@@ -191,6 +207,8 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
             &f.source,
             0,
             Some(&formation),
+            operations::BodyCredit::Borrowed(&credit),
+            operations::Projection::default(),
             &cancel(),
         );
         if allowance < exact {
@@ -213,7 +231,7 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
                     "exact physical Source formation refused: base={base_bytes}, header={header}, backing={backing}, exact={exact}, error={error:?}"
                 ),
             };
-            assert_eq!(prepared.candidate_capacity(), Some(capacity));
+            assert_eq!(prepared.inspect_new_storage_bytes(), backing);
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), exact);
             drop(prepared);
         }
@@ -221,6 +239,10 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
         assert!(f.work.spent.load(Ordering::Relaxed) > hosted_work);
         drop(formation);
         assert_released(&draft, &f, original);
+        assert_eq!(
+            f.dom.hosted_operations.inspect_storage_bytes(),
+            resident_storage
+        );
         assert_eq!(f.source.revision().unwrap(), source_revision);
         assert_eq!(f.dom.revision, canonical_revision);
         assert!(Arc::ptr_eq(
@@ -249,6 +271,8 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
                     source,
                     0,
                     Some(&formation),
+                    operations::BodyCredit::Borrowed(&operation._retained),
+                    operations::Projection::default(),
                     &cancel(),
                 );
                 if allowance < header {
@@ -258,7 +282,7 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
                     })) if limit == base_bytes + allowance));
                 } else {
                     let prepared = result.unwrap();
-                    assert_eq!(prepared.candidate_capacity(), None);
+                    assert_eq!(prepared.inspect_new_storage_bytes(), 0);
                     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), header);
                     drop(prepared);
                 }
@@ -267,6 +291,10 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
             .unwrap();
         drop(formation);
         assert_released(&draft, &f, original);
+        assert_eq!(
+            f.dom.hosted_operations.inspect_storage_bytes(),
+            resident_storage
+        );
         assert_eq!(f.source.revision().unwrap(), source_revision);
         assert_eq!(f.dom.revision, canonical_revision);
         assert!(Arc::ptr_eq(
@@ -279,6 +307,8 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
             &f.work,
         ));
     }
+    drop(credit);
+    assert_eq!(f.used(), before_credit);
 }
 
 #[test]

@@ -92,32 +92,26 @@ impl Draft {
         let _observation =
             scale_metrics::ENABLED.then(|| body_presence_tests::BodyRead::begin(self));
         use surgeist_html::HtmlDocumentBodyRole as Role;
-        let mut root = None;
-        for child in self.node(document)?.children.iter() {
-            self.source_step(cancel)?;
-            if let DomNodeKind::Element(element) = &self.node(child)?.kind {
-                if surgeist_html::document_body_role_with(element.name(), |_| {
-                    self.source_step(cancel)
-                })? != Role::Html
-                {
-                    return Ok(false);
-                }
-                root = Some(child);
-                break;
-            }
+        self.source_step(cancel)?;
+        let Some(root) = self
+            .role_facts
+            .document_element(self.live_key(document), &mut || self.source_step(cancel))?
+        else {
+            return Ok(false);
+        };
+        let DomNodeKind::Element(element) = self.node(root)?.kind else {
+            return Err(DomError::WrongNodeKind);
+        };
+        if surgeist_html::document_body_role_with(element.name(), |_| self.source_step(cancel))?
+            != Role::Html
+        {
+            return Ok(false);
         }
-        let Some(root) = root else { return Ok(false) };
-        for child in self.node(root)?.children.iter() {
-            self.source_step(cancel)?;
-            if let DomNodeKind::Element(element) = &self.node(child)?.kind
-                && surgeist_html::document_body_role_with(element.name(), |_| {
-                    self.source_step(cancel)
-                })? == Role::Body
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        self.source_step(cancel)?;
+        Ok(self.role_facts.has_any(
+            transaction::role_facts::Role::BodyChild,
+            self.live_key(root),
+        ))
     }
     fn style_block_rendering(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         let document = self.node(key)?.document;
@@ -138,11 +132,14 @@ impl Draft {
             .as_ref()
             .ok_or(DomError::WrongNodeKind)?
             .render_blocking;
-        for member in list.iter() {
-            self.source_step(cancel)?;
-            if member == key {
-                return Ok(());
-            }
+        self.source_step(cancel)?;
+        if self.role_facts.count(
+            transaction::role_facts::Role::RenderBlocking,
+            self.live_key(document),
+            self.live_key(key),
+        ) != 0
+        {
+            return Ok(());
         }
         self.relations_insert(
             document,
@@ -161,6 +158,15 @@ impl Draft {
             .ok_or(DomError::WrongNodeKind)?
             .render_blocking
             .len();
+        self.source_step(cancel)?;
+        if self.role_facts.count(
+            transaction::role_facts::Role::RenderBlocking,
+            self.live_key(document),
+            self.live_key(key),
+        ) == 0
+        {
+            return Ok(());
+        }
         for _ in 0..length {
             self.source_step(cancel)?;
         }
@@ -176,7 +182,17 @@ impl Draft {
         retired: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let owners = self.inbound_keys(retired, cancel)?;
+        let mut owners = self.effect_vec();
+        self.role_facts.visit_owners(
+            transaction::role_facts::Role::RenderBlocking,
+            self.live_key(retired),
+            &mut |owner, _| {
+                self.select_reserve(&mut owners, 1, cancel)?;
+                owners.push(owner);
+                Ok(())
+            },
+            &mut || self.source_step(cancel),
+        )?;
         for key in owners.iter().copied() {
             self.source_step(cancel)?;
             let Ok(node) = self.node(key) else { continue };

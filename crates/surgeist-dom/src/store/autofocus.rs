@@ -41,6 +41,16 @@ impl Draft {
         subject: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        self.autofocus_state(document)?;
+        if self.role_facts.count(
+            transaction::role_facts::Role::AutofocusCandidates,
+            self.live_key(document),
+            self.live_key(subject),
+        ) == 0
+        {
+            return Ok(());
+        }
         let mut index = 0;
         loop {
             self.source_step(cancel)?;
@@ -134,7 +144,17 @@ impl Draft {
         if !matches!(self.node(subject)?.kind, DomNodeKind::Element(_)) {
             return Ok(());
         }
-        let owners = self.inbound_keys(subject, cancel)?;
+        let mut owners = self.effect_vec();
+        self.role_facts.visit_owners(
+            transaction::role_facts::Role::AutofocusCandidates,
+            self.live_key(subject),
+            &mut |owner, _| {
+                self.select_reserve(&mut owners, 1, cancel)?;
+                owners.push(owner);
+                Ok(())
+            },
+            &mut || self.source_step(cancel),
+        )?;
         for key in owners.iter().copied() {
             self.source_step(cancel)?;
             if matches!(

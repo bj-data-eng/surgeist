@@ -598,14 +598,16 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
-        let members = self.dialog_list(document, list)?;
-        for candidate in members.iter() {
-            self.source_step(cancel)?;
-            if candidate == member {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        self.dialog_list(document, list)?;
+        let role = match list {
+            DialogList::Open => transaction::role_facts::Role::OpenDialogs,
+            DialogList::Raw => transaction::role_facts::Role::TopLayer,
+            DialogList::Pending => transaction::role_facts::Role::PendingTopLayerRemovals,
+        };
+        Ok(self
+            .role_facts
+            .count(role, self.live_key(document), self.live_key(member))
+            != 0)
     }
     fn dialog_list_remove(
         &mut self,
@@ -614,6 +616,9 @@ impl Draft {
         list: DialogList,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if !self.dialog_list_contains(document, member, list, cancel)? {
+            return Ok(());
+        }
         let mut index = 0;
         loop {
             self.source_step(cancel)?;

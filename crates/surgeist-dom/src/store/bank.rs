@@ -1,6 +1,8 @@
 //! Persistent indexed records. Slot identity and generation policy belong to
 //! the consuming owner; this bank owns path copying and vacancy summaries.
 
+pub(crate) mod owned;
+
 use std::{
     any::Any,
     marker::PhantomData,

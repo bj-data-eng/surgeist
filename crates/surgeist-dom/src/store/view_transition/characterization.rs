@@ -308,9 +308,29 @@ fn historical_transition_adoption_visits_new_frontier_once_and_releases_all_chil
     let (dom, _, _, transition) = sparse_fixture(128);
     let historical = dom.snapshot();
     drop(dom);
+    // Enumerate the actual immutable graph before measuring adoption. The
+    // inverse has one name leaf per unique record and a binary branch for each
+    // additional leaf; these are real records newly outside this ledger.
+    let value = &historical.state.view_transitions;
+    let mut expected = value.documents.iter().count()
+        + value.transitions.iter().count()
+        + value.document_transitions.iter().count();
+    for (_, transition) in value.transitions.iter() {
+        let (names, elements) = transition.membership.inspect_entries();
+        assert_eq!(names.len(), 128);
+        assert!(elements.is_empty());
+        let inverse = transition.membership.inspect_graph().unwrap();
+        assert_eq!(inverse.record_totals().occurrences, 2 * names.len() - 1);
+        expected += transition.records.iter().count() + inverse.record_totals().occurrences;
+    }
+    for (_, document) in value.document_transitions.iter() {
+        expected += document.ids.iter().count();
+    }
+    use crate::store::scale_metrics::{self, Domain, Hooks, Measurement};
     let ledger = custody::Ledger::default();
     let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(())).unwrap();
     let baseline = ledger.total();
+    let measurement = scale_metrics::ENABLED.then(|| Measurement::begin().unwrap());
     let mut described = 0usize;
     let adopted = historical
         .state
@@ -324,9 +344,19 @@ fn historical_transition_adoption_visits_new_frontier_once_and_releases_all_chil
             },
         )
         .unwrap();
-    // One Document state, one Transition, 128 Records, one Document membership
-    // header and its one retained Transition identity are actual new records.
-    assert_eq!(described, 132);
+    assert_eq!(described, expected);
+    if let Some(measurement) = measurement {
+        let actual = measurement.finish(Hooks::one(Domain::Accounting)).unwrap();
+        assert_eq!(actual.accounting_record_visits, expected);
+        assert_eq!(
+            actual.record_materializations, 0,
+            "adoption shares semantic records"
+        );
+        assert_eq!(
+            actual.sequence_materializations, 0,
+            "adoption shares semantic field backing"
+        );
+    }
     let current = ledger.total();
     let mut described_again = 0usize;
     let again = historical

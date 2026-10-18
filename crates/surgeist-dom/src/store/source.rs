@@ -167,11 +167,12 @@ impl Draft {
             self.private_counts
                 .checked_replace(contribution, transaction::Counts::default())?
         };
-        let undo = self.prepare_undo_slots(5, cancel)?;
+        let undo = self.prepare_undo_slots(9, cancel)?;
         let visibility = self.prepare_queue_visibility_change(key, !value, value, cancel)?;
         let inbound_visibility = self.prepare_inbound_visibility(key, !value, value, cancel)?;
         let controls = self.prepare_control_visibility(key, !value, value, cancel)?;
         let slots = self.prepare_slot_visibility(key, !value, value, cancel)?;
+        let discovery = self.prepare_discovery_visibility(key, !value, value, cancel)?;
         let oldcounts = std::mem::replace(&mut self.private_counts, nextcounts);
         let before = std::mem::replace(
             &mut self.phase_map.as_mut().expect("Source phase map").private,
@@ -195,6 +196,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         Ok(())
     }
     pub(super) fn expose_source_subtree(

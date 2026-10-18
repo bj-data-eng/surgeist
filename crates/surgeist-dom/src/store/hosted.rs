@@ -1,5 +1,6 @@
 //! Canonical native hosted associations and the original creation continuation.
 
+pub(in crate::store) mod containers;
 mod destruction;
 pub(crate) mod history;
 pub(in crate::store) mod operations;
@@ -425,6 +426,8 @@ impl Dom {
             source,
             0,
             None,
+            operations::BodyCredit::Owned(retained),
+            operations::Projection::default(),
             cancel,
         )?;
         crate::hosted::admit(
@@ -433,6 +436,7 @@ impl Dom {
             DomHostedResource::ScratchBytes,
         )?;
         let operation = source.begin_operation(&prefix.work, 10, bank.scratch_bytes()?, cancel)?;
+        let (bank, retained) = bank.into_owned();
         let prepared = prepared.take().expect("validated original preparation");
         let request = Request {
             key: RequestKey {
@@ -444,20 +448,22 @@ impl Dom {
             work: prepared.preparation.work,
             parent: None,
         };
-        self.hosted_operations.insert_prepared(
-            bank,
-            Operation {
-                origin: origin.clone(),
-                policy: None,
-                phase: CreationPhase::Policy(DomHostedPolicyRequest {
-                    request,
-                    origin,
-                    embedder_policy: None,
-                }),
-                _retained: retained,
-            },
+        drop(self.hosted_operations.insert_prepared(
+            operations::Transfer::new(
+                bank,
+                Operation {
+                    origin: origin.clone(),
+                    policy: None,
+                    phase: CreationPhase::Policy(DomHostedPolicyRequest {
+                        request,
+                        origin,
+                        embedder_policy: None,
+                    }),
+                    _retained: retained,
+                },
+            ),
             true,
-        );
+        ));
         self.hosted_revisions += 5;
         Ok(DomHostedCreationLease {
             operation,
@@ -567,7 +573,7 @@ impl DomHostedCreationLease {
             inputs,
         });
         let permit = source.permit(operation.request(), current.revision, false, cancel)?;
-        let pending = dom
+        let mut pending = dom
             .hosted_operations
             .get_mut(self.operation)
             .expect("validated original operation");
@@ -1624,11 +1630,16 @@ impl Dom {
         else {
             return Ok(());
         };
-        let root = document.node();
-        let mut current = root;
-        loop {
+        let root = Key::Existing(document.node());
+        let order = transaction::ordered_members::OrderView::state(&self.state, self.owner);
+        let index = &self.state.container_index;
+        let mut current = index.first_hosted(root, work, cancel)?;
+        while let Some(key) = current {
             work.step(cancel)?;
-            let node = self.state.node(self.owner, current)?;
+            let Key::Existing(id) = key else {
+                return Err(DomError::UnavailableCreation.into());
+            };
+            let node = self.state.node(self.owner, id)?;
             if let DomNodeKind::Element(element) = &node.kind
                 && let Some(Some(child)) = element.child_navigable()
             {
@@ -1637,55 +1648,11 @@ impl Dom {
                     visit(child)?;
                 }
             }
-            if let Some(shadow) = node.shadow_root {
-                current = shadow;
-                continue;
-            }
-            if let Some(first) = node.children.first() {
-                current = *first;
-                continue;
-            }
-            loop {
-                work.step(cancel)?;
-                if current == root {
-                    return Ok(());
-                }
-                let node = self.state.node(self.owner, current)?;
-                if let Some(host) = node.host {
-                    work.step(cancel)?;
-                    let owner = self.state.node(self.owner, host)?;
-                    if let Some(first) = owner.children.first() {
-                        current = *first;
-                        break;
-                    }
-                    current = host;
-                    continue;
-                }
-                let Some(ancestor) = node.parent else {
-                    return Err(DomHostedError::StaleBasis);
-                };
-                let siblings = &self.state.node(self.owner, ancestor)?.children;
-                let mut found = false;
-                let mut next = None;
-                for sibling in siblings {
-                    work.step(cancel)?;
-                    if found {
-                        next = Some(*sibling);
-                        break;
-                    }
-                    found = *sibling == current;
-                }
-                if !found {
-                    return Err(DomHostedError::StaleBasis);
-                }
-                if let Some(next) = next {
-                    current = next;
-                    break;
-                }
-                current = ancestor;
-            }
+            current = index.after_hosted(root, key, order, work, cancel)?;
         }
+        Ok(())
     }
+
     fn capture_hosted_children(
         &self,
         source: &DomHostedSource,

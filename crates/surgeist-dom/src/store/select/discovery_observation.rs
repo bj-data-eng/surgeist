@@ -57,10 +57,7 @@ pub(super) fn record(event: Event) {
 pub(super) struct Probe(bool);
 impl Probe {
     pub fn start() -> Self {
-        assert!(
-            scale_metrics::ENABLED,
-            "select discovery requires enabled counters"
-        );
+        scale_metrics::require_enabled().expect("select discovery requires enabled counters");
         ACTIVE.with(|active| {
             assert!(active.get().is_none(), "select discovery already active");
             active.set(Some(Counts::default()));

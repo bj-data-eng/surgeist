@@ -441,10 +441,19 @@ impl Index {
     pub fn is_empty(&self) -> bool {
         self.entries.record_count() == 0
     }
-    #[cfg(test)]
     pub fn count(&self, group: Key, member: Key) -> usize {
         self.members(group)
             .map_or(0, |members| members.member_count(member))
+    }
+    pub fn has_group(&self, group: Key) -> bool {
+        self.members(group)
+            .is_some_and(|members| !members.is_empty())
+    }
+    #[cfg(test)]
+    pub(super) fn count_record_extent() -> custody::Usage {
+        custody::Usage::new(size_of::<Entry>(), 0)
+            .checked_add(custody::SharedDebit::administration_usage())
+            .expect("actual first count record and its out-of-line debit")
     }
     pub fn change(
         &self,

@@ -220,17 +220,31 @@ pub(crate) struct Record {
     pub rules: Option<DomViewTransitionRules>,
     pub captured: [bool; 4],
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct Transition {
     pub id: DomViewTransitionId,
     pub document: DocumentId,
     pub records: crate::store::Bank<Record>,
+    pub membership: crate::store::TransitionMembership,
     pub name_units: usize,
     pub pseudos: usize,
     pub setup: bool,
     pub root_captured: bool,
     pub next_record: u64,
 }
+impl PartialEq for Transition {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.document == other.document
+            && self.records == other.records
+            && self.name_units == other.name_units
+            && self.pseudos == other.pseudos
+            && self.setup == other.setup
+            && self.root_captured == other.root_captured
+            && self.next_record == other.next_record
+    }
+}
+impl Eq for Transition {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentTransitions {
     pub document: DocumentId,

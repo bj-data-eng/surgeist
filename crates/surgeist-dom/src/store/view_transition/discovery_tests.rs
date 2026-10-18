@@ -395,3 +395,98 @@ fn reused_element_slot_keeps_historical_and_current_claims_distinct() {
     );
     crate::store::oracle_tests::assert_full_canonical(&f.dom);
 }
+
+#[test]
+fn committed_record_claims_survive_reopened_sources_and_reused_private_ticket_zero() {
+    fn complete(
+        dom: &mut Dom,
+        edit: crate::DomSourceEdit,
+    ) -> Result<crate::DomSourceCompletion, DomError> {
+        let cancel = AtomicBool::new(false);
+        let mut source = dom.begin_source_edit(edit, discovery_limits(), &cancel)?;
+        match source.advance(&cancel)? {
+            crate::DomSourceProgress::Complete(done) => Ok(done),
+            crate::DomSourceProgress::Request(request) => {
+                panic!("unexpected VT request {request:?}")
+            }
+        }
+    }
+    let mut f = discovery_fixture(0);
+    let old = f.dom.snapshot();
+    for spelling in ["fresh___", "second__"] {
+        let stamp = f.dom.snapshot().document(f.document).unwrap().stamp();
+        let ident =
+            CssViewTransitionIdent::try_new(CssCustomIdent::try_new(spelling).unwrap()).unwrap();
+        let done = complete(
+            &mut f.dom,
+            crate::DomSourceEdit::append_view_transition_record(stamp, f.transition, ident),
+        )
+        .unwrap();
+        let Some(crate::DomSourceOutput::ViewTransitionRecord(record)) = done.output() else {
+            panic!("actual append output")
+        };
+        assert_ne!(record, f.chosen);
+        assert_ne!(record, f.claimed);
+        assert_eq!(
+            f.dom
+                .snapshot()
+                .view_transition_record(record)
+                .unwrap()
+                .name()
+                .as_str(),
+            spelling
+        );
+        crate::store::oracle_tests::assert_full_canonical(&f.dom);
+    }
+    let before = f.dom.snapshot();
+    let usage = f.dom.usage();
+    let stamp = before.document(f.document).unwrap().stamp();
+    let duplicate =
+        CssViewTransitionIdent::try_new(CssCustomIdent::try_new("chosen__").unwrap()).unwrap();
+    assert_eq!(
+        complete(
+            &mut f.dom,
+            crate::DomSourceEdit::append_view_transition_record(stamp, f.transition, duplicate)
+        )
+        .unwrap_err(),
+        DomError::DuplicateViewTransitionName
+    );
+    assert_eq!(
+        complete(
+            &mut f.dom,
+            crate::DomSourceEdit::set_view_transition_branches(
+                stamp,
+                f.chosen,
+                DomViewTransitionBranches::New(f.target)
+            )
+        )
+        .unwrap_err(),
+        DomError::InvalidViewTransitionState
+    );
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.usage(), usage);
+    // Removing and restoring a claim may reshape private routing storage, but
+    // restores exactly the original record semantics and publication stamp.
+    let mut batch = DomBatch::new();
+    batch.set_view_transition_branches(stamp, f.claimed, DomViewTransitionBranches::Old);
+    batch.set_view_transition_branches(stamp, f.chosen, DomViewTransitionBranches::New(f.target));
+    batch.set_view_transition_branches(stamp, f.chosen, DomViewTransitionBranches::Old);
+    batch.set_view_transition_branches(stamp, f.claimed, DomViewTransitionBranches::New(f.target));
+    let done = f.dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    assert!(done.changes().changes().is_empty());
+    assert_eq!(f.dom.snapshot().stamp(), before.stamp());
+    assert_eq!(f.dom.usage(), usage);
+    assert_eq!(
+        old.view_transition(f.transition).unwrap().records().count(),
+        2
+    );
+    assert_eq!(
+        old.view_transition_record(f.claimed).unwrap().branches(),
+        DomViewTransitionBranches::New(f.target)
+    );
+    assert_eq!(
+        old.view_transition_record(f.chosen).unwrap().branches(),
+        DomViewTransitionBranches::Old
+    );
+    crate::store::oracle_tests::assert_full_canonical(&f.dom);
+}

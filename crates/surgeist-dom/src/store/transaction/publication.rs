@@ -723,7 +723,27 @@ impl Draft {
                 }
             }
         };
-        let slot_index = self.finish_slot_index(&participant_id, cancel)?;
+        let mut slot_index = self.finish_slot_index(&participant_id, cancel)?;
+        let order = super::ordered_members::OrderPair {
+            before: super::ordered_members::OrderView::state(&self.base, self.store),
+            after: super::ordered_members::OrderView::projected(
+                self,
+                &slot_index.value,
+                &allocated_ids,
+            ),
+        };
+        let families = self.families.finish(self, &participant_id, order, cancel)?;
+        let role_facts = self
+            .role_facts
+            .finish(self, &participant_id, order.after, cancel)?;
+        let containers = self
+            .containers
+            .finish(self, &participant_id, order, cancel)?;
+        let named = self
+            .slot_names
+            .finish(self, &participant_id, order, cancel)?;
+        slot_index.value.named = named.value;
+        slot_index.custody.named = named.custody;
         let controls = self.controls.finish(
             participant_id,
             self.custody_registry(),
@@ -847,6 +867,9 @@ impl Draft {
                 inbound,
                 controls: controls.value,
                 slot_index: slot_index.value,
+                family_index: families.value,
+                role_facts: role_facts.value,
+                container_index: containers.index,
                 range_dependencies: ranges.dependencies,
                 signal_targets,
                 native_targets,
@@ -879,6 +902,9 @@ impl Draft {
                 inbound: inbound_custody,
                 controls: controls.custody,
                 slot_index: slot_index.custody,
+                families: families.custody,
+                role_facts: role_facts.custody,
+                containers: containers.custody,
                 range_dependencies: ranges.dependency_custody,
                 transitions: finished.custody,
                 signal_targets: signal_targets_custody,
@@ -1094,6 +1120,16 @@ impl Draft {
             .mark_published(&self.base.controls, &self.base_custody.controls);
         self.slot_index
             .mark_published(&self.base.slot_index, &self.base_custody.slot_index);
+        self.slot_names.mark_published(
+            &self.base.slot_index.named,
+            &self.base_custody.slot_index.named,
+        );
+        self.families
+            .mark_published(&self.base.family_index, &self.base_custody.families);
+        self.role_facts
+            .mark_published(&self.base.role_facts, &self.base_custody.role_facts);
+        self.containers
+            .mark_published(&self.base.container_index, &self.base_custody.containers);
         self.ranges = super::ranges::Ranges::new(&self.base, &self.base_custody);
         let base = self.base.clone();
         let custody = self.base_custody.clone();

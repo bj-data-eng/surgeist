@@ -72,11 +72,13 @@ pub(crate) use transaction::CopyObservation;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
+pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
 pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;
 pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
 use view_transition::DraftTransitions;
+pub(crate) use view_transition::TransitionMembership;
 
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1060,6 +1062,9 @@ pub(crate) struct State {
     inbound: transaction::inbound::InboundIndex,
     controls: transaction::controls::ControlIndex,
     slot_index: transaction::slot_index::SlotIndex,
+    family_index: transaction::family_discovery::FamilyIndex,
+    role_facts: transaction::role_facts::Index,
+    container_index: hosted::containers::ContainerIndex,
     range_dependencies: transaction::ranges::RangeDependencies,
     signal_targets: transaction::queues::CanonicalTargets,
     native_targets: transaction::queues::CanonicalTargets,
@@ -1191,6 +1196,9 @@ impl Dom {
             inbound: transaction::inbound::InboundIndex::default(),
             controls: transaction::controls::ControlIndex::default(),
             slot_index: transaction::slot_index::SlotIndex::default(),
+            family_index: transaction::family_discovery::FamilyIndex::default(),
+            role_facts: transaction::role_facts::Index::default(),
+            container_index: hosted::containers::ContainerIndex::default(),
             range_dependencies: transaction::ranges::RangeDependencies::default(),
             signal_targets: transaction::queues::CanonicalTargets::default(),
             native_targets: transaction::queues::CanonicalTargets::default(),
@@ -1947,6 +1955,10 @@ struct Draft {
     inbound: transaction::inbound::Inbound,
     controls: transaction::controls::Controls,
     slot_index: transaction::slot_index::Slots,
+    slot_names: transaction::slot_names::Names,
+    families: transaction::family_discovery::Families,
+    role_facts: transaction::role_facts::Roles,
+    containers: hosted::containers::Containers,
     private_nodes: usize,
     private_units: usize,
     private_counts: transaction::Counts,
@@ -2341,6 +2353,22 @@ impl Draft {
                 &dom.state.slot_index,
                 &dom.state_custody.slot_index,
             ),
+            slot_names: transaction::slot_names::Names::capture(
+                &dom.state.slot_index.named,
+                &dom.state_custody.slot_index.named,
+            ),
+            families: transaction::family_discovery::Families::capture(
+                &dom.state.family_index,
+                &dom.state_custody.families,
+            ),
+            role_facts: transaction::role_facts::Roles::capture(
+                &dom.state.role_facts,
+                &dom.state_custody.role_facts,
+            ),
+            containers: hosted::containers::Containers::capture(
+                &dom.state.container_index,
+                &dom.state_custody.containers,
+            ),
             private_nodes: 0,
             private_units: 0,
             private_counts: transaction::Counts::default(),
@@ -2660,11 +2688,25 @@ impl Draft {
                 ))?)?;
         self.admit_node_counts(counts, nodes, units, limits)?;
         self.set_created_dirty(self.created.len(), true, cancel)?;
-        let undo = self.prepare_undo_slots(4, cancel)?;
+        let undo = self.prepare_undo_slots(8, cancel)?;
         let inbound =
             self.prepare_inbound_node(key, transaction::NodeRead::staged(&node), true, cancel)?;
         let controls = self.prepare_control_created(key, node.fields.value(), cancel)?;
         let slots = self.prepare_slot_created(key, node.fields.value(), cancel)?;
+        let node_read = transaction::NodeRead::staged(&node);
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self))
+            .changed(key, node_read);
+        let discovery = self.prepare_discovery_node(
+            transaction::NodeChange {
+                key,
+                before: None,
+                after: Some(node_read),
+            },
+            order,
+            cancel,
+        )?;
         self.commit_inbound(inbound);
         if let Some(plan) = controls {
             self.commit_control_plan(plan);
@@ -2672,6 +2714,7 @@ impl Draft {
         if let Some(plan) = slots {
             self.commit_slot_plan(plan);
         }
+        self.commit_discovery(discovery, undo);
         let oldcounts = self.counts;
         let oldnodes = self.nodes;
         let oldunits = self.units;

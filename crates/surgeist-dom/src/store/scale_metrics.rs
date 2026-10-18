@@ -18,6 +18,19 @@ use std::rc::Rc;
 
 pub(crate) const ENABLED: bool = option_env!("SURGEIST_DOM_STORAGE_COUNTERS").is_some();
 
+#[derive(Debug)]
+pub(crate) struct CountersDisabled;
+
+/// Check the compiled collector configuration without starting a measurement.
+/// Ignored diagnostic fixtures must remain compilable when counters are absent.
+pub(crate) fn require_enabled() -> Result<(), CountersDisabled> {
+    if ENABLED {
+        Ok(())
+    } else {
+        Err(CountersDisabled)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Domain {
     Bank,
@@ -430,9 +443,7 @@ pub(super) struct Measurement {
 }
 impl Measurement {
     pub fn begin() -> Result<Self, Refusal> {
-        if !ENABLED {
-            return Err(Refusal::Disabled);
-        }
+        require_enabled().map_err(|CountersDisabled| Refusal::Disabled)?;
         ACTIVE.with(|active| {
             let mut active = active.borrow_mut();
             if active.is_some() {

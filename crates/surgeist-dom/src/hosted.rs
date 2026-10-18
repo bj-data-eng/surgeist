@@ -324,7 +324,8 @@ impl Role {
 struct Issuance {
     alive: bool,
     revision: DomHostedSourceRevision,
-    banks: [Vec<IdentitySlot>; 6],
+    banks: [crate::store::OwnedBank<IdentitySlot>; 6],
+    live: [usize; 6],
     reserved_revisions: u64,
 }
 #[derive(Debug)]
@@ -405,6 +406,32 @@ pub(crate) struct Retained {
     bytes: usize,
 }
 impl Retained {
+    pub(crate) fn require_observed_body_credit(
+        &self,
+        source: &SourceObservation,
+        bytes: usize,
+    ) -> Result<(), DomHostedError> {
+        if !self.shared.ptr_eq(&source.shared) {
+            return Err(DomHostedError::ForeignSource);
+        }
+        if self.bytes < bytes {
+            return Err(DomHostedError::RepresentationExhausted);
+        }
+        Ok(())
+    }
+    pub(crate) fn require_body_credit(
+        &self,
+        source: &DomHostedSource,
+        bytes: usize,
+    ) -> Result<(), DomHostedError> {
+        if !self.shared.ptr_eq(&Arc::downgrade(&source.shared)) {
+            return Err(DomHostedError::ForeignSource);
+        }
+        if self.bytes < bytes {
+            return Err(DomHostedError::RepresentationExhausted);
+        }
+        Ok(())
+    }
     pub(crate) fn append(&mut self, mut other: Self) -> Result<(), DomHostedError> {
         if !self.shared.ptr_eq(&other.shared) {
             return Err(DomHostedError::ForeignSource);
@@ -454,13 +481,8 @@ impl DomHostedSource {
     ) -> Result<usize, DomHostedError> {
         let state = self.lock()?;
         let rows = &state.banks[Role::Operation.index()];
-        for (index, row) in rows.iter().enumerate() {
-            work.step(cancel)?;
-            if !row.live && !row.retired {
-                return Ok(index);
-            }
-        }
-        Ok(rows.len())
+        work.step(cancel)?;
+        Ok(rows.lowest_vacant().unwrap_or_else(|| rows.len()))
     }
     pub(crate) fn begin_operation(
         &mut self,
@@ -639,7 +661,8 @@ impl DomHostedSource {
                 issuance: Mutex::new(Issuance {
                     alive: true,
                     revision: DomHostedSourceRevision(0),
-                    banks: std::array::from_fn(|_| Vec::new()),
+                    banks: std::array::from_fn(|_| crate::store::OwnedBank::default()),
+                    live: [0; 6],
                     reserved_revisions: 0,
                 }),
             }),
@@ -666,6 +689,12 @@ impl DomHostedSource {
     ) -> Result<Retained, DomHostedError> {
         crate::store::check_cancel(cancel)?;
         drop(self.lock()?);
+        self.retain_locked(bytes, cancel)
+    }
+    // The caller already owns the live issuer mutex; never recursively lock it
+    // while admitting a new actual issuer page/record allocation.
+    fn retain_locked(&self, bytes: usize, cancel: &AtomicBool) -> Result<Retained, DomHostedError> {
+        crate::store::check_cancel(cancel)?;
         self.shared
             .bytes
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
@@ -761,112 +790,57 @@ impl DomHostedSource {
             .checked_add(reserved)
             .ok_or(DomHostedError::RepresentationExhausted)?;
         let bank = &state.banks[role.index()];
-        let mut free = None;
-        let mut live = 0usize;
-        for (index, slot) in bank.iter().enumerate() {
-            work.step(cancel)?;
-            if slot.live {
-                live += 1;
-            } else if !slot.retired && free.is_none() {
-                free = Some(index);
-            }
-        }
+        let live = state.live[role.index()];
         let (limit, resource) = role.bound(limits.records);
-        admit(
-            live.checked_add(1)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-            limit,
-            resource,
-        )?;
-        let result = if let Some(index) = free {
-            let slot = &mut state.banks[role.index()][index];
-            slot.live = true;
-            slot.phase = 0;
-            slot.issued = 0;
-            slot.creator = request.map(|(key, _)| key);
-            slot.reserved_revisions = 0;
-            slot.work = matches!(role, Role::BrowsingContext | Role::Operation)
-                .then(|| WorkObservation::new(work));
-            (index, slot.generation)
+        let next_live = live
+            .checked_add(1)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        admit(next_live, limit, resource)?;
+        work.step(cancel)?;
+        let index = bank.lowest_vacant().unwrap_or_else(|| bank.len());
+        let generation = if let Some(slot) = bank.get(index) {
+            slot.generation
         } else {
-            let required = bank
-                .len()
-                .checked_add(1)
-                .ok_or(DomHostedError::RepresentationExhausted)?;
-            if required > bank.capacity() {
-                let bytes = required
-                    .checked_mul(std::mem::size_of::<IdentitySlot>())
-                    .ok_or(DomHostedError::RepresentationExhausted)?;
-                admit(
-                    bytes
-                        .checked_add(std::mem::size_of::<Vec<IdentitySlot>>())
-                        .and_then(|bytes| bytes.checked_add(scratch_base))
-                        .ok_or(DomHostedError::RepresentationExhausted)?,
-                    limits.scratch_bytes,
-                    DomHostedResource::ScratchBytes,
-                )?;
-                admit(
-                    self.shared
-                        .bytes
-                        .load(Ordering::Relaxed)
-                        .checked_add(bytes)
-                        .ok_or(DomHostedError::RepresentationExhausted)?,
-                    limits.retained_bytes,
-                    DomHostedResource::RetainedBytes,
-                )?;
-                let mut replacement = Vec::new();
-                replacement
-                    .try_reserve_exact(required)
-                    .map_err(|_| DomHostedError::AllocationFailed)?;
-                let actual = replacement
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<IdentitySlot>())
-                    .ok_or(DomHostedError::RepresentationExhausted)?;
-                admit(
-                    actual
-                        .checked_add(std::mem::size_of::<Vec<IdentitySlot>>())
-                        .and_then(|bytes| bytes.checked_add(scratch_base))
-                        .ok_or(DomHostedError::RepresentationExhausted)?,
-                    limits.scratch_bytes,
-                    DomHostedResource::ScratchBytes,
-                )?;
-                admit(
-                    self.shared
-                        .bytes
-                        .load(Ordering::Relaxed)
-                        .checked_add(actual)
-                        .ok_or(DomHostedError::RepresentationExhausted)?,
-                    limits.retained_bytes,
-                    DomHostedResource::RetainedBytes,
-                )?;
-                for slot in &state.banks[role.index()] {
-                    work.step(cancel)?;
-                    replacement.push(slot.clone());
-                }
-                let old_bytes = state.banks[role.index()]
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<IdentitySlot>())
-                    .ok_or(DomHostedError::RepresentationExhausted)?;
-                state.banks[role.index()] = replacement;
-                self.shared
-                    .bytes
-                    .fetch_add(actual - old_bytes, Ordering::Relaxed);
-            }
-            let bank = &mut state.banks[role.index()];
-            let index = bank.len();
-            bank.push(IdentitySlot {
-                generation: 1,
-                live: true,
-                retired: false,
-                phase: 0,
-                issued: 0,
-                creator: request.map(|(key, _)| key),
-                work: matches!(role, Role::BrowsingContext | Role::Operation)
-                    .then(|| WorkObservation::new(work)),
-                reserved_revisions: 0,
-            });
-            (index, 1)
+            1
         };
+        let reservation = if bank.get(index).is_none() {
+            let mut staged = std::mem::size_of::<crate::store::EmptyPath<IdentitySlot>>();
+            Some(bank.reserve(index, |charge| {
+                work.step(cancel)?;
+                staged = staged
+                    .checked_add(charge.bytes)
+                    .ok_or(DomHostedError::RepresentationExhausted)?;
+                admit(
+                    scratch_base
+                        .checked_add(staged)
+                        .ok_or(DomHostedError::RepresentationExhausted)?,
+                    limits.scratch_bytes,
+                    DomHostedResource::ScratchBytes,
+                )?;
+                self.retain_locked(charge.bytes, cancel).map(Some)
+            })?)
+        } else {
+            None
+        };
+        let value = IdentitySlot {
+            generation,
+            live: true,
+            retired: false,
+            phase: 0,
+            issued: 0,
+            creator: request.map(|(key, _)| key),
+            reserved_revisions: 0,
+            work: matches!(role, Role::BrowsingContext | Role::Operation)
+                .then(|| WorkObservation::new(work)),
+        };
+        if let Some(reservation) = reservation {
+            state.banks[role.index()].insert(reservation, value, false);
+        } else {
+            state.banks[role.index()][index] = value;
+            state.banks[role.index()].set_reusable(index, false);
+        }
+        state.live[role.index()] = next_live;
+        let result = (index, generation);
         state.revision = DomHostedSourceRevision(next_revision);
         state.reserved_revisions = reserved;
         if let Some((key, bit)) = request {
@@ -908,6 +882,9 @@ impl DomHostedSource {
         } else {
             slot.retired = true;
         }
+        let reusable = !slot.retired;
+        state.banks[role.index()].set_reusable(index, reusable);
+        state.live[role.index()] -= 1;
         state.revision = DomHostedSourceRevision(next);
         Ok(())
     }
@@ -1032,7 +1009,7 @@ impl DomHostedSource {
             Role::Operation,
         ] {
             let mut live = 0usize;
-            for slot in &state.banks[role.index()] {
+            for slot in state.banks[role.index()].values() {
                 crate::store::check_cancel(cancel)?;
                 if slot.live {
                     if let Some(work) = &slot.work {
@@ -1048,7 +1025,7 @@ impl DomHostedSource {
         }
         // Every fallible check is complete before any original counter changes.
         for bank in &state.banks {
-            for slot in bank {
+            for slot in bank.values() {
                 if slot.live
                     && let Some(work) = &slot.work
                 {
@@ -1596,6 +1573,9 @@ impl PhasePermit<'_> {
                 } else {
                     row.retired = true;
                 }
+                let reusable = !row.retired;
+                self.state.banks[role.index()].set_reusable(slot, reusable);
+                self.state.live[role.index()] -= 1;
             }
         }
         let operation = &mut self.state.banks[Role::Operation.index()][self.slot];
@@ -1609,6 +1589,11 @@ impl PhasePermit<'_> {
         } else {
             operation.phase = self.phase;
             operation.issued = 0;
+        }
+        if self.finish {
+            let reusable = !operation.retired;
+            self.state.banks[Role::Operation.index()].set_reusable(self.slot, reusable);
+            self.state.live[Role::Operation.index()] -= 1;
         }
         self.state.banks[Role::Operation.index()][self.slot].reserved_revisions -= self.consumed;
         self.state.reserved_revisions -= self.consumed;

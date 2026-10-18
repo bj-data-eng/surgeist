@@ -6,17 +6,23 @@ mod capture;
 pub(in crate::store) mod controls;
 pub(in crate::store) mod counted_relations;
 mod counts;
+mod discovery;
+pub(in crate::store) mod exact_forest;
+pub(in crate::store) mod family_discovery;
 mod fields;
 pub(in crate::store) mod inbound;
 mod journal;
 mod names;
 pub(in crate::store) mod nodes;
+pub(in crate::store) mod ordered_members;
 mod publication;
 pub(in crate::store) mod queues;
 pub(in crate::store) mod ranges;
 mod records;
+pub(in crate::store) mod role_facts;
 mod sequence;
 pub(in crate::store) mod slot_index;
+pub(in crate::store) mod slot_names;
 
 pub(in crate::store) use capture::{StateCustody, StateFrontiers};
 pub(in crate::store) use counts::Counts;
@@ -31,6 +37,23 @@ pub(in crate::store) use sequence::{Sequence, SequenceUndo, SequenceView};
 use std::sync::Arc;
 
 use super::{DomStamp, State, bank, custody};
+
+#[derive(Clone, Copy)]
+pub(in crate::store) struct NodeChange<'a> {
+    pub key: super::Key,
+    pub before: Option<NodeRead<'a>>,
+    pub after: Option<NodeRead<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::store) struct RelationChange<'a> {
+    pub owner: super::Key,
+    pub field: RelationField,
+    pub before: SequenceView<'a, super::NodeId, super::Key>,
+    pub index: usize,
+    pub removed: usize,
+    pub added: &'a [super::Key],
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct NodeReceipts {
@@ -79,6 +102,10 @@ pub(in crate::store) enum Undo {
     Image(super::image::Undo),
     Controls(controls::ControlUndo),
     Slots(slot_index::SlotUndo),
+    SlotNames(slot_names::Undo),
+    Families(family_discovery::FamilyUndo),
+    Roles(role_facts::Undo),
+    Containers(super::hosted::containers::ContainerUndo),
     TicketsLength(usize),
     TicketsCapacity(custody::Held<Vec<super::Key>>),
     RetirementsLength(usize),
@@ -159,6 +186,10 @@ impl Undo {
             Self::Image(undo) => undo.restore(draft),
             Self::Controls(undo) => undo.restore(draft),
             Self::Slots(undo) => undo.restore(draft),
+            Self::SlotNames(undo) => undo.restore(&mut draft.slot_names),
+            Self::Families(undo) => undo.restore(&mut draft.families),
+            Self::Roles(undo) => undo.restore(&mut draft.role_facts),
+            Self::Containers(undo) => undo.restore(&mut draft.containers),
             Self::TicketsLength(len) => draft.tickets.truncate(len),
             Self::TicketsCapacity(before) => {
                 let (values, debit) = before.into_parts();
@@ -320,6 +351,8 @@ impl Undo {
             Self::Image(undo) => undo.journal_bytes(),
             Self::Controls(undo) => undo.journal_bytes(),
             Self::Slots(undo) => undo.journal_bytes(),
+            Self::Families(undo) => undo.journal_bytes(),
+            Self::Roles(_) | Self::Containers(_) | Self::SlotNames(_) => 0,
             Self::Range(undo) => undo.journal_bytes(),
             Self::Transition(undo) => undo.journal_bytes(),
             Self::Queue(undo) => undo.journal_bytes(),

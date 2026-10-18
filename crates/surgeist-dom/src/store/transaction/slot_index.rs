@@ -4,7 +4,11 @@
 //! never enter this private order.
 use super::super::*;
 use super::NodeFields;
-use std::cmp::Ordering as Order;
+pub(in crate::store) use super::ordered_members::ChildPosition;
+use super::ordered_members::{
+    Edit as Editing, Map, MapCustody, Members, MembersCustody, Membership, Mode, OrderView,
+    Qualified, RootHeader,
+};
 
 #[cfg(test)]
 fn discovery() {
@@ -20,105 +24,31 @@ fn step(work: &mut dyn FnMut() -> Result<(), DomError>) -> Result<(), DomError> 
     Ok(())
 }
 
-trait Qualified: Copy + Eq + Send + Sync + 'static {
-    fn key(self) -> Key;
-}
-impl Qualified for Key {
-    fn key(self) -> Key {
-        self
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::store) struct ChildPosition {
-    pub key: Key,
-    pub parent: Key,
-    pub ordinal: usize,
-}
-impl Qualified for ChildPosition {
-    fn key(self) -> Key {
-        self.key
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Member {
-    key: Key,
-    root: Key,
-    left: Option<Key>,
-    right: Option<Key>,
-    order_parent: Option<Key>,
-    height: u8,
-}
-impl Qualified for Member {
-    fn key(self) -> Key {
-        self.key
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Root {
     key: Key,
-    member: Key,
+    member: RootHeader,
 }
 impl Qualified for Root {
-    fn key(self) -> Key {
+    fn key(&self) -> Key {
         self.key
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Map<T> {
-    existing: bank::Bank<T>,
-    created: bank::Bank<T>,
-}
-impl<T> Default for Map<T> {
-    fn default() -> Self {
-        Self {
-            existing: Default::default(),
-            created: Default::default(),
-        }
-    }
-}
-#[derive(Clone)]
-struct MapCustody<T> {
-    existing: bank::BankCustody<T>,
-    created: bank::BankCustody<T>,
-}
-impl<T> Default for MapCustody<T> {
-    fn default() -> Self {
-        Self {
-            existing: Default::default(),
-            created: Default::default(),
-        }
-    }
-}
-impl<T: Qualified> Map<T> {
-    fn get(&self, key: Key) -> Option<T> {
-        let value = match key {
-            Key::Existing(id) => self.existing.get(id.slot),
-            Key::Created(index) => self.created.get(index),
-        }
-        .copied()?;
-        (value.key() == key).then_some(value)
-    }
-    fn values(&self) -> impl Iterator<Item = T> + '_ {
-        self.existing.values().chain(self.created.values()).copied()
     }
 }
 
 /// These canonical values carry no accounting authority.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub(in crate::store) struct SlotIndex {
     positions: Map<ChildPosition>,
-    members: Map<Member>,
+    members: Members,
     roots: Map<Root>,
+    pub(in crate::store) named: super::slot_names::Index,
 }
 #[derive(Clone, Default)]
 pub(in crate::store) struct SlotCustody {
     positions: MapCustody<ChildPosition>,
-    members: MapCustody<Member>,
+    members: MembersCustody,
     roots: MapCustody<Root>,
+    pub(in crate::store) named: super::slot_names::Custody,
 }
 #[derive(Clone, Default)]
 struct Version {
@@ -160,186 +90,38 @@ impl Drop for Reconcile {
         self.0.reconcile_releases();
     }
 }
-struct Pair<T> {
-    values: bank::Bank<T>,
-    custody: bank::BankCustody<T>,
-}
-impl<T> Drop for Pair<T> {
-    fn drop(&mut self) {
-        drop(std::mem::take(&mut self.values));
-        drop(std::mem::take(&mut self.custody));
-    }
-}
-struct Editing<'a> {
-    registry: &'a bank::CustodyRegistry,
-    admit: &'a mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
-    work: &'a mut dyn FnMut() -> Result<(), DomError>,
-}
-impl<T: Qualified> Map<T> {
-    fn change(
-        &mut self,
-        control: &mut MapCustody<T>,
-        key: Key,
-        value: Option<T>,
-        edit: &mut Editing<'_>,
-    ) -> Result<bool, DomError> {
-        step(edit.work)?;
-        if self.get(key) == value {
-            return Ok(false);
-        }
-        let (bank, custody, index) = match key {
-            Key::Existing(id) => (&mut self.existing, &mut control.existing, id.slot),
-            Key::Created(index) => (&mut self.created, &mut control.created, index),
-        };
-        if bank.get(index).is_some_and(|old| old.key() != key) {
-            return Err(DomError::StaleNode);
-        }
-        let (next, next_control) = if let Some(value) = value {
-            let usage = custody::Usage::new(size_of::<T>(), 0);
-            let record =
-                bank::ControlledRecord::new(value, usage, edit.registry, &mut *edit.admit)?;
-            bank.set_controlled(
-                custody,
-                index,
-                record,
-                false,
-                bank::Totals {
-                    bytes: size_of::<T>(),
-                    units: 0,
-                    occurrences: 1,
-                },
-                edit.registry,
-                &mut *edit.admit,
-            )?
-        } else {
-            let (next, control, removed) =
-                bank.remove_controlled(custody, index, edit.registry, &mut *edit.admit)?;
-            drop(removed);
-            (next, control)
-        };
-        drop(Pair {
-            values: std::mem::replace(bank, next),
-            custody: std::mem::replace(custody, next_control),
-        });
-        edit.registry.reconcile_releases();
-        Ok(true)
-    }
-}
-
 impl SlotIndex {
     pub fn position(&self, key: Key) -> Option<ChildPosition> {
-        self.positions.get(key)
+        self.positions.get(key).copied()
     }
     fn root(
         &self,
-        mut key: Key,
+        key: Key,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Key, DomError> {
-        loop {
-            step(work)?;
-            match self.position(key) {
-                Some(p) => key = p.parent,
-                None => return Ok(key),
-            }
-        }
-    }
-    fn depth(
-        &self,
-        mut key: Key,
-        work: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<usize, DomError> {
-        let mut depth = 0usize;
-        loop {
-            step(work)?;
-            match self.position(key) {
-                Some(p) => {
-                    depth = depth
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    key = p.parent;
-                }
-                None => return Ok(depth),
-            }
-        }
-    }
-    fn compare(
-        &self,
-        mut a: Key,
-        mut b: Key,
-        work: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<Order, DomError> {
-        if a == b {
-            return Ok(Order::Equal);
-        }
-        let mut da = self.depth(a, work)?;
-        let mut db = self.depth(b, work)?;
-        while da > db {
-            step(work)?;
-            a = self.position(a).expect("deeper ordinary child").parent;
-            da -= 1;
-            if a == b {
-                return Ok(Order::Greater);
-            }
-        }
-        while db > da {
-            step(work)?;
-            b = self.position(b).expect("deeper ordinary child").parent;
-            db -= 1;
-            if a == b {
-                return Ok(Order::Less);
-            }
-        }
-        loop {
-            step(work)?;
-            let pa = self.position(a).ok_or(DomError::HierarchyRequest)?;
-            let pb = self.position(b).ok_or(DomError::HierarchyRequest)?;
-            if pa.parent == pb.parent {
-                return Ok(pa.ordinal.cmp(&pb.ordinal));
-            }
-            a = pa.parent;
-            b = pb.parent;
-        }
+        OrderView::positions(self).root(key, Mode::Ordinary, work)
     }
     fn descendant(
         &self,
-        mut key: Key,
+        key: Key,
         ancestor: Key,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
-        loop {
-            step(work)?;
-            if key == ancestor {
-                return Ok(true);
-            }
-            match self.position(key) {
-                Some(p) => key = p.parent,
-                None => return Ok(false),
-            }
-        }
-    }
-    fn minimum(
-        &self,
-        mut key: Key,
-        work: &mut dyn FnMut() -> Result<(), DomError>,
-    ) -> Result<Key, DomError> {
-        loop {
-            step(work)?;
-            match self.members.get(key).expect("AVL member").left {
-                Some(left) => key = left,
-                None => return Ok(key),
-            }
-        }
+        OrderView::positions(self).descendant(ancestor, key, Mode::Ordinary, work)
     }
     pub fn first(
         &self,
         root: Key,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<Key>, DomError> {
-        step(work)?;
-        self.roots
-            .get(root)
-            .map(|r| self.minimum(r.member, work))
-            .transpose()
+        let mut observed = || step(work);
+        observed()?;
+        self.members.first(
+            self.roots
+                .get(root)
+                .map_or_else(RootHeader::default, |r| r.member),
+            &mut observed,
+        )
     }
     pub fn next(
         &self,
@@ -347,44 +129,49 @@ impl SlotIndex {
         key: Key,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<Key>, DomError> {
-        step(work)?;
-        let mut entry = self
-            .members
-            .get(key)
-            .filter(|v| v.root == root)
-            .ok_or(DomError::StaleNode)?;
-        if let Some(right) = entry.right {
-            return self.minimum(right, work).map(Some);
-        }
-        while let Some(parent) = entry.order_parent {
-            step(work)?;
-            let p = self.members.get(parent).expect("AVL parent");
-            if p.left == Some(entry.key) {
-                return Ok(Some(parent));
-            }
-            entry = p;
-        }
-        Ok(None)
+        self.next_unobserved(root, key, &mut || step(work))
     }
-    fn lower_bound(
+    fn next_unobserved(
         &self,
         root: Key,
         key: Key,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<Key>, DomError> {
-        let mut current = self.roots.get(root).map(|r| r.member);
-        let mut result = None;
-        while let Some(candidate) = current {
-            step(work)?;
-            let member = self.members.get(candidate).expect("AVL member");
-            if self.compare(candidate, key, work)? == Order::Less {
-                current = member.right;
-            } else {
-                result = Some(candidate);
-                current = member.left;
-            }
-        }
-        Ok(result)
+        work()?;
+        self.members.after(
+            self.roots
+                .get(root)
+                .map_or_else(RootHeader::default, |r| r.member),
+            key,
+            OrderView::positions(self),
+            Mode::Ordinary,
+            work,
+        )
+    }
+    pub(super) fn lower_bound(
+        &self,
+        root: Key,
+        key: Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        self.lower_bound_unobserved(root, key, &mut || step(work))
+    }
+    fn lower_bound_unobserved(
+        &self,
+        root: Key,
+        key: Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        work()?;
+        self.members.lower_bound(
+            self.roots
+                .get(root)
+                .map_or_else(RootHeader::default, |r| r.member),
+            key,
+            OrderView::positions(self),
+            Mode::Ordinary,
+            work,
+        )
     }
     pub fn adopt_custody(
         &self,
@@ -419,8 +206,11 @@ impl SlotIndex {
         let _cleanup = Reconcile(registry.clone());
         Ok(SlotCustody {
             positions: adopt(&self.positions, registry, admit, work)?,
-            members: adopt(&self.members, registry, admit, work)?,
+            members: self
+                .members
+                .adopt_custody(registry, admit, &mut || step(work))?,
             roots: adopt(&self.roots, registry, admit, work)?,
+            named: self.named.adopt_custody(registry, admit, work)?,
         })
     }
 }
@@ -437,26 +227,34 @@ pub(in crate::store) struct SlotMemberInspection {
 #[cfg(test)]
 impl SlotIndex {
     pub fn inspect_positions(&self) -> Vec<ChildPosition> {
-        self.positions.values().collect()
+        self.positions.values().copied().collect()
     }
     pub fn inspect_members(&self) -> Vec<SlotMemberInspection> {
-        self.members
+        self.roots
             .values()
-            .map(|m| SlotMemberInspection {
-                key: m.key,
-                root: m.root,
-                left: m.left,
-                right: m.right,
-                order_parent: m.order_parent,
-                height: m.height,
+            .flat_map(|group| {
+                self.members
+                    .inspect_tree(group.member)
+                    .into_iter()
+                    .map(move |m| SlotMemberInspection {
+                        key: m.key,
+                        root: group.key,
+                        left: m.left,
+                        right: m.right,
+                        order_parent: m.parent,
+                        height: m.height,
+                    })
             })
             .collect()
     }
     pub fn inspect_roots(&self) -> Vec<(Key, Key)> {
-        self.roots.values().map(|r| (r.key, r.member)).collect()
+        self.roots
+            .values()
+            .filter_map(|r| self.members.inspect_root(r.member).map(|key| (r.key, key)))
+            .collect()
     }
-    pub fn inspect_summaries(&self) -> [(bank::Totals, bank::IndexCharge); 6] {
-        [
+    pub fn inspect_summaries(&self) -> Vec<(bank::Totals, bank::IndexCharge)> {
+        let mut summaries = vec![
             (
                 self.positions.existing.totals(),
                 self.positions.existing.index_charge(),
@@ -465,14 +263,7 @@ impl SlotIndex {
                 self.positions.created.totals(),
                 self.positions.created.index_charge(),
             ),
-            (
-                self.members.existing.totals(),
-                self.members.existing.index_charge(),
-            ),
-            (
-                self.members.created.totals(),
-                self.members.created.index_charge(),
-            ),
+            self.members.inspect_summary(),
             (
                 self.roots.existing.totals(),
                 self.roots.existing.index_charge(),
@@ -481,7 +272,9 @@ impl SlotIndex {
                 self.roots.created.totals(),
                 self.roots.created.index_charge(),
             ),
-        ]
+        ];
+        summaries.extend(self.named.inspect_summaries());
+        summaries
     }
     pub fn inspect_graph(&self) -> Result<bank::PhysicalGraph, DomError> {
         fn graph<T: Qualified>(map: &Map<T>) -> Result<bank::PhysicalGraph, DomError> {
@@ -507,205 +300,72 @@ impl SlotIndex {
             Ok(graph)
         }
         let mut output = graph(&self.positions)?;
-        output.merge(&graph(&self.members)?)?;
+        output.merge(&self.members.inspect_graph()?)?;
         output.merge(&graph(&self.roots)?)?;
+        output.merge(&self.named.inspect_graph()?)?;
         Ok(output)
     }
 }
 
 impl Version {
-    fn member(&mut self, value: Member, edit: &mut Editing<'_>) -> Result<(), DomError> {
-        self.index
-            .members
-            .change(&mut self.custody.members, value.key, Some(value), edit)?;
-        Ok(())
-    }
-    fn parent(
-        &mut self,
-        key: Option<Key>,
-        parent: Option<Key>,
-        edit: &mut Editing<'_>,
-    ) -> Result<(), DomError> {
-        if let Some(key) = key {
-            let mut row = self.index.members.get(key).expect("AVL member");
-            row.order_parent = parent;
-            self.member(row, edit)?;
-        }
-        Ok(())
-    }
-    fn height(&self, key: Option<Key>) -> u8 {
-        key.map_or(0, |key| {
-            self.index.members.get(key).expect("AVL edge").height
-        })
-    }
-    fn updated(&self, mut row: Member) -> Result<Member, DomError> {
-        row.height = self
-            .height(row.left)
-            .max(self.height(row.right))
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        Ok(row)
-    }
-    fn rotate(&mut self, key: Key, left: bool, edit: &mut Editing<'_>) -> Result<Key, DomError> {
-        let mut a = self.index.members.get(key).expect("AVL rotation root");
-        let pivot = if left { a.right } else { a.left }.expect("AVL pivot");
-        let mut b = self.index.members.get(pivot).expect("AVL pivot");
-        let middle = if left { b.left } else { b.right };
-        if left {
-            a.right = middle;
-            b.left = Some(key);
-        } else {
-            a.left = middle;
-            b.right = Some(key);
-        }
-        b.order_parent = a.order_parent;
-        a.order_parent = Some(pivot);
-        self.parent(middle, Some(key), edit)?;
-        let a = self.updated(a)?;
-        self.member(a, edit)?;
-        let b = self.updated(b)?;
-        self.member(b, edit)?;
-        Ok(pivot)
-    }
-    fn balance(&mut self, key: Key, edit: &mut Editing<'_>) -> Result<Key, DomError> {
-        let mut row = self.updated(self.index.members.get(key).expect("AVL balance root"))?;
-        self.member(row, edit)?;
-        let balance = i16::from(self.height(row.left)) - i16::from(self.height(row.right));
-        if balance > 1 {
-            let child = self
-                .index
-                .members
-                .get(row.left.expect("left heavy"))
-                .expect("AVL child");
-            if self.height(child.left) < self.height(child.right) {
-                row.left = Some(self.rotate(child.key, true, edit)?);
-                self.member(row, edit)?;
-            }
-            return self.rotate(key, false, edit);
-        }
-        if balance < -1 {
-            let child = self
-                .index
-                .members
-                .get(row.right.expect("right heavy"))
-                .expect("AVL child");
-            if self.height(child.right) < self.height(child.left) {
-                row.right = Some(self.rotate(child.key, false, edit)?);
-                self.member(row, edit)?;
-            }
-            return self.rotate(key, true, edit);
-        }
-        Ok(key)
-    }
-    fn insert_at(
-        &mut self,
-        current: Option<Key>,
-        key: Key,
-        root: Key,
-        parent: Option<Key>,
-        edit: &mut Editing<'_>,
-    ) -> Result<Key, DomError> {
-        step(edit.work)?;
-        let Some(current) = current else {
-            self.member(
-                Member {
-                    key,
-                    root,
-                    left: None,
-                    right: None,
-                    order_parent: parent,
-                    height: 1,
-                },
-                edit,
-            )?;
-            return Ok(key);
-        };
-        let mut row = self.index.members.get(current).expect("AVL insertion path");
-        match self.index.compare(key, current, edit.work)? {
-            Order::Less => {
-                row.left = Some(self.insert_at(row.left, key, root, Some(current), edit)?)
-            }
-            Order::Greater => {
-                row.right = Some(self.insert_at(row.right, key, root, Some(current), edit)?)
-            }
-            Order::Equal => return Err(DomError::HierarchyRequest),
-        }
-        self.member(row, edit)?;
-        self.balance(current, edit)
-    }
-    fn delete_at(
-        &mut self,
-        current: Key,
-        key: Key,
-        edit: &mut Editing<'_>,
-    ) -> Result<Option<Key>, DomError> {
-        step(edit.work)?;
-        let mut row = self.index.members.get(current).expect("AVL deletion path");
-        match self.index.compare(key, current, edit.work)? {
-            Order::Less => {
-                row.left = self.delete_at(row.left.expect("present target"), key, edit)?
-            }
-            Order::Greater => {
-                row.right = self.delete_at(row.right.expect("present target"), key, edit)?
-            }
-            Order::Equal => {
-                if row.left.is_none() || row.right.is_none() {
-                    let child = row.left.or(row.right);
-                    self.parent(child, row.order_parent, edit)?;
-                    self.index
-                        .members
-                        .change(&mut self.custody.members, key, None, edit)?;
-                    return Ok(child);
-                }
-                let successor = self
-                    .index
-                    .minimum(row.right.expect("right child"), edit.work)?;
-                let right = self.delete_at(row.right.expect("right child"), successor, edit)?;
-                let replacement = Member {
-                    key: successor,
-                    left: row.left,
-                    right,
-                    ..row
-                };
-                self.parent(replacement.left, Some(successor), edit)?;
-                self.parent(replacement.right, Some(successor), edit)?;
-                self.index
-                    .members
-                    .change(&mut self.custody.members, key, None, edit)?;
-                self.member(replacement, edit)?;
-                return self.balance(successor, edit).map(Some);
-            }
-        }
-        self.member(row, edit)?;
-        self.balance(current, edit).map(Some)
-    }
     fn remove_member(&mut self, key: Key, edit: &mut Editing<'_>) -> Result<(), DomError> {
-        let Some(row) = self.index.members.get(key) else {
+        let root = self.index.root(key, edit.step)?;
+        let Some(header) = self.index.roots.get(root).copied() else {
             return Ok(());
         };
-        let root = self.index.roots.get(row.root).expect("member root header");
-        let next = self.delete_at(root.member, key, edit)?;
-        self.parent(next, None, edit)?;
+        let changed = self.index.members.change(
+            &self.custody.members,
+            header.member,
+            Membership::Remove(key),
+            OrderView::positions(&self.index),
+            Mode::Ordinary,
+            Editing {
+                registry: edit.registry,
+                admit: edit.admit,
+                step: edit.step,
+            },
+        )?;
+        self.index.members = changed.members;
+        self.custody.members = changed.custody;
         self.index.roots.change(
             &mut self.custody.roots,
-            row.root,
-            next.map(|member| Root {
-                key: row.root,
-                member,
+            root,
+            (!changed.root.is_empty()).then_some(Root {
+                key: root,
+                member: changed.root,
             }),
             edit,
         )?;
         Ok(())
     }
     fn insert_member(&mut self, key: Key, edit: &mut Editing<'_>) -> Result<(), DomError> {
-        let root = self.index.root(key, edit.work)?;
-        let current = self.index.roots.get(root).map(|r| r.member);
-        let member = self.insert_at(current, key, root, None, edit)?;
-        self.parent(Some(member), None, edit)?;
+        let root = self.index.root(key, edit.step)?;
+        let header = self
+            .index
+            .roots
+            .get(root)
+            .map_or_else(RootHeader::default, |r| r.member);
+        let changed = self.index.members.change(
+            &self.custody.members,
+            header,
+            Membership::Insert(key),
+            OrderView::positions(&self.index),
+            Mode::Ordinary,
+            Editing {
+                registry: edit.registry,
+                admit: edit.admit,
+                step: edit.step,
+            },
+        )?;
+        self.index.members = changed.members;
+        self.custody.members = changed.custody;
         self.index.roots.change(
             &mut self.custody.roots,
             root,
-            Some(Root { key: root, member }),
+            Some(Root {
+                key: root,
+                member: changed.root,
+            }),
             edit,
         )?;
         Ok(())
@@ -738,13 +398,13 @@ impl Version {
         insert: bool,
         edit: &mut Editing<'_>,
     ) -> Result<(), DomError> {
-        let root = source.root(node, edit.work)?;
-        let mut current = source.lower_bound(root, node, edit.work)?;
+        let root = source.root(node, edit.step)?;
+        let mut current = source.lower_bound_unobserved(root, node, edit.step)?;
         while let Some(key) = current {
-            if !source.descendant(key, node, edit.work)? {
+            if !source.descendant(key, node, edit.step)? {
                 break;
             }
-            current = source.next(root, key, edit.work)?;
+            current = source.next_unobserved(root, key, edit.step)?;
             if insert {
                 self.insert_member(key, edit)?;
             } else {
@@ -757,6 +417,12 @@ impl Version {
 }
 
 impl Slots {
+    pub(super) fn index(&self) -> &SlotIndex {
+        &self.current.index
+    }
+    pub fn order<'a>(&'a self, draft: &'a Draft) -> super::ordered_members::OrderView<'a> {
+        super::ordered_members::OrderView::draft(draft, &self.current.index)
+    }
     pub fn capture(base: &SlotIndex, custody: &SlotCustody) -> Self {
         Self {
             base: base.clone(),
@@ -789,10 +455,18 @@ impl Slots {
     pub fn mark_published(&mut self, base: &SlotIndex, custody: &SlotCustody) {
         self.base = base.clone();
         self.base_custody = custody.clone();
+        self.current.index.named = base.named.clone();
+        self.current.custody.named = custody.named.clone();
         self.current.dirty_positions = Default::default();
         self.current.dirty_members = Default::default();
         self.current.dirty_positions_custody = Default::default();
         self.current.dirty_members_custody = Default::default();
+    }
+}
+
+impl SlotPlan {
+    pub fn order<'a>(&'a self, draft: &'a Draft) -> super::ordered_members::OrderView<'a> {
+        super::ordered_members::OrderView::draft(draft, &self.next.index)
     }
 }
 
@@ -810,7 +484,7 @@ impl Draft {
             &mut Editing {
                 registry: self.custody_registry(),
                 admit: &mut |usage| self.admit_custody_usage(usage, cancel),
-                work: &mut || self.source_step(cancel),
+                step: &mut || step(&mut || self.source_step(cancel)),
             },
         )?;
         Ok(SlotPlan { next, retain_undo })
@@ -992,14 +666,12 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<SlotPlan>, DomError> {
         let key = self.live_key(key);
-        if self.slot_index.position(key).is_none()
-            && self.slot_index.current.index.members.get(key).is_none()
-        {
+        if self.slot_index.position(key).is_none() && !crate::slot::is_slot(self.node(key)?.kind) {
             return Ok(None);
         }
         self.slot_plan(
             |next, edit| {
-                if next.index.members.get(key).is_some() {
+                if crate::slot::is_slot(self.node(key)?.kind) {
                     next.remove_member(key, edit)?;
                     next.dirty_member(key, edit)?;
                 }
@@ -1028,7 +700,7 @@ impl Draft {
                     Some(key),
                     edit,
                 )?;
-                if next.index.members.get(key).is_some() {
+                if crate::slot::is_slot(self.node(key)?.kind) {
                     next.dirty_member(key, edit)?;
                 }
                 Ok(())
@@ -1051,16 +723,16 @@ impl Draft {
         let mut edit = Editing {
             registry: self.custody_registry(),
             admit: &mut |usage| self.admit_custody_usage(usage, cancel),
-            work: &mut || self.source_step(cancel),
+            step: &mut || step(&mut || self.source_step(cancel)),
         };
         // Remove all old affected members before the final comparator changes.
-        for key in self.slot_index.current.dirty_members.values() {
+        for key in self.slot_index.current.dirty_members.values().copied() {
             if let Some(id) = mapper(key) {
                 output.remove_member(Key::Existing(id), &mut edit)?;
             }
         }
-        for key in self.slot_index.current.dirty_positions.values() {
-            step(edit.work)?;
+        for key in self.slot_index.current.dirty_positions.values().copied() {
+            (edit.step)()?;
             if let Some(id) = mapper(key) {
                 output.index.positions.change(
                     &mut output.custody.positions,
@@ -1082,13 +754,13 @@ impl Draft {
         }
         // Canonical Children omit private nodes. Compute their filtered
         // ordinals once per changed parent field, never once per child prefix.
-        for parent in output.dirty_positions.values() {
+        for parent in output.dirty_positions.values().copied() {
             let Some(parent_id) = mapper(parent) else {
                 continue;
             };
             let mut ordinal = 0usize;
             for child in self.node(parent)?.children.iter() {
-                step(edit.work)?;
+                (edit.step)()?;
                 if let Some(id) = mapper(child) {
                     let key = Key::Existing(id);
                     output.index.positions.change(
@@ -1107,9 +779,11 @@ impl Draft {
                 }
             }
         }
-        for key in self.slot_index.current.dirty_members.values() {
-            step(edit.work)?;
-            if self.slot_index.current.index.members.get(key).is_some()
+        for key in self.slot_index.current.dirty_members.values().copied() {
+            (edit.step)()?;
+            if self
+                .node(self.live_key(key))
+                .is_ok_and(|node| crate::slot::is_slot(node.kind))
                 && let Some(id) = mapper(key)
             {
                 output.insert_member(Key::Existing(id), &mut edit)?;
@@ -1125,6 +799,31 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_unchanged_index(actual: &SlotIndex, before: &SlotIndex) {
+        assert_eq!(actual.positions, before.positions);
+        assert_eq!(actual.members, before.members);
+        assert_eq!(actual.roots, before.roots);
+        let actual_graph = actual.inspect_graph().unwrap();
+        let before_graph = before.inspect_graph().unwrap();
+        assert_eq!(
+            actual_graph.pages().collect::<Vec<_>>(),
+            before_graph.pages().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            actual_graph.records().collect::<Vec<_>>(),
+            before_graph.records().collect::<Vec<_>>()
+        );
+        let groups = |index: &SlotIndex| {
+            index
+                .named
+                .inspect_groups()
+                .unwrap()
+                .into_iter()
+                .map(|group| (group.kind, group.scope, group.value, group.members))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(groups(actual), groups(before));
+    }
     fn limits() -> DomLimits {
         DomLimits::new(2048, 1_000_000, 8192, 8192, 0, 8, 64_000_000).unwrap()
     }
@@ -1283,14 +982,14 @@ mod tests {
                 ..
             })
         ));
-        assert_eq!(draft.slot_index.current.index, before);
+        assert_unchanged_index(&draft.slot_index.current.index, &before);
         assert!(draft.source_work.load(Ordering::Relaxed) > work);
         cancel.store(true, Ordering::Relaxed);
         assert!(matches!(
             draft.prepare_slot_children_replace(root, &new, &cancel),
             Err(DomError::Cancelled)
         ));
-        assert_eq!(draft.slot_index.current.index, before);
+        assert_unchanged_index(&draft.slot_index.current.index, &before);
     }
 
     #[test]
@@ -1369,7 +1068,7 @@ mod tests {
             assert!(
                 matches!(draft.prepare_slot_children(root, index, 0, &[child], &cancel), Err(DomError::ResourceLimit { resource:DomResource::SourceRetainedBytes, limit:actual }) if actual==limit)
             );
-            assert_eq!(draft.slot_index.current.index, before);
+            assert_unchanged_index(&draft.slot_index.current.index, &before);
             draft.custody_registry().reconcile_releases();
             assert_eq!(ledger.total(), baseline);
             assert!(draft.source_work.load(Ordering::Relaxed) > work);
@@ -1408,7 +1107,7 @@ mod tests {
                 ordinal: index
             })
         );
-        assert_eq!(draft.slot_index.current.index, before);
+        assert_unchanged_index(&draft.slot_index.current.index, &before);
         if let Some(measurement) = measurement {
             let counters = measurement
                 .finish(scale_metrics::Hooks::one(scale_metrics::Domain::Accounting))

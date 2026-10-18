@@ -15,6 +15,9 @@ pub(in crate::store) struct StateFrontiers {
     pub inbound: inbound::InboundCustody,
     pub controls: super::controls::ControlCustody,
     pub slot_index: super::slot_index::SlotCustody,
+    pub families: super::family_discovery::FamilyCustody,
+    pub role_facts: super::role_facts::Custody,
+    pub containers: hosted::containers::ContainerCustody,
     pub range_dependencies: ranges::DependencyCustody,
     pub transitions: view_transition::TransitionCustody,
     pub signal_targets: queues::TargetsCustody,
@@ -162,6 +165,15 @@ impl StateCustody {
             let slot_index = state
                 .slot_index
                 .adopt_custody(registry, &mut admit, &mut step)?;
+            let families = state
+                .family_index
+                .adopt_custody(registry, &mut admit, &mut step)?;
+            let role_facts = state
+                .role_facts
+                .adopt_custody(registry, &mut admit, &mut step)?;
+            let containers = state
+                .container_index
+                .adopt_custody(registry, &mut admit, &mut step)?;
             let range_dependencies = state
                 .range_dependencies
                 .adopt_custody(registry, &mut admit, &mut step)?;
@@ -186,6 +198,9 @@ impl StateCustody {
                     inbound,
                     controls,
                     slot_index,
+                    families,
+                    role_facts,
+                    containers,
                     range_dependencies,
                     transitions,
                     signal_targets,

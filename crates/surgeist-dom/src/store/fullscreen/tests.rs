@@ -90,10 +90,7 @@ fn publish(dom: &mut Dom, draft: &Draft) {
 #[test]
 #[ignore = "requires an instrumented DOM build; measures the real Source no-op"]
 fn actual_source_unfullscreen_with_no_flagged_members_does_not_scan_unrelated_raw_members() {
-    assert!(
-        scale_metrics::ENABLED,
-        "compile with SURGEIST_DOM_STORAGE_COUNTERS=1"
-    );
+    scale_metrics::require_enabled().expect("compile with SURGEIST_DOM_STORAGE_COUNTERS=1");
     for unrelated in [0, 256] {
         let cancel = cancel();
         let mut dom =

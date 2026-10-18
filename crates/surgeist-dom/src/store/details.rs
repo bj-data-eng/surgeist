@@ -194,7 +194,14 @@ impl Draft {
             discovery_tests::entered();
         }
         let root = crate::slot::root_admitted(self, target, &mut || self.source_step(cancel))?;
-        let mut next = Some(root);
+        let group = self
+            .families
+            .details(self.live_key(root), &name.value, &mut || {
+                self.source_step(cancel)
+            })?;
+        let mut next = self
+            .families
+            .first(group, &mut || self.source_step(cancel))?;
         while let Some(peer) = next {
             self.source_step(cancel)?;
             #[cfg(test)]
@@ -220,7 +227,11 @@ impl Draft {
                 let name = source::formation::string("open", operand.as_ref(), cancel)?;
                 return self.remove_attribute(close, None, &name, limits, cancel);
             }
-            next = crate::slot::next_admitted(self, root, peer, &mut || self.source_step(cancel))?;
+            next = self
+                .families
+                .after(group, peer, self.order_view(), &mut || {
+                    self.source_step(cancel)
+                })?;
         }
         Ok(())
     }

@@ -597,15 +597,54 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
                 assert!(serviced);
                 assert_eq!(owner.borrow().work - before_work, 3);
                 assert!(owner.borrow().focus.pending.is_none());
-                let mut dom = session.dom();
-                let mut lease = dom
-                    .raw_mut()
-                    .resume_source_edit(child.operation(), child_limits(), &AtomicBool::new(false))
-                    .unwrap();
-                assert_eq!(allow_request(&mut lease).operation(), child.operation());
-                assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
-                assert_eq!(lease.snapshot().stamp(), basis);
-                eprintln!("focus finite parent cap={cap}: three actual Runtime visits serviced");
+                let pending = session.dom().pending_source_edit().unwrap();
+                assert_eq!(pending.operation(), child.operation());
+                assert_eq!(pending.parent_operation(), Some(parent.operation()));
+                // Servicing Remember does not make the following canonical
+                // resume/exposure free: it still charges the retained parent.
+                let exposure: Result<(), DomError> = (|| {
+                    let mut dom = session.dom();
+                    let mut lease = dom.raw_mut().resume_source_edit(
+                        child.operation(),
+                        child_limits(),
+                        &AtomicBool::new(false),
+                    )?;
+                    assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
+                    let DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) =
+                        lease.advance(&AtomicBool::new(false))?
+                    else {
+                        panic!("actual child allow-focus request required");
+                    };
+                    assert_eq!(
+                        request.action(),
+                        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                    );
+                    assert_eq!(request.operation(), child.operation());
+                    assert_eq!(request.subject(), child.subject());
+                    assert_eq!(lease.snapshot().stamp(), basis);
+                    Ok(())
+                })();
+                let pending = session.dom().pending_source_edit().unwrap();
+                assert_eq!(pending.operation(), child.operation());
+                assert_eq!(pending.parent_operation(), Some(parent.operation()));
+                assert_eq!(session.snapshot().stamp(), basis);
+                match exposure {
+                    Err(error) => {
+                        assert!(exhausted(&error, cap), "wrong exposure refusal: {error:?}");
+                        assert_ne!(
+                            cap, 16_384,
+                            "generous finite parent must expose allow-focus"
+                        );
+                        eprintln!(
+                            "focus finite parent cap={cap}: post-service resume/advance refused"
+                        );
+                    }
+                    Ok(()) => {
+                        eprintln!(
+                            "focus finite parent cap={cap}: three actual Runtime visits serviced and allow-focus exposed"
+                        );
+                    }
+                }
             }
         }
     }

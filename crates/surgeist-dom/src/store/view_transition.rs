@@ -1,7 +1,10 @@
 use super::*;
 use crate::view_transition::*;
+mod membership;
 mod storage;
-use storage::{DraftDocument, DraftTransition, RecordKey, TransitionKey};
+pub(crate) use membership::TransitionMembership;
+pub(in crate::store) use storage::RecordKey;
+use storage::{DraftDocument, DraftTransition, TransitionKey};
 pub(super) use storage::{DraftTransitions, TransitionAck, TransitionCustody, TransitionUndo};
 
 impl Draft {
@@ -101,12 +104,11 @@ impl Draft {
                     let key = next.transition(&self.owner, self.store, transition.clone())?;
                     next.mutable_topology(key, document)?;
                     let mut value = next.get(key)?;
-                    for record in value.records() {
-                        self.admit_transition_name_read(record.name, cancelled)?;
-                        self.admit_transition_name_read(name, cancelled)?;
-                        if record.name == name {
-                            return Err(DomError::DuplicateViewTransitionName);
-                        }
+                    if value
+                        .name_owner(name, &mut || self.source_step(cancelled))?
+                        .is_some()
+                    {
+                        return Err(DomError::DuplicateViewTransitionName);
                     }
                     let records = next
                         .counts
@@ -120,11 +122,18 @@ impl Draft {
                         .checked_add(name_units)
                         .ok_or(DomError::RepresentationExhausted)?;
                     admit(units, limits.units, DomResource::StringCodeUnits)?;
-                    value.append_record(*ticket, name, &registry, &mut admit_storage, || {
-                        #[cfg(test)]
-                        append_observation::observe(self, 0, cancelled)?;
-                        check_cancel(cancelled)
-                    })?;
+                    value.append_record(
+                        *ticket,
+                        name,
+                        &registry,
+                        &mut admit_storage,
+                        &mut || self.source_step(cancelled),
+                        || {
+                            #[cfg(test)]
+                            append_observation::observe(self, 0, cancelled)?;
+                            check_cancel(cancelled)
+                        },
+                    )?;
                     check_cancel(cancelled)?;
                     value.name_units = value
                         .name_units
@@ -147,20 +156,26 @@ impl Draft {
                         self.validate_transition_element(node, document)?;
                     }
                     if let Some(node) = branches.new_element()
-                        && value.records().any(|other| {
-                            other.key != record_key && other.branches.new_element() == Some(node)
-                        })
+                        && value
+                            .element_owner(node, &mut || self.source_step(cancelled))?
+                            .is_some_and(|owner| owner != record_key)
                     {
                         return Err(DomError::InvalidViewTransitionState);
                     }
                     if let Some(rules) = value.record(record_key)?.rules {
                         validate_rule_shape(*branches, &rules.associations)?;
                     }
-                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
-                        let mut record = read.owned();
-                        record.branches = *branches;
-                        record
-                    })?;
+                    value.change_record(
+                        record_key,
+                        &registry,
+                        &mut admit_storage,
+                        &mut || self.source_step(cancelled),
+                        |read| {
+                            let mut record = read.owned();
+                            record.branches = *branches;
+                            record
+                        },
+                    )?;
                     next.set(value, &registry, &mut admit_storage)?;
                 }
                 Edit::Rules { record, input } => {
@@ -183,14 +198,20 @@ impl Draft {
                         ));
                     }
                     validate_rule_shape(value.record(record_key)?.branches, &input.associations)?;
-                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
-                        let mut record = read.owned();
-                        record.rules = Some(DomViewTransitionRules {
-                            revision: input.revision.clone(),
-                            associations: input.associations.clone(),
-                        });
-                        record
-                    })?;
+                    value.change_record(
+                        record_key,
+                        &registry,
+                        &mut admit_storage,
+                        &mut || self.source_step(cancelled),
+                        |read| {
+                            let mut record = read.owned();
+                            record.rules = Some(DomViewTransitionRules {
+                                revision: input.revision.clone(),
+                                associations: input.associations.clone(),
+                            });
+                            record
+                        },
+                    )?;
                     next.set(value, &registry, &mut admit_storage)?;
                     doc.value.sheet.revision = input.revision.clone();
                     next.set_document(doc, &registry, &mut admit_storage)?;
@@ -199,11 +220,17 @@ impl Draft {
                     let (key, record_key) = next.record(&self.owner, self.store, record.clone())?;
                     next.checked_document(key, document)?;
                     let mut value = next.get(key)?;
-                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
-                        let mut record = read.owned();
-                        record.rules = None;
-                        record
-                    })?;
+                    value.change_record(
+                        record_key,
+                        &registry,
+                        &mut admit_storage,
+                        &mut || self.source_step(cancelled),
+                        |read| {
+                            let mut record = read.owned();
+                            record.rules = None;
+                            record
+                        },
+                    )?;
                     next.set(value, &registry, &mut admit_storage)?;
                 }
                 Edit::Captured { subject, captured } => match *subject {
@@ -228,6 +255,7 @@ impl Draft {
                                 record_key,
                                 &registry,
                                 &mut admit_storage,
+                                &mut || self.source_step(cancelled),
                                 |read| {
                                     let mut record = read.owned();
                                     record.captured[flag_index(id.kind)] = *captured;

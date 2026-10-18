@@ -12,6 +12,32 @@ pub(in crate::store) struct Invocation {
     retiring_reserved: bool,
 }
 
+impl Invocation {
+    pub(super) fn projection(&self) -> operations::Projection {
+        let history = match self.history {
+            HistoryDependency::Pending(id) => Some(id),
+            _ => None,
+        };
+        let mut projection = operations::Projection::invocation(self.request.creation, history);
+        if self.request.cleanup.is_some() || matches!(self.history, HistoryDependency::Settled(_)) {
+            projection.without_retry();
+        }
+        projection
+    }
+    pub(super) fn matches_retry(
+        &self,
+        creation: DomHostedCreation,
+        history: Option<DomHostedOperationId>,
+    ) -> bool {
+        self.request.creation == creation
+            && self.request.cleanup.is_none()
+            && self.history == history.map_or(HistoryDependency::None, HistoryDependency::Pending)
+    }
+    pub(super) fn matches_history(&self, history: DomHostedOperationId) -> bool {
+        self.history == HistoryDependency::Pending(history)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,10 +248,9 @@ mod tests {
         let capture = size_of::<CapturedChildren>()
             + prepared.children.values.capacity() * size_of::<DomHostedCreation>();
         let waiters = prepared.waiters.capacity() * size_of::<Waiter>();
-        let bank =
-            prepared.bank.candidate_capacity().unwrap() * size_of::<Option<Box<Operation>>>();
-        // The Vec and PreparedRows headers are already inline here, including
-        // PreparedRows' Option<Operations>. Count each physical header once.
+        let bank = prepared.bank.inspect_new_storage_bytes();
+        // Every empty page/record/holder is independently enumerated. The
+        // PreparedRows header is already inline in PreparedInvocation.
         let header = size_of::<PreparedInvocation>();
         let exact = header + capture + waiters + bank;
         drop(prepared);
@@ -261,7 +286,7 @@ mod tests {
                 "one-short scratch admitted the complete candidate: header={header}, capture={capture}, waiter_backing={waiters}, bank_backing={bank}, exact={exact}, child_capacity={}, waiter_capacity={}, bank_capacity={:?}",
                 prepared.children.values.capacity(),
                 prepared.waiters.capacity(),
-                prepared.bank.candidate_capacity(),
+                prepared.bank.inspect_new_storage_bytes(),
             ),
             Err(error) => panic!("one-short scratch returned an unrelated error: {error:?}"),
         }
@@ -291,8 +316,7 @@ mod tests {
             assert_eq!(f.source.revision().unwrap(), revision);
             assert_eq!(f.dom.revision, canonical);
         }
-        let retained_candidate =
-            capture + size_of::<Operation>() + waiters + size_of::<operations::Operations>() + bank;
+        let retained_candidate = capture + waiters + bank;
         f.limits(used + retained_candidate - 1, exact);
         assert!(matches!(
             f.dom.prepare_hosted_invocation(&f.source, parent, &work, &c),
@@ -331,8 +355,7 @@ mod tests {
         let capture = size_of::<CapturedChildren>()
             + prepared.children.values.capacity() * size_of::<DomHostedCreation>();
         let waiters = prepared.waiters.capacity() * size_of::<Waiter>();
-        let bank =
-            prepared.bank.candidate_capacity().unwrap() * size_of::<Option<Box<Operation>>>();
+        let bank = prepared.bank.inspect_new_storage_bytes();
         // At this transfer the real Operation replaces PreparedInvocation.
         // Its inline waiter Vec is counted once inside Operation; PreparedRows
         // still owns the candidate controller until insert_prepared consumes it.
@@ -349,6 +372,7 @@ mod tests {
         let revision = f.source.revision().unwrap();
         let canonical = f.dom.revision;
         let graph = f.dom.state.hosted_history.as_ref().unwrap().clone();
+        let old_controller = f.dom.hosted_operations.inspect_storage_bytes();
         // The fixture's completed issuer operation left an actual reusable
         // slot, so this case isolates final payload admission from issuer growth.
         assert_eq!(f.source.next_operation_slot(&work, &c).unwrap(), 0);
@@ -396,9 +420,12 @@ mod tests {
             .unwrap()
             .commit();
         f.dom.hosted_operations.remove(operation).unwrap();
-        // The installed controller backing remains owned and charged after its
-        // row is removed; all per-invocation candidate backing has been released.
-        assert_eq!(f.used(), used + size_of::<operations::Operations>() + bank);
+        // Empty index and row paths stay physically retained after removal;
+        // enumerate their actual capacity independently of cached charge.
+        assert_eq!(
+            f.used(),
+            used + f.dom.hosted_operations.inspect_storage_bytes() - old_controller
+        );
     }
 
     #[test]
@@ -422,8 +449,14 @@ mod tests {
             (f, invocation, work)
         }
         let c = cancel();
-        let capacity = {
-            let (f, _, work) = fixture();
+        let (row_backing, issuer_scratch) = {
+            let (f, invocation, work) = fixture();
+            let CreationPhase::Invocation(invocation) =
+                &f.dom.hosted_operations.get(invocation).unwrap().phase
+            else {
+                panic!("actual invocation")
+            };
+            let credit = f.source.retain(size_of::<Operation>(), &c).unwrap();
             let bank = f
                 .dom
                 .hosted_operations
@@ -433,13 +466,20 @@ mod tests {
                     &f.source,
                     0,
                     None,
+                    operations::BodyCredit::Borrowed(&credit),
+                    operations::Projection::cleanup(invocation.request.creation),
                     &c,
                 )
                 .unwrap();
-            bank.candidate_capacity().unwrap()
+            (
+                bank.inspect_new_storage_bytes(),
+                f.source
+                    .next_operation_reservation_scratch_bytes_for_fixture(),
+            )
         };
-        let row_backing = capacity * size_of::<Option<Box<Operation>>>();
-        let exact = size_of::<Operation>() + size_of::<operations::PreparedRows>() + row_backing;
+        let exact = size_of::<Operation>().max(issuer_scratch)
+            + size_of::<operations::PreparedRows>()
+            + row_backing;
         for allowance in [exact, exact - 1] {
             let (mut f, invocation, work) = fixture();
             let limits = f.source.limits();
@@ -464,7 +504,7 @@ mod tests {
             });
             match result {
                 Ok(cleanup) if allowance == exact => {
-                    assert_eq!(f.dom.hosted_operations.row_capacity(), capacity);
+                    assert!(f.dom.hosted_operations.inspect_storage_bytes() >= row_backing);
                     let original = f.dom.hosted_operations.get(invocation).unwrap();
                     let CreationPhase::Invocation(original) = &original.phase else {
                         panic!("original invocation remains owned")
@@ -539,8 +579,7 @@ struct PreparedInvocation {
     children: Arc<CapturedChildren>,
     waiters: Vec<Waiter>,
     origin: crate::DomOpaqueOrigin,
-    bank: operations::PreparedRows,
-    retained: Retained,
+    bank: operations::PreparedRows<'static>,
 }
 
 impl PreparedInvocation {
@@ -659,8 +698,11 @@ impl Dom {
         work.step(cancel)?;
         // Retry this exact retained invocation instead of replacing its original
         // prefix or spent Work after an admission refusal.
-        if let Some(id)=self.hosted_operations.find(&work,cancel,|operation|matches!(&operation.phase,CreationPhase::Invocation(row) if row.request.creation==creation && row.history==history.map_or(HistoryDependency::None,HistoryDependency::Pending) && row.request.cleanup.is_none()))? {
-            return self.complete_hosted_invocation(source,id,cancel);
+        if let Some(id) = self
+            .hosted_operations
+            .retry(creation, history, &work, cancel)?
+        {
+            return self.complete_hosted_invocation(source, id, cancel);
         }
         let operation =
             self.install_hosted_invocation(source, creation, traversable, work, history, cancel)?;
@@ -675,7 +717,8 @@ impl Dom {
         history: Option<DomHostedOperationId>,
         cancel: &AtomicBool,
     ) -> Result<DomHostedOperationId, DomHostedError> {
-        let prepared = self.prepare_hosted_invocation(source, creation, &work, cancel)?;
+        let prepared =
+            self.prepare_hosted_invocation_with_history(source, creation, &work, history, cancel)?;
         // Both actual phase peaks are admitted before the original issuer can
         // publish a role: its replacement while preparation lives, then the
         // boxed Operation while the prepared controller bank still lives.
@@ -691,8 +734,8 @@ impl Dom {
             waiters,
             origin,
             bank,
-            retained,
         } = prepared;
+        let (bank, retained) = bank.into_owned();
         let request = Request {
             key: RequestKey {
                 operation,
@@ -703,34 +746,48 @@ impl Dom {
             work,
             parent: None,
         };
-        self.hosted_operations.insert_prepared(
-            bank,
-            Operation {
-                origin,
-                policy: None,
-                phase: CreationPhase::Invocation(Invocation {
-                    request: DomHostedDestructionInvocationRequest {
-                        request,
-                        creation,
-                        traversable,
-                        cleanup: None,
-                        children,
-                    },
-                    waiters,
-                    history: history.map_or(HistoryDependency::None, HistoryDependency::Pending),
-                    retiring_reserved: false,
-                }),
-                _retained: retained,
-            },
+        drop(self.hosted_operations.insert_prepared(
+            operations::Transfer::new(
+                bank,
+                Operation {
+                    origin,
+                    policy: None,
+                    phase: CreationPhase::Invocation(Invocation {
+                        request: DomHostedDestructionInvocationRequest {
+                            request,
+                            creation,
+                            traversable,
+                            cleanup: None,
+                            children,
+                        },
+                        waiters,
+                        history:
+                            history.map_or(HistoryDependency::None, HistoryDependency::Pending),
+                        retiring_reserved: false,
+                    }),
+                    _retained: retained,
+                },
+            ),
             false,
-        );
+        ));
         Ok(operation)
     }
+    #[cfg(test)]
     fn prepare_hosted_invocation(
         &self,
         source: &DomHostedSource,
         creation: DomHostedCreation,
         work: &Work,
+        cancel: &AtomicBool,
+    ) -> Result<PreparedInvocation, DomHostedError> {
+        self.prepare_hosted_invocation_with_history(source, creation, work, None, cancel)
+    }
+    fn prepare_hosted_invocation_with_history(
+        &self,
+        source: &DomHostedSource,
+        creation: DomHostedCreation,
+        work: &Work,
+        history: Option<DomHostedOperationId>,
         cancel: &AtomicBool,
     ) -> Result<PreparedInvocation, DomHostedError> {
         let header = size_of::<PreparedInvocation>();
@@ -805,6 +862,8 @@ impl Dom {
                 .and_then(|bytes| bytes.checked_sub(size_of::<operations::PreparedRows>()))
                 .ok_or(DomHostedError::RepresentationExhausted)?,
             None,
+            operations::BodyCredit::Owned(retained),
+            operations::Projection::invocation(creation, history),
             cancel,
         )?;
         Ok(PreparedInvocation {
@@ -812,7 +871,6 @@ impl Dom {
             waiters,
             origin,
             bank,
-            retained,
         })
     }
     fn install_hosted_cleanup(
@@ -832,6 +890,8 @@ impl Dom {
             source,
             0,
             None,
+            operations::BodyCredit::Owned(retained),
+            operations::Projection::cleanup(creation),
             cancel,
         )?;
         self.revision
@@ -845,6 +905,7 @@ impl Dom {
             DomHostedResource::ScratchBytes,
         )?;
         let cleanup = source.begin_operation(work, 4, bank.scratch_bytes()?, cancel)?;
+        let (bank, retained) = bank.into_owned();
         let request = Request {
             key: RequestKey {
                 operation: cleanup,
@@ -855,22 +916,24 @@ impl Dom {
             work: work.clone(),
             parent: None,
         };
-        self.hosted_operations.insert_prepared(
-            bank,
-            Operation {
-                origin: origin.clone(),
-                policy: None,
-                phase: CreationPhase::DestroyEnqueue(DomHostedDestructionRequest {
-                    request,
-                    creation,
-                    children: row.request.children.clone(),
-                    invocation,
-                    traversable: row.request.traversable,
-                }),
-                _retained: retained,
-            },
+        drop(self.hosted_operations.insert_prepared(
+            operations::Transfer::new(
+                bank,
+                Operation {
+                    origin: origin.clone(),
+                    policy: None,
+                    phase: CreationPhase::DestroyEnqueue(DomHostedDestructionRequest {
+                        request,
+                        creation,
+                        children: row.request.children.clone(),
+                        invocation,
+                        traversable: row.request.traversable,
+                    }),
+                    _retained: retained,
+                },
+            ),
             false,
-        );
+        ));
         self.hosted_revisions += 1;
         Ok(cleanup)
     }
@@ -953,20 +1016,7 @@ impl Dom {
                     row.request.cleanup = Some(proof.operation);
                 } else {
                     let work = &row.request.request.work;
-                    let found = dom.hosted_operations.find(work, cancel, |candidate| {
-                        match &candidate.phase {
-                            CreationPhase::DestroyEnqueue(request)
-                            | CreationPhase::DestroyCleanup(request) => {
-                                request.creation.document == creation.document
-                                    && request.creation.global == creation.global
-                            }
-                            CreationPhase::Destroyed(_, actual) => {
-                                actual.document == creation.document
-                                    && actual.global == creation.global
-                            }
-                            _ => false,
-                        }
-                    })?;
+                    let found = dom.hosted_operations.cleanup(creation, work, cancel)?;
                     let cleanup = if let Some(found) = found {
                         found
                     } else {
@@ -1080,7 +1130,7 @@ impl DomHostedDestructionInvocation {
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
         dom.validate_hosted_source(source)?;
-        let operation = dom.hosted_operations.get_mut(self.operation)?;
+        let mut operation = dom.hosted_operations.get_mut(self.operation)?;
         let CreationPhase::Invocation(row) = &mut operation.phase else {
             return Err(DomHostedError::WrongPhase);
         };
@@ -1155,7 +1205,8 @@ impl Dom {
         work: &Work,
         cancel: &AtomicBool,
     ) -> Result<DomHostedOperationId, DomHostedError> {
-        self.hosted_operations.find(work,cancel,|operation|matches!(&operation.phase,CreationPhase::Invocation(row) if row.history==HistoryDependency::Pending(history)))?
+        self.hosted_operations
+            .history(history, work, cancel)?
             .ok_or(DomHostedError::WrongPhase)
     }
     pub(super) fn settle_hosted_history_completion(
@@ -1163,7 +1214,7 @@ impl Dom {
         invocation: DomHostedOperationId,
         history: DomHostedOperationId,
     ) {
-        let operation = self
+        let mut operation = self
             .hosted_operations
             .get_mut(invocation)
             .expect("prevalidated invoking row retained through fixed H commit");

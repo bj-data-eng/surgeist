@@ -71,6 +71,19 @@ pub(crate) trait Tree {
         after: Option<Self::Key>,
         work: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<Self::Key>, DomError>;
+    fn named_slot(
+        &self,
+        root: Self::Key,
+        node: Self::Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Self::Key>, DomError>;
+    fn named_light(
+        &self,
+        slot: Self::Key,
+        host: Self::Key,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+        visit: &mut dyn FnMut(Self::Key) -> Result<(), DomError>,
+    ) -> Result<(), DomError>;
     #[cfg(test)]
     fn ordinal_successor_read(&self);
     fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -79,6 +92,24 @@ pub(crate) trait Tree {
 }
 impl Tree for DomSnapshot {
     type Key = NodeId;
+    fn named_slot(
+        &self,
+        root: NodeId,
+        node: NodeId,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<NodeId>, DomError> {
+        self.state.slot_named_slot(root, node, work)
+    }
+    fn named_light(
+        &self,
+        slot: NodeId,
+        host: NodeId,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+        visit: &mut dyn FnMut(NodeId) -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        self.state
+            .slot_named_light(self.owner(), slot, host, work, visit)
+    }
     #[cfg(test)]
     fn ordinal_successor_read(&self) {
         self.state.slot_ordinal_successor_read();
@@ -248,40 +279,19 @@ pub(crate) fn find_slot<T: Tree>(
     if open && state.mode() == crate::HtmlShadowRootMode::Closed {
         return Ok(None);
     }
-    let manual = state.slot_assignment() == crate::HtmlSlotAssignment::Manual;
-    #[cfg(test)]
-    let mut discovery =
-        (discovery_observation::ENABLED && !manual).then(discovery_observation::Lookup::named);
+    if state.slot_assignment() != crate::HtmlSlotAssignment::Manual {
+        return tree.named_slot(root, node, &mut || tree.step(cancel));
+    }
     let mut current = tree.slot_after(root, None, &mut || tree.step(cancel))?;
     while let Some(key) = current {
         tree.step(cancel)?;
         let candidate = tree.get(key)?;
-        #[cfg(test)]
-        if discovery_observation::ENABLED
-            && let Some(discovery) = &mut discovery
-        {
-            discovery.read_candidate();
-        }
         if is_slot(candidate.kind) {
-            let matches = if manual {
-                let mut found = false;
-                for value in candidate.manual.iter() {
-                    tree.step(cancel)?;
-                    if value == node {
-                        found = true;
-                        break;
-                    }
+            for value in candidate.manual.iter() {
+                tree.step(cancel)?;
+                if value == node {
+                    return Ok(Some(key));
                 }
-                found
-            } else {
-                same_name(
-                    name_admitted(candidate.kind, "name", &mut || tree.step(cancel))?,
-                    name_admitted(n.kind, "slot", &mut || tree.step(cancel))?,
-                    &mut || tree.step(cancel),
-                )?
-            };
-            if matches {
-                return Ok(Some(key));
             }
         }
         current = tree.slot_after(root, Some(key), &mut || tree.step(cancel))?;
@@ -337,23 +347,7 @@ pub(crate) fn visit_slottables<T: Tree>(
             }
         }
     } else {
-        #[cfg(test)]
-        let mut discovery =
-            discovery_observation::ENABLED.then(discovery_observation::Lookup::host);
-        for node in tree.get(host)?.children.iter() {
-            tree.step(cancel)?;
-            #[cfg(test)]
-            if discovery_observation::ENABLED
-                && let Some(discovery) = &mut discovery
-            {
-                discovery.read_candidate();
-            }
-            if is_slottable(tree.get(node)?.kind)
-                && find_slot(tree, node, false, cancel)? == Some(slot)
-            {
-                visit(node)?;
-            }
-        }
+        tree.named_light(slot, host, &mut || tree.step(cancel), visit)?;
     }
     Ok(())
 }
@@ -775,7 +769,7 @@ impl DomSlotNotifications {
 }
 
 #[cfg(test)]
-mod discovery_observation {
+pub(crate) mod discovery_observation {
     pub(super) use crate::store::scale_metrics::ENABLED;
     use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
@@ -794,7 +788,8 @@ mod discovery_observation {
     pub(super) struct Observation(PhantomData<Rc<()>>);
     impl Observation {
         pub fn begin() -> Self {
-            assert!(ENABLED, "requires SURGEIST_DOM_STORAGE_COUNTERS=1");
+            crate::store::scale_metrics::require_enabled()
+                .expect("requires SURGEIST_DOM_STORAGE_COUNTERS=1");
             COUNTS.with(|counts| {
                 let mut counts = counts.borrow_mut();
                 assert!(counts.is_none(), "nested Slot discovery observation");
@@ -817,7 +812,7 @@ mod discovery_observation {
         Named,
         Host,
     }
-    pub(super) struct Lookup {
+    pub(crate) struct Lookup {
         kind: Kind,
         candidates: usize,
     }
