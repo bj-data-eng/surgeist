@@ -714,3 +714,7 @@ mod tests {
         assert_eq!(current_history.changes(), history.changes());
     }
 }
+
+#[cfg(test)]
+#[path = "slot/slot_discovery_work_tests.rs"]
+mod slot_discovery_work_tests;
