@@ -1433,3 +1433,77 @@ fn incomplete_finish_retains_the_original_operation_and_large_components_bypass_
         large.shared_code_units()
     ));
 }
+
+// Existing callable-boundary regression: Prepare has already retained a real
+// provisional Weak when a caller can abandon/refuse the following Commit.
+// Fixed root/mark work belongs to that authority's own close; the action must
+// separately prepay cleanup of storage it introduces before it introduces it.
+macro_rules! abandoned_preparation_cleanup {
+    ($test:ident, $pool:ty, $input:expr, $shared:ident) => {
+        #[test]
+        fn $test() {
+            let input = $input;
+            let backing = input.$shared().clone();
+            let capacity = backing.capacity();
+            let mut pool = <$pool>::new();
+            let before = pool.heap_usage();
+            let root = pool.begin_root().unwrap();
+            let mut operation = pool.offer(&input);
+            let mut budget = Budget::default();
+            let cleanup = loop {
+                let action = pool.next_action(&mut operation).unwrap().unwrap();
+                budget.admit(&action).unwrap();
+                if action.phase == Phase::Prepare {
+                    let cleanup = action.layout().closing_work();
+                    assert_eq!(Arc::weak_count(&backing), 0);
+                    assert_eq!(
+                        pool.perform(&mut operation, action).unwrap(),
+                        HtmlValuePoolProgress::Continue
+                    );
+                    break cleanup;
+                }
+                match action.kind() {
+                    HtmlValuePoolActionKind::Read => {
+                        operation.read(action).unwrap();
+                    }
+                    HtmlValuePoolActionKind::Pool => {
+                        pool.perform(&mut operation, action).unwrap();
+                    }
+                }
+            };
+            assert_eq!(
+                Arc::weak_count(&backing),
+                1,
+                "the completed action actually retained a provisional Weak"
+            );
+            drop(operation); // The caller refuses Commit, without a callback.
+            assert_eq!(
+                Arc::weak_count(&backing),
+                0,
+                "abandonment actually destroyed that provisional occurrence"
+            );
+            assert_eq!(pool.heap_usage(), before);
+            assert!(Arc::ptr_eq(&backing, input.$shared()));
+            assert_eq!(input.$shared().capacity(), capacity);
+            pool.abort_root(root).unwrap();
+            assert!(
+                cleanup.record_visits() >= 1,
+                "Prepare prepaid {} cleanup visits, but abandoning it released one real Weak; Arc counts here observe lifetime only, never authorize custody",
+                cleanup.record_visits()
+            );
+        }
+    };
+}
+
+abandoned_preparation_cleanup!(
+    abandoned_string_preparation_prepays_its_actual_weak_cleanup,
+    HtmlStringPool,
+    DocumentString::from_utf16(vec![0xd800, 0, 65]),
+    shared_code_units
+);
+abandoned_preparation_cleanup!(
+    abandoned_attribute_preparation_prepays_its_actual_weak_cleanup,
+    HtmlAttributePool,
+    bank(vec![name(Namespace::none(), None, &[97], &[0xd800, 0])]),
+    shared_attributes
+);
