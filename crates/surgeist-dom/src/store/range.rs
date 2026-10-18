@@ -6,6 +6,45 @@ use std::cmp::Ordering as Position;
 
 #[cfg(test)]
 mod admission_tests;
+#[cfg(test)]
+mod allocation_tests;
+
+#[cfg(test)]
+mod allocation_observation {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ENABLED: Cell<bool> = const { Cell::new(false) };
+        static VISITS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) struct Observation;
+
+    pub(super) fn start() -> Observation {
+        VISITS.set(0);
+        ENABLED.set(true);
+        Observation
+    }
+
+    pub(super) fn visit() {
+        if ENABLED.get() {
+            VISITS.set(VISITS.get() + 1);
+        }
+    }
+
+    impl Observation {
+        pub(super) fn finish(self) -> usize {
+            ENABLED.set(false);
+            VISITS.get()
+        }
+    }
+
+    impl Drop for Observation {
+        fn drop(&mut self) {
+            ENABLED.set(false);
+        }
+    }
+}
 
 impl Draft {
     pub(super) fn range_record(&self, id: DomRangeId) -> Result<Record<Key>, DomError> {
@@ -153,6 +192,8 @@ impl Draft {
         }
         let mut available = None;
         for index in 0..self.ranges.len() {
+            #[cfg(test)]
+            allocation_observation::visit();
             self.source_step(cancel)?;
             let slot = &self.ranges[index];
             if slot.record.is_none() && !slot.retired && slot.generation < u64::MAX {
