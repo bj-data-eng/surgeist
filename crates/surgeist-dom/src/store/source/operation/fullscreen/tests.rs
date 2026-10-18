@@ -322,3 +322,66 @@ fn identity_admission_and_generation_exhaustion_refuse_before_handoff_or_prefix(
         assert!(!lease.status().has_published());
     }
 }
+
+#[test]
+fn work_custody_lookup_does_not_visit_unrelated_retained_invocations() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, source, document, subject) = fixture();
+    dom.set_limits(dom.limits.with_fullscreen_exits(64).unwrap())
+        .unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..32 {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::exit_fullscreen(document),
+                policy(1024),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("actual native handoff");
+        };
+        let job = lease
+            .prepare_fullscreen_exit_handoff(&request, &source, &cancel)
+            .unwrap()
+            .publish();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("original synchronous tail completes");
+        };
+        assert_eq!(
+            done.fullscreen_exit_return(),
+            Some(DomFullscreenExitReturn::Pending(job.id()))
+        );
+        ids.push(job.id());
+    }
+    let before = dom.snapshot();
+    assert!(
+        before
+            .node(subject)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+    let id = ids[31];
+    let work = dom.fullscreen_exits[id.slot].work.clone();
+    let mut steps = 0;
+    assert_eq!(
+        dom.fullscreen_work_custody(&work, || {
+            steps += 1;
+            if steps > 16 {
+                Err(DomError::SourceWorkLimit { limit: 16 })
+            } else {
+                Ok(())
+            }
+        }),
+        Ok(Some(id)),
+        "one exact work identity must not walk unrelated retained invocations"
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    for id in ids {
+        assert_eq!(dom.fullscreen_exit_status(id).unwrap().document(), document);
+    }
+}
