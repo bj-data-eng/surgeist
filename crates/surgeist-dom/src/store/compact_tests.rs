@@ -384,6 +384,56 @@ fn absent_and_reserved_empty_form_history_are_content_equal() {
 }
 
 #[test]
+fn aliased_form_history_equality_does_not_compare_retained_entries() {
+    use crate::form::{FormPastName, FormPastNames};
+    use std::{cell::Cell, rc::Rc};
+
+    #[derive(Debug)]
+    struct Target {
+        value: u8,
+        comparisons: Rc<Cell<usize>>,
+    }
+    impl PartialEq for Target {
+        fn eq(&self, other: &Self) -> bool {
+            self.comparisons.set(self.comparisons.get() + 1);
+            self.value == other.value
+        }
+    }
+    impl Eq for Target {}
+
+    let comparisons = Rc::new(Cell::new(0));
+    let history = || {
+        FormPastNames::from_entries(
+            [("first", 3), ("second", 5)]
+                .into_iter()
+                .map(|(name, value)| FormPastName {
+                    name: name.into(),
+                    target: Target {
+                        value,
+                        comparisons: comparisons.clone(),
+                    },
+                })
+                .collect(),
+        )
+    };
+    let names = history();
+    let alias = names.clone();
+    assert_eq!(names, alias);
+    assert_eq!(
+        comparisons.get(),
+        0,
+        "unchanged lineage is an O(1) comparison"
+    );
+    let independent = history();
+    assert_eq!(names, independent);
+    assert_eq!(
+        comparisons.get(),
+        2,
+        "the element equality witness is active"
+    );
+}
+
+#[test]
 fn reserved_and_populated_form_history_preserve_storage_order_and_clones() {
     use crate::form::{FormPastName, FormPastNames};
     for populated in [false, true] {
