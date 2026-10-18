@@ -34,6 +34,8 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
+        #[cfg(test)]
+        let _observation = scale_metrics::ENABLED.then(|| discovery_tests::QueryRead::begin(self));
         self.source_step(cancel)?;
         let node = self.node(document)?;
         if !matches!(&node.kind, DomNodeKind::Document(_)) {
@@ -61,5 +63,7 @@ impl Draft {
     }
 }
 
+#[cfg(test)]
+mod discovery_tests;
 #[cfg(test)]
 mod tests;

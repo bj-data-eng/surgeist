@@ -70,6 +70,8 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        #[cfg(test)]
+        let _observation = scale_metrics::ENABLED.then(|| tests::DocumentRead::begin(self));
         let mut flagged = self.effect_vec();
         for key in self.fullscreen_raw_members(document, cancel)?.iter() {
             self.source_step(cancel)?;

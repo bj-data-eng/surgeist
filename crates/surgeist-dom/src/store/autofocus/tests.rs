@@ -92,6 +92,86 @@ fn candidates(dom: &Dom, doc: DocumentId) -> Vec<NodeId> {
 }
 
 #[test]
+fn absent_autofocus_removal_does_not_walk_unrelated_candidates_or_other_roles() {
+    for unrelated in [0, 256] {
+        let cancel = cancel();
+        let mut dom = Dom::new(
+            DomLimits::new(1024, 1_000_000, 2048, 0, 0, 16, 1_000_000)
+                .unwrap()
+                .with_autofocus_candidates(1024)
+                .unwrap(),
+        )
+        .unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let absent = batch.create_element_ns(&document, Namespace::html(), "div");
+        let tickets: Vec<_> = (0..unrelated)
+            .map(|_| batch.create_element_ns(&document, Namespace::html(), "span"))
+            .collect();
+        let setup = dom.apply(batch, &cancel).unwrap();
+        let document = setup.document(&document).unwrap();
+        let absent = setup.created(&absent).unwrap().unwrap();
+        let members: Vec<_> = tickets
+            .iter()
+            .map(|ticket| setup.created(ticket).unwrap().unwrap())
+            .collect();
+        let mut staged = draft(&dom);
+        let owner = staged.resolve(document.into()).unwrap();
+        for member in &members {
+            let subject = staged.resolve((*member).into()).unwrap();
+            staged
+                .autofocus_append(owner, subject, dom.limits, &cancel)
+                .unwrap();
+        }
+        // The subject is genuinely present in another role, not autofocus.
+        let subject = staged.resolve(absent.into()).unwrap();
+        staged.add_top_layer(subject, &cancel).unwrap();
+        publish(&mut dom, &staged);
+        let old = dom.snapshot();
+        let mut staged = draft(&dom);
+        let owner = staged.resolve(document.into()).unwrap();
+        let subject = staged.resolve(absent.into()).unwrap();
+        let before: Vec<_> = staged.autofocus_state(owner).unwrap().0.iter().collect();
+        let spent = staged.source_work.load(Ordering::Relaxed);
+        staged.source_limits = Some(source_limits(spent + 64));
+        let result = staged.autofocus_remove(owner, subject, &cancel);
+        assert_eq!(
+            staged
+                .autofocus_state(owner)
+                .unwrap()
+                .0
+                .iter()
+                .collect::<Vec<_>>(),
+            before
+        );
+        staged.source_limits = Some(source_limits(100_000_000));
+        staged.autofocus_remove(owner, subject, &cancel).unwrap();
+        assert_eq!(
+            old.document(document)
+                .unwrap()
+                .autofocus()
+                .unwrap()
+                .candidates(),
+            members
+        );
+        assert_eq!(
+            old.document(document)
+                .unwrap()
+                .top_layer()
+                .unwrap()
+                .raw_members(),
+            &[absent]
+        );
+        assert_eq!(dom.snapshot().stamp(), old.stamp());
+        assert_eq!(
+            result,
+            Ok(()),
+            "zero matching autofocus candidates, unrelated={unrelated}"
+        );
+    }
+}
+
+#[test]
 fn native_initial_history_and_unavailable_history_have_distinct_readback() {
     let (mut dom, docs, _) = fixture();
     let original = dom.snapshot();

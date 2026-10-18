@@ -50,7 +50,7 @@ mod range;
 mod reflected;
 pub(crate) mod registry;
 #[cfg(test)]
-mod scale_metrics;
+pub(crate) mod scale_metrics;
 #[cfg(test)]
 mod scale_tests;
 mod script;

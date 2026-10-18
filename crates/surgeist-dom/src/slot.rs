@@ -249,10 +249,19 @@ pub(crate) fn find_slot<T: Tree>(
         return Ok(None);
     }
     let manual = state.slot_assignment() == crate::HtmlSlotAssignment::Manual;
+    #[cfg(test)]
+    let mut discovery =
+        (discovery_observation::ENABLED && !manual).then(discovery_observation::Lookup::named);
     let mut current = tree.slot_after(root, None, &mut || tree.step(cancel))?;
     while let Some(key) = current {
         tree.step(cancel)?;
         let candidate = tree.get(key)?;
+        #[cfg(test)]
+        if discovery_observation::ENABLED
+            && let Some(discovery) = &mut discovery
+        {
+            discovery.read_candidate();
+        }
         if is_slot(candidate.kind) {
             let matches = if manual {
                 let mut found = false;
@@ -328,8 +337,17 @@ pub(crate) fn visit_slottables<T: Tree>(
             }
         }
     } else {
+        #[cfg(test)]
+        let mut discovery =
+            discovery_observation::ENABLED.then(discovery_observation::Lookup::host);
         for node in tree.get(host)?.children.iter() {
             tree.step(cancel)?;
+            #[cfg(test)]
+            if discovery_observation::ENABLED
+                && let Some(discovery) = &mut discovery
+            {
+                discovery.read_candidate();
+            }
             if is_slottable(tree.get(node)?.kind)
                 && find_slot(tree, node, false, cancel)? == Some(slot)
             {
@@ -755,3 +773,103 @@ impl DomSlotNotifications {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod discovery_observation {
+    pub(super) use crate::store::scale_metrics::ENABLED;
+    use std::{cell::RefCell, marker::PhantomData, rc::Rc};
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub(super) struct Counts {
+        pub named_lookups: usize,
+        pub host_lookups: usize,
+        pub named_candidates: usize,
+        pub host_candidates: usize,
+        pub max_named_candidates: usize,
+        pub max_host_candidates: usize,
+    }
+    thread_local! {
+        static COUNTS: RefCell<Option<Counts>> = const { RefCell::new(None) };
+    }
+    pub(super) struct Observation(PhantomData<Rc<()>>);
+    impl Observation {
+        pub fn begin() -> Self {
+            assert!(ENABLED, "requires SURGEIST_DOM_STORAGE_COUNTERS=1");
+            COUNTS.with(|counts| {
+                let mut counts = counts.borrow_mut();
+                assert!(counts.is_none(), "nested Slot discovery observation");
+                *counts = Some(Counts::default());
+            });
+            Self(PhantomData)
+        }
+        pub fn finish(self) -> Counts {
+            COUNTS.with(|counts| counts.borrow_mut().take().expect("active observation"))
+        }
+    }
+    impl Drop for Observation {
+        fn drop(&mut self) {
+            if ENABLED {
+                COUNTS.with(|counts| counts.borrow_mut().take());
+            }
+        }
+    }
+    enum Kind {
+        Named,
+        Host,
+    }
+    pub(super) struct Lookup {
+        kind: Kind,
+        candidates: usize,
+    }
+    impl Lookup {
+        pub fn named() -> Self {
+            Self {
+                kind: Kind::Named,
+                candidates: 0,
+            }
+        }
+        pub fn host() -> Self {
+            Self {
+                kind: Kind::Host,
+                candidates: 0,
+            }
+        }
+        /// A reached candidate from the real producer, independently of the
+        /// eventual name match or assignment result.
+        pub fn read_candidate(&mut self) {
+            if ENABLED {
+                self.candidates = self.candidates.checked_add(1).expect("candidate count");
+            }
+        }
+    }
+    impl Drop for Lookup {
+        fn drop(&mut self) {
+            if !ENABLED {
+                return;
+            }
+            COUNTS.with(|counts| {
+                let mut counts = counts.borrow_mut();
+                let Some(counts) = &mut *counts else { return };
+                let (calls, total, maximum) = match self.kind {
+                    Kind::Named => (
+                        &mut counts.named_lookups,
+                        &mut counts.named_candidates,
+                        &mut counts.max_named_candidates,
+                    ),
+                    Kind::Host => (
+                        &mut counts.host_lookups,
+                        &mut counts.host_candidates,
+                        &mut counts.max_host_candidates,
+                    ),
+                };
+                *calls = calls.checked_add(1).expect("lookup count");
+                *total = total.checked_add(self.candidates).expect("candidate count");
+                *maximum = (*maximum).max(self.candidates);
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "slot/named_discovery_tests.rs"]
+mod named_discovery_tests;

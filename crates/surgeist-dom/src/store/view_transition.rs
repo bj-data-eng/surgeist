@@ -1048,4 +1048,8 @@ mod tests {
         );
     }
     include!("view_transition/characterization.rs");
+    mod discovery_tests {
+        use super::*;
+        include!("view_transition/discovery_tests.rs");
+    }
 }

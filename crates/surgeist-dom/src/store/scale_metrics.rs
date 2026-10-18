@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-pub(super) const ENABLED: bool = option_env!("SURGEIST_DOM_STORAGE_COUNTERS").is_some();
+pub(crate) const ENABLED: bool = option_env!("SURGEIST_DOM_STORAGE_COUNTERS").is_some();
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Domain {

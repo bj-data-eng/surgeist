@@ -1,5 +1,11 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
+#[cfg(test)]
+#[path = "select/discovery_observation.rs"]
+mod discovery_observation;
+#[cfg(test)]
+#[path = "select/discovery_tests.rs"]
+mod discovery_tests;
 mod value;
 use surgeist_html::bounded::*;
 use surgeist_html::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag, *};
@@ -531,6 +537,10 @@ impl Draft {
         self.has(key, Attr::Multiple, cancel)
     }
     fn options(&self, key: Key, cancel: &AtomicBool) -> Result<ScratchVec<Key>, DomError> {
+        #[cfg(test)]
+        if super::scale_metrics::ENABLED {
+            discovery_observation::record(discovery_observation::Event::OptionsEntered);
+        }
         let mut result = self.select_vec();
         let mut pending = self.select_vec();
         self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
@@ -543,10 +553,18 @@ impl Draft {
             let (key, group) = pending.pop().expect("admitted pending option");
             self.select_step(cancel)?;
             let tag = self.tag(key)?;
+            #[cfg(test)]
+            if super::scale_metrics::ENABLED {
+                discovery_observation::record(discovery_observation::Event::OptionCandidate);
+            }
             match select_option_rule(tag, group) {
                 HtmlSelectOptionRule::IncludeAndPrune => {
                     self.select_reserve(&mut result, 1, cancel)?;
                     result.push(key);
+                    #[cfg(test)]
+                    if super::scale_metrics::ENABLED {
+                        discovery_observation::record(discovery_observation::Event::OptionMember);
+                    }
                 }
                 HtmlSelectOptionRule::Prune => (),
                 HtmlSelectOptionRule::Descend => {
@@ -1390,7 +1408,13 @@ impl Draft {
                                 HtmlSelectFirstSelectedAction::ReadSelectedness { ordinal } => {
                                     cursor
                                         .reply(Some(self.selected(options[ordinal])?))
-                                        .map_err(|_| DomError::SelectProtocol)?
+                                        .map_err(|_| DomError::SelectProtocol)?;
+                                    #[cfg(test)]
+                                    if super::scale_metrics::ENABLED {
+                                        discovery_observation::record(
+                                            discovery_observation::Event::SelectionRead,
+                                        );
+                                    }
                                 }
                                 HtmlSelectFirstSelectedAction::Complete(v) => break v,
                             }
@@ -1510,15 +1534,27 @@ impl Draft {
         if self.multiple(select, cancel)? {
             return Ok(());
         }
+        #[cfg(test)]
+        if super::scale_metrics::ENABLED {
+            discovery_observation::record(discovery_observation::Event::TargetsEntered);
+        }
         let mut targets = self.select_vec();
         let mut next = Some(select);
         while let Some(key) = next {
             self.select_step(cancel)?;
+            #[cfg(test)]
+            if super::scale_metrics::ENABLED {
+                discovery_observation::record(discovery_observation::Event::TargetCandidate);
+            }
             if self.tag(key)? == Some(Tag::Selectedcontent)
                 && !self.element(key)?.selectedcontent_disabled().expect("SC")
             {
                 self.select_reserve(&mut targets, 1, cancel)?;
                 targets.push(key);
+                #[cfg(test)]
+                if super::scale_metrics::ENABLED {
+                    discovery_observation::record(discovery_observation::Event::TargetMember);
+                }
             }
             next = crate::slot::next_admitted(self, select, key, &mut || self.select_step(cancel))?;
         }

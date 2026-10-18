@@ -2,6 +2,9 @@
 //! Both are rows of the original issuer/controller; they share original Work.
 use super::*;
 
+#[cfg(test)]
+mod locality_tests;
+
 pub(in crate::store) struct Invocation {
     pub(super) request: DomHostedDestructionInvocationRequest,
     waiters: Vec<Waiter>,

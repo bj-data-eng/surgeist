@@ -220,6 +220,12 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Value, DomError> {
+        #[cfg(test)]
+        if super::super::scale_metrics::ENABLED {
+            super::discovery_observation::record(
+                super::discovery_observation::Event::CaptureEntered,
+            );
+        }
         self.select_step(cancel)?;
         let (capture_limits, semantic_limits) = limits
             .select_value_queries
@@ -296,6 +302,12 @@ impl Draft {
             }?;
             self.select_reserve(&mut entries, 1, cancel)?;
             entries.push((current, subject));
+            #[cfg(test)]
+            if super::super::scale_metrics::ENABLED {
+                super::discovery_observation::record(
+                    super::discovery_observation::Event::CaptureNode,
+                );
+            }
             next =
                 crate::slot::next_admitted(self, key, current, &mut || self.select_step(cancel))?;
         }
@@ -310,6 +322,12 @@ impl Draft {
                 let mut found = None;
                 for (candidate, subject) in entries.iter() {
                     self.select_step(cancel)?;
+                    #[cfg(test)]
+                    if super::super::scale_metrics::ENABLED {
+                        super::discovery_observation::record(
+                            super::discovery_observation::Event::MapCompared,
+                        );
+                    }
                     if *candidate == child {
                         found = Some(subject.clone());
                         break;
@@ -317,6 +335,12 @@ impl Draft {
                 }
                 self.select_reserve(&mut children, 1, cancel)?;
                 children.push(found.ok_or(DomError::SelectProtocol)?);
+                #[cfg(test)]
+                if super::super::scale_metrics::ENABLED {
+                    super::discovery_observation::record(
+                        super::discovery_observation::Event::CaptureEdge,
+                    );
+                }
             }
             producer.call(self, cancel, |owner, envelope| {
                 owner

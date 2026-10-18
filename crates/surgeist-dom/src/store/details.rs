@@ -1,5 +1,8 @@
 //! HTML-owned Details decisions over one canonical staged ordinary tree.
 use super::*;
+#[cfg(test)]
+#[path = "details/discovery_tests.rs"]
+mod discovery_tests;
 use crate::details::{
     DomDetailsToggleIntention, DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
 };
@@ -186,10 +189,18 @@ impl Draft {
         if name.value.is_empty() {
             return Ok(());
         }
+        #[cfg(test)]
+        if super::scale_metrics::ENABLED {
+            discovery_tests::entered();
+        }
         let root = crate::slot::root_admitted(self, target, &mut || self.source_step(cancel))?;
         let mut next = Some(root);
         while let Some(peer) = next {
             self.source_step(cancel)?;
+            #[cfg(test)]
+            if super::scale_metrics::ENABLED {
+                discovery_tests::visited();
+            }
             if peer != target
                 && self.is_details(peer)?
                 && let Some(other) =

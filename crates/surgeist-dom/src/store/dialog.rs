@@ -17,6 +17,8 @@ mod focusing;
 #[cfg(test)]
 mod request_close_tests;
 #[cfg(test)]
+mod role_membership_tests;
+#[cfg(test)]
 mod show_modal_tests;
 mod top_layer;
 pub(in crate::store) use focusing::PendingFocusing;

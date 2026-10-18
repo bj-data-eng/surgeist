@@ -1953,6 +1953,8 @@ impl DomHostedSource {
 }
 
 #[cfg(test)]
+mod operation_locality_tests;
+#[cfg(test)]
 mod tests;
 
 /// Relative Source projection of actual original Host/Window/focus/watcher allocations.

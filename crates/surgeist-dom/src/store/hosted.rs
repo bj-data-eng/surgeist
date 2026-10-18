@@ -1601,6 +1601,8 @@ pub(in crate::store) mod index_tests;
 #[cfg(test)]
 mod constructor_tests;
 #[cfg(test)]
+mod container_locality_tests;
+#[cfg(test)]
 mod source_formation_tests;
 
 impl Dom {

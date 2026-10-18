@@ -94,6 +94,7 @@ enum Context {
     Vacant,
     Attributes,
     LargeChildren,
+    RangeBoundary,
     Ranges,
     DetailsTasks,
     SelectTasks,
@@ -376,15 +377,17 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
             fullscreen_jobs.push(job);
         }
     }
-    let large_children = if matches!(context, Context::LargeChildren) {
-        LARGE_CHILDREN
-    } else {
-        0
+    let large_children = match context {
+        Context::LargeChildren => LARGE_CHILDREN,
+        // The boundary companion also admits the 10k selection. Its two
+        // endpoint Comments occupy the tail of this genuine public sequence.
+        Context::RangeBoundary => LARGE_CHILDREN.min(managed.checked_sub(5).unwrap()),
+        _ => 0,
     };
     assert!(managed >= 5 + large_children);
 
-    // Attached fixtures use bounded groups. Only the explicitly selected
-    // LargeChildren fixture grows one very large sequence during setup.
+    // Attached fixtures use bounded groups. Only the explicitly selected wide
+    // Children and Range-boundary fixtures grow a large sequence during setup.
     let mut remaining = managed - 5 - style_count * 3 - hosted_nodes;
     let mut target_remaining = large_children;
     let mut details_remaining = details;
@@ -1039,6 +1042,279 @@ fn large_unchanged_child_list_scale() {
 #[ignore = "explicit release retained Range-bank qualification after Source integration"]
 fn unrelated_ranges_scale() {
     run(Context::Ranges);
+}
+
+fn scale_range_bounds(
+    snapshot: &DomSnapshot,
+    id: crate::DomRangeId,
+) -> ((NodeId, usize), (NodeId, usize)) {
+    let range = snapshot.range(id).unwrap();
+    (
+        (range.start().container(), range.start().offset()),
+        (range.end().container(), range.end().offset()),
+    )
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RangeBoundaryEdit {
+    StartNoop,
+    EndNoop,
+    StartChanged,
+    EndChanged,
+}
+
+#[test]
+#[ignore = "explicit release Source Range-boundary qualification beside an unchanged sibling prefix"]
+fn source_range_boundaries_beside_unchanged_siblings_scale() {
+    require_release();
+    // The genuine public regression in tests/range_position_locality.rs uses
+    // this same finite work policy. Here even one old tail-prefix enumeration
+    // exceeds it: the smallest default fixture has 9,994 preceding siblings.
+    // This is a work/admission assertion, never a latency threshold. The fixed
+    // endpoints, two ordinary ancestor edges and one Range do not grow with S.
+    const WORK: u64 = 4096;
+    eprintln!(
+        "scale range_boundary environment profile=release os={} arch={} counters_enabled={} warmups={WARMUPS} samples={SAMPLES} work={WORK} revision={} toolchain={} machine={}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        scale_metrics::ENABLED,
+        std::env::var("SURGEIST_SCALE_REVISION").unwrap_or_else(|_| "unknown".into()),
+        std::env::var("SURGEIST_SCALE_TOOLCHAIN").unwrap_or_else(|_| "unknown".into()),
+        std::env::var("SURGEIST_SCALE_MACHINE").unwrap_or_else(|_| "unknown".into()),
+    );
+    let cancel = AtomicBool::new(false);
+    for managed in selected_sizes() {
+        // A 1k pilot cannot discriminate the old scan with this unchanged work
+        // policy; disclose that ineligibility instead of claiming scale credit.
+        let comments = LARGE_CHILDREN.min(managed.checked_sub(5).unwrap());
+        if comments < usize::try_from(WORK).unwrap() + 2 {
+            eprintln!(
+                "scale range_boundary skipped managed={managed} tail_prefix_below_fixed_work=true comments={comments} work={WORK}"
+            );
+            continue;
+        }
+        let setup_started = Instant::now();
+        let mut fixture = fixture(managed, Context::RangeBoundary);
+        let document = fixture
+            .dom
+            .snapshot()
+            .node(fixture.target)
+            .unwrap()
+            .owner_document()
+            .unwrap();
+        fixture
+            .dom
+            .set_limits(fixture.dom.limits().with_ranges(1).unwrap())
+            .unwrap();
+        let a = fixture.children[fixture.children.len() - 2];
+        let b = fixture.children[fixture.children.len() - 1];
+        let prefix = fixture.children.len() - 2;
+        assert!(prefix > usize::try_from(WORK).unwrap());
+        let old_two_prefix_steps = prefix.checked_mul(2).unwrap().checked_add(3).unwrap();
+        assert!(old_two_prefix_steps > usize::try_from(WORK).unwrap());
+        let mut setup = DomBatch::new();
+        let range = setup.create_range(document);
+        setup.set_range_start(&range, a, 0);
+        setup.set_range_end(&range, b, 1);
+        setup.set_active_range(document, Some((&range).into()));
+        let commit = apply(&mut fixture.dom, setup);
+        let range = commit.created_range(&range).unwrap().unwrap();
+        let original = fixture.dom.snapshot();
+        assert_eq!(scale_range_bounds(&original, range), ((a, 0), (b, 1)));
+        assert_eq!(original.node(a).unwrap().parent(), Some(fixture.target));
+        assert_eq!(original.node(b).unwrap().parent(), Some(fixture.target));
+        assert_eq!(
+            original.node(fixture.target).unwrap().parent(),
+            Some(document.node())
+        );
+        assert_eq!(
+            original.document(document).unwrap().active_range(),
+            crate::DomActiveRangeState::Known(Some(range))
+        );
+        assert_eq!(&fixture.children[prefix..], &[a, b]);
+        assert_eq!(fixture.dom.usage().managed_nodes(), managed);
+        assert_eq!(fixture.dom.usage().ranges(), 1);
+        eprintln!(
+            "scale range_boundary fixture managed={managed} children={} unchanged_prefix={prefix} old_two_prefix_minimum_charged_steps={old_two_prefix_steps} endpoint_depth=2 endpoints={a:?},{b:?} ranges=1 setup_ns={} canonical_limits={:?}",
+            fixture.children.len(),
+            setup_started.elapsed().as_nanos(),
+            fixture.dom.limits(),
+        );
+        for edit in [
+            RangeBoundaryEdit::StartNoop,
+            RangeBoundaryEdit::EndNoop,
+            RangeBoundaryEdit::StartChanged,
+            RangeBoundaryEdit::EndChanged,
+        ] {
+            assert_eq!(
+                scale_range_bounds(&fixture.dom.snapshot(), range),
+                ((a, 0), (b, 1))
+            );
+            let mut samples = Vec::new();
+            for sample in 0..WARMUPS + SAMPLES {
+                let before = fixture.dom.snapshot();
+                let bounds = scale_range_bounds(&before, range);
+                let usage = fixture.dom.usage();
+                let (command, expected, changed) = match edit {
+                    RangeBoundaryEdit::StartNoop => (
+                        DomSourceEdit::set_range_start(range, a, 0),
+                        ((a, 0), (b, 1)),
+                        false,
+                    ),
+                    RangeBoundaryEdit::EndNoop => (
+                        DomSourceEdit::set_range_end(range, b, 1),
+                        ((a, 0), (b, 1)),
+                        false,
+                    ),
+                    RangeBoundaryEdit::StartChanged => {
+                        let offset = usize::from(sample.is_multiple_of(2));
+                        (
+                            DomSourceEdit::set_range_start(range, a, offset),
+                            ((a, offset), (b, 1)),
+                            true,
+                        )
+                    }
+                    RangeBoundaryEdit::EndChanged => {
+                        let offset = usize::from(!sample.is_multiple_of(2));
+                        (
+                            DomSourceEdit::set_range_end(range, b, offset),
+                            ((a, 0), (b, offset)),
+                            true,
+                        )
+                    }
+                };
+                // The cached existing-owner baseline and finite additional
+                // storage are fixture configuration, outside measurement. Only
+                // the fixed work limit discriminates sibling-prefix discovery.
+                let baseline = fixture.dom.custody_registry.total().bytes();
+                let headroom = source_limits();
+                let absolute_bytes = baseline.checked_add(headroom.retained_bytes()).unwrap();
+                let policy = DomSourceLimits::new(
+                    absolute_bytes,
+                    headroom.retained_string_code_units(),
+                    WORK,
+                    headroom.phase_publications(),
+                    headroom.output_records(),
+                    headroom.published_native_identities(),
+                    headroom.nested_operations(),
+                );
+                eprintln!(
+                    "scale range_boundary policy edit={edit:?} sample={sample} baseline_bytes={baseline} additional_headroom_bytes={} absolute_bytes={absolute_bytes} limits={policy:?}",
+                    headroom.retained_bytes(),
+                );
+                let measurement = scale_metrics::ENABLED.then(|| Measurement::begin().unwrap());
+                let started = Instant::now();
+                let mut lease = fixture
+                    .dom
+                    .begin_source_edit(command, policy, &cancel)
+                    .unwrap();
+                let initial_work = lease.status().spent_work();
+                let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+                    panic!("intrinsic Range boundary edit needs no external service");
+                };
+                let elapsed = started.elapsed();
+                assert_eq!(done.output(), None);
+                let changes = done.commit().changes().changes().to_vec();
+                drop(lease);
+                if let Some(measurement) = measurement {
+                    let required = Hooks::one(Domain::Source)
+                        .union(Hooks::one(Domain::Transaction))
+                        .union(Hooks::one(Domain::Bank));
+                    let counters = measurement.finish(required).unwrap();
+                    assert!(counters.source_steps > 0);
+                    assert!(
+                        counters.source_steps <= usize::try_from(WORK).unwrap(),
+                        "{counters:?}"
+                    );
+                    assert_eq!(
+                        counters.published_roots,
+                        usize::from(changed),
+                        "{counters:?}"
+                    );
+                    // No Children mutation or output projection is requested.
+                    assert_eq!(
+                        counters.relation_sequence_materializations, 0,
+                        "{counters:?}"
+                    );
+                    assert_eq!(
+                        counters.relation_sequence_materialized_bytes, 0,
+                        "{counters:?}"
+                    );
+                    // Generic reads/visits/allocations are reported as actual
+                    // observations, not claimed as separately bounded here.
+                    // The fixed charged SourceWork limit above detects the
+                    // original scan; zero relation copies independently guards
+                    // the unchanged wide Children backing.
+                    eprintln!(
+                        "scale range_boundary execution managed={managed} children={} edit={edit:?} sample={sample} initial_work={initial_work} counters={counters:?}",
+                        fixture.children.len()
+                    );
+                }
+                eprintln!(
+                    "scale range_boundary completion managed={managed} edit={edit:?} sample={sample} initial_work={initial_work} changed={changed} final_publication_complete=true"
+                );
+                let after = fixture.dom.snapshot();
+                let after_usage = fixture.dom.usage();
+                assert_eq!(scale_range_bounds(&after, range), expected);
+                assert_eq!(scale_range_bounds(&before, range), bounds);
+                assert_eq!(scale_range_bounds(&original, range), ((a, 0), (b, 1)));
+                assert_eq!(after_usage.managed_nodes(), usage.managed_nodes());
+                assert_eq!(after_usage.string_code_units(), usage.string_code_units());
+                assert_eq!(after_usage.ranges(), usage.ranges());
+                if changed {
+                    assert_ne!(bounds, expected);
+                    assert_eq!(changes, [DomChange::RangeBoundary(range)]);
+                    assert_eq!(after.revision().get(), before.revision().get() + 1);
+                } else {
+                    assert_eq!(bounds, expected);
+                    assert!(changes.is_empty());
+                    assert_eq!(after.stamp(), before.stamp());
+                    assert_eq!(after_usage, usage);
+                }
+                assert_eq!(
+                    fixture.dom.changes_since(before.stamp()).unwrap().changes(),
+                    changes
+                );
+                for snapshot in [&original, &before, &after] {
+                    assert_eq!(
+                        snapshot.node(fixture.target).unwrap().children(),
+                        fixture.children
+                    );
+                    assert_eq!(
+                        snapshot.node(a).unwrap().data(),
+                        Some(&DocumentString::from("child"))
+                    );
+                    assert_eq!(
+                        snapshot.node(b).unwrap().data(),
+                        Some(&DocumentString::from("child"))
+                    );
+                    assert_eq!(
+                        snapshot.document(document).unwrap().active_range(),
+                        original.document(document).unwrap().active_range()
+                    );
+                }
+                assert!(fixture.dom.pending_source_edit().is_none());
+                if sample >= WARMUPS {
+                    samples.push(elapsed);
+                }
+            }
+            report(&format!("RangeBoundary{edit:?}"), &samples);
+        }
+        let Fixture { dom, children, .. } = fixture;
+        drop(children);
+        let started = Instant::now();
+        drop(dom);
+        eprintln!(
+            "scale range_boundary owner_drop_held_snapshot_ns={}",
+            started.elapsed().as_nanos()
+        );
+        let started = Instant::now();
+        drop(original);
+        eprintln!(
+            "scale range_boundary snapshot_drop_last_ns={}",
+            started.elapsed().as_nanos()
+        );
+    }
 }
 
 #[test]

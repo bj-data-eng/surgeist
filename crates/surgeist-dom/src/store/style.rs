@@ -5,6 +5,8 @@ use super::*;
 use surgeist_html::{
     HtmlStyleUpdateAction as Action, HtmlStyleUpdateCursor, HtmlStyleUpdateReply as Reply,
 };
+#[cfg(test)]
+mod body_presence_tests;
 
 #[derive(Clone, Copy)]
 pub(super) struct Frame {
@@ -86,6 +88,9 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
+        #[cfg(test)]
+        let _observation =
+            scale_metrics::ENABLED.then(|| body_presence_tests::BodyRead::begin(self));
         use surgeist_html::HtmlDocumentBodyRole as Role;
         let mut root = None;
         for child in self.node(document)?.children.iter() {
