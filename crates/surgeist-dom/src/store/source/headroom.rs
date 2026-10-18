@@ -1031,6 +1031,44 @@ mod tests {
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), live);
         }
     }
+    #[test]
+    fn repeated_reached_style_lookup_uses_bounded_original_source_work() {
+        let f = fixture();
+        let batch = DomBatch::new();
+        let mut draft = Draft::new_source(
+            &f.dom,
+            batch.owner.clone(),
+            &batch.commands,
+            limits(32_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+        .0;
+        let cancel = AtomicBool::new(false);
+        let before = f.dom.snapshot().stamp();
+        draft.source_headroom = Some(Scan::new());
+        let keys = f.styles.map(|style| draft.resolve(style.into()).unwrap());
+        for key in keys {
+            draft.headroom_style(key, Kind::Update, &cancel).unwrap();
+        }
+        let scan = draft.source_headroom.take().unwrap();
+        assert_eq!(scan.rows.len(), 3);
+        assert_eq!(
+            scan.rows.iter().map(|row| row.key).collect::<Vec<_>>(),
+            keys
+        );
+        let spent = draft.source_work.load(Ordering::Relaxed);
+        draft.source_limits.as_mut().unwrap().work = spent + 32;
+        for _ in 0..16 {
+            assert_eq!(
+                scan.find(&draft, keys[2], &cancel),
+                Ok(Some(2)),
+                "an exact reached Style identity must not revisit preceding rows"
+            );
+        }
+        assert!(draft.source_work.load(Ordering::Relaxed) - spent <= 32);
+        assert_eq!(f.dom.snapshot().stamp(), before);
+    }
 }
 
 #[cfg(test)]
