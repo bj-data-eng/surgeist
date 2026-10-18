@@ -157,13 +157,17 @@ impl Draft {
         child: Key,
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
-        for (index, candidate) in self.node(parent)?.children.iter().enumerate() {
-            self.source_step(cancel)?;
-            if candidate == child {
-                return Ok(index);
-            }
-        }
-        Err(DomError::HierarchyRequest)
+        let parent = self.live_key(parent);
+        let child = self.live_key(child);
+        let children = self.node(parent)?.children;
+        self.source_step(cancel)?;
+        self.slot_index
+            .position(child)
+            .filter(|position| {
+                position.parent == parent && children.get(position.ordinal) == Some(child)
+            })
+            .map(|position| position.ordinal)
+            .ok_or(DomError::HierarchyRequest)
     }
     fn range_position(
         &self,

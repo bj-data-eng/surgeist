@@ -100,7 +100,7 @@ fn source_range_boundary_changes_and_noops_fit_fixed_work_beside_unrelated_sibli
             original.document(document).unwrap().active_range()
         );
         if expected_change {
-            assert!(after.revision() > before.revision());
+            assert_eq!(after.revision().get(), before.revision().get() + 1);
             assert_eq!(
                 dom.changes_since(before.stamp()).unwrap().changes(),
                 &[DomChange::RangeBoundary(range)]
