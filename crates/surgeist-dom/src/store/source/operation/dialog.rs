@@ -164,19 +164,12 @@ impl DialogObservation {
     }
     fn payload(&self) -> Result<storage::Payload, DomError> {
         Ok(storage::Payload {
+            // The actual Operation allocation remains an external owner header
+            // while its counter/event atoms and temporary buffers are ledgered.
             bytes: size_of::<Operation>()
-                .checked_add(size_of::<EventWork>())
-                .and_then(|n| n.checked_add(size_of::<AtomicU64>() + 2 * size_of::<AtomicUsize>()))
-                .and_then(|n| n.checked_add(self.request.work.bytes.load(Ordering::Relaxed)))
-                .and_then(|n| n.checked_add(self.inputs.bytes))
+                .checked_add(self.inputs.bytes)
                 .ok_or(DomError::RepresentationExhausted)?,
-            units: self
-                .request
-                .work
-                .units
-                .load(Ordering::Relaxed)
-                .checked_add(self.inputs.units)
-                .ok_or(DomError::RepresentationExhausted)?,
+            units: self.inputs.units,
         })
     }
 }
@@ -200,18 +193,6 @@ impl Operation {
     pub(super) fn observed_event_work(&self) -> Option<Arc<EventWork>> {
         self.observation()
             .map(|observation| observation.request.work.clone())
-    }
-    pub(super) fn event_payload(&self) -> Result<storage::Payload, DomError> {
-        let Some(work) = self.event_work.upgrade() else {
-            return Ok(storage::Payload::default());
-        };
-        Ok(storage::Payload {
-            bytes: size_of::<EventWork>()
-                .checked_add(2 * size_of::<AtomicUsize>())
-                .and_then(|n| n.checked_add(work.bytes.load(Ordering::Relaxed)))
-                .ok_or(DomError::RepresentationExhausted)?,
-            units: work.units.load(Ordering::Relaxed),
-        })
     }
     pub(super) fn observation(&self) -> Option<&DialogObservation> {
         match &self.draft {
@@ -422,12 +403,12 @@ impl Operation {
             .filter(|binding| binding.live.load(Ordering::Relaxed))
             .ok_or(DomError::SourceEventExecutorUnavailable)?;
         let formation = formation::Formation::new(&self.draft, cancel)?;
-        if let Some(formation) = &formation {
-            formation.retain_bytes(
-                size_of::<EventWork>() + 2 * size_of::<AtomicUsize>(),
-                cancel,
-            )?;
-        }
+        let event_custody = formation::EventWorkCustody::prepare(
+            self.draft.custody_ledger(),
+            self.draft.source_work_custody(),
+            self.draft.source_ancestor_custody(),
+            |usage| self.draft.admit_custody_usage(usage, cancel),
+        )?;
         let occurrence = if self.request_close.is_some() {
             self.draft
                 .source_invocation
@@ -437,7 +418,7 @@ impl Operation {
             0
         };
         let request = DomSourceEventRequest {
-            work: Arc::new(EventWork {
+            work: formation::allocated_arc(EventWork {
                 executor: Arc::downgrade(&executor),
                 identity: DomSourceEventId {
                     operation: self.id,
@@ -453,10 +434,12 @@ impl Operation {
                 work_limit: AtomicU64::new(self.limits.work),
                 scope: Mutex::new(Weak::new()),
                 ancestors: self.draft.source_ancestors.clone(),
-                bytes: Arc::new(AtomicUsize::new(0)),
-                units: Arc::new(AtomicUsize::new(0)),
+                bytes: formation::allocated_arc(AtomicUsize::new(0)),
+                units: formation::allocated_arc(AtomicUsize::new(0)),
+                storage: formation::SourceStorage::new(self.draft.custody_ledger().clone()),
             }),
         };
+        let event_custody = event_custody.finish(request.work.clone());
         let limits = self.limits;
 
         let receiver =
@@ -495,6 +478,7 @@ impl Operation {
             accepted: None,
             inputs,
         };
+        self.event_custody = Some(event_custody);
         self.draft = OperationDraft::Observed(observation);
         self.headroom = Some(headroom::Reservation {
             remaining_phases: remaining,
@@ -502,8 +486,6 @@ impl Operation {
         self.event_exposed = true;
         self.event_work = Arc::downgrade(&request.work);
         drop(formation); // Work is now owned by the admitted observation.
-        self.canonical_storage = storage::Payload::default();
-        self.canonical_history_bytes = 0;
         self.command_storage = storage::Payload::default();
         self.custody_bytes = 0;
         self.custody_units = 0;
@@ -619,7 +601,7 @@ impl Dom {
         if self.source_event_executor.is_some() {
             return Err(DomError::InvalidSourceEvent);
         }
-        let binding = Arc::new(ExecutorBinding {
+        let binding = formation::allocated_arc(ExecutorBinding {
             owner: self.owner,
             live: AtomicBool::new(true),
         });
@@ -639,6 +621,21 @@ impl Dom {
                 excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.usage.work))
             })
             .map(|observation| observation.request.work.clone())
+    }
+    pub(in crate::store) fn source_work_ancestor_custody(
+        &self,
+        excluding: Option<&Arc<AtomicU64>>,
+    ) -> Option<Arc<formation::EventWorkCustody>> {
+        self.source_operation
+            .iter()
+            .map(Box::as_ref)
+            .chain(self.source_parents.iter().rev().map(Box::as_ref))
+            .find(|operation| {
+                operation.observation().is_some_and(|observation| {
+                    excluding.is_none_or(|work| !Arc::ptr_eq(work, &observation.usage.work))
+                })
+            })
+            .and_then(|operation| operation.event_custody.clone())
     }
     pub(in crate::store) fn dispatch_registration_formation(
         &self,
@@ -664,7 +661,18 @@ impl Dom {
         let observation = operation
             .observation()
             .ok_or(DomError::SourceOperationPending)?;
-        let total = self.source_observation_total(storage::Payload::default(), cancel)?;
+        let base = self.source_observation_external(cancel)?;
+        let controlled = observation.request.work.storage.ledger().total();
+        let total = storage::Payload {
+            bytes: base
+                .bytes
+                .checked_add(controlled.bytes())
+                .ok_or(DomError::RepresentationExhausted)?,
+            units: base
+                .units
+                .checked_add(controlled.units())
+                .ok_or(DomError::RepresentationExhausted)?,
+        };
         self.admit_source_observers(total, cancel)?;
         let mut limits = observation.limits;
         for ancestor in self.source_observers() {
@@ -672,18 +680,12 @@ impl Dom {
             limits.retained_bytes = limits.retained_bytes.min(ancestor.limits.retained_bytes);
             limits.retained_units = limits.retained_units.min(ancestor.limits.retained_units);
         }
-        let base = storage::Payload {
-            bytes: total
-                .bytes
-                .checked_sub(observation.request.work.bytes.load(Ordering::Relaxed))
-                .ok_or(DomError::RepresentationExhausted)?,
-            units: total
-                .units
-                .checked_sub(observation.request.work.units.load(Ordering::Relaxed))
-                .ok_or(DomError::RepresentationExhausted)?,
-        };
         Ok(Some(formation::Formation::from_event(
-            &observation.request.work,
+            operation
+                .event_custody
+                .as_ref()
+                .ok_or(DomError::InvalidSourceEvent)?
+                .clone(),
             base,
             limits,
         )))
@@ -774,24 +776,120 @@ impl Dom {
         }
         Ok(())
     }
+    #[cfg(test)]
+    pub(in crate::store) fn source_measurement_ancestors(&self) -> custody::Usage {
+        let mut payload = storage::Payload::default();
+        for operation in self.source_observers() {
+            let observation = operation.observation().expect("observed Source ancestor");
+            payload
+                .append(observation.payload().expect("retained ancestor receipt"))
+                .expect("retained ancestor sum");
+        }
+        custody::Usage::new(payload.bytes, payload.units)
+    }
+    #[cfg(test)]
+    pub(in crate::store) fn observe_source_lifecycle(&self) {
+        if !scale_metrics::ENABLED {
+            return;
+        }
+        let external = match self
+            .source_operation
+            .as_ref()
+            .map(|operation| &operation.draft)
+        {
+            Some(OperationDraft::Segment(draft)) => {
+                custody::Usage::new(draft.source_other_bytes, draft.source_other_units)
+            }
+            Some(OperationDraft::Observed(_)) => {
+                // These are cached input receipts and fixed owner headers. The
+                // only iteration is the actual Source ancestor stack; no bank,
+                // canonical payload, or effect frontier is inspected or metered.
+                let mut payload = storage::Payload::default();
+                for operation in self.source_observers() {
+                    payload
+                        .append(
+                            operation
+                                .observation()
+                                .expect("observed ancestor")
+                                .payload()
+                                .expect("retained observer receipt"),
+                        )
+                        .expect("retained ancestor sum");
+                }
+                payload
+                    .add_bytes(
+                        self.source_retained_stack_bytes()
+                            .expect("retained stack capacity"),
+                    )
+                    .expect("retained stack sum");
+                payload
+                    .add_bytes(self.source_owner_custody_bytes().expect("owner headers"))
+                    .expect("retained owner sum");
+                payload
+                    .add_units(self.fullscreen_custody_units().expect("owner units"))
+                    .expect("retained owner units");
+                payload
+                    .add_bytes(
+                        self.source_dispatch_custody_bytes(|| Ok(()))
+                            .expect("dispatch headers"),
+                    )
+                    .expect("retained dispatch sum");
+                custody::Usage::new(payload.bytes, payload.units)
+            }
+            None => custody::Usage::default(),
+        };
+        let ledger = self.custody_registry.ledger();
+        scale_metrics::source_owner_changed(
+            ledger.measurement_identity(),
+            ledger.total(),
+            external,
+            if self
+                .source_operation
+                .as_ref()
+                .is_some_and(|operation| matches!(operation.draft, OperationDraft::Segment(_)))
+            {
+                self.source_measurement_ancestors()
+            } else {
+                custody::Usage::default()
+            },
+            self.source_operation.as_ref().map(|operation| operation.id),
+        );
+    }
+    fn source_observation_external(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<storage::Payload, DomError> {
+        let mut payload = self.source_observation_payload(cancel)?;
+        payload.add_bytes(self.source_retained_stack_bytes()?)?;
+        payload.add_bytes(self.source_owner_custody_bytes()?)?;
+        payload.add_units(self.fullscreen_custody_units()?)?;
+        payload.add_bytes(
+            self.source_dispatch_custody_bytes(|| self.step_source_observers(cancel))?,
+        )?;
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            let ledger = self.custody_registry.ledger();
+            scale_metrics::source_owner_changed(
+                ledger.measurement_identity(),
+                ledger.total(),
+                custody::Usage::new(payload.bytes, payload.units),
+                custody::Usage::default(),
+                self.source_operation.as_ref().map(|operation| operation.id),
+            );
+        }
+        Ok(payload)
+    }
     fn source_observation_total(
         &self,
         extra: storage::Payload,
         cancel: &AtomicBool,
     ) -> Result<storage::Payload, DomError> {
-        let mut payload = storage::state(&self.state, || self.step_source_observers(cancel))?;
-        payload.add_bytes(self.source_retained_stack_bytes()?)?;
-        payload.append(self.source_observation_payload(cancel)?)?;
+        let mut payload = self.source_observation_external(cancel)?;
+        self.custody_registry.reconcile_releases();
+        let usage = self.custody_registry.ledger().total();
+        payload.add_bytes(usage.bytes())?;
+        payload.add_units(usage.units())?;
         payload.append(extra)?;
-        payload.add_bytes(self.history_bytes)?;
-        payload.add_bytes(self.source_owner_custody_bytes()?)?;
-        payload.units = payload
-            .units
-            .checked_add(self.fullscreen_custody_units()?)
-            .ok_or(DomError::RepresentationExhausted)?;
-        payload.add_bytes(
-            self.source_dispatch_custody_bytes(|| self.step_source_observers(cancel))?,
-        )?;
         Ok(payload)
     }
     fn admit_source_observers(
@@ -968,8 +1066,7 @@ impl Dom {
         {
             return Err(DomError::InvalidSourceEvent);
         }
-        let total = self.source_observation_total(storage::Payload { bytes, units }, cancel)?;
-        self.admit_source_observers(total, cancel)?;
+        let external = self.source_observation_external(cancel)?;
         request
             .work
             .bytes
@@ -982,10 +1079,30 @@ impl Dom {
             .load(Ordering::Relaxed)
             .checked_add(units)
             .ok_or(DomError::RepresentationExhausted)?;
+        let retained = formation::SourceRetention::retain(
+            operation
+                .event_custody
+                .as_ref()
+                .ok_or(DomError::InvalidSourceEvent)?
+                .clone(),
+            custody::Usage::new(bytes, units),
+            |next| {
+                let total =
+                    next.checked_add(custody::Usage::new(external.bytes, external.units))?;
+                self.admit_source_observers(
+                    storage::Payload {
+                        bytes: total.bytes(),
+                        units: total.units(),
+                    },
+                    cancel,
+                )
+            },
+        )?;
         request.work.bytes.fetch_add(bytes, Ordering::Relaxed);
         request.work.units.fetch_add(units, Ordering::Relaxed);
         Ok(DomSourceEventRetention {
             work: request.work.clone(),
+            custody: Some(retained),
             bytes,
             units,
         })
@@ -1123,6 +1240,10 @@ impl Dom {
                 .checked_mul(size_of::<Box<Operation>>())
                 .and_then(|bytes| bytes.checked_add(header))
                 .ok_or(DomError::RepresentationExhausted)?;
+            #[cfg(test)]
+            scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                bytes: actual - header,
+            });
             self.admit_source_observers(
                 self.source_observation_total(
                     storage::Payload {
@@ -1137,7 +1258,13 @@ impl Dom {
             for _ in 0..self.source_parents.len() {
                 self.step_source_observers(cancel)?;
             }
+            #[cfg(test)]
+            let moved = self.source_parents.len() * size_of::<Box<Operation>>();
             replacement.append(&mut self.source_parents);
+            #[cfg(test)]
+            if moved != 0 {
+                scale_metrics::record(scale_metrics::Event::SequenceMaterialized { bytes: moved });
+            }
             let old = std::mem::replace(&mut self.source_parents, replacement);
             drop(old);
         }
@@ -1158,13 +1285,18 @@ impl Dom {
             .and_then(|operation| operation.observation())
             .ok_or(DomError::InvalidSourceEvent)?;
         let limits = self.source_rebase_limits(observation.limits, cancel)?;
-        let (draft, _, _) = Draft::new_source_root_with_work(
+        let (draft, _) = Draft::new_source_root_with_work(
             self,
             owner,
-            commands,
-            capacity,
+            super::super::initial::CommandStorage { commands, capacity },
             limits,
             observation.usage.work.clone(),
+            self.source_operation
+                .as_ref()
+                .and_then(|operation| operation.event_custody.as_ref())
+                .ok_or(DomError::InvalidSourceEvent)?
+                .source()
+                .identity(),
             cancel,
         )?;
         Ok(draft)
@@ -1192,14 +1324,12 @@ impl Dom {
                 .checked_add(reserved.remaining_phases)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        for invocation in &self.fullscreen_exits {
-            // Reserved closing space is accounting, not execution of a parked
-            // invocation. Unrelated canonical edits do not spend its Work.
-            check_cancel(cancel)?;
-            remaining = remaining
-                .checked_add(invocation.closing_credit)
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
+        // Cached actual parked invocation credit; this is reservation
+        // accounting, not execution or a scan of unrelated invocation Work.
+        check_cancel(cancel)?;
+        remaining = remaining
+            .checked_add(self.fullscreen_exits.closing_credit())
+            .ok_or(DomError::RepresentationExhausted)?;
         Ok(remaining)
     }
 }
@@ -1513,13 +1643,21 @@ impl DomSourceLease<'_> {
             observation.inputs,
             cancel,
         )?;
-        let (mut draft, canonical, command) = Draft::new_source_root_with_work(
+        let (mut draft, command) = Draft::new_source_root_with_work(
             self.dom,
             owner,
-            &operation.commands,
-            0,
+            super::super::initial::CommandStorage {
+                commands: &operation.commands,
+                capacity: 0,
+            },
             limits,
             work,
+            operation
+                .event_custody
+                .as_ref()
+                .ok_or(DomError::InvalidSourceEvent)?
+                .source()
+                .identity(),
             cancel,
         )?;
         if operation.request_close.is_some() {
@@ -1537,7 +1675,8 @@ impl DomSourceLease<'_> {
         if let Some(mut frame) = frame {
             if let Some(key) = key {
                 frame.subject = key;
-                draft.method = Some(crate::store::method::Frame::Dialog(frame));
+                draft
+                    .source_set_method(Some(crate::store::method::Frame::Dialog(frame)), cancel)?;
             }
         } else if matches!(operation.commands, OperationRoot::DialogTask(_)) {
             draft.clear_dialog_toggle_tracker(key.ok_or(DomError::StaleNode)?, cancel)?;
@@ -1561,9 +1700,7 @@ impl DomSourceLease<'_> {
             .select_semantic_bytes
             .set(observation.usage.semantic_bytes);
         draft.input_processing = observation.usage.input;
-        operation.canonical_storage = canonical;
         operation.command_storage = command;
-        operation.canonical_history_bytes = self.dom.history_bytes;
         operation.custody_bytes = custody_bytes;
         operation.custody_units = custody_units;
         operation.limits = observation.limits;
@@ -1631,3 +1768,6 @@ mod task_disposition_tests;
 
 #[cfg(test)]
 mod headroom_tests;
+
+#[cfg(test)]
+mod custody_tests;

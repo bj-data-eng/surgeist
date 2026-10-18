@@ -243,11 +243,12 @@ pub(super) fn metadata(
         }
         if let Some((_, inert, cache)) = record.document_facts() {
             let cache = cache.map(|value| source.key(&value.id(), c)).transpose()?;
-            draft.node_mut(key).template_document = Some(if inert {
+            let value = Some(if inert {
                 crate::template::TemplateDocument::InertTemplate
             } else {
                 crate::template::TemplateDocument::Ordinary { inert: cache }
             });
+            draft.with_node_fields(key, c.cancel, |fields| fields.template_document = value)?;
         }
         if let Some(template) = record.template() {
             if !matches!(
@@ -282,31 +283,35 @@ pub(super) fn metadata(
                     .map(|value| source.key(&value.id(), c))
                     .transpose()?,
             };
-            draft.node_mut(key).template_contents = Some(contents);
-            draft.node_mut(key).template_patch = Some(patch);
+            let value = Some(contents);
+            draft.with_node_fields(key, c.cancel, |fields| fields.template_contents = value)?;
+            let value = Some(patch);
+            draft.with_node_fields(key, c.cancel, |fields| fields.template_patch = value)?;
             if owned {
-                draft.node_mut(contents).host = Some(key);
+                draft.with_node_fields(contents, c.cancel, |fields| fields.host = Some(key))?;
             }
         }
         if let Some(Some(select)) = record.option_nearest_select() {
-            draft.node_mut(key).option_select = Some(source.key(&select.id(), c)?);
+            let value = Some(source.key(&select.id(), c)?);
+            draft.with_node_fields(key, c.cancel, |fields| fields.option_select = value)?;
         }
         if let Some(owner) = record.form_owner() {
             let owner = owner.map(|value| source.key(&value.id(), c)).transpose()?;
             let parser_inserted = required(record.form_parser_inserted(), node)?;
-            draft.node_mut(key).control_owner = owner;
-            let DomNodeKind::Element(element) = &mut draft.node_mut(key).kind else {
-                return Err(Error::UnsupportedState { subject: node.id() });
-            };
-            if let Some(control) = element.native_control_mut() {
-                control.parser_inserted = parser_inserted;
-            } else if !element.is_img() {
-                return Err(Error::UnsupportedState { subject: node.id() });
-            }
+            let value = owner;
+            draft.with_node_fields(key, c.cancel, |fields| fields.control_owner = value)?;
+            draft.with_element_fields(key, c.cancel, |element| {
+                if let Some(control) = element.native_control_mut() {
+                    control.parser_inserted = parser_inserted;
+                } else if !element.is_img() {
+                    return Err(Error::UnsupportedState { subject: node.id() });
+                }
+                Ok(())
+            })??;
         }
         if let Some(script) = record.script_state() {
             let (parser, preparation) = required(record.script_documents(), node)?;
-            draft.node_mut(key).script = Some(crate::script::ScriptState {
+            let value = Some(crate::script::ScriptState {
                 flags: surgeist_html::HtmlScriptFlags::from_retained(
                     script.force_async(),
                     script.already_started(),
@@ -324,6 +329,7 @@ pub(super) fn metadata(
                 result: script.result(),
                 ready: script.steps_when_result_ready(),
             });
+            draft.with_node_fields(key, c.cancel, |fields| fields.script = value)?;
         }
         if let Some(base) = record.base_state() {
             let frozen = match base {
@@ -352,17 +358,18 @@ pub(super) fn metadata(
                 .node(key)?
                 .base
                 .as_ref()
-                .map_or(0, crate::base::BaseState::units);
+                .map_or(0, |state| state.units());
             let next = crate::base::BaseState { frozen };
             replace_units(draft, old, next.units(), limits)?;
-            draft.node_mut(key).base = Some(next);
+            let value = Some(next);
+            draft.with_node_fields(key, c.cancel, |fields| fields.base = value)?;
         }
         if let Some(facts) = record.document_base_facts() {
             let old = draft
                 .node(key)?
                 .base_document
                 .as_ref()
-                .map_or(0, crate::base::BaseDocument::units);
+                .map_or(0, |state| state.units());
             let first = required(record.document_first_base(), node)?
                 .map(|node| source.key(&node.id(), c))
                 .transpose()?;
@@ -372,17 +379,19 @@ pub(super) fn metadata(
                 render_blocking: Vec::new(),
             };
             replace_units(draft, old, next.units(), limits)?;
-            draft.node_mut(key).base_document = Some(next);
+            let value = Some(next);
+            draft.with_node_fields(key, c.cancel, |fields| fields.base_document = value)?;
         }
         if let Some(flags) = record.link_flags() {
             let parser = required(record.link_parser_document(), node)?
                 .map(|value| source.document_key(value, c))
                 .transpose()?;
-            draft.node_mut(key).link = Some(crate::base::LinkState {
+            let value = Some(crate::base::LinkState {
                 flags,
                 parser_document: parser,
                 sheet: None,
             });
+            draft.with_node_fields(key, c.cancel, |fields| fields.link = value)?;
         }
         if let Some(hyperlink) = record.hyperlink() {
             let document = source.document_ref_key(hyperlink.document(), c)?;
@@ -406,10 +415,11 @@ pub(super) fn metadata(
                 .node(key)?
                 .hyperlink
                 .as_ref()
-                .map_or(0, crate::hyperlink::HyperlinkState::units);
+                .map_or(0, |state| state.units());
             let next = crate::hyperlink::HyperlinkState { parsed };
             replace_units(draft, old, next.units(), limits)?;
-            draft.node_mut(key).hyperlink = Some(next);
+            let value = Some(next);
+            draft.with_node_fields(key, c.cancel, |fields| fields.hyperlink = value)?;
         }
         if let Some(image) = record.image() {
             let latest = image.latest_started();
@@ -433,20 +443,21 @@ pub(super) fn metadata(
                 source.observation(&node.id(), c, |r| r.form_parser_inserted())?,
                 node,
             )?;
-            draft.node_mut(key).image = Some(crate::image::ImageState {
+            let value = Some(crate::image::ImageState {
                 native: image.state().clone(),
                 dimension_source: source.key(&image.dimension_attribute_source().id(), c)?,
                 parser_inserted,
                 high_water: latest,
                 waiting,
             });
+            draft.with_node_fields(key, c.cancel, |fields| fields.image = value)?;
         }
         if let Some(style) = record.style() {
             let document = style.creating_parser_document();
             if style.state().created_by_document_parser() != document.is_some() {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }
-            draft.node_mut(key).style_parser_document = document
+            let value = document
                 .map(|document| match document {
                     HtmlParseMetadataDocument::Owned(node) => source.key(&node.id(), c),
                     HtmlParseMetadataDocument::Captured(_) => {
@@ -454,24 +465,15 @@ pub(super) fn metadata(
                     }
                 })
                 .transpose()?;
+            draft.with_node_fields(key, c.cancel, |fields| fields.style_parser_document = value)?;
         }
     }
-    let mut observations = 0usize;
-    for node in draft.existing.iter().chain(&draft.created).flatten() {
-        c.step(1)?;
-        observations = observations
-            .checked_add(
-                node.base_document
-                    .as_ref()
-                    .map_or(0, crate::base::BaseDocument::records),
-            )
-            .ok_or(Error::RepresentationExhausted)?;
-        admit(
-            observations,
-            limits.base_observations,
-            DomResource::BaseObservations,
-        )?;
-    }
+    c.step(1)?;
+    admit(
+        draft.counts.base_observations,
+        limits.base_observations,
+        DomResource::BaseObservations,
+    )?;
     Ok(())
 }
 
@@ -497,6 +499,8 @@ pub(super) fn kind(
     input: crate::DomNativeInputPlatform,
     c: &mut Control<'_>,
 ) -> Result<DomNodeKind, Error> {
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     c.step(1)?;
     Ok(match node.kind() {
         HtmlNodeKind::Document(_) => return Err(Error::UnsupportedState { subject: node.id() }),
@@ -563,6 +567,8 @@ pub(super) fn kind(
                 c.string(name)?;
                 c.string(value)?;
                 pairs.push((name.clone(), value.clone()));
+                #[cfg(test)]
+                written.pushed::<(DocumentString, DocumentString)>();
             }
             DomNodeKind::ProcessingInstruction(DomProcessingInstruction::from_parsed(
                 value.target().clone(),

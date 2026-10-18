@@ -4,85 +4,7 @@ mod value;
 use surgeist_html::bounded::*;
 use surgeist_html::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag, *};
 
-/// A DOM-owned temporary bank debits one shared live-capacity ledger. Its
-/// lifetime can cross nested synchronous effects; dropping it releases only
-/// its own admitted capacity. Producer-owned capture/session banks stay separate.
-pub(super) struct ScratchVec<T> {
-    values: Vec<T>,
-    live: Arc<AtomicUsize>,
-    admit: bool,
-}
-impl<T> std::ops::Deref for ScratchVec<T> {
-    type Target = Vec<T>;
-    fn deref(&self) -> &Self::Target {
-        &self.values
-    }
-}
-impl<T> std::ops::DerefMut for ScratchVec<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.values
-    }
-}
-impl<T> ScratchVec<T> {
-    /// Transfer the bank directly into a canonical Draft field. No fallible
-    /// work may intervene between releasing temporary custody and installing it.
-    pub(super) fn into_values(mut self) -> Vec<T> {
-        self.live.store(
-            self.live.load(Ordering::Relaxed) - self.values.capacity() * size_of::<T>(),
-            Ordering::Relaxed,
-        );
-        std::mem::take(&mut self.values)
-    }
-}
-impl<T> Drop for ScratchVec<T> {
-    fn drop(&mut self) {
-        self.live.store(
-            self.live.load(Ordering::Relaxed) - self.values.capacity() * size_of::<T>(),
-            Ordering::Relaxed,
-        );
-    }
-}
-
-impl<T: Clone> ScratchVec<T> {
-    pub(super) fn checkpoint(
-        &self,
-        admission: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        let bytes = self
-            .len()
-            .checked_mul(size_of::<T>())
-            .ok_or(DomError::RepresentationExhausted)?;
-        admission.before(bytes)?;
-        let mut values = Vec::new();
-        values
-            .try_reserve_exact(self.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-        let actual = values
-            .capacity()
-            .checked_mul(size_of::<T>())
-            .ok_or(DomError::RepresentationExhausted)?;
-        admission.scratch_allocated(actual)?;
-        self.live.store(
-            self.live
-                .load(Ordering::Relaxed)
-                .checked_add(actual)
-                .ok_or(DomError::RepresentationExhausted)?,
-            Ordering::Relaxed,
-        );
-        let mut copy = Self {
-            values,
-            live: self.live.clone(),
-            admit: self.admit,
-        };
-        for value in &self.values {
-            check_cancel(cancel)?;
-            admission.step()?;
-            copy.values.push(value.clone());
-        }
-        Ok(copy)
-    }
-}
+pub(in crate::store) use source::scratch::ScratchVec;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Task<K> {
@@ -94,29 +16,13 @@ pub(super) enum Pending {
     Update { serial: Option<u64>, target: Key },
     Slots,
 }
-pub(super) fn draft_tasks_formed(
-    tasks: &[Task<NodeId>],
-    initial: Option<&source::initial::Initial>,
-    cancel: &AtomicBool,
-) -> Result<Vec<Pending>, DomError> {
-    let mut out = Vec::new();
-    source::initial::reserve(&mut out, tasks.len(), initial, cancel)?;
-    for task in tasks {
-        source::initial::step(initial, cancel)?;
-        out.push(match *task {
-            Task::Slots => Pending::Slots,
-            Task::Update { serial, target } => Pending::Update {
-                serial: Some(serial),
-                target: Key::Existing(target.slot),
-            },
-        });
-    }
-    Ok(out)
-}
 pub(super) struct FinishedTasks {
-    pub tasks: Vec<Task<NodeId>>,
+    pub tasks: SharedVec<Task<NodeId>>,
+    pub output_debit: Option<custody::Debit>,
+    pub selected: usize,
+    pub ack: Option<transaction::queues::QueueAck<Pending, Task<NodeId>>>,
     pub next: u64,
-    pub cancellations: Vec<(u64, NodeId)>,
+    pub cancellations: custody::Held<Vec<(u64, NodeId)>>,
 }
 pub(in crate::store) enum CompletionAdmission {
     Live,
@@ -138,23 +44,15 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        let target = self.live_key(target);
         self.select_step(cancel)?;
-        let mut count = 1usize;
-        for task in &self.native_tasks {
-            self.select_step(cancel)?;
-            if matches!(task, Pending::Update { .. }) {
-                count = count
-                    .checked_add(1)
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
+        let count = self
+            .native_tasks
+            .counts()
+            .selected
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
         admit(count, limits.select_tasks, DomResource::SelectTasks)?;
-        let admitted = self.source_reserve_amount::<Pending>(
-            self.native_tasks.len(),
-            self.native_tasks.capacity(),
-            1,
-            cancel,
-        )?;
         #[cfg(test)]
         let growth = if self.native_tasks.len() == self.native_tasks.capacity() {
             source::formation::mutation_observation::before(
@@ -165,36 +63,24 @@ impl Draft {
         } else {
             None
         };
-        source::reserve_bank(&mut self.native_tasks, 1, admitted)?;
+        let values = [Pending::Update {
+            serial: None,
+            target,
+        }];
+        let prepared =
+            self.queue_native_prepare_insert(self.native_tasks.len(), &values, cancel)?;
+        self.headroom_select_issue(cancel)?;
+        self.queue_native_commit_insert(prepared, &values);
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             growth,
             self.native_tasks.capacity() * size_of::<Pending>(),
         );
-        self.source_admit(0, cancel)?;
-        self.headroom_select_issue(cancel)?;
-        self.native_tasks.push(Pending::Update {
-            serial: None,
-            target,
-        });
         Ok(())
     }
     pub(super) fn queue_slot_marker(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         if !self.notification_queued {
-            if let Some(additional) = self.source_reserve_amount::<Pending>(
-                self.native_tasks.len(),
-                self.native_tasks.capacity(),
-                1,
-                cancel,
-            )? {
-                self.native_tasks
-                    .try_reserve_exact(additional)
-                    .map_err(|_| DomError::AllocationFailed)?;
-            } else {
-                reserve(&mut self.native_tasks, 1)?;
-            }
-            self.source_admit(0, cancel)?;
-            self.native_tasks.push(Pending::Slots);
+            self.queue_native_insert(self.native_tasks.len(), &[Pending::Slots], cancel)?;
             self.notification_queued = true;
         }
         Ok(())
@@ -204,33 +90,35 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let mut kept = 0;
-        for i in 0..self.native_tasks.len() {
+        let key = self.live_key(key);
+        self.source_step(cancel)?;
+        if self.native_tasks.target_count(key) == 0 {
+            return Ok(());
+        }
+        for index in 0..self.native_tasks.len() {
             self.source_step(cancel)?;
-            let task = self.native_tasks[i];
+            let task = self
+                .native_tasks
+                .get(index)
+                .expect("bounded native task index");
             if matches!(task, Pending::Update { .. }) {
                 self.select_step(cancel)?;
             }
             if let Pending::Update { serial, target } = task
                 && target == key
+                && let Some(id) = self.published_id(key)
             {
-                if let Some(id) = self.published_id(key) {
-                    let admitted = self.source_reserve_amount::<(Option<u64>, NodeId)>(
-                        self.cancelled_selects.len(),
-                        self.cancelled_selects.capacity(),
-                        1,
-                        cancel,
-                    )?;
-                    source::reserve_bank(&mut self.cancelled_selects, 1, admitted)?;
-                    self.source_admit(0, cancel)?;
-                    self.cancelled_selects.push((serial, id));
-                }
-            } else {
-                self.native_tasks[kept] = task;
-                kept += 1;
+                self.queue_cancelled_selects_insert(
+                    self.cancelled_selects.len(),
+                    &[(serial, id)],
+                    cancel,
+                )?;
             }
         }
-        self.native_tasks.truncate(kept);
+        self.queue_native_retain(
+            |task| !matches!(task,Pending::Update{target,..} if target==key),
+            cancel,
+        )?;
         Ok(())
     }
     pub(super) fn finish_select_tasks(
@@ -241,9 +129,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<FinishedTasks, DomError> {
         let mut next = dom.state.next_task;
-        let mut out = Vec::new();
         let mut cancelled = Vec::new();
-        source::formation::reserve(&mut out, self.native_tasks.len(), budget, cancel)?;
         source::formation::reserve(&mut cancelled, self.cancelled_selects.len(), budget, cancel)?;
         let mut serial = |old: Option<u64>| -> Result<u64, DomError> {
             if let Some(id) = old {
@@ -256,29 +142,83 @@ impl Draft {
                 Ok(id)
             }
         };
-        for task in &self.native_tasks {
+        let mut selected = self.native_tasks.published_selected();
+        let mut ack = None;
+        let tasks =
+            if let Some(canonical) = self.native_tasks.canonical_backing() {
+                transaction::queues::QueueOutput::canonical(canonical.clone())
+            } else {
+                selected = 0;
+                let mut out = Vec::new();
+                source::formation::reserve(&mut out, self.native_tasks.len(), budget, cancel)?;
+
+                ack = Some(transaction::queues::QueueAck::prepare(
+                    usize::try_from(self.native_tasks.counts().unissued)
+                        .map_err(|_| DomError::RepresentationExhausted)?,
+                    self.custody_ledger(),
+                    |usage| match budget {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                )?);
+
+                for (index, task) in self.native_tasks.iter().enumerate() {
+                    source::formation::step(budget, cancel)?;
+                    match task {
+                        Pending::Slots => out.push(Task::Slots),
+                        Pending::Update {
+                            serial: old,
+                            target,
+                        } => {
+                            if self.is_private(target) {
+                                continue;
+                            }
+                            let value = serial(old)?;
+                            selected += 1;
+                            out.push(Task::Update {
+                                serial: value,
+                                target: id(target),
+                            });
+                            if old.is_none() {
+                                ack.as_mut()
+                                    .expect("preadmitted unissued acknowledgement")
+                                    .push_prepared(
+                                        index,
+                                        Pending::Update {
+                                            serial: Some(value),
+                                            target,
+                                        },
+                                    );
+                            }
+                        }
+                    }
+                }
+                ack.as_mut()
+                    .expect("staged publication plan")
+                    .publish_values(out, selected, budget, self.custody_ledger(), |usage| {
+                        match budget {
+                            Some(budget) => budget.admit_custody_usage(usage, cancel),
+                            None => check_cancel(cancel),
+                        }
+                    })?
+            };
+
+        for (old, target) in self.cancelled_selects.iter() {
             source::formation::step(budget, cancel)?;
-            if matches!(task, Pending::Update {target,..} if self.is_private(*target)) {
-                continue;
-            }
-            out.push(match *task {
-                Pending::Slots => Task::Slots,
-                Pending::Update {
-                    serial: old,
-                    target,
-                } => Task::Update {
-                    serial: serial(old)?,
-                    target: id(target),
-                },
-            });
-        }
-        for entry in &self.cancelled_selects {
-            source::formation::step(budget, cancel)?;
-            let (old, target) = *entry;
             cancelled.push((serial(old)?, target));
         }
+        let cancelled =
+            transaction::queues::finish_vec(cancelled, budget, self.custody_ledger(), |usage| {
+                match budget {
+                    Some(budget) => budget.admit_custody_usage(usage, cancel),
+                    None => check_cancel(cancel),
+                }
+            })?;
         Ok(FinishedTasks {
-            tasks: out,
+            tasks: tasks.values,
+            output_debit: tasks.output_debit,
+            selected,
+            ack,
             next,
             cancellations: cancelled,
         })
@@ -364,7 +304,7 @@ impl Dom {
         let key = draft.resolve(auth.target.into())?;
         draft.schedule_selectedcontent(key, self.limits, cancel)?;
         // The head stays owned through every fallible effect and output allocation.
-        draft.native_tasks.remove(0);
+        draft.queue_native_remove(0, 1, cancel)?;
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
         auth.consume();
@@ -440,7 +380,7 @@ impl Dom {
 }
 impl Draft {
     pub(super) fn element(&self, key: Key) -> Result<&DomElement, DomError> {
-        match &self.node(key)?.kind {
+        match self.node(key)?.kind {
             DomNodeKind::Element(e) => Ok(e),
             _ => Err(DomError::WrongNodeKind),
         }
@@ -471,20 +411,36 @@ impl Draft {
         )?;
         let formation = source::formation::Formation::new(self, cancel)?.expect("source context");
         formation.retain_payload(payload, cancel)?;
-        self.element_mut(key).make_family_unique();
+        self.with_element_fields(key, cancel, |element| element.make_family_unique())?;
         #[cfg(test)]
         source::formation::mutation_observation::grew(before, payload.bytes);
         drop(formation);
         Ok(())
     }
-    pub(super) fn element_mut(&mut self, key: Key) -> &mut DomElement {
-        match &mut self.node_mut(key).kind {
-            DomNodeKind::Element(e) => e,
-            _ => unreachable!("checked Element"),
-        }
+    pub(super) fn with_node_fields<R>(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+        edit: impl FnOnce(&mut transaction::NodeFields) -> R,
+    ) -> Result<R, DomError> {
+        let mut fields = self.node_fields_mut(key, cancel)?;
+        let result = edit(&mut fields);
+        fields.commit(cancel)?;
+        Ok(result)
+    }
+    pub(super) fn with_element_fields<R>(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+        edit: impl FnOnce(&mut DomElement) -> R,
+    ) -> Result<R, DomError> {
+        let mut fields = self.element_fields_mut(key, cancel)?;
+        let result = edit(&mut fields);
+        fields.commit(cancel)?;
+        Ok(result)
     }
     fn tag(&self, key: Key) -> Result<Option<Tag>, DomError> {
-        Ok(match &self.node(key)?.kind {
+        Ok(match self.node(key)?.kind {
             DomNodeKind::Element(e) => Tag::from_name(e.name()),
             _ => None,
         })
@@ -526,68 +482,25 @@ impl Draft {
         admit(total, self.select_scratch_limit, DomResource::SelectScratch)
     }
     fn select_vec<T>(&self) -> ScratchVec<T> {
-        ScratchVec {
-            values: Vec::new(),
-            live: self.select_temporary_bytes.clone(),
-            admit: true,
-        }
+        ScratchVec::new(self, true)
     }
     pub(super) fn effect_vec<T>(&self) -> ScratchVec<T> {
-        ScratchVec {
-            values: Vec::new(),
-            live: self.select_temporary_bytes.clone(),
-            admit: self.effect_scoped,
-        }
+        ScratchVec::new(self, self.effect_scoped)
     }
     pub(super) fn select_reserve<T>(
         &self,
-        v: &mut ScratchVec<T>,
-        n: usize,
+        values: &mut ScratchVec<T>,
+        additional: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        // Register every actual effect bank for its full lifetime, including
-        // an ordinary insertion whose later postconnection first reaches Select.
-        // Admission is enforced only at a reached Select boundary.
-        let enforce = v.admit || self.effect_scoped;
-        let required = v
-            .len()
-            .checked_add(n)
-            .ok_or(DomError::RepresentationExhausted)?;
-        if required > v.capacity() {
-            let old = v
-                .capacity()
-                .checked_mul(size_of::<T>())
-                .ok_or(DomError::RepresentationExhausted)?;
-            let bytes = required
-                .checked_mul(size_of::<T>())
-                .ok_or(DomError::RepresentationExhausted)?;
-            // New allocation overlaps the old allocation until reserve returns.
-            self.source_admit(bytes, cancel)?;
-            if enforce {
-                self.select_scratch(bytes)?;
-            }
-            v.values
-                .try_reserve_exact(n)
-                .map_err(|_| DomError::AllocationFailed)?;
-            let actual = v
-                .capacity()
-                .checked_mul(size_of::<T>())
-                .ok_or(DomError::RepresentationExhausted)?;
-            self.select_temporary_bytes.store(
-                self.select_temporary_bytes
-                    .load(Ordering::Relaxed)
-                    .checked_add(actual - old)
-                    .ok_or(DomError::RepresentationExhausted)?,
-                Ordering::Relaxed,
-            );
-        }
+        values.reserve(self, additional, cancel)?;
         self.source_admit(0, cancel)?;
-        if enforce {
-            self.select_scratch(0)
-        } else {
-            Ok(())
+        if self.effect_scoped {
+            self.select_scratch(0)?;
         }
+        Ok(())
     }
+
     fn has(&self, key: Key, attr: Attr, cancel: &AtomicBool) -> Result<bool, DomError> {
         self.select_step(cancel)?;
         Ok(self.control_attribute(key, attr, cancel)?.is_some())
@@ -600,12 +513,19 @@ impl Draft {
             .flags
             .selectedness())
     }
-    fn write_selected(&mut self, key: Key, selected: bool) {
-        self.element_mut(key)
-            .option_state_mut()
-            .expect("actual Option")
-            .flags
-            .set_selectedness_for_select(selected);
+    fn write_selected(
+        &mut self,
+        key: Key,
+        selected: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.with_element_fields(key, cancel, |element| {
+            element
+                .option_state_mut()
+                .expect("actual Option")
+                .flags
+                .set_selectedness_for_select(selected)
+        })
     }
     fn multiple(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         self.has(key, Attr::Multiple, cancel)
@@ -616,7 +536,7 @@ impl Draft {
         self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
         for child in self.node(key)?.children.iter().rev() {
             self.source_step(cancel)?;
-            pending.push((*child, false));
+            pending.push((child, false));
         }
         while !pending.is_empty() {
             self.source_step(cancel)?;
@@ -633,7 +553,7 @@ impl Draft {
                     self.select_reserve(&mut pending, self.node(key)?.children.len(), cancel)?;
                     for child in self.node(key)?.children.iter().rev() {
                         self.source_step(cancel)?;
-                        pending.push((*child, group || tag == Some(Tag::Optgroup)));
+                        pending.push((child, group || tag == Some(Tag::Optgroup)));
                     }
                 }
             }
@@ -755,28 +675,28 @@ impl Draft {
         let reply = match cursor.action() {
             HtmlSelectAction::ResetSelectFlags => {
                 self.prepare_family_mutation(key, cancel)?;
-                self.element_mut(key)
-                    .select_state_mut()
-                    .expect("Select")
-                    .flags
-                    .reset();
+                self.with_element_fields(key, cancel, |element| {
+                    element.select_state_mut().expect("Select").flags.reset()
+                })?;
                 HtmlSelectReply::Applied
             }
             HtmlSelectAction::ResetOption { ordinal } => {
                 let option = options[ordinal];
                 let selected = self.has(option, Attr::Selected, cancel)?;
-                self.element_mut(option)
-                    .option_state_mut()
-                    .expect("Option")
-                    .flags
-                    .reset(selected);
+                self.with_element_fields(option, cancel, |element| {
+                    element
+                        .option_state_mut()
+                        .expect("Option")
+                        .flags
+                        .reset(selected)
+                })?;
                 HtmlSelectReply::Applied
             }
             HtmlSelectAction::ReadSelectedness { ordinal } => {
                 HtmlSelectReply::Selectedness(self.selected(options[ordinal])?)
             }
             HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
-                self.write_selected(options[ordinal], selected);
+                self.write_selected(options[ordinal], selected, cancel)?;
                 HtmlSelectReply::Applied
             }
             HtmlSelectAction::ReadDisabled { ordinal } => {
@@ -851,7 +771,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let old = self.node(key)?.option_select;
         let new = self.nearest_option_select(key, cancel)?;
-        self.node_mut(key).option_select = new;
+        self.with_node_fields(key, cancel, |fields| fields.option_select = new)?;
         if old == new {
             return Ok(());
         }
@@ -891,10 +811,11 @@ impl Draft {
             }
             next = self.node(k)?.parent;
         }
-        *self
-            .element_mut(key)
-            .selectedcontent_disabled_mut()
-            .expect("Selectedcontent") = cursor.disabled();
+        self.with_element_fields(key, cancel, |element| {
+            *element
+                .selectedcontent_disabled_mut()
+                .expect("Selectedcontent") = cursor.disabled()
+        })?;
         Ok(nearest)
     }
     pub(super) fn select_insertion(
@@ -1026,8 +947,20 @@ pub(super) struct EffectFrame {
     pub(super) effect: Effect,
     pub(super) scoped: bool,
     payload: Option<source::checkpoint::Charge>,
+    pub(in crate::store) life: Option<Arc<source::effects::FrameLife>>,
 }
 impl Effect {
+    fn freeze_worklists(&mut self, draft: &Draft, cancel: &AtomicBool) -> Result<(), DomError> {
+        match self {
+            Self::SelectCursor { options, .. } | Self::Setter { options, .. } => {
+                options.freeze(draft, cancel)
+            }
+            Self::Post { list, .. } => list.freeze(draft, cancel),
+            Self::Update { targets, .. } => targets.freeze(draft, cancel),
+            Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
+            _ => Ok(()),
+        }
+    }
     fn retained_payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
@@ -1051,6 +984,12 @@ impl Effect {
     }
 }
 impl EffectFrame {
+    #[cfg(test)]
+    pub(in crate::store) fn journal_bytes(&self) -> usize {
+        self.payload
+            .as_ref()
+            .map_or(0, source::checkpoint::Charge::journal_bytes)
+    }
     pub(super) fn checkpoint(
         &self,
         a: &mut source::checkpoint::Admission<'_>,
@@ -1148,6 +1087,7 @@ impl EffectFrame {
             effect,
             scoped: self.scoped,
             payload,
+            life: self.life.clone(),
         })
     }
 }
@@ -1173,73 +1113,37 @@ impl Draft {
     }
     pub(super) fn push_effect_retained(
         &mut self,
-        effect: Effect,
+        mut effect: Effect,
         scoped: bool,
         payload: Option<source::checkpoint::Charge>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let old = self.effects.capacity() * size_of::<EffectFrame>();
-        let required = self
-            .effects
-            .len()
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let target = if required > self.effects.capacity() {
-            let maximum = isize::MAX as usize / size_of::<EffectFrame>();
-            let doubled = self
-                .effects
-                .capacity()
-                .checked_mul(2)
-                .filter(|n| *n <= maximum);
-            doubled.unwrap_or(required).max(required)
-        } else {
-            self.effects.capacity()
-        };
-        let new_allocation = if target > self.effects.capacity() {
-            target
-                .checked_mul(size_of::<EffectFrame>())
-                .filter(|n| *n <= isize::MAX as usize)
-                .ok_or(DomError::RepresentationExhausted)?
-        } else {
-            0
-        };
-        self.source_admit(new_allocation, cancel)?;
-        if scoped {
-            self.select_scratch(new_allocation)?;
-        }
-        #[cfg(test)]
-        let before_growth = self.effect_bytes + self.select_temporary_bytes.load(Ordering::Relaxed);
-        if target > self.effects.capacity() {
-            // Own the geometric policy rather than asking amortized reserve to
-            // choose a larger bank after preadmission. The full old bank stays
-            // charged until this exact requested new bank replaces it.
-            self.effects
-                .try_reserve_exact(target - self.effects.len())
-                .map_err(|_| DomError::AllocationFailed)?;
-        }
-        #[cfg(test)]
-        if scoped && self.effects.capacity() * size_of::<EffectFrame>() > old {
-            let actual_new = self.effects.capacity() * size_of::<EffectFrame>();
-            super::tree::scratch_observation::observe_growth(
-                before_growth,
-                actual_new,
-                before_growth + actual_new - old,
-                self.select_scratch_limit,
-            );
-        }
-        self.effect_bytes = self
-            .effect_bytes
-            .checked_add((self.effects.capacity() * size_of::<EffectFrame>()).saturating_sub(old))
-            .ok_or(DomError::RepresentationExhausted)?;
+        effect.freeze_worklists(self, cancel)?;
+        self.reserve_source_effects(1, scoped, cancel)?;
         if scoped {
             self.select_scratch(0)?;
         }
         self.source_admit(0, cancel)?;
+        let undo = self.prepare_undo(cancel)?;
+        let life = if self.source_limits.is_some() || self.journal.has_marks() {
+            Some(source::effects::FrameLife::new(self, scoped, cancel)?)
+        } else {
+            None
+        };
+        let inverse_life = life.clone();
         self.effects.push(EffectFrame {
             effect,
             scoped,
             payload,
+            life,
         });
+        #[cfg(test)]
+        source::effects::record_frame_writes(1);
+        if undo {
+            self.record_source_undo_prepared(source::ControlUndo::EffectPushed(
+                inverse_life.expect("marked effect lifecycle"),
+            ));
+        }
         Ok(())
     }
     /// A constructor may append to the original effect stack while its caller
@@ -1292,11 +1196,43 @@ impl Draft {
                 } else {
                     self.source_step(cancel)?;
                 }
+                let latest = self.journal.latest_mark_id();
+                let needs_snapshot = latest.is_some_and(|latest| {
+                    self.effects
+                        .last()
+                        .expect("nonempty effect")
+                        .life
+                        .as_ref()
+                        .is_none_or(|life| life.born().is_none_or(|born| born < latest))
+                });
+                let snapshot = if needs_snapshot {
+                    self.prepare_undo(cancel)?;
+                    let original = self.effects.last().expect("original marked effect");
+                    let live = self
+                        .controlled_storage_usage(cancel)?
+                        .bytes()
+                        .checked_add(self.source_other_bytes)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    let mut admission = source::checkpoint::Admission::new(self, live)?;
+                    let snapshot = original.checkpoint(&mut admission, cancel)?;
+                    drop(admission.finish());
+                    Some(snapshot)
+                } else {
+                    None
+                };
+                let popped = self.effects.pop().expect("admitted nonempty effect");
+                if let Some(life) = &popped.life {
+                    life.consume();
+                }
+                if let Some(snapshot) = snapshot {
+                    self.record_source_undo_prepared(source::ControlUndo::EffectPopped(snapshot));
+                }
                 let EffectFrame {
                     effect,
                     scoped,
                     payload,
-                } = self.effects.pop().expect("admitted nonempty effect");
+                    life: _,
+                } = popped;
                 self.effect_scoped = scoped;
                 match effect {
                     Effect::AutofocusInsertion(frame) => {
@@ -1379,7 +1315,7 @@ impl Draft {
                         )?;
                     }
                     Effect::Clear { target } => {
-                        if let Some(&child) = self.node(target)?.children.first() {
+                        if let Some(child) = self.node(target)?.children.first() {
                             self.push_effect(Effect::Clear { target }, true, cancel)?;
                             self.remove(child, limits, cancel)?;
                         }
@@ -1472,7 +1408,7 @@ impl Draft {
                                     limits,
                                     cancel,
                                 )?;
-                                self.mark_source_private(fragment);
+                                self.mark_source_private(fragment, cancel)?;
                                 self.push_effect(
                                     Effect::Children {
                                         option,
@@ -1496,7 +1432,7 @@ impl Draft {
                         target,
                         index,
                     } => {
-                        if let Some(&source) = self.node(option)?.children.get(index) {
+                        if let Some(source) = self.node(option)?.children.get(index) {
                             self.push_effect(
                                 Effect::Children {
                                     option,
@@ -1524,7 +1460,7 @@ impl Draft {
                         }
                     }
                     Effect::Replace { fragment, target } => {
-                        if let Some(&child) = self.node(target)?.children.first() {
+                        if let Some(child) = self.node(target)?.children.first() {
                             self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
                             self.remove(child, limits, cancel)?;
                         } else {
@@ -1533,7 +1469,7 @@ impl Draft {
                         }
                     }
                     Effect::Cleanup(fragment) => {
-                        let Key::Created(index) = fragment else {
+                        let Key::Created(_) = fragment else {
                             unreachable!("private algorithm fragment")
                         };
                         let node = self.node(fragment)?;
@@ -1543,14 +1479,21 @@ impl Draft {
                                 && node.host.is_none()
                                 && matches!(node.kind, DomNodeKind::DocumentFragment)
                         );
-                        self.created[index] = None;
-                        self.nodes -= 1;
+                        self.retire_node(fragment, cancel)?;
                     }
                 }
             }
-            if self.effects.is_empty() {
-                self.effect_bytes = 0;
+            if self.effects.is_empty() && !self.journal.has_marks() {
+                // An inverse pop must restore without allocating. A live mark
+                // therefore retains this original backing even while empty.
                 self.effects = Vec::new();
+                let backing = self.effects_charge.usage();
+                drop(
+                    self.effects_charge
+                        .split(backing)
+                        .expect("owned effect backing"),
+                );
+                self.effect_bytes = 0;
             }
             Ok(())
         })();
@@ -1632,15 +1575,16 @@ impl Draft {
             }
             Some(Tag::Option) if is(Attr::Selected) && changed_presence => {
                 self.select_step(cancel)?;
-                let changed = self
-                    .element_mut(key)
-                    .option_state_mut()
-                    .expect("Option")
-                    .flags
-                    .selected_attribute_changed(!matches!(
-                        change,
-                        attributes::AttributeChange::Removed
-                    ));
+                let changed = self.with_element_fields(key, cancel, |element| {
+                    element
+                        .option_state_mut()
+                        .expect("Option")
+                        .flags
+                        .selected_attribute_changed(!matches!(
+                            change,
+                            attributes::AttributeChange::Removed
+                        ))
+                })?;
                 if let Some(select) = self.node(key)?.option_select {
                     self.select_operation(
                         select,
@@ -1686,11 +1630,17 @@ impl Draft {
         match edit {
             crate::select::Edit::OptionSelected(selected) => {
                 self.select_step(cancel)?;
-                self.element_mut_checked(key)?
-                    .option_state_mut()
-                    .ok_or(DomError::OptionInapplicable)?
-                    .flags
-                    .selected_setter(*selected);
+                self.element(key)?
+                    .option_state()
+                    .ok_or(DomError::OptionInapplicable)?;
+                self.with_element_fields(key, cancel, |element| {
+                    element
+                        .option_state_mut()
+                        .ok_or(DomError::OptionInapplicable)?
+                        .flags
+                        .selected_setter(*selected);
+                    Ok(())
+                })??;
                 if let Some(select) = self.node(key)?.option_select {
                     self.select_operation(
                         select,
@@ -1753,7 +1703,7 @@ impl Draft {
         }
         let reply = match cursor.action() {
             HtmlSelectSetterAction::Deselect { ordinal } => {
-                self.write_selected(options[ordinal], false);
+                self.write_selected(options[ordinal], false, cancel)?;
                 HtmlSelectSetterReply::Applied
             }
             HtmlSelectSetterAction::ReadMatch { ordinal } => {
@@ -1772,11 +1722,13 @@ impl Draft {
                 })
             }
             HtmlSelectSetterAction::SelectAndDirty { ordinal } => {
-                self.element_mut(options[ordinal])
-                    .option_state_mut()
-                    .expect("Option")
-                    .flags
-                    .select_for_select_setter();
+                self.with_element_fields(options[ordinal], cancel, |element| {
+                    element
+                        .option_state_mut()
+                        .expect("Option")
+                        .flags
+                        .select_for_select_setter()
+                })?;
                 HtmlSelectSetterReply::Applied
             }
             HtmlSelectSetterAction::UpdateSelectedcontent => {
@@ -1809,12 +1761,6 @@ impl Draft {
             payload,
             cancel,
         )
-    }
-    fn element_mut_checked(&mut self, key: Key) -> Result<&mut DomElement, DomError> {
-        match &mut self.node_mut(key).kind {
-            DomNodeKind::Element(e) => Ok(e),
-            _ => Err(DomError::WrongNodeKind),
-        }
     }
     fn same_select_units(
         &self,
@@ -1891,9 +1837,7 @@ mod tests {
             let select = created.created(&select).unwrap().unwrap();
             let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
             assert_eq!(
-                draft
-                    .display_size(Key::Existing(select.slot), &cancel)
-                    .unwrap(),
+                draft.display_size(Key::Existing(select), &cancel).unwrap(),
                 expected,
                 "raw={raw:?}, multiple={multiple}"
             );
@@ -1935,9 +1879,7 @@ mod tests {
             let select = created.created(&select).unwrap().unwrap();
             let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
             assert_eq!(
-                draft
-                    .display_size(Key::Existing(select.slot), &cancel)
-                    .unwrap(),
+                draft.display_size(Key::Existing(select), &cancel).unwrap(),
                 expected
             );
         }
@@ -2397,9 +2339,8 @@ mod effect_scope_tests {
         batch.insert_before(&outer, &root, None);
         batch.insert_before(&inner, &root, None);
         let commit = dom.apply(batch, &cancel).unwrap();
-        let key = |ticket: &crate::CreatedNode| {
-            Key::Existing(commit.created(ticket).unwrap().unwrap().slot)
-        };
+        let key =
+            |ticket: &crate::CreatedNode| Key::Existing(commit.created(ticket).unwrap().unwrap());
         let (outer, inner, first, second) = (key(&outer), key(&inner), key(&first), key(&second));
         let draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         (dom, draft, outer, inner, first, second)
@@ -2423,10 +2364,34 @@ mod effect_scope_tests {
             .with_effect_scope(|draft| draft.pre_insert(second, inner, None, dom.limits, &cancel))
             .unwrap();
         assert!(draft.node(outer).unwrap().children.is_empty());
-        assert_eq!(draft.node(inner).unwrap().children.as_slice(), &[second]);
+        assert_eq!(
+            draft
+                .node(inner)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>(),
+            vec![second]
+        );
         draft.run_effects(dom.limits, &cancel).unwrap();
-        assert_eq!(draft.node(outer).unwrap().children.as_slice(), &[first]);
-        assert_eq!(draft.node(inner).unwrap().children.as_slice(), &[second]);
+        assert_eq!(
+            draft
+                .node(outer)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>(),
+            vec![first]
+        );
+        assert_eq!(
+            draft
+                .node(inner)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>(),
+            vec![second]
+        );
         assert!(draft.effects.is_empty());
     }
     #[test]
@@ -2453,7 +2418,15 @@ mod effect_scope_tests {
         );
         cancel.store(false, Ordering::Relaxed);
         draft.run_effects(dom.limits, &cancel).unwrap();
-        assert_eq!(draft.node(outer).unwrap().children.as_slice(), &[first]);
+        assert_eq!(
+            draft
+                .node(outer)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>(),
+            vec![first]
+        );
         assert!(draft.node(inner).unwrap().children.is_empty());
     }
 }

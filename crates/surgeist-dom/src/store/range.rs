@@ -2,25 +2,7 @@
 use super::*;
 use crate::range::{Boundary, Record};
 use crate::{DomActiveRangeState, DomRangeId, DomRangeOperand};
-use std::{
-    cmp::{Ordering as Position, Reverse},
-    collections::BinaryHeap,
-};
-
-/// Temporary ordered frontier while the Draft still materializes Range slots.
-pub(super) type Vacancies = BinaryHeap<Reverse<usize>>;
-
-pub(super) fn form_vacancies(
-    slots: Vec<Reverse<usize>>,
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Vacancies, DomError> {
-    // Bottom-up heap formation performs at most two comparisons per entry.
-    for _ in &slots {
-        step()?;
-        step()?;
-    }
-    Ok(Vacancies::from(slots))
-}
+use std::cmp::Ordering as Position;
 
 #[cfg(test)]
 mod admission_tests;
@@ -64,40 +46,41 @@ mod allocation_observation {
     }
 }
 
+#[cfg(test)]
+mod maintenance_observation {
+    use std::cell::RefCell;
+    thread_local! { static AFTER_WRITE: RefCell<Option<Box<dyn FnMut()>>> = const { RefCell::new(None) }; }
+    pub(super) struct Observation;
+    pub(super) fn after_write(callback: impl FnMut() + 'static) -> Observation {
+        AFTER_WRITE.with(|slot| {
+            assert!(slot.borrow().is_none());
+            *slot.borrow_mut() = Some(Box::new(callback));
+        });
+        Observation
+    }
+    pub(super) fn wrote() {
+        if let Some(mut callback) = AFTER_WRITE.with(|slot| slot.borrow_mut().take()) {
+            callback();
+            AFTER_WRITE.with(|slot| *slot.borrow_mut() = Some(callback));
+        }
+    }
+    impl Drop for Observation {
+        fn drop(&mut self) {
+            AFTER_WRITE.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+}
+
 impl Draft {
-    fn range_vacancy_work(&self, entries: usize, cancel: &AtomicBool) -> Result<(), DomError> {
-        // Heap operations visit a bounded root-to-leaf path. Prepay both integer
-        // comparisons at each possible level before the infallible mutation.
-        for _ in 0..(usize::BITS - entries.leading_zeros()) {
-            self.source_step(cancel)?;
-            self.source_step(cancel)?;
-        }
-        Ok(())
-    }
-
-    fn reserve_range_vacancy(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        let amount = self.source_reserve_amount::<Reverse<usize>>(
-            self.range_vacancies.len(),
-            self.range_vacancies.capacity(),
-            1,
-            cancel,
-        )?;
-        match amount {
-            Some(amount) => self.range_vacancies.try_reserve_exact(amount),
-            None => self.range_vacancies.try_reserve(1),
-        }
-        .map_err(|_| DomError::AllocationFailed)?;
-        self.source_admit(0, cancel)
-    }
-
     pub(super) fn range_record(&self, id: DomRangeId) -> Result<Record<Key>, DomError> {
         if id.owner != self.store {
             return Err(DomError::ForeignOwner);
         }
         self.ranges
-            .get(id.slot)
+            .slot(id.slot)
             .filter(|slot| slot.generation == id.generation)
             .and_then(|slot| slot.record)
+            .map(|record| record.map(|key| self.live_key(key)))
             .ok_or(DomError::StaleRange)
     }
     pub(super) fn resolve_range(&self, operand: &DomRangeOperand) -> Result<DomRangeId, DomError> {
@@ -174,7 +157,7 @@ impl Draft {
     ) -> Result<usize, DomError> {
         for (index, candidate) in self.node(parent)?.children.iter().enumerate() {
             self.source_step(cancel)?;
-            if *candidate == child {
+            if candidate == child {
                 return Ok(index);
             }
         }
@@ -233,19 +216,21 @@ impl Draft {
         if ticket != self.range_tickets.len() {
             return Err(DomError::UnavailableCreation);
         }
-        let available = self.range_vacancies.peek().map(|slot| slot.0);
-        let (index, generation, append) = if let Some(index) = available {
+        let available = self.ranges.lowest_vacant();
+        let (index, generation) = if let Some(index) = available {
             self.source_step(cancel)?;
             #[cfg(test)]
             allocation_observation::visit();
-            let slot = &self.ranges[index];
+            let slot = self
+                .ranges
+                .slot(index)
+                .expect("derived availability identifies a Range slot");
             debug_assert!(slot.record.is_none() && !slot.retired && slot.generation < u64::MAX);
             (
                 index,
                 slot.generation
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?,
-                false,
             )
         } else {
             admit(
@@ -256,51 +241,30 @@ impl Draft {
                 limits.ranges,
                 DomResource::Ranges,
             )?;
-            let amount = self.source_reserve_amount::<crate::range::Slot<Key>>(
-                self.ranges.len(),
-                self.ranges.capacity(),
-                1,
-                cancel,
-            )?;
-            source::reserve_bank(&mut self.ranges, 1, amount)?;
-            (self.ranges.len(), 1, true)
+            (self.ranges.len(), 1)
         };
-        let amount = self.source_reserve_amount::<DomRangeId>(
-            self.range_tickets.len(),
-            self.range_tickets.capacity(),
-            1,
-            cancel,
-        )?;
-        source::reserve_bank(&mut self.range_tickets, 1, amount)?;
+        self.reserve_range_ticket(cancel)?;
         self.source_admit(0, cancel)?;
-        if append {
-            self.ranges.push(crate::range::Slot {
-                generation,
-                retired: false,
-                record: None,
-            });
-        } else {
-            self.range_vacancy_work(self.range_vacancies.len(), cancel)?;
-            let selected = self
-                .range_vacancies
-                .pop()
-                .expect("selected vacant Range slot");
-            debug_assert_eq!(selected.0, index);
-        }
-        let slot = &mut self.ranges[index];
-        slot.generation = generation;
         let boundary = Boundary {
             container: document,
             offset: 0,
         };
-        slot.record = Some(Record {
-            start: boundary,
-            end: boundary,
-        });
+        self.write_range(
+            index,
+            crate::range::Slot {
+                generation,
+                retired: false,
+                record: Some(Record {
+                    start: boundary,
+                    end: boundary,
+                }),
+            },
+            cancel,
+        )?;
         self.range_tickets.push(DomRangeId {
             owner: self.store,
             slot: index,
-            generation: slot.generation,
+            generation,
         });
         Ok(())
     }
@@ -337,8 +301,7 @@ impl Draft {
             }
             record.end = point;
         }
-        self.ranges[id.slot].record = Some(record);
-        Ok(())
+        self.replace_range_record(id, record, cancel)
     }
     pub(super) fn set_active_range(
         &mut self,
@@ -360,8 +323,10 @@ impl Draft {
                 return Err(DomError::RangeAssociationIneligible);
             }
         }
-        self.node_mut(document).active_range = DomActiveRangeState::Known(id);
-        Ok(())
+        self.with_node_fields(document, cancel, |fields| {
+            fields.active_range = DomActiveRangeState::Known(id);
+            Ok(())
+        })?
     }
     pub(super) fn retire_range(
         &mut self,
@@ -369,35 +334,29 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.range_record(id)?;
-        if id.generation < u64::MAX {
-            self.reserve_range_vacancy(cancel)?;
-            let entries = self
-                .range_vacancies
-                .len()
-                .checked_add(1)
-                .ok_or(DomError::RepresentationExhausted)?;
-            self.range_vacancy_work(entries, cancel)?;
-        }
-        self.ranges[id.slot].record = None;
-        if id.generation == u64::MAX {
-            self.ranges[id.slot].retired = true;
-        } else {
-            self.range_vacancies.push(Reverse(id.slot));
-        }
-        for index in 0..self.existing.len() {
+        let documents = self.range_associated_documents(id, cancel)?;
+        let mut slot = self.ranges.slot(id.slot).ok_or(DomError::StaleRange)?;
+        slot.record = None;
+        slot.retired |= id.generation == u64::MAX;
+        self.write_range(id.slot, slot, cancel)?;
+        for document in documents.value() {
             self.source_step(cancel)?;
-            if let Some(node) = &mut self.existing[index]
-                && node.active_range == DomActiveRangeState::Known(Some(id))
-            {
-                node.active_range = DomActiveRangeState::Known(None);
-            }
-        }
-        for index in 0..self.created.len() {
-            self.source_step(cancel)?;
-            if let Some(node) = &mut self.created[index]
-                && node.active_range == DomActiveRangeState::Known(Some(id))
-            {
-                node.active_range = DomActiveRangeState::Known(None);
+            match self.node(*document) {
+                Ok(node) if node.active_range == DomActiveRangeState::Known(Some(id)) => {
+                    self.with_node_fields(*document, cancel, |fields| {
+                        fields.active_range = DomActiveRangeState::Known(None);
+                    })?;
+                }
+                Err(DomError::StaleNode) => {
+                    self.update_active_range_dependency(
+                        *document,
+                        DomActiveRangeState::Known(Some(id)),
+                        DomActiveRangeState::Unavailable,
+                        cancel,
+                    )?;
+                }
+                Ok(_) => {}
+                Err(error) => return Err(error),
             }
         }
         Ok(())
@@ -408,15 +367,30 @@ impl Draft {
         parent: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.ranges.is_empty() {
+        if self.counts.live_ranges == 0 {
             return Ok(());
         }
         let index = self.range_child_index(parent, node, cancel)?;
-        for slot in 0..self.ranges.len() {
+        let mut participants = self.range_participants(parent, cancel)?;
+        let mut pending = custody::Held::new(
+            Vec::new(),
+            self.custody_ledger()
+                .retain(custody::Usage::ZERO, |usage| {
+                    self.admit_custody_usage(usage, cancel)
+                })?,
+        );
+        self.range_temporary_push(&mut pending, node, cancel)?;
+        while let Some(container) = pending.value_mut().pop() {
             self.source_step(cancel)?;
-            let Some(mut record) = self.ranges[slot].record else {
-                continue;
-            };
+            self.add_range_participants(container, &mut participants, cancel)?;
+            for child in self.node(container)?.children.iter() {
+                self.range_temporary_push(&mut pending, child, cancel)?;
+            }
+        }
+        for id in participants.iter() {
+            self.source_step(cancel)?;
+            let mut record = self.range_record(id)?;
+            let old = record;
             for point in [&mut record.start, &mut record.end] {
                 if self.range_inclusive_ancestor(node, point.container, cancel)? {
                     *point = Boundary {
@@ -427,7 +401,11 @@ impl Draft {
                     point.offset -= 1;
                 }
             }
-            self.ranges[slot].record = Some(record);
+            if record != old {
+                self.replace_range_record(id, record, cancel)?;
+                #[cfg(test)]
+                maintenance_observation::wrote();
+            }
         }
         Ok(())
     }
@@ -441,21 +419,27 @@ impl Draft {
         let Some(before) = before else {
             return Ok(());
         };
-        if self.ranges.is_empty() {
+        if self.counts.live_ranges == 0 {
             return Ok(());
         }
         let index = self.range_child_index(parent, before, cancel)?;
-        for slot in 0..self.ranges.len() {
+        let participants = self.range_participants(parent, cancel)?;
+        for id in participants.iter() {
             self.source_step(cancel)?;
-            if let Some(record) = &mut self.ranges[slot].record {
-                for point in [&mut record.start, &mut record.end] {
-                    if point.container == parent && point.offset > index {
-                        point.offset = point
-                            .offset
-                            .checked_add(count)
-                            .ok_or(DomError::RepresentationExhausted)?;
-                    }
+            let mut record = self.range_record(id)?;
+            let old = record;
+            for point in [&mut record.start, &mut record.end] {
+                if point.container == parent && point.offset > index {
+                    point.offset = point
+                        .offset
+                        .checked_add(count)
+                        .ok_or(DomError::RepresentationExhausted)?;
                 }
+            }
+            if record != old {
+                self.replace_range_record(id, record, cancel)?;
+                #[cfg(test)]
+                maintenance_observation::wrote();
             }
         }
         Ok(())
@@ -471,23 +455,29 @@ impl Draft {
         let end = offset
             .checked_add(removed)
             .ok_or(DomError::RepresentationExhausted)?;
-        for slot in 0..self.ranges.len() {
+        let participants = self.range_participants(node, cancel)?;
+        for id in participants.iter() {
             self.source_step(cancel)?;
-            if let Some(record) = &mut self.ranges[slot].record {
-                for point in [&mut record.start, &mut record.end] {
-                    if point.container != node || point.offset <= offset {
-                        continue;
-                    }
-                    point.offset = if point.offset <= end {
-                        offset
-                    } else {
-                        point
-                            .offset
-                            .checked_sub(removed)
-                            .and_then(|n| n.checked_add(inserted))
-                            .ok_or(DomError::RepresentationExhausted)?
-                    };
+            let mut record = self.range_record(id)?;
+            let old = record;
+            for point in [&mut record.start, &mut record.end] {
+                if point.container != node || point.offset <= offset {
+                    continue;
                 }
+                point.offset = if point.offset <= end {
+                    offset
+                } else {
+                    point
+                        .offset
+                        .checked_sub(removed)
+                        .and_then(|n| n.checked_add(inserted))
+                        .ok_or(DomError::RepresentationExhausted)?
+                };
+            }
+            if record != old {
+                self.replace_range_record(id, record, cancel)?;
+                #[cfg(test)]
+                maintenance_observation::wrote();
             }
         }
         Ok(())
@@ -497,40 +487,35 @@ impl Draft {
         node: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        for index in 0..self.ranges.len() {
+        let participants = self.range_participants(node, cancel)?;
+        for id in participants.iter() {
             self.source_step(cancel)?;
-            if self.ranges[index].record.is_some_and(|record| {
-                record.start.container == node || record.end.container == node
-            }) {
-                self.retire_range(
-                    DomRangeId {
-                        owner: self.store,
-                        slot: index,
-                        generation: self.ranges[index].generation,
-                    },
-                    cancel,
-                )?;
-            }
+            self.retire_range(id, cancel)?;
         }
         Ok(())
     }
     pub(super) fn has_live_ranges(&self, cancel: &AtomicBool) -> Result<bool, DomError> {
-        for slot in &self.ranges {
-            self.source_step(cancel)?;
-            if slot.record.is_some() {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        self.source_step(cancel)?;
+        Ok(self.counts.live_ranges != 0)
     }
     /// Shared by genuine Source exposure preflight and all final publication fronts.
     pub(super) fn range_publication_ready(&self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if self.ranges.is_empty() {
-            return Ok(());
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::Entered(
+                scale_metrics::Domain::Validation,
+            ));
         }
-        for slot in &self.ranges {
+        for (_, slot) in self.ranges.changed_records() {
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::ValidationRecordVisited);
+            }
             self.source_step(cancel)?;
-            let Some(record) = slot.record else {
+            let Some(record) = slot
+                .record
+                .map(|record| record.map(|key| self.live_key(key)))
+            else {
                 continue;
             };
             if record.start.offset > self.range_node_length(record.start.container)?
@@ -543,8 +528,48 @@ impl Draft {
                 return Err(DomError::RangePublicationUnavailable);
             }
         }
-        for node in self.existing.iter().chain(&self.created).flatten() {
+        Ok(())
+    }
+
+    /// The previous complete publication validator remains only as an oracle.
+    /// It intentionally ignores touched metadata and reverse-index summaries.
+    #[cfg(test)]
+    fn full_range_publication_ready(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        for index in 0..self.ranges.len() {
             self.source_step(cancel)?;
+            let Some(record) = self
+                .ranges
+                .slot(index)
+                .and_then(|slot| slot.record)
+                .map(|record| record.map(|key| self.live_key(key)))
+            else {
+                continue;
+            };
+            if record.start.offset > self.range_node_length(record.start.container)?
+                || record.end.offset > self.range_node_length(record.end.container)?
+                || !matches!(
+                    self.range_position(record.start, record.end, cancel)?,
+                    Some(Position::Less | Position::Equal)
+                )
+            {
+                return Err(DomError::RangePublicationUnavailable);
+            }
+        }
+        for (index, _) in self.base.slots.iter() {
+            self.source_step(cancel)?;
+            let Ok(key) = self.existing_key(index) else {
+                continue;
+            };
+            let Ok(node) = self.node(key) else { continue };
+            if let DomActiveRangeState::Known(Some(id)) = node.active_range {
+                self.range_record(id)?;
+            }
+        }
+        for index in 0..self.created.len() {
+            self.source_step(cancel)?;
+            let Ok(node) = self.node(Key::Created(index)) else {
+                continue;
+            };
             if let DomActiveRangeState::Known(Some(id)) = node.active_range {
                 self.range_record(id)?;
             }
@@ -638,9 +663,12 @@ mod tests {
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         // The owning counter boundary represents the state after repeated real
         // retire/reuse cycles; it supplies no tree or semantic observations.
-        draft.ranges[range.slot].generation = u64::MAX - 1;
-        draft.node_mut(Key::Existing(document.0.slot)).active_range =
-            DomActiveRangeState::Known(None);
+        draft
+            .set_active_range(Key::Existing(document.0), None, &cancel)
+            .unwrap();
+        let mut slot = draft.ranges.slot(range.slot).unwrap();
+        slot.generation = u64::MAX - 1;
+        draft.write_range(range.slot, slot, &cancel).unwrap();
         draft
             .retire_range(
                 DomRangeId {
@@ -651,20 +679,20 @@ mod tests {
             )
             .unwrap();
         draft
-            .create_range(Key::Existing(document.0.slot), 0, dom.limits, &cancel)
+            .create_range(Key::Existing(document.0), 0, dom.limits, &cancel)
             .unwrap();
         let last = draft.range_tickets[0];
         assert_eq!(last.generation, u64::MAX);
         draft.retire_range(last, &cancel).unwrap();
         assert_eq!(
-            draft.create_range(Key::Existing(document.0.slot), 1, dom.limits, &cancel),
+            draft.create_range(Key::Existing(document.0), 1, dom.limits, &cancel),
             Err(DomError::ResourceLimit {
                 resource: DomResource::Ranges,
                 limit: 1
             })
         );
-        assert!(draft.ranges[range.slot].retired);
-        assert_eq!(draft.ranges[range.slot].generation, u64::MAX);
+        assert!(draft.ranges.slot(range.slot).unwrap().retired);
+        assert_eq!(draft.ranges.slot(range.slot).unwrap().generation, u64::MAX);
         assert_eq!(draft.range_record(last), Err(DomError::StaleRange));
     }
 

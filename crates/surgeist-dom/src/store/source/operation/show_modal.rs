@@ -67,6 +67,7 @@ impl Operation {
             .ok_or(DomError::HostedSourceUnavailable)?
             .validate_issuer(watcher.global.source())
             .map_err(|_| DomError::HostedSourceUnavailable)?;
+        self.draft.source_prepare_dialog_reply(cancel)?;
         let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut() else {
             return Err(DomError::InvalidSourceOperation);
         };

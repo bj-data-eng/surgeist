@@ -130,13 +130,34 @@ impl Control<'_> {
             return Ok(());
         }
         let old = values.capacity();
+        #[cfg(test)]
+        let old_pointer = values.as_ptr();
         let bytes = (desired - old)
             .checked_mul(size_of::<T>())
             .ok_or(Error::RepresentationExhausted)?;
         self.retain(bytes)?;
+        #[cfg(test)]
+        let allocation_before = (values.as_ptr(), values.len(), values.capacity());
         values
             .try_reserve_exact(additional)
             .map_err(|_| Error::AllocationFailed)?;
+        #[cfg(test)]
+        {
+            if super::scale_metrics::ENABLED
+                && values.capacity() != allocation_before.2
+                && size_of::<T>() != 0
+            {
+                super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
+                    bytes: values.capacity() * size_of::<T>(),
+                });
+            }
+            if values.as_ptr() != allocation_before.0 {
+                let mut moved = crate::store::CopyObservation::default();
+                moved.extended::<T>(allocation_before.1);
+            }
+        }
+        #[cfg(test)]
+        scratch_observation::reallocated(old_pointer, values);
         let extra = (values.capacity() - desired)
             .checked_mul(size_of::<T>())
             .ok_or(Error::RepresentationExhausted)?;
@@ -144,6 +165,8 @@ impl Control<'_> {
     }
     fn release<T>(&mut self, values: Vec<T>) {
         self.bytes -= values.capacity() * size_of::<T>();
+        #[cfg(test)]
+        scratch_observation::released(&values);
         drop(values);
     }
     fn reserve_owned<T>(
@@ -183,9 +206,26 @@ impl Control<'_> {
                 self.cancel,
             )
             .map_err(Error::Target)?;
+        #[cfg(test)]
+        let allocation_before = (values.as_ptr(), values.len(), values.capacity());
         values
             .try_reserve_exact(additional)
             .map_err(|_| Error::AllocationFailed)?;
+        #[cfg(test)]
+        {
+            if super::scale_metrics::ENABLED
+                && values.capacity() != allocation_before.2
+                && size_of::<T>() != 0
+            {
+                super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
+                    bytes: values.capacity() * size_of::<T>(),
+                });
+            }
+            if values.as_ptr() != allocation_before.0 {
+                let mut moved = crate::store::CopyObservation::default();
+                moved.extended::<T>(allocation_before.1);
+            }
+        }
         let extra = (values.capacity() - desired)
             .checked_mul(size_of::<T>())
             .ok_or(Error::RepresentationExhausted)?;
@@ -207,6 +247,8 @@ impl Control<'_> {
         source: HtmlNodeId,
         key: Key,
     ) -> Result<(), Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         self.admit_node(rows.len())?;
         for row in rows.iter() {
             self.charge(1)?;
@@ -220,6 +262,8 @@ impl Control<'_> {
         self.charge(1)?;
         self.reserve_owned(draft, rows, payload, 1)?;
         rows.push(Row { source, key });
+        #[cfg(test)]
+        written.pushed::<Row>();
         Ok(())
     }
     fn admit_node(&self, previous: usize) -> Result<(), Error> {
@@ -288,6 +332,8 @@ impl Dom {
         budgets: Budgets,
         cancelled: &AtomicBool,
     ) -> Result<StagedInstallation, Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let Budgets {
             native: limits,
             source: source_limits,
@@ -329,7 +375,7 @@ impl Dom {
                 limits,
                 cancelled,
             )
-            .map(|(draft, _, _)| draft)
+            .map(|(draft, _)| draft)
             .map_err(Error::Target)?,
             None => Draft::new(self, Arc::new(BatchIdentity), cancelled).map_err(Error::Target)?,
         };
@@ -363,17 +409,19 @@ impl Dom {
         let mut pending = Vec::new();
         #[cfg(test)]
         let pending_growth =
-            staging_observation::before(&draft, &pending, pending_payload.is_some(), cancelled)
+            staging_observation::before(&mut draft, &pending, pending_payload.is_some(), cancelled)
                 .map_err(Error::Target)?;
         control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
         #[cfg(test)]
-        staging_observation::grew(pending_growth, &pending);
+        staging_observation::grew(pending_growth, &pending, &mut draft);
         pending.push(Visit {
             source: source_root.clone(),
             parent: None,
             existing: Some(wrapper),
             owner: None,
         });
+        #[cfg(test)]
+        written.pushed::<Visit>();
         let mut rows_payload = None;
         let mut rows = Vec::new();
         while let Some(visit) = pending.pop() {
@@ -567,7 +615,7 @@ impl Dom {
                 control.charge(1)?;
                 #[cfg(test)]
                 let pending_growth = staging_observation::before(
-                    &draft,
+                    &mut draft,
                     &pending,
                     pending_payload.is_some(),
                     cancelled,
@@ -575,13 +623,15 @@ impl Dom {
                 .map_err(Error::Target)?;
                 control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
                 #[cfg(test)]
-                staging_observation::grew(pending_growth, &pending);
+                staging_observation::grew(pending_growth, &pending, &mut draft);
                 pending.push(Visit {
                     source: child,
                     parent: Some(key),
                     existing: None,
                     owner: None,
                 });
+                #[cfg(test)]
+                written.pushed::<Visit>();
             }
             match (contents, contents_kind) {
                 (None, None) => {}
@@ -596,7 +646,7 @@ impl Dom {
                         })?;
                     #[cfg(test)]
                     let pending_growth = staging_observation::before(
-                        &draft,
+                        &mut draft,
                         &pending,
                         pending_payload.is_some(),
                         cancelled,
@@ -604,13 +654,15 @@ impl Dom {
                     .map_err(Error::Target)?;
                     control.reserve_owned(&draft, &mut pending, &mut pending_payload, 1)?;
                     #[cfg(test)]
-                    staging_observation::grew(pending_growth, &pending);
+                    staging_observation::grew(pending_growth, &pending, &mut draft);
                     pending.push(Visit {
                         source: contents,
                         parent: None,
                         existing: Some(target),
                         owner: Some(visit.source),
                     });
+                    #[cfg(test)]
+                    written.pushed::<Visit>();
                 }
                 _ => return Err(association(&visit.source, Association::TemplateOwnership)),
             }
@@ -646,6 +698,8 @@ impl Dom {
         limits: DomNativeHtmlInstallLimits,
         cancelled: &AtomicBool,
     ) -> Result<PreparedInstallation, Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let StagedInstallation {
             mut draft,
             continuation,
@@ -691,6 +745,8 @@ impl Dom {
         let (prepared, mapped) = draft
             .finish_with_mapping(self, cancelled, rows.iter().map(|row| row.key))
             .map_err(Error::Target)?;
+        #[cfg(test)]
+        scratch_observation::reallocated(std::ptr::null(), &mapped);
         let extra = mapped
             .capacity()
             .checked_sub(count)
@@ -706,6 +762,8 @@ impl Dom {
                 source: row.source.clone(),
                 node: *node,
             });
+            #[cfg(test)]
+            written.pushed::<DomNativeHtmlBinding>();
         }
         control.release(rows);
         control.release(mapped);
@@ -741,6 +799,62 @@ impl Dom {
 }
 
 #[cfg(test)]
+mod scratch_observation {
+    use std::{cell::RefCell, collections::BTreeMap, mem::size_of};
+    #[derive(Default)]
+    struct State {
+        buffers: BTreeMap<usize, usize>,
+        peak: usize,
+    }
+    thread_local! {
+        static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
+    }
+    pub(super) struct Binding;
+    impl Binding {
+        pub fn new() -> Self {
+            STATE.with(|state| assert!(state.replace(Some(State::default())).is_none()));
+            Self
+        }
+        pub fn peak(&self) -> usize {
+            STATE.with(|state| {
+                state
+                    .borrow()
+                    .as_ref()
+                    .expect("active scratch observation")
+                    .peak
+            })
+        }
+    }
+    impl Drop for Binding {
+        fn drop(&mut self) {
+            STATE.with(|state| {
+                state.borrow_mut().take();
+            });
+        }
+    }
+    pub(super) fn reallocated<T>(old: *const T, values: &Vec<T>) {
+        STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let Some(state) = state.as_mut() else { return };
+            state.buffers.remove(&(old as usize));
+            if values.capacity() != 0 {
+                state
+                    .buffers
+                    .insert(values.as_ptr() as usize, values.capacity() * size_of::<T>());
+            }
+            state.peak = state.peak.max(state.buffers.values().sum());
+        });
+    }
+    pub(super) fn released<T>(values: &[T]) {
+        STATE.with(|state| {
+            if let Some(state) = state.borrow_mut().as_mut() {
+                state.buffers.remove(&(values.as_ptr() as usize));
+            }
+        });
+    }
+}
+
+#[cfg(test)]
 mod staging_observation {
     use super::*;
     use std::cell::Cell;
@@ -762,7 +876,7 @@ mod staging_observation {
         LAST.take()
     }
     pub(super) fn before(
-        draft: &Draft,
+        draft: &mut Draft,
         pending: &Vec<Visit>,
         registered: bool,
         cancel: &AtomicBool,
@@ -770,6 +884,8 @@ mod staging_observation {
         if !ACTIVE.get() || pending.len() < pending.capacity() {
             return Ok(None);
         }
+        // Observe actual replacement custody under this original Source
+        // policy; the selected primitive's exact gate has its own test below.
         let Some(limits) = draft.source_limits else {
             return Ok(None);
         };
@@ -782,13 +898,12 @@ mod staging_observation {
             required: draft
                 .source_storage_bytes(cancel)?
                 .checked_add(draft.source_other_bytes)
-                .and_then(|n| n.checked_add(draft.source_formation_bytes.load(Ordering::Relaxed)))
                 .and_then(|n| n.checked_add(old))
                 .ok_or(DomError::RepresentationExhausted)?,
             limit: limits.retained_bytes,
         }))
     }
-    pub(super) fn grew(before: Option<Growth>, pending: &Vec<Visit>) {
+    pub(super) fn grew(before: Option<Growth>, pending: &Vec<Visit>, _draft: &mut Draft) {
         if let Some(mut before) = before {
             before.required += pending.capacity() * size_of::<Visit>();
             if LAST
@@ -888,25 +1003,113 @@ mod tests {
     #[test]
     fn source_native_staging_admits_actual_pending_replacement_before_allocation() {
         let high = actual_source_pending_growth(16_000_000).expect("real pending visit growth");
-        let exact = actual_source_pending_growth(high.required)
-            .expect("exact allowance reaches actual pending bank overlap");
-        assert_eq!(exact.required, high.required);
-        if let Some(actual) = actual_source_pending_growth(high.required - 1) {
-            assert!(
-                actual.required <= actual.limit,
-                "native staging banks retained {} bytes under {}",
-                actual.required,
-                actual.limit
-            );
-        }
+        assert!(high.required <= high.limit);
+    }
+
+    #[test]
+    fn source_pending_reserve_prices_the_actual_selected_overlap_exactly_and_refuses_one_short() {
+        let cancel = AtomicBool::new(false);
+        let (dom, document, _parent) = setup();
+        let source = source(false);
+        let mut draft = Draft::new_source(
+            &dom,
+            Arc::new(BatchIdentity),
+            &Vec::new(),
+            crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
+            &cancel,
+        )
+        .unwrap()
+        .0;
+        let wrapper = draft
+            .allocate(
+                DomNodeKind::DocumentFragment,
+                Key::Existing(document.node()),
+                dom.limits,
+                &cancel,
+            )
+            .unwrap();
+        let header = source::formation::Formation::new(&draft, &cancel).unwrap();
+        header
+            .as_ref()
+            .unwrap()
+            .retain_bytes(size_of::<Vec<Visit>>(), &cancel)
+            .unwrap();
+        let mut control = Control {
+            limits: DomNativeHtmlInstallLimits::new(16, 1_000_000, 65536),
+            work: 0,
+            bytes: 0,
+            cancel: &cancel,
+            source_work: None,
+        };
+        let mut pending = Vec::new();
+        let mut payload = None;
+        control
+            .reserve_owned(&draft, &mut pending, &mut payload, 1)
+            .unwrap();
+        pending.push(Visit {
+            source: source.root().id(),
+            parent: None,
+            existing: Some(wrapper),
+            owner: None,
+        });
+        assert_eq!(pending.capacity(), 1);
+        let before = draft.controlled_storage_usage(&cancel).unwrap();
+        let pointer = pending.as_ptr();
+        // This is the real reserve_owned producer. Its immutable Source parent
+        // and old one-row bank remain live while two replacement slots are
+        // admitted. No persistent State/index price is inferred from this test.
+        let exact = before.bytes() + draft.source_other_bytes + 2 * size_of::<Visit>();
+        draft.source_limits.as_mut().unwrap().retained_bytes = exact - 1;
+        let spent = draft.source_work.load(Ordering::Relaxed);
+        assert!(
+            matches!(control.reserve_owned(&draft, &mut pending, &mut payload, 1),
+            Err(Error::Target(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit })) if limit == exact - 1)
+        );
+        assert!(draft.source_work.load(Ordering::Relaxed) > spent);
+        assert_eq!(pending.as_ptr(), pointer);
+        assert_eq!(pending.capacity(), 1);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].source, source.root().id());
+        assert_eq!(draft.controlled_storage_usage(&cancel).unwrap(), before);
+        draft.source_limits.as_mut().unwrap().retained_bytes = exact;
+        control
+            .reserve_owned(&draft, &mut pending, &mut payload, 1)
+            .unwrap();
+        assert_eq!(pending.capacity(), 2);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].source, source.root().id());
+        assert_eq!(
+            draft.controlled_storage_usage(&cancel).unwrap().bytes(),
+            before.bytes() + size_of::<Visit>()
+        );
+        drop(pending);
+        drop(payload);
+        assert_eq!(
+            draft.controlled_storage_usage(&cancel).unwrap().bytes(),
+            before.bytes() - size_of::<Visit>()
+        );
+        drop(header);
     }
 
     #[test]
     fn empty_installation_admits_the_exact_retained_buffer_peak() {
-        // One pending visit and one row coexist. Later the row, exact final-ID
-        // output and binding coexist; no canonical Draft allocation is included.
-        let peak = (size_of::<Visit>() + size_of::<Row>())
-            .max(size_of::<Row>() + size_of::<NodeId>() + size_of::<DomNativeHtmlBinding>());
+        // Observe the actual retained capacities, including spare mapped-ID
+        // output capacity. The native scratch allowance excludes Draft custody.
+        let observation = scratch_observation::Binding::new();
+        let (mut dom, document, parent) = setup();
+        let basis = dom.snapshot().document(document).unwrap().stamp();
+        dom.install_native_html_fragment(
+            basis,
+            parent,
+            None,
+            &source(false),
+            DomNativeHtmlInstallLimits::new(1, 9, 65536),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let peak = observation.peak();
+        drop(observation);
+        assert!(peak >= size_of::<Visit>() + size_of::<Row>());
         for (bytes, succeeds) in [(peak - 1, false), (peak, true)] {
             let (mut dom, document, parent) = setup();
             let before = dom.snapshot();

@@ -79,7 +79,7 @@ impl Draft {
                 Action::ReadAlreadyStarted => Reply::AlreadyStarted(state.flags.already_started()),
                 Action::SaveAndClearParserDocument => {
                     saved_document = state.parser_document.take();
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::ParserDocumentSaved(saved_document.is_some())
                 }
                 Action::ReadAsyncPresence => Reply::AsyncPresent(
@@ -88,14 +88,14 @@ impl Draft {
                 ),
                 Action::SetForceAsync => {
                     state.flags.parser_document_cleared_without_async();
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::Applied
                 }
                 Action::ReadChildTextEmpty => {
                     let mut empty = true;
-                    for child in &self.node(node)?.children {
+                    for child in self.node(node)?.children.iter() {
                         check_cancel(cancel)?;
-                        if let DomNodeKind::Text(text) = &self.node(*child)?.kind
+                        if let DomNodeKind::Text(text) = &self.node(child)?.kind
                             && !text.is_empty()
                         {
                             empty = false;
@@ -112,23 +112,23 @@ impl Draft {
                 Action::ClassifyType => Reply::Classified(self.script_kind(node, cancel)?),
                 Action::StoreType(kind) => {
                     state.kind = Some(kind);
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::Applied
                 }
                 Action::RestoreParserDocument => {
                     state.parser_document = saved_document.take();
                     state.flags.parser_document_restored();
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::Applied
                 }
                 Action::MarkAlreadyStarted => {
                     state.flags.mark_already_started();
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::Applied
                 }
                 Action::StorePreparationDocument => {
                     state.preparation_document = Some(self.node(node)?.document);
-                    self.node_mut(node).script = Some(state);
+                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
                     Reply::Applied
                 }
                 Action::CompareDocuments => {
@@ -182,12 +182,14 @@ impl Draft {
             && !old_present
             && attribute_name_is(name, KnownHtmlAttribute::Async.local_name())
         {
-            self.node_mut(node)
-                .script
-                .as_mut()
-                .expect("actual Script")
-                .flags
-                .async_attribute_added();
+            self.with_node_fields(node, cancel, |fields| {
+                fields
+                    .script
+                    .as_mut()
+                    .expect("actual Script")
+                    .flags
+                    .async_attribute_added()
+            })?;
         }
         if !removed
             && attribute_name_is(name, KnownHtmlAttribute::Src.local_name())

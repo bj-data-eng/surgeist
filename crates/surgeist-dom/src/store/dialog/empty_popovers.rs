@@ -39,17 +39,16 @@ impl Draft {
         if !matches!(&node.kind, DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        let Some(DocumentInteractiveState::Known { top_layer, .. }) =
-            node.interactive_document.as_ref()
+        let Some(transaction::InteractiveRead::Known { top_layer, .. }) = node.interactive_document
         else {
             return Ok(false);
         };
         // The Auto/Hint lists filter actual showing popovers. Current admitted
         // HTML common state proves hidden independently of authored popover text;
         // ordinary raw modal Dialogs therefore do not enter either showing list.
-        for member in top_layer {
+        for member in top_layer.iter() {
             self.source_step(cancel)?;
-            let element = self.element(*member)?;
+            let element = self.element(member)?;
             if element
                 .common_state()
                 .html()

@@ -94,8 +94,14 @@ fn publish_attributes(
     if let Some(budget) = budget {
         budget.retain_bytes(size_of::<Vec<Attribute>>(), cancel)?;
     }
-    let mut validation =
-        HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes)).validate();
+    let attributes = Arc::new(attributes);
+    #[cfg(test)]
+    if super::scale_metrics::ENABLED {
+        super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
+            bytes: size_of::<Vec<Attribute>>(),
+        });
+    }
+    let mut validation = HtmlAttributeStorage::from_shared_attributes(attributes).validate();
     loop {
         source::formation::step(budget, cancel)?;
         let Some(action) = validation.next_action().expect("unique expanded names") else {
@@ -231,12 +237,10 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
         let value = retain_string(value, candidate.as_ref(), cancelled)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
-            unreachable!("checked Element");
-        };
-        element.set_nonce(value);
+        self.with_element_fields_formed(node, cancelled, candidate, |element| {
+            element.set_nonce(value)
+        })?;
         self.units = units;
-        drop(candidate);
         Ok(())
     }
     pub(super) fn set_attribute(
@@ -351,6 +355,8 @@ impl Draft {
         let value = write.value;
         let cause = write.cause;
         check_cancel(cancelled)?;
+        #[cfg(test)]
+        transaction::queues::admission_observation::before_payload(self);
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
@@ -407,6 +413,8 @@ impl Draft {
             retain_string(value, candidate.as_ref(), cancelled)?,
         );
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
+        #[cfg(test)]
+        let mut attribute_writes = crate::store::CopyObservation::default();
         let mut attributes = Vec::new();
         source::formation::reserve(
             &mut attributes,
@@ -424,12 +432,18 @@ impl Draft {
                 retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
             );
             attributes.push(copied);
+            #[cfg(test)]
+            attribute_writes.pushed::<Attribute>();
         }
         if let Some(position) = position {
             attributes.insert(position, replacement);
+            #[cfg(test)]
+            attribute_writes.extended::<Attribute>(attributes.len() - position);
         } else {
             source::formation::reserve(&mut attributes, 1, candidate.as_ref(), cancelled)?;
             attributes.push(replacement);
+            #[cfg(test)]
+            attribute_writes.pushed::<Attribute>();
         }
         let attributes = publish_attributes(attributes, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
@@ -446,9 +460,13 @@ impl Draft {
             candidate.as_ref(),
             cancelled,
         )?;
-        self.publish_element(node, old_units, staged, limits)?;
-        drop(candidate);
-        drop(write.name_formation);
+        if let Some(name_formation) = write.name_formation {
+            candidate
+                .as_ref()
+                .expect("same Source payload producer")
+                .absorb(name_formation);
+        }
+        self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
         #[cfg(test)]
         attribute_copy_observation::hooks(
             &changed,
@@ -498,7 +516,7 @@ impl Draft {
             new_value.is_none(),
             cancelled,
         )?;
-        self.reflected_attribute_change(node, changed);
+        self.reflected_attribute_change(node, changed, cancelled)?;
         self.slot_attribute(node, changed, old_value, limits, cancelled)?;
         self.control_attribute_change(node, changed, old_value, cancelled)?;
         self.select_attribute(node, changed, change, limits, cancelled)?;
@@ -557,6 +575,8 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        #[cfg(test)]
+        transaction::queues::admission_observation::before_payload(self);
         let DomNodeKind::Element(element) = &self.node(node)?.kind else {
             return Err(DomError::WrongNodeKind);
         };
@@ -594,6 +614,8 @@ impl Draft {
         }
         let nonce_value = surgeist_html::nonce_attribute_change(element.name(), &changed, None);
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
+        #[cfg(test)]
+        let mut attribute_writes = crate::store::CopyObservation::default();
         let mut attributes = Vec::new();
         source::formation::reserve(
             &mut attributes,
@@ -610,6 +632,8 @@ impl Draft {
                 retain_name(attribute.name(), candidate.as_ref(), cancelled)?,
                 retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
             ));
+            #[cfg(test)]
+            attribute_writes.pushed::<Attribute>();
         }
         let attributes = publish_attributes(attributes, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
@@ -626,8 +650,7 @@ impl Draft {
             candidate.as_ref(),
             cancelled,
         )?;
-        self.publish_element(node, old_units, staged, limits)?;
-        drop(candidate);
+        self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
         #[cfg(test)]
         attribute_copy_observation::hooks(&changed, Some(&old_value), None, self);
         let result = self.attribute_hooks(
@@ -651,13 +674,31 @@ impl Draft {
         node: Key,
         old_units: usize,
         staged: DomElement,
+        formation: Option<source::formation::Formation>,
         limits: DomLimits,
+        cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
+        struct Candidate {
+            value: DomElement,
+            formation: Option<source::formation::Formation>,
+        }
+        let candidate = Candidate {
+            value: staged,
+            formation,
+        };
         let units = (self.units - old_units)
-            .checked_add(staged.units().ok_or(DomError::RepresentationExhausted)?)
+            .checked_add(
+                candidate
+                    .value
+                    .units()
+                    .ok_or(DomError::RepresentationExhausted)?,
+            )
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        self.node_mut(node).kind = DomNodeKind::Element(staged);
+        let Candidate { value, formation } = candidate;
+        self.with_node_fields_formed(node, cancelled, formation, |fields| {
+            fields.kind = DomNodeKind::Element(value)
+        })?;
         self.units = units;
         Ok(())
     }
@@ -701,13 +742,19 @@ mod attribute_copy_observation {
     thread_local! {
         static ACTIVE: Cell<bool> = const { Cell::new(false) };
         static LAST: Cell<Option<Boundary>> = const { Cell::new(None) };
+        static CANCEL_AFTER_COPY: Cell<bool> = const { Cell::new(false) };
     }
     pub(super) fn start() {
         ACTIVE.set(true);
         LAST.set(None);
+        CANCEL_AFTER_COPY.set(false);
+    }
+    pub(super) fn stop_after_copy() {
+        CANCEL_AFTER_COPY.set(true);
     }
     pub(super) fn finish() -> Option<Boundary> {
         ACTIVE.set(false);
+        CANCEL_AFTER_COPY.set(false);
         LAST.take()
     }
     pub(super) fn before(
@@ -740,9 +787,7 @@ mod attribute_copy_observation {
             }
         }
         Ok(Some(Boundary {
-            required: draft.source_storage_bytes(cancel)?
-                + draft.source_other_bytes
-                + draft.source_formation_bytes.load(Ordering::Relaxed)
+            required: draft.source_storage_bytes(cancel)? + draft.source_other_bytes
                 - registered_bytes,
             limit: limits.retained_bytes,
             admitted: 0,
@@ -778,13 +823,16 @@ mod attribute_copy_observation {
                         + string.shared_code_units().capacity() * size_of::<u16>();
                 }
             }
-            boundary.admitted = draft.source_storage_bytes(cancel)?
-                + draft.source_other_bytes
-                + draft.source_formation_bytes.load(Ordering::Relaxed);
-            boundary.admitted_units = draft.source_storage_units(cancel)?
-                + draft.source_other_units
-                + draft.source_temporary_units.load(Ordering::Relaxed);
+            boundary.admitted = draft.source_storage_bytes(cancel)? + draft.source_other_bytes;
+            boundary.admitted_units =
+                draft.source_storage_units(cancel)? + draft.source_other_units;
             LAST.set(Some(boundary));
+            if CANCEL_AFTER_COPY.get() {
+                // Stop at the actual completed copy, before its Formation is
+                // reused by the separate element/family publication tail.
+                cancel.store(true, Ordering::Release);
+                check_cancel(cancel)?;
+            }
         }
         Ok(())
     }
@@ -825,11 +873,67 @@ mod attribute_copy_observation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn copied_additional(
+        element: &DomElement,
+        remove: bool,
+        new: &DocumentString,
+    ) -> custody::Usage {
+        fn string(value: &DocumentString, bytes: &mut usize, units: &mut usize) {
+            let capacity = value.shared_code_units().capacity();
+            *bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
+            *units += capacity;
+        }
+        fn name(value: &QualifiedName, bytes: &mut usize, units: &mut usize) {
+            for value in [
+                value.namespace().uri(),
+                value.prefix(),
+                Some(value.local_name()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                string(value, bytes, units);
+            }
+        }
+        let attributes = element.attributes();
+        let last = attributes.as_slice().last().unwrap();
+        // The replacement requests the existing length; old spare capacity
+        // belongs to the already-live bank and is not copied into the new one.
+        let mut bytes = size_of::<Vec<Attribute>>() + std::mem::size_of_val(attributes.as_slice());
+        let mut units = 0;
+        // nonce_after_effect retains the existing nonce before copying the
+        // bank. Some(empty) still owns one shared Vec target header.
+        if let Some(nonce) = element.nonce() {
+            string(nonce, &mut bytes, &mut units);
+        }
+        for attribute in &attributes.as_slice()[..attributes.as_slice().len() - 1] {
+            name(attribute.name(), &mut bytes, &mut units);
+            string(attribute.value(), &mut bytes, &mut units);
+        }
+        // Hook QName/old value and candidate strings are separate occurrences.
+        // A replacement QName is already live at write_attribute entry.
+        name(last.name(), &mut bytes, &mut units);
+        string(last.value(), &mut bytes, &mut units);
+        if !remove {
+            string(new, &mut bytes, &mut units);
+            string(new, &mut bytes, &mut units);
+        }
+        custody::Usage::new(bytes, units)
+    }
     fn actual_attribute_copy_with(
         bytes: usize,
         units: usize,
         append: bool,
         remove: bool,
+    ) -> Option<attribute_copy_observation::Boundary> {
+        actual_attribute_copy_selected_with(bytes, units, append, remove, None)
+    }
+    fn actual_attribute_copy_selected_with(
+        bytes: usize,
+        units: usize,
+        append: bool,
+        remove: bool,
+        selected: Option<(DomResource, bool)>,
     ) -> Option<attribute_copy_observation::Boundary> {
         let cancel = AtomicBool::new(false);
         let mut dom =
@@ -849,21 +953,79 @@ mod tests {
         let commit = dom.apply(setup, &cancel).unwrap();
         let element = commit.created(&element).unwrap().unwrap();
         let before = dom.snapshot();
+        assert_eq!(
+            before.node(element).unwrap().as_element().unwrap().nonce(),
+            Some(&DocumentString::default())
+        );
+        let new_value = DocumentString::from("new");
+        let additional = copied_additional(
+            before.node(element).unwrap().as_element().unwrap(),
+            remove,
+            &new_value,
+        );
         let mut batch = DomBatch::new();
         if remove {
             batch.remove_attribute(element, "data-31");
         } else {
-            batch.set_attribute(element, if append { "data-new" } else { "data-31" }, "new");
+            batch.set_attribute(
+                element,
+                if append { "data-new" } else { "data-31" },
+                new_value,
+            );
         }
         let limits = crate::DomSourceLimits::new(bytes, units, 10_000_000, 64, 4096, 4096, 1);
         let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
             return None;
         };
+        let boundary = selected.map(|(resource, short)| {
+            transaction::queues::admission_observation::Binding::payload(
+                additional, resource, short,
+            )
+        });
         attribute_copy_observation::start();
+        if selected.is_some() {
+            attribute_copy_observation::stop_after_copy();
+        }
         let result = lease.advance(&cancel);
         let observed = attribute_copy_observation::finish();
+        if let Some(boundary) = boundary {
+            let limit = boundary.limit();
+            let (resource, short) = selected.unwrap();
+            if short {
+                assert!(
+                    matches!(&result, Err(DomError::ResourceLimit { resource: actual, limit: actual_limit }) if *actual == resource && *actual_limit == limit),
+                    "selected {resource:?} limit {limit}, actual {:?}",
+                    result.as_ref().err()
+                );
+                assert!(
+                    observed.is_none(),
+                    "one short stops before the completed copy"
+                );
+            } else {
+                assert!(
+                    matches!(result, Err(DomError::Cancelled)),
+                    "exact selected copy reaches the deliberate post-copy cancellation: {:?}",
+                    result.as_ref().err()
+                );
+                assert!(
+                    observed.is_some(),
+                    "the real raw copy completed before cancellation"
+                );
+            }
+            drop(boundary);
+        }
         if result.is_err() {
-            assert_eq!(lease.snapshot().stamp(), before.stamp());
+            let restored = lease.snapshot();
+            assert_eq!(restored.stamp(), before.stamp());
+            assert_eq!(*restored.state, *before.state);
+            let node = restored.node(element).unwrap();
+            let attributes = node.as_element().unwrap().attributes();
+            assert_eq!(attributes.as_slice().len(), 32);
+            assert_eq!(attributes.as_slice()[31].value().code_units(), &[0xd800]);
+            assert_eq!(
+                node.as_element().unwrap().nonce(),
+                Some(&DocumentString::default())
+            );
         }
         observed
     }
@@ -883,21 +1045,30 @@ mod tests {
         }
     }
     fn assert_copy_envelope(remove: bool) {
-        let high =
-            actual_attribute_copy_with(64_000_000, 10_000_000, false, remove).expect("actual copy");
-        let exact = actual_attribute_copy_with(high.admitted, high.admitted_units, false, remove)
-            .expect("exact copy envelope is reachable");
-        assert!(exact.required <= exact.limit);
-        assert!(
-            actual_attribute_copy_with(high.admitted - 1, high.admitted_units, false, remove)
-                .is_none(),
-            "one byte short must stop before copy"
-        );
-        assert!(
-            actual_attribute_copy_with(high.admitted, high.admitted_units - 1, false, remove)
-                .is_none(),
-            "one UTF16 unit short must stop before copy"
-        );
+        for resource in [
+            DomResource::SourceRetainedBytes,
+            DomResource::SourceRetainedUnits,
+        ] {
+            let exact = actual_attribute_copy_selected_with(
+                64_000_000,
+                10_000_000,
+                false,
+                remove,
+                Some((resource, false)),
+            )
+            .expect("exact selected copy is reachable");
+            assert!(exact.required <= exact.limit);
+            assert!(
+                actual_attribute_copy_selected_with(
+                    64_000_000,
+                    10_000_000,
+                    false,
+                    remove,
+                    Some((resource, true))
+                )
+                .is_none()
+            );
+        }
     }
     fn assert_hook_lifetime(remove: bool) {
         let actual = actual_attribute_copy_with(64_000_000, 10_000_000, false, remove)
@@ -912,7 +1083,7 @@ mod tests {
         );
     }
     #[test]
-    fn source_replacement_copy_has_exact_byte_and_utf16_boundaries() {
+    fn source_replacement_raw_copy_has_exact_byte_and_utf16_boundaries() {
         assert_copy_envelope(false);
     }
     #[test]
@@ -1043,7 +1214,7 @@ mod dialog_tail_tests {
         let batch = DomBatch::new();
         let limits =
             crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-        let (mut draft, _, _) =
+        let (mut draft, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let key = draft.resolve(dialog.into()).unwrap();
         let attribute = &draft.element(key).unwrap().attributes().as_slice()[0];

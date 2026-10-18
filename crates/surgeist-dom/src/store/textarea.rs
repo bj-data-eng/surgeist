@@ -3,23 +3,35 @@ use super::*;
 
 impl Draft {
     pub(super) fn textarea_state(&self, key: Key) -> Result<&crate::DomTextareaState, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let DomNodeKind::Element(element) = self.node(key)?.kind else {
             return Err(DomError::TextareaInapplicable);
         };
         element
             .textarea_state()
             .ok_or(DomError::TextareaInapplicable)
     }
-    fn textarea_state_mut(
+    fn with_textarea_state<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
-    ) -> Result<&mut crate::DomTextareaState, DomError> {
+        edit: impl FnOnce(&mut crate::DomTextareaState) -> R,
+    ) -> Result<R, DomError> {
         self.prepare_family_mutation(key, cancel)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked Textarea")
-        };
-        Ok(element.textarea_state_mut().expect("checked Textarea"))
+        self.with_element_fields(key, cancel, |element| {
+            edit(element.textarea_state_mut().expect("checked Textarea"))
+        })
+    }
+    fn with_textarea_state_charged<R>(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+        payload: Option<source::checkpoint::Charge>,
+        edit: impl FnOnce(&mut crate::DomTextareaState) -> R,
+    ) -> Result<R, DomError> {
+        self.prepare_family_mutation(key, cancel)?;
+        self.with_element_fields_charged(key, cancel, payload, |element| {
+            edit(element.textarea_state_mut().expect("checked Textarea"))
+        })
     }
     fn textarea_put_raw(
         &mut self,
@@ -29,12 +41,21 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        struct Raw {
+            value: DocumentString,
+            payload: Option<source::checkpoint::Charge>,
+        }
+        let raw = Raw {
+            value: raw,
+            payload,
+        };
         let units = (self.units - self.textarea_state(key)?.raw.len())
-            .checked_add(raw.len())
+            .checked_add(raw.value.len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let length =
-            crate::textarea::normalized_length(raw.code_units(), &mut || self.source_step(cancel))?;
+        let length = crate::textarea::normalized_length(raw.value.code_units(), &mut || {
+            self.source_step(cancel)
+        })?;
         let platform = self
             .document_metadata(self.node(key)?.document)?
             .document_environment()
@@ -43,11 +64,15 @@ impl Draft {
             .textarea_state(key)?
             .selection
             .clamp(length, platform.empty_selection());
-        let state = self.textarea_state_mut(key, cancel)?;
-        state.selection = selection;
-        state.raw = raw;
+        let Raw {
+            value: raw,
+            payload,
+        } = raw;
+        self.with_textarea_state_charged(key, cancel, payload, |state| {
+            state.selection = selection;
+            state.raw = raw;
+        })?;
         self.units = units;
-        drop(payload); // The canonical Draft family owns the actual raw occurrence.
         Ok(())
     }
     fn textarea_child_text(
@@ -57,9 +82,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(DocumentString, Option<source::checkpoint::Charge>), DomError> {
         let mut length = 0usize;
-        for child in &self.node(key)?.children {
+        for child in self.node(key)?.children.iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Text(text) = &self.node(*child)?.kind {
+            if let DomNodeKind::Text(text) = &self.node(child)?.kind {
                 length = length
                     .checked_add(text.len())
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -70,13 +95,17 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let formation = source::formation::Formation::new(self, cancel)?;
+        #[cfg(test)]
+        let mut output_writes = crate::store::CopyObservation::default();
         let mut output = crate::textarea::output(length, limits.units, formation.as_ref(), cancel)?;
-        for child in &self.node(key)?.children {
+        for child in self.node(key)?.children.iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Text(text) = &self.node(*child)?.kind {
+            if let DomNodeKind::Text(text) = &self.node(child)?.kind {
                 for unit in text.code_units() {
                     self.source_step(cancel)?;
                     output.push(*unit);
+                    #[cfg(test)]
+                    output_writes.pushed::<u16>();
                 }
             }
         }
@@ -136,9 +165,7 @@ impl Draft {
         );
         let (raw, payload) = source::formation::shared_string(self, raw, cancel)?;
         self.textarea_put_raw(key, raw, payload, limits, cancel)?;
-        self.textarea_state_mut(key, cancel)?
-            .flags
-            .mark_dirty_value();
+        self.with_textarea_state(key, cancel, |state| state.flags.mark_dirty_value())?;
         let current = &self.textarea_state(key)?.raw;
         let new_api_formation = source::formation::Formation::new(self, cancel)?;
         let new_api = crate::textarea::normalized_value(
@@ -165,12 +192,13 @@ impl Draft {
                 .document_metadata(self.node(key)?.document)?
                 .document_environment()
                 .input_platform();
-            self.textarea_state_mut(key, cancel)?.selection =
-                surgeist_html::HtmlInputSelection::cursor(
+            self.with_textarea_state(key, cancel, |state| {
+                state.selection = surgeist_html::HtmlInputSelection::cursor(
                     new_api.len(),
                     surgeist_html::HtmlInputSelectionDirection::None
                         .resolve_none(platform.none_direction()),
-                );
+                )
+            })?;
         }
         drop(new_api);
         drop(new_api_formation);
@@ -197,7 +225,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         check_cancel(cancel)?;
         self.textarea_state(key)?;
-        self.textarea_state_mut(key, cancel)?.flags.reset();
+        self.with_textarea_state(key, cancel, |state| state.flags.reset())?;
         let (raw, payload) = self.textarea_child_text(key, limits, cancel)?;
         self.textarea_put_raw(key, raw, payload, limits, cancel)
     }
@@ -213,11 +241,11 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let (raw, payload) = source::formation::shared_string(self, &original.raw, cancel)?;
-        let state = self.textarea_state_mut(key, cancel)?;
-        state.flags.clone_dirty_value_from(&original.flags);
-        state.raw = raw;
+        self.with_textarea_state_charged(key, cancel, payload, |state| {
+            state.flags.clone_dirty_value_from(&original.flags);
+            state.raw = raw;
+        })?;
         self.units = units;
-        drop(payload);
         Ok(())
     }
 }
@@ -229,6 +257,47 @@ mod tests {
         HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
         HtmlInputSelection, HtmlInputSelectionDirection as Direction, HtmlTextareaFlags,
     };
+
+    #[test]
+    fn normalized_text_reports_completed_units_and_the_prefix_before_refusal() {
+        use super::super::scale_metrics::{Hooks, Measurement};
+        if !super::super::scale_metrics::ENABLED {
+            return;
+        }
+        let cancel = AtomicBool::new(false);
+        let raw = [u16::from(b'a'), 13, 10, u16::from(b'b')];
+        let observation = Measurement::begin().unwrap();
+        let normalized =
+            crate::textarea::normalized_value(&raw, 16, &mut || Ok(()), None, &cancel).unwrap();
+        let counters = observation.finish(Hooks::default()).unwrap();
+        assert_eq!(
+            normalized.code_units(),
+            &[u16::from(b'a'), 10, u16::from(b'b')]
+        );
+        assert_eq!(counters.sequence_materialized_bytes, 3 * size_of::<u16>());
+
+        let observation = Measurement::begin().unwrap();
+        let mut steps = 0;
+        let refused = crate::textarea::normalized_value(
+            &raw,
+            16,
+            &mut || {
+                steps += 1;
+                // Four length reads, one allocation boundary, then the first
+                // unit's read/write. Refuse before the second unit is copied.
+                if steps == 8 {
+                    Err(DomError::Cancelled)
+                } else {
+                    Ok(())
+                }
+            },
+            None,
+            &cancel,
+        );
+        assert_eq!(refused, Err(DomError::Cancelled));
+        let counters = observation.finish(Hooks::default()).unwrap();
+        assert_eq!(counters.sequence_materialized_bytes, size_of::<u16>());
+    }
 
     #[test]
     fn normalized_setter_finish_replaces_a_surviving_range_and_child_clamp_preserves_direction() {
@@ -252,8 +321,12 @@ mod tests {
                 let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
                 let key = draft.resolve(textarea.into()).unwrap();
                 // A source-valid established range spans API offsets, not raw CRLF.
-                draft.textarea_state_mut(key, &cancel).unwrap().selection =
-                    HtmlInputSelection::selection(1, 3, Direction::Backward).unwrap();
+                draft
+                    .with_textarea_state(key, &cancel, |state| {
+                        state.selection =
+                            HtmlInputSelection::selection(1, 3, Direction::Backward).unwrap()
+                    })
+                    .unwrap();
                 draft
                     .set_textarea_value(key, &"A\nBC".into(), dom.limits, &cancel)
                     .unwrap();
@@ -278,8 +351,11 @@ mod tests {
                         Direction::Forward
                     }
                 );
-                draft.textarea_state_mut(key, &cancel).unwrap().flags =
-                    HtmlTextareaFlags::new(true, true);
+                draft
+                    .with_textarea_state(key, &cancel, |state| {
+                        state.flags = HtmlTextareaFlags::new(true, true)
+                    })
+                    .unwrap();
                 draft.reset_textarea(key, dom.limits, &cancel).unwrap();
                 assert_eq!(
                     draft.textarea_state(key).unwrap().flags,
@@ -289,8 +365,12 @@ mod tests {
                     draft.textarea_state(key).unwrap().control.message,
                     DocumentString::from("error")
                 );
-                draft.textarea_state_mut(key, &cancel).unwrap().selection =
-                    HtmlInputSelection::selection(2, 4, Direction::Backward).unwrap();
+                draft
+                    .with_textarea_state(key, &cancel, |state| {
+                        state.selection =
+                            HtmlInputSelection::selection(2, 4, Direction::Backward).unwrap()
+                    })
+                    .unwrap();
                 draft
                     .apply(
                         &Command::ReplaceData {

@@ -371,6 +371,7 @@ impl WorkObservation {
 #[derive(Debug)]
 pub(crate) struct Work {
     pub(crate) spent: Arc<AtomicU64>,
+    pub(crate) spent_id: crate::store::SourceWorkIdentity,
     limit: Arc<AtomicU64>,
     _retained: Option<Retained>,
 }
@@ -691,12 +692,15 @@ impl DomHostedSource {
         Ok(self.limits.retained_bytes - self.shared.bytes.load(Ordering::Relaxed))
     }
     pub(crate) fn work(&self, cancel: &AtomicBool) -> Result<Arc<Work>, DomHostedError> {
+        let spent_id = crate::store::SourceWorkIdentity::fresh()
+            .map_err(|_| DomHostedError::RepresentationExhausted)?;
         let retained = self.retain(
             std::mem::size_of::<Work>() + 2 * std::mem::size_of::<AtomicU64>(),
             cancel,
         )?;
         Ok(Arc::new(Work {
             spent: Arc::new(AtomicU64::new(0)),
+            spent_id,
             limit: Arc::new(AtomicU64::new(self.limits.work)),
             _retained: Some(retained),
         }))

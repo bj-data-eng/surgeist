@@ -10,6 +10,8 @@ use surgeist_html::{
     HtmlMarqueeState, KnownHtmlElement,
 };
 mod family;
+#[cfg(test)]
+mod tests;
 pub(crate) use family::{IframeState, NativeFamily};
 
 /// Definition association established by this native generic creation surface.
@@ -21,10 +23,11 @@ pub enum DomElementDefinition {
 
 /// Canonical supported native Element state, captured with its owner and tree.
 /// Private fields prevent bypassing name validation and native initialization.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DomElement {
     name: QualifiedName,
     attributes: OrderedAttributes,
+    attribute_receipt: AttributeReceipt,
     registry: DomRegistryBinding,
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
@@ -38,7 +41,76 @@ pub struct DomElement {
     keyboard_lock: bool,
 }
 
+/// Derived from one immutable attribute backing, including its spare capacity.
+/// Overflow stays deferred to the same logical/storage admission boundaries.
+#[derive(Clone, Copy, Debug)]
+struct AttributeReceipt {
+    logical_units: Option<usize>,
+    retained: Option<(usize, usize)>,
+}
+impl AttributeReceipt {
+    fn new(
+        attributes: &OrderedAttributes,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        use crate::store::source::storage::Payload;
+        let mut logical_units = Some(0_usize);
+        let mut payload = Payload::default();
+        let mut retained = payload
+            .add_bytes(std::mem::size_of::<Vec<crate::Attribute>>())
+            .and_then(|()| {
+                payload.bank::<crate::Attribute>(attributes.shared_attributes().capacity())
+            })
+            .ok()
+            .map(|()| payload);
+        for attribute in attributes.iter() {
+            step()?;
+            logical_units = logical_units.and_then(|units| {
+                units
+                    .checked_add(name_units(attribute.name())?)?
+                    .checked_add(attribute.value().len())
+            });
+            retained = retained.and_then(|mut payload| {
+                payload.name(attribute.name()).ok()?;
+                payload.string(attribute.value()).ok()?;
+                Some(payload)
+            });
+        }
+        Ok(Self {
+            logical_units,
+            retained: retained.map(|payload| (payload.bytes, payload.units)),
+        })
+    }
+}
+impl PartialEq for DomElement {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.attributes == other.attributes
+            && self.registry == other.registry
+            && self.definition == other.definition
+            && self.custom_state == other.custom_state
+            && self.saved_is == other.saved_is
+            && self.common == other.common
+            && self.nonce == other.nonce
+            && self.family == other.family
+            && self.content_navigable == other.content_navigable
+            && self.captured_in_view_transition == other.captured_in_view_transition
+            && self.fullscreen == other.fullscreen
+            && self.keyboard_lock == other.keyboard_lock
+    }
+}
+impl Eq for DomElement {}
+
 impl DomElement {
+    pub(crate) fn attributes_payload(
+        &self,
+    ) -> Result<crate::store::source::storage::Payload, DomError> {
+        let (bytes, units) = self
+            .attribute_receipt
+            .retained
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(crate::store::source::storage::Payload { bytes, units })
+    }
     pub(crate) fn retained_payload(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
@@ -56,9 +128,12 @@ impl DomElement {
         family: NativeFamily,
         common: HtmlCommonState<crate::NodeId>,
     ) -> Self {
+        let attribute_receipt = AttributeReceipt::new(&attributes, || Ok(()))
+            .expect("attribute receipt callback is infallible");
         Self {
             name,
             attributes,
+            attribute_receipt,
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
             custom_state,
@@ -204,9 +279,12 @@ impl DomElement {
             budget,
             cancel,
         )?;
+        let attribute_receipt =
+            AttributeReceipt::new(&attributes, || formation::step(budget, cancel))?;
         Ok(Self {
             name,
             attributes,
+            attribute_receipt,
             registry: self.registry,
             definition: self.definition,
             custom_state: self.custom_state,
@@ -375,9 +453,13 @@ impl DomElement {
                     |_| formation::step(budget, cancelled),
                 )?
                 .is_ok());
+        let attributes = OrderedAttributes::default();
+        let attribute_receipt = AttributeReceipt::new(&attributes, || Ok(()))
+            .expect("empty attribute receipt callback is infallible");
         Ok(Self {
             name,
-            attributes: OrderedAttributes::default(),
+            attributes,
+            attribute_receipt,
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
             custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
@@ -441,23 +523,23 @@ impl DomElement {
     pub(crate) fn make_family_unique(&mut self) {
         match &mut self.family {
             NativeFamily::Input(state) => {
-                std::sync::Arc::make_mut(state);
+                formation::make_arc_mut(state);
             }
             NativeFamily::Textarea(state) => {
-                std::sync::Arc::make_mut(state);
+                formation::make_arc_mut(state);
             }
             NativeFamily::Output(state) => {
-                std::sync::Arc::make_mut(state);
+                formation::make_arc_mut(state);
             }
             NativeFamily::Select(state) => {
-                std::sync::Arc::make_mut(state);
+                formation::make_arc_mut(state);
             }
             _ => {}
         }
     }
     pub(crate) fn input_state_mut(&mut self) -> Option<&mut crate::DomInputState> {
         match &mut self.family {
-            NativeFamily::Input(state) => Some(std::sync::Arc::make_mut(state)),
+            NativeFamily::Input(state) => Some(formation::make_arc_mut(state)),
             _ => None,
         }
     }
@@ -469,7 +551,7 @@ impl DomElement {
     }
     pub(crate) fn textarea_state_mut(&mut self) -> Option<&mut crate::DomTextareaState> {
         match &mut self.family {
-            NativeFamily::Textarea(state) => Some(std::sync::Arc::make_mut(state)),
+            NativeFamily::Textarea(state) => Some(formation::make_arc_mut(state)),
             _ => None,
         }
     }
@@ -481,7 +563,7 @@ impl DomElement {
     }
     pub(crate) fn output_state_mut(&mut self) -> Option<&mut crate::DomOutputState> {
         match &mut self.family {
-            NativeFamily::Output(state) => Some(std::sync::Arc::make_mut(state)),
+            NativeFamily::Output(state) => Some(formation::make_arc_mut(state)),
             _ => None,
         }
     }
@@ -505,7 +587,7 @@ impl DomElement {
     }
     pub(crate) fn set_style_state(&mut self, value: crate::DomStyleState) {
         match &mut self.family {
-            NativeFamily::Style(state) => *state = std::sync::Arc::new(value),
+            NativeFamily::Style(state) => *state = formation::allocated_arc(value),
             _ => unreachable!("checked Style"),
         }
     }
@@ -523,7 +605,7 @@ impl DomElement {
     }
     pub(crate) fn set_dialog_state(&mut self, value: crate::dialog::DomDialogState) {
         match &mut self.family {
-            NativeFamily::Dialog(state) => *state = std::sync::Arc::new(value),
+            NativeFamily::Dialog(state) => *state = formation::allocated_arc(value),
             _ => unreachable!("checked Dialog"),
         }
     }
@@ -560,7 +642,7 @@ impl DomElement {
     }
     pub(crate) fn select_state_mut(&mut self) -> Option<&mut crate::DomSelectState> {
         match &mut self.family {
-            NativeFamily::Select(s) => Some(std::sync::Arc::make_mut(s)),
+            NativeFamily::Select(s) => Some(formation::make_arc_mut(s)),
             _ => None,
         }
     }
@@ -618,12 +700,12 @@ impl DomElement {
     }
     pub(crate) fn native_control_mut(&mut self) -> Option<&mut crate::control::NativeControlState> {
         match &mut self.family {
-            NativeFamily::Select(state) => Some(&mut std::sync::Arc::make_mut(state).control),
+            NativeFamily::Select(state) => Some(&mut formation::make_arc_mut(state).control),
             NativeFamily::Fieldset(state) => Some(&mut state.control),
             NativeFamily::Button(state) => Some(&mut state.control),
-            NativeFamily::Input(state) => Some(&mut std::sync::Arc::make_mut(state).control),
-            NativeFamily::Textarea(state) => Some(&mut std::sync::Arc::make_mut(state).control),
-            NativeFamily::Output(state) => Some(&mut std::sync::Arc::make_mut(state).control),
+            NativeFamily::Input(state) => Some(&mut formation::make_arc_mut(state).control),
+            NativeFamily::Textarea(state) => Some(&mut formation::make_arc_mut(state).control),
+            NativeFamily::Output(state) => Some(&mut formation::make_arc_mut(state).control),
             _ => None,
         }
     }
@@ -821,11 +903,7 @@ impl DomElement {
             .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?
             .checked_add(self.nonce.as_ref().map_or(0, DocumentString::len))?;
         units = units.checked_add(self.family.units()?)?;
-        for attribute in self.attributes.iter() {
-            units = units
-                .checked_add(name_units(attribute.name())?)?
-                .checked_add(attribute.value().len())?;
-        }
+        units = units.checked_add(self.attribute_receipt.logical_units?)?;
         Some(units)
     }
 }

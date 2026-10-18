@@ -9,31 +9,101 @@ use std::sync::{Arc, atomic::AtomicBool};
 pub(crate) struct TreeNode<'a, K> {
     pub kind: &'a DomNodeKind,
     pub parent: Option<K>,
-    pub children: &'a [K],
+    pub ordinal: Option<usize>,
+    pub children: TreeRelations<'a, K>,
     pub shadow_root: Option<K>,
     pub host: Option<K>,
-    pub manual: &'a [K],
+    pub manual: TreeRelations<'a, K>,
+}
+/// Borrow the actual relation backing; canonical identities map only on read.
+#[derive(Clone, Copy)]
+pub(crate) enum TreeRelations<'a, K> {
+    Direct(&'a [K]),
+    Canonical(&'a [NodeId], fn(NodeId) -> K),
+    AliasedCanonical(
+        &'a [NodeId],
+        fn(NodeId) -> K,
+        &'a crate::store::KeyAliases,
+        fn(K, &crate::store::KeyAliases) -> K,
+    ),
+    AliasedStaged(
+        &'a [K],
+        &'a crate::store::KeyAliases,
+        fn(K, &crate::store::KeyAliases) -> K,
+    ),
+}
+impl<K: Copy> TreeRelations<'_, K> {
+    pub fn len(self) -> usize {
+        match self {
+            Self::Direct(values) => values.len(),
+            Self::Canonical(values, _) | Self::AliasedCanonical(values, ..) => values.len(),
+            Self::AliasedStaged(values, ..) => values.len(),
+        }
+    }
+    pub fn get(self, index: usize) -> Option<K> {
+        match self {
+            Self::Direct(values) => values.get(index).copied(),
+            Self::Canonical(values, map) => values.get(index).copied().map(map),
+            Self::AliasedCanonical(values, map, aliases, alias) => values
+                .get(index)
+                .copied()
+                .map(map)
+                .map(|key| alias(key, aliases)),
+            Self::AliasedStaged(values, aliases, alias) => {
+                values.get(index).copied().map(|key| alias(key, aliases))
+            }
+        }
+    }
+    pub fn first(self) -> Option<K> {
+        self.get(0)
+    }
+    pub fn iter(self) -> impl DoubleEndedIterator<Item = K> + ExactSizeIterator {
+        (0..self.len()).map(move |index| self.get(index).expect("relation extent"))
+    }
 }
 /// Two real phases of the same owner use one selected DOM query algorithm.
 pub(crate) trait Tree {
     type Key: Copy + Eq;
     fn get(&self, key: Self::Key) -> Result<TreeNode<'_, Self::Key>, DomError>;
+    fn slot_after(
+        &self,
+        root: Self::Key,
+        after: Option<Self::Key>,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Self::Key>, DomError>;
+    #[cfg(test)]
+    fn ordinal_successor_read(&self);
     fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)
     }
 }
 impl Tree for DomSnapshot {
     type Key = NodeId;
+    #[cfg(test)]
+    fn ordinal_successor_read(&self) {
+        self.state.slot_ordinal_successor_read();
+    }
     fn get(&self, key: NodeId) -> Result<TreeNode<'_, NodeId>, DomError> {
         let n = self.node(key)?.node;
         Ok(TreeNode {
             kind: &n.kind,
             parent: n.parent,
-            children: &n.children,
+            ordinal: n
+                .parent
+                .and_then(|parent| self.state.slot_ordinal(key, parent)),
+            children: TreeRelations::Direct(&n.children),
             shadow_root: n.shadow_root,
             host: n.host,
-            manual: &n.manual_nodes,
+            manual: TreeRelations::Direct(&n.manual_nodes),
         })
+    }
+    fn slot_after(
+        &self,
+        root: NodeId,
+        after: Option<NodeId>,
+        work: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<NodeId>, DomError> {
+        self.state.slot_after(root, after, work)
     }
 }
 pub(crate) fn is_slot(kind: &DomNodeKind) -> bool {
@@ -130,23 +200,27 @@ pub(crate) fn next_admitted<T: Tree>(
 ) -> Result<Option<T::Key>, DomError> {
     admit()?;
     if let Some(child) = tree.get(key)?.children.first() {
-        return Ok(Some(*child));
+        return Ok(Some(child));
     }
     loop {
         admit()?;
         if key == boundary {
             return Ok(None);
         }
-        let parent = tree.get(key)?.parent.expect("ordinary descendant parent");
+        let node = tree.get(key)?;
+        let parent = node.parent.expect("ordinary descendant parent");
         let children = tree.get(parent)?.children;
-        for (index, child) in children.iter().enumerate() {
-            admit()?;
-            if *child == key {
-                if let Some(next) = children.get(index + 1) {
-                    return Ok(Some(*next));
-                }
-                break;
-            }
+        let ordinal = node.ordinal.ok_or(DomError::StaleNode)?;
+        #[cfg(test)]
+        tree.ordinal_successor_read();
+        if children.get(ordinal) != Some(key) {
+            return Err(DomError::StaleNode);
+        }
+        if let Some(next) = ordinal
+            .checked_add(1)
+            .and_then(|ordinal| children.get(ordinal))
+        {
+            return Ok(Some(next));
         }
         key = parent;
     }
@@ -175,16 +249,16 @@ pub(crate) fn find_slot<T: Tree>(
         return Ok(None);
     }
     let manual = state.slot_assignment() == crate::HtmlSlotAssignment::Manual;
-    let mut current = Some(root);
+    let mut current = tree.slot_after(root, None, &mut || tree.step(cancel))?;
     while let Some(key) = current {
         tree.step(cancel)?;
         let candidate = tree.get(key)?;
         if is_slot(candidate.kind) {
             let matches = if manual {
                 let mut found = false;
-                for value in candidate.manual {
+                for value in candidate.manual.iter() {
                     tree.step(cancel)?;
-                    if *value == node {
+                    if value == node {
                         found = true;
                         break;
                     }
@@ -201,7 +275,7 @@ pub(crate) fn find_slot<T: Tree>(
                 return Ok(Some(key));
             }
         }
-        current = next(tree, root, key, cancel)?;
+        current = tree.slot_after(root, Some(key), &mut || tree.step(cancel))?;
     }
     Ok(None)
 }
@@ -247,17 +321,15 @@ pub(crate) fn visit_slottables<T: Tree>(
     };
     let host = rn.host.expect("shadow host");
     if state.slot_assignment() == crate::HtmlSlotAssignment::Manual {
-        for node in tree.get(slot)?.manual {
+        for node in tree.get(slot)?.manual.iter() {
             tree.step(cancel)?;
-            let node = *node;
             if tree.get(node)?.parent == Some(host) {
                 visit(node)?;
             }
         }
     } else {
-        for node in tree.get(host)?.children {
+        for node in tree.get(host)?.children.iter() {
             tree.step(cancel)?;
-            let node = *node;
             if is_slottable(tree.get(node)?.kind)
                 && find_slot(tree, node, false, cancel)? == Some(slot)
             {
@@ -385,7 +457,7 @@ impl<'a> DomSlot<'a> {
                 let mut nodes = slottables(self.node.snapshot, slot, available, cancel)
                     .map_err(|e| scratch_error(e, limits.scratch))?;
                 if nodes.is_empty() {
-                    for &child in self.node.snapshot.get(slot)?.children {
+                    for child in self.node.snapshot.get(slot)?.children.iter() {
                         check_cancel(cancel)?;
                         if is_slottable(self.node.snapshot.get(child)?.kind) {
                             push(&mut nodes, child, available, DomResource::SlotQueryScratch)?;
@@ -570,7 +642,7 @@ impl DomSnapshot {
             index += 1;
             let n = self.get(key)?;
             if let Some(root) = n.shadow_root {
-                for &child in self.get(root)?.children {
+                for child in self.get(root)?.children.iter() {
                     check_cancel(cancel)?;
                     push(
                         &mut nodes,
@@ -585,9 +657,9 @@ impl DomSnapshot {
                 let children = if assigned.is_empty() {
                     n.children
                 } else {
-                    &assigned
+                    TreeRelations::Direct(&assigned)
                 };
-                for &child in children {
+                for child in children.iter() {
                     check_cancel(cancel)?;
                     push(
                         &mut nodes,
@@ -597,7 +669,7 @@ impl DomSnapshot {
                     )?;
                 }
             } else {
-                for &child in n.children {
+                for child in n.children.iter() {
                     check_cancel(cancel)?;
                     push(
                         &mut nodes,

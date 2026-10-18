@@ -247,7 +247,7 @@ fn supplied_empty_request_is_distinct_from_null_and_can_be_cleared_without_chang
 }
 
 #[test]
-fn force_flag_copy_admits_both_live_request_backings_before_replacing_the_body() {
+fn force_flag_candidate_admits_both_live_request_backings_before_replacing_the_body() {
     let (dom, _, dialog) = fixture();
     for short in [true, false] {
         let cancel = AtomicBool::new(false);
@@ -257,20 +257,16 @@ fn force_flag_copy_admits_both_live_request_backings_before_replacing_the_body()
         staged
             .set_dialog_request_return_value(key, Some(&value), dom.limits, &cancel)
             .unwrap();
-        let base = staged.source_storage_bytes(&cancel).unwrap() + staged.source_other_bytes;
-        let state = staged.dialog_state(key).unwrap();
-        // The new immutable body contains the preserved empty return string and
-        // an independent occurrence of the exact request backing, alongside old state.
-        let overlap = size_of::<DomDialogState>()
-            + size_of::<Vec<u16>>()
-            + state.return_value().shared_code_units().capacity() * size_of::<u16>()
-            + size_of::<Vec<u16>>()
-            + value.shared_code_units().capacity() * size_of::<u16>();
-        let limit = base + overlap - usize::from(short);
-        let mut policy = staged.source_limits.unwrap();
-        policy.retained_bytes = limit;
-        staged.source_limits = Some(policy);
+        let expected = transaction::queues::admission_observation::dialog_fields(&staged, key);
+        let boundary = transaction::queues::admission_observation::Binding::fields(
+            key,
+            expected,
+            DomResource::SourceRetainedBytes,
+            short,
+        );
         let outcome = staged.set_dialog_request_flag(key, true, &cancel);
+        let limit = boundary.limit();
+        drop(boundary);
         if short {
             assert_eq!(
                 outcome.unwrap_err(),

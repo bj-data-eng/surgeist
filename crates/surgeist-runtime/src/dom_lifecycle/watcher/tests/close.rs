@@ -5,15 +5,11 @@ use crate::{
     DomSourceEventServiceProgress,
 };
 
-fn close_at_removal(
-    cap: u64,
-    attempt_removal: bool,
-) -> (
+fn close_at_removal() -> (
     DomSession,
     NodeId,
     DomCloseWatcherId,
     DomSourceDialogRequest,
-    u64,
 ) {
     let (mut session, _, _, subject) = fixture();
     let cancel = AtomicBool::new(false);
@@ -43,7 +39,7 @@ fn close_at_removal(
                     subject,
                     Some(DocumentString::from_utf16(vec![0xd800, 0, 0xdc00])),
                 ),
-                work_limit(cap),
+                source_limits(),
                 &cancel,
             )
             .unwrap();
@@ -78,7 +74,7 @@ fn close_at_removal(
             &mut listeners,
             &mut calls,
             DomSourceEventServiceLimits {
-                source: work_limit(cap),
+                source: source_limits(),
                 dispatch: event_limits(),
             },
             &cancel,
@@ -93,11 +89,10 @@ fn close_at_removal(
     assert_eq!(calls, 1);
     drop(receipt);
     let runtime = session.element_task_execution();
-    let hosted = session.hosted_execution();
-    let (request, spent) = {
+    let request = {
         let mut dom = session.dom();
         let mut lease = dom
-            .resume_source_edit(event.operation(), work_limit(cap), &cancel)
+            .resume_source_edit(event.operation(), source_limits(), &cancel)
             .unwrap();
         let toggle = pending(&mut lease);
         assert_eq!(
@@ -113,48 +108,39 @@ fn close_at_removal(
         assert_eq!(request.action(), HtmlDialogAction::DestroyCloseWatcher);
         assert_eq!(request.operation(), event.operation());
         assert_eq!(lease.status().operation(), event.operation());
-        let spent = lease.status().spent_work();
-        if attempt_removal {
-            let before = lease.snapshot();
-            let toggle = runtime
-                .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
-                .unwrap()
-                .unwrap();
-            let result = hosted.install_dialog_watcher(&mut lease, &request, &cancel);
-            match result {
-                Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
-                    DomError::SourceWorkLimit { limit },
-                ))) => assert_eq!(limit, cap),
-                Err(error) => panic!("wrong Close watcher service refusal: {error:?}"),
-                Ok(_) => panic!("one-short admitted actual Close watcher removal"),
-            }
-            assert_eq!(lease.status().spent_work(), cap);
-            assert_eq!(lease.status().operation(), request.operation());
-            assert_eq!(lease.snapshot().stamp(), before.stamp());
-            assert_eq!(
-                runtime
-                    .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
-                    .unwrap(),
-                Some(toggle)
-            );
-        }
-        (request, spent)
+        request
     };
     assert_eq!(calls, 1);
-    (session, subject, watcher, request, spent)
+    (session, subject, watcher, request)
 }
 
 #[test]
 fn close_result_and_queued_toggle_survive_watcher_work_refusal_then_same_operation_finishes() {
-    // Calibrate only the genuine event/QueueToggle/RemoveOpen prefix. No
-    // watcher service has run. Leave less than the independently counted27
-    // Runtime/preparation steps; actual Source payload admission is additional.
-    let scaffold = close_at_removal(source_limits().work(), false).4;
-    let cap = scaffold + ONE_MEMBER_REMOVAL_STEPS - 1;
-    let (mut session, subject, id, request, spent) = close_at_removal(cap, true);
-    assert_eq!(spent, scaffold);
+    let (mut session, subject, id, request) = close_at_removal();
     let cancel = AtomicBool::new(false);
     let hosted = session.hosted_execution();
+    let cap = {
+        let mut dom = session.dom();
+        let (scaffold, retention) = removal_source_boundary(dom.raw_mut(), &hosted, &request);
+        let cap = scaffold + retention + ONE_MEMBER_REMOVAL_STEPS - 1;
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(request.operation(), work_limit(cap), &cancel)
+            .unwrap();
+        assert_eq!(lease.status().spent_work(), scaffold);
+        let before = lease.snapshot();
+        match hosted.install_dialog_watcher(&mut lease, &request, &cancel) {
+            Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {
+                limit,
+            }))) => assert_eq!(limit, cap),
+            Err(error) => panic!("wrong Close watcher service refusal: {error:?}"),
+            Ok(_) => panic!("one-short admitted actual Close watcher removal"),
+        }
+        assert_eq!(lease.status().spent_work(), cap);
+        assert_eq!(lease.status().operation(), request.operation());
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        cap
+    };
     let owner = hosted.state().unwrap();
     let tasks = session.element_task_execution();
     let toggle = tasks

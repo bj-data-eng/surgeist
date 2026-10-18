@@ -99,6 +99,8 @@ fn parse<'owner, 'facts>(
         size_of::<CssColorParseOutcome<'_, '_>>(),
     ])?;
     meter.fixed(fixed, fixed, source, cancel)?;
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     let mut banks: [Vec<CssColorSlot<'_>>; 3] = std::array::from_fn(|_| Vec::new());
     let parsed = {
         let mut operation = Some(
@@ -163,6 +165,8 @@ fn parse<'owner, 'facts>(
                                 cancel,
                             )?;
                             bank_storage.push(action.record().map_err(error)?);
+                            #[cfg(test)]
+                            written.pushed::<CssColorSlot<'_>>();
                             action
                                 .written(bank, index, &bank_storage[index])
                                 .map_err(error)?;
@@ -314,6 +318,8 @@ fn serialize<'css, 'facts>(
         cancel,
     )?;
     let result = (|| {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let mut digits: Vec<DigitSlot<'_>> = Vec::new();
         let mut output = Vec::new();
         let serialized = {
@@ -369,6 +375,8 @@ fn serialize<'css, 'facts>(
                                     cancel,
                                 )?;
                                 digits.push(action.numerical_record().map_err(error)?);
+                                #[cfg(test)]
+                                written.pushed::<DigitSlot<'_>>();
                                 action
                                     .numerical_written(index, &digits[index])
                                     .map_err(error)?;
@@ -399,6 +407,8 @@ fn serialize<'css, 'facts>(
                                 // and its capacity are UTF16, at two bytes per unit.
                                 meter.charge(size_of::<u16>(), source, cancel)?;
                                 output.push(u16::from(unit));
+                                #[cfg(test)]
+                                written.pushed::<u16>();
                                 action.emitted(unit).map_err(error)?;
                                 #[cfg(test)]
                                 super::committed(super::Commit::OutputUnit, cancel);

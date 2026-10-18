@@ -2,40 +2,6 @@
 use super::*;
 use crate::form::{FormPastName, FormPastNames};
 
-pub(super) fn map_names_formed<A: Copy, B>(
-    source: &FormPastNames<A>,
-    mut map: impl FnMut(A) -> B,
-    budget: Option<&source::formation::Formation>,
-    cancel: &AtomicBool,
-) -> Result<FormPastNames<B>, DomError> {
-    let mut entries = Vec::new();
-    source::formation::reserve(&mut entries, source.entries.len(), budget, cancel)?;
-    for entry in source.entries.iter() {
-        check_cancel(cancel)?;
-        entries.push(FormPastName {
-            name: entry.name.clone(),
-            target: map(entry.target),
-        });
-    }
-    Ok(FormPastNames {
-        entries: Arc::new(entries),
-    })
-}
-pub(super) fn name_units<K>(
-    source: Option<&FormPastNames<K>>,
-    cancel: &AtomicBool,
-) -> Result<usize, DomError> {
-    let mut units = 0usize;
-    if let Some(source) = source {
-        for entry in source.entries.iter() {
-            check_cancel(cancel)?;
-            units = units
-                .checked_add(entry.name.len())
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-    }
-    Ok(units)
-}
 impl Draft {
     /// HTML877d33343: remove every alias for this exact former control. The
     /// map is read at the intermediate owner state, before any later lookup.
@@ -48,11 +14,10 @@ impl Draft {
         let source = self
             .node(owner)?
             .form_past_names
-            .as_ref()
             .expect("actual former Form");
         let mut removed_units = 0usize;
         let mut retained = 0usize;
-        for entry in source.entries.iter() {
+        for entry in source.iter() {
             check_cancel(cancel)?;
             if entry.target == target {
                 removed_units = removed_units
@@ -62,23 +27,45 @@ impl Draft {
                 retained += 1;
             }
         }
-        if retained == source.entries.len() {
+        if retained == source.len() {
             return Ok(());
         }
         // Current public fronts cannot grow maps. This replacement cannot
         // exceed the actual incoming retained extent; there is no unlimited
         // admission fallback or unrelated Slot-reference quota.
+        #[cfg(test)]
+        let mut entry_writes = crate::store::CopyObservation::default();
         let mut entries = Vec::new();
-        reserve(&mut entries, retained)?;
-        for entry in source.entries.iter() {
+        let formation = source::formation::Formation::new(self, cancel)?;
+        source::formation::reserve(&mut entries, retained, formation.as_ref(), cancel)?;
+        if let Some(budget) = &formation {
+            budget.retain_bytes(size_of::<Vec<FormPastName<Key>>>(), cancel)?;
+        }
+        for entry in source.iter() {
             check_cancel(cancel)?;
             if entry.target != target {
-                entries.push(entry.clone());
+                if let Some(budget) = &formation {
+                    let mut payload = source::storage::Payload::default();
+                    payload.string(entry.name)?;
+                    budget.retain_payload(payload, cancel)?;
+                }
+                entries.push(FormPastName {
+                    name: entry.name.clone(),
+                    target: entry.target,
+                });
+                #[cfg(test)]
+                entry_writes.pushed::<FormPastName<Key>>();
             }
         }
-        self.node_mut(owner).form_past_names = Some(FormPastNames {
-            entries: Arc::new(entries),
-        });
+        let names = transaction::Names::staged(
+            FormPastNames {
+                entries: Arc::new(entries),
+            },
+            || self.source_step(cancel),
+        )?;
+        self.with_node_fields_formed(owner, cancel, formation, |fields| {
+            fields.form_past_names = Some(names)
+        })?;
         self.units -= removed_units;
         Ok(())
     }
@@ -89,18 +76,14 @@ impl Draft {
     ) -> Result<(), DomError> {
         // Explicit retirement differs from ordinary detach/adopt. References
         // cannot survive into a reused slot/generation, even outside the tree.
-        for index in 0..self.existing.len() + self.created.len() {
-            check_cancel(cancel)?;
-            let key = if index < self.existing.len() {
-                Key::Existing(index)
-            } else {
-                Key::Created(index - self.existing.len())
-            };
+        let affected = self.inbound_keys(retired, cancel)?;
+        for key in affected.iter().copied() {
+            self.source_step(cancel)?;
             let Ok(node) = self.node(key) else { continue };
             let clear_owner = node.control_owner == Some(retired);
             let form = node.form_past_names.is_some();
             if clear_owner {
-                self.node_mut(key).control_owner = None;
+                self.with_node_fields(key, cancel, |fields| fields.control_owner = None)?;
                 self.input_radio_normalize(
                     key,
                     surgeist_html::HtmlRadioTrigger::FormOwner,
@@ -139,24 +122,38 @@ mod tests {
         let names = vec![
             FormPastName {
                 name: "first".into(),
-                target: button,
+                target: Key::Existing(button),
             },
             FormPastName {
                 name: DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]),
-                target: button,
+                target: Key::Existing(button),
             },
             FormPastName {
                 name: "keep".into(),
-                target: field,
+                target: Key::Existing(field),
             },
         ];
-        let state = Arc::get_mut(&mut dom.state).unwrap();
-        state.mutate_slot(form.slot, |slot| {
-            slot.node.as_mut().unwrap().form_past_names = Some(FormPastNames {
+        // Install private retained-history input through the actual field
+        // barrier and publication fence. Raw State mutation would leave its
+        // inbound occurrence index and paired custody describing the old map.
+        let cancel = AtomicBool::new(false);
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        let names = transaction::Names::staged(
+            FormPastNames {
                 entries: Arc::new(names),
-            });
-        });
-        state.units += 12; // 5 + 3 + 4 exact UTF-16 code units.
+            },
+            || draft.source_step(&cancel),
+        )
+        .unwrap();
+        draft
+            .with_node_fields_formed(Key::Existing(form), &cancel, None, |fields| {
+                fields.form_past_names = Some(names);
+            })
+            .unwrap();
+        draft.units += 12; // 5 + 3 + 4 exact UTF-16 code units.
+        let prepared = draft.finish(&dom, &cancel).unwrap();
+        dom.publish(prepared, &cancel).unwrap();
+        crate::store::oracle_tests::assert_full_canonical(&dom);
         (dom, d, form, button, field)
     }
     #[test]
@@ -304,31 +301,27 @@ mod tests {
         // Exercise the explicit-retirement boundary itself, independently of
         // ordinary removing steps which can already clear a source relation.
         draft
-            .retire_form_relations(Key::Existing(button.slot), &cancel)
+            .retire_form_relations(Key::Existing(button), &cancel)
             .unwrap();
         assert_eq!(
             draft
-                .node(Key::Existing(form.slot))
+                .node(Key::Existing(form))
                 .unwrap()
                 .form_past_names
                 .as_ref()
                 .unwrap()
-                .entries
                 .len(),
             1
         );
         draft
-            .retire_form_relations(Key::Existing(form.slot), &cancel)
+            .retire_form_relations(Key::Existing(form), &cancel)
             .unwrap();
         assert_eq!(
-            draft.node(Key::Existing(field.slot)).unwrap().control_owner,
+            draft.node(Key::Existing(field)).unwrap().control_owner,
             None
         );
         assert_eq!(
-            draft
-                .node(Key::Existing(button.slot))
-                .unwrap()
-                .control_owner,
+            draft.node(Key::Existing(button)).unwrap().control_owner,
             None
         );
         assert_eq!(

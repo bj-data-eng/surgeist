@@ -56,8 +56,9 @@ impl Draft {
                         .iframe_sandbox_flags()
                         .expect("actual Iframe flag set"),
                 };
-                self.element_mut(key)
-                    .establish_iframe_sandbox_flags(sandbox)?;
+                self.with_element_fields(key, cancel, |element| {
+                    element.establish_iframe_sandbox_flags(sandbox)
+                })??;
             }
             self.hosted_pending = Some(source::operation::hosted::ChildHook::Create { key });
             return Err(DomError::HostedCompositionRequired);
@@ -86,13 +87,17 @@ impl Draft {
                 .flatten()
                 .ok_or(DomError::HostedSourceUnavailable)?;
             if self.headroom_child_hook(true, cancel)? {
-                self.element_mut(key).establish_child_navigable(None)?;
+                self.with_element_fields(key, cancel, |element| {
+                    element.establish_child_navigable(None)
+                })??;
                 return Ok(());
             }
             if self.source_limits.is_none() {
                 return Err(DomError::HostedSourceUnavailable);
             }
-            self.element_mut(key).establish_child_navigable(None)?;
+            self.with_element_fields(key, cancel, |element| {
+                element.establish_child_navigable(None)
+            })??;
             self.hosted_pending =
                 Some(source::operation::hosted::ChildHook::Remove { key, navigable });
             return Err(DomError::HostedCompositionRequired);

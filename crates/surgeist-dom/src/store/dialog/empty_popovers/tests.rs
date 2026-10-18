@@ -26,7 +26,7 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     let (dom, first, _, dialog) = fixture();
     let cancel = AtomicBool::new(false);
     let batch = DomBatch::new();
-    let (mut draft, _, _) = Draft::new_source(
+    let (mut draft, _) = Draft::new_source(
         &dom,
         batch.owner.clone(),
         &batch.commands,
@@ -54,26 +54,45 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     members.try_reserve_exact(1).unwrap();
     assert_eq!(members.capacity(), 1);
     members.push(subject);
-    let Some(DocumentInteractiveState::Known { top_layer, .. }) =
-        draft.node_mut(document).interactive_document.as_mut()
-    else {
-        panic!("native known lists")
-    };
-    *top_layer = members;
+    draft
+        .relations_replace(
+            document,
+            transaction::RelationField::TopLayer,
+            members,
+            &cancel,
+        )
+        .unwrap();
     drop(formation);
     draft.source_admit(0, &cancel).unwrap();
     assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
-    let Some(DocumentInteractiveState::Known { top_layer, .. }) =
-        draft.node_mut(document).interactive_document.as_mut()
-    else {
-        panic!("native known lists")
-    };
-    top_layer.clear();
-    assert_eq!(top_layer.capacity(), 1);
+    draft
+        .relations_remove(
+            document,
+            transaction::RelationField::TopLayer,
+            0,
+            1,
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(
+        draft
+            .dialog_list(document, DialogList::Raw)
+            .unwrap()
+            .capacity(),
+        1
+    );
     assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
-    draft.node_mut(document).interactive_document = Some(DocumentInteractiveState::Unavailable);
+    draft
+        .with_node_fields(document, &cancel, |fields| {
+            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
+        })
+        .unwrap();
     assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
-    draft.node_mut(document).interactive_document = None;
+    draft
+        .with_node_fields(document, &cancel, |fields| {
+            fields.interactive_document = None
+        })
+        .unwrap();
     assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
     assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
@@ -92,7 +111,7 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     let cancel = AtomicBool::new(false);
     let before = dom.snapshot();
     let batch = DomBatch::new();
-    let (mut draft, _, _) = Draft::new_source(
+    let (mut draft, _) = Draft::new_source(
         &dom,
         batch.owner.clone(),
         &batch.commands,
@@ -110,7 +129,11 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     let current = draft.dialog_method_node_document(subject, &cancel).unwrap();
     assert_eq!(current, second);
     let original = draft.resolve(captured.node().into()).unwrap();
-    draft.node_mut(original).interactive_document = Some(DocumentInteractiveState::Unavailable);
+    draft
+        .with_node_fields(original, &cancel, |fields| {
+            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
+        })
+        .unwrap();
     // Find qualifies the current receiver Document; Hide must separately read
     // the previously captured exact Document, never substitute this new one.
     assert!(
@@ -139,7 +162,7 @@ fn captured_document_qualification_rejects_actual_foreign_and_wrong_generation()
     });
     let (_, foreign, _, _) = fixture();
     let batch = DomBatch::new();
-    let (draft, _, _) = Draft::new_source(
+    let (draft, _) = Draft::new_source(
         &dom,
         batch.owner.clone(),
         &batch.commands,
@@ -170,7 +193,7 @@ fn two_actual_reads_need_exact_work_and_cancellation_preserves_same_draft_for_re
             let (dom, first, _, dialog) = fixture();
             let cancel = AtomicBool::new(false);
             let batch = DomBatch::new();
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -231,7 +254,7 @@ fn original_checkpoint_restores_actual_adoption_and_keeps_spent_work_for_retry()
     let (dom, first, second, dialog) = fixture();
     let cancel = AtomicBool::new(false);
     let batch = DomBatch::new();
-    let (mut draft, _, _) = Draft::new_source(
+    let (mut draft, _) = Draft::new_source(
         &dom,
         batch.owner.clone(),
         &batch.commands,

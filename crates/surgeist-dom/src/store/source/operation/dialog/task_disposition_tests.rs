@@ -33,7 +33,9 @@ fn queued(
             task: id,
             old: surgeist_html::HtmlDialogState::Closed,
         });
-        draft.element_mut(key).set_dialog_state(state);
+        let mut element = draft.element_fields_mut(key, &cancel()).unwrap();
+        element.set_dialog_state(state);
+        element.commit(&cancel()).unwrap();
         let prepared = draft.finish(&dom, &cancel()).unwrap();
         dom.publish(prepared, &cancel()).unwrap();
         DomDialogTaskInfo::Toggle(crate::DomDialogToggleTaskInfo {

@@ -28,7 +28,7 @@ pub(super) enum Frame {
     Walk {
         root: Key,
         old_parent: Option<Key>,
-        pending: select::ScratchVec<Key>,
+        pending: source::effects::ScratchStack<Key>,
     },
     Node {
         key: Key,
@@ -55,6 +55,18 @@ pub(super) enum Frame {
 }
 
 impl Frame {
+    pub(super) fn freeze_worklists(
+        &mut self,
+        draft: &Draft,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match self {
+            Self::FullscreenRemoving { flagged, .. } => flagged.freeze(draft, cancel),
+            Self::Destroy { closure, .. } => closure.freeze(draft, cancel),
+            Self::Insert(frame) | Self::ReleaseMoving(frame) => frame.moving.freeze(draft, cancel),
+            _ => Ok(()),
+        }
+    }
     pub(super) fn checkpoint(
         &self,
         a: &mut source::checkpoint::Admission<'_>,
@@ -91,7 +103,7 @@ impl Frame {
             } => Self::Walk {
                 root: *root,
                 old_parent: *old_parent,
-                pending: pending.checkpoint(a, cancel)?,
+                pending: pending.clone(),
             },
             Self::Node {
                 key,
@@ -177,19 +189,22 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let replacement = if raw.is_empty() {
-            drop(raw);
+        let input = (raw, payload);
+        let replacement = if input.0.is_empty() {
+            drop(input);
             None
         } else {
-            Some(self.allocate(
+            let document = self.node(key)?.document;
+            let (raw, payload) = input;
+            Some(self.allocate_charged(
                 DomNodeKind::Text(raw),
-                self.node(key)?.document,
+                document,
                 limits,
                 cancel,
+                payload,
             )?)
         };
         // The replacement Text owns the operand before any nested hook can allocate.
-        drop(payload);
         self.push_effect(
             select::Effect::Tree(Frame::ReplaceAll {
                 key,
@@ -242,7 +257,7 @@ impl Draft {
             self.select_reserve(&mut pending, node.children.len(), cancel)?;
             for child in node.children.iter().rev() {
                 self.source_step(cancel)?;
-                pending.push(*child);
+                pending.push(child);
             }
             if let Some(root) = node.shadow_root {
                 self.select_reserve(&mut pending, 1, cancel)?;
@@ -295,24 +310,29 @@ impl Draft {
             self.source_step(cancelled)?;
             let (node, document) = pending.pop().expect("admitted pending adoption");
             self.effect_step(cancelled)?;
-            let children = &self.node(node)?.children;
+            let children = self.node(node)?.children;
             self.select_reserve(&mut pending, children.len(), cancelled)?;
             for child in children.iter().rev() {
                 self.source_step(cancelled)?;
-                pending.push((*child, document));
+                pending.push((child, document));
             }
             if let Some(root) = self.node(node)?.shadow_root {
                 self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push((root, document));
             }
-            self.node_mut(node).document = document;
+            self.with_node_fields(node, cancelled, |fields| fields.document = document)?;
             self.select_element_registry(node, cancelled)?;
             let binding = match &self.node(document)?.kind {
                 DomNodeKind::Document(metadata) => metadata.custom_element_registry(),
                 _ => return Err(DomError::WrongDocument),
             };
-            if let DomNodeKind::ShadowRoot(state) = &mut self.node_mut(node).kind {
-                state.select_global_registry(binding);
+            if matches!(self.node(node)?.kind, DomNodeKind::ShadowRoot(_)) {
+                self.with_node_fields(node, cancelled, |fields| {
+                    let DomNodeKind::ShadowRoot(state) = &mut fields.kind else {
+                        unreachable!("qualified shadow root")
+                    };
+                    state.select_global_registry(binding);
+                })?;
             }
             if self.node(node)?.image.is_some() {
                 self.start_image_update(
@@ -335,12 +355,12 @@ impl Draft {
 
     fn next_sibling(&self, node: Key) -> Option<Key> {
         let parent = self.node(node).expect("staged node").parent?;
-        let children = &self.node(parent).expect("staged parent").children;
+        let children = self.node(parent).expect("staged parent").children;
         let position = children
             .iter()
-            .position(|child| *child == node)
+            .position(|child| child == node)
             .expect("staged child");
-        children.get(position + 1).copied()
+        children.get(position + 1)
     }
 
     fn ensure_pre_insert(
@@ -351,7 +371,7 @@ impl Draft {
         exclude: Option<Key>,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !parent_can_have_children(&self.node(parent)?.kind) {
+        if !parent_can_have_children(self.node(parent)?.kind) {
             return Err(DomError::HierarchyRequest);
         }
         let mut ancestor = Some(parent);
@@ -383,9 +403,9 @@ impl Draft {
             DomNodeKind::Comment(_) | DomNodeKind::ProcessingInstruction(_) => return Ok(()),
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
                 let mut elements = 0;
-                for child in &self.node(node)?.children {
+                for child in self.node(node)?.children.iter() {
                     self.effect_step(cancelled)?;
-                    match self.node(*child)?.kind {
+                    match self.node(child)?.kind {
                         DomNodeKind::Text(_) => return Err(DomError::HierarchyRequest),
                         DomNodeKind::Element(_) => elements += 1,
                         _ => {}
@@ -400,14 +420,14 @@ impl Draft {
             }
             _ => {}
         }
-        let children = &self.node(parent)?.children;
+        let children = self.node(parent)?.children;
         let reference = child.map(|child| {
             children
                 .iter()
-                .position(|key| *key == child)
+                .position(|key| key == child)
                 .expect("validated reference")
         });
-        for (position, candidate) in children.iter().copied().enumerate() {
+        for (position, candidate) in children.iter().enumerate() {
             self.effect_step(cancelled)?;
             let candidate_kind = &self.node(candidate)?.kind;
             let invalid = if matches!(kind, DomNodeKind::DocumentType(_)) {
@@ -489,9 +509,9 @@ impl Draft {
         let ledger_before_moving = self.select_temporary_bytes.load(Ordering::Relaxed);
         let mut moving = self.effect_vec();
         if fragment {
-            let children = &self.node(node)?.children;
+            let children = self.node(node)?.children;
             self.select_reserve(&mut moving, children.len(), cancelled)?;
-            moving.extend(children.iter().copied());
+            moving.extend(children.iter());
         } else {
             self.select_reserve(&mut moving, 1, cancelled)?;
             moving.push(node);
@@ -501,34 +521,6 @@ impl Draft {
             moving.capacity() * size_of::<Key>(),
             self.select_temporary_bytes.load(Ordering::Relaxed) - ledger_before_moving,
         );
-        if !moving.is_empty() {
-            let children = &self.node(parent)?.children;
-            let admitted = self.source_reserve_amount::<Key>(
-                children.len(),
-                children.capacity(),
-                moving.len(),
-                cancelled,
-            )?;
-            #[cfg(test)]
-            let growth = if self.node(parent)?.children.len() + moving.len()
-                > self.node(parent)?.children.capacity()
-            {
-                source::formation::mutation_observation::before(
-                    self,
-                    source::formation::mutation_observation::Site::Children,
-                    cancelled,
-                )?
-            } else {
-                None
-            };
-            source::reserve_bank(&mut self.node_mut(parent).children, moving.len(), admitted)?;
-            #[cfg(test)]
-            source::formation::mutation_observation::grew(
-                growth,
-                self.node(parent)?.children.capacity() * size_of::<Key>(),
-            );
-            self.source_admit(0, cancelled)?;
-        }
         self.push_effect(
             select::Effect::Tree(Frame::Insert(Insertion {
                 moving,
@@ -555,9 +547,8 @@ impl Draft {
     ) -> Result<(), DomError> {
         let document = self.node(root)?.document;
         let flagged = self.fullscreen_removing_members(root, cancel)?;
-        let mut pending = self.effect_vec();
-        self.select_reserve(&mut pending, 1, cancel)?;
-        pending.push(root);
+        let mut pending = source::effects::ScratchStack::new(self);
+        pending.push(root, self, cancel)?;
         self.push_effect(
             select::Effect::Tree(Frame::Walk {
                 root,
@@ -643,7 +634,7 @@ impl Draft {
                     if stage == 0 {
                         // Every real child removal finishes its source hooks
                         // before the next child or retirement cancellation.
-                        if let Some(&child) = self.node(key)?.children.first() {
+                        if let Some(child) = self.node(key)?.children.first() {
                             self.push_effect(
                                 select::Effect::Tree(Frame::Destroy {
                                     closure,
@@ -684,46 +675,17 @@ impl Draft {
                         if let Some(target) = self.published_id(key) {
                             self.source_step(cancel)?;
                             let document = self.node(key)?.document;
-                            let amount = self.source_reserve_amount::<(NodeId, Key)>(
-                                self.dispatch_retirements.len(),
-                                self.dispatch_retirements.capacity(),
-                                1,
-                                cancel,
-                            )?;
-                            reserve(&mut self.dispatch_retirements, amount.unwrap_or(1))?;
-                            self.dispatch_retirements.push((target, document));
-                            self.source_admit(0, cancel)?;
+                            self.record_dispatch_retirement(target, document, cancel)?;
                         }
                         self.retire_autofocus_candidate(key, cancel)?;
                         self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;
-                        let node = match key {
-                            Key::Existing(i) => self.existing[i].take(),
-                            Key::Created(i) => self.created[i].take(),
-                        }
-                        .expect("owned closure");
-                        self.nodes -= 1;
-                        self.units -= kind_units(&node.kind)?;
-                        self.units -= node.base.as_ref().map_or(0, crate::base::BaseState::units);
-                        self.units -= node
-                            .hyperlink
-                            .as_ref()
-                            .map_or(0, crate::hyperlink::HyperlinkState::units);
-                        self.units -= node
-                            .encoding_url_document
-                            .as_ref()
-                            .map_or(0, crate::hyperlink::EncodingUrlDocument::units);
-                        self.units -= node
-                            .base_document
-                            .as_ref()
-                            .map_or(0, crate::base::BaseDocument::units);
-                        self.units -= form::name_units(node.form_past_names.as_ref(), cancel)?;
+                        let retired = self.retire_node(key, cancel)?;
                         self.retire_form_relations(key, cancel)?;
-                        self.slot_retirement(key, limits, cancel)?;
+                        self.slot_retirement(key, retired.document, limits, cancel)?;
                         self.retire_reflected_target(key, cancel)?;
                         self.retire_template_patch_target(key, cancel)?;
-                        if matches!(&node.kind, DomNodeKind::Element(element) if element.style_state().is_some())
-                        {
+                        if retired.style {
                             self.retire_style_render_blocking(key, cancel)?;
                         }
                         self.push_effect(
@@ -795,7 +757,7 @@ impl Draft {
                 replacement,
                 inserted,
             } => {
-                if let Some(&child) = self.node(key)?.children.first().filter(|_| !inserted) {
+                if let Some(child) = self.node(key)?.children.first().filter(|_| !inserted) {
                     self.push_effect(
                         select::Effect::Tree(Frame::ReplaceAll {
                             key,
@@ -827,11 +789,11 @@ impl Draft {
                     }
                     self.effect_step(cancel)?;
                     let node = self.node(key)?;
-                    self.select_reserve(&mut pending, node.children.len(), cancel)?;
-                    pending.extend(node.children.iter().rev().copied());
+                    for child in node.children.iter().rev() {
+                        pending.push(child, self, cancel)?;
+                    }
                     if let Some(shadow) = node.shadow_root {
-                        self.select_reserve(&mut pending, 1, cancel)?;
-                        pending.push(shadow);
+                        pending.push(shadow, self, cancel)?;
                     }
                     self.push_effect(
                         select::Effect::Tree(Frame::Walk {
@@ -993,16 +955,24 @@ impl Draft {
                         )?;
                         self.adopt(child, document, limits, cancel)?;
                     } else {
-                        let target = self.node_mut(frame.parent);
+                        let target = self.node(frame.parent)?;
                         let index = frame.before.map_or(target.children.len(), |reference| {
                             target
                                 .children
                                 .iter()
-                                .position(|key| *key == reference)
+                                .position(|key| key == reference)
                                 .expect("retained reference")
                         });
-                        target.children.insert(index, child);
-                        self.node_mut(child).parent = Some(frame.parent);
+                        self.relations_insert(
+                            frame.parent,
+                            transaction::RelationField::Children,
+                            index,
+                            &[child],
+                            cancel,
+                        )?;
+                        self.with_node_fields(child, cancel, |fields| {
+                            fields.parent = Some(frame.parent)
+                        })?;
                         if !self.is_private(frame.parent) {
                             self.expose_source_subtree(child, cancel)?;
                         }
@@ -1014,9 +984,8 @@ impl Draft {
                             self.effect_scoped,
                             cancel,
                         )?;
-                        let mut pending = self.effect_vec();
-                        self.select_reserve(&mut pending, 1, cancel)?;
-                        pending.push(child);
+                        let mut pending = source::effects::ScratchStack::new(self);
+                        pending.push(child, self, cancel)?;
                         self.push_effect(
                             select::Effect::Tree(Frame::Walk {
                                 root: child,

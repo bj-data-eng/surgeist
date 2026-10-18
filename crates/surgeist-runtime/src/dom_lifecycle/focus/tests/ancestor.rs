@@ -22,7 +22,10 @@ struct Ancestor {
     child: DomFocusRequest,
 }
 fn child_limits() -> DomSourceLimits {
-    DomSourceLimits::new(64_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4)
+    child_work_limits(10_000_000)
+}
+fn child_work_limits(work: u64) -> DomSourceLimits {
+    DomSourceLimits::new(64_000_000, 1_000_000, work, 128, 4096, 4096, 4)
 }
 fn dispatch_limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
@@ -33,7 +36,7 @@ fn dispatch_limits() -> DomEventDispatchLimits {
         work: 100_000,
     }
 }
-fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
+fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
     let (mut session, host, parent) = fixture();
     let cancel = AtomicBool::new(false);
     let document = session.snapshot().node(parent)?.owner_document().unwrap();
@@ -146,8 +149,6 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         DomSourceEventServiceProgress::Serviced { .. }
     ));
     let tasks = session.element_task_execution();
-    let hosted = session.hosted_execution();
-    let owner = hosted.state().unwrap();
     let child = {
         let mut dom = session.dom();
         let mut lease =
@@ -166,25 +167,6 @@ fn ancestor(cap: u64, prelude: bool) -> Result<Ancestor, Failure> {
         assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
         DomFocusRequest::RememberDialog(child)
     };
-    if prelude {
-        // Match the second actual resume used by the service tests. Its
-        // original parent admission work belongs to the canonical scaffold.
-        let mut dom = session.dom();
-        let mut lease =
-            dom.raw_mut()
-                .resume_source_edit(child.operation(), child_limits(), &cancel)?;
-        // Canonical preparation/real retention only, excluding all three
-        // Runtime qualification/retained-Host/observation visits under test.
-        let source = &owner.borrow().source;
-        let payload =
-            lease.retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &cancel)?;
-        let preparation = lease.prepare_focus(&child, source, &cancel)?.unwrap();
-        let formation = FocusFormation {
-            preparation,
-            payload,
-        };
-        drop(formation);
-    }
     Ok(Ancestor {
         session,
         parent,
@@ -215,7 +197,7 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
             mut session,
             parent,
             child,
-        } = ancestor(10_000_000, false).unwrap();
+        } = ancestor(10_000_000).unwrap();
         let hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
         let mut dom = session.dom();
@@ -295,33 +277,17 @@ fn observing_parent_bytes_exact_and_one_short_govern_child_observation_formation
     }
 }
 #[test]
-fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pending_result() {
-    // Search only canonical setup/prepare/retention on fresh real owners.
-    // Runtime remembered-focus service never runs during this calibration.
-    let mut low = 0;
-    let mut high = 10_000_000;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        match ancestor(middle, true) {
-            Ok(_) => high = middle,
-            Err(error) => {
-                assert!(
-                    exhausted(error.as_ref(), middle),
-                    "wrong canonical setup error: {error:?}"
-                );
-                low = middle + 1;
-            }
-        }
-    }
-    let scaffold = low;
-    assert!(scaffold > 0);
+fn observing_parent_retains_original_receipt_across_exact_child_work_cut() {
     for short in [true, false] {
-        let cap = scaffold + 3 - u64::from(short);
         let Ancestor {
             mut session,
             parent,
             child,
-        } = ancestor(cap, false).unwrap();
+        } = ancestor(10_000_000).unwrap();
+        // The original finite parent remains live. Only the top child's
+        // ordinary public resume can lower its own absolute work allowance.
+        let (cap, scaffold, _) =
+            source_focus_boundary_with_limits(&mut session, &child, 3, short, child_work_limits);
         let cancel = AtomicBool::new(false);
         let hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
@@ -329,13 +295,17 @@ fn observing_parent_work_prices_three_actual_runtime_visits_and_keeps_one_pendin
             let mut dom = session.dom();
             let mut lease = dom
                 .raw_mut()
-                .resume_source_edit(child.operation(), child_limits(), &cancel)
+                .resume_source_edit(child.operation(), child_work_limits(cap), &cancel)
                 .unwrap();
+            assert_eq!(lease.status().spent_work(), scaffold);
             let basis = lease.snapshot().stamp();
             let error = hosted
                 .service_focus(&mut lease, &child, &cancel)
                 .unwrap_err();
-            assert!(exhausted(&error, cap), "wrong ancestor refusal: {error:?}");
+            assert!(
+                exhausted(&error, cap),
+                "wrong child refusal under retained parent: {error:?}"
+            );
             assert_eq!(lease.snapshot().stamp(), basis);
             assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
             assert!(lease.status().spent_work() < child_limits().work());
@@ -407,7 +377,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
             mut session,
             parent,
             child,
-        } = ancestor(10_000_000, false).unwrap();
+        } = ancestor(10_000_000).unwrap();
         let cancel = AtomicBool::new(false);
         let mut hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
@@ -562,5 +532,81 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
         assert!(hosted.service_focus(&mut lease, &child, &cancel).unwrap());
         assert_eq!(allow_request(&mut lease).operation(), child.operation());
         assert_eq!(lease.snapshot().stamp(), basis);
+    }
+}
+
+#[test]
+fn finite_parent_work_refusals_name_the_actual_parent_budget() {
+    // Fresh owners qualify finite policy behavior only. No measured setup
+    // threshold is transferred between their materialization identities.
+    for cap in [0, 64, 1024, 16_384] {
+        let Ancestor {
+            mut session,
+            parent,
+            child,
+        } = match ancestor(cap) {
+            Ok(case) => case,
+            Err(error) => {
+                assert!(
+                    exhausted(error.as_ref(), cap),
+                    "wrong setup refusal: {error:?}"
+                );
+                assert_ne!(cap, 16_384, "generous finite parent must reach focus");
+                eprintln!("focus finite parent cap={cap}: setup refused");
+                continue;
+            }
+        };
+        assert_ne!(cap, 0, "zero parent work must refuse");
+        let hosted = session.hosted_execution();
+        let owner = hosted.state().unwrap();
+        let before_work = owner.borrow().work;
+        let basis = session.snapshot().stamp();
+        let outcome: Result<bool, Failure> = {
+            let mut dom = session.dom();
+            match dom.raw_mut().resume_source_edit(
+                child.operation(),
+                child_limits(),
+                &AtomicBool::new(false),
+            ) {
+                Err(error) => {
+                    eprintln!("focus finite parent cap={cap}: resume refused");
+                    Err(Box::new(error))
+                }
+                Ok(mut lease) => {
+                    assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
+                    hosted
+                        .service_focus(&mut lease, &child, &AtomicBool::new(false))
+                        .map_err(|error| Box::new(error) as Failure)
+                }
+            }
+        };
+        match outcome {
+            Err(error) => {
+                assert!(
+                    exhausted(error.as_ref(), cap),
+                    "wrong parent refusal: {error:?}"
+                );
+                assert_ne!(cap, 16_384, "generous finite parent must service focus");
+                assert_eq!(session.snapshot().stamp(), basis);
+                eprintln!(
+                    "focus finite parent cap={cap}: service/resume refused; pending={}",
+                    owner.borrow().focus.pending.is_some()
+                );
+            }
+            Ok(serviced) => {
+                assert!(serviced);
+                assert_eq!(owner.borrow().work - before_work, 3);
+                assert!(owner.borrow().focus.pending.is_none());
+                let mut dom = session.dom();
+                let mut lease = dom
+                    .raw_mut()
+                    .resume_source_edit(child.operation(), child_limits(), &AtomicBool::new(false))
+                    .unwrap();
+                assert_eq!(allow_request(&mut lease).operation(), child.operation());
+                assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
+                assert_eq!(lease.snapshot().stamp(), basis);
+                eprintln!("focus finite parent cap={cap}: three actual Runtime visits serviced");
+            }
+        }
     }
 }

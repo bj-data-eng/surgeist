@@ -325,13 +325,31 @@ fn generation_exhaustion_retires_the_slot_instead_of_reusing_identity() {
         .created(&text)
         .unwrap()
         .unwrap();
-    Arc::get_mut(&mut dom.state)
+    let mut retire = DomBatch::new();
+    retire.destroy(text);
+    dom.apply(retire, &cancel).unwrap();
+    dom.scale_seed_vacant_generation(text.slot, u64::MAX - 1);
+    let mut create = DomBatch::new();
+    let penultimate = create.create_text(document, "penultimate generation");
+    let penultimate = dom
+        .apply(create, &cancel)
         .unwrap()
-        .mutate_slot(text.slot, |slot| slot.generation = u64::MAX);
-    let exhausted = NodeId {
-        generation: u64::MAX,
-        ..text
-    };
+        .created(&penultimate)
+        .unwrap()
+        .unwrap();
+    assert_eq!(penultimate.slot, text.slot);
+    assert_eq!(penultimate.generation, u64::MAX - 1);
+    let mut recreate = DomBatch::new();
+    recreate.destroy(penultimate);
+    let final_ticket = recreate.create_text(document, "last generation");
+    let exhausted = dom
+        .apply(recreate, &cancel)
+        .unwrap()
+        .created(&final_ticket)
+        .unwrap()
+        .unwrap();
+    assert_eq!(exhausted.slot, text.slot);
+    assert_eq!(exhausted.generation, u64::MAX);
     let mut batch = DomBatch::new();
     batch.destroy(exhausted);
     let fresh = batch.create_text(document, "new");

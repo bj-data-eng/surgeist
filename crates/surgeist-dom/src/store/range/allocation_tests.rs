@@ -137,7 +137,7 @@ fn original_source_checkpoint_restores_allocation_order_without_refunding_work()
     let checkpoint = draft
         .source_checkpoint(draft.source_other_bytes, 0, &cancel)
         .unwrap();
-    let key = Key::Existing(document.0.slot);
+    let key = Key::Existing(document.0);
     for ticket in 0..3 {
         draft
             .create_range(key, ticket, dom.limits, &cancel)
@@ -181,7 +181,7 @@ fn original_source_checkpoint_restores_allocation_order_without_refunding_work()
 }
 
 #[test]
-fn formed_vacancy_frontier_prices_actual_capacity_and_simultaneous_checkpoint_copy() {
+fn sparse_vacancy_root_is_shared_by_checkpoint_and_restores_exact_lowest_slot() {
     let cancel = AtomicBool::new(false);
     let (mut dom, _, original) = occupied_ranges();
     let mut retirement = DomBatch::new();
@@ -199,53 +199,33 @@ fn formed_vacancy_frontier_prices_actual_capacity_and_simultaneous_checkpoint_co
     )
     .unwrap()
     .0;
-    assert_eq!(draft.range_vacancies.len(), 2);
-    assert_eq!(draft.range_vacancies.peek(), Some(&Reverse(1)));
-    // Initial formation owns the actual reserved backing even though only two
-    // entries are eligible. Removing that one bank isolates its control debit.
-    let frontier = std::mem::take(&mut draft.range_vacancies);
-    let without = draft.source_storage_bytes(&cancel).unwrap();
-    let bytes = frontier.capacity() * std::mem::size_of::<Reverse<usize>>();
-    assert!(bytes >= 2 * std::mem::size_of::<usize>());
-    draft.range_vacancies = frontier;
+    assert_eq!(draft.ranges.lowest_vacant(), Some(1));
+    assert_eq!(draft.ranges.touched().count(), 0);
+    let before = draft.ranges.allocation_graph();
+    let before_pages: Vec<_> = before.pages().collect();
+    let checkpoint = draft
+        .source_checkpoint(draft.source_other_bytes, 0, &cancel)
+        .unwrap();
+    let captured = draft.ranges.allocation_graph();
     assert_eq!(
-        draft.source_storage_bytes(&cancel).unwrap(),
-        without + bytes
+        captured.pages().collect::<Vec<_>>(),
+        before.pages().collect::<Vec<_>>()
     );
-    // Independently reserve exactly the checkpoint's two requested entries.
-    let mut probe = Vec::<Reverse<usize>>::new();
-    probe.try_reserve_exact(2).unwrap();
-    let copied_bytes = probe.capacity() * std::mem::size_of::<Reverse<usize>>();
-    let baseline = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
-    let mut limit = policy;
-    limit.retained_bytes = baseline + copied_bytes - 1;
-    draft.source_limits = Some(limit);
-    {
-        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
-        assert!(matches!(
-            admission.copy(draft.range_vacancies.as_slice(), &cancel),
-            Err(DomError::ResourceLimit {
-                resource: DomResource::SourceRetainedBytes,
-                ..
-            })
-        ));
-    }
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
-    limit.retained_bytes += 1;
-    draft.source_limits = Some(limit);
-    {
-        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
-        let copied = admission
-            .copy(draft.range_vacancies.as_slice(), &cancel)
-            .unwrap();
-        let frontier = form_vacancies(copied, || draft.source_step(&cancel)).unwrap();
-        assert_eq!(frontier.into_sorted_vec(), [Reverse(7), Reverse(1)]);
-        let charge = admission.finish();
-        assert_eq!(
-            draft.select_temporary_bytes.load(Ordering::Relaxed),
-            copied_bytes
-        );
-        drop(charge);
-    }
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+    let document = draft.range_record(original[0]).unwrap().start.container;
+    draft
+        .create_range(document, 0, dom.limits, &cancel)
+        .unwrap();
+    assert_eq!(draft.range_tickets[0].slot, 1);
+    assert_eq!(draft.ranges.lowest_vacant(), Some(7));
+    let spent = draft.source_work.load(Ordering::Relaxed);
+    checkpoint.restore(&mut draft);
+    assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
+    assert!(draft.range_tickets.is_empty());
+    assert_eq!(draft.ranges.lowest_vacant(), Some(1));
+    let restored = draft.ranges.allocation_graph();
+    assert_eq!(restored.pages().collect::<Vec<_>>(), before_pages);
+    draft
+        .create_range(document, 0, dom.limits, &cancel)
+        .unwrap();
+    assert_eq!(draft.range_tickets[0].slot, 1);
 }

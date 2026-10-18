@@ -28,10 +28,10 @@ fn last_retained_top() -> (Fixture, Arc<Graph>, DomHostedCreation, Arc<Work>) {
 }
 
 #[test]
-fn last_retained_top_activity_charges_both_complete_bank_scans() {
+fn last_retained_top_activity_charges_two_exact_identity_lookups() {
     let (mut fixture, graph, creation, work) = last_retained_top();
     let before = work.spent.load(Ordering::Relaxed);
-    let exact = before + 10;
+    let exact = before + 2;
     fixture.limits(16_000_000, 16_000_000, exact);
     assert!(
         captured_fully_active(&graph, creation.document, creation.navigable, || {
@@ -42,15 +42,15 @@ fn last_retained_top_activity_charges_both_complete_bank_scans() {
     assert_eq!(
         work.spent.load(Ordering::Relaxed),
         exact,
-        "selecting the fifth top inspects five original navigables and five entries"
+        "selecting the fifth top reaches one exact navigable and one exact entry"
     );
 }
 
 #[test]
-fn last_retained_top_activity_refuses_one_short_of_actual_bank_scan_work() {
+fn last_retained_top_activity_refuses_one_short_of_two_identity_lookups() {
     let (mut fixture, graph, creation, work) = last_retained_top();
     let before = work.spent.load(Ordering::Relaxed);
-    let one_short = before + 9;
+    let one_short = before + 1;
     fixture.limits(16_000_000, 16_000_000, one_short);
     let original_graph = graph.clone();
     let original_revision = fixture.source.revision().unwrap();
@@ -61,7 +61,7 @@ fn last_retained_top_activity_refuses_one_short_of_actual_bank_scan_work() {
     });
     assert!(
         matches!(result, Err(DomHostedError::WorkLimit { limit }) if limit == one_short),
-        "a fifth-row activity query must not succeed with only nine scan admissions: {result:?}"
+        "a fifth-row activity query must not succeed with only one lookup admission: {result:?}"
     );
     assert_eq!(work.spent.load(Ordering::Relaxed), one_short);
     assert_eq!(*graph, *original_graph);
@@ -74,8 +74,8 @@ fn last_retained_top_activity_refuses_one_short_of_actual_bank_scan_work() {
     assert!(!graph.navigable(creation.navigable).unwrap().retired);
 
     // Raising this same original issuer limit preserves every spent credit.
-    // The retry must pay for both complete scans again, without new Work.
-    let retry_exact = one_short + 10;
+    // The retry must pay for both exact identity lookups again, without new Work.
+    let retry_exact = one_short + 2;
     fixture.limits(16_000_000, 16_000_000, retry_exact);
     assert!(Arc::ptr_eq(&work, &original_work));
     assert_eq!(work.spent.load(Ordering::Relaxed), one_short);
@@ -92,7 +92,7 @@ fn last_retained_top_activity_refuses_one_short_of_actual_bank_scan_work() {
 }
 
 #[test]
-fn last_retained_top_activity_observes_cancellation_during_bank_scan() {
+fn last_retained_top_activity_observes_cancellation_at_second_identity_lookup() {
     let (fixture, graph, creation, work) = last_retained_top();
     let before = work.spent.load(Ordering::Relaxed);
     let original_graph = graph.clone();
@@ -102,17 +102,17 @@ fn last_retained_top_activity_observes_cancellation_during_bank_scan() {
     let mut reached = 0;
     let result = captured_fully_active(&graph, creation.document, creation.navigable, || {
         reached += 1;
-        if reached == 3 {
+        if reached == 2 {
             cancel.store(true, Ordering::Relaxed);
         }
         work.step(&cancel)
     });
     assert!(
         matches!(result, Err(DomHostedError::Dom(DomError::Cancelled))),
-        "the third reached scan admission must observe actual cancellation: {result:?}"
+        "the second reached lookup admission must observe actual cancellation: {result:?}"
     );
-    assert_eq!(reached, 3);
-    assert_eq!(work.spent.load(Ordering::Relaxed), before + 2);
+    assert_eq!(reached, 2);
+    assert_eq!(work.spent.load(Ordering::Relaxed), before + 1);
     assert_eq!(*graph, *original_graph);
     assert_eq!(fixture.source.revision().unwrap(), original_revision);
     assert_eq!(fixture.used(), original_bytes);

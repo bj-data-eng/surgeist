@@ -1064,11 +1064,19 @@ fn disabled_without_an_association_is_a_no_op_and_does_not_accept_other_families
 }
 
 #[test]
-fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
-    use surgeist_dom::{DomSourceLimits, DomSourceProgress};
+fn source_input_finite_work_or_storage_refusal_preserves_the_first_style_boundary() {
+    use surgeist_dom::{DocumentString, DomResource, DomSourceLimits, DomSourceProgress};
     let cancel = AtomicBool::new(false);
     for work_bound in [false, true] {
-        let attempt = |bound: usize| {
+        // Each attempt constructs a fresh owner. These explicit finite budgets
+        // characterize refusal and actual CSP exposure, not an exact threshold
+        // transferable between distinct owners/materialization identities.
+        let bounds: &[usize] = if work_bound {
+            &[0, 64, 1024, 16_384, 262_144, 4_194_304, 10_000_000]
+        } else {
+            &[0, 64, 1024, 16_384, 262_144, 4_194_304, 16_000_000]
+        };
+        for (index, &bound) in bounds.iter().enumerate() {
             let mut dom = dom();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
@@ -1076,6 +1084,7 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
             let text = batch.create_text(&document, "a".repeat(2048));
             batch.insert_before(&text, &style, None);
             let commit = dom.apply(batch, &cancel).unwrap();
+            let text = commit.created(&text).unwrap().unwrap();
             let style = commit.created(&style).unwrap().unwrap();
             let document = commit.document(&document).unwrap();
             let before = dom.snapshot();
@@ -1089,10 +1098,29 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                 4096,
                 1,
             );
+            let assert_refusal = |stage: &str, error: DomError| {
+                // These public errors expose the selected limit, without a
+                // required-work/required-byte field from which to infer minima.
+                match error {
+                    DomError::SourceWorkLimit { limit } if work_bound => {
+                        assert_eq!(limit, bound as u64, "{stage}");
+                    }
+                    DomError::ResourceLimit { resource, limit } if !work_bound => {
+                        assert_eq!(resource, DomResource::SourceRetainedBytes, "{stage}");
+                        assert_eq!(limit, bound, "{stage}");
+                    }
+                    other => panic!(
+                        "unexpected {stage} refusal at work_bound={work_bound}, bound={bound}: {other:?}"
+                    ),
+                }
+            };
             let edit = DomSourceEdit::insert_before(style, document.node(), None);
-            let mut reached = false;
-            if let Ok(mut lease) = dom.begin_source_edit(edit, limits, &cancel) {
-                match lease.advance(&cancel) {
+            let reached = match dom.begin_source_edit(edit, limits, &cancel) {
+                Err(error) => {
+                    assert_refusal("begin", error);
+                    false
+                }
+                Ok(mut lease) => match lease.advance(&cancel) {
                     Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => {
                         assert_eq!(
                             request.action(),
@@ -1100,44 +1128,61 @@ fn source_input_one_short_work_or_storage_refuses_before_the_first_phase() {
                                 HtmlStyleUpdateAction::CheckInlineCsp
                             )
                         );
-                        assert_eq!(request.source().text().len(), 2048);
+                        assert_eq!(request.source().element(), style);
+                        assert_eq!(request.source().text().as_slice(), &[u16::from(b'a'); 2048]);
                         assert_eq!(
-                            request.source().document_metadata().url(),
-                            before.document(document).unwrap().metadata().url()
+                            request.source().document_metadata(),
+                            before.document(document).unwrap().metadata()
                         );
-                        reached = true;
+                        true
                     }
-                    Err(DomError::SourceWorkLimit { .. }) if work_bound => {}
-                    Err(DomError::ResourceLimit {
-                        resource: surgeist_dom::DomResource::SourceRetainedBytes,
-                        ..
-                    }) if !work_bound => {}
-                    other => panic!("unexpected source admission outcome: {other:?}"),
-                }
-            }
+                    Err(error) => {
+                        assert_refusal("advance", error);
+                        false
+                    }
+                    other => panic!("unexpected first Source phase: {other:?}"),
+                },
+            };
+            assert_eq!(before.node(style).unwrap().parent(), None);
+            assert_eq!(before.node(style).unwrap().children(), &[text]);
+            assert_eq!(
+                before.node(text).unwrap().data().unwrap().code_units(),
+                &[u16::from(b'a'); 2048]
+            );
+            let metadata = before.document(document).unwrap().metadata();
+            assert_eq!(
+                metadata.content_type(),
+                &DocumentString::from("application/xml")
+            );
+            assert_eq!(metadata.encoding(), &DocumentString::from("UTF-8"));
+            assert_eq!(metadata.url(), &DocumentString::from("about:blank"));
             if !reached {
-                assert_eq!(dom.snapshot().stamp(), before.stamp());
+                let after = dom.snapshot();
+                assert_eq!(after.stamp(), before.stamp());
                 assert_eq!(dom.usage(), usage);
-                assert_eq!(dom.snapshot().node(style).unwrap().parent(), None);
+                assert_eq!(after.node(style).unwrap().parent(), None);
+                assert_eq!(after.node(style).unwrap().children(), &[text]);
+                assert_eq!(
+                    after.node(text).unwrap().data(),
+                    before.node(text).unwrap().data()
+                );
+                assert_eq!(after.document(document).unwrap().metadata(), metadata);
+                assert!(after.incomplete_source_operation().is_none());
                 assert!(dom.pending_source_edit().is_none());
             }
-            reached
-        };
-        // Find the actual required allowance, rather than fixing a layout-size
-        // constant. EVERY rejected first invocation must preserve the old owner.
-        let mut low = 0;
-        let mut high = if work_bound { 10_000_000 } else { 16_000_000 };
-        assert!(attempt(high));
-        while high - low > 1 {
-            let middle = low + (high - low) / 2;
-            if attempt(middle) {
-                high = middle;
-            } else {
-                low = middle;
+            if index == 0 {
+                assert!(
+                    !reached,
+                    "zero selected allowance must refuse before CSP exposure"
+                );
+            }
+            if index + 1 == bounds.len() {
+                assert!(
+                    reached,
+                    "generous selected allowance must expose the real CSP request"
+                );
             }
         }
-        assert!(!attempt(high - 1));
-        assert!(attempt(high));
     }
 }
 

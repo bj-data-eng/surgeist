@@ -57,6 +57,7 @@ pub(crate) struct EventWork {
     pub(crate) ancestors: Option<Arc<EventWork>>,
     pub(crate) bytes: Arc<AtomicUsize>,
     pub(crate) units: Arc<AtomicUsize>,
+    pub(crate) storage: crate::store::SourceStorage,
 }
 impl EventWork {
     pub(crate) fn step_own(&self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -73,6 +74,7 @@ impl EventWork {
             return Err(DomError::SourceWorkLimit { limit });
         }
         self.work.store(next, Ordering::Relaxed);
+        crate::store::SourceStorage::record_step();
         Ok(())
     }
 
@@ -226,6 +228,7 @@ pub struct DomSourceEventPublication {
 #[derive(Debug)]
 pub struct DomSourceEventRetention {
     pub(crate) work: Arc<EventWork>,
+    pub(crate) custody: Option<crate::store::SourceRetention>,
     pub(crate) bytes: usize,
     pub(crate) units: usize,
 }
@@ -243,6 +246,12 @@ impl DomSourceEventRetention {
             .units
             .checked_add(other.units)
             .ok_or(DomError::RepresentationExhausted)?;
+        if let Some(incoming) = other.custody.take() {
+            match self.custody.as_mut() {
+                Some(owned) => owned.absorb(incoming)?,
+                None => self.custody = Some(incoming),
+            }
+        }
         self.bytes = bytes;
         self.units = units;
         other.bytes = 0;

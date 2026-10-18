@@ -94,7 +94,7 @@ fn form_recipients_stay_bounded(same_tree: bool) {
         if result.is_ok() {
             assert!(draft.node(subject).unwrap().control_owner.is_none());
             assert!(
-                !state(&draft.node(subject).unwrap().kind)
+                !state(draft.node(subject).unwrap().kind)
                     .unwrap()
                     .0
                     .parser_inserted

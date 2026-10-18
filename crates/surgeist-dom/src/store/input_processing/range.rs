@@ -65,6 +65,8 @@ impl Storage {
         source: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<RangeNumericReply, DomError> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         meter.charge(
             sum(&[
                 1,
@@ -112,6 +114,8 @@ impl Storage {
                 }
                 bank.push(value);
                 #[cfg(test)]
+                written.pushed::<u8>();
+                #[cfg(test)]
                 super::committed(super::Commit::RangeCell, cancel);
                 R::Ack
             }
@@ -149,6 +153,8 @@ impl Storage {
                     return Err(DomError::InputProcessingProtocol);
                 }
                 self.output.push(unit);
+                #[cfg(test)]
+                written.pushed::<u16>();
                 #[cfg(test)]
                 super::committed(super::Commit::OutputUnit, cancel);
                 R::Ack

@@ -58,20 +58,23 @@ fn is_limit(error: DomError, resource: DomResource, amount: usize) {
 #[test]
 fn close_observation_owns_exactly_one_original_result_backing_at_each_limit() {
     for units in [0, 17] {
-        let (base, _, _, _) = close_observer(None);
-        let baseline = base
-            .source_observation_total(storage::Payload::default(), &AtomicBool::new(false))
-            .unwrap();
         let value = result(units);
         let weak = Arc::downgrade(value.shared_code_units());
         let (mut dom, _, subject, event) = close_observer(Some(value));
         let occurrence_bytes = size_of::<Vec<u16>>() + units * size_of::<u16>();
-        // Equal-shape omitted-result owner supplies only the preexisting
-        // baseline. The new input occurrence is independently sized here.
-        let expected = storage::Payload {
-            bytes: baseline.bytes + occurrence_bytes,
-            units: baseline.units + units,
-        };
+        // Enumerate this original command occurrence independently. Its
+        // immutable event request owns no cloned command result.
+        let observation = dom
+            .source_operation
+            .as_ref()
+            .unwrap()
+            .observation()
+            .unwrap();
+        assert_eq!(observation.inputs.bytes, occurrence_bytes);
+        assert_eq!(observation.inputs.units, units);
+        let expected = dom
+            .source_observation_total(storage::Payload::default(), &AtomicBool::new(false))
+            .unwrap();
         for resource in [
             DomResource::SourceRetainedBytes,
             DomResource::SourceRetainedUnits,
@@ -113,85 +116,22 @@ fn close_observation_owns_exactly_one_original_result_backing_at_each_limit() {
         );
     }
 }
-#[derive(Debug)]
-struct RebaseRefusal {
-    error: DomError,
-    expected_limit: usize,
-}
-fn rebase(
-    value: Option<DocumentString>,
-    resource: DomResource,
-    cap: usize,
-) -> Result<(Dom, NodeId, DomSourceDialogRequest), RebaseRefusal> {
-    let (mut dom, executor, subject, event) = close_observer(value);
-    attest(
-        &mut dom,
-        &executor,
-        &event,
-        DomSourceEventOutcome::NotCanceled,
-    );
-    rebase_accepted(dom, subject, event, resource, cap)
-}
-fn rebase_accepted(
-    mut dom: Dom,
-    subject: NodeId,
-    event: DomSourceEventRequest,
-    resource: DomResource,
-    cap: usize,
-) -> Result<(Dom, NodeId, DomSourceDialogRequest), RebaseRefusal> {
-    let queue = advance_rebase(&mut dom, subject, &event, resource, cap)?;
-    Ok((dom, subject, queue))
-}
 fn advance_rebase(
     dom: &mut Dom,
     subject: NodeId,
     event: &DomSourceEventRequest,
     resource: DomResource,
     cap: usize,
-) -> Result<DomSourceDialogRequest, RebaseRefusal> {
+) -> Result<DomSourceDialogRequest, DomError> {
     let mut policy = limits();
     resource_limit(&mut policy, resource, cap);
     let queue = {
-        let mut lease = dom
-            .resume_source_edit(event.operation(), policy, &AtomicBool::new(false))
-            .map_err(|error| RebaseRefusal {
-                error,
-                expected_limit: cap,
-            })?;
-        // There is exactly one original observer, with no external event
-        // payload still retained after trusted completion. Its original input
-        // transfers into the new Draft once; only these control/header bodies
-        // remain additional during formation. Derive their extent from layout,
-        // independently of the producer's charged payload counter.
+        let mut lease =
+            dom.resume_source_edit(event.operation(), policy, &AtomicBool::new(false))?;
         assert!(lease.dom.source_parents.is_empty());
         assert_eq!(event.work.bytes.load(Ordering::Relaxed), 0);
         assert_eq!(event.work.units.load(Ordering::Relaxed), 0);
-        let control_bytes = size_of::<Operation>()
-            + size_of::<EventWork>()
-            + size_of::<AtomicU64>()
-            + 2 * size_of::<AtomicUsize>();
-        let advance = lease.advance(&AtomicBool::new(false));
-        let progress = advance.map_err(|error| {
-            let old_observer_remains = lease
-                .dom
-                .source_operation
-                .as_ref()
-                .is_some_and(|operation| operation.observation().is_some());
-            let expected_limit =
-                if old_observer_remains && resource == DomResource::SourceRetainedBytes {
-                    // Subtraction itself reports the raw policy on underflow;
-                    // otherwise the new Draft receives this effective allowance.
-                    cap.checked_sub(control_bytes).unwrap_or(cap)
-                } else {
-                    // Once the old observation is replaced, the Draft's limit is
-                    // refreshed to the original policy. Fixed control has no UTF16.
-                    cap
-                };
-            RebaseRefusal {
-                error,
-                expected_limit,
-            }
-        })?;
+        let progress = lease.advance(&AtomicBool::new(false))?;
         let DomSourceProgress::Request(DomSourceRequest::Dialog(queue)) = progress else {
             panic!("the authentic receipt must reach original QueueToggle")
         };
@@ -205,55 +145,117 @@ fn advance_rebase(
     Ok(queue)
 }
 #[test]
-fn original_result_transfers_across_rebase_once_without_duplicate_debit_or_credit() {
+fn original_result_survives_same_owner_admission_refusal_and_transfers_once_on_rebase() {
+    for units in [0, 23] {
+        let value = result(units);
+        let weak = Arc::downgrade(value.shared_code_units());
+        let (mut dom, executor, subject, event) = close_observer(Some(value));
+        attest(
+            &mut dom,
+            &executor,
+            &event,
+            DomSourceEventOutcome::NotCanceled,
+        );
+        refuse_original_observation(&mut dom, &event, units);
+        let queue = advance_rebase(
+            &mut dom,
+            subject,
+            &event,
+            DomResource::SourceRetainedBytes,
+            limits().retained_bytes,
+        )
+        .unwrap();
+        assert_eq!(queue.operation(), event.operation());
+        assert_eq!(queue.subject(), subject);
+        assert_eq!(
+            dom.snapshot()
+                .node(subject)
+                .unwrap()
+                .attribute(&"open".into()),
+            Some(&"".into())
+        );
+        assert!(weak.upgrade().is_some());
+        let stamp = dom.snapshot().stamp();
+        let repeat = advance_rebase(
+            &mut dom,
+            subject,
+            &event,
+            DomResource::SourceRetainedBytes,
+            limits().retained_bytes,
+        )
+        .unwrap();
+        assert_eq!(repeat.action(), queue.action());
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_original_result(&dom, &weak);
+        drop(dom);
+        assert!(weak.upgrade().is_none());
+    }
+}
+
+fn assert_original_result(dom: &Dom, weak: &std::sync::Weak<Vec<u16>>) {
+    let op = dom.source_operation.as_ref().unwrap();
+    let OperationRoot::Edit(
+        [
+            Command::CloseDialog {
+                result: Some(value),
+                ..
+            },
+        ],
+    ) = &op.commands
+    else {
+        panic!("one original result-bearing command");
+    };
+    assert!(std::sync::Weak::ptr_eq(
+        weak,
+        &Arc::downgrade(value.shared_code_units())
+    ));
+}
+
+fn refuse_original_observation(dom: &mut Dom, event: &DomSourceEventRequest, units: usize) {
+    let observation = dom
+        .source_operation
+        .as_ref()
+        .unwrap()
+        .observation()
+        .unwrap();
+    assert_eq!(
+        observation.inputs.bytes,
+        size_of::<Vec<u16>>() + units * size_of::<u16>()
+    );
+    assert_eq!(observation.inputs.units, units);
+    assert_eq!(
+        observation.accepted,
+        Some(DomSourceEventOutcome::NotCanceled)
+    );
+    // This exact retained operation supplies both boundaries. No other owner's
+    // registry layout or allocation history is used to predict its price.
+    let current = dom
+        .source_observation_total(storage::Payload::default(), &AtomicBool::new(false))
+        .unwrap();
     for resource in [
         DomResource::SourceRetainedBytes,
         DomResource::SourceRetainedUnits,
     ] {
-        // Calibrate only omitted-input canonical formation at its real front;
-        // never observe a result-bearing run's required total as the oracle.
-        let mut low = 0;
-        let mut high = match resource {
-            DomResource::SourceRetainedBytes => limits().retained_bytes,
-            _ => limits().retained_units,
+        let exact = if resource == DomResource::SourceRetainedBytes {
+            current.bytes
+        } else {
+            current.units
         };
-        while low < high {
-            let middle = low + (high - low) / 2;
-            match rebase(None, resource, middle) {
-                Ok(_) => high = middle,
-                Err(refusal) => {
-                    is_limit(refusal.error, resource, refusal.expected_limit);
-                    low = middle + 1;
-                }
-            }
+        if exact == 0 {
+            continue;
         }
-        for units in [0, 23] {
-            let extra = match resource {
-                DomResource::SourceRetainedBytes => {
-                    size_of::<Vec<u16>>() + units * size_of::<u16>()
-                }
-                _ => units,
-            };
-            let exact = low + extra;
-            match rebase(Some(result(units)), resource, exact - 1) {
-                Err(refusal) => is_limit(refusal.error, resource, refusal.expected_limit),
-                Ok(_) => panic!("one-short result rebase was admitted"),
-            }
-            let value = result(units);
-            let weak = Arc::downgrade(value.shared_code_units());
-            let (dom, subject, queue) = rebase(Some(value), resource, exact).unwrap();
-            assert_eq!(queue.subject(), subject);
-            assert_eq!(
-                dom.snapshot()
-                    .node(subject)
-                    .unwrap()
-                    .attribute(&"open".into()),
-                Some(&"".into())
-            );
-            assert!(weak.upgrade().is_some());
-            drop(dom);
-            assert!(weak.upgrade().is_none());
+        let mut short = limits();
+        resource_limit(&mut short, resource, exact - 1);
+        match dom.resume_source_edit(event.operation(), short, &AtomicBool::new(false)) {
+            Err(error) => is_limit(error, resource, exact - 1),
+            Ok(_) => panic!("one-short original observation was admitted"),
         }
+        let mut policy = limits();
+        resource_limit(&mut policy, resource, exact);
+        let lease = dom
+            .resume_source_edit(event.operation(), policy, &AtomicBool::new(false))
+            .unwrap();
+        assert_eq!(lease.status().phase(), DomSourcePhase::EventReceiptAccepted);
     }
 }
 
@@ -436,6 +438,12 @@ fn native_close_queue_preparation_reserves_the_actual_remaining_phases_and_outpu
 // returns without consuming its unused result. Only then can the original
 // parent's actual receipt be accepted and its original method be rebased.
 fn parent_after_child(value: Option<DocumentString>) -> (Dom, NodeId, DomSourceEventRequest) {
+    parent_after_child_observe(value, |_| {})
+}
+fn parent_after_child_observe(
+    value: Option<DocumentString>,
+    mut observe: impl FnMut(&mut Dom),
+) -> (Dom, NodeId, DomSourceEventRequest) {
     let cancel = AtomicBool::new(false);
     let (mut dom, executor, _, first, second) = fixture();
     let mut setup = DomBatch::new();
@@ -460,6 +468,7 @@ fn parent_after_child(value: Option<DocumentString>) -> (Dom, NodeId, DomSourceE
     let outer_scope = executor
         .enter_dispatch(&dom, &outer_permit, &cancel)
         .unwrap();
+    observe(&mut dom);
     let child_value = result(23);
     let child_weak = Arc::downgrade(child_value.shared_code_units());
     let child = {
@@ -482,6 +491,7 @@ fn parent_after_child(value: Option<DocumentString>) -> (Dom, NodeId, DomSourceE
     let child_scope = executor
         .enter_dispatch(&dom, &child_permit, &cancel)
         .unwrap();
+    observe(&mut dom);
     let callback_value = DocumentString::from("a distinct callback value");
     let callback_weak = Arc::downgrade(callback_value.shared_code_units());
     if let Some(outer_weak) = &outer_weak {
@@ -521,6 +531,7 @@ fn parent_after_child(value: Option<DocumentString>) -> (Dom, NodeId, DomSourceE
             DomSourceProgress::Complete(_)
         ));
     }
+    observe(&mut dom);
     assert_eq!(
         dom.pending_source_edit().unwrap().operation(),
         outer.operation()
@@ -567,140 +578,133 @@ fn parent_after_child(value: Option<DocumentString>) -> (Dom, NodeId, DomSourceE
 }
 #[test]
 fn parent_result_rebases_once_after_actual_child_and_distinct_callback_overlap() {
-    for resource in [
-        DomResource::SourceRetainedBytes,
-        DomResource::SourceRetainedUnits,
-    ] {
-        // Only the equal-shape omitted-parent-input route calibrates the
-        // canonical scaffold: actual child/callback publication and restored
-        // parent stack capacity are included, but no result-bearing high-water.
-        let attempt = |value, cap| {
-            let (dom, subject, event) = parent_after_child(value);
-            let operation = event.operation();
-            rebase_accepted(dom, subject, event, resource, cap).map(|(dom, subject, queue)| {
-                assert_eq!(queue.operation(), operation);
-                assert_eq!(queue.subject(), subject);
-                assert!(matches!(
-                    queue.action(),
-                    HtmlDialogAction::QueueToggle { .. }
-                ));
-                assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
-                (dom, subject, queue)
-            })
-        };
-        let mut low = 0;
-        let mut high = match resource {
-            DomResource::SourceRetainedBytes => limits().retained_bytes,
-            _ => limits().retained_units,
-        };
-        while low < high {
-            let middle = low + (high - low) / 2;
-            match attempt(None, middle) {
-                Ok(_) => high = middle,
-                Err(refusal) => {
-                    is_limit(refusal.error, resource, refusal.expected_limit);
-                    low = middle + 1;
-                }
-            }
-        }
-        for units in [0, 17] {
-            // One actual original input: Vec descriptor plus exact requested
-            // UTF16 capacity, or string code units in their separate domain.
-            let extra = match resource {
-                DomResource::SourceRetainedBytes => {
-                    size_of::<Vec<u16>>() + units * size_of::<u16>()
-                }
-                _ => units,
-            };
-            let exact = low + extra;
-            let value = result(units);
-            let weak = Arc::downgrade(value.shared_code_units());
-            let (mut dom, subject, event) = parent_after_child(Some(value));
-            match advance_rebase(&mut dom, subject, &event, resource, exact - 1) {
-                Err(refusal) => is_limit(refusal.error, resource, refusal.expected_limit),
-                Ok(_) => panic!("one-short original parent result rebase admitted"),
-            }
-            assert_eq!(
-                dom.pending_source_edit().unwrap().operation(),
-                event.operation()
-            );
-            let operation = dom.source_operation.as_ref().unwrap();
-            let OperationRoot::Edit(
-                [
-                    Command::CloseDialog {
-                        result: Some(retained),
-                        ..
-                    },
-                ],
-            ) = &operation.commands
-            else {
-                panic!("the original parent's result-bearing command remains")
-            };
-            assert!(std::sync::Weak::ptr_eq(
-                &weak,
-                &Arc::downgrade(retained.shared_code_units())
-            ));
-            match &operation.draft {
-                OperationDraft::Observed(observation) => {
-                    // Formation can refuse before the same accepted receipt
-                    // has transferred into the original operation's Draft.
-                    assert_eq!(
-                        observation.accepted,
-                        Some(DomSourceEventOutcome::NotCanceled)
-                    );
-                    assert!(Arc::ptr_eq(&observation.request.work, &event.work));
-                    assert_eq!(
-                        operation.status().phase(),
-                        DomSourcePhase::EventReceiptAccepted
-                    );
-                }
-                OperationDraft::Segment(draft) => {
-                    // Successful rebase is retained even when the subsequent
-                    // original admission/checkpoint refuses. This status is
-                    // NOT evidence that QueueToggle was already reached.
-                    assert!(operation.event_exposed);
-                    assert_eq!(operation.status().phase(), DomSourcePhase::DialogService);
-                    let Some(crate::store::method::Frame::Dialog(frame)) = draft.method.as_ref()
-                    else {
-                        panic!("original Dialog frame");
-                    };
-                    assert_eq!(draft.published_id(frame.subject), Some(subject));
-                    assert_eq!(frame.cursor.action(), HtmlDialogAction::ReadOpen);
-                    assert!(matches!(frame.invocation, Invocation::Unissued));
-                }
-            }
-            assert!(weak.upgrade().is_some());
-            let queue = advance_rebase(&mut dom, subject, &event, resource, exact).unwrap();
-            assert_eq!(queue.operation(), event.operation());
-            // Reacquiring and advancing the same original operation repeats
-            // its actual Queue request, not beforetoggle or callback execution.
-            let stamp = dom.snapshot().stamp();
-            let repeat = advance_rebase(&mut dom, subject, &event, resource, exact).unwrap();
-            assert_eq!(repeat.operation(), queue.operation());
-            assert_eq!(repeat.action(), queue.action());
-            assert_eq!(dom.snapshot().stamp(), stamp);
-            assert_eq!(
-                dom.snapshot()
-                    .node(subject)
-                    .unwrap()
-                    .attribute(&"open".into()),
-                Some(&"".into())
-            );
-            assert_eq!(
-                dom.snapshot()
-                    .node(subject)
-                    .unwrap()
-                    .as_dialog()
-                    .unwrap()
-                    .return_value(),
-                &DocumentString::default()
-            );
-            assert!(
-                weak.upgrade().is_some(),
-                "same original input survives its real parent rebase"
-            );
-            drop(dom);
-            assert!(weak.upgrade().is_none());
-        }
+    for units in [0, 17] {
+        let value = result(units);
+        let weak = Arc::downgrade(value.shared_code_units());
+        let (mut dom, subject, event) = parent_after_child(Some(value));
+        refuse_original_observation(&mut dom, &event, units);
+        assert_original_result(&dom, &weak);
+        let queue = advance_rebase(
+            &mut dom,
+            subject,
+            &event,
+            DomResource::SourceRetainedBytes,
+            limits().retained_bytes,
+        )
+        .unwrap();
+        assert_eq!(queue.operation(), event.operation());
+        assert_eq!(queue.subject(), subject);
+        let stamp = dom.snapshot().stamp();
+        let repeat = advance_rebase(
+            &mut dom,
+            subject,
+            &event,
+            DomResource::SourceRetainedBytes,
+            limits().retained_bytes,
+        )
+        .unwrap();
+        assert_eq!(repeat.operation(), queue.operation());
+        assert_eq!(repeat.action(), queue.action());
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.snapshot()
+                .node(subject)
+                .unwrap()
+                .attribute(&"open".into()),
+            Some(&"".into())
+        );
+        assert_eq!(
+            dom.snapshot()
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .return_value(),
+            &DocumentString::default()
+        );
+        assert_original_result(&dom, &weak);
+        assert!(weak.upgrade().is_some());
+        drop(dom);
+        assert!(weak.upgrade().is_none());
     }
+}
+
+#[test]
+fn measured_external_envelope_follows_nested_source_parent_restore_and_drop() {
+    if !scale_metrics::ENABLED {
+        return;
+    }
+    let measurement = scale_metrics::Measurement::begin().unwrap();
+    let mut stage = 0;
+    let (dom, _, _) = parent_after_child_observe(Some(result(17)), |dom| {
+        let external = scale_metrics::source_external_observation().unwrap();
+        assert_eq!(external.units(), if stage == 1 { 17 + 23 } else { 17 });
+        if stage == 0 {
+            let before = external;
+            let stack_capacity = dom.source_parents.capacity();
+            let subject = dom
+                .source_operation
+                .as_ref()
+                .unwrap()
+                .observation()
+                .unwrap()
+                .request
+                .subject();
+            let child = dom
+                .begin_source_edit(
+                    DomSourceEdit::set_attribute(subject, "data-unpublished", "child"),
+                    limits(),
+                    &AtomicBool::new(false),
+                )
+                .unwrap();
+            assert!(
+                scale_metrics::source_external_observation()
+                    .unwrap()
+                    .units()
+                    > before.units()
+            );
+            drop(child);
+            let restored = scale_metrics::source_external_observation().unwrap();
+            assert_eq!(restored.units(), before.units());
+            assert_eq!(
+                restored.bytes(),
+                before.bytes()
+                    + (dom.source_parents.capacity() - stack_capacity)
+                        * size_of::<Box<Operation>>()
+            );
+        }
+        if stage == 1 {
+            let subject = dom
+                .source_operation
+                .as_ref()
+                .unwrap()
+                .observation()
+                .unwrap()
+                .request
+                .subject();
+            let mut callback = DomBatch::new();
+            callback.set_attribute(subject, "data-measurement", "callback");
+            dom.apply(callback, &AtomicBool::new(false)).unwrap();
+            let restored = scale_metrics::source_external_observation().unwrap();
+            assert_eq!(restored.units(), 40);
+            // Revision history is already controlled by the same ledger; the
+            // callback does not add another external history envelope.
+            assert_eq!(restored.bytes(), external.bytes());
+        }
+        stage += 1;
+    });
+    assert_eq!(stage, 3);
+    assert_eq!(
+        scale_metrics::source_external_observation()
+            .unwrap()
+            .units(),
+        17
+    );
+    drop(dom);
+    assert_eq!(
+        scale_metrics::source_external_observation().unwrap(),
+        custody::Usage::default()
+    );
+    let counters = measurement.finish(scale_metrics::Hooks::default()).unwrap();
+    assert_eq!(counters.source_live_units, 0);
 }

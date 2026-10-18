@@ -184,6 +184,8 @@ impl Operations {
         operation: Operation,
         synchronous: bool,
     ) {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let PreparedRows {
             candidate,
             slot,
@@ -199,6 +201,8 @@ impl Operations {
         if let Some(mut candidate) = candidate {
             for row in &mut self.rows {
                 candidate.rows.push(row.take());
+                #[cfg(test)]
+                written.pushed::<Option<Box<Operation>>>();
             }
             candidate.synchronous = self.synchronous;
             let old = std::mem::replace(self, candidate);
@@ -207,6 +211,8 @@ impl Operations {
         }
         while self.rows.len() < required {
             self.rows.push(None);
+            #[cfg(test)]
+            written.pushed::<Option<Box<Operation>>>();
         }
         self.rows[slot] = Some(Box::new(operation));
         if synchronous {

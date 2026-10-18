@@ -1,4 +1,4 @@
-//! Actual canonical Range payload, checkpoint-copy and rollback admission.
+//! Sparse Range capture and genuine Source checkpoint rollback admission.
 //! No parser, semantic fact, cursor or receipt is replaced by this harness.
 use super::*;
 use std::mem::size_of;
@@ -55,72 +55,27 @@ fn source_draft(dom: &Dom) -> Draft {
 }
 
 #[test]
-fn actual_range_banks_tickets_and_created_identity_output_are_independently_priced() {
+fn canonical_capture_is_sparse_and_created_identity_output_remains_exact() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, text) = fixture();
-    let empty_state = dom.state.clone();
-    let empty_draft = source_draft(&dom);
-    let empty_bytes = empty_draft.source_storage_bytes(&cancel).unwrap();
     let ids = add_ranges(&mut dom, document, text);
-    let filled_draft = source_draft(&dom);
-    let canonical_bytes = source::storage::state(&dom.state, || Ok(())).unwrap().bytes;
-    let old_canonical_bytes = source::storage::state(&empty_state, || Ok(()))
-        .unwrap()
-        .bytes;
-    // The first fixture publication grows the node-slot bank one creation at a
-    // time; the next publication reserves its established length all at once.
-    // Equal topology does not promise equal spare backing. Price both actual
-    // node-slot capacities independently rather than treating their shrink as
-    // a negative Range charge. Other fixture node payload/banks remain equal;
-    // the changed association is inline in the already-priced node.
-    assert_eq!(dom.state.slots.len(), empty_state.slots.len());
-    for (after, before) in dom.state.slots.values().zip(&empty_state.slots) {
-        let after = after.node.as_ref().unwrap();
-        let before = before.node.as_ref().unwrap();
-        assert_eq!(after.kind, before.kind);
-        assert_eq!(after.children.capacity(), before.children.capacity());
-        assert_eq!(
-            after.manual_nodes.capacity(),
-            before.manual_nodes.capacity()
-        );
-        assert_eq!(
-            after.assigned_nodes.capacity(),
-            before.assigned_nodes.capacity()
-        );
+    let captured = dom.snapshot();
+    let draft = source_draft(&dom);
+    assert_eq!(draft.ranges.len(), 4);
+    assert_eq!(draft.ranges.touched().count(), 0);
+    for id in &ids {
+        let record = draft.range_record(*id).unwrap();
+        assert_eq!(record.start.container, Key::Existing(text));
+        assert_eq!(record.start.offset, 3);
     }
     assert_eq!(
-        dom.state.signal_slots.capacity(),
-        empty_state.signal_slots.capacity()
+        draft.range_publication_ready(&cancel),
+        draft.full_range_publication_ready(&cancel)
     );
-    assert_eq!(
-        dom.state.native_tasks.capacity(),
-        empty_state.native_tasks.capacity()
-    );
-    assert_eq!(
-        dom.state.details_intentions.capacity(),
-        empty_state.details_intentions.capacity()
-    );
-    let old_node_slots = empty_state.slots.index_charge().bytes;
-    let new_node_slots = dom.state.slots.index_charge().bytes;
-    let canonical_bank = dom.state.ranges.index_charge().bytes + dom.state.ranges.totals().bytes;
-    assert_eq!(
-        canonical_bytes + old_node_slots,
-        old_canonical_bytes + new_node_slots + canonical_bank
-    );
-    let draft_bank = filled_draft.ranges.capacity() * size_of::<crate::range::Slot<Key>>();
-    assert_eq!(
-        filled_draft.source_storage_bytes(&cancel).unwrap() - empty_bytes,
-        draft_bank
-    );
-    assert!(canonical_bytes >= canonical_bank);
-    drop((empty_draft, filled_draft));
-
-    // Real retirement supplies an actual reusable slot. Creation below changes
-    // its fixed record without growing the bank; its new ticket is additional
-    // owned storage, independently of the permanent canonical bank.
-    let mut batch = DomBatch::new();
-    batch.retire_range(ids[3]);
-    dom.apply(batch, &cancel).unwrap();
+    drop(draft);
+    let mut retirement = DomBatch::new();
+    retirement.retire_range(ids[3]);
+    dom.apply(retirement, &cancel).unwrap();
     let mut creation = DomBatch::new();
     creation.create_range(document);
     let mut draft = Draft::new_source(
@@ -132,42 +87,28 @@ fn actual_range_banks_tickets_and_created_identity_output_are_independently_pric
     )
     .unwrap()
     .0;
-    let bank_capacity = draft.ranges.capacity();
-    let before = draft.source_storage_bytes(&cancel).unwrap();
+    assert_eq!(draft.ranges.touched().count(), 0);
     draft
         .apply(&creation.commands[0], dom.limits, &cancel)
         .unwrap();
-    assert_eq!(draft.ranges.capacity(), bank_capacity);
     let id = draft.range_tickets[0];
-    let ticket_bytes = draft.range_tickets.capacity() * size_of::<DomRangeId>();
     assert_eq!(
-        draft.source_storage_bytes(&cancel).unwrap() - before,
-        ticket_bytes
+        (id.slot, id.generation),
+        (ids[3].slot, ids[3].generation + 1)
     );
-    assert_ne!(id, ids[3]);
-
+    assert_eq!(draft.ranges.touched().collect::<Vec<_>>(), [id.slot]);
     let prepared = draft.finish(&dom, &cancel).unwrap();
     assert_eq!(prepared.created_ranges, [Some(id)]);
     assert_eq!(prepared.changes, [DomChange::RangeCreated(id)]);
-    let new_output_bytes = prepared.created_ranges.capacity() * size_of::<Option<DomRangeId>>()
+    let output_bytes = prepared.created_ranges.capacity() * size_of::<Option<DomRangeId>>()
         + prepared.changes.capacity() * size_of::<DomChange>();
-    let formed_with_output = draft.source_formation_bytes.load(Ordering::Relaxed);
+    assert!(output_bytes >= size_of::<Option<DomRangeId>>() + size_of::<DomChange>());
     dom.publish(prepared, &cancel).unwrap();
-    assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-    // The real published state is now the same candidate, so an unchanged
-    // finishing Draft has every same canonical output bank except the genuine
-    // creation result and its change row. Their exact real capacities, not a
-    // storage function's output, determine the required additional charge.
-    let unchanged = source_draft(&dom);
-    let prepared = unchanged.finish(&dom, &cancel).unwrap();
-    assert!(prepared.created_ranges.is_empty());
-    assert!(prepared.changes.is_empty());
-    assert_eq!(
-        formed_with_output - unchanged.source_formation_bytes.load(Ordering::Relaxed),
-        new_output_bytes
-    );
-    drop(prepared);
-    assert_eq!(unchanged.source_formation_bytes.load(Ordering::Relaxed), 0);
+    assert!(captured.range(ids[3]).is_ok());
+    assert!(matches!(
+        dom.snapshot().range(ids[3]),
+        Err(DomError::StaleRange)
+    ));
     assert_eq!(
         dom.snapshot().range(id).unwrap().start().container(),
         document.node()
@@ -175,99 +116,60 @@ fn actual_range_banks_tickets_and_created_identity_output_are_independently_pric
 }
 
 #[test]
-fn original_checkpoint_range_and_ticket_copies_require_exact_simultaneous_bank_backing() {
+fn actual_range_write_refusal_preserves_checkpoint_records_and_spent_work() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, text) = fixture();
     let ids = add_ranges(&mut dom, document, text);
-    let mut batch = DomBatch::new();
-    batch.retire_range(ids[3]);
-    dom.apply(batch, &cancel).unwrap();
-    let mut creation = DomBatch::new();
-    creation.create_range(document);
-    let mut draft = Draft::new_source(
-        &dom,
-        creation.owner.clone(),
-        &creation.commands,
-        policy(),
-        &cancel,
-    )
-    .unwrap()
-    .0;
-    draft
-        .apply(&creation.commands[0], dom.limits, &cancel)
+    let snapshot = dom.snapshot();
+    let mut draft = source_draft(&dom);
+    let before: Vec<_> = (0..draft.ranges.len())
+        .map(|index| draft.ranges.slot(index))
+        .collect();
+    let graph = draft.ranges.allocation_graph();
+    let checkpoint = draft
+        .source_checkpoint(draft.source_other_bytes, 0, &cancel)
         .unwrap();
-    let before = dom.snapshot();
-    let baseline = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
-    assert!(
-        baseline
-            >= draft.ranges.capacity() * size_of::<crate::range::Slot<Key>>()
-                + draft.range_tickets.capacity() * size_of::<DomRangeId>()
+    assert_eq!(
+        draft.ranges.allocation_graph().pages().collect::<Vec<_>>(),
+        graph.pages().collect::<Vec<_>>()
     );
-    // These are independent actual allocator capacities for the exact copy
-    // requests. The original banks stay live during both additional copies.
-    let mut range_probe = Vec::<crate::range::Slot<Key>>::new();
-    range_probe.try_reserve_exact(draft.ranges.len()).unwrap();
-    let mut ticket_probe = Vec::<DomRangeId>::new();
-    ticket_probe
-        .try_reserve_exact(draft.range_tickets.len())
-        .unwrap();
-    let range_bytes = range_probe.capacity() * size_of::<crate::range::Slot<Key>>();
-    let ticket_bytes = ticket_probe.capacity() * size_of::<DomRangeId>();
-    drop((range_probe, ticket_probe));
-    let exact = baseline + range_bytes + ticket_bytes;
-    let mut short = policy();
-    short.retained_bytes = exact - 1;
-    draft.source_limits = Some(short);
-    {
-        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
-        let ranges = admission.copy(&draft.ranges, &cancel).unwrap();
-        assert_eq!(ranges, draft.ranges);
-        assert_eq!(
-            draft.select_temporary_bytes.load(Ordering::Relaxed),
-            range_bytes
-        );
-        assert!(
-            matches!(admission.copy(&draft.range_tickets, &cancel), Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit }) if limit == exact - 1)
-        );
-        drop(ranges);
-        drop(admission);
-    }
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
-    let mut full = policy();
-    full.retained_bytes = exact;
-    draft.source_limits = Some(full);
     let spent = draft.source_work.load(Ordering::Relaxed);
-    {
-        let mut admission = source::checkpoint::Admission::new(&draft, baseline).unwrap();
-        let ranges = admission.copy(&draft.ranges, &cancel).unwrap();
-        let tickets = admission.copy(&draft.range_tickets, &cancel).unwrap();
-        assert_eq!(ranges, draft.ranges);
-        assert_eq!(tickets, draft.range_tickets);
-        let charge = admission.finish();
-        assert_eq!(
-            draft.select_temporary_bytes.load(Ordering::Relaxed),
-            range_bytes + ticket_bytes
-        );
-        // One genuine copied-row visit per original Range slot and ticket.
-        assert_eq!(
-            draft.source_work.load(Ordering::Relaxed) - spent,
-            (draft.ranges.len() + draft.range_tickets.len()) as u64
-        );
-        drop((ranges, tickets));
-        drop(charge);
-    }
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
-    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    let mut short = policy();
+    short.retained_bytes = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+    draft.source_limits = Some(short);
+    assert!(matches!(
+        draft.set_range_boundary(ids[0], Key::Existing(text), 2, true, &cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            ..
+        })
+    ));
+    assert_eq!(
+        (0..draft.ranges.len())
+            .map(|index| draft.ranges.slot(index))
+            .collect::<Vec<_>>(),
+        before
+    );
+    let refused = draft.source_work.load(Ordering::Relaxed);
+    assert!(refused >= spent);
+    checkpoint.restore(&mut draft);
+    assert_eq!(draft.source_work.load(Ordering::Relaxed), refused);
+    assert_eq!(
+        (0..draft.ranges.len())
+            .map(|index| draft.ranges.slot(index))
+            .collect::<Vec<_>>(),
+        before
+    );
+    assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
     assert_eq!(
         dom.snapshot().document(document).unwrap().active_range(),
-        before.document(document).unwrap().active_range()
+        snapshot.document(document).unwrap().active_range()
     );
 }
 
 #[test]
-fn reached_mid_range_scan_work_refusal_restores_real_checkpoint_and_retries_once_after_cancellation()
- {
-    let cancel = AtomicBool::new(false);
+fn reached_participant_refusal_and_late_cancellation_restore_real_checkpoint_then_retry() {
+    let cancel = Arc::new(AtomicBool::new(false));
     let (mut dom, document, text) = fixture();
     let ids = add_ranges(&mut dom, document, text);
     let before = dom.snapshot();
@@ -284,53 +186,67 @@ fn reached_mid_range_scan_work_refusal_restores_real_checkpoint_and_retries_once
     .unwrap()
     .0;
     let key = draft.resolve(text.into()).unwrap();
-    let old_records = draft.ranges.clone();
+    let old_records: Vec<_> = (0..draft.ranges.len())
+        .map(|index| draft.ranges.slot(index))
+        .collect();
     let checkpoint = draft
         .source_checkpoint(draft.source_other_bytes, 0, &cancel)
         .unwrap();
-    let checkpoint_bytes = draft.select_temporary_bytes.load(Ordering::Relaxed);
-    assert!(checkpoint_bytes >= draft.ranges.len() * size_of::<crate::range::Slot<Key>>());
     let spent = draft.source_work.load(Ordering::Relaxed);
     let mut short = policy();
     short.work = spent + 1;
     draft.source_limits = Some(short);
-    // There is one admitted visit per Range slot. Permit the first real record
-    // and refuse the second; this is inside maintenance, not entry work0.
     assert_eq!(
         draft.range_replace_data(key, 1, 1, 2, &cancel),
         Err(DomError::SourceWorkLimit { limit: spent + 1 })
     );
-    assert_eq!(draft.ranges[0].record.unwrap().start.offset, 4);
-    assert_eq!(draft.ranges[1..], old_records[1..]);
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent + 1);
     checkpoint.restore(&mut draft);
-    assert_eq!(draft.ranges, old_records);
+    assert_eq!(
+        (0..draft.ranges.len())
+            .map(|index| draft.ranges.slot(index))
+            .collect::<Vec<_>>(),
+        old_records
+    );
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent + 1);
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
-    assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert_eq!(dom.usage(), usage);
 
-    // Cancellation remains the caller's actual latched flag across restore.
-    // It cannot turn the unpublished partial scan into success or consume a
-    // renewed work meter. Cleanup requires no fallible admission.
-    cancel.store(true, Ordering::Release);
+    draft.source_limits = Some(policy());
+    let checkpoint = draft
+        .source_checkpoint(draft.source_other_bytes, 0, &cancel)
+        .unwrap();
+    let late_cancel = cancel.clone();
+    let observation =
+        maintenance_observation::after_write(move || late_cancel.store(true, Ordering::Release));
     assert_eq!(
         draft.range_replace_data(key, 1, 1, 2, &cancel),
         Err(DomError::Cancelled)
     );
+    drop(observation);
+    assert_eq!(draft.range_record(ids[0]).unwrap().start.offset, 4);
+    for id in &ids[1..] {
+        assert_eq!(draft.range_record(*id).unwrap().start.offset, 3);
+    }
+    let spent = draft.source_work.load(Ordering::Relaxed);
+    checkpoint.restore(&mut draft);
+    assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
     assert!(cancel.load(Ordering::Acquire));
-    assert_eq!(draft.ranges, old_records);
-    assert_eq!(draft.source_work.load(Ordering::Relaxed), spent + 1);
+    assert_eq!(
+        (0..draft.ranges.len())
+            .map(|index| draft.ranges.slot(index))
+            .collect::<Vec<_>>(),
+        old_records
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+
     cancel.store(false, Ordering::Release);
-    draft.source_limits = Some(policy());
-    // Retry the actual complete CharacterData command, not a synthetic text
-    // write after calling maintenance. The original owner orders both effects.
     draft
         .apply(&operation.commands[0], dom.limits, &cancel)
         .unwrap();
-    for id in &ids {
-        assert_eq!(draft.range_record(*id).unwrap().start.offset, 4);
-    }
+    assert_eq!(
+        draft.range_publication_ready(&cancel),
+        draft.full_range_publication_ready(&cancel)
+    );
     let prepared = draft.finish(&dom, &cancel).unwrap();
     dom.publish(prepared, &cancel).unwrap();
     let after = dom.snapshot();
@@ -339,16 +255,13 @@ fn reached_mid_range_scan_work_refusal_restores_real_checkpoint_and_retries_once
         Some(&DocumentString::from("aXYcd"))
     );
     for id in ids {
-        let range = after.range(id).unwrap();
-        assert_eq!(range.start().offset(), 4);
-        assert_eq!(range.end().offset(), 4);
+        assert_eq!(after.range(id).unwrap().start().offset(), 4);
+        assert_eq!(after.range(id).unwrap().end().offset(), 4);
         assert_eq!(before.range(id).unwrap().start().offset(), 3);
     }
     assert_eq!(
         after.document(document).unwrap().active_range(),
         before.document(document).unwrap().active_range()
     );
-    assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-    assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
     assert!(dom.pending_source_edit().is_none());
 }

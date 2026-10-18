@@ -665,8 +665,8 @@ impl DomSnapshot {
         let value = transition
             .value
             .records
-            .iter()
-            .find(|r| r.id == id)
+            .get(usize::try_from(id.generation).map_err(|_| DomError::RepresentationExhausted)?)
+            .filter(|r| r.id == id)
             .ok_or(DomError::StaleViewTransitionRecord)?;
         Ok(crate::DomViewTransitionRecord { transition, value })
     }
@@ -711,11 +711,6 @@ impl<'a> DomDocument<'a> {
     }
     /// None means feature-uninitialized, not a source null stylesheet default.
     pub fn view_transitions(self) -> Option<&'a crate::DomDocumentViewTransitions> {
-        self.snapshot
-            .state
-            .view_transitions
-            .documents
-            .iter()
-            .find(|d| d.document == self.id)
+        self.snapshot.state.view_transitions.document(self.id)
     }
 }

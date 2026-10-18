@@ -3,7 +3,7 @@ use super::*;
 
 #[derive(Clone)]
 pub(super) enum Source {
-    Published(DomSnapshot, NodeId),
+    Published(DomSnapshot, NodeId, source::input::InputCapture),
     Staged(Key),
 }
 #[derive(Clone, Copy)]
@@ -32,12 +32,10 @@ pub(super) struct Frame {
 impl Frame {
     pub(super) fn retained_payload(
         &self,
-        step: impl FnMut() -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<source::storage::Payload, DomError> {
-        match &self.source {
-            Source::Published(snapshot, _) => source::storage::state(&snapshot.state, step),
-            Source::Staged(_) => Ok(source::storage::Payload::default()),
-        }
+        step()?;
+        Ok(source::storage::Payload::default())
     }
     pub(super) fn checkpoint(&self) -> Self {
         Self {
@@ -57,27 +55,18 @@ impl Frame {
 impl Draft {
     fn source_kind(&self, source: &Source) -> Result<DomNodeKind, DomError> {
         Ok(match source {
-            Source::Published(s, id) => s.node(*id)?.kind().clone(),
+            Source::Published(s, id, _) => s.node(*id)?.kind().clone(),
             Source::Staged(k) => self.node(*k)?.kind.clone(),
         })
     }
     fn published_clone_source(
-        &self,
+        &mut self,
         snapshot: &DomSnapshot,
         id: NodeId,
         cancel: &AtomicBool,
     ) -> Result<(Source, Option<source::checkpoint::Charge>), DomError> {
-        let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(formation) = &formation {
-            formation.retain_payload(
-                source::storage::state(&snapshot.state, || self.source_step(cancel))?,
-                cancel,
-            )?;
-        }
-        Ok((
-            Source::Published(snapshot.clone(), id),
-            formation.map(source::formation::Formation::into_charge),
-        ))
+        let capture = self.retain_input_capture(&snapshot.state, cancel)?;
+        Ok((Source::Published(snapshot.clone(), id, capture), None))
     }
     fn source_child(
         &self,
@@ -88,7 +77,7 @@ impl Draft {
     ) -> Result<Option<(Source, Option<source::checkpoint::Charge>)>, DomError> {
         self.source_step(cancel)?;
         match source {
-            Source::Published(s, id) => {
+            Source::Published(s, id, capture) => {
                 let n = s.node(*id)?;
                 let n = if template {
                     if let Some(t) = n.as_template() {
@@ -99,11 +88,10 @@ impl Draft {
                 } else {
                     n
                 };
-                n.children()
+                Ok(n.children()
                     .get(index)
                     .copied()
-                    .map(|id| self.published_clone_source(s, id, cancel))
-                    .transpose()
+                    .map(|id| (Source::Published(s.clone(), id, capture.clone()), None)))
             }
             Source::Staged(k) => {
                 let n = self.node(*k)?;
@@ -118,10 +106,7 @@ impl Draft {
                 } else {
                     n
                 };
-                Ok(n.children
-                    .get(index)
-                    .copied()
-                    .map(|key| (Source::Staged(key), None)))
+                Ok(n.children.get(index).map(|key| (Source::Staged(key), None)))
             }
         }
     }
@@ -139,13 +124,16 @@ impl Draft {
     > {
         self.source_step(cancel)?;
         match source {
-            Source::Published(s, id) => {
+            Source::Published(s, id, capture) => {
                 let Some(root) = s.node(*id)?.hosted_shadow_root() else {
                     return Ok(None);
                 };
                 let state = *s.shadow_root(root)?.state();
-                let (source, payload) = self.published_clone_source(s, root, cancel)?;
-                Ok(Some((source, state, payload)))
+                Ok(Some((
+                    Source::Published(s.clone(), root, capture.clone()),
+                    state,
+                    None,
+                )))
             }
             Source::Staged(k) => self
                 .node(*k)?
@@ -200,7 +188,7 @@ impl Draft {
         let copy = self.clone_single(&source, document, limits, cancel)?;
         if scoped {
             for i in start..self.created.len() {
-                self.mark_source_private(Key::Created(i));
+                self.mark_source_private(Key::Created(i), cancel)?;
             }
         }
         self.push_effect_retained(
@@ -331,8 +319,8 @@ impl Draft {
         let original_formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = &original_formation {
             let original = match source {
-                Source::Published(snapshot, id) => snapshot.node(*id)?.kind(),
-                Source::Staged(key) => &self.node(*key)?.kind,
+                Source::Published(snapshot, id, _) => snapshot.node(*id)?.kind(),
+                Source::Staged(key) => self.node(*key)?.kind,
             };
             budget.retain_payload(
                 source::storage::kind(original, || self.source_step(cancel))?,
@@ -340,7 +328,7 @@ impl Draft {
             )?;
         }
         let original = self.source_kind(source)?;
-        if let Source::Published(snapshot, _) = source
+        if let Source::Published(snapshot, _, _) = source
             && snapshot.owner() != self.store
             && matches!(&original, DomNodeKind::Element(element)
                 if !matches!(element.custom_element_registry(), crate::DomRegistryBinding::Null))
@@ -348,7 +336,7 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         let script = match source {
-            Source::Published(s, id) => s.node(*id)?.node.script.map(|v| v.flags),
+            Source::Published(s, id, _) => s.node(*id)?.node.script.map(|v| v.flags),
             Source::Staged(k) => self.node(*k)?.script.map(|v| v.flags),
         };
         let formation = source::formation::Formation::new(self, cancel)?;
@@ -371,8 +359,7 @@ impl Draft {
                 kind.clone()
             }
         };
-        let copy = self.allocate(kind, document, limits, cancel)?;
-        drop(formation);
+        let copy = self.allocate_formed(kind, document, limits, cancel, formation)?;
         self.initialize_native_element(copy, limits, cancel)?;
         if let DomNodeKind::Element(element) = &original {
             let cause = if element
@@ -391,10 +378,10 @@ impl Draft {
                 self.set_nonce(copy, nonce, limits, cancel)?;
             }
             if let Some(state) = element.svg_script_state() {
-                let DomNodeKind::Element(e) = &mut self.node_mut(copy).kind else {
-                    unreachable!()
-                };
-                *e.svg_script_state_mut().expect("fresh SVG Script") = state.clone_for_element();
+                self.with_element_fields(copy, cancel, |element| {
+                    *element.svg_script_state_mut().expect("fresh SVG Script") =
+                        state.clone_for_element()
+                })?;
             }
             if let Some(state) = element.input_state() {
                 self.clone_input_overlay(copy, state, limits, cancel)?;
@@ -404,12 +391,14 @@ impl Draft {
             }
         }
         if let Some(flags) = script {
-            self.node_mut(copy)
-                .script
-                .as_mut()
-                .expect("fresh HTML Script")
-                .flags
-                .clone_already_started_from(flags);
+            self.with_node_fields(copy, cancel, |fields| {
+                fields
+                    .script
+                    .as_mut()
+                    .expect("fresh HTML Script")
+                    .flags
+                    .clone_already_started_from(flags)
+            })?;
         }
         Ok(copy)
     }

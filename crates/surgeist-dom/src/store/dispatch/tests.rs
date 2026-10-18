@@ -86,7 +86,7 @@ fn aggregate_admission_reclaims_abandoned_scope_before_reusing_capacity() {
     assert_eq!(
         dom.dispatch_custody_retained_bytes(&AtomicBool::new(false))
             .unwrap(),
-        second.retained_bytes() + size_of::<Weak<Scope>>()
+        super::incremental_tests::enumerated(&dom.dispatch_custody)
     );
 }
 

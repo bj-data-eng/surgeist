@@ -188,45 +188,65 @@ fn allow_request(lease: &mut DomSourceLease<'_>) -> DomFocusRequest {
         surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus,
     ))
 }
-fn producer_scaffold() -> (u64, u64, u64) {
-    let (mut session, _, _, request) = parked(10_000_000);
+// Measure only canonical preparation/retention and one resume on this exact
+// original owner. Materialization-dependent work from another owner is not a
+// transferable tariff. Runtime visits remain independently enumerated below.
+fn source_focus_boundary(
+    session: &mut DomSession,
+    request: &DomFocusRequest,
+    runtime_visits: u64,
+    short: bool,
+) -> (u64, u64, DomFocusTarget) {
+    source_focus_boundary_with_limits(session, request, runtime_visits, short, source_limits)
+}
+fn source_focus_boundary_with_limits(
+    session: &mut DomSession,
+    request: &DomFocusRequest,
+    runtime_visits: u64,
+    short: bool,
+    limits: fn(u64) -> DomSourceLimits,
+) -> (u64, u64, DomFocusTarget) {
+    let cancel = AtomicBool::new(false);
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
-    let source = &owner.borrow().source;
+    assert!(owner.borrow().focus.pending.is_none());
+    let before_resume = session.dom().pending_source_edit().unwrap().spent_work();
     let mut dom = session.dom();
     let mut lease = dom
         .raw_mut()
-        .resume_source_edit(
-            request.operation(),
-            source_limits(10_000_000),
-            &AtomicBool::new(false),
-        )
+        .resume_source_edit(request.operation(), limits(10_000_000), &cancel)
         .unwrap();
     let scaffold = lease.status().spent_work();
-    let prepared = lease
-        .prepare_focus(&request, source, &AtomicBool::new(false))
+    let resume = scaffold - before_resume;
+    let state = owner.borrow();
+    let payload = lease
+        .retain_hosted_runtime_payload(&state.source, size_of::<FocusFormation>(), &cancel)
+        .unwrap();
+    let preparation = lease
+        .prepare_focus(request, &state.source, &cancel)
         .unwrap()
         .unwrap();
-    let preparation = lease.status().spent_work() - scaffold;
-    let start = lease.status().spent_work();
-    let payload = lease
-        .retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &AtomicBool::new(false))
-        .unwrap();
+    let target = preparation.target();
     let formation = FocusFormation {
-        preparation: prepared,
+        preparation,
         payload,
     };
-    let retention = lease.status().spent_work() - start;
+    let canonical = lease.status().spent_work() - scaffold;
     drop(formation);
-    (scaffold, preparation, retention)
+    let next_scaffold = lease.status().spent_work() + resume;
+    (
+        next_scaffold + canonical + runtime_visits - u64::from(short),
+        next_scaffold,
+        target,
+    )
 }
+
 #[test]
 fn refused_acceptance_retains_original_absence_across_progress_and_permission_replacement() {
-    let (scaffold, preparation, retention) = producer_scaffold();
-    // One Host qualification visit, one actual retained Host visit, and the
-    // actual headless observation. Canonical formation costs are separate.
-    let cap = scaffold + preparation + retention + 3;
-    let (mut session, host, subject, original) = parked(cap);
+    let (mut session, host, subject, original) = parked(10_000_000);
+    // Host qualification, retained Host, and actual headless observation.
+    let (cap, scaffold, target) = source_focus_boundary(&mut session, &original, 3, false);
+    assert_eq!(target, DomFocusTarget::RememberedHost(host));
     let cancel = AtomicBool::new(false);
     let hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -328,9 +348,9 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
 }
 #[test]
 fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
-    let (scaffold, preparation, retention) = producer_scaffold();
-    let cap = scaffold + preparation + retention + 3;
-    let (mut session, host, _, original) = parked(cap);
+    let (mut session, host, _, original) = parked(10_000_000);
+    let (cap, _, target) = source_focus_boundary(&mut session, &original, 3, false);
+    assert_eq!(target, DomFocusTarget::RememberedHost(host));
     let cancel = AtomicBool::new(false);
     let mut hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -614,9 +634,9 @@ fn original_source_bytes_price_actual_producer_header_exactly_and_release_tempor
 mod ancestor;
 
 fn retained_result() -> (DomSession, DomFocusRequest) {
-    let (scaffold, preparation, retention) = producer_scaffold();
-    let cap = scaffold + preparation + retention + 3;
-    let (mut session, _, _, original) = parked(cap);
+    let (mut session, host, _, original) = parked(10_000_000);
+    let (cap, _, target) = source_focus_boundary(&mut session, &original, 3, false);
+    assert_eq!(target, DomFocusTarget::RememberedHost(host));
     let hosted = session.hosted_execution();
     {
         let mut dom = session.dom();

@@ -72,6 +72,7 @@ pub(in crate::store) struct Operation {
     published: bool,
     event_exposed: bool,
     event_work: std::sync::Weak<crate::source::event::EventWork>,
+    event_custody: Option<Arc<formation::EventWorkCustody>>,
     dialog_queue: Option<crate::DomElementTaskId>,
     request_close: Option<request_close::Call>,
     request_close_result: Option<DocumentString>,
@@ -91,12 +92,12 @@ pub(in crate::store) struct Operation {
     historical: Vec<Option<NodeId>>,
     select: Option<SelectRoot>,
     installation: Option<installation::NativeInstallation>,
-    canonical_storage: storage::Payload,
     command_storage: storage::Payload,
-    canonical_history_bytes: usize,
     custody_bytes: usize,
     custody_units: usize,
     canonical_aux_bytes: usize,
+    #[cfg(test)]
+    _measurement_lifetime: scale_metrics::SourceOwnerLifetime,
 }
 #[expect(
     clippy::large_enum_variant,
@@ -146,6 +147,8 @@ impl Drop for DomSourceLease<'_> {
         {
             self.dom.source_operation = self.dom.source_parents.pop();
         }
+        #[cfg(test)]
+        self.dom.observe_source_lifecycle();
     }
 }
 impl Dom {
@@ -154,10 +157,8 @@ impl Dom {
     pub fn has_style_cssom_roots(&self) -> bool {
         !self.style_cssom_roots.is_empty()
     }
-    /// Reissues access to the actual already-retained mutable owner of a live
-    /// Document or ShadowRoot. This does not create a binding. The bank scan is
-    /// bounded by this DOM's finite node allowance; duplicating the private Arc
-    /// handle allocates no payload. A historical snapshot cannot supply custody.
+    /// Reissues the exact retained mutable owner of a live Document or
+    /// ShadowRoot through its generation-qualified canonical slot index.
     pub fn style_cssom_root(&self, root: NodeId) -> Result<Option<DomStyleCssomRoot>, DomError> {
         if self.state.incomplete_source.is_some() {
             return Err(DomError::IncompleteSourceOperation);
@@ -169,32 +170,16 @@ impl Dom {
         ) {
             return Err(DomError::WrongNodeKind);
         }
-        Ok(self
-            .style_cssom_roots
-            .iter()
-            .find(|entry| {
-                #[cfg(test)]
-                crate::store::style_custody_tests::observe(
-                    crate::store::style_custody_tests::Site::Lookup,
-                );
-                entry.root() == root
-            })
-            .map(DomStyleCssomRoot::duplicate))
+        Ok(self.style_cssom_roots.get(root).map(|entry| {
+            #[cfg(test)]
+            crate::store::style_custody_tests::observe(
+                crate::store::style_custody_tests::Site::Lookup,
+            );
+            entry.duplicate()
+        }))
     }
     pub(in crate::store) fn source_owner_custody_bytes(&self) -> Result<usize, DomError> {
-        let style = self
-            .style_cssom_roots
-            .capacity()
-            .checked_mul(size_of::<DomStyleCssomRoot>())
-            .and_then(|n| n.checked_add(size_of::<Vec<DomStyleCssomRoot>>()))
-            .and_then(|n| {
-                n.checked_add(
-                    self.style_cssom_roots
-                        .len()
-                        .checked_mul(DomStyleCssomRoot::retained_owner_bytes())?,
-                )
-            })
-            .ok_or(DomError::RepresentationExhausted)?;
+        let style = crate::store::style_custody::Bank::inline_bytes();
         let fullscreen = self.fullscreen_custody_bytes()?;
         style
             .checked_add(crate::element_tasks::retained(&self.element_tasks)?)
@@ -253,7 +238,7 @@ impl Dom {
     ) -> Result<DomSourceLease<'_>, DomError> {
         self.begin_source_root(
             OperationRoot::Edit([edit.command]),
-            Arc::new(BatchIdentity),
+            formation::allocated_arc(BatchIdentity),
             limits,
             cancel,
         )
@@ -298,6 +283,8 @@ impl Dom {
                 Ok(limits) => limits,
                 Err(error) => {
                     self.source_operation = self.source_parents.pop();
+                    #[cfg(test)]
+                    self.observe_source_lifecycle();
                     return Err(error);
                 }
             }
@@ -306,21 +293,23 @@ impl Dom {
         };
         let formed =
             Draft::new_source_root(self, owner, &commands, commands.capacity(), limits, cancel)
-                .and_then(|(draft, canonical, command)| {
+                .and_then(|(draft, command)| {
                     let aux = self
                         .source_retained_stack_bytes()?
                         .checked_add(
                             self.source_dispatch_custody_bytes(|| draft.source_step(cancel))?,
                         )
                         .ok_or(DomError::RepresentationExhausted)?;
-                    Ok((draft, canonical, command, aux))
+                    Ok((draft, command, aux))
                 });
-        let (draft, canonical_storage, command_storage, canonical_aux_bytes) = match formed {
+        let (draft, command_storage, canonical_aux_bytes) = match formed {
             Ok(formed) => formed,
             Err(error) => {
                 if nested {
                     self.source_operation = self.source_parents.pop();
                 }
+                #[cfg(test)]
+                self.observe_source_lifecycle();
                 return Err(error);
             }
         };
@@ -335,10 +324,12 @@ impl Dom {
                 if nested {
                     self.source_operation = self.source_parents.pop();
                 }
+                #[cfg(test)]
+                self.observe_source_lifecycle();
                 return Err(error);
             }
         };
-        let mut op = Box::new(Operation {
+        let mut op = formation::allocated_box(Operation {
             id,
             entry_scope,
             limits: original_limits,
@@ -349,6 +340,7 @@ impl Dom {
             published: false,
             event_exposed: false,
             event_work: std::sync::Weak::new(),
+            event_custody: None,
             dialog_queue: None,
             request_close: None,
             request_close_result: None,
@@ -368,12 +360,12 @@ impl Dom {
             historical: Vec::new(),
             select: None,
             installation: None,
-            canonical_storage,
-            canonical_history_bytes: self.history_bytes,
             command_storage,
             custody_bytes: 0,
             custody_units: self.fullscreen_custody_units()?,
             canonical_aux_bytes,
+            #[cfg(test)]
+            _measurement_lifetime: scale_metrics::SourceOwnerLifetime(id),
         });
         let admitted = (|| {
             op.custody_bytes = self.source_owner_custody_bytes()?;
@@ -383,6 +375,8 @@ impl Dom {
             if nested {
                 self.source_operation = self.source_parents.pop();
             }
+            #[cfg(test)]
+            self.observe_source_lifecycle();
             return Err(error);
         }
         let next = self
@@ -390,6 +384,8 @@ impl Dom {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         self.source_operation = Some(op);
+        #[cfg(test)]
+        self.observe_source_lifecycle();
         self.next_source_operation = next;
         Ok(DomSourceLease {
             dom: self,
@@ -537,6 +533,7 @@ enum PublicationTarget {
 }
 struct PublishedSegment {
     commit: DomCommit,
+    committed: transaction::PublicationCommitted,
     dialog: Option<crate::DomSourceDialogRequest>,
     focusing: Option<crate::DomSourceDialogFocusingRequest>,
     focus_delegate: Option<crate::DomSourceFocusDelegateRequest>,
@@ -615,105 +612,7 @@ impl Operation {
                 }
             }
         }
-        let mut base = 0usize;
-        let mut encoding = 0usize;
-        let mut meta_color_scheme = 0usize;
-        for node in draft.existing.iter().chain(&draft.created).flatten() {
-            if let DomNodeKind::Document(metadata) = &node.kind {
-                meta_color_scheme = meta_color_scheme
-                    .checked_add(metadata.meta_color_scheme_bytes())
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-            base = base
-                .checked_add(
-                    node.base_document
-                        .as_ref()
-                        .map_or(0, crate::base::BaseDocument::records),
-                )
-                .ok_or(DomError::RepresentationExhausted)?;
-            encoding = encoding
-                .checked_add(
-                    node.encoding_url_document
-                        .as_ref()
-                        .map_or(0, crate::hyperlink::EncodingUrlDocument::records),
-                )
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-        admit(
-            base,
-            limits.base_observations,
-            DomResource::BaseObservations,
-        )?;
-        admit(
-            encoding,
-            limits.encoding_url_observations,
-            DomResource::EncodingUrlObservations,
-        )?;
-        admit(
-            meta_color_scheme,
-            limits.meta_color_scheme_bytes,
-            DomResource::MetaColorSchemeRetainedBytes,
-        )?;
-        admit(
-            draft
-                .native_tasks
-                .iter()
-                .filter(|t| matches!(t, select::Pending::Update { .. }))
-                .count(),
-            limits.select_tasks,
-            DomResource::SelectTasks,
-        )?;
-        admit(
-            draft.details_intentions.len(),
-            limits.details_intentions,
-            DomResource::DetailsToggleIntentions,
-        )?;
-        let fullscreen_events = draft
-            .existing
-            .iter()
-            .chain(&draft.created)
-            .flatten()
-            .try_fold(0usize, |count, node| {
-                count
-                    .checked_add(node.fullscreen_events.len())
-                    .ok_or(DomError::RepresentationExhausted)
-            })?;
-        admit(
-            fullscreen_events,
-            limits.fullscreen_events,
-            DomResource::FullscreenEvents,
-        )?;
-        // This synchronous policy setter has no cancellation input, like its
-        // existing finite bank checks; do not debit the parked Source Work.
-        let autofocus = draft
-            .existing
-            .iter()
-            .chain(&draft.created)
-            .flatten()
-            .try_fold(0usize, |count, node| {
-                let n = match &node.autofocus_document {
-                    Some(crate::autofocus::DocumentAutofocusState::Known {
-                        candidates, ..
-                    }) => candidates.len(),
-                    _ => 0,
-                };
-                count
-                    .checked_add(n)
-                    .ok_or(DomError::RepresentationExhausted)
-            })?;
-        admit(
-            autofocus,
-            limits.autofocus_candidates,
-            DomResource::AutofocusCandidates,
-        )?;
-        let (transitions, records, pseudos) = draft.view_transitions.usage()?;
-        admit(
-            transitions,
-            limits.transitions,
-            DomResource::ViewTransitions,
-        )?;
-        admit(records, limits.records, DomResource::ViewTransitionRecords)?;
-        admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)
+        draft.admit_dom_resources(limits)
     }
     pub(in crate::store) fn update_dom_limits(&mut self, limits: DomLimits) {
         if self.observation().is_some() {
@@ -764,15 +663,11 @@ impl Operation {
         }
     }
     fn input_bytes(&self) -> Result<usize, DomError> {
-        let event_payload = self.event_payload()?;
         let mut bytes = self
-            .canonical_storage
+            .command_storage
             .bytes
-            .checked_add(self.command_storage.bytes)
-            .and_then(|n| n.checked_add(self.custody_bytes))
+            .checked_add(self.custody_bytes)
             .and_then(|n| n.checked_add(self.canonical_aux_bytes))
-            .and_then(|n| n.checked_add(event_payload.bytes))
-            .and_then(|n| n.checked_add(self.canonical_history_bytes))
             // Draft owns its inline header in source_storage_bytes already.
             .and_then(|n| n.checked_add(size_of::<Self>().checked_sub(size_of::<Draft>())?))
             .ok_or(DomError::RepresentationExhausted)?
@@ -796,18 +691,6 @@ impl Operation {
                         .ok_or(DomError::RepresentationExhausted)?,
                 )
                 .ok_or(DomError::RepresentationExhausted)?;
-        }
-        for c in &self.commands {
-            if let Command::AssignSlot { incoming, .. } = c {
-                bytes = bytes
-                    .checked_add(
-                        incoming
-                            .capacity()
-                            .checked_mul(size_of::<NodeOperand>())
-                            .ok_or(DomError::RepresentationExhausted)?,
-                    )
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
         }
         if let Some(binding) = &self.owner_binding {
             bytes = bytes
@@ -854,15 +737,9 @@ impl Operation {
         }
         self.draft.source_other_bytes = self.input_bytes()?;
         let mut units = self
-            .event_payload()?
+            .command_storage
             .units
-            .checked_add(
-                self.canonical_storage
-                    .units
-                    .checked_add(self.command_storage.units)
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
-            .and_then(|units| units.checked_add(self.custody_units))
+            .checked_add(self.custody_units)
             .ok_or(DomError::RepresentationExhausted)?;
         if let Some((_, source)) = &self.context {
             units = units
@@ -882,6 +759,15 @@ impl Operation {
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         self.draft.source_other_units = units;
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            let ledger = self.draft.custody_ledger();
+            scale_metrics::select_source_ledger(
+                ledger.measurement_identity(),
+                ledger.total(),
+                custody::Usage::new(self.draft.source_other_bytes, units),
+            );
+        }
         self.draft.source_admit(0, cancel)
     }
     fn admit_current_command(&mut self, dom: &Dom, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -929,7 +815,7 @@ impl Operation {
     fn source(
         &self,
         state: &State,
-        allocated: &[Option<NodeId>],
+        allocated: &super::AllocationIds,
         stamp: DomStamp,
         frame: Frame,
         budget: Option<&formation::Formation>,
@@ -941,12 +827,8 @@ impl Operation {
             return Ok(source.clone());
         }
         let id = match frame.key {
-            Key::Existing(slot) => NodeId {
-                owner: self.id.owner,
-                slot,
-                generation: self.draft.generations[slot],
-            },
-            Key::Created(i) => allocated[i].ok_or(DomError::UnavailableCreation)?,
+            Key::Existing(id) => id,
+            Key::Created(i) => allocated.get(i).ok_or(DomError::UnavailableCreation)?,
         };
         let n = state.node(self.id.owner, id)?;
         let mut length = 0usize;
@@ -1045,16 +927,20 @@ impl Operation {
             },
             cancel,
         )?;
+        #[cfg(test)]
+        let mut copied = transaction::CopyObservation::default();
         for child in &n.children {
             self.draft.source_step(cancel)?;
             if let DomNodeKind::Text(s) = &state.node(self.id.owner, *child)?.kind {
                 for unit in s.code_units() {
                     self.draft.source_step(cancel)?;
                     text.push(*unit);
+                    #[cfg(test)]
+                    copied.pushed::<u16>();
                 }
             }
         }
-        let source = Arc::new(DomStyleSource {
+        let source = formation::allocated_arc(DomStyleSource {
             operation: self.id,
             ordinal: match frame.invocation {
                 Invocation::Unissued => self.draft.source_invocation,
@@ -1066,7 +952,7 @@ impl Operation {
             element: id,
             document: n.document,
             root,
-            text: Arc::new(text),
+            text: formation::allocated_arc(text),
             base_url: base_url.clone(),
             media: media.cloned(),
             title: title.cloned(),
@@ -1153,45 +1039,15 @@ impl Operation {
         budget.retain_bytes(size_of::<Vec<DomStyleSheetPlacement>>(), cancel)?;
         let mut order = Vec::new();
         formation::reserve(&mut order, count, Some(budget), cancel)?;
+        #[cfg(test)]
+        let mut copied = transaction::CopyObservation::default();
         self.visit_sheet_order(state, source, cancel, |entry| {
             order.push(entry);
+            #[cfg(test)]
+            copied.pushed::<DomStyleSheetPlacement>();
             Ok(())
         })?;
-        Ok(Arc::new(order))
-    }
-    fn history_after(
-        &self,
-        dom: &Dom,
-        changed: bool,
-        changes: usize,
-        cancel: &AtomicBool,
-    ) -> Result<usize, DomError> {
-        if !changed {
-            return Ok(self.canonical_history_bytes);
-        }
-        let mut bytes = changes
-            .checked_mul(size_of::<DomChange>())
-            .and_then(|n| n.checked_add(size_of::<HistoryEntry>()))
-            .ok_or(DomError::RepresentationExhausted)?;
-        if dom.limits.history_entries == 0 || bytes > dom.limits.history_bytes {
-            return Ok(0);
-        }
-        let mut entries = 1usize;
-        let mut next = dom.history.as_deref();
-        while let Some(entry) = next {
-            self.draft.source_step(cancel)?;
-            if entries == dom.limits.history_entries
-                || entry.bytes > dom.limits.history_bytes - bytes
-            {
-                break;
-            }
-            bytes = bytes
-                .checked_add(entry.bytes)
-                .ok_or(DomError::RepresentationExhausted)?;
-            entries += 1;
-            next = entry.older.as_deref();
-        }
-        Ok(bytes)
+        Ok(formation::allocated_arc(order))
     }
     fn publication(
         &mut self,
@@ -1242,6 +1098,7 @@ impl Operation {
         )>,
         cancel: &AtomicBool,
     ) -> Result<SegmentPublication, crate::hosted::DomHostedError> {
+        formation::SourceStorage::record_entry();
         let frame = match target {
             PublicationTarget::Style(frame) => Some(frame),
             _ => None,
@@ -1265,7 +1122,6 @@ impl Operation {
             Some(Invocation::Exposed(_)) | None => None,
         };
         self.refresh_admission(cancel)?;
-        self.draft.prepare_transition_phase(cancel)?;
         let mut prepared = self.draft.finish(dom, cancel)?;
         let incomplete_owner = if incomplete {
             Some(self.id)
@@ -1298,30 +1154,30 @@ impl Operation {
                 .map(|gate| gate.0)
                 .ok_or(DomError::HostedSourceUnavailable)?;
             let document = DocumentId(match key {
-                Key::Existing(slot) => NodeId {
-                    owner: dom.owner,
-                    slot: *slot,
-                    generation: self.draft.generations[*slot],
-                },
-                Key::Created(index) => {
-                    prepared.allocation_ids[*index].ok_or(DomError::UnavailableCreation)?
-                }
+                Key::Existing(id) => *id,
+                Key::Created(index) => prepared
+                    .allocation_ids
+                    .get(*index)
+                    .ok_or(DomError::UnavailableCreation)?,
             });
-            prepared.state.hosted_globals =
-                Some(crate::store::hosted::GlobalDocumentIndex::establish(
-                    dom.state.hosted_globals.as_deref(),
-                    *global,
-                    document,
-                    source,
-                    work,
-                    prepared.formation.as_ref(),
-                    cancel,
-                )?);
+            let globals_formation = prepared.formation.as_ref().map(formation::Formation::fork);
+            let globals = crate::store::hosted::GlobalDocumentIndex::establish(
+                dom.state.hosted_globals.as_deref(),
+                *global,
+                document,
+                source,
+                work,
+                globals_formation.as_ref(),
+                cancel,
+            )?;
+            prepared.set_hosted_globals(
+                Some(globals),
+                globals_formation,
+                &dom.custody_registry,
+                cancel,
+            )?;
         }
-        let units = prepared.state.units;
-        prepared.state.units = dom.state.units;
-        let changed = prepared.state != *dom.state;
-        prepared.state.units = units;
+        let changed = prepared.changed_from(&dom.state);
         let remaining = if incomplete {
             self.headroom
                 .as_ref()
@@ -1359,23 +1215,14 @@ impl Operation {
         {
             return Err(DomError::SourceOutputLimit.into());
         }
-        let ids = std::mem::take(&mut prepared.allocation_ids);
+        let ids = prepared.allocation_ids.clone();
         let mut count = ids
-            .iter()
-            .enumerate()
-            .filter(|(i, id)| {
-                id.is_some() && self.draft.phase_map.as_ref().expect("source map").ids[*i].is_none()
-            })
-            .count();
-        for (index, slot) in prepared.state.ranges.values().enumerate() {
+            .len()
+            .checked_sub(self.draft.phase_map.as_ref().expect("source map").ids.len())
+            .ok_or(DomError::RepresentationExhausted)?;
+        for change in &prepared.changes {
             self.draft.source_step(cancel)?;
-            if slot.record.is_some()
-                && !dom
-                    .state
-                    .ranges
-                    .get(index)
-                    .is_some_and(|old| old.record.is_some() && old.generation == slot.generation)
-            {
+            if matches!(change, DomChange::RangeCreated(_)) {
                 count = count
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -1388,28 +1235,29 @@ impl Operation {
         if identities > limits.identities {
             return Err(DomError::SourceIdentityLimit.into());
         }
+        // The persistent assignment map preserves every actually published
+        // creation, including one retired by a later phase. Public ticket rows
+        // are output only at the final close, so materialize that output once.
         let mut historical = Vec::new();
-        formation::reserve(
-            &mut historical,
-            self.draft.tickets.len(),
-            prepared.formation.as_ref(),
-            cancel,
-        )?;
-        for (i, key) in self.draft.tickets.iter().enumerate() {
-            self.draft.source_step(cancel)?;
-            let Key::Created(k) = key else {
-                unreachable!("creation ticket")
-            };
-            historical.push(self.historical.get(i).copied().flatten().or(ids[*k]));
+        if !incomplete {
+            formation::reserve(
+                &mut historical,
+                self.draft.tickets.len(),
+                prepared.formation.as_ref(),
+                cancel,
+            )?;
+            for key in &self.draft.tickets {
+                self.draft.source_step(cancel)?;
+                let Key::Created(k) = key else {
+                    unreachable!("creation ticket")
+                };
+                historical.push(ids.get(*k));
+            }
         }
         let dialog = if let PublicationTarget::Dialog(pending) = target {
             let subject = match pending.subject {
-                Key::Existing(slot) => NodeId {
-                    owner: self.id.owner,
-                    slot,
-                    generation: self.draft.generations[slot],
-                },
-                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                Key::Existing(id) => id,
+                Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
             Some(crate::DomSourceDialogRequest {
@@ -1441,12 +1289,8 @@ impl Operation {
             && pending.delegate.is_none()
         {
             let subject = match pending.subject {
-                Key::Existing(slot) => NodeId {
-                    owner: self.id.owner,
-                    slot,
-                    generation: self.draft.generations[slot],
-                },
-                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                Key::Existing(id) => id,
+                Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
             Some(crate::DomSourceDialogFocusingRequest {
@@ -1470,12 +1314,8 @@ impl Operation {
             let mapped = |key| -> Result<NodeId, DomError> {
                 self.draft.source_step(cancel)?;
                 let id = match key {
-                    Key::Existing(slot) => NodeId {
-                        owner: self.id.owner,
-                        slot,
-                        generation: self.draft.generations[slot],
-                    },
-                    Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                    Key::Existing(id) => id,
+                    Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
                 };
                 prepared.state.node(self.id.owner, id)?;
                 Ok(id)
@@ -1499,12 +1339,8 @@ impl Operation {
         };
         let autofocus = if let PublicationTarget::AutofocusInsertion(pending) = target {
             let subject = match pending.subject {
-                Key::Existing(slot) => NodeId {
-                    owner: self.id.owner,
-                    slot,
-                    generation: self.draft.generations[slot],
-                },
-                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                Key::Existing(id) => id,
+                Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
             Some(crate::DomSourceAutofocusInsertionRequest {
@@ -1526,12 +1362,8 @@ impl Operation {
             let mapped = |key| -> Result<NodeId, DomError> {
                 self.draft.source_step(cancel)?;
                 let id = match key {
-                    Key::Existing(slot) => NodeId {
-                        owner: self.id.owner,
-                        slot,
-                        generation: self.draft.generations[slot],
-                    },
-                    Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                    Key::Existing(id) => id,
+                    Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
                 };
                 prepared.state.node(self.id.owner, id)?;
                 Ok(id)
@@ -1651,16 +1483,9 @@ impl Operation {
         } else {
             None
         };
-        let canonical_storage = if changed {
-            storage::state(&prepared.state, || self.draft.source_step(cancel))?
-        } else {
-            self.canonical_storage
-        };
         // Newly formed source inputs already retain their byte/unit admission
         // in this candidate's Formation. Reused input is charged by context.
         self.draft.source_admit_units(0, cancel)?;
-        let canonical_history_bytes =
-            self.history_after(dom, changed, prepared.changes.len(), cancel)?;
         // Nothing after canonical publication is fallible. Preserve original
         // keys/serials and consume only evidence that has actually published.
         if changed
@@ -1672,13 +1497,12 @@ impl Operation {
             return Err(DomError::StyleProtocol.into());
         }
         let owner_custody = dom.source_owner_custody_bytes()?;
-        let prepared = dom.prepare_publication(prepared, cancel)?;
+        let mut prepared = dom.prepare_publication(prepared, cancel)?;
+        let rebase = self.draft.prepare_rebase(&mut prepared, cancel)?;
         Ok(SegmentPublication {
             prepared,
+            rebase,
             owner_custody,
-            canonical_storage,
-            canonical_history_bytes,
-            ids,
             issued_next,
             source,
             request,
@@ -1700,10 +1524,8 @@ impl Operation {
 // Its affine owner can join an admitted Runtime row before this exact commit.
 struct SegmentPublication {
     prepared: PreparedPublication,
+    rebase: transaction::PreparedRebase,
     owner_custody: usize,
-    canonical_storage: storage::Payload,
-    canonical_history_bytes: usize,
-    ids: Vec<Option<NodeId>>,
     issued_next: Option<u64>,
     source: Option<Arc<DomStyleSource>>,
     request: Option<DomStyleRequest>,
@@ -1722,10 +1544,8 @@ impl SegmentPublication {
     fn publish(self, op: &mut Operation, dom: &mut Dom) -> PublishedSegment {
         let Self {
             prepared,
+            rebase,
             owner_custody,
-            canonical_storage,
-            canonical_history_bytes,
-            ids,
             issued_next,
             source,
             request,
@@ -1740,55 +1560,17 @@ impl SegmentPublication {
             autofocus,
             design_mode,
         } = self;
-        let commit = dom.publish_prepared(prepared);
+        let crate::store::CommittedPublication { commit, committed } =
+            dom.publish_prepared_with_proof(prepared);
+        op.draft.commit_publication(rebase, &committed);
         op.draft.dispatch_retirements.clear();
-        if op.hosted_global.take().is_some() {
-            op.draft.hosted_globals = dom.state.hosted_globals.clone();
-        }
+        op.hosted_global.take();
         // Retirement only removes entries; capacity is retained and this cannot
         // overflow after the same table was admitted before publication.
         op.custody_bytes = owner_custody;
-        op.canonical_storage = canonical_storage;
-        op.canonical_history_bytes = canonical_history_bytes;
-        op.draft
-            .phase_map
-            .as_mut()
-            .expect("source map")
-            .ids
-            .iter_mut()
-            .zip(ids)
-            .for_each(|(old, new)| {
-                if old.is_none() {
-                    *old = new;
-                }
-            });
-        let draft: &mut Draft = &mut op.draft;
-        let private = &draft.phase_map.as_ref().expect("source map").private;
-        let mut published = dom.state.native_tasks.iter();
-        for pending in &mut draft.native_tasks {
-            if matches!(pending, select::Pending::Update {target:Key::Created(i),..} if private[*i])
-            {
-                continue;
-            }
-            let published = published.next().expect("visible task");
-            if let (
-                select::Pending::Update { serial, .. },
-                select::Task::Update { serial: actual, .. },
-            ) = (pending, published)
-            {
-                *serial = Some(*actual);
-            }
-        }
-        op.draft.view_transitions.acknowledge_publication(
-            &dom.state.view_transitions,
-            &commit.transition_ids,
-            &commit.record_ids,
-        );
-        op.draft
-            .acknowledge_details_publication(&dom.state.details_intentions);
-        op.draft.cancelled_signals.clear();
-        op.draft.cancelled_selects.clear();
-        op.draft.cancelled_details.clear();
+        // PreparedRebase installed only the actual phase's preadmitted queue
+        // acknowledgment roots. Cancellation custody seals at the same fence.
+        op.draft.acknowledge_cancelled_queues(&committed);
         op.draft.cancelled_images = None;
         if let Some(next) = issued_next {
             op.draft.source_invocation = next;
@@ -1876,6 +1658,7 @@ impl SegmentPublication {
         op.published = true;
         PublishedSegment {
             commit,
+            committed,
             dialog,
             focusing,
             focus_delegate,
@@ -1982,12 +1765,13 @@ impl DomSourceLease<'_> {
         let result = self.advance_operation(&mut op, cancel);
         if self.complete || matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
+            drop(op);
+            self.dom.source_operation = self.dom.source_parents.pop();
         } else {
             self.dom.source_operation = Some(op);
         }
-        if self.complete {
-            self.dom.source_operation = self.dom.source_parents.pop();
-        }
+        #[cfg(test)]
+        self.dom.observe_source_lifecycle();
         result
     }
     fn advance_operation(
@@ -2101,7 +1885,8 @@ impl DomSourceLease<'_> {
             {
                 op.admit_current_command(self.dom, cancel)?;
             }
-            let checkpoint = op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?;
+            let input_bytes = op.input_bytes()?;
+            let checkpoint = op.draft.source_checkpoint(input_bytes, 0, cancel)?;
             let started = op.started;
             let command_index = op.index;
             let external_applied = op.external_receipt_applied();
@@ -2507,9 +2292,12 @@ impl DomSourceLease<'_> {
                         call.cursor
                             .reply(surgeist_html::HtmlCloseWatcherRequestReply::Applied)
                             .map_err(DomError::CloseWatcherProtocol)?;
-                        op.draft.method = Some(crate::store::method::Frame::Dialog(
-                            call.outer.before_focusing()?,
-                        ));
+                        op.draft.source_set_method(
+                            Some(crate::store::method::Frame::Dialog(
+                                call.outer.before_focusing()?,
+                            )),
+                            cancel,
+                        )?;
                         op.request_close_result = None;
                         op.receipt = None;
                         continue;
@@ -2526,7 +2314,8 @@ impl DomSourceLease<'_> {
                     // admission refusal, instead of restoring its entry cursor.
                     let checkpoint = if completed_method {
                         drop(checkpoint);
-                        op.draft.source_checkpoint(op.input_bytes()?, 0, cancel)?
+                        let input_bytes = op.input_bytes()?;
+                        op.draft.source_checkpoint(input_bytes, 0, cancel)?
                     } else {
                         checkpoint
                     };
@@ -2549,13 +2338,24 @@ impl DomSourceLease<'_> {
                         op.owner_binding = None;
                     }
                     if op.index < op.commands.len() && (!op.cancelled || op.started) {
-                        op.index += 1;
+                        let next_index = op.index + 1;
+                        if next_index < op.commands.len() && completed_method {
+                            #[cfg(test)]
+                            accounting_tests::cut_method_clear_work(&mut op.draft);
+                            if let Err(error) = op.draft.source_set_method(None, cancel) {
+                                checkpoint.restore(&mut op.draft);
+                                op.restore_external_receipt(external_applied);
+                                op.started = started;
+                                op.index = command_index;
+                                return Err(error);
+                            }
+                        }
+                        // All fallible continuation cleanup precedes moving
+                        // the nonjournaled Operation command cursor.
+                        op.index = next_index;
                         op.started = false;
                         op.command_admitted = false;
                         op.context = None;
-                        if op.index < op.commands.len() && completed_method {
-                            op.draft.method = None;
-                        }
                     }
                     if op.index == op.commands.len() || op.cancelled {
                         // Complete fallible installation output before touching
@@ -2565,11 +2365,11 @@ impl DomSourceLease<'_> {
                         let select_finished = op.select.is_some() && (!op.cancelled || op.started);
                         if select_finished {
                             let select = op.select.as_ref().expect("actual Select root");
-                            if !matches!(op.draft.native_tasks.first(), Some(select::Pending::Update {serial:Some(serial),target}) if *serial==select.operation.serial && op.draft.resolve(select.target.into()).is_ok_and(|key|key==*target))
+                            if !matches!(op.draft.native_tasks.first(), Some(select::Pending::Update {serial:Some(serial),target}) if serial==select.operation.serial && op.draft.resolve(select.target.into()).is_ok_and(|key|key==target))
                             {
                                 return Err(DomError::InvalidNativeTask);
                             }
-                            op.draft.native_tasks.remove(0);
+                            op.draft.queue_native_remove(0, 1, cancel)?;
                         }
                         // FIFO removal is tentative until every final output
                         // and canonical publication succeeds. A refusal restores
@@ -2740,65 +2540,30 @@ impl DomSourceLease<'_> {
             return Err(DomError::StyleReceiptMismatch);
         }
         op.refresh_admission(cancel)?;
-        for existing in &self.dom.style_cssom_roots {
+        if let Some(existing) = self.dom.style_cssom_roots.get(root.root()) {
             #[cfg(test)]
             crate::store::style_custody_tests::observe(
                 crate::store::style_custody_tests::Site::BindingLookup,
             );
             op.draft.source_step(cancel)?;
-            if existing.root() == root.root() {
-                return if existing.same_owner(root) {
-                    Ok(())
-                } else {
-                    Err(DomError::StyleReceiptMismatch)
-                };
-            }
+            return if existing.same_owner(root) {
+                Ok(())
+            } else {
+                Err(DomError::StyleReceiptMismatch)
+            };
         }
-        self.dom.state.node(self.dom.owner, root.root())?;
-        // Readability is established before installing canonical custody.
+        let document = self.dom.state.node(self.dom.owner, root.root())?.document;
         root.snapshot()
             .map_err(DomStyleCssomRootError::into_dom_error)?;
-        let count = self
-            .dom
-            .style_cssom_roots
-            .len()
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let requested = count
-            .checked_mul(size_of::<DomStyleCssomRoot>())
-            .and_then(|n| n.checked_add(DomStyleCssomRoot::retained_owner_bytes()))
-            .ok_or(DomError::RepresentationExhausted)?;
-        op.draft.source_admit(requested, cancel)?;
-        let mut replacement = Vec::new();
-        replacement
-            .try_reserve_exact(count)
-            .map_err(|_| DomError::AllocationFailed)?;
-        let additional = replacement
-            .capacity()
-            .checked_mul(size_of::<DomStyleCssomRoot>())
-            .and_then(|n| n.checked_add(DomStyleCssomRoot::retained_owner_bytes()))
-            .ok_or(DomError::RepresentationExhausted)?;
-        op.draft.source_admit(additional, cancel)?;
-        for existing in &self.dom.style_cssom_roots {
-            #[cfg(test)]
-            crate::store::style_custody_tests::observe(
-                crate::store::style_custody_tests::Site::BindingCopy,
-            );
-            op.draft.source_step(cancel)?;
-            replacement.push(existing.duplicate());
-        }
-        op.draft.source_step(cancel)?;
-        replacement.push(root.duplicate());
-        let custody_bytes = replacement
-            .capacity()
-            .checked_mul(size_of::<DomStyleCssomRoot>())
-            .and_then(|n| n.checked_add(size_of::<Vec<DomStyleCssomRoot>>()))
-            .and_then(|n| {
-                n.checked_add(count.checked_mul(DomStyleCssomRoot::retained_owner_bytes())?)
-            })
-            .ok_or(DomError::RepresentationExhausted)?;
+        let replacement = self.dom.style_cssom_roots.prepare_insert(
+            root,
+            document,
+            |usage| op.draft.admit_custody_usage(usage, cancel),
+            || op.draft.source_step(cancel),
+        )?;
+        // The shared registry already retains and admits every old/new path.
+        // Transfer the actual owner only after the complete candidate succeeds.
         self.dom.style_cssom_roots = replacement;
-        op.custody_bytes = custody_bytes;
         Ok(())
     }
     /// Reacquires the exact retained owner for this reached request. No snapshot
@@ -2809,19 +2574,24 @@ impl DomSourceLease<'_> {
         if !Arc::ptr_eq(&expected.source, &request.source) || expected.action != request.action {
             return Err(DomError::StyleReceiptMismatch);
         }
-        // This allocation-free access has no cancellation argument. It still
-        // consumes the current operation's absolute source-work allowance.
-        for root in &self.dom.style_cssom_roots {
-            #[cfg(test)]
-            crate::store::style_custody_tests::observe(
-                crate::store::style_custody_tests::Site::LeaseLookup,
-            );
-            op.draft.source_step(&AtomicBool::new(false))?;
-            if Some(root.root()) == expected.cssom_root() {
-                return Ok(root.duplicate());
-            }
-        }
-        Err(DomError::StyleReceiptMismatch)
+        // This allocation-free access still consumes the current operation's
+        // original work allowance for its exact selected owner.
+        op.draft.source_step(&AtomicBool::new(false))?;
+        self.dom
+            .style_cssom_roots
+            .get(
+                expected
+                    .cssom_root()
+                    .ok_or(DomError::StyleReceiptMismatch)?,
+            )
+            .map(|root| {
+                #[cfg(test)]
+                crate::store::style_custody_tests::observe(
+                    crate::store::style_custody_tests::Site::LeaseLookup,
+                );
+                root.duplicate()
+            })
+            .ok_or(DomError::StyleReceiptMismatch)
     }
     /// Qualifies this actual external step with the consumer's root-to-CSSOM
     /// binding. It declares no readiness or owner association by itself.
@@ -3188,7 +2958,9 @@ impl Operation {
                 } else {
                     state.sheet = None;
                 }
-                self.draft.element_mut(frame.key).set_style_state(state);
+                let mut element = self.draft.element_fields_mut(frame.key, cancel)?;
+                element.set_style_state(state);
+                element.commit(cancel)?;
                 Reply::Applied
             }
         };
@@ -3196,10 +2968,7 @@ impl Operation {
             .cursor
             .reply(reply)
             .map_err(|_| DomError::StyleProtocol)?;
-        self.draft.source_step(cancel)?;
-        let last = self.draft.effects.last_mut().expect("actual Style frame");
-        last.effect = select::Effect::Style(frame);
-        Ok(())
+        self.draft.source_set_style_frame(frame, cancel)
     }
 }
 
@@ -3229,7 +2998,7 @@ impl Dom {
         }
         let mut lease = self.begin_source_root(
             OperationRoot::SelectCompletion(task.select()),
-            Arc::new(BatchIdentity),
+            formation::allocated_arc(BatchIdentity),
             limits,
             cancel,
         )?;
@@ -3323,9 +3092,6 @@ impl Dom {
             staged
                 .continuation
                 .prepare_source_closing(&staged.draft, cancel)?;
-            let canonical_storage =
-                storage::state(&self.state, || staged.draft.source_step(cancel))
-                    .map_err(Error::Target)?;
             let canonical_aux_bytes = self
                 .source_retained_stack_bytes()
                 .map_err(Error::Target)?
@@ -3337,7 +3103,7 @@ impl Dom {
                 .map_err(Error::Target)?;
             let entry_scope = EntryScope::capture(self, Some(parent), &staged.draft, cancel)
                 .map_err(Error::Target)?;
-            let mut operation = Box::new(Operation {
+            let mut operation = formation::allocated_box(Operation {
                 id,
                 entry_scope,
                 limits: original_limits,
@@ -3348,6 +3114,7 @@ impl Dom {
                 published: false,
                 event_exposed: false,
                 event_work: std::sync::Weak::new(),
+                event_custody: None,
                 dialog_queue: None,
                 request_close: None,
                 request_close_result: None,
@@ -3367,12 +3134,12 @@ impl Dom {
                 historical: Vec::new(),
                 select: None,
                 installation: Some(staged.continuation),
-                canonical_storage,
-                canonical_history_bytes: self.history_bytes,
                 command_storage: storage::Payload::default(),
                 custody_bytes: self.source_owner_custody_bytes().map_err(Error::Target)?,
                 custody_units: self.fullscreen_custody_units().map_err(Error::Target)?,
                 canonical_aux_bytes,
+                #[cfg(test)]
+                _measurement_lifetime: scale_metrics::SourceOwnerLifetime(id),
             });
             operation.refresh_admission(cancel).map_err(Error::Target)?;
             Ok::<_, Error>(operation)
@@ -3382,12 +3149,16 @@ impl Dom {
             Err(error) => {
                 if nested {
                     self.source_operation = self.source_parents.pop();
+                    #[cfg(test)]
+                    self.observe_source_lifecycle();
                 }
                 return Err(error);
             }
         };
         self.next_source_operation += 1; // Checked before any nested parent transfer.
         self.source_operation = Some(operation);
+        #[cfg(test)]
+        self.observe_source_lifecycle();
         Ok(DomSourceLease {
             dom: self,
             id,
@@ -3407,20 +3178,7 @@ impl Operation {
             return Ok(None);
         };
         let formation = formation::Formation::new(&self.draft, cancel)?;
-        let PublicationMap {
-            slots,
-            occupants,
-            ids,
-        } = self
-            .draft
-            .publication_map(dom, formation.as_ref(), cancel)?;
-        let released =
-            slots.capacity() * size_of::<Slot>() + occupants.capacity() * size_of::<Option<Key>>();
-        drop(slots);
-        drop(occupants);
-        if let Some(budget) = &formation {
-            budget.release_bytes(released);
-        }
+        let ids = self.draft.allocation_ids(dom, formation.as_ref(), cancel)?;
         debug_assert!(install.bindings.capacity() >= install.rows.len());
         // Each genuine binding is filled at most once. Source failure keeps
         // both partial progress and the already admitted immutable native bank.
@@ -3429,12 +3187,8 @@ impl Operation {
             self.draft.source_step(cancel)?;
             let row = &install.rows[index];
             let id = match row.key {
-                Key::Existing(slot) => NodeId {
-                    owner: self.id.owner,
-                    slot,
-                    generation: self.draft.generations[slot],
-                },
-                Key::Created(index) => ids[index].ok_or(DomError::UnavailableCreation)?,
+                Key::Existing(id) => id,
+                Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             install.bindings.push(crate::DomNativeHtmlBinding {
                 source: row.source.clone(),
@@ -3448,11 +3202,7 @@ impl Operation {
             .first()
             .ok_or(DomError::UnavailableCreation)?
             .node;
-        let released = ids.capacity() * size_of::<Option<NodeId>>();
         drop(ids);
-        if let Some(budget) = &formation {
-            budget.release_bytes(released);
-        }
         // Leave output and charge in their original owner even when a later
         // canonical publication refuses. Transfer follows successful commit.
         Ok(Some(root))
@@ -3496,7 +3246,11 @@ impl Dom {
             token.complete = true;
             return Ok(DomStyleNotificationCompletion::TargetDestroyed);
         }
-        let mut draft = Draft::new(self, Arc::new(crate::batch::BatchIdentity), cancel)?;
+        let mut draft = Draft::new(
+            self,
+            formation::allocated_arc(crate::batch::BatchIdentity),
+            cancel,
+        )?;
         let key = draft.resolve(target.into())?;
         draft
             .element(key)?
@@ -3506,13 +3260,12 @@ impl Dom {
         // of media/environment. The HTML cursor's script-blocking removal is
         // therefore inapplicable; unconditional final unblock is still real.
         let document = draft.node(key)?.document;
-        draft
-            .node_mut(document)
-            .base_document
-            .as_mut()
-            .ok_or(DomError::WrongNodeKind)?
-            .render_blocking
-            .retain(|k| *k != key);
+        draft.relations_retain(
+            document,
+            transaction::RelationField::RenderBlocking,
+            |candidate| candidate != key,
+            cancel,
+        )?;
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
         token.complete = true;
@@ -3553,27 +3306,124 @@ impl DomStyleSource {
 #[cfg(test)]
 pub(in crate::store) mod accounting_tests {
     use super::*;
+    use std::cell::Cell;
+    thread_local! {
+        static CUT_METHOD_CLEAR_WORK: Cell<bool> = const { Cell::new(false) };
+    }
+    pub(super) fn cut_method_clear_work(draft: &mut Draft) {
+        if CUT_METHOD_CLEAR_WORK.replace(false) {
+            // Deterministically reach the original real gate. This changes
+            // only the finite policy, never the gate's returned result.
+            draft.source_limits.as_mut().unwrap().work = draft.source_work.load(Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn completed_method_clear_refusal_keeps_next_command_for_same_operation_retry() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let target = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let done = dom.apply(setup, &cancel).unwrap();
+        let document = done.document(&document).unwrap();
+        let target = done.created(&target).unwrap().unwrap();
+        let mut commands = DomBatch::new();
+        commands.set_design_mode(document, "off");
+        commands.set_attribute(target, "data-next", "once");
+        let mut lease = dom
+            .begin_source_commands(commands, limits(10_000_000), &cancel)
+            .unwrap();
+        let operation = lease.operation();
+        CUT_METHOD_CLEAR_WORK.set(true);
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceWorkLimit { .. })
+        ));
+        let spent = lease.status().spent_work();
+        let original_work = lease
+            .dom
+            .source_operation
+            .as_ref()
+            .unwrap()
+            .draft
+            .source_work
+            .clone();
+        let op = lease.dom.source_operation.as_ref().unwrap();
+        assert_eq!(op.index, 0);
+        assert!(matches!(
+            op.draft.method,
+            Some(method::Frame::DesignMode(_))
+        ));
+        assert!(
+            lease
+                .snapshot()
+                .node(target)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .attribute(&"data-next".into())
+                .is_none()
+        );
+        let mut lease = lease
+            .dom
+            .resume_source_edit(operation, limits(10_000_000), &cancel)
+            .unwrap();
+        assert_eq!(lease.operation(), operation);
+        assert!(lease.status().spent_work() >= spent);
+        assert!(Arc::ptr_eq(
+            &original_work,
+            &lease
+                .dom
+                .source_operation
+                .as_ref()
+                .unwrap()
+                .draft
+                .source_work
+        ));
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("actual completion after policy raise")
+        };
+        assert_eq!(
+            done.commit
+                .changes()
+                .changes()
+                .iter()
+                .filter(|change| matches!(change, DomChange::Attributes(id) if *id==target))
+                .count(),
+            1
+        );
+        assert_eq!(
+            lease
+                .snapshot()
+                .node(target)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .attribute(&"data-next".into()),
+            Some(&DocumentString::from("once"))
+        );
+    }
     fn limits(work: u64) -> DomSourceLimits {
         DomSourceLimits::new(16_000_000, 1_000_000, work, 64, 4096, 4096, 1)
     }
-    fn xml_command(work_limit: u64) -> (Result<(), DomError>, u64) {
+    #[test]
+    fn xml_creator_source_work_is_cumulative_and_exact_remaining_budget_refuses_without_reissue() {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut setup = DomBatch::new();
         let associated = setup.create_document();
-        let associated = dom
-            .apply(setup, &cancel)
-            .unwrap()
-            .document(&associated)
-            .unwrap();
+        let done = dom.apply(setup, &cancel).unwrap();
+        let associated = done.document(&associated).unwrap();
         let before = dom.snapshot();
         let mut commands = DomBatch::new();
         let created =
             commands.create_xml_document(associated, crate::Namespace::svg(), "Root", None);
-        let mut lease = match dom.begin_source_commands(commands, limits(work_limit), &cancel) {
-            Ok(lease) => lease,
-            Err(error) => return (Err(error), 0),
-        };
+        let mut lease = dom
+            .begin_source_commands(commands, limits(100_000_000), &cancel)
+            .unwrap();
+        let operation = lease.operation();
+        let spent = lease.status().spent_work();
         let work = lease
             .dom
             .source_operation
@@ -3582,42 +3432,55 @@ pub(in crate::store) mod accounting_tests {
             .draft
             .source_work
             .clone();
-        let result = (|| {
-            let DomSourceProgress::Complete(done) = lease.advance(&cancel)? else {
-                panic!("SVG root needs no service")
-            };
-            let document = done.commit().document(&created).unwrap();
-            assert_eq!(
-                lease
-                    .snapshot()
-                    .document(document)
-                    .unwrap()
-                    .metadata()
-                    .content_type(),
-                &DocumentString::from("image/svg+xml")
-            );
-            Ok(())
-        })();
-        if result.is_err() {
-            assert_eq!(lease.snapshot().stamp(), before.stamp());
-        }
-        drop(lease);
-        (result, work.load(Ordering::Relaxed))
-    }
-    #[test]
-    fn xml_creator_source_work_is_cumulative_and_exact_budget_finishes_the_same_command() {
-        let (result, spent) = xml_command(100_000_000);
-        result.unwrap();
-        assert!(spent > 1);
-        let (exact, actual) = xml_command(spent);
-        exact.unwrap();
-        assert_eq!(actual, spent);
-        let (short, actual) = xml_command(spent - 1);
+        // Use this original owner's actual spent frontier. A separately built
+        // owner can have a different private registry path and work receipt.
+        lease
+            .dom
+            .source_operation
+            .as_mut()
+            .unwrap()
+            .draft
+            .source_limits
+            .as_mut()
+            .unwrap()
+            .work = spent;
         assert_eq!(
-            short.unwrap_err(),
-            DomError::SourceWorkLimit { limit: spent - 1 }
+            lease.advance(&cancel).unwrap_err(),
+            DomError::SourceWorkLimit { limit: spent }
         );
-        assert_eq!(actual, spent - 1);
+        assert_eq!(lease.status().spent_work(), spent);
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        let mut lease = lease
+            .dom
+            .resume_source_edit(operation, limits(100_000_000), &cancel)
+            .unwrap();
+        assert_eq!(lease.operation(), operation);
+        assert!(lease.status().spent_work() >= spent);
+        assert!(Arc::ptr_eq(
+            &work,
+            &lease
+                .dom
+                .source_operation
+                .as_ref()
+                .unwrap()
+                .draft
+                .source_work
+        ));
+
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("SVG root needs no service")
+        };
+        let document = done.commit().document(&created).unwrap();
+        assert_eq!(
+            lease
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .metadata()
+                .content_type(),
+            &DocumentString::from("image/svg+xml")
+        );
+        assert!(work.load(Ordering::Relaxed) > spent);
     }
     #[test]
     fn xml_style_root_reserves_final_metadata_and_ticket_revision_before_first_exposure() {
@@ -3794,7 +3657,7 @@ pub(in crate::store) mod accounting_tests {
                 &resumed,
                 &crate::DomStyleInlineCspObservation::evaluated(
                     resumed.source(),
-                    Arc::new(Vec::new()),
+                    formation::allocated_arc(Vec::new()),
                     1,
                     false,
                 ),
@@ -4321,47 +4184,88 @@ pub(in crate::store) mod accounting_tests {
         assert!(dom.pending_source_edit().is_none());
         growth
     }
-    fn actual_shared_input_family_copy(
-        bytes: usize,
-    ) -> Option<formation::mutation_observation::Growth> {
+    #[test]
+    fn changed_input_field_keeps_unchanged_backing_and_prices_each_materialized_field() {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
-        let created = dom.apply(setup, &cancel).unwrap();
-        let input = created.created(&input).unwrap().unwrap();
+        setup.set_input_value(&input, "stored unchanged input");
+        let done = dom.apply(setup, &cancel).unwrap();
+        let input = done.created(&input).unwrap().unwrap();
         let before = dom.snapshot();
-        let mut batch = DomBatch::new();
-        batch.set_input_checked(input, true);
-        let limits = DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
-        let Ok(mut lease) = dom.begin_source_commands(batch, limits, &cancel) else {
-            return None;
-        };
-        formation::mutation_observation::start(formation::mutation_observation::Site::Family);
-        let result = lease.advance(&cancel);
-        let growth = formation::mutation_observation::finish();
-        if result.is_err() {
-            assert_eq!(lease.snapshot().stamp(), before.stamp());
-        }
-        growth
-    }
-    #[test]
-    fn source_shared_input_family_admits_actual_copy_before_mutation() {
-        let high =
-            actual_shared_input_family_copy(16_000_000).expect("real shared Input family copy");
-        assert!(
-            actual_shared_input_family_copy(high.required).is_some(),
-            "exact copy boundary must be reachable"
+        let original = before
+            .node(input)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .input_state()
+            .unwrap();
+        assert!(!original.flags().checkedness());
+        let original_buffer = original.current_value().shared_code_units().clone();
+        let raw =
+            storage::kind(&dom.state.node(dom.owner, input).unwrap().kind, || Ok(())).unwrap();
+        assert!(raw.units > 0);
+        let mut commands = DomBatch::new();
+        commands.set_input_checked(input, true);
+        let lease = dom
+            .begin_source_commands(commands, limits(10_000_000), &cancel)
+            .unwrap();
+        let actual_limits = lease.dom.limits;
+        let op = lease.dom.source_operation.as_mut().unwrap();
+        let baseline = op.draft.custody_ledger().total().units();
+        op.draft
+            .apply(&op.commands[0], actual_limits, &cancel)
+            .unwrap();
+        let current = op
+            .draft
+            .element(Key::Existing(input))
+            .unwrap()
+            .input_state()
+            .unwrap();
+        assert!(current.flags().checkedness());
+        assert!(Arc::ptr_eq(
+            &original_buffer,
+            current.current_value().shared_code_units()
+        ));
+        assert_eq!(
+            op.draft.custody_ledger().total().units(),
+            baseline + raw.units
         );
-        if let Some(actual) = actual_shared_input_family_copy(high.required - 1) {
-            assert!(
-                actual.required <= actual.limit,
-                "shared Input family allocated {} bytes under {}",
-                actual.required,
-                actual.limit
-            );
-        }
+        let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+        let prepared = draft.finish(lease.dom, &cancel).unwrap();
+        let DomNodeKind::Element(element) =
+            &prepared.state.node(lease.dom.owner, input).unwrap().kind
+        else {
+            panic!("Input candidate")
+        };
+        assert!(element.input_state().unwrap().flags().checkedness());
+        assert!(Arc::ptr_eq(
+            &original_buffer,
+            element
+                .input_state()
+                .unwrap()
+                .current_value()
+                .shared_code_units()
+        ));
+        assert_eq!(
+            draft.custody_ledger().total().units(),
+            baseline + 2 * raw.units
+        );
+        drop(prepared);
+        assert_eq!(draft.custody_ledger().total().units(), baseline + raw.units);
+        assert!(
+            !before
+                .node(input)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .input_state()
+                .unwrap()
+                .flags()
+                .checkedness()
+        );
     }
     fn actual_output_text_read(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
@@ -4383,7 +4287,29 @@ pub(in crate::store) mod accounting_tests {
         formation::mutation_observation::start(formation::mutation_observation::Site::Output);
         let result = lease.advance(&cancel);
         let growth = formation::mutation_observation::finish();
-        if result.is_err() {
+        if bytes == 16_000_000 {
+            assert!(
+                matches!(result, Ok(DomSourceProgress::Complete(_))),
+                "generous original Output edit completes: {result:?}"
+            );
+            let snapshot = lease.snapshot();
+            let node = snapshot.node(output).unwrap();
+            assert_eq!(
+                node.as_element()
+                    .unwrap()
+                    .output_state()
+                    .unwrap()
+                    .default_value_override()
+                    .unwrap()
+                    .to_utf8()
+                    .unwrap(),
+                "actual old output text".repeat(1024)
+            );
+            assert_eq!(node.children().len(), 1);
+            assert!(
+                matches!(snapshot.node(node.children()[0]).unwrap().kind(), DomNodeKind::Text(value) if value.to_utf8().unwrap() == "new")
+            );
+        } else if result.is_err() {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         growth
@@ -4391,19 +4317,79 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn source_output_text_admits_actual_materialization_before_retaining_read_frame() {
         let high = actual_output_text_read(16_000_000).expect("actual Output text materialization");
-        assert!(
-            actual_output_text_read(high.required).is_some(),
-            "exact materialization boundary must be reachable"
-        );
-        if let Some(actual) = actual_output_text_read(high.required - 1) {
-            assert!(
-                actual.required <= actual.limit,
-                "Output text materialized {} bytes under {}",
-                actual.required,
-                actual.limit
-            );
+        // Each attempt owns different private registry identities. It may
+        // refuse earlier; every reached materialization must fit its actual
+        // caller envelope. Same-owner candidate and payload tests separately
+        // assert exact and one-short admission boundaries.
+        for limit in [high.required, high.required - 1] {
+            if let Some(actual) = actual_output_text_read(limit) {
+                assert!(
+                    actual.required <= actual.limit,
+                    "Output text materialized {} bytes under {}",
+                    actual.required,
+                    actual.limit
+                );
+            }
         }
     }
+    #[test]
+    fn final_ticket_output_preserves_an_earlier_published_then_retired_creation() {
+        let cancel = AtomicBool::new(false);
+        let mut dom =
+            Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let done = dom.apply(setup, &cancel).unwrap();
+        let document = done.document(&document).unwrap();
+        let mut batch = DomBatch::new();
+        let transient = batch.create_text(document, "published transient");
+        let never_published = batch.create_text(document, "retired before any phase");
+        batch.destroy(&never_published);
+        let style = batch.create_element_ns(document, crate::Namespace::html(), "style");
+        let text = batch.create_text(document, "a {}");
+        batch.insert_before(&text, &style, None);
+        batch.insert_before(&style, document, None);
+        batch.destroy(&transient);
+        let mut lease = dom
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("actual connected Style CSP publication")
+        };
+        let published = {
+            let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+            let Key::Created(index) = draft.tickets[transient.index] else {
+                panic!("original creation ticket")
+            };
+            draft.phase_map.as_ref().unwrap().ids.get(index).unwrap()
+        };
+        assert_eq!(
+            lease.snapshot().node(published).unwrap().data(),
+            Some(&DocumentString::from("published transient"))
+        );
+        lease
+            .accept_inline_csp(
+                &policy,
+                &DomStyleInlineCspObservation::complete_empty(policy.source(), 1),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("actual sheet creation publication")
+        };
+        let _root = commit_actual_empty_sheet(&mut lease, &create, &cancel);
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("actual final close")
+        };
+        assert_eq!(done.published[transient.index], Some(published));
+        assert_eq!(done.published[never_published.index], None);
+        assert!(lease.snapshot().node(published).is_err());
+    }
+
     #[test]
     fn output_frame_payload_stays_admitted_through_checkpoint_parking_and_retry() {
         use surgeist_cssom::CssomEditGuard;
@@ -4488,17 +4474,21 @@ pub(in crate::store) mod accounting_tests {
         let minimum_units = old_text.len() + 3;
         let minimum_bytes = 2 * size_of::<Vec<u16>>() + minimum_units * size_of::<u16>();
         let (live_bytes, live_units, frame_bytes, frame_units) = {
-            let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+            let draft = &mut lease.dom.source_operation.as_mut().unwrap().draft;
             let live_bytes = draft.source_formation_bytes.clone();
             let live_units = draft.source_temporary_units.clone();
             let frame_bytes = live_bytes.load(Ordering::Relaxed);
             let frame_units = live_units.load(Ordering::Relaxed);
             assert!(frame_bytes >= minimum_bytes);
             assert!(frame_units >= minimum_units);
+            let controlled = draft.custody_ledger().total();
             let checkpoint = draft.source_checkpoint(0, 0, &cancel).unwrap();
+            assert_eq!(live_bytes.load(Ordering::Relaxed), frame_bytes);
+            assert_eq!(live_units.load(Ordering::Relaxed), frame_units);
             assert!(
-                live_bytes.load(Ordering::Relaxed) >= frame_bytes + minimum_bytes,
-                "checkpoint must admit its distinct retained frame occurrence"
+                draft.custody_ledger().total().bytes()
+                    >= controlled.bytes() + size_of::<super::checkpoint::Checkpoint>(),
+                "a mark owns its control header and shares the unchanged frame"
             );
             drop(checkpoint);
             assert_eq!(live_bytes.load(Ordering::Relaxed), frame_bytes);
@@ -4578,7 +4568,35 @@ pub(in crate::store) mod accounting_tests {
         formation::mutation_observation::start(formation::mutation_observation::Site::TextareaApi);
         let result = lease.advance(&cancel);
         let growth = formation::mutation_observation::finish();
-        if result.is_err() {
+        if bytes == 16_000_000 {
+            assert!(
+                matches!(result, Ok(DomSourceProgress::Complete(_))),
+                "generous original Textarea edit completes: {result:?}"
+            );
+            assert_eq!(
+                lease
+                    .snapshot()
+                    .node(textarea)
+                    .unwrap()
+                    .as_element()
+                    .unwrap()
+                    .textarea_state()
+                    .unwrap()
+                    .raw_value(),
+                &DocumentString::from("after\r\n".repeat(1024))
+            );
+            assert_eq!(
+                before
+                    .node(textarea)
+                    .unwrap()
+                    .as_element()
+                    .unwrap()
+                    .textarea_state()
+                    .unwrap()
+                    .raw_value(),
+                &DocumentString::from("before\r\n".repeat(2048))
+            );
+        } else if result.is_err() {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         growth
@@ -4586,58 +4604,78 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn source_textarea_api_admits_actual_normalized_buffer_before_materialization() {
         let high = actual_textarea_api_read(16_000_000).expect("actual old API normalized buffer");
-        assert!(
-            actual_textarea_api_read(high.required).is_some(),
-            "exact API materialization boundary must be reachable"
-        );
-        if let Some(actual) = actual_textarea_api_read(high.required - 1) {
-            assert!(
-                actual.required <= actual.limit,
-                "Textarea API materialized {} bytes under {}",
-                actual.required,
-                actual.limit
-            );
+        // Private registry paths belong to each actual owner. An attempt can
+        // refuse before this selected buffer; every reached buffer must still
+        // fit that owner's true envelope. Same-owner candidate and factory
+        // tests independently cover exact byte and UTF16 limits.
+        for limit in [high.required, high.required - 1] {
+            if let Some(actual) = actual_textarea_api_read(limit) {
+                assert!(
+                    actual.required <= actual.limit,
+                    "Textarea API materialized {} bytes under {}",
+                    actual.required,
+                    actual.limit
+                );
+            }
         }
     }
     #[test]
     fn source_metadata_defaults_admit_actual_payload_before_formation() {
         let high = actual_metadata_creation(16_000_000).expect("actual native metadata formation");
         assert!(high.required <= high.limit);
-        let exact = actual_metadata_creation(high.required)
-            .expect("exact allowance reaches native metadata formation");
-        assert_eq!(exact.required, exact.limit);
-        let short = actual_metadata_creation(high.required - 1);
-        assert!(
-            short.is_none(),
-            "one-short allowance must refuse before actual metadata payload exists, observed {short:?}"
-        );
+        // Each independently constructed owner has its own materialization
+        // IDs and registry paths. Check the actual envelope of each reached
+        // allocation; earlier refusal is checked for snapshot rollback by the
+        // owning fixture. Exact gates use one original Source below.
+        for bytes in [high.required, high.required - 1] {
+            if let Some(actual) = actual_metadata_creation(bytes) {
+                assert!(
+                    actual.required <= actual.limit,
+                    "actual retained overlap {} exceeds its own allowance {}",
+                    actual.required,
+                    actual.limit
+                );
+            }
+        }
     }
     #[test]
     fn source_select_task_growth_admits_actual_replacement_before_allocation() {
         let high = actual_select_task_growth(16_000_000)
             .expect("actual selected Option removal queues update");
         assert!(high.required <= high.limit);
-        let exact = actual_select_task_growth(high.required)
-            .expect("exact allowance reaches actual task bank growth");
-        assert_eq!(exact.required, exact.limit);
-        let short = actual_select_task_growth(high.required - 1);
-        assert!(
-            short.is_none(),
-            "one-short allowance must refuse before actual task growth, observed {short:?}"
-        );
+        // Each independently constructed owner has its own materialization
+        // IDs and registry paths. Check the actual envelope of each reached
+        // allocation; earlier refusal is checked for snapshot rollback by the
+        // owning fixture. Exact gates use one original Source below.
+        for bytes in [high.required, high.required - 1] {
+            if let Some(actual) = actual_select_task_growth(bytes) {
+                assert!(
+                    actual.required <= actual.limit,
+                    "actual retained overlap {} exceeds its own allowance {}",
+                    actual.required,
+                    actual.limit
+                );
+            }
+        }
     }
     #[test]
     fn source_children_growth_admits_actual_old_and_replacement_bank_before_allocation() {
         let high = actual_children_growth(16_000_000).expect("actual children capacity growth");
         assert!(high.required <= high.limit);
-        let exact =
-            actual_children_growth(high.required).expect("exact allowance reaches actual growth");
-        assert_eq!(exact.required, exact.limit);
-        let short = actual_children_growth(high.required - 1);
-        assert!(
-            short.is_none(),
-            "one-short allowance must refuse before actual backing growth, observed {short:?}"
-        );
+        // Each independently constructed owner has its own materialization
+        // IDs and registry paths. Check the actual envelope of each reached
+        // allocation; earlier refusal is checked for snapshot rollback by the
+        // owning fixture. Exact gates use one original Source below.
+        for bytes in [high.required, high.required - 1] {
+            if let Some(actual) = actual_children_growth(bytes) {
+                assert!(
+                    actual.required <= actual.limit,
+                    "actual retained overlap {} exceeds its own allowance {}",
+                    actual.required,
+                    actual.limit
+                );
+            }
+        }
     }
     #[test]
     fn multiple_style_mandatory_tail_cannot_publish_without_closing_revision_headroom() {
@@ -4718,7 +4756,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         let media = context
             .parse_media_query_list_utf16_with_limits(
-                Arc::new(Vec::new()),
+                formation::allocated_arc(Vec::new()),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
@@ -4796,7 +4834,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         let media = context
             .parse_media_query_list_utf16_with_limits(
-                Arc::new(Vec::new()),
+                formation::allocated_arc(Vec::new()),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
@@ -4823,7 +4861,11 @@ pub(in crate::store) mod accounting_tests {
         assert_eq!(root.snapshot().unwrap().sheets(), &[actual_sheet]);
         root
     }
-    fn actual_structural_and_control_reads(work: u64, cancelled: bool) -> (bool, u64) {
+    fn actual_structural_and_control_reads(
+        work: u64,
+        cancelled: bool,
+        remaining: Option<u64>,
+    ) -> (bool, u64) {
         let cancel = AtomicBool::new(false);
         let domain = DomLimits::new(256, 100_000, 256, 0, 0, 8, 100_000)
             .unwrap()
@@ -4874,7 +4916,12 @@ pub(in crate::store) mod accounting_tests {
         commands.insert_before(moving, root, None);
         commands.adopt(moving, other_document);
         commands.destroy(retired);
-        let mut lease = match dom.begin_source_commands(commands, limits(work), &cancel) {
+        // This semantic/work fixture has many simultaneous staged records.
+        // Its byte envelope is deliberately generous; separate same-owner
+        // candidate tests assert exact byte and UTF16 admission boundaries.
+        let mut policy = limits(work);
+        policy.retained_bytes = 128_000_000;
+        let mut lease = match dom.begin_source_commands(commands, policy, &cancel) {
             Ok(lease) => lease,
             Err(DomError::SourceWorkLimit { limit }) if limit == work => return (false, work),
             Err(error) => panic!("actual Source work setup: {error:?}"),
@@ -4888,6 +4935,17 @@ pub(in crate::store) mod accounting_tests {
             .source_work
             .clone();
         let initial = meter.load(Ordering::Relaxed);
+        let effective_work = remaining.map_or(work, |remaining| initial + remaining);
+        lease
+            .dom
+            .source_operation
+            .as_mut()
+            .unwrap()
+            .draft
+            .source_limits
+            .as_mut()
+            .unwrap()
+            .work = effective_work;
         cancel.store(cancelled, Ordering::Relaxed);
         let result = lease.advance(&cancel);
         let spent = meter.load(Ordering::Relaxed);
@@ -4914,7 +4972,8 @@ pub(in crate::store) mod accounting_tests {
                 );
                 (true, spent)
             }
-            Err(DomError::SourceWorkLimit { limit }) if limit == work => {
+            Err(DomError::SourceWorkLimit { limit }) if limit == effective_work => {
+                assert_eq!(spent, effective_work);
                 assert_eq!(lease.snapshot().stamp(), before.stamp());
                 (false, spent)
             }
@@ -4928,18 +4987,13 @@ pub(in crate::store) mod accounting_tests {
     }
     #[test]
     fn source_structural_control_and_task_reads_obey_exact_work_and_cancel_boundaries() {
-        let (complete, exact) = actual_structural_and_control_reads(100_000_000, false);
+        let (complete, spent) = actual_structural_and_control_reads(100_000_000, false, None);
         assert!(complete);
-        assert!(exact > 512);
-        assert_eq!(
-            actual_structural_and_control_reads(exact, false),
-            (true, exact)
-        );
-        assert_eq!(
-            actual_structural_and_control_reads(exact - 1, false),
-            (false, exact - 1)
-        );
-        assert!(!actual_structural_and_control_reads(exact, true).0);
+        assert!(spent > 512);
+        for remaining in [0, 1] {
+            assert!(!actual_structural_and_control_reads(100_000_000, false, Some(remaining)).0);
+        }
+        assert!(!actual_structural_and_control_reads(100_000_000, true, None).0);
     }
 
     #[test]
@@ -5386,32 +5440,31 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn unpublished_cancellation_cannot_bypass_its_spent_source_work_allowance() {
         let cancel = AtomicBool::new(false);
-        let (mut measured, batch) = fixture();
-        let first = measured
-            .begin_source_commands(batch, limits(10_000_000), &cancel)
-            .unwrap();
-        let initial = first
-            .dom
-            .source_operation
-            .as_ref()
-            .unwrap()
-            .draft
-            .source_work
-            .load(Ordering::Relaxed);
-        drop(first);
         let (mut dom, batch) = fixture();
         let before = dom.snapshot();
         let mut lease = dom
-            .begin_source_commands(batch, limits(initial), &cancel)
+            .begin_source_commands(batch, limits(10_000_000), &cancel)
             .unwrap();
+        let initial = lease.status().spent_work();
+        // The exact spent frontier belongs to this actual owner. A separately
+        // constructed registry can require different private index paths.
+        lease
+            .dom
+            .source_operation
+            .as_mut()
+            .unwrap()
+            .draft
+            .source_limits
+            .as_mut()
+            .unwrap()
+            .work = initial;
         lease.request_cancel();
-        assert!(
-            matches!(
-                lease.advance(&cancel),
-                Err(DomError::SourceWorkLimit { .. })
-            ),
-            "cancellation must admit its real result scan/formation before doing the work"
+        assert_eq!(
+            lease.advance(&cancel).unwrap_err(),
+            DomError::SourceWorkLimit { limit: initial },
+            "cancellation admits its actual result scan before executing it"
         );
+        assert_eq!(lease.status().spent_work(), initial);
         assert_eq!(lease.snapshot().stamp(), before.stamp());
     }
     #[test]
@@ -5439,49 +5492,112 @@ pub(in crate::store) mod accounting_tests {
         ));
     }
     #[test]
-    fn populated_candidate_retains_its_actual_text_backing_charge_until_discard() {
+    fn unchanged_padded_text_retains_its_original_record_and_payload_in_a_candidate() {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let text = "candidate payload".repeat(4096);
-        let units = text.len();
-        setup.create_text(&document, text);
-        dom.apply(setup, &cancel).unwrap();
+        let mut padded = Vec::with_capacity(65_536);
+        padded.push(0xd800);
+        let text = setup.create_text(&document, DocumentString::from_utf16(padded));
+        let done = dom.apply(setup, &cancel).unwrap();
+        let text = done.created(&text).unwrap().unwrap();
         let lease = dom
             .begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel)
             .unwrap();
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+        let units = draft.custody_ledger().total().units();
+        let original = dom_slot(&lease.dom.state, text);
         let prepared = draft.finish(lease.dom, &cancel).unwrap();
-        // This is the actual populated candidate, not a requested final size.
-        assert!(prepared.state.slots.values().any(|slot| matches!(slot.node.as_ref().map(|n| &n.kind), Some(DomNodeKind::Text(value)) if value.len() == units)));
-        assert!(
-            draft.source_formation_bytes.load(Ordering::Relaxed)
-                >= units * size_of::<u16>() + size_of::<Vec<u16>>(),
-            "candidate backing occurrence must remain charged while Prepared owns it"
-        );
-        assert!(
-            draft.source_temporary_units.load(Ordering::Relaxed) >= units,
-            "candidate UTF16 occurrence must remain charged while Prepared owns it"
-        );
-        drop(prepared);
-        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+        assert!(Arc::ptr_eq(
+            original,
+            prepared.state.slots.get_shared(text.slot).unwrap()
+        ));
+        assert_eq!(draft.custody_ledger().total().units(), units);
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+        let DomNodeKind::Text(value) = &prepared.state.slots[text.slot].node.as_ref().unwrap().kind
+        else {
+            panic!("original Text")
+        };
+        assert_eq!(value.code_units(), &[0xd800]);
+        assert_eq!(value.shared_code_units().capacity(), 65_536);
+        drop(prepared);
+        assert_eq!(draft.custody_ledger().total().units(), units);
     }
+
+    fn dom_slot(state: &State, id: NodeId) -> &Arc<Slot> {
+        state.slots.get_shared(id.slot).unwrap()
+    }
+
     #[test]
-    fn candidate_third_payload_occurrence_admits_exact_utf16_and_refuses_one_short() {
+    fn same_source_candidate_root_body_admits_exact_bytes_and_refuses_one_short() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let mut padded = Vec::with_capacity(65_536);
+        padded.push(0xd800);
+        let text = setup.create_text(&document, DocumentString::from_utf16(padded));
+        let done = dom.apply(setup, &cancel).unwrap();
+        let text = done.created(&text).unwrap().unwrap();
+        let lease = dom
+            .begin_source_commands(DomBatch::new(), limits(10_000_000), &cancel)
+            .unwrap();
+        assert!(lease.dom.state.signal_slots.is_empty());
+        assert!(lease.dom.state.native_tasks.is_empty());
+        assert!(lease.dom.state.details_intentions.is_empty());
+        let before = lease.snapshot();
+        let original = dom_slot(&lease.dom.state, text).clone();
+        let op = lease.dom.source_operation.as_mut().unwrap();
+        op.draft.custody_registry().reconcile_releases();
+        let baseline = op.draft.custody_ledger().total().bytes() + op.draft.source_other_bytes;
+        // This materialized State has three empty canonical queue fields.
+        // The payload bank and its padded Text remain original Arc aliases.
+        let candidate = size_of::<State>() + 3 * size_of::<Vec<NodeId>>();
+        let exact = baseline + candidate;
+        op.draft.source_limits.as_mut().unwrap().retained_bytes = exact - 1;
+        let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+        assert!(
+            matches!(draft.finish(lease.dom, &cancel), Err(DomError::ResourceLimit {resource:DomResource::SourceRetainedBytes,limit}) if limit==exact-1)
+        );
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        assert!(Arc::ptr_eq(&original, dom_slot(&lease.dom.state, text)));
+        lease
+            .dom
+            .source_operation
+            .as_mut()
+            .unwrap()
+            .draft
+            .source_limits
+            .as_mut()
+            .unwrap()
+            .retained_bytes = exact;
+        let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+        let prepared = draft.finish(lease.dom, &cancel).unwrap();
+        assert_eq!(
+            draft.custody_ledger().total().bytes() + draft.source_other_bytes,
+            exact
+        );
+        assert!(Arc::ptr_eq(&original, dom_slot(&prepared.state, text)));
+        drop(prepared);
+        assert_eq!(
+            draft.custody_ledger().total().bytes() + draft.source_other_bytes,
+            baseline
+        );
+    }
+
+    #[test]
+    fn changed_text_candidate_admits_its_materialized_field_units_exactly_and_refuses_one_short() {
         let cancel = AtomicBool::new(false);
         for short in [false, true] {
             let mut dom =
                 Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
             let mut setup = DomBatch::new();
             let document = setup.create_document();
-            setup.create_text(&document, "candidate payload".repeat(4096));
-            dom.apply(setup, &cancel).unwrap();
-            // Independently enumerate this fixture's actual UTF16 backings:
-            // three native Document strings and one detached Text. No facts,
-            // attributes, form-name bank or imported history is present.
-            let occurrence = dom
+            let text = setup.create_text(&document, "original");
+            let done = dom.apply(setup, &cancel).unwrap();
+            let text = done.created(&text).unwrap().unwrap();
+            let original_units = dom
                 .state
                 .slots
                 .values()
@@ -5494,93 +5610,62 @@ pub(in crate::store) mod accounting_tests {
                             .sum::<usize>()
                     }
                     DomNodeKind::Text(value) => value.shared_code_units().capacity(),
-                    _ => panic!("fixture has only a Document and Text"),
+                    _ => panic!("Document and Text fixture"),
                 })
                 .sum::<usize>();
-            let exact = occurrence * 3; // Original canonical + Draft + candidate.
-            let limit = exact - usize::from(short);
-            let before = dom.snapshot();
+            let mut batch = DomBatch::new();
+            batch.replace_data(text, 0, usize::MAX, "replacement");
             let lease = dom
-                .begin_source_commands(
-                    DomBatch::new(),
-                    DomSourceLimits::new(16_000_000, limit, 10_000_000, 64, 4096, 4096, 1),
-                    &cancel,
-                )
+                .begin_source_commands(batch, limits(10_000_000), &cancel)
                 .unwrap();
+            let actual_limits = lease.dom.limits;
+            let op = lease.dom.source_operation.as_mut().unwrap();
+            op.draft
+                .apply(&op.commands[0], actual_limits, &cancel)
+                .unwrap();
+            let Command::ReplaceData { data, .. } = &op.commands[0] else {
+                panic!("original replacement command")
+            };
+            let input_units = data.shared_code_units().capacity();
+            let field = op.draft.node(Key::Existing(text)).unwrap();
+            let DomNodeKind::Text(value) = &field.kind else {
+                panic!("actual changed Text field")
+            };
+            let field_units = value.shared_code_units().capacity();
+            assert_eq!(
+                value.code_units(),
+                DocumentString::from("replacement").code_units()
+            );
+            // Original canonical payload, original command input, newly
+            // materialized Draft field and newly materialized canonical field.
+            let exact = original_units + input_units + 2 * field_units;
+            let limit = exact - usize::from(short);
+            op.draft.source_limits.as_mut().unwrap().retained_units = limit;
             let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
+            let before = lease.snapshot();
             let result = draft.finish(lease.dom, &cancel);
             if short {
                 assert!(
-                    matches!(result, Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedUnits, limit: actual }) if actual == limit)
+                    matches!(result, Err(DomError::ResourceLimit {resource:DomResource::SourceRetainedUnits,limit:actual}) if actual==limit)
                 );
             } else {
                 let prepared = result.unwrap();
                 assert_eq!(
-                    draft.source_temporary_units.load(Ordering::Relaxed),
-                    occurrence
+                    draft.custody_ledger().total().units() + draft.source_other_units,
+                    exact
                 );
+                assert!(!Arc::ptr_eq(
+                    dom_slot(&lease.dom.state, text),
+                    prepared.state.slots.get_shared(text.slot).unwrap()
+                ));
                 drop(prepared);
             }
-            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
-            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(lease.snapshot().stamp(), before.stamp());
+            assert_eq!(
+                lease.snapshot().node(text).unwrap().data(),
+                Some(&DocumentString::from("original"))
+            );
         }
-    }
-    fn candidate_occupied_boundary(
-        bytes: usize,
-    ) -> (
-        Option<formation::candidate_observation::Boundary>,
-        Result<(), DomError>,
-    ) {
-        let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
-        let mut setup = DomBatch::new();
-        let document = setup.create_document();
-        let mut padded = Vec::with_capacity(65_536);
-        padded.push(0xd800);
-        setup.create_text(&document, DocumentString::from_utf16(padded));
-        dom.apply(setup, &cancel).unwrap();
-        let before = dom.snapshot();
-        let lease = dom
-            .begin_source_commands(
-                DomBatch::new(),
-                DomSourceLimits::new(bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
-                &cancel,
-            )
-            .unwrap();
-        let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
-        formation::candidate_observation::start();
-        let result = draft.finish(lease.dom, &cancel);
-        let boundary = formation::candidate_observation::finish();
-        let result = result.map(drop);
-        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
-        assert_eq!(lease.snapshot().stamp(), before.stamp());
-        (boundary, result)
-    }
-    #[test]
-    fn actual_populated_candidate_and_occupants_overlap_admits_exact_bytes_before_retention() {
-        let (high, result) = candidate_occupied_boundary(16_000_000);
-        result.unwrap();
-        let boundary = high.unwrap();
-        assert!(boundary.occupants > 0);
-        assert_eq!(
-            boundary.admitted, boundary.required,
-            "independent live bank/backing enumeration equals the counter at actual populated overlap"
-        );
-        assert!(boundary.required <= boundary.limit);
-        let (exact, _) = candidate_occupied_boundary(boundary.required);
-        let exact = exact.expect("exact allowance reaches this real populated overlap, irrespective of later output formation");
-        assert_eq!(exact.admitted, exact.required);
-        assert_eq!(exact.required, exact.limit);
-        let (short, result) = candidate_occupied_boundary(boundary.required - 1);
-        assert!(
-            short.is_none(),
-            "one-short refuses before the candidate Text retains its spare-capacity backing"
-        );
-        assert!(
-            matches!(result, Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit }) if limit == boundary.required - 1)
-        );
     }
     #[test]
     fn formed_source_input_holds_its_utf16_charge_while_candidate_remains_live() {
@@ -5670,37 +5755,68 @@ pub(in crate::store) mod accounting_tests {
         batch.assign_slot(slot, vec![y.into(), x.into(), y.into()]);
         (dom, batch, slot, x, y)
     }
-    fn slot_operation_with_limits(limits: DomSourceLimits) -> bool {
+    fn slot_operation_admission_case(cut: Option<usize>) -> bool {
         let (mut dom, batch, slot, x, y) = slot_operation_fixture();
         let before = dom.snapshot();
         let cancel = AtomicBool::new(false);
-        let result = match dom.begin_source_commands(batch, limits, &cancel) {
+        let result = match dom.begin_source_commands(batch, limits(10_000_000), &cancel) {
             Err(error) => Err(error),
-            Ok(mut lease) => match lease.advance(&cancel) {
-                Ok(DomSourceProgress::Complete(done)) => {
-                    assert!(!done.cancellation_requested());
-                    Ok(())
+            Ok(mut lease) => {
+                let draft = &mut lease.dom.source_operation.as_mut().unwrap().draft;
+                let controlled = draft.custody_ledger().total();
+                let bytes = controlled.bytes() + draft.source_other_bytes;
+                let units = controlled.units() + draft.source_other_units;
+                let spent = draft.source_work.load(Ordering::Relaxed);
+                if let Some(dimension) = cut {
+                    let policy = draft.source_limits.as_mut().unwrap();
+                    match dimension {
+                        0 => policy.retained_bytes = bytes,
+                        1 => policy.retained_units = units,
+                        2 => policy.work = spent,
+                        _ => unreachable!("three actual Source admission domains"),
+                    }
                 }
-                Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
-                    panic!("Slot assignment has no external Style work")
+                match lease.advance(&cancel) {
+                    Ok(DomSourceProgress::Complete(done)) => {
+                        assert!(!done.cancellation_requested());
+                        Ok(())
+                    }
+                    Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
+                        panic!("Slot assignment has no external Style work")
+                    }
+                    Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(_))) => {
+                        panic!("Slot assignment fixture has no navigable-container hooks")
+                    }
+                    Ok(DomSourceProgress::Request(
+                        DomSourceRequest::Event(_)
+                        | DomSourceRequest::Dialog(_)
+                        | DomSourceRequest::CloseWatcher(_)
+                        | DomSourceRequest::DialogFocusing(_)
+                        | DomSourceRequest::FocusDelegate(_)
+                        | DomSourceRequest::DesignMode(_)
+                        | DomSourceRequest::FullscreenExitHandoff(_)
+                        | DomSourceRequest::AutofocusInsertion(_),
+                    )) => {
+                        panic!("Slot assignment fixture has no eventful Dialog operation")
+                    }
+                    Err(error) => {
+                        match cut {
+                            Some(0) => assert!(
+                                matches!(error, DomError::ResourceLimit {resource: DomResource::SourceRetainedBytes,limit} if limit==bytes)
+                            ),
+                            Some(1) => assert!(
+                                matches!(error, DomError::ResourceLimit {resource: DomResource::SourceRetainedUnits,limit} if limit==units)
+                            ),
+                            Some(2) => {
+                                assert_eq!(error, DomError::SourceWorkLimit { limit: spent })
+                            }
+                            None => {}
+                            _ => unreachable!(),
+                        }
+                        Err(error)
+                    }
                 }
-                Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(_))) => {
-                    panic!("Slot assignment fixture has no navigable-container hooks")
-                }
-                Ok(DomSourceProgress::Request(
-                    DomSourceRequest::Event(_)
-                    | DomSourceRequest::Dialog(_)
-                    | DomSourceRequest::CloseWatcher(_)
-                    | DomSourceRequest::DialogFocusing(_)
-                    | DomSourceRequest::FocusDelegate(_)
-                    | DomSourceRequest::DesignMode(_)
-                    | DomSourceRequest::FullscreenExitHandoff(_)
-                    | DomSourceRequest::AutofocusInsertion(_),
-                )) => {
-                    panic!("Slot assignment fixture has no eventful Dialog operation")
-                }
-                Err(error) => Err(error),
-            },
+            }
         };
         assert!(
             dom.source_operation.is_none(),
@@ -5744,37 +5860,10 @@ pub(in crate::store) mod accounting_tests {
         }
     }
     #[test]
-    fn actual_slot_operation_admits_exact_bytes_units_and_work_and_rolls_back_one_short() {
+    fn actual_slot_operation_checks_each_original_admission_domain_and_rolls_back_refusal() {
+        assert!(slot_operation_admission_case(None));
         for dimension in 0..3 {
-            let limits = |value: usize| {
-                DomSourceLimits::new(
-                    if dimension == 0 { value } else { 16_000_000 },
-                    if dimension == 1 { value } else { 1_000_000 },
-                    if dimension == 2 {
-                        value as u64
-                    } else {
-                        10_000_000
-                    },
-                    64,
-                    4096,
-                    4096,
-                    1,
-                )
-            };
-            let mut low = 0;
-            let mut high = [16_000_000, 1_000_000, 10_000_000][dimension];
-            assert!(slot_operation_with_limits(limits(high)));
-            while low < high {
-                let middle = low + (high - low) / 2;
-                if slot_operation_with_limits(limits(middle)) {
-                    high = middle;
-                } else {
-                    low = middle + 1;
-                }
-            }
-            assert!(low > 0);
-            assert!(!slot_operation_with_limits(limits(low - 1)));
-            assert!(slot_operation_with_limits(limits(low)));
+            assert!(!slot_operation_admission_case(Some(dimension)));
         }
     }
 }

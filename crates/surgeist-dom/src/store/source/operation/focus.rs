@@ -156,22 +156,17 @@ impl Operation {
                 ))
                 .map_err(DomError::AutofocusInsertionProtocol)?;
             frame.invocation = Invocation::Unissued;
-            self.draft.source_step(cancel)?;
-            self.draft
-                .effects
-                .last_mut()
-                .ok_or(DomError::InvalidSourceOperation)?
-                .effect = select::Effect::AutofocusInsertion(frame);
-            return Ok(());
+            return self.draft.source_set_autofocus_frame(frame, cancel);
         }
         let FocusFrame::Dialog(subject) = frame else {
             unreachable!("handled insertion")
         };
         if matches!(request, DomFocusRequest::RememberDialog(_)) {
             // An already-null slot remains a semantic no-op.
-            self.draft
-                .element_mut(subject)
-                .remember_no_focused_element();
+            let mut element = self.draft.element_fields_mut(subject, cancel)?;
+            element.remember_no_focused_element();
+            element.commit(cancel)?;
+            self.draft.source_prepare_dialog_reply(cancel)?;
             let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
             else {
                 return Err(DomError::InvalidSourceOperation);
@@ -182,6 +177,7 @@ impl Operation {
                 .map_err(DomError::DialogProtocol)?;
             frame.invocation = Invocation::Unissued;
         } else {
+            self.draft.source_prepare_focusing_reply(cancel)?;
             let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
             else {
                 return Err(DomError::InvalidSourceOperation);

@@ -80,6 +80,14 @@ fn cssom_root(root: NodeId) -> DomStyleCssomRoot {
     )
 }
 
+fn retain_fixture_owner(dom: &mut Dom, owner: &DomStyleCssomRoot) {
+    let document = dom.state.node(dom.owner, owner.root()).unwrap().document;
+    dom.style_cssom_roots = dom
+        .style_cssom_roots
+        .prepare_insert(owner, document, |_| Ok(()), || Ok(()))
+        .unwrap();
+}
+
 fn fixture(unrelated: usize, with_target: bool) -> Fixture {
     let cancel = AtomicBool::new(false);
     let mut dom =
@@ -101,12 +109,12 @@ fn fixture(unrelated: usize, with_target: bool) -> Fixture {
     // canonical Documents. No CSSOM operation or association is fabricated.
     for ticket in others {
         let owner = cssom_root(commit.document(&ticket).unwrap().node());
-        dom.style_cssom_roots.push(owner.duplicate());
+        retain_fixture_owner(&mut dom, &owner);
         owners.push(owner);
     }
     let target = with_target.then(|| {
         let owner = cssom_root(document.node());
-        dom.style_cssom_roots.push(owner.duplicate());
+        retain_fixture_owner(&mut dom, &owner);
         owner
     });
     Fixture {
@@ -391,7 +399,7 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
     let commit = dom.apply(batch, &cancel).unwrap();
     let shadow = commit.created(&shadow).unwrap().unwrap();
     let original = cssom_root(shadow);
-    dom.style_cssom_roots.push(original.duplicate());
+    retain_fixture_owner(&mut dom, &original);
     let historical = dom.snapshot();
     let retained = dom.style_cssom_root(shadow).unwrap().unwrap();
     assert!(retained.same_owner(&original));
@@ -438,5 +446,107 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
     assert_eq!(
         retained.snapshot().unwrap().revision(),
         cssom_before.revision()
+    );
+}
+
+#[test]
+fn adopted_shadow_owner_updates_only_its_documents_and_retirement_preserves_other_roots() {
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut dom,
+        document,
+        element,
+        owners,
+        ..
+    } = fixture(1, false);
+    let destination = DocumentId(owners[0].root());
+    let mut batch = DomBatch::new();
+    let shadow = batch.attach_shadow(
+        element,
+        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+    );
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let shadow = commit.created(&shadow).unwrap().unwrap();
+    let owner = cssom_root(shadow);
+    retain_fixture_owner(&mut dom, &owner);
+    let historical = dom.snapshot();
+    assert!(dom.style_cssom_roots.has_document(document));
+    assert!(dom.style_cssom_roots.has_document(destination));
+
+    let mut batch = DomBatch::new();
+    batch.adopt(element, destination.node());
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(
+        historical.node(shadow).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(
+        dom.snapshot().node(shadow).unwrap().owner_document(),
+        Some(destination)
+    );
+    assert!(!dom.style_cssom_roots.has_document(document));
+    assert!(dom.style_cssom_roots.has_document(destination));
+    assert!(
+        dom.style_cssom_root(shadow)
+            .unwrap()
+            .unwrap()
+            .same_owner(&owner)
+    );
+
+    let mut batch = DomBatch::new();
+    batch.destroy(element);
+    dom.apply(batch, &cancel).unwrap();
+    assert!(!dom.style_cssom_roots.has_document(document));
+    assert!(dom.style_cssom_roots.has_document(destination));
+    assert!(
+        dom.style_cssom_root(destination.node())
+            .unwrap()
+            .unwrap()
+            .same_owner(&owners[0])
+    );
+    assert!(matches!(
+        dom.style_cssom_root(shadow),
+        Err(DomError::StaleNode)
+    ));
+}
+
+#[test]
+fn refused_style_replacement_releases_its_actual_partial_custody() {
+    let Fixture {
+        dom,
+        document,
+        owners,
+        ..
+    } = fixture(1, false);
+    dom.custody_registry.reconcile_releases();
+    let before = dom.custody_registry.total();
+    let owner = cssom_root(document.node());
+    let calls = Cell::new(0usize);
+    let result = dom.style_cssom_roots.prepare_insert(
+        &owner,
+        document,
+        |_| {
+            calls.set(calls.get() + 1);
+            // The reached record/control frontier has already retained actual
+            // partial custody. Refusal must release every owned component.
+            if calls.get() == 3 {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        },
+        || Ok(()),
+    );
+    assert!(matches!(result, Err(DomError::Cancelled)));
+    assert_eq!(calls.get(), 3);
+    dom.custody_registry.reconcile_releases();
+    assert_eq!(dom.custody_registry.total(), before);
+    assert!(dom.style_cssom_roots.get(document.node()).is_none());
+    assert!(!dom.style_cssom_roots.has_document(document));
+    assert!(
+        dom.style_cssom_roots
+            .get(owners[0].root())
+            .unwrap()
+            .same_owner(&owners[0])
     );
 }

@@ -2,8 +2,8 @@
 //! Shared immutable backings are conservatively charged per retained occurrence;
 //! allocator metadata and Arc control-block implementation details are excluded.
 use super::super::*;
+use crate::QualifiedName;
 use crate::element::NativeFamily;
-use crate::{Attribute, QualifiedName};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Payload {
@@ -67,13 +67,7 @@ pub(crate) fn element(
     let mut payload = Payload::default();
     step()?;
     payload.name(element.name())?;
-    payload.add_bytes(size_of::<Vec<Attribute>>())?;
-    payload.bank::<Attribute>(element.attributes().shared_attributes().capacity())?;
-    for attribute in element.attributes().iter() {
-        step()?;
-        payload.name(attribute.name())?;
-        payload.string(attribute.value())?;
-    }
+    payload.append(element.attributes_payload()?)?;
     for string in [element.saved_is(), element.nonce()].into_iter().flatten() {
         step()?;
         payload.string(string)?;
@@ -164,6 +158,7 @@ pub(in crate::store) fn kind(
     }
     Ok(payload)
 }
+#[cfg(test)]
 struct Related<'a, K> {
     base: Option<&'a crate::base::BaseState<K>>,
     base_facts: Option<&'a surgeist_html_semantics::HtmlParseBaseFacts>,
@@ -172,6 +167,7 @@ struct Related<'a, K> {
     image: Option<&'a crate::image::ImageState<K>>,
     form_past_names: Option<&'a crate::form::FormPastNames<K>>,
 }
+#[cfg(test)]
 fn related<K>(
     related: Related<'_, K>,
     names_bank: bool,
@@ -227,55 +223,45 @@ fn related<K>(
     Ok(payload)
 }
 
-pub(in crate::store) fn node(
-    node: &DraftNode,
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    node_usage(node, true, &mut step)
-}
-/// Backings cloned into one candidate Node. The mapped past-name bank itself
-/// is reserved separately by Formation; its Arc Vec header and names are not.
-pub(in crate::store) fn candidate_node(
-    node: &DraftNode,
-    step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    node_usage(node, false, step)
-}
-fn node_usage(
-    node: &DraftNode,
-    names_bank: bool,
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    let mut payload = kind(&node.kind, &mut step)?;
-    payload.append(related(
-        Related {
-            base: node.base.as_ref(),
-            base_facts: node
-                .base_document
-                .as_ref()
-                .and_then(|document| document.facts.as_ref()),
-            hyperlink: node.hyperlink.as_ref(),
-            encoding_url_document: node.encoding_url_document.as_ref(),
-            image: node.image.as_ref(),
-            form_past_names: node.form_past_names.as_ref(),
-        },
-        names_bank,
-        step,
-    )?)?;
-    Ok(payload)
-}
 pub(in crate::store) fn canonical_slot(
     slot: &Slot,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
-    let mut payload = Payload::default();
-    payload.add_bytes(size_of::<Slot>())?;
+    step()?;
+    let mut payload = Payload {
+        bytes: size_of::<Slot>(),
+        units: 0,
+    };
     if let Some(node) = &slot.node {
-        payload.append(canonical_node(node, true, &mut step)?)?;
+        payload.add_bytes(node.receipts.payload.bytes())?;
+        payload.add_units(node.receipts.payload.units())?;
     }
     Ok(payload)
 }
-fn canonical_node(
+#[cfg(test)]
+pub(in crate::store) fn refresh_node_receipts(node: &mut Node) -> Result<(), DomError> {
+    let mut names = Payload::default();
+    let mut units = 0usize;
+    if let Some(values) = &node.form_past_names {
+        names.add_bytes(size_of::<Vec<crate::form::FormPastName<NodeId>>>())?;
+        names.bank::<crate::form::FormPastName<NodeId>>(values.entries.capacity())?;
+        for entry in values.entries.iter() {
+            names.string(&entry.name)?;
+            units = units
+                .checked_add(entry.name.len())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+    }
+    node.receipts.names = custody::Usage::new(names.bytes, names.units);
+    node.receipts.name_units = units;
+    let payload = canonical_node(node, true, || Ok(()))?;
+    node.receipts.payload = custody::Usage::new(payload.bytes, payload.units);
+    node.receipts.fields = transaction::NodeFields::from_canonical(node).usage(|| Ok(()))?;
+    Ok(())
+}
+
+#[cfg(test)]
+pub(in crate::store) fn canonical_node(
     node: &Node,
     banks: bool,
     mut step: impl FnMut() -> Result<(), DomError>,
@@ -327,73 +313,6 @@ fn canonical_node(
     )?)?;
     Ok(payload)
 }
-fn state_usage(
-    state: &State,
-    banks: bool,
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    let mut payload = Payload::default();
-    if banks {
-        payload.add_bytes(size_of::<State>())?;
-        payload.add_bytes(state.slots.index_charge().bytes)?;
-        payload.add_bytes(state.slots.totals().bytes)?;
-        payload.add_units(state.slots.totals().units)?;
-        payload.add_bytes(state.ranges.index_charge().bytes)?;
-        payload.add_bytes(state.ranges.totals().bytes)?;
-        payload.add_bytes(3 * size_of::<Vec<NodeId>>())?;
-        payload.bank::<NodeId>(state.signal_slots.capacity())?;
-        payload.bank::<select::Task<NodeId>>(state.native_tasks.capacity())?;
-        payload.bank::<crate::DomDetailsToggleIntention>(state.details_intentions.capacity())?;
-        if let Some(history) = &state.hosted_history {
-            payload.append(history.payload(&mut step)?)?;
-        }
-        if let Some(index) = &state.hosted_globals {
-            payload.add_bytes(index.retained_payload_bytes()?)?;
-        }
-        if let Some(registries) = &state.registries {
-            payload.add_bytes(registries.retained_payload_bytes(&mut step)?)?;
-        }
-    }
-    if !banks {
-        for node in state.slots.values().filter_map(|slot| slot.node.as_ref()) {
-            payload.append(canonical_node(node, false, &mut step)?)?;
-        }
-    }
-    if banks {
-        payload.add_bytes(2 * size_of::<Vec<crate::view_transition::Transition>>())?;
-        payload.bank::<crate::DomDocumentViewTransitions>(
-            state.view_transitions.documents.capacity(),
-        )?;
-        payload.bank::<crate::view_transition::Transition>(
-            state.view_transitions.transitions.capacity(),
-        )?;
-    }
-    for transition in &state.view_transitions.transitions {
-        step()?;
-        if banks {
-            payload.add_bytes(size_of::<Vec<crate::view_transition::Record>>())?;
-            payload.bank::<crate::view_transition::Record>(transition.records.capacity())?;
-        }
-        for record in &transition.records {
-            step()?;
-            payload.add_bytes(size_of::<surgeist_css::CssViewTransitionIdent>())?;
-            payload.add_bytes(record.name.retained_buffer_bytes())?;
-        }
-    }
-    Ok(payload)
-}
-pub(in crate::store) fn state(
-    state: &State,
-    step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    state_usage(state, true, step)
-}
-pub(in crate::store) fn state_payload(
-    state: &State,
-    step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    state_usage(state, false, step)
-}
 pub(in crate::store) fn commands(
     commands: &[Command],
     mut step: impl FnMut() -> Result<(), DomError>,
@@ -402,6 +321,9 @@ pub(in crate::store) fn commands(
     for command in commands {
         step()?;
         match command {
+            Command::AssignSlot { incoming, .. } => {
+                payload.bank::<NodeOperand>(incoming.capacity())?;
+            }
             Command::BindBaseFacts { facts, .. } => {
                 payload.producer(facts.retained_storage_usage())?
             }
@@ -490,9 +412,9 @@ pub(in crate::store) fn commands(
                 payload.string(name)?;
             }
             Command::ReplaceData { data, .. } => payload.string(data)?,
-            Command::Import { snapshot, .. } => {
-                payload.append(state(&snapshot.state, &mut step)?)?
-            }
+            // A whole-snapshot Import retains its actual missing controlled
+            // frontier through Source InputCapture, not a second payload sum.
+            Command::Import { .. } => {}
             Command::ViewTransition {
                 edit: crate::view_transition::Edit::Append { name, .. },
                 ..
@@ -510,6 +432,26 @@ pub(in crate::store) fn commands(
 mod tests {
     use super::*;
     use surgeist_html_semantics::*;
+
+    #[test]
+    fn original_assign_slot_input_capacity_is_cached_once_with_the_commands() {
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let slot = batch.create_element_ns(&document, crate::Namespace::html(), "slot");
+        let mut incoming = Vec::with_capacity(7);
+        incoming.push(NodeOperand::from(&slot));
+        batch.assign_slot(&slot, incoming);
+        let before = commands(&batch.commands[..2], || Ok(())).unwrap();
+        let mut visits = 0;
+        let retained = commands(&batch.commands, || {
+            visits += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(visits, 3);
+        assert_eq!(retained.bytes - before.bytes, 7 * size_of::<NodeOperand>());
+        assert_eq!(retained.units, before.units);
+    }
 
     #[test]
     fn inline_hyperlink_snapshot_charges_only_its_out_of_line_backing() {
@@ -548,9 +490,14 @@ mod tests {
             )
             .unwrap();
         let usage = snapshot.retained_storage_usage();
+        let mut dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let document = done.document(&document).unwrap();
         let hyperlink = crate::hyperlink::HyperlinkState {
             parsed: Some(crate::hyperlink::Parsed {
-                document: Key::Existing(0),
+                document: Key::Existing(document.node()),
                 value: snapshot,
             }),
         };

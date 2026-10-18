@@ -1,478 +1,9 @@
 use super::*;
 use crate::view_transition::*;
+mod storage;
+use storage::{DraftDocument, DraftTransition, RecordKey, TransitionKey};
+pub(super) use storage::{DraftTransitions, TransitionAck, TransitionCustody, TransitionUndo};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TransitionKey {
-    Existing(DomViewTransitionId),
-    Created(usize),
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RecordKey {
-    Existing(DomViewTransitionRecordId),
-    Created(usize),
-}
-struct DraftDocument {
-    value: DomDocumentViewTransitions,
-    active: Option<TransitionKey>,
-}
-struct DraftRecord {
-    key: RecordKey,
-    name: Arc<surgeist_css::CssViewTransitionIdent>,
-    branches: DomViewTransitionBranches,
-    rules: Option<DomViewTransitionRules>,
-    captured: [bool; 4],
-}
-struct DraftTransition {
-    key: TransitionKey,
-    document: DocumentId,
-    records: Vec<DraftRecord>,
-    setup: bool,
-    root_captured: bool,
-    next_record: u64,
-}
-pub(super) struct DraftTransitions {
-    documents: Vec<DraftDocument>,
-    transitions: Vec<DraftTransition>,
-    next_transition: u64,
-    transition_tickets: usize,
-    record_tickets: usize,
-    published_transitions: Vec<Option<DomViewTransitionId>>,
-    published_records: Vec<Option<DomViewTransitionRecordId>>,
-}
-impl DraftTransitions {
-    pub(super) fn retained_payload(
-        &self,
-        mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<source::storage::Payload, DomError> {
-        let mut payload = source::storage::Payload::default();
-        for transition in &self.transitions {
-            for record in &transition.records {
-                step()?;
-                payload.add_bytes(size_of::<surgeist_css::CssViewTransitionIdent>())?;
-                payload.add_bytes(record.name.retained_buffer_bytes())?;
-            }
-        }
-        Ok(payload)
-    }
-    pub(super) fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        let mut documents = Vec::new();
-        a.reserve(&mut documents, self.documents.len())?;
-        for d in &self.documents {
-            check_cancel(cancel)?;
-            a.step()?;
-            documents.push(DraftDocument {
-                value: d.value.clone(),
-                active: d.active,
-            });
-        }
-        let mut transitions = Vec::new();
-        a.reserve(&mut transitions, self.transitions.len())?;
-        for t in &self.transitions {
-            check_cancel(cancel)?;
-            a.step()?;
-            let mut records = Vec::new();
-            a.reserve(&mut records, t.records.len())?;
-            for r in &t.records {
-                check_cancel(cancel)?;
-                a.step()?;
-                records.push(DraftRecord {
-                    key: r.key,
-                    name: r.name.clone(),
-                    branches: r.branches,
-                    rules: r.rules.clone(),
-                    captured: r.captured,
-                });
-            }
-            transitions.push(DraftTransition {
-                key: t.key,
-                document: t.document,
-                records,
-                setup: t.setup,
-                root_captured: t.root_captured,
-                next_record: t.next_record,
-            });
-        }
-        Ok(Self {
-            documents,
-            transitions,
-            next_transition: self.next_transition,
-            transition_tickets: self.transition_tickets,
-            record_tickets: self.record_tickets,
-            published_transitions: a.copy(&self.published_transitions, cancel)?,
-            published_records: a.copy(&self.published_records, cancel)?,
-        })
-    }
-    pub(super) fn source_storage_bytes(
-        &self,
-        mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<usize, DomError> {
-        let mut bytes = self
-            .documents
-            .capacity()
-            .checked_mul(size_of::<DraftDocument>())
-            .and_then(|n| {
-                self.transitions
-                    .capacity()
-                    .checked_mul(size_of::<DraftTransition>())
-                    .and_then(|m| n.checked_add(m))
-            })
-            .ok_or(DomError::RepresentationExhausted)?;
-        bytes = bytes
-            .checked_add(
-                self.published_transitions
-                    .capacity()
-                    .checked_mul(size_of::<Option<DomViewTransitionId>>())
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
-            .and_then(|n| {
-                n.checked_add(
-                    self.published_records
-                        .capacity()
-                        .checked_mul(size_of::<Option<DomViewTransitionRecordId>>())?,
-                )
-            })
-            .ok_or(DomError::RepresentationExhausted)?;
-        for t in &self.transitions {
-            step()?;
-            bytes = bytes
-                .checked_add(
-                    t.records
-                        .capacity()
-                        .checked_mul(size_of::<DraftRecord>())
-                        .ok_or(DomError::RepresentationExhausted)?,
-                )
-                .ok_or(DomError::RepresentationExhausted)?;
-            for record in &t.records {
-                step()?;
-                bytes = bytes
-                    .checked_add(size_of::<surgeist_css::CssViewTransitionIdent>())
-                    .and_then(|n| n.checked_add(record.name.retained_buffer_bytes()))
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
-        Ok(bytes)
-    }
-    fn phase_growth(&self) -> Result<usize, DomError> {
-        let mut bytes = 0usize;
-        for (length, capacity, width) in [
-            (
-                self.transition_tickets,
-                self.published_transitions.capacity(),
-                size_of::<Option<DomViewTransitionId>>(),
-            ),
-            (
-                self.record_tickets,
-                self.published_records.capacity(),
-                size_of::<Option<DomViewTransitionRecordId>>(),
-            ),
-        ] {
-            if length > capacity {
-                bytes = bytes
-                    .checked_add(
-                        length
-                            .checked_mul(width)
-                            .ok_or(DomError::RepresentationExhausted)?,
-                    )
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
-        Ok(bytes)
-    }
-    fn prepare_phase(&mut self) -> Result<(), DomError> {
-        self.published_transitions
-            .try_reserve_exact(self.transition_tickets - self.published_transitions.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-        self.published_transitions
-            .resize(self.transition_tickets, None);
-        self.published_records
-            .try_reserve_exact(self.record_tickets - self.published_records.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-        self.published_records.resize(self.record_tickets, None);
-        Ok(())
-    }
-    pub(super) fn acknowledge_publication(
-        &mut self,
-        state: &ViewTransitions,
-        transitions: &[Option<DomViewTransitionId>],
-        records: &[Option<DomViewTransitionRecordId>],
-    ) {
-        self.next_transition = state.next_transition;
-        self.published_transitions.copy_from_slice(transitions);
-        self.published_records.copy_from_slice(records);
-        for (draft, actual) in self.transitions.iter_mut().zip(&state.transitions) {
-            draft.next_record = actual.next_record;
-        }
-    }
-    pub(super) fn new_formed(
-        value: &ViewTransitions,
-        initial: Option<&source::initial::Initial>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        let mut documents = Vec::new();
-        source::initial::reserve(&mut documents, value.documents.len(), initial, cancel)?;
-        for d in &value.documents {
-            source::initial::step(initial, cancel)?;
-            documents.push(DraftDocument {
-                value: d.clone(),
-                active: d.active.map(TransitionKey::Existing),
-            });
-        }
-        let mut transitions = Vec::new();
-        source::initial::reserve(&mut transitions, value.transitions.len(), initial, cancel)?;
-        for t in &value.transitions {
-            source::initial::step(initial, cancel)?;
-            let mut records = Vec::new();
-            source::initial::reserve(&mut records, t.records.len(), initial, cancel)?;
-            for r in &t.records {
-                source::initial::step(initial, cancel)?;
-                records.push(DraftRecord {
-                    key: RecordKey::Existing(r.id),
-                    name: r.name.clone(),
-                    branches: r.branches,
-                    rules: r.rules.clone(),
-                    captured: r.captured,
-                });
-            }
-            transitions.push(DraftTransition {
-                key: TransitionKey::Existing(t.id),
-                document: t.document,
-                records,
-                setup: t.setup,
-                root_captured: t.root_captured,
-                next_record: t.next_record,
-            });
-        }
-        Ok(Self {
-            documents,
-            transitions,
-            next_transition: value.next_transition,
-            transition_tickets: 0,
-            record_tickets: 0,
-            published_transitions: Vec::new(),
-            published_records: Vec::new(),
-        })
-    }
-    fn transition(
-        &self,
-        owner: &Arc<BatchIdentity>,
-        store: DomOwnerId,
-        operand: ViewTransitionOperand,
-    ) -> Result<usize, DomError> {
-        let key = match operand {
-            ViewTransitionOperand::Existing(id) => {
-                if id.owner != store {
-                    return Err(DomError::ForeignOwner);
-                }
-                TransitionKey::Existing(id)
-            }
-            ViewTransitionOperand::Created(ticket) => {
-                if !Arc::ptr_eq(owner, &ticket.owner) {
-                    return Err(DomError::ForeignBatch);
-                }
-                TransitionKey::Created(ticket.index)
-            }
-        };
-        self.transitions
-            .iter()
-            .position(|t| t.key == key || matches!((key, t.key), (TransitionKey::Existing(id), TransitionKey::Created(ticket)) if self.published_transitions.get(ticket).copied().flatten() == Some(id)))
-            .ok_or(match key {
-                TransitionKey::Existing(_) => DomError::StaleViewTransition,
-                TransitionKey::Created(_) => DomError::UnavailableCreation,
-            })
-    }
-    fn record(
-        &self,
-        owner: &Arc<BatchIdentity>,
-        store: DomOwnerId,
-        operand: ViewTransitionRecordOperand,
-    ) -> Result<(usize, usize), DomError> {
-        let key = match operand {
-            ViewTransitionRecordOperand::Existing(id) => {
-                if id.transition.owner != store {
-                    return Err(DomError::ForeignOwner);
-                }
-                RecordKey::Existing(id)
-            }
-            ViewTransitionRecordOperand::Created(ticket) => {
-                if !Arc::ptr_eq(owner, &ticket.owner) {
-                    return Err(DomError::ForeignBatch);
-                }
-                RecordKey::Created(ticket.index)
-            }
-        };
-        for (t, transition) in self.transitions.iter().enumerate() {
-            if let Some(r) = transition.records.iter().position(|r| r.key == key || matches!((key, r.key), (RecordKey::Existing(id), RecordKey::Created(ticket)) if self.published_records.get(ticket).copied().flatten() == Some(id))) {
-                return Ok((t, r));
-            }
-        }
-        Err(match key {
-            RecordKey::Existing(_) => DomError::StaleViewTransitionRecord,
-            RecordKey::Created(_) => DomError::UnavailableCreation,
-        })
-    }
-    fn document(&self, document: DocumentId) -> Result<usize, DomError> {
-        self.documents
-            .iter()
-            .position(|d| d.value.document == document)
-            .ok_or(DomError::ViewTransitionsUninitialized)
-    }
-    fn checked_document(&self, t: usize, document: DocumentId) -> Result<(), DomError> {
-        if self.transitions[t].document != document {
-            return Err(DomError::WrongDocument);
-        }
-        Ok(())
-    }
-    fn mutable_topology(&self, t: usize, document: DocumentId) -> Result<(), DomError> {
-        self.checked_document(t, document)?;
-        let d = self.document(document)?;
-        if self.transitions[t].setup || self.documents[d].active != Some(self.transitions[t].key) {
-            return Err(DomError::InvalidViewTransitionState);
-        }
-        Ok(())
-    }
-    pub(super) fn finish(
-        &self,
-        owner: DomOwnerId,
-        original: &ViewTransitions,
-        budget: Option<&source::formation::Formation>,
-        cancel: &AtomicBool,
-    ) -> Result<FinishedTransitions, DomError> {
-        let mut transitions = Vec::new();
-        let mut transition_ids = Vec::new();
-        let mut record_ids = Vec::new();
-        source::formation::reserve(&mut transitions, self.transitions.len(), budget, cancel)?;
-        source::formation::reserve(&mut transition_ids, self.transition_tickets, budget, cancel)?;
-        transition_ids.extend(self.published_transitions.iter().copied());
-        transition_ids.resize(self.transition_tickets, None);
-        source::formation::reserve(&mut record_ids, self.record_tickets, budget, cancel)?;
-        record_ids.extend(self.published_records.iter().copied());
-        record_ids.resize(self.record_tickets, None);
-        let mut next_transition = self.next_transition;
-        for t in &self.transitions {
-            let id = match t.key {
-                TransitionKey::Existing(id) => id,
-                TransitionKey::Created(ticket) if transition_ids[ticket].is_some() => {
-                    transition_ids[ticket].expect("published transition")
-                }
-                TransitionKey::Created(ticket) => {
-                    let generation = next_transition;
-                    next_transition = next_transition
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    let id = DomViewTransitionId { owner, generation };
-                    transition_ids[ticket] = Some(id);
-                    id
-                }
-            };
-            let mut records = Vec::new();
-            source::formation::reserve(&mut records, t.records.len(), budget, cancel)?;
-            let mut next_record = t.next_record;
-            for r in &t.records {
-                if let Some(budget) = budget {
-                    let mut payload = source::storage::Payload::default();
-                    payload.add_bytes(size_of::<surgeist_css::CssViewTransitionIdent>())?;
-                    payload.add_bytes(r.name.retained_buffer_bytes())?;
-                    budget.retain_payload(payload, cancel)?;
-                }
-                let record = match r.key {
-                    RecordKey::Existing(id) => id,
-                    RecordKey::Created(ticket) if record_ids[ticket].is_some() => {
-                        record_ids[ticket].expect("published record")
-                    }
-                    RecordKey::Created(ticket) => {
-                        let generation = next_record;
-                        next_record = next_record
-                            .checked_add(1)
-                            .ok_or(DomError::RepresentationExhausted)?;
-                        let record = DomViewTransitionRecordId {
-                            transition: id,
-                            generation,
-                        };
-                        record_ids[ticket] = Some(record);
-                        record
-                    }
-                };
-                records.push(Record {
-                    id: record,
-                    name: r.name.clone(),
-                    branches: r.branches,
-                    rules: r.rules.clone(),
-                    captured: r.captured,
-                });
-            }
-            if let Some(budget) = budget {
-                budget.retain_bytes(size_of::<Vec<Record>>(), cancel)?;
-            }
-            let mut records = SharedVec::from(records);
-            if let Some(old) = original.transitions.iter().find(|old| old.id == id) {
-                source::reuse_sequence(&mut records, &old.records, budget, cancel)?;
-            }
-            transitions.push(Transition {
-                id,
-                document: t.document,
-                records,
-                setup: t.setup,
-                root_captured: t.root_captured,
-                next_record,
-            });
-        }
-        let mut documents = Vec::new();
-        source::formation::reserve(&mut documents, self.documents.len(), budget, cancel)?;
-        for d in &self.documents {
-            let mut value = d.value.clone();
-            value.active = match d.active {
-                None => None,
-                Some(TransitionKey::Existing(id)) => Some(id),
-                Some(TransitionKey::Created(ticket)) => transition_ids[ticket],
-            };
-            documents.push(value);
-        }
-        if let Some(budget) = budget {
-            budget.retain_bytes(2 * size_of::<Vec<Transition>>(), cancel)?;
-        }
-        let mut documents = SharedVec::from(documents);
-        let mut transitions = SharedVec::from(transitions);
-        source::reuse_sequence(&mut documents, &original.documents, budget, cancel)?;
-        source::reuse_sequence(&mut transitions, &original.transitions, budget, cancel)?;
-        Ok(FinishedTransitions {
-            value: ViewTransitions {
-                documents,
-                transitions,
-                next_transition,
-            },
-            transition_ids,
-            record_ids,
-        })
-    }
-}
-pub(super) struct FinishedTransitions {
-    pub value: ViewTransitions,
-    pub transition_ids: Vec<Option<DomViewTransitionId>>,
-    pub record_ids: Vec<Option<DomViewTransitionRecordId>>,
-}
-impl Draft {
-    pub(super) fn prepare_transition_phase(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        self.source_step(cancel)?;
-        let extra = self.view_transitions.phase_growth()?;
-        self.source_admit(extra, cancel)?;
-        // Reserve the exact mandatory acknowledgement work before publication.
-        for _ in 0..self.view_transitions.transition_tickets {
-            self.source_step(cancel)?;
-        }
-        for _ in 0..self.view_transitions.record_tickets {
-            self.source_step(cancel)?;
-        }
-        for _ in &self.view_transitions.transitions {
-            self.source_step(cancel)?;
-        }
-        self.view_transitions.prepare_phase()?;
-        self.source_admit(0, cancel)
-    }
-}
 impl Draft {
     pub(super) fn apply_view_transition(
         &mut self,
@@ -488,355 +19,330 @@ impl Draft {
             return Err(DomError::ViewTransitionRevisionMismatch);
         }
         let document = basis.document();
-        let key = self.resolve(document.into())?;
-        if !matches!(self.node(key)?.kind, DomNodeKind::Document(_)) {
+        let document_key = self.resolve(document.into())?;
+        if !matches!(self.node(document_key)?.kind, DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
+        let mut next = self.view_transitions.clone();
+        let registry = self.custody_registry().clone();
+        let mut admit_storage = |usage| self.admit_custody_usage(usage, cancelled);
+        let mut units = self.units;
         if let Edit::Initialize { input } = edit {
-            let DomPreparedViewTransitionSheet { sheet, revision } = input;
-            if let Ok(d) = self.view_transitions.document(document) {
-                return if self.view_transitions.documents[d].value.sheet.id == *sheet {
+            if let Ok(current) = next.document(document) {
+                return if current.value.sheet.id == input.sheet {
                     Ok(())
                 } else {
                     Err(DomError::InvalidViewTransitionState)
                 };
             }
-            let bank = &self.view_transitions.documents;
-            let admitted = self.source_reserve_amount::<DraftDocument>(
-                bank.len(),
-                bank.capacity(),
-                1,
-                cancelled,
-            )?;
-            source::reserve_bank(&mut self.view_transitions.documents, 1, admitted)?;
-            self.source_admit(0, cancelled)?;
-            self.view_transitions.documents.push(DraftDocument {
-                value: DomDocumentViewTransitions {
-                    document,
-                    sheet: DomViewTransitionSheet {
-                        id: sheet.clone(),
-                        revision: revision.clone(),
+            let ordinal = next.next_document;
+            next.next_document = ordinal
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?;
+            next.set_document(
+                DraftDocument {
+                    value: DomDocumentViewTransitions {
+                        init_ordinal: ordinal,
+                        document,
+                        sheet: DomViewTransitionSheet {
+                            id: input.sheet.clone(),
+                            revision: input.revision.clone(),
+                        },
+                        active: None,
+                        suppressed: false,
+                        show: false,
                     },
                     active: None,
-                    suppressed: false,
-                    show: false,
                 },
-                active: None,
-            });
-            return Ok(());
-        }
-        let d = self.view_transitions.document(document)?;
-        match edit {
-            Edit::Initialize { .. } => unreachable!("initialization handled"),
-            Edit::Begin { ticket } => {
-                if self.view_transitions.documents[d].active.is_some() {
-                    return Err(DomError::InvalidViewTransitionState);
-                }
-                let count = self
-                    .view_transitions
-                    .transitions
-                    .len()
-                    .checked_add(1)
-                    .ok_or(DomError::RepresentationExhausted)?;
-                admit(count, limits.transitions, DomResource::ViewTransitions)?;
-                let (_, _, pseudos) = self.view_transitions.usage()?;
-                admit(
-                    pseudos
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?,
-                    limits.pseudos,
-                    DomResource::ViewTransitionPseudos,
-                )?;
-                let bank = &self.view_transitions.transitions;
-                let admitted = self.source_reserve_amount::<DraftTransition>(
-                    bank.len(),
-                    bank.capacity(),
-                    1,
-                    cancelled,
-                )?;
-                source::reserve_bank(&mut self.view_transitions.transitions, 1, admitted)?;
-                self.source_admit(0, cancelled)?;
-                let key = TransitionKey::Created(*ticket);
-                self.view_transitions.transitions.push(DraftTransition {
-                    key,
-                    document,
-                    records: Vec::new(),
-                    setup: false,
-                    root_captured: false,
-                    next_record: 0,
-                });
-                self.view_transitions.transition_tickets =
-                    self.view_transitions.transition_tickets.max(*ticket + 1);
-                self.view_transitions.documents[d].active = Some(key);
-            }
-            Edit::Append {
-                transition,
-                name,
-                ticket,
-            } => {
-                let t = self.view_transitions.transition(
-                    &self.owner,
-                    self.store,
-                    transition.clone(),
-                )?;
-                self.view_transitions.mutable_topology(t, document)?;
-                for record in &self.view_transitions.transitions[t].records {
-                    self.admit_transition_name_read(&record.name, cancelled)?;
-                    self.admit_transition_name_read(name, cancelled)?;
-                    if record.name == *name {
-                        return Err(DomError::DuplicateViewTransitionName);
+                &registry,
+                &mut admit_storage,
+            )?;
+        } else {
+            let mut doc = next.document(document)?;
+            match edit {
+                Edit::Initialize { .. } => unreachable!("initialization handled"),
+                Edit::Begin { ticket } => {
+                    if doc.active.is_some() {
+                        return Err(DomError::InvalidViewTransitionState);
                     }
-                }
-                let (_, records, _) = self.view_transitions.usage()?;
-                admit(
-                    records
+                    let count = next
+                        .counts
+                        .0
                         .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?,
-                    limits.records,
-                    DomResource::ViewTransitionRecords,
-                )?;
-                self.admit_transition_name_read(name, cancelled)?;
-                let units = self
-                    .units
-                    .checked_add(name.as_str().encode_utf16().count())
-                    .ok_or(DomError::RepresentationExhausted)?;
-                admit(units, limits.units, DomResource::StringCodeUnits)?;
-                // This occurrence enters the Source domain only here. The
-                // destination bank owns its inline Arc slot; lease only the
-                // actual Ident header and UTF8 backing, not a CSSOM graph.
-                let incoming_bytes = size_of::<surgeist_css::CssViewTransitionIdent>()
-                    .checked_add(name.retained_buffer_bytes())
-                    .ok_or(DomError::RepresentationExhausted)?;
-                let incoming = source::formation::Formation::new(self, cancelled)?;
-                if let Some(incoming) = &incoming {
-                    incoming.retain_bytes(incoming_bytes, cancelled)?;
-                }
-                let name = name.clone();
-                #[cfg(test)]
-                append_observation::observe(self, 0, cancelled)?;
-                let bank = &self.view_transitions.transitions[t].records;
-                let admitted = self.source_reserve_amount::<DraftRecord>(
-                    bank.len(),
-                    bank.capacity(),
-                    1,
-                    cancelled,
-                )?;
-                source::reserve_bank(
-                    &mut self.view_transitions.transitions[t].records,
-                    1,
-                    admitted,
-                )?;
-                self.source_admit(0, cancelled)?;
-                self.view_transitions.transitions[t]
-                    .records
-                    .push(DraftRecord {
-                        key: RecordKey::Created(*ticket),
-                        name,
-                        branches: DomViewTransitionBranches::Pending,
-                        rules: None,
-                        captured: [false; 4],
-                    });
-                // No fallible operation intervenes between canonical ownership
-                // and releasing the temporary occurrence's admission.
-                if let Some(incoming) = &incoming {
-                    incoming.release_bytes(incoming_bytes);
-                }
-                self.view_transitions.record_tickets =
-                    self.view_transitions.record_tickets.max(*ticket + 1);
-                self.units = units;
-            }
-            Edit::Branches { record, branches } => {
-                let (t, r) =
-                    self.view_transitions
-                        .record(&self.owner, self.store, record.clone())?;
-                self.view_transitions.mutable_topology(t, document)?;
-                if let Some(node) = branches.new_element() {
-                    self.validate_transition_element(node, document)?;
-                }
-                if let Some(node) = branches.new_element()
-                    && self.view_transitions.transitions[t]
-                        .records
-                        .iter()
-                        .enumerate()
-                        .any(|(other, value)| {
-                            other != r && value.branches.new_element() == Some(node)
-                        })
-                {
-                    return Err(DomError::InvalidViewTransitionState);
-                }
-                if let Some(rules) = &self.view_transitions.transitions[t].records[r].rules {
-                    validate_rule_shape(*branches, &rules.associations)?;
-                }
-                self.view_transitions.transitions[t].records[r].branches = *branches;
-            }
-            Edit::Rules { record, input } => {
-                let (t, r) =
-                    self.view_transitions
-                        .record(&self.owner, self.store, record.clone())?;
-                self.view_transitions.checked_document(t, document)?;
-                let value = &self.view_transitions.transitions[t].records[r];
-                let binding = &self.view_transitions.documents[d].value.sheet;
-                if input.revision.owner() != binding.id.owner() {
-                    return Err(DomError::ViewTransitionCssom(
-                        DomViewTransitionCssomError::ForeignOwner,
-                    ));
-                }
-                if input.revision.value() < binding.revision.value()
-                    || value
-                        .rules
-                        .as_ref()
-                        .is_some_and(|old| input.revision.value() < old.revision.value())
-                {
-                    return Err(DomError::ViewTransitionCssom(
-                        DomViewTransitionCssomError::StaleRevision,
-                    ));
-                }
-                if input.sheet != binding.id {
-                    return Err(DomError::ViewTransitionCssom(
-                        DomViewTransitionCssomError::WrongSheet,
-                    ));
-                }
-                validate_rule_shape(value.branches, &input.associations)?;
-                self.view_transitions.transitions[t].records[r].rules =
-                    Some(DomViewTransitionRules {
-                        revision: input.revision.clone(),
-                        associations: input.associations.clone(),
-                    });
-            }
-            Edit::ClearRules(record) => {
-                let (t, r) =
-                    self.view_transitions
-                        .record(&self.owner, self.store, record.clone())?;
-                self.view_transitions.checked_document(t, document)?;
-                self.view_transitions.transitions[t].records[r].rules = None;
-            }
-            Edit::Captured { subject, captured } => match *subject {
-                DomViewTransitionSubject::Element(node) => {
-                    let key = self.validate_transition_element(node, document)?;
-                    let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-                        unreachable!("checked Element")
-                    };
-                    element.set_captured_in_view_transition(*captured);
-                }
-                DomViewTransitionSubject::Pseudo(id) => {
-                    let t = self.view_transitions.transition(
-                        &self.owner,
-                        self.store,
-                        id.transition.into(),
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    let pseudos = next
+                        .counts
+                        .2
+                        .checked_add(1)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(count, limits.transitions, DomResource::ViewTransitions)?;
+                    admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)?;
+                    let key = TransitionKey::Created(*ticket);
+                    next.set(
+                        DraftTransition::empty(key, document),
+                        &registry,
+                        &mut admit_storage,
                     )?;
-                    self.view_transitions.checked_document(t, document)?;
-                    let transition = &mut self.view_transitions.transitions[t];
-                    if let Some(record) = id.record {
-                        let r = transition
-                            .records
-                            .iter_mut()
-                            .find(|r| r.key == RecordKey::Existing(record))
-                            .ok_or(DomError::StaleViewTransitionRecord)?;
-                        if !transition.setup || !record_has_pseudo(r.branches, id.kind) {
+                    next.transition_tickets = next.transition_tickets.max(
+                        ticket
+                            .checked_add(1)
+                            .ok_or(DomError::RepresentationExhausted)?,
+                    );
+                    next.counts.0 = count;
+                    next.counts.2 = pseudos;
+                    doc.active = Some(key);
+                    next.set_document(doc, &registry, &mut admit_storage)?;
+                }
+                Edit::Append {
+                    transition,
+                    name,
+                    ticket,
+                } => {
+                    let key = next.transition(&self.owner, self.store, transition.clone())?;
+                    next.mutable_topology(key, document)?;
+                    let mut value = next.get(key)?;
+                    for record in value.records() {
+                        self.admit_transition_name_read(record.name, cancelled)?;
+                        self.admit_transition_name_read(name, cancelled)?;
+                        if record.name == name {
+                            return Err(DomError::DuplicateViewTransitionName);
+                        }
+                    }
+                    let records = next
+                        .counts
+                        .1
+                        .checked_add(1)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(records, limits.records, DomResource::ViewTransitionRecords)?;
+                    self.admit_transition_name_read(name, cancelled)?;
+                    let name_units = name.as_str().encode_utf16().count();
+                    units = units
+                        .checked_add(name_units)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(units, limits.units, DomResource::StringCodeUnits)?;
+                    value.append_record(*ticket, name, &registry, &mut admit_storage, || {
+                        #[cfg(test)]
+                        append_observation::observe(self, 0, cancelled)?;
+                        check_cancel(cancelled)
+                    })?;
+                    check_cancel(cancelled)?;
+                    value.name_units = value
+                        .name_units
+                        .checked_add(name_units)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    next.record_owner(*ticket, key, &registry, &mut admit_storage)?;
+                    next.set(value, &registry, &mut admit_storage)?;
+                    next.record_tickets = next.record_tickets.max(
+                        ticket
+                            .checked_add(1)
+                            .ok_or(DomError::RepresentationExhausted)?,
+                    );
+                    next.counts.1 = records;
+                }
+                Edit::Branches { record, branches } => {
+                    let (key, record_key) = next.record(&self.owner, self.store, record.clone())?;
+                    next.mutable_topology(key, document)?;
+                    let mut value = next.get(key)?;
+                    if let Some(node) = branches.new_element() {
+                        self.validate_transition_element(node, document)?;
+                    }
+                    if let Some(node) = branches.new_element()
+                        && value.records().any(|other| {
+                            other.key != record_key && other.branches.new_element() == Some(node)
+                        })
+                    {
+                        return Err(DomError::InvalidViewTransitionState);
+                    }
+                    if let Some(rules) = value.record(record_key)?.rules {
+                        validate_rule_shape(*branches, &rules.associations)?;
+                    }
+                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
+                        let mut record = read.owned();
+                        record.branches = *branches;
+                        record
+                    })?;
+                    next.set(value, &registry, &mut admit_storage)?;
+                }
+                Edit::Rules { record, input } => {
+                    let (key, record_key) = next.record(&self.owner, self.store, record.clone())?;
+                    next.checked_document(key, document)?;
+                    let mut value = next.get(key)?;
+                    if doc.value.sheet.revision.owner() != input.revision.owner() {
+                        return Err(DomError::ViewTransitionCssom(
+                            DomViewTransitionCssomError::ForeignOwner,
+                        ));
+                    }
+                    if doc.value.sheet.id != input.sheet {
+                        return Err(DomError::ViewTransitionCssom(
+                            DomViewTransitionCssomError::WrongSheet,
+                        ));
+                    }
+                    if input.revision.value() < doc.value.sheet.revision.value() {
+                        return Err(DomError::ViewTransitionCssom(
+                            DomViewTransitionCssomError::StaleRevision,
+                        ));
+                    }
+                    validate_rule_shape(value.record(record_key)?.branches, &input.associations)?;
+                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
+                        let mut record = read.owned();
+                        record.rules = Some(DomViewTransitionRules {
+                            revision: input.revision.clone(),
+                            associations: input.associations.clone(),
+                        });
+                        record
+                    })?;
+                    next.set(value, &registry, &mut admit_storage)?;
+                    doc.value.sheet.revision = input.revision.clone();
+                    next.set_document(doc, &registry, &mut admit_storage)?;
+                }
+                Edit::ClearRules(record) => {
+                    let (key, record_key) = next.record(&self.owner, self.store, record.clone())?;
+                    next.checked_document(key, document)?;
+                    let mut value = next.get(key)?;
+                    value.change_record(record_key, &registry, &mut admit_storage, |read| {
+                        let mut record = read.owned();
+                        record.rules = None;
+                        record
+                    })?;
+                    next.set(value, &registry, &mut admit_storage)?;
+                }
+                Edit::Captured { subject, captured } => match *subject {
+                    DomViewTransitionSubject::Element(node) => {
+                        let key = self.validate_transition_element(node, document)?;
+                        self.with_element_fields(key, cancelled, |element| {
+                            element.set_captured_in_view_transition(*captured)
+                        })?;
+                    }
+                    DomViewTransitionSubject::Pseudo(id) => {
+                        let key = next.transition(&self.owner, self.store, id.transition.into())?;
+                        next.checked_document(key, document)?;
+                        let mut value = next.get(key)?;
+                        if let Some(record) = id.record {
+                            let record_key = RecordKey::Existing(record);
+                            if !value.setup
+                                || !record_has_pseudo(value.record(record_key)?.branches, id.kind)
+                            {
+                                return Err(DomError::StaleViewTransitionPseudo);
+                            }
+                            value.change_record(
+                                record_key,
+                                &registry,
+                                &mut admit_storage,
+                                |read| {
+                                    let mut record = read.owned();
+                                    record.captured[flag_index(id.kind)] = *captured;
+                                    record
+                                },
+                            )?;
+                        } else if id.kind == DomViewTransitionPseudoKind::Root {
+                            value.root_captured = *captured;
+                        } else {
                             return Err(DomError::StaleViewTransitionPseudo);
                         }
-                        r.captured[flag_index(id.kind)] = *captured;
-                    } else if id.kind == DomViewTransitionPseudoKind::Root {
-                        transition.root_captured = *captured;
-                    } else {
-                        return Err(DomError::StaleViewTransitionPseudo);
+                        next.set(value, &registry, &mut admit_storage)?;
                     }
+                },
+                Edit::Suppression(suppressed) => {
+                    doc.value.suppressed = *suppressed;
+                    next.set_document(doc, &registry, &mut admit_storage)?;
                 }
-            },
-            Edit::Suppression(suppressed) => {
-                self.view_transitions.documents[d].value.suppressed = *suppressed
-            }
-            Edit::Setup(transition) => {
-                let t = self.view_transitions.transition(
-                    &self.owner,
-                    self.store,
-                    transition.clone(),
-                )?;
-                self.view_transitions.mutable_topology(t, document)?;
-                let has_origin = self.node(key)?.children.iter().any(|child| {
-                    matches!(
-                        self.node(*child).map(|n| &n.kind),
-                        Ok(DomNodeKind::Element(_))
-                    )
-                });
-                if !has_origin {
-                    return Err(DomError::ViewTransitionOriginUnavailable);
-                }
-                if self.view_transitions.transitions[t]
-                    .records
-                    .iter()
-                    .any(|r| r.branches == DomViewTransitionBranches::Pending)
-                {
-                    return Err(DomError::InvalidViewTransitionState);
-                }
-                let mut count = self.view_transitions.usage()?.2;
-                for r in &self.view_transitions.transitions[t].records {
-                    check_cancel(cancelled)?;
-                    count = count
-                        .checked_add(
-                            2 + usize::from(r.branches.has_old())
-                                + usize::from(r.branches.new_element().is_some()),
+                Edit::Setup(transition) => {
+                    let key = next.transition(&self.owner, self.store, transition.clone())?;
+                    next.mutable_topology(key, document)?;
+                    let mut value = next.get(key)?;
+                    let has_origin = self.node(document_key)?.children.iter().any(|child| {
+                        matches!(
+                            self.node(child).map(|node| node.kind),
+                            Ok(DomNodeKind::Element(_))
                         )
-                        .ok_or(DomError::RepresentationExhausted)?;
-                }
-                admit(count, limits.pseudos, DomResource::ViewTransitionPseudos)?;
-                self.view_transitions.transitions[t].setup = true;
-                self.view_transitions.documents[d].value.show = true;
-            }
-            Edit::Clear(transition) => {
-                let t = self.view_transitions.transition(
-                    &self.owner,
-                    self.store,
-                    transition.clone(),
-                )?;
-                self.view_transitions.checked_document(t, document)?;
-                match self.view_transitions.documents[d].active {
-                    None => return Ok(()),
-                    Some(active) if active == self.view_transitions.transitions[t].key => {}
-                    Some(_) => return Err(DomError::InvalidViewTransitionState),
-                }
-                for r in 0..self.view_transitions.transitions[t].records.len() {
-                    check_cancel(cancelled)?;
-                    if let Some(node) = self.view_transitions.transitions[t].records[r]
-                        .branches
-                        .new_element()
-                    {
-                        let key = match self.resolve(node.into()) {
-                            Ok(key) => key,
-                            Err(DomError::StaleNode) => continue,
-                            Err(error) => return Err(error),
-                        };
-                        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-                            return Err(DomError::WrongNodeKind);
-                        };
-                        element.set_captured_in_view_transition(false);
+                    });
+                    if !has_origin {
+                        return Err(DomError::ViewTransitionOriginUnavailable);
                     }
+                    let mut added = 0usize;
+                    for record in value.records() {
+                        self.source_step(cancelled)?;
+                        if record.branches == DomViewTransitionBranches::Pending {
+                            return Err(DomError::InvalidViewTransitionState);
+                        }
+                        added = added
+                            .checked_add(
+                                2 + usize::from(record.branches.has_old())
+                                    + usize::from(record.branches.new_element().is_some()),
+                            )
+                            .ok_or(DomError::RepresentationExhausted)?;
+                    }
+                    let pseudos = next
+                        .counts
+                        .2
+                        .checked_add(added)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)?;
+                    value.setup = true;
+                    value.pseudos = value
+                        .pseudos
+                        .checked_add(added)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    next.set(value, &registry, &mut admit_storage)?;
+                    next.counts.2 = pseudos;
+                    doc.value.show = true;
+                    next.set_document(doc, &registry, &mut admit_storage)?;
                 }
-                self.view_transitions.documents[d].active = None;
-                self.view_transitions.documents[d].value.show = false;
+                Edit::Clear(transition) => {
+                    let key = next.transition(&self.owner, self.store, transition.clone())?;
+                    next.checked_document(key, document)?;
+                    match doc.active {
+                        None => return Ok(()),
+                        Some(active) if active == key => {}
+                        Some(_) => return Err(DomError::InvalidViewTransitionState),
+                    }
+                    let value = next.get(key)?;
+                    // Actual selected participants own these element writes.
+                    for record in value.records() {
+                        self.source_step(cancelled)?;
+                        if let Some(node) = record.branches.new_element() {
+                            let key = match self.resolve(node.into()) {
+                                Ok(key) => key,
+                                Err(DomError::StaleNode) => continue,
+                                Err(error) => return Err(error),
+                            };
+                            self.with_element_fields(key, cancelled, |element| {
+                                element.set_captured_in_view_transition(false)
+                            })?;
+                        }
+                    }
+                    doc.active = None;
+                    doc.value.show = false;
+                    // Recreate the admission closure after the element writes.
+                    next.set_document(doc, &registry, &mut |usage| {
+                        self.admit_custody_usage(usage, cancelled)
+                    })?;
+                }
+                Edit::Release(transition) => {
+                    let key = next.transition(&self.owner, self.store, transition.clone())?;
+                    next.checked_document(key, document)?;
+                    if doc.active == Some(key) {
+                        return Err(DomError::InvalidViewTransitionState);
+                    }
+                    let value = next.get(key)?;
+                    next.counts.0 -= 1;
+                    next.counts.1 -= value.record_count();
+                    next.counts.2 -= value.pseudos;
+                    units -= value.name_units;
+                    next.remove(key, &registry, &mut admit_storage)?;
+                }
             }
-            Edit::Release(transition) => {
-                let t = self.view_transitions.transition(
-                    &self.owner,
-                    self.store,
-                    transition.clone(),
-                )?;
-                self.view_transitions.checked_document(t, document)?;
-                if self.view_transitions.documents[d].active
-                    == Some(self.view_transitions.transitions[t].key)
-                {
-                    return Err(DomError::InvalidViewTransitionState);
-                }
-                // Prepay the original UTF8-to-UTF16 reads while the records
-                // remain in the graph; removal and subtraction are infallible.
-                for record in &self.view_transitions.transitions[t].records {
-                    self.admit_transition_name_read(&record.name, cancelled)?;
-                }
-                let removed = self.view_transitions.transitions.remove(t);
-                for r in removed.records {
-                    self.units -= r.name.as_str().encode_utf16().count();
-                }
-            }
+        }
+        let prepared = self.prepare_undo(cancelled)?;
+        let undo = TransitionUndo::capture(self);
+        self.view_transitions = next;
+        self.units = units;
+        let (transitions, records, pseudos) = self.view_transitions.counts;
+        self.counts.transitions = transitions;
+        self.counts.records = records;
+        self.counts.pseudos = pseudos;
+        if prepared {
+            self.record_transition_undo_prepared(undo);
         }
         Ok(())
     }
@@ -845,9 +351,6 @@ impl Draft {
         name: &surgeist_css::CssViewTransitionIdent,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        // Ordinary edits keep their original equality/count/cancellation order.
-        // Source pays a header and every possible UTF8 byte before the original
-        // checked producer equality or UTF16-length scan reads the operand.
         if self.source_limits.is_some() {
             self.source_step(cancel)?;
             for _ in 0..name.as_str().len() {
@@ -863,35 +366,13 @@ impl Draft {
     ) -> Result<Key, DomError> {
         let key = self.resolve(node.into())?;
         let value = self.node(key)?;
-        if value.document != Key::Existing(document.node().slot) {
+        if value.document != Key::Existing(document.node()) {
             return Err(DomError::WrongDocument);
         }
         if !matches!(value.kind, DomNodeKind::Element(_)) {
             return Err(DomError::WrongNodeKind);
         }
         Ok(key)
-    }
-}
-impl DraftTransitions {
-    pub(super) fn usage(&self) -> Result<(usize, usize, usize), DomError> {
-        let mut records = 0usize;
-        let mut pseudos = self.transitions.len();
-        for t in &self.transitions {
-            records = records
-                .checked_add(t.records.len())
-                .ok_or(DomError::RepresentationExhausted)?;
-            if t.setup {
-                for r in &t.records {
-                    pseudos = pseudos
-                        .checked_add(
-                            2 + usize::from(r.branches.has_old())
-                                + usize::from(r.branches.new_element().is_some()),
-                        )
-                        .ok_or(DomError::RepresentationExhausted)?;
-                }
-            }
-        }
-        Ok((self.transitions.len(), records, pseudos))
     }
 }
 fn validate_rule_shape(
@@ -912,28 +393,8 @@ fn validate_rule_shape(
         Err(DomError::InvalidViewTransitionState)
     }
 }
+#[cfg(test)]
 impl ViewTransitions {
-    pub(super) fn usage(&self) -> (usize, usize, usize) {
-        let records = self.transitions.iter().map(|t| t.records.len()).sum();
-        let pseudos = self
-            .transitions
-            .iter()
-            .map(|t| {
-                1 + if t.setup {
-                    t.records
-                        .iter()
-                        .map(|r| {
-                            2 + usize::from(r.branches.has_old())
-                                + usize::from(r.branches.new_element().is_some())
-                        })
-                        .sum()
-                } else {
-                    0
-                }
-            })
-            .sum();
-        (self.transitions.len(), records, pseudos)
-    }
     pub(super) fn changes(
         &self,
         old: &Self,
@@ -941,15 +402,24 @@ impl ViewTransitions {
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        for d in &self.documents {
-            if old.documents.iter().find(|o| o.document == d.document) != Some(d) {
+        let mut documents = Vec::new();
+        source::formation::reserve(
+            &mut documents,
+            self.documents.record_count(),
+            budget,
+            cancel,
+        )?;
+        documents.extend(self.documents.values());
+        documents.sort_unstable_by_key(|document| document.init_ordinal);
+        for d in documents {
+            if old.documents.values().find(|o| o.document == d.document) != Some(d) {
                 source::formation::reserve(changes, 1, budget, cancel)?;
                 changes.push(DomChange::ViewTransitionDocument(d.document));
             }
         }
-        for t in old.transitions.iter().chain(&self.transitions) {
-            let before = old.transitions.iter().find(|o| o.id == t.id);
-            let after = self.transitions.iter().find(|n| n.id == t.id);
+        for t in old.transitions.values().chain(&self.transitions) {
+            let before = old.transitions.values().find(|o| o.id == t.id);
+            let after = self.transitions.values().find(|n| n.id == t.id);
             if before == after {
                 continue;
             }
@@ -963,8 +433,8 @@ impl ViewTransitions {
                 .flat_map(|t| &t.records)
                 .chain(after.into_iter().flat_map(|t| &t.records))
             {
-                let old_record = before.and_then(|t| t.records.iter().find(|old| old.id == r.id));
-                let new_record = after.and_then(|t| t.records.iter().find(|new| new.id == r.id));
+                let old_record = before.and_then(|t| t.records.values().find(|old| old.id == r.id));
+                let new_record = after.and_then(|t| t.records.values().find(|new| new.id == r.id));
                 let change = DomChange::ViewTransitionRecord(r.id);
                 if old_record != new_record && !changes.contains(&change) {
                     source::formation::reserve(changes, 1, budget, cancel)?;
@@ -983,7 +453,7 @@ impl ViewTransitions {
                     ));
                 }
                 for r in &after.records {
-                    if let Some(old) = before.records.iter().find(|old| old.id == r.id) {
+                    if let Some(old) = before.records.values().find(|old| old.id == r.id) {
                         for kind in [
                             DomViewTransitionPseudoKind::Group,
                             DomViewTransitionPseudoKind::ImagePair,
@@ -1219,18 +689,33 @@ mod tests {
             "publication transfers the actual admitted backing"
         );
 
-        let (mut dom, document, transition) = source_append_fixture();
+        let (dom, document, transition) = source_append_fixture();
         let before = dom.snapshot();
         let usage = dom.usage();
         let (batch, _, original) = long_append_batch(&dom, document, transition);
-        append_observation::start();
-        let refused = {
-            let mut lease = dom
-                .begin_source_commands(batch, source_append_limits(observed.required - 1), &cancel)
-                .unwrap();
-            lease.advance(&cancel)
+        // Administrative radix paths depend on actual materialization IDs.
+        // A different owner's observed total is not an exact cost oracle.
+        // Derive this occurrence's one-short bound from its actual Draft and
+        // the incoming Ident's independently exposed retained capacity.
+        let (mut draft, _) = Draft::new_source(
+            &dom,
+            batch.owner.clone(),
+            &batch.commands,
+            source_append_limits(4_000_000),
+            &cancel,
+        )
+        .unwrap();
+        let existing = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
+        let incoming = size_of::<CssViewTransitionIdent>() + original.retained_buffer_bytes();
+        draft.source_limits = Some(source_append_limits(existing + incoming - 1));
+        let Command::ViewTransition { basis, edit } = &batch.commands[0] else {
+            unreachable!()
         };
+        append_observation::start();
+        let refused = draft.apply_view_transition(*basis, edit, dom.limits(), &cancel);
         let reached = append_observation::finish();
+        drop(draft);
+        drop(batch);
         assert!(
             matches!(
                 refused,
@@ -1261,7 +746,7 @@ mod tests {
         let (dom, document, transition) = source_append_fixture();
         for one_short in [false, true] {
             let (batch, _, original) = long_append_batch(&dom, document, transition);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -1303,7 +788,14 @@ mod tests {
                 // its later refusal must release the earlier name lease.
             }
             assert_eq!(live.load(Ordering::Relaxed), 0);
-            assert!(draft.view_transitions.transitions[0].records.is_empty());
+            assert!(
+                draft
+                    .view_transitions
+                    .get(TransitionKey::Existing(transition))
+                    .unwrap()
+                    .record_count()
+                    == 0
+            );
             assert_eq!(
                 Arc::strong_count(&original),
                 2,
@@ -1318,7 +810,7 @@ mod tests {
         let (dom, document, transition) = source_append_fixture();
         let before = dom.snapshot();
         let (batch, _, original) = long_append_batch(&dom, document, transition);
-        let (mut draft, _, _) = Draft::new_source(
+        let (mut draft, _) = Draft::new_source(
             &dom,
             batch.owner.clone(),
             &batch.commands,
@@ -1338,7 +830,14 @@ mod tests {
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(live.load(Ordering::Relaxed), 0);
         assert_eq!(draft.units, units);
-        assert!(draft.view_transitions.transitions[0].records.is_empty());
+        assert!(
+            draft
+                .view_transitions
+                .get(TransitionKey::Existing(transition))
+                .unwrap()
+                .record_count()
+                == 0
+        );
         assert_eq!(Arc::strong_count(&original), 2);
         assert_eq!(*dom.state, *before.state);
     }
@@ -1358,7 +857,7 @@ mod tests {
         let before = dom.snapshot();
         for stop in [0, 1, 2] {
             let (batch, _, incoming) = long_append_batch(&dom, document, transition);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -1393,7 +892,14 @@ mod tests {
                 _ => assert_eq!(result, Err(DomError::DuplicateViewTransitionName)),
             }
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-            assert_eq!(draft.view_transitions.transitions[0].records.len(), 1);
+            assert_eq!(
+                draft
+                    .view_transitions
+                    .get(TransitionKey::Existing(transition))
+                    .unwrap()
+                    .record_count(),
+                1
+            );
             drop(draft);
             assert_eq!(Arc::strong_count(&incoming), 2);
             assert_eq!(*dom.state, *before.state);
@@ -1449,12 +955,7 @@ mod tests {
             .view_transition(&ticket)
             .unwrap()
             .unwrap();
-        let mut transitions = dom.state.view_transitions.transitions.as_slice().to_vec();
-        transitions[0].next_record = u64::MAX;
-        Arc::get_mut(&mut dom.state)
-            .unwrap()
-            .view_transitions
-            .transitions = transitions.into();
+        storage::set_next_record_for_test(&mut dom, t, u64::MAX);
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -1546,4 +1047,5 @@ mod tests {
             DomError::StaleViewTransition
         );
     }
+    include!("view_transition/characterization.rs");
 }

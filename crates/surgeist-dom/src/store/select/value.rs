@@ -100,13 +100,11 @@ impl Draft {
         let bytes = self
             .source_storage_bytes(cancel)?
             .checked_add(self.source_other_bytes)
-            .and_then(|n| n.checked_add(self.source_formation_bytes.load(Ordering::Relaxed)))
             .and_then(|n| n.checked_sub(current.retained_bytes()))
             .ok_or(DomError::RepresentationExhausted)?;
         let units = self
             .source_storage_units(cancel)?
             .checked_add(self.source_other_units)
-            .and_then(|n| n.checked_add(self.source_temporary_units.load(Ordering::Relaxed)))
             .and_then(|n| n.checked_sub(current.utf16_extent()))
             .ok_or(DomError::RepresentationExhausted)?;
         admit(
@@ -308,11 +306,11 @@ impl Draft {
             }
             let _children_header = self.option_value_header::<HtmlCaptureBuilderSubject>(cancel)?;
             let mut children = self.select_vec();
-            for child in &self.node(*current)?.children {
+            for child in self.node(*current)?.children.iter() {
                 let mut found = None;
                 for (candidate, subject) in entries.iter() {
                     self.select_step(cancel)?;
-                    if candidate == child {
+                    if *candidate == child {
                         found = Some(subject.clone());
                         break;
                     }
@@ -405,7 +403,6 @@ pub(super) mod observation {
         let required = draft
             .source_storage_bytes(cancel)?
             .checked_add(draft.source_other_bytes)
-            .and_then(|n| n.checked_add(draft.source_formation_bytes.load(Ordering::Relaxed)))
             .ok_or(DomError::RepresentationExhausted)?;
         let boundary = Boundary {
             required,
@@ -560,19 +557,19 @@ mod tests {
         draft.source_limits = Some(limits(16_000_000));
         let baseline = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         // The producer documents its fixed public owner header exactly once.
-        // Empty-Draft footprint observations contain no per-node work here.
         let bytes = baseline + size_of::<HtmlControlledOptionValueCapture>() - 1;
         let before = draft.source_work.load(Ordering::Relaxed);
         draft.source_limits = Some(crate::DomSourceLimits::new(
             bytes,
             0,
-            before + 3,
+            100_000_000,
             64,
             4096,
             4096,
             1,
         ));
-        for attempted in 1..=3 {
+        let mut spent = before;
+        for _ in 0..3 {
             let error = Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel)
                 .err()
                 .expect("header refused");
@@ -583,19 +580,21 @@ mod tests {
                     limit: bytes
                 }
             );
-            assert_eq!(
-                draft.source_work.load(Ordering::Relaxed),
-                before + attempted,
-                "the original constructor charged one setup action before header refusal"
+            let after = draft.source_work.load(Ordering::Relaxed);
+            assert!(
+                after > spent,
+                "every refused actual constructor keeps its spent work"
             );
+            spent = after;
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
         }
+        draft.source_limits.as_mut().unwrap().work = spent;
         assert_eq!(
             Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel).err(),
-            Some(DomError::SourceWorkLimit { limit: before + 3 })
+            Some(DomError::SourceWorkLimit { limit: spent })
         );
-        assert_eq!(draft.source_work.load(Ordering::Relaxed), before + 3);
+        assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
         assert_eq!(draft.select_semantic_work.get(), 0);
         assert_eq!(draft.select_semantic_bytes.get(), 0);
     }

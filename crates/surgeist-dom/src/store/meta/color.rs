@@ -93,9 +93,28 @@ impl Scratch<'_> {
             .ok_or(DomError::RepresentationExhausted)?;
         // Old and prospective new allocations coexist during actual growth.
         self.add(bytes)?;
+        #[cfg(test)]
+        let previous = (values.as_ptr(), values.len(), values.capacity());
         values
             .try_reserve_exact(capacity - values.len())
             .map_err(|_| DomError::AllocationFailed)?;
+        #[cfg(test)]
+        {
+            if super::super::scale_metrics::ENABLED
+                && values.capacity() != previous.2
+                && size_of::<T>() != 0
+            {
+                super::super::scale_metrics::record(
+                    super::super::scale_metrics::Event::StructuralAllocation {
+                        bytes: values.capacity() * size_of::<T>(),
+                    },
+                );
+            }
+            if values.as_ptr() != previous.0 {
+                let mut moved = crate::store::CopyObservation::default();
+                moved.extended::<T>(previous.1);
+            }
+        }
         let actual = values
             .capacity()
             .checked_mul(size_of::<T>())
@@ -160,6 +179,8 @@ pub(super) fn parse(
         &[],
         CssDeviceColorFact::Unknown,
     );
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     let mut banks: [Vec<CssColorSlot<'_>>; 3] = std::array::from_fn(|_| Vec::new());
     let mut operation = Some(
         CssColorOperation::parse_used(
@@ -231,6 +252,8 @@ pub(super) fn parse(
                         }
                         scratch.reserve(storage)?;
                         storage.push(action.record().map_err(error)?);
+                        #[cfg(test)]
+                        written.pushed::<CssColorSlot<'_>>();
                         action.written(bank, at, &storage[at]).map_err(error)?;
                     }
                     Action::UpdateSlot { bank, index: at } => {

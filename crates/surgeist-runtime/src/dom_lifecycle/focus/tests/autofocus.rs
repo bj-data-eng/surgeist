@@ -111,46 +111,18 @@ fn parked_insertion() -> Insertion {
         subject,
     }
 }
-fn canonical_costs() -> (u64, u64) {
+fn retained_insertion() -> Insertion {
     let mut case = parked_insertion();
-    let owner = case.session.hosted_execution().state().unwrap();
-    let source = &owner.borrow().source;
-    let cancel = AtomicBool::new(false);
-    let mut dom = case.session.dom();
-    let mut lease = dom
-        .raw_mut()
-        .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
-        .unwrap();
-    let scaffold = lease.status().spent_work();
-    let payload = lease
-        .retain_hosted_runtime_payload(source, size_of::<FocusFormation>(), &cancel)
-        .unwrap();
-    let prepared = lease
-        .prepare_focus(
-            &DomFocusRequest::AllowAutofocusInsertion(case.request.clone()),
-            source,
-            &cancel,
-        )
-        .unwrap()
-        .unwrap();
+    let request = DomFocusRequest::AllowAutofocusInsertion(case.request.clone());
+    let (cap, _, target) = source_focus_boundary(&mut case.session, &request, 20, false);
     assert_eq!(
-        prepared.target(),
+        target,
         DomFocusTarget::DeniedDocumentWindow {
             document: case.document,
             global: case.global,
             host: case.host
         }
     );
-    let formation = FocusFormation {
-        preparation: prepared,
-        payload,
-    };
-    let cost = lease.status().spent_work() - scaffold;
-    drop(formation);
-    (scaffold, cost)
-}
-fn retained_insertion(cap: u64) -> Insertion {
-    let mut case = parked_insertion();
     let hosted = case.session.hosted_execution();
     let owner = hosted.state().unwrap();
     let before = owner.borrow().work;
@@ -181,10 +153,8 @@ fn retained_insertion(cap: u64) -> Insertion {
 }
 #[test]
 fn actual_insertion_denial_receipt_survives_refusal_cancel_foreign_source_and_permission_drop() {
-    let (scaffold, canonical) = canonical_costs();
-    let cap = scaffold + canonical + (9 + 5 + 5 + 1);
-    let mut first = retained_insertion(cap);
-    let mut second = retained_insertion(cap);
+    let mut first = retained_insertion();
+    let mut second = retained_insertion();
     let a = first.session.hosted_execution().state().unwrap();
     let b = second.session.hosted_execution().state().unwrap();
     let mut foreign = a.borrow_mut().focus.pending.take();

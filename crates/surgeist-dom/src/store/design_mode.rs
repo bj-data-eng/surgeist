@@ -58,6 +58,7 @@ impl Draft {
         if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
+        self.prepare_method_edit(cancel)?;
         let mut frame = match self.method.take() {
             Some(method::Frame::DesignMode(frame)) if frame.document == document => frame,
             Some(other) => {
@@ -104,11 +105,13 @@ impl Draft {
                     Reply::Enabled(metadata.design_mode_enabled())
                 }
                 Action::SetEnabled { enabled } => {
-                    let DomNodeKind::Document(metadata) = &mut self.node_mut(frame.document).kind
-                    else {
-                        return Err(DomError::WrongNodeKind);
-                    };
-                    metadata.set_design_mode_enabled(enabled);
+                    self.with_node_fields(frame.document, cancel, |fields| {
+                        let DomNodeKind::Document(metadata) = &mut fields.kind else {
+                            return Err(DomError::WrongNodeKind);
+                        };
+                        metadata.set_design_mode_enabled(enabled);
+                        Ok(())
+                    })??;
                     Reply::Applied
                 }
                 Action::ReadActiveRange => match self.node(frame.document)?.active_range {
@@ -138,10 +141,10 @@ impl Draft {
                 }
                 Action::ReadDocumentElement => {
                     frame.target = None;
-                    for child in &self.node(frame.document)?.children {
+                    for child in self.node(frame.document)?.children.iter() {
                         self.source_step(cancel)?;
-                        if matches!(self.node(*child)?.kind, DomNodeKind::Element(_)) {
-                            frame.target = Some(*child);
+                        if matches!(self.node(child)?.kind, DomNodeKind::Element(_)) {
+                            frame.target = Some(child);
                             break;
                         }
                     }
@@ -191,10 +194,14 @@ impl Draft {
             offset: 0,
         };
         // All fallible validation precedes the single whole-record assignment.
-        self.ranges[range.slot].record = Some(crate::range::Record {
-            start: boundary,
-            end: boundary,
-        });
+        self.replace_range_record(
+            range,
+            crate::range::Record {
+                start: boundary,
+                end: boundary,
+            },
+            cancel,
+        )?;
         Ok(())
     }
 }

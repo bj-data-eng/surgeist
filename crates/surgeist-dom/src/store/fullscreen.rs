@@ -1,7 +1,7 @@
 //! Fullscreen7c38 model transitions through the original canonical owner.
 use super::*;
 use crate::DomFullscreenModelStep as Step;
-use crate::dialog::DocumentInteractiveState;
+pub(in crate::store) mod custody;
 pub(in crate::store) mod exit;
 
 impl Draft {
@@ -9,14 +9,14 @@ impl Draft {
         &self,
         document: Key,
         cancel: &AtomicBool,
-    ) -> Result<&[Key], DomError> {
+    ) -> Result<transaction::SequenceView<'_, NodeId, Key>, DomError> {
         self.source_step(cancel)?;
         let node = self.node(document)?;
         if !matches!(node.kind, DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        match &node.interactive_document {
-            Some(DocumentInteractiveState::Known { top_layer, .. }) => Ok(top_layer),
+        match node.interactive_document {
+            Some(transaction::InteractiveRead::Known { top_layer, .. }) => Ok(top_layer),
             _ => Err(DomError::FullscreenModelUnavailable {
                 step: Step::ReadTopLayer,
             }),
@@ -27,7 +27,7 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<Option<Key>, DomError> {
-        for &key in self.fullscreen_raw_members(document, cancel)?.iter().rev() {
+        for key in self.fullscreen_raw_members(document, cancel)?.iter().rev() {
             self.source_step(cancel)?;
             if self.element(key)?.fullscreen_flag() {
                 return Ok(Some(key));
@@ -50,7 +50,7 @@ impl Draft {
         }
         // Actual empty showing lists supply topmost=null and zero hide iterations.
         self.source_step(cancel)?;
-        self.element_mut(node).set_fullscreen_flag();
+        self.with_element_fields(node, cancel, |element| element.set_fullscreen_flag())?;
         self.remove_top_layer_immediately(node, cancel)?;
         self.add_top_layer(node, cancel)
     }
@@ -62,7 +62,7 @@ impl Draft {
         self.source_step(cancel)?;
         self.element(node)?;
         self.fullscreen_raw_members(self.node(node)?.document, cancel)?;
-        self.element_mut(node).clear_fullscreen_flags();
+        self.with_element_fields(node, cancel, |element| element.clear_fullscreen_flags())?;
         self.remove_top_layer_immediately(node, cancel)
     }
     pub(super) fn unfullscreen_document_model(
@@ -71,7 +71,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let mut flagged = self.effect_vec();
-        for &key in self.fullscreen_raw_members(document, cancel)? {
+        for key in self.fullscreen_raw_members(document, cancel)?.iter() {
             self.source_step(cancel)?;
             if self.element(key)?.fullscreen_flag() {
                 self.select_reserve(&mut flagged, 1, cancel)?;
@@ -100,7 +100,7 @@ impl Draft {
                 flagged.push(key);
             }
             self.select_reserve(&mut pending, node.children.len(), cancel)?;
-            for &child in node.children.iter().rev() {
+            for child in node.children.iter().rev() {
                 self.source_step(cancel)?;
                 pending.push(child);
             }
@@ -121,7 +121,7 @@ impl Draft {
             let document = self.node(key)?.document;
             if matches!(
                 self.node(document)?.interactive_document,
-                Some(DocumentInteractiveState::Known { .. })
+                Some(transaction::InteractiveRead::Known { .. })
             ) {
                 self.remove_top_layer_immediately(key, cancel)?;
             }
@@ -156,13 +156,13 @@ impl Draft {
             if target != Some(node.document)
                 && !removal_covers
                 && matches!(node.kind, DomNodeKind::Element(_))
-                && let Some(DocumentInteractiveState::Known {
+                && let Some(transaction::InteractiveRead::Known {
                     top_layer,
                     pending_top_layer_removals,
                     ..
-                }) = &self.node(node.document)?.interactive_document
+                }) = self.node(node.document)?.interactive_document
             {
-                for &member in top_layer.iter().chain(pending_top_layer_removals) {
+                for member in top_layer.iter().chain(pending_top_layer_removals.iter()) {
                     self.source_step(cancel)?;
                     if member == key {
                         return Err(DomError::TopLayerAdoptionUnavailable {
@@ -173,7 +173,7 @@ impl Draft {
                 }
             }
             self.select_reserve(&mut pending, node.children.len(), cancel)?;
-            for &child in node.children.iter().rev() {
+            for child in node.children.iter().rev() {
                 self.source_step(cancel)?;
                 pending.push((child, target, removal_covers));
             }

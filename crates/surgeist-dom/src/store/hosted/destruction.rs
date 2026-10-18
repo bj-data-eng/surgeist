@@ -925,8 +925,7 @@ impl Dom {
                             .as_deref()
                             .ok_or(DomHostedError::UnsupportedProfile)?
                             .mark_retiring(creation.navigable, &context)?;
-                        draft.hosted_history = Some(graph);
-                        drop(fresh);
+                        draft.set_hosted_history(Some(graph), fresh, cancel)?;
                         let prepared = draft.finish(dom, cancel)?;
                         let next = row
                             .request

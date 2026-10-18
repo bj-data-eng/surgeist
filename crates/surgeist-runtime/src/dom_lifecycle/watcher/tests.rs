@@ -1377,28 +1377,21 @@ fn adopted_dialog_uses_original_window_and_old_or_foreign_requests_cannot_remove
 // growth1 + membership predicates/moves4 + transition1. Source's independent
 // payload-admission producer join is calibrated separately below.
 const ONE_MEMBER_REMOVAL_STEPS: u64 = 27;
-fn removal_retention_work() -> u64 {
-    let (mut session, _, _, subject) = fixture();
-    apply(
-        &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
-    );
-    let hosted = session.hosted_execution();
+fn removal_source_boundary(
+    dom: &mut Dom,
+    hosted: &HostedRuntime,
+    request: &DomSourceDialogRequest,
+) -> (u64, u64) {
     let owner = hosted.state().unwrap();
     let source = &owner.borrow().source;
     let cancel = AtomicBool::new(false);
-    let mut dom = session.dom();
+    let before_resume = dom.pending_source_edit().unwrap().spent_work();
     let mut lease = dom
-        .raw_mut()
-        .begin_source_edit(
-            DomSourceEdit::remove_attribute(subject, "open"),
-            source_limits(),
-            &cancel,
-        )
+        .resume_source_edit(request.operation(), source_limits(), &cancel)
         .unwrap();
-    let request = pending(&mut lease);
+    let resume = lease.status().spent_work() - before_resume;
     let _preparation = lease
-        .prepare_dialog_watcher(&request, source, &cancel)
+        .prepare_dialog_watcher(request, source, &cancel)
         .unwrap()
         .unwrap();
     let before = lease.status().spent_work();
@@ -1411,7 +1404,7 @@ fn removal_retention_work() -> u64 {
     let work = lease.status().spent_work() - before;
     drop(bank);
     drop(guard);
-    work
+    (lease.status().spent_work() + resume, work)
 }
 fn work_limit(work: u64) -> DomSourceLimits {
     let limits = source_limits();
@@ -1425,32 +1418,8 @@ fn work_limit(work: u64) -> DomSourceLimits {
         limits.nested_operations(),
     )
 }
-fn removal_scaffold_work() -> u64 {
-    let (mut session, _, _, subject) = fixture();
-    apply(
-        &mut session,
-        DomSourceEdit::set_attribute(subject, "open", ""),
-    );
-    let mut dom = session.dom();
-    let mut lease = dom
-        .raw_mut()
-        .begin_source_edit(
-            DomSourceEdit::remove_attribute(subject, "open"),
-            source_limits(),
-            &AtomicBool::new(false),
-        )
-        .unwrap();
-    let request = pending(&mut lease);
-    assert_eq!(request.action(), HtmlDialogAction::DestroyCloseWatcher);
-    // Only Source formation/exposure is calibrated. No watcher service has run.
-    lease.status().spent_work()
-}
 #[test]
 fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect() {
-    let scaffold = removal_scaffold_work();
-    // The independently listed Runtime tariff excludes the Source producer's
-    // payload-admission join, which owns its own canonical storage scans.
-    let retention = removal_retention_work();
     for short in [true, false] {
         let (mut session, _, _, subject) = fixture();
         let cancel = AtomicBool::new(false);
@@ -1468,18 +1437,27 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
             .unwrap();
         let hosted = session.hosted_execution();
         let owner = hosted.state().unwrap();
-        let cap = scaffold + retention + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
         let request = {
             let mut dom = session.dom();
+            let request = {
+                let mut lease = dom
+                    .raw_mut()
+                    .begin_source_edit(
+                        DomSourceEdit::remove_attribute(subject, "open"),
+                        source_limits(),
+                        &cancel,
+                    )
+                    .unwrap();
+                pending(&mut lease)
+            };
+            // Only this original operation's canonical producer is measured;
+            // no Runtime traversal or irreversible manager effect has run.
+            let (scaffold, retention) = removal_source_boundary(dom.raw_mut(), &hosted, &request);
+            let cap = scaffold + retention + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
             let mut lease = dom
                 .raw_mut()
-                .begin_source_edit(
-                    DomSourceEdit::remove_attribute(subject, "open"),
-                    work_limit(cap),
-                    &cancel,
-                )
+                .resume_source_edit(request.operation(), work_limit(cap), &cancel)
                 .unwrap();
-            let request = pending(&mut lease);
             assert_eq!(lease.status().spent_work(), scaffold);
             let before = lease.snapshot();
             let result = hosted.install_dialog_watcher(&mut lease, &request, &cancel);
@@ -1572,6 +1550,18 @@ fn original_source_removal_work_exact_and_one_short_precede_real_manager_effect(
     }
 }
 
+fn is_parent_work_refusal(error: &(dyn std::error::Error + 'static), cap: u64) -> bool {
+    let mut current = Some(error);
+    while let Some(error) = current {
+        if let Some(DomError::SourceWorkLimit { limit }) = error.downcast_ref::<DomError>() {
+            assert_eq!(*limit, cap);
+            return true;
+        }
+        current = error.source();
+    }
+    false
+}
+
 struct AncestorRemoval {
     hosted: HostedRuntime,
     service: bool,
@@ -1580,19 +1570,10 @@ struct AncestorRemoval {
     setup_error: Option<DomError>,
     unexpected: Option<String>,
     result: Option<Result<Option<WatcherLocation>, DomHostedRuntimeError>>,
-    producer_only: bool,
-    producer_succeeded: bool,
 }
 fn ancestor_removal_attempt(
     cap: u64,
     service: bool,
-) -> (DomSession, Option<DomSourceEventRequest>, AncestorRemoval) {
-    ancestor_removal_mode(cap, service, false)
-}
-fn ancestor_removal_mode(
-    cap: u64,
-    service: bool,
-    producer_only: bool,
 ) -> (DomSession, Option<DomSourceEventRequest>, AncestorRemoval) {
     let (mut session, top, body, parent) = fixture();
     let cancel = AtomicBool::new(false);
@@ -1618,8 +1599,6 @@ fn ancestor_removal_mode(
         setup_error: None,
         unexpected: None,
         result: None,
-        producer_only,
-        producer_succeeded: false,
     };
     let mut listeners = dispatcher();
     listeners
@@ -1643,34 +1622,6 @@ fn ancestor_removal_mode(
                 };
                 match lease.advance(&AtomicBool::new(false)) {
                     Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(request))) => {
-                        if context.producer_only {
-                            let owner = context.hosted.state().unwrap();
-                            let state = owner.borrow();
-                            let producer = (|| -> Result<(), DomError> {
-                                let _preparation = lease
-                                    .prepare_dialog_watcher(
-                                        &request,
-                                        &state.source,
-                                        &AtomicBool::new(false),
-                                    )?
-                                    .unwrap();
-                                let guard = lease.retain_hosted_runtime_payload(
-                                    &state.source,
-                                    size_of::<WatcherCustody>(),
-                                    &AtomicBool::new(false),
-                                )?;
-                                let mut bank = Vec::<WatcherCustody>::new();
-                                bank.try_reserve_exact(1).unwrap();
-                                assert_eq!(bank.capacity(), 1);
-                                drop(bank);
-                                drop(guard);
-                                Ok(())
-                            })();
-                            match producer {
-                                Ok(()) => context.producer_succeeded = true,
-                                Err(error) => context.setup_error = Some(error),
-                            }
-                        }
                         if context.service {
                             context.result = Some(context.hosted.install_dialog_watcher(
                                 &mut lease,
@@ -1726,6 +1677,12 @@ fn ancestor_removal_mode(
             },
             &cancel,
         );
+        if let Err(error) = &outcome {
+            assert!(
+                is_parent_work_refusal(error, cap),
+                "unexpected original parent dispatch error: {error:?}"
+            );
+        }
         if context.request.is_none() {
             if let Some(error) = &context.setup_error {
                 assert!(
@@ -1733,12 +1690,7 @@ fn ancestor_removal_mode(
                     "wrong child setup error: {error:?}"
                 );
             } else {
-                assert!(
-                    matches!(outcome, Err(crate::DomSourceRuntimeError::SourceEvent(
-                    crate::DomSourceEventRuntimeError::Dom(DomError::SourceWorkLimit { limit })
-                )) if limit == cap),
-                    "wrong pre-callback error: {outcome:?}"
-                );
+                assert!(outcome.is_err(), "wrong pre-callback outcome: {outcome:?}");
             }
         }
     }
@@ -1750,62 +1702,39 @@ fn ancestor_removal_mode(
     (session, outer, context)
 }
 #[test]
-fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_effect() {
-    // Calibrate only admission up to the child Hook, never the service under
-    // test. Search a finite explicit Source policy interval on fresh owners;
-    // the callback/child path is deterministic and every visit remains metered.
-    let mut low = 0;
-    let mut high = source_limits().work();
-    assert!(ancestor_removal_attempt(high, false).2.request.is_some());
-    while low < high {
-        let middle = low + (high - low) / 2;
-        if ancestor_removal_attempt(middle, false).2.request.is_some() {
-            high = middle;
-        } else {
-            low = middle + 1;
-        }
-    }
-    let scaffold = low;
-    assert!(scaffold > 0);
-    assert!(
-        ancestor_removal_attempt(scaffold - 1, false)
-            .2
-            .request
-            .is_none()
-    );
-    // Independently bound only the canonical producer preparation/retention
-    // join in this real observing-parent shape. No Runtime service or manager
-    // effect runs while selecting its minimum, so the Runtime oracle stays the
-    // explicit 26 visits/predicates/moves above.
-    let mut producer_low = scaffold;
-    let mut producer_high = source_limits().work();
-    assert!(
-        ancestor_removal_mode(producer_high, false, true)
-            .2
-            .producer_succeeded
-    );
-    while producer_low < producer_high {
-        let middle = producer_low + (producer_high - producer_low) / 2;
-        if ancestor_removal_mode(middle, false, true)
-            .2
-            .producer_succeeded
-        {
-            producer_high = middle;
-        } else {
-            producer_low = middle + 1;
-        }
-    }
-    assert!(
-        !ancestor_removal_mode(producer_low - 1, false, true)
-            .2
-            .producer_succeeded
-    );
+fn retained_parent_removal_preserves_child_exact_work_cut_and_real_effect() {
     for short in [true, false] {
-        let cap = producer_low + (ONE_MEMBER_REMOVAL_STEPS - 1) - u64::from(short);
-        let (mut session, outer, mut context) = ancestor_removal_attempt(cap, true);
+        let (mut session, outer, mut context) =
+            ancestor_removal_attempt(source_limits().work(), false);
         let outer = outer.expect("real retained observing parent");
         let request = context.request.take().expect("actual child Destroy Hook");
         assert_eq!(request.action(), HtmlDialogAction::DestroyCloseWatcher);
+        // A retained parent's policy is monotonic beneath its child. The
+        // top child's original public resume owns this exact lowerable cut.
+        let cap = {
+            let mut dom = session.dom();
+            let (scaffold, retention) =
+                removal_source_boundary(dom.raw_mut(), &context.hosted, &request);
+            let cap = scaffold + retention + ONE_MEMBER_REMOVAL_STEPS - u64::from(short);
+            let mut lease = dom
+                .raw_mut()
+                .resume_source_edit(
+                    request.operation(),
+                    work_limit(cap),
+                    &AtomicBool::new(false),
+                )
+                .unwrap();
+            assert_eq!(lease.status().spent_work(), scaffold);
+            let basis = lease.snapshot().stamp();
+            context.result = Some(context.hosted.install_dialog_watcher(
+                &mut lease,
+                &request,
+                &AtomicBool::new(false),
+            ));
+            assert_eq!(lease.status().spent_work(), cap);
+            assert_eq!(lease.snapshot().stamp(), basis);
+            cap
+        };
         let status = session.dom().pending_source_edit().unwrap();
         assert_eq!(status.operation(), request.operation());
         assert_eq!(status.parent_operation(), Some(outer.operation()));
@@ -1827,8 +1756,10 @@ fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_eff
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
                     DomError::SourceWorkLimit { limit },
                 ))) => assert_eq!(limit, cap),
-                Err(error) => panic!("wrong ancestor service refusal: {error:?}"),
-                Ok(_) => panic!("one-short ancestor admitted actual manager removal"),
+                Err(error) => {
+                    panic!("wrong child service refusal under retained parent: {error:?}")
+                }
+                Ok(_) => panic!("one-short child admitted actual manager removal"),
             }
             assert_eq!(
                 owner.borrow().hosts[0].top_levels[0]
@@ -1914,6 +1845,73 @@ fn observing_parent_removal_work_exact_and_one_short_preserve_child_and_real_eff
     }
 }
 
+#[test]
+fn finite_parent_removal_work_refusals_name_the_actual_parent_budget() {
+    // These fresh owners characterize actual finite policy outcomes; they do
+    // not transfer a canonical setup threshold or claim a late one-short cut.
+    for cap in [0, 64, 1024, 16_384] {
+        let (mut session, outer, mut context) = ancestor_removal_attempt(cap, true);
+        let Some(request) = context.request.take() else {
+            assert_ne!(
+                cap, 16_384,
+                "generous finite parent must reach child removal"
+            );
+            eprintln!("watcher finite parent cap={cap}: setup refused");
+            continue;
+        };
+        assert_ne!(cap, 0, "zero parent work must refuse");
+        let outer = outer.expect("actual retained observing parent");
+        let status = session.dom().pending_source_edit().unwrap();
+        assert_eq!(status.operation(), request.operation());
+        assert_eq!(status.parent_operation(), Some(outer.operation()));
+        assert_eq!(context.calls, 1);
+        let id = session
+            .snapshot()
+            .node(request.subject())
+            .unwrap()
+            .as_dialog()
+            .unwrap()
+            .close_watcher()
+            .unwrap();
+        let owner = context.hosted.state().unwrap();
+        match context.result.take().expect("actual reached service") {
+            Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit {
+                limit,
+            }))) => {
+                assert_eq!(limit, cap);
+                assert_ne!(cap, 16_384, "generous finite parent must service removal");
+                assert_eq!(counts(&context.hosted), (1, 1, 1));
+                let state = owner.borrow();
+                let record = state.hosts[0].top_levels[0]
+                    .group
+                    .as_ref()
+                    .unwrap()
+                    .clusters[0]
+                    .agent
+                    .windows
+                    .rows[0]
+                    .groups[0]
+                    .members[0]
+                    .borrow();
+                assert_eq!(record.id, id);
+                assert_eq!(record.phase, WatcherPhase::Registered);
+                assert!(record.publication.is_none());
+                eprintln!("watcher finite parent cap={cap}: removal service refused");
+            }
+            Err(error) => panic!("wrong finite-parent watcher refusal: {error:?}"),
+            Ok(location) => {
+                let location = location.expect("real manager result");
+                let mut state = owner.borrow_mut();
+                let record = location.get(&mut state);
+                assert_eq!(record.id, id);
+                assert_eq!(record.phase, WatcherPhase::Removing);
+                assert!(record.publication.is_some());
+                eprintln!("watcher finite parent cap={cap}: actual removal retained");
+            }
+        }
+    }
+}
+
 fn second_registration_fixture() -> (DomSession, NodeId) {
     let (mut session, top, body, first) = fixture();
     apply(
@@ -1932,25 +1930,22 @@ fn second_registration_fixture() -> (DomSession, NodeId) {
         .unwrap();
     (session, second)
 }
-fn registration_producer_work() -> (u64, u64, u64, u64, u64) {
-    let (mut session, second) = second_registration_fixture();
-    let hosted = session.hosted_execution();
+fn registration_source_boundary(
+    dom: &mut Dom,
+    hosted: &HostedRuntime,
+    request: &DomSourceDialogRequest,
+) -> (u64, u64, u64, u64, u64) {
     let owner = hosted.state().unwrap();
     let source = &owner.borrow().source;
     let cancel = AtomicBool::new(false);
-    let mut dom = session.dom();
+    let before_resume = dom.pending_source_edit().unwrap().spent_work();
     let mut lease = dom
-        .raw_mut()
-        .begin_source_edit(
-            DomSourceEdit::set_attribute(second, "open", ""),
-            source_limits(),
-            &cancel,
-        )
+        .resume_source_edit(request.operation(), source_limits(), &cancel)
         .unwrap();
-    let request = pending(&mut lease);
     let scaffold = lease.status().spent_work();
+    let resume = scaffold - before_resume;
     let _preparation = lease
-        .prepare_dialog_watcher(&request, source, &cancel)
+        .prepare_dialog_watcher(request, source, &cancel)
         .unwrap()
         .unwrap();
     let prepared = lease.status().spent_work();
@@ -1986,7 +1981,7 @@ fn registration_producer_work() -> (u64, u64, u64, u64, u64) {
     drop(candidate);
     drop(candidate_guard);
     (
-        scaffold,
+        body_work + resume,
         prepared - scaffold,
         candidate_work - prepared,
         replacement_work - candidate_work,
@@ -1995,7 +1990,6 @@ fn registration_producer_work() -> (u64, u64, u64, u64, u64) {
 }
 #[test]
 fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_replaces_it() {
-    let (scaffold, prepare, candidate, replacement, body) = registration_producer_work();
     for short in [true, false] {
         let (mut session, second) = second_registration_fixture();
         let cancel = AtomicBool::new(false);
@@ -2013,6 +2007,20 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
             .members[0]
             .borrow()
             .id;
+        let mut dom = session.dom();
+        let request = {
+            let mut lease = dom
+                .raw_mut()
+                .begin_source_edit(
+                    DomSourceEdit::set_attribute(second, "open", ""),
+                    source_limits(),
+                    &cancel,
+                )
+                .unwrap();
+            pending(&mut lease)
+        };
+        let (scaffold, prepare, candidate, replacement, body) =
+            registration_source_boundary(dom.raw_mut(), &hosted, &request);
         // Six retry rows, four Window lookup rows and eight retained visits
         // (including the newly allocated original record body).
         // This full one-member bank then needs entry1 + actual member move1.
@@ -2024,16 +2032,10 @@ fn source_member_growth_precharge_one_short_preserves_actual_old_bank_and_exact_
         } else {
             scaffold + prepare + candidate + replacement + body + 18 + 2 + 1
         };
-        let mut dom = session.dom();
         let mut lease = dom
             .raw_mut()
-            .begin_source_edit(
-                DomSourceEdit::set_attribute(second, "open", ""),
-                work_limit(cap),
-                &cancel,
-            )
+            .resume_source_edit(request.operation(), work_limit(cap), &cancel)
             .unwrap();
-        let request = pending(&mut lease);
         assert_eq!(lease.status().spent_work(), scaffold);
         let result = hosted.install_dialog_watcher(&mut lease, &request, &cancel);
         if short {

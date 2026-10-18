@@ -7,20 +7,6 @@ pub(super) struct ProcessingTrace {
     cancel_after: usize,
 }
 
-#[cfg(test)]
-impl ProcessingTrace {
-    pub(super) fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        Ok(Self {
-            writes: a.copy(&self.writes, cancel)?,
-            cancel_after: self.cancel_after,
-        })
-    }
-}
-
 impl Draft {
     pub(super) fn svg_script_post_connection(
         &mut self,
@@ -40,15 +26,17 @@ impl Draft {
         // Connection follows shadow topology; qualification follows the actual
         // node document, which need not be the connected host document.
         let document = self.node(key)?.document;
-        let environment = self.document_metadata(document)?.document_environment();
+        let environment = self
+            .document_metadata(document)?
+            .document_environment()
+            .clone();
         check_cancel(cancel)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked SVG Script")
-        };
-        element
-            .svg_script_state_mut()
-            .expect("checked SVG Script")
-            .mark_processed_in(environment)?;
+        self.with_element_fields(key, cancel, |element| {
+            element
+                .svg_script_state_mut()
+                .expect("checked SVG Script")
+                .mark_processed_in(environment)
+        })??;
         #[cfg(test)]
         if let Some(trace) = &mut self.svg_processing_trace {
             // Private deterministic observer of the real write, absent from

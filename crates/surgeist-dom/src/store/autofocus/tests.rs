@@ -5,6 +5,24 @@ use crate::Namespace;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
+thread_local! {
+    static CUT_RETIREMENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static RETIREMENT_CUT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+pub(super) fn after_retirement_document(draft: &mut Draft) {
+    if CUT_RETIREMENT.replace(false) {
+        let spent = draft.source_work.load(Ordering::Relaxed);
+        draft.source_limits.as_mut().unwrap().work = spent;
+        RETIREMENT_CUT.set(Some(spent));
+    }
+}
+struct RetirementCutGuard;
+impl Drop for RetirementCutGuard {
+    fn drop(&mut self) {
+        CUT_RETIREMENT.set(false);
+        RETIREMENT_CUT.set(None);
+    }
+}
 fn source_limits(work: u64) -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(64_000_000, 1_000_000, work, 64, 4096, 4096, 2)
 }
@@ -83,7 +101,10 @@ fn native_initial_history_and_unavailable_history_have_distinct_readback() {
     assert!(!view.processed());
     let mut d = draft(&dom);
     let key = d.resolve(docs[0].node().into()).unwrap();
-    d.node_mut(key).autofocus_document = Some(State::Unavailable);
+    d.with_node_fields(key, &cancel(), |fields| {
+        fields.autofocus_document = Some(State::Unavailable)
+    })
+    .unwrap();
     publish(&mut dom, &d);
     assert_eq!(
         dom.snapshot()
@@ -284,7 +305,7 @@ fn aggregate_limit_reduction_and_refused_growth_preserve_actual_history() {
 }
 
 #[test]
-fn canceled_and_one_short_retirement_leave_published_history_then_retry_once() {
+fn canceled_and_late_work_refusal_leave_published_history_then_retry_once() {
     let (mut dom, docs, ids) = fixture();
     history(&mut dom, docs, ids);
     let old = dom.snapshot();
@@ -295,22 +316,25 @@ fn canceled_and_one_short_retirement_leave_published_history_then_retry_once() {
         DomError::Cancelled
     );
     assert_eq!(dom.snapshot().stamp(), old.stamp());
-    let mut measured = draft(&dom);
-    let before = measured.source_work.load(Ordering::Relaxed);
-    measured
-        .retire_autofocus_candidate(measured.resolve(ids[1].into()).unwrap(), &cancel())
-        .unwrap();
-    let work = measured.source_work.load(Ordering::Relaxed) - before;
-    assert!(work > 1);
     let mut d = draft(&dom);
     let initial = d.source_work.load(Ordering::Relaxed);
-    d.source_limits = Some(source_limits(initial + work - 1));
-    assert_eq!(
-        d.retire_autofocus_candidate(d.resolve(ids[1].into()).unwrap(), &cancel()),
-        Err(DomError::SourceWorkLimit {
-            limit: initial + work - 1
-        })
-    );
+    // Cut the original operation after its first real removal. Its next
+    // mandatory read has one unit less than required; fresh Drafts can have
+    // different custody paths and cannot calibrate this operation's work.
+    RETIREMENT_CUT.set(None);
+    CUT_RETIREMENT.set(true);
+    let _cut_guard = RetirementCutGuard;
+    let result = d.retire_autofocus_candidate(d.resolve(ids[1].into()).unwrap(), &cancel());
+    let cut = RETIREMENT_CUT.take().expect("first real removal completed");
+    assert_eq!(result, Err(DomError::SourceWorkLimit { limit: cut }));
+    assert!(cut > initial);
+    assert_eq!(d.source_work.load(Ordering::Relaxed), cut);
+    let mut lengths = docs.map(|document| {
+        let key = d.resolve(document.node().into()).unwrap();
+        d.autofocus_state(key).unwrap().0.len()
+    });
+    lengths.sort();
+    assert_eq!(lengths, [2, 3], "one private list changed before refusal");
     // The owning whole retirement transaction is unpublished; its private
     // partial scratch is discarded, preserving canonical lists and generations.
     drop(d);
@@ -450,7 +474,8 @@ fn checkpoint_copies_candidate_backing_and_refused_capacity_growth_releases_form
         .unwrap();
     d.autofocus_set_processed(doc, &cancel()).unwrap();
     checkpoint.restore(&mut d);
-    assert_eq!(d.autofocus_state(doc).unwrap(), (&[][..], false));
+    assert!(d.autofocus_state(doc).unwrap().0.is_empty());
+    assert!(!d.autofocus_state(doc).unwrap().1);
     let before = d.source_storage_bytes(&cancel()).unwrap() + d.source_other_bytes;
     let bytes = before + size_of::<Key>() - 1;
     d.source_limits = Some(crate::DomSourceLimits::new(
@@ -463,11 +488,15 @@ fn checkpoint_copies_candidate_backing_and_refused_capacity_growth_releases_form
             limit: bytes
         })
     );
-    assert_eq!(d.autofocus_state(doc).unwrap(), (&[][..], false));
+    assert!(d.autofocus_state(doc).unwrap().0.is_empty());
+    assert!(!d.autofocus_state(doc).unwrap().1);
     assert_eq!(d.source_formation_bytes.load(Ordering::Relaxed), 0);
     assert_eq!(d.source_temporary_units.load(Ordering::Relaxed), 0);
     d.source_limits = Some(source_limits(20_000_000));
     d.autofocus_append(doc, subject, dom.limits, &cancel())
         .unwrap();
-    assert_eq!(d.autofocus_state(doc).unwrap().0, &[subject]);
+    assert_eq!(
+        d.autofocus_state(doc).unwrap().0.iter().collect::<Vec<_>>(),
+        [subject]
+    );
 }

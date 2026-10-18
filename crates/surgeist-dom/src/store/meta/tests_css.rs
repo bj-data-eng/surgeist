@@ -53,7 +53,7 @@ fn theme_whole_color_preserves_literal_and_refuses_missing_facts_without_fallbac
     let mut draft = draft(&dom);
     super::tests::source_budget(&mut draft, 1_000_000, 1_000_000);
     let content = draft
-        .meta_attribute(Key::Existing(meta.slot), Attr::Content, &cancel)
+        .meta_attribute(Key::Existing(meta), Attr::Content, &cancel)
         .unwrap()
         .unwrap();
     let color = color::parse(&draft, content, policy(), &cancel).unwrap();
@@ -74,7 +74,7 @@ fn theme_whole_color_preserves_literal_and_refuses_missing_facts_without_fallbac
     released(&draft);
     assert_eq!(
         draft
-            .document_metadata(Key::Existing(document.node().slot))
+            .document_metadata(Key::Existing(document.node()))
             .unwrap()
             .meta_theme_color(),
         &crate::DomMetaThemeColorState::Known(None)
@@ -137,7 +137,7 @@ fn scheme_equal_recomputation_preserves_source_and_refusal_preserves_old_custody
     let cancel = AtomicBool::new(false);
     let (dom, document, _) = fixture(Some("color-scheme"), "light dark");
     let mut draft = draft(&dom);
-    let document = Key::Existing(document.node().slot);
+    let document = Key::Existing(document.node());
     let old = draft
         .document_metadata(document)
         .unwrap()
@@ -390,7 +390,7 @@ fn theme_ascii_empty_media_scan_is_bounded_and_cancelled_without_selection_chang
     edit.set_attribute(meta, "name", "theme-color");
     dom.apply(edit, &cancel).unwrap();
     let mut draft = draft(&dom);
-    let document = Key::Existing(document.node().slot);
+    let document = Key::Existing(document.node());
     let selected = *draft
         .document_metadata(document)
         .unwrap()

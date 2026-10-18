@@ -12,6 +12,38 @@ pub(super) struct Cancelled {
     pub flags: HtmlImageUpdateFlags,
 }
 
+pub(in crate::store) enum Undo {
+    Appended {
+        before_len: usize,
+    },
+    Backing {
+        before: Option<select::ScratchVec<Cancelled>>,
+    },
+}
+impl Undo {
+    pub fn restore(self, draft: &mut Draft) {
+        match self {
+            Self::Appended { before_len } => draft
+                .cancelled_images
+                .as_mut()
+                .expect("journaled image evidence bank")
+                .truncate(before_len),
+            Self::Backing { before } => draft.cancelled_images = before,
+        }
+    }
+    #[cfg(test)]
+    pub fn journal_bytes(&self) -> usize {
+        match self {
+            Self::Appended { .. } => 0,
+            Self::Backing { before } => before.as_ref().map_or(0, |bank| {
+                bank.capacity()
+                    .checked_mul(size_of::<Cancelled>())
+                    .expect("allocated private evidence capacity")
+            }),
+        }
+    }
+}
+
 impl Draft {
     pub(super) fn start_image_update(
         &mut self,
@@ -51,9 +83,11 @@ impl Draft {
             }
         }
         self.effect_step(cancel)?;
-        let image = self.node_mut(key).image.as_mut().expect("Img");
-        image.high_water = invocation;
-        image.waiting = Some(crate::image::Waiting { invocation, flags });
+        self.with_node_fields(key, cancel, |fields| {
+            let image = fields.image.as_mut().expect("Img");
+            image.high_water = invocation;
+            image.waiting = Some(crate::image::Waiting { invocation, flags });
+        })?;
         Ok(())
     }
     pub(super) fn cancel_image_update(
@@ -72,30 +106,61 @@ impl Draft {
             return Ok(());
         };
         if let Some(target) = self.published_id(key) {
-            let mut bank = self
-                .cancelled_images
-                .take()
-                .unwrap_or_else(|| self.effect_vec());
-            // Each preexisting exact node can retire once. Fixed canonical node
-            // capacity therefore bounds this actual evidence bank independently
-            // of how many superseded updates ran. Exact fallible growth and its
-            // whole lifetime also join the existing Select scratch ledger.
-            self.select_reserve(&mut bank, 1, cancel)?;
+            let undo = self.prepare_undo(cancel)?;
+            let replacement = match self.cancelled_images.as_ref() {
+                Some(bank) => bank.prepare_growth_copy(self, 1, cancel)?,
+                None => {
+                    let mut bank = self.effect_vec();
+                    self.select_reserve(&mut bank, 1, cancel)?;
+                    Some(bank)
+                }
+            };
+            self.source_admit(0, cancel)?;
+            if self.effect_scoped {
+                self.select_scratch(0)?;
+            }
+            let capacity = replacement
+                .as_ref()
+                .or(self.cancelled_images.as_ref())
+                .expect("prepared image evidence bank")
+                .capacity();
             admit(
-                bank.capacity(),
+                capacity,
                 limits.nodes,
                 DomResource::ImageUpdateCancellations,
             )?;
-            bank.push(Cancelled {
-                update: crate::DomImageUpdateId {
-                    target,
-                    invocation: waiting.invocation,
+            // Nothing fallible follows before the actual append and its inverse
+            // are installed. Refusal above leaves the original allocation live.
+            let inverse = match replacement {
+                Some(bank) => Undo::Backing {
+                    before: self.cancelled_images.replace(bank),
                 },
-                flags: waiting.flags,
-            });
-            self.cancelled_images = Some(bank);
+                None => Undo::Appended {
+                    before_len: self
+                        .cancelled_images
+                        .as_ref()
+                        .expect("reserved image evidence bank")
+                        .len(),
+                },
+            };
+            self.cancelled_images
+                .as_mut()
+                .expect("prepared image evidence bank")
+                .push(Cancelled {
+                    update: crate::DomImageUpdateId {
+                        target,
+                        invocation: waiting.invocation,
+                    },
+                    flags: waiting.flags,
+                });
+            if undo {
+                self.journal
+                    .push_prepared(transaction::Undo::Image(inverse));
+            }
         }
-        self.node_mut(key).image.as_mut().expect("Img").waiting = None;
+        self.with_node_fields(key, cancel, |fields| {
+            fields.image.as_mut().expect("Img").waiting = None
+        })?;
         Ok(())
     }
     fn image_tag(&self, key: Key) -> Result<Option<KnownHtmlElement>, DomError> {
@@ -112,7 +177,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut following = after.is_none();
         let mut index = 0;
-        while let Some(&child) = self.node(picture)?.children.get(index) {
+        while let Some(child) = self.node(picture)?.children.get(index) {
             self.effect_step(cancel)?;
             index += 1;
             if following && self.node(child)?.image.is_some() {
@@ -517,10 +582,7 @@ mod source_observation {
                     .sum::<usize>()
         };
         let observed = Report {
-            required: draft.source_storage_bytes(cancel)?
-                + draft.source_other_bytes
-                + draft.source_formation_bytes.load(Ordering::Relaxed)
-                + extra,
+            required: draft.source_storage_bytes(cancel)? + draft.source_other_bytes + extra,
             limit: limits.retained_bytes,
         };
         if LAST
@@ -561,6 +623,30 @@ mod report_cancellation {
     }
 }
 #[cfg(test)]
+pub(in crate::store) mod publication_cancellation {
+    use super::*;
+    use std::cell::Cell;
+    thread_local! {
+        static ARMED: Cell<bool> = const { Cell::new(false) };
+        static HITS: Cell<usize> = const { Cell::new(0) };
+    }
+    pub fn start() {
+        ARMED.set(true);
+        HITS.set(0);
+    }
+    pub fn at_evidence(cancel: &AtomicBool) {
+        if ARMED.replace(false) {
+            HITS.set(HITS.get() + 1);
+            cancel.store(true, Ordering::Release);
+        }
+    }
+    pub fn finish() -> usize {
+        ARMED.set(false);
+        HITS.replace(0)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     fn fixture() -> (Dom, NodeId) {
@@ -571,6 +657,210 @@ mod tests {
         let img = b.create_element_ns(&doc, crate::Namespace::html(), "img");
         let c = dom.apply(b, &cancel).unwrap();
         (dom, c.created(&img).unwrap().unwrap())
+    }
+    #[test]
+    fn source_destroy_late_publication_cancellation_retries_with_one_original_image_cancellation() {
+        let (mut dom, img) = fixture();
+        let cancel = AtomicBool::new(false);
+        let before = dom.snapshot();
+        let waiting = before
+            .node(img)
+            .unwrap()
+            .as_img()
+            .unwrap()
+            .suspended_update()
+            .unwrap()
+            .unwrap();
+        let expected = waiting.id();
+        let flags = waiting.flags();
+        let mut batch = DomBatch::new();
+        batch.destroy(img);
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
+        let mut lease = dom.begin_source_commands(batch, limits, &cancel).unwrap();
+        let operation = lease.operation();
+        publication_cancellation::start();
+        assert!(matches!(lease.advance(&cancel), Err(DomError::Cancelled)));
+        assert_eq!(
+            publication_cancellation::finish(),
+            1,
+            "actual late publication evidence boundary"
+        );
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        assert_eq!(
+            lease
+                .snapshot()
+                .node(img)
+                .unwrap()
+                .as_img()
+                .unwrap()
+                .suspended_update()
+                .unwrap()
+                .unwrap()
+                .id(),
+            expected
+        );
+        cancel.store(false, Ordering::Release);
+        assert_eq!(lease.operation(), operation);
+        let crate::DomSourceProgress::Complete(completion) = lease.advance(&cancel).unwrap() else {
+            panic!("same original Source destroy must complete");
+        };
+        let cancellations: Vec<_> = completion
+            .commit()
+            .changes()
+            .changes()
+            .iter()
+            .filter_map(|change| match change {
+                DomChange::ImageUpdateCancelled {
+                    update,
+                    flags,
+                    reason,
+                } => Some((*update, *flags, *reason)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            cancellations,
+            [(
+                expected,
+                flags,
+                crate::DomImageUpdateCancellationReason::TargetDestroyed
+            )]
+        );
+        assert_eq!(lease.snapshot().node(img).unwrap_err(), DomError::StaleNode);
+        assert!(before.node(img).is_ok());
+    }
+    #[test]
+    fn real_destroy_headroom_preflight_restores_image_evidence_before_actual_publication() {
+        let (mut dom, img) = fixture();
+        let cancel = AtomicBool::new(false);
+        let before = dom.snapshot();
+        let expected = before
+            .node(img)
+            .unwrap()
+            .as_img()
+            .unwrap()
+            .suspended_update()
+            .unwrap()
+            .unwrap()
+            .id();
+        let mut batch = DomBatch::new();
+        batch.destroy(img);
+        let limits =
+            crate::DomSourceLimits::new(16_000_000, 4_000_000, 100_000_000, 64, 4096, 4096, 1);
+        let mut draft =
+            Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel)
+                .unwrap()
+                .0;
+        let work = draft.source_work.load(Ordering::Relaxed);
+        draft
+            .admit_source_command_headroom(
+                &dom,
+                source::headroom::Entry::Command(&batch.commands[0]),
+                0,
+                &cancel,
+            )
+            .unwrap();
+        assert!(draft.source_work.load(Ordering::Relaxed) > work);
+        assert!(draft.cancelled_images.is_none());
+        assert_eq!(
+            draft
+                .node(Key::Existing(img))
+                .unwrap()
+                .image
+                .as_ref()
+                .unwrap()
+                .waiting
+                .unwrap()
+                .invocation,
+            expected.invocation
+        );
+        assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+        draft
+            .apply(&batch.commands[0], dom.limits, &cancel)
+            .unwrap();
+        let prepared = draft.finish(&dom, &cancel).unwrap();
+        let commit = dom.publish(prepared, &cancel).unwrap();
+        let rows: Vec<_> = commit
+            .changes()
+            .changes()
+            .iter()
+            .filter_map(|change| match change {
+                DomChange::ImageUpdateCancelled { update, .. } => Some(*update),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows, [expected]);
+        assert_eq!(dom.snapshot().node(img).unwrap_err(), DomError::StaleNode);
+        assert!(before.node(img).is_ok());
+    }
+    #[test]
+    fn refused_image_cancellation_growth_preserves_prior_evidence_and_original_wait() {
+        let cancel = AtomicBool::new(false);
+        let limits = DomLimits::new(32, 8192, 128, 0, 0, 8, 131072)
+            .unwrap()
+            .with_select_processing(16, 1_000_000, 1_000_000)
+            .unwrap();
+        let mut dom = Dom::new(limits).unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let first = setup.create_element_ns(&document, crate::Namespace::html(), "img");
+        let second = setup.create_element_ns(&document, crate::Namespace::html(), "img");
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let first = commit.created(&first).unwrap().unwrap();
+        let second = commit.created(&second).unwrap().unwrap();
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        draft
+            .cancel_image_update(Key::Existing(first), limits, &cancel)
+            .unwrap();
+        let bank = draft.cancelled_images.as_ref().unwrap();
+        assert_eq!(bank.len(), 1);
+        assert_eq!(
+            bank.capacity(),
+            1,
+            "first exact reserved evidence allocation"
+        );
+        let pointer = bank.as_ptr();
+        let original = bank[0];
+        let bytes = bank.capacity() * size_of::<Cancelled>();
+        let waiting = draft
+            .node(Key::Existing(second))
+            .unwrap()
+            .image
+            .as_ref()
+            .unwrap()
+            .waiting
+            .unwrap();
+        draft.effect_scoped = true;
+        draft.select_scratch_limit = bytes;
+        assert!(matches!(
+            draft.cancel_image_update(Key::Existing(second), limits, &cancel),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::SelectScratch,
+                ..
+            })
+        ));
+        let bank = draft
+            .cancelled_images
+            .as_ref()
+            .expect("prior evidence owner survives refused growth");
+        assert_eq!(bank.len(), 1);
+        assert_eq!(bank.as_ptr(), pointer);
+        assert_eq!(bank[0].update, original.update);
+        assert_eq!(bank[0].flags, original.flags);
+        assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), bytes);
+        assert_eq!(
+            draft
+                .node(Key::Existing(second))
+                .unwrap()
+                .image
+                .as_ref()
+                .unwrap()
+                .waiting
+                .unwrap()
+                .invocation,
+            waiting.invocation
+        );
     }
     fn source_report(bytes: usize, require_complete: bool) -> Option<source_observation::Report> {
         let cancel = AtomicBool::new(false);
@@ -680,7 +970,7 @@ mod tests {
         setup.set_attribute(img, "loading", "lazy");
         dom.apply(setup, &cancel).unwrap();
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
-        let key = Key::Existing(img.slot);
+        let key = Key::Existing(img);
         let graph = || {
             let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
                 unreachable!()

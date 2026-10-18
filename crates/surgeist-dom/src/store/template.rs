@@ -53,23 +53,14 @@ impl Draft {
         if !matches!(self.node(retired)?.kind, DomNodeKind::ShadowRoot(_)) {
             return Ok(());
         }
-        let extent = self
-            .existing
-            .len()
-            .checked_add(self.created.len())
-            .ok_or(DomError::RepresentationExhausted)?;
-        for index in 0..extent {
+        let affected = self.inbound_keys(retired, cancel)?;
+        for key in affected.iter().copied() {
             self.source_step(cancel)?;
-            let key = if index < self.existing.len() {
-                Key::Existing(index)
-            } else {
-                Key::Created(index - self.existing.len())
-            };
             if self
                 .node(key)
                 .is_ok_and(|node| node.template_contents == Some(retired))
             {
-                self.node_mut(key).template_contents = None;
+                self.with_node_fields(key, cancel, |fields| fields.template_contents = None)?;
             }
         }
         Ok(())
@@ -106,9 +97,12 @@ impl Draft {
                 let key = Key::Created(self.created.len());
                 let key = self.allocate(DomNodeKind::Document(metadata), key, limits, cancel)?;
                 drop(formation);
-                self.node_mut(key).template_document = Some(TemplateDocument::InertTemplate);
-                self.node_mut(document).template_document =
-                    Some(TemplateDocument::Ordinary { inert: Some(key) });
+                self.with_node_fields(key, cancel, |fields| {
+                    fields.template_document = Some(TemplateDocument::InertTemplate)
+                })?;
+                self.with_node_fields(document, cancel, |fields| {
+                    fields.template_document = Some(TemplateDocument::Ordinary { inert: Some(key) })
+                })?;
                 check_cancel(cancel)?;
                 Ok(key)
             }
@@ -128,9 +122,13 @@ impl Draft {
         let document =
             self.appropriate_template_document(self.node(node)?.document, limits, cancel)?;
         let contents = self.allocate(DomNodeKind::DocumentFragment, document, limits, cancel)?;
-        self.node_mut(contents).host = Some(node);
-        self.node_mut(node).template_contents = Some(contents);
-        self.node_mut(node).template_patch = Some(crate::template::TemplatePatch::fresh());
+        self.with_node_fields(contents, cancel, |fields| fields.host = Some(node))?;
+        self.with_node_fields(node, cancel, |fields| {
+            fields.template_contents = Some(contents)
+        })?;
+        self.with_node_fields(node, cancel, |fields| {
+            fields.template_patch = Some(crate::template::TemplatePatch::fresh())
+        })?;
         check_cancel(cancel)
     }
     pub(super) fn template_adoption_target(
@@ -154,30 +152,31 @@ impl Draft {
         target: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        for i in 0..self.existing.len() + self.created.len() {
+        let affected = self.inbound_keys(target, cancel)?;
+        for key in affected.iter().copied() {
             self.effect_step(cancel)?;
-            let key = if i < self.existing.len() {
-                Key::Existing(i)
-            } else {
-                Key::Created(i - self.existing.len())
-            };
-            let present = match key {
-                Key::Existing(i) => self.existing[i].is_some(),
-                Key::Created(i) => self.created[i].is_some(),
-            };
-            if !present {
-                continue;
-            }
-            if let Some(patch) = &mut self.node_mut(key).template_patch {
-                if patch.target == Some(target) {
-                    patch.target = None;
-                }
-                if patch.start == Some(target) {
-                    patch.start = None;
-                }
-                if patch.end == Some(target) {
-                    patch.end = None;
-                }
+            if self.node(key).is_ok_and(|node| {
+                node.template_patch.is_some_and(|patch| {
+                    patch.target == Some(target)
+                        || patch.start == Some(target)
+                        || patch.end == Some(target)
+                })
+            }) {
+                self.with_node_fields(key, cancel, |fields| {
+                    let patch = fields
+                        .template_patch
+                        .as_mut()
+                        .expect("affected template patch");
+                    if patch.target == Some(target) {
+                        patch.target = None;
+                    }
+                    if patch.start == Some(target) {
+                        patch.start = None;
+                    }
+                    if patch.end == Some(target) {
+                        patch.end = None;
+                    }
+                })?;
             }
         }
         Ok(())
@@ -212,7 +211,7 @@ mod tests {
         assert_eq!(draft.tickets.len(), 1); //no private allocation aliases
         assert!(
             draft
-                .node(Key::Existing(d.node().slot))
+                .node(Key::Existing(d.node()))
                 .unwrap()
                 .template_document
                 .unwrap()

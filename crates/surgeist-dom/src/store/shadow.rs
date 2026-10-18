@@ -34,8 +34,8 @@ impl Draft {
             }
             current = self.host_including_parent(key)?;
         }
-        self.node_mut(root).host = Some(host);
-        self.node_mut(host).shadow_root = Some(root);
+        self.with_node_fields(root, cancelled, |fields| fields.host = Some(host))?;
+        self.with_node_fields(host, cancelled, |fields| fields.shadow_root = Some(root))?;
         // Attachment is not an ordinary insertion: no Style/Details/control
         // insertion hooks or adoption run for the retained descendant state.
         self.assign_tree(root, limits, cancelled)
@@ -115,8 +115,8 @@ impl Draft {
         let mut state = crate::DomShadowRootState::native(init);
         state.select_global_registry(registry);
         let root = self.allocate(DomNodeKind::ShadowRoot(state), document, limits, cancelled)?;
-        self.node_mut(root).host = Some(host);
-        self.node_mut(host).shadow_root = Some(root);
+        self.with_node_fields(root, cancelled, |fields| fields.host = Some(host))?;
+        self.with_node_fields(host, cancelled, |fields| fields.shadow_root = Some(root))?;
         Ok(root)
     }
 

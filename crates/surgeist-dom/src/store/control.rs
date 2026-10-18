@@ -20,8 +20,10 @@ fn state(
 // Association is wider than constraint-validation/custom-error control state.
 // Standalone Img is nonlisted and has a real parser flag/form owner, but cannot
 // acquire a custom validity message through this join.
-fn association(node: &DraftNode) -> Option<(bool, surgeist_html::HtmlNativeFormAssociationKind)> {
-    state(&node.kind)
+fn association(
+    node: &transaction::NodeRead<'_>,
+) -> Option<(bool, surgeist_html::HtmlNativeFormAssociationKind)> {
+    state(node.kind)
         .map(|(control, kind)| (control.parser_inserted, kind))
         .or_else(|| {
             node.image.as_ref().map(|image| {
@@ -33,18 +35,20 @@ fn association(node: &DraftNode) -> Option<(bool, surgeist_html::HtmlNativeFormA
         })
 }
 impl Draft {
-    fn control_mut(
+    fn with_control<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
-    ) -> Result<&mut crate::control::NativeControlState, DomError> {
+        edit: impl FnOnce(&mut crate::control::NativeControlState) -> R,
+    ) -> Result<R, DomError> {
         self.prepare_family_mutation(key, cancel)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked native control")
-        };
-        Ok(element
-            .native_control_mut()
-            .expect("checked native control"))
+        self.with_element_fields(key, cancel, |element| {
+            edit(
+                element
+                    .native_control_mut()
+                    .expect("checked native control"),
+            )
+        })
     }
     pub(super) fn set_custom_validity(
         &mut self,
@@ -53,7 +57,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let old = state(&self.node(key)?.kind)
+        let old = state(self.node(key)?.kind)
             .ok_or(DomError::CustomValidityInapplicable)?
             .0
             .message
@@ -79,6 +83,8 @@ impl Draft {
             cancel,
         )?;
         let formation = source::formation::Formation::new(self, cancel)?;
+        #[cfg(test)]
+        let mut normalized_writes = crate::store::CopyObservation::default();
         let mut normalized = match &formation {
             Some(formation) => {
                 source::formation::utf16_buffer(length, limits.units, Some(formation), cancel)?
@@ -95,6 +101,8 @@ impl Draft {
             if let Some(unit) = normalizer.push(*unit) {
                 self.source_step(cancel)?;
                 normalized.push(unit);
+                #[cfg(test)]
+                normalized_writes.pushed::<u16>();
             }
         }
         self.source_step(cancel)?;
@@ -104,9 +112,14 @@ impl Draft {
             growth,
             size_of::<Vec<u16>>() + normalized.shared_code_units().capacity() * size_of::<u16>(),
         );
-        self.control_mut(key, cancel)?.message = normalized;
+        self.prepare_family_mutation(key, cancel)?;
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element
+                .native_control_mut()
+                .expect("checked native control")
+                .message = normalized;
+        })?;
         self.units = units;
-        drop(formation);
         Ok(())
     }
     pub(super) fn control_attribute(
@@ -186,7 +199,7 @@ impl Draft {
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
         let (_, kind) =
-            association(self.node(key)?).expect("actual native form-associated element");
+            association(&self.node(key)?).expect("actual native form-associated element");
         let owner = self.node(key)?.control_owner;
         let mut former_owner = None;
         let mut found = None;
@@ -195,10 +208,12 @@ impl Draft {
             self.source_step(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
-                    if let Some(image) = self.node_mut(key).image.as_mut() {
-                        image.parser_inserted = false;
+                    if self.node(key)?.image.is_some() {
+                        self.with_node_fields(key, cancel, |fields| {
+                            fields.image.as_mut().expect("checked Img").parser_inserted = false
+                        })?;
                     } else {
-                        self.control_mut(key, cancel)?.parser_inserted = false;
+                        self.with_control(key, cancel, |control| control.parser_inserted = false)?;
                     }
                     R::Applied
                 }
@@ -211,7 +226,8 @@ impl Draft {
                     R::CurrentOwnerIsNearestAncestor(self.nearest_form(key, cancel)? == Some(owner))
                 }
                 A::ClearOwner => {
-                    former_owner = self.node_mut(key).control_owner.take();
+                    former_owner =
+                        self.with_node_fields(key, cancel, |fields| fields.control_owner.take())?;
                     R::Applied
                 }
                 A::ReadConnectedness => R::Connected(self.control_connected(key, cancel)?),
@@ -225,7 +241,9 @@ impl Draft {
                 }
                 A::AssociateFoundOwner => {
                     let candidate = found.expect("preceding lookup found an actual Form");
-                    former_owner = self.node_mut(key).control_owner.replace(candidate);
+                    former_owner = self.with_node_fields(key, cancel, |fields| {
+                        fields.control_owner.replace(candidate)
+                    })?;
                     R::Applied
                 }
                 A::ApplyOwnerChangeEffects => {
@@ -287,36 +305,14 @@ impl Draft {
         same_tree: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let document = self.node(source)?.document;
-        let root = if same_tree {
-            Some(crate::slot::root(self, source, cancel)?)
-        } else {
-            None
-        };
         // The actual ID event selects listed, form-attribute-bearing subjects;
         // this is not an end-batch repair or an unconditional control reset.
-        for index in 0..self.existing.len() + self.created.len() {
+        let recipients = self.control_id_participants(source, same_tree, cancel)?;
+        let mut selected = recipients.cursor(|| self.source_step(cancel))?;
+        while let Some(key) = selected.next(|| self.source_step(cancel))? {
             self.source_step(cancel)?;
-            let key = if index < self.existing.len() {
-                Key::Existing(index)
-            } else {
-                Key::Created(index - self.existing.len())
-            };
-            let Ok(node) = self.node(key) else { continue };
-            let Some((_, kind)) = association(node) else {
-                continue;
-            };
-            if node.document == document
-                && (root.is_none() || Some(crate::slot::root(self, key, cancel)?) == root)
-            {
-                self.reset_control_for(
-                    key,
-                    Trigger::IdEvent {
-                        listed: kind.listed(),
-                    },
-                    cancel,
-                )?;
-            }
+            let key = self.live_key(key);
+            self.reset_control_for(key, Trigger::IdEvent { listed: true }, cancel)?;
         }
         Ok(())
     }
@@ -327,7 +323,7 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some((parser_inserted, _)) = association(self.node(key)?) {
+        if let Some((parser_inserted, _)) = association(&self.node(key)?) {
             self.reset_control_for(key, Trigger::Insertion { parser_inserted }, cancel)?;
             if self.control_connected(key, cancel)? {
                 self.input_radio_normalize(
@@ -353,7 +349,7 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if association(self.node(key)?).is_some() {
+        if association(&self.node(key)?).is_some() {
             self.reset_control_for(
                 key,
                 Trigger::RemovingOrMoving {
@@ -393,7 +389,7 @@ impl Draft {
                 .eq(name.local_name().encode_utf16())
         };
         if is(KnownHtmlAttribute::Form)
-            && let Some((_, kind)) = association(self.node(key)?)
+            && let Some((_, kind)) = association(&self.node(key)?)
         {
             self.reset_control_for(
                 key,

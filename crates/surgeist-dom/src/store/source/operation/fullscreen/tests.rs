@@ -3,16 +3,15 @@
 //! browser orientation/viewport service. Runtime separately tests composition.
 use super::*;
 use crate::{
-    DomHostedCreationStep, DomHostedEntryInitialization, DomHostedLimits, DomHostedRecordLimits,
-    DomInitialPermissionsPolicy, DomPermissionsPolicyValue, DomSourceEdit,
+    DomFullscreenExitReturn, DomHostedCreationStep, DomHostedEntryInitialization, DomHostedLimits,
+    DomHostedRecordLimits, DomInitialPermissionsPolicy, DomPermissionsPolicyValue, DomSourceEdit,
 };
 
 fn policy(outputs: usize) -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 100_000, 64, outputs, 64, 4)
 }
 fn fixture() -> (Dom, crate::DomHostedSource, DocumentId, NodeId) {
-    let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(
+    fixture_with_limits(
         DomLimits::new(64, 100_000, 256, 128, 128, 16, 4_000_000)
             .unwrap()
             .with_fullscreen_exits(4)
@@ -20,7 +19,13 @@ fn fixture() -> (Dom, crate::DomHostedSource, DocumentId, NodeId) {
             .with_fullscreen_events(4)
             .unwrap(),
     )
-    .unwrap();
+}
+
+pub(super) fn fixture_with_limits(
+    limits: DomLimits,
+) -> (Dom, crate::DomHostedSource, DocumentId, NodeId) {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(limits).unwrap();
     let mut source = dom
         .register_hosted_source(
             DomHostedLimits::new(

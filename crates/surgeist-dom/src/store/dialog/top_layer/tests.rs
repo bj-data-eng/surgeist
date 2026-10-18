@@ -352,7 +352,11 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
             .unwrap()
     );
     let key = staged.resolve(document.node().into()).unwrap();
-    staged.node_mut(key).interactive_document = Some(DocumentInteractiveState::Unavailable);
+    staged
+        .with_node_fields(key, &cancel(), |fields| {
+            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
+        })
+        .unwrap();
     assert_eq!(
         staged.add_top_layer(staged.resolve(ids[0].into()).unwrap(), &cancel()),
         Err(DomError::DialogDocumentStateUnavailable)
@@ -391,7 +395,9 @@ fn original_checkpoint_preserves_pending_modal_state_capacity_and_cumulative_adm
     assert_eq!(staged.source_storage_bytes(&cancel()).unwrap(), storage);
     let document = staged.resolve(document.node().into()).unwrap();
     assert_eq!(
-        staged.dialog_list(document, DialogList::Pending).unwrap(),
+        staged
+            .staged_dialog_list(document, DialogList::Pending)
+            .unwrap(),
         &[last]
     );
     let baseline = staged.source_work.load(Ordering::Relaxed);
@@ -408,7 +414,9 @@ fn original_checkpoint_preserves_pending_modal_state_capacity_and_cumulative_adm
     staged.source_limits = Some(limits(10_000_000));
     staged.request_top_layer_removal(first, &cancel()).unwrap();
     assert_eq!(
-        staged.dialog_list(document, DialogList::Pending).unwrap(),
+        staged
+            .staged_dialog_list(document, DialogList::Pending)
+            .unwrap(),
         &[last, first]
     );
 }
@@ -540,38 +548,33 @@ fn pending_growth_counts_replacement_overlap_and_one_short_preserves_the_old_ban
         staged.request_top_layer_removal(first, &cancel()).unwrap();
         let key = staged.resolve(document.node().into()).unwrap();
         let old = staged
-            .dialog_list(key, DialogList::Pending)
+            .staged_dialog_list(key, DialogList::Pending)
             .unwrap()
             .as_ptr();
-        let base = staged.source_storage_bytes(&cancel()).unwrap() + staged.source_other_bytes;
-        // One existing pending slot remains live while the two-slot replacement
-        // is admitted. The other canonical/raw banks are part of base storage.
-        let exact = base + 2 * size_of::<Key>();
-        staged.source_limits = Some(crate::DomSourceLimits::new(
-            exact - usize::from(short),
-            1_000_000,
-            10_000_000,
-            32,
-            4096,
-            4096,
-            2,
-        ));
+        let boundary = transaction::queues::admission_observation::Binding::relation(
+            key,
+            transaction::RelationField::PendingTopLayerRemovals,
+            2 * size_of::<Key>(),
+            short,
+        );
         let result = staged.request_top_layer_removal(last, &cancel());
+        let limit = boundary.limit();
+        drop(boundary);
         if short {
             assert_eq!(
                 result,
                 Err(DomError::ResourceLimit {
                     resource: DomResource::SourceRetainedBytes,
-                    limit: exact - 1
+                    limit
                 })
             );
             assert_eq!(
-                staged.dialog_list(key, DialogList::Pending).unwrap(),
+                staged.staged_dialog_list(key, DialogList::Pending).unwrap(),
                 &[first]
             );
             assert_eq!(
                 staged
-                    .dialog_list(key, DialogList::Pending)
+                    .staged_dialog_list(key, DialogList::Pending)
                     .unwrap()
                     .as_ptr(),
                 old
@@ -582,7 +585,7 @@ fn pending_growth_counts_replacement_overlap_and_one_short_preserves_the_old_ban
             result.unwrap();
         }
         assert_eq!(
-            staged.dialog_list(key, DialogList::Pending).unwrap(),
+            staged.staged_dialog_list(key, DialogList::Pending).unwrap(),
             &[first, last]
         );
     }

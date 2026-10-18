@@ -283,55 +283,25 @@ fn enabled_permission_advances_locally_to_called_focusing_wait_without_runtime_r
     );
 }
 
-fn denied_producer_scaffold() -> (u64, u64, u64) {
-    let mut case = parked_live(true);
-    let hosted = case.session.hosted_execution();
-    let owner = hosted.state().unwrap();
-    let state = owner.borrow();
-    let cancel = AtomicBool::new(false);
-    let mut dom = case.session.dom();
-    let mut lease = dom
-        .raw_mut()
-        .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
-        .unwrap();
-    let scaffold = lease.status().spent_work();
-    let preparation = {
-        let prepared = lease
-            .prepare_focus(
-                &DomFocusRequest::AllowDialog(case.request.clone()),
-                &state.source,
-                &cancel,
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            prepared.target(),
-            DomFocusTarget::DeniedDocumentWindow {
-                document: case.document,
-                global: case.global,
-                host: case.host
-            }
-        );
-        lease.status().spent_work() - scaffold
-    };
-    let before = lease.status().spent_work();
-    let payload = lease
-        .retain_hosted_runtime_payload(&state.source, size_of::<FocusFormation>(), &cancel)
-        .unwrap();
-    let retention = lease.status().spent_work() - before;
-    drop(payload);
-    (scaffold, preparation, retention)
-}
 #[test]
 fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retry() {
-    let (scaffold, preparation, retention) = denied_producer_scaffold();
     // One Host/composition/cluster3, two Windows2, actual child watcher group
     // and original record2, two Global/settings pairs4 =11 retention visits.
     // Exact child Global lookup5 and original child Window lookup5 precede the
     // actual observation1. This literal22 excludes canonical producer work.
     const RUNTIME_VISITS: u64 = 11 + 5 + 5 + 1;
-    let cap = scaffold + preparation + retention + RUNTIME_VISITS;
     let mut case = parked_live(true);
+    let request = DomFocusRequest::AllowDialog(case.request.clone());
+    let (cap, scaffold, target) =
+        source_focus_boundary(&mut case.session, &request, RUNTIME_VISITS, false);
+    assert_eq!(
+        target,
+        DomFocusTarget::DeniedDocumentWindow {
+            document: case.document,
+            global: case.global,
+            host: case.host
+        }
+    );
     let cancel = AtomicBool::new(false);
     let hosted = case.session.hosted_execution();
     let owner = hosted.state().unwrap();
@@ -437,11 +407,18 @@ fn live_denial_retains_actual_receipt_across_source_refusal_cancel_drop_and_retr
 }
 
 fn retained_denied_child() -> LiveCase {
-    let (scaffold, preparation, retention) = denied_producer_scaffold();
-    // Same independently derived native visits as the exact live-denial case:
-    // retained11 + actual child Global5 + original child Window5 + observation1.
-    let cap = scaffold + preparation + retention + 22;
+    // Retained11 + child Global5 + child Window5 + observation1.
     let mut case = parked_live(true);
+    let request = DomFocusRequest::AllowDialog(case.request.clone());
+    let (cap, _, target) = source_focus_boundary(&mut case.session, &request, 22, false);
+    assert_eq!(
+        target,
+        DomFocusTarget::DeniedDocumentWindow {
+            document: case.document,
+            global: case.global,
+            host: case.host
+        }
+    );
     let hosted = case.session.hosted_execution();
     {
         let mut dom = case.session.dom();

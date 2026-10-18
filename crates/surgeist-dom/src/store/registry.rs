@@ -14,6 +14,7 @@ use surgeist_html_semantics::{
 
 #[derive(Debug)]
 pub(crate) struct Record {
+    origin: custody::MaterializationId,
     pub(crate) capture: HtmlCapture,
     pub(crate) local: HtmlCaptureRegistryId,
     pub(crate) payload_bytes: usize,
@@ -24,23 +25,27 @@ pub(crate) struct Record {
 
 #[derive(Debug)]
 pub(crate) struct Bank {
+    identity: custody::MaterializationId,
     owner: DomOwnerId,
-    records: Vec<Arc<Record>>,
+    records: bank::Bank<Record>,
     _retained: Retained,
 }
 impl PartialEq for Bank {
     fn eq(&self, other: &Self) -> bool {
-        self.owner == other.owner
-            && self.records.len() == other.records.len()
-            && self
-                .records
-                .iter()
-                .zip(&other.records)
-                .all(|(a, b)| Arc::ptr_eq(a, b))
+        self.owner == other.owner && self.records.shares_root(&other.records)
     }
 }
 impl Eq for Bank {}
 impl Bank {
+    pub(in crate::store) fn custody_identity(&self) -> custody::MaterializationId {
+        self.identity
+    }
+    pub(in crate::store) fn custody_usage(&self) -> Result<custody::Usage, DomError> {
+        Ok(custody::Usage::new(size_of::<Self>(), 0))
+    }
+    pub(in crate::store) fn custody_bank(&self) -> &bank::Bank<Record> {
+        &self.records
+    }
     pub(crate) fn get(&self, id: DomRegistryId) -> Result<&Record, DomError> {
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
@@ -48,10 +53,7 @@ impl Bank {
         if id.generation != 1 {
             return Err(DomError::StaleNode);
         }
-        self.records
-            .get(id.slot)
-            .map(Arc::as_ref)
-            .ok_or(DomError::StaleNode)
+        self.records.get(id.slot).ok_or(DomError::StaleNode)
     }
     pub(crate) fn form(
         old: Option<&Self>,
@@ -62,6 +64,8 @@ impl Bank {
         cancel: &AtomicBool,
     ) -> Result<(Arc<Self>, DomRegistryId), DomHostedError> {
         work.step(cancel)?;
+        let identity = custody::MaterializationId::fresh()?;
+        let record_identity = bank::Record::<Record>::reserve()?;
         let count = old.map_or(0, |bank| bank.records.len());
         let required = count
             .checked_add(1)
@@ -138,7 +142,8 @@ impl Bank {
                 units: 0,
             });
         }
-        let record = Arc::new(Record {
+        let record = record_identity.materialize(Record {
+            origin: identity,
             capture,
             local,
             payload_bytes,
@@ -146,72 +151,41 @@ impl Bank {
             _header: header,
             _quota: quota,
         });
-        let backing = required
-            .checked_mul(size_of::<Arc<Record>>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        let header = size_of::<Vec<Arc<Record>>>();
-        crate::hosted::admit(
-            backing
-                .checked_add(header)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-            source.limits().scratch_bytes(),
-            DomHostedResource::ScratchBytes,
-        )?;
-        let requested = backing
-            .checked_add(size_of::<Self>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        if let Some(formation) = formation {
-            formation.retain_bytes(requested, cancel)?;
+        let scratch = std::cell::Cell::new(0);
+        let producer = transaction::auxiliary::index::Producer {
+            source,
+            work,
+            formation,
+            cancel,
+            origin: identity,
+            scratch: &scratch,
+        };
+        let retained = producer.retain(custody::Usage::new(size_of::<Self>(), 0))?;
+        if old.is_some_and(|old| old.owner != owner) {
+            return Err(DomError::ForeignOwner.into());
         }
-        let retained = source.retain(requested, cancel)?;
         let mut candidate = Self {
+            identity,
             owner,
-            records: Vec::new(),
+            records: old.map_or_else(bank::Bank::default, |old| old.records.clone()),
             _retained: retained,
         };
-        candidate
-            .records
-            .try_reserve_exact(required)
-            .map_err(|_| DomHostedError::AllocationFailed)?;
-        let actual = candidate
-            .records
-            .capacity()
-            .checked_mul(size_of::<Arc<Record>>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        crate::hosted::admit(
-            actual
-                .checked_add(header)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-            source.limits().scratch_bytes(),
-            DomHostedResource::ScratchBytes,
+        producer.set(
+            &mut candidate.records,
+            count,
+            record,
+            custody::Usage::new(
+                size_of::<Record>()
+                    .checked_add(payload_bytes)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                0,
+            ),
         )?;
-        let extra = actual
-            .checked_sub(backing)
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        if let Some(formation) = formation {
-            formation.retain_bytes(extra, cancel)?;
-        }
-        let extra_retained = source.retain(extra, cancel)?;
-        // The exposed capacity check precedes every copy. The requested and
-        // extra occurrences are combined without dropping either admission.
-        candidate._retained.append(extra_retained)?;
-        if let Some(old) = old {
-            for record in &old.records {
-                work.step(cancel)?;
-                if let Some(formation) = formation {
-                    formation.retain_bytes(
-                        size_of::<Record>()
-                            .checked_add(record.payload_bytes)
-                            .ok_or(DomError::RepresentationExhausted)?,
-                        cancel,
-                    )?;
-                }
-                candidate.records.push(record.clone());
-            }
-        }
-        candidate.records.push(record);
+        let candidate = Arc::new(candidate);
+        #[cfg(test)]
+        transaction::auxiliary::allocated(size_of::<Self>());
         Ok((
-            Arc::new(candidate),
+            candidate,
             DomRegistryId {
                 owner,
                 slot: count,
@@ -219,26 +193,33 @@ impl Bank {
             },
         ))
     }
-    pub(crate) fn retained_payload_bytes(
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_materializations(
         &self,
-        mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<usize, DomError> {
-        let mut bytes = size_of::<Self>()
-            .checked_add(
-                self.records
-                    .capacity()
-                    .checked_mul(size_of::<Arc<Record>>())
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
-            .ok_or(DomError::RepresentationExhausted)?;
-        for record in &self.records {
-            step()?;
-            bytes = bytes
-                .checked_add(size_of::<Record>())
-                .and_then(|n| n.checked_add(record.payload_bytes))
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-        Ok(bytes)
+    ) -> Result<Vec<(custody::MaterializationId, custody::Usage)>, DomError> {
+        let mut objects = vec![(self.identity, custody::Usage::new(size_of::<Self>(), 0))];
+        let graph = self.records.inspect_graph(|record| {
+            let capture = record
+                .capture
+                .retained_storage_usage_with(|| Ok::<_, ()>(()))
+                .map_err(|_| DomError::RepresentationExhausted)?;
+            Ok(bank::Totals {
+                bytes: size_of::<Record>() + capture.retained_bytes(),
+                units: 0,
+                occurrences: 0,
+            })
+        })?;
+        objects.extend(graph.materializations());
+        Ok(objects)
+    }
+}
+
+impl Record {
+    pub(in crate::store) fn custody_origin(&self) -> custody::MaterializationId {
+        self.origin
+    }
+    pub(in crate::store) fn custody_payload(&self) -> custody::Usage {
+        custody::Usage::new(size_of::<Self>() + self.payload_bytes, 0)
     }
 }
 
@@ -303,10 +284,7 @@ impl Draft {
                 }
             }
         }
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked Element")
-        };
-        element.establish_registry(binding);
+        self.with_element_fields(key, cancel, |element| element.establish_registry(binding))?;
         Ok(())
     }
 }

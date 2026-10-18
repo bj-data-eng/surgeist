@@ -1,6 +1,7 @@
 //! Owning unavailable-history, raw/pending and original checkpoint boundaries.
 //! Private structural inputs do not certify popover or platform execution.
 use super::*;
+use crate::dialog::DocumentInteractiveState;
 use crate::{DomSourceEdit, DomSourceLimits, DomTopLayerUaRule, Namespace};
 
 fn cancel() -> AtomicBool {
@@ -47,8 +48,11 @@ fn unavailable_document_lists_refuse_the_first_read_without_flag_or_layer_public
     let mut staged = draft(&dom);
     let document_key = staged.resolve(document.into()).unwrap();
     // Actual typed unknown-history input; no showing popover is invented.
-    staged.node_mut(document_key).interactive_document =
-        Some(DocumentInteractiveState::Unavailable);
+    staged
+        .with_node_fields(document_key, &cancel(), |fields| {
+            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
+        })
+        .unwrap();
     publish(&mut dom, &staged);
     let before = dom.snapshot();
     let mut lease = dom
@@ -155,8 +159,10 @@ fn checkpoint_restores_model_flags_and_lists_after_the_real_unfullscreen_command
     assert_eq!(
         staged
             .fullscreen_raw_members(document_key, &cancel())
-            .unwrap(),
-        [first_key]
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        vec![first_key]
     );
     assert_eq!(staged.select_temporary_bytes.load(Ordering::Relaxed), 0);
     publish(&mut dom, &staged);

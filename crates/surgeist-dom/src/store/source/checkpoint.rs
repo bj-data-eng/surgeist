@@ -1,26 +1,37 @@
 //! Unpublished source-segment rollback storage. The canonical owner retains the
 //! original external receipt separately, so restoring a segment cannot replay it.
 use super::super::*;
-use std::cell::Cell;
+
+#[cfg(test)]
+mod tests;
 
 pub(in crate::store) struct Charge {
+    storage: super::formation::SourceStorage,
+    debit: Option<custody::Debit>,
     live: Arc<AtomicUsize>,
     bytes: usize,
     live_units: Arc<AtomicUsize>,
     units: usize,
+    _dependencies: super::formation::WorkDependencies,
 }
 impl Charge {
     pub(super) fn payload(
+        storage: super::formation::SourceStorage,
         live: Arc<AtomicUsize>,
         bytes: usize,
         live_units: Arc<AtomicUsize>,
         units: usize,
+        debit: Option<custody::Debit>,
+        dependencies: super::formation::WorkDependencies,
     ) -> Self {
         Self {
+            storage,
+            debit,
             live,
             bytes,
             live_units,
             units,
+            _dependencies: dependencies,
         }
     }
     pub(in crate::store) fn merge(&mut self, mut other: Self) {
@@ -37,48 +48,82 @@ impl Charge {
             .units
             .checked_add(other.units)
             .expect("already admitted live units");
+        self.absorb_debit(other.debit.take());
         other.bytes = 0;
         other.units = 0;
+    }
+    /// Move this already admitted payload occurrence into its final owner.
+    /// The protocol mirrors end here; the affine debit remains live in the
+    /// receiving owner throughout the transfer.
+    pub(in crate::store) fn into_debit(mut self) -> Option<custody::Debit> {
+        let debit = self.debit.take();
+        self.live.fetch_sub(self.bytes, Ordering::Relaxed);
+        self.live_units.fetch_sub(self.units, Ordering::Relaxed);
+        self.bytes = 0;
+        self.units = 0;
+        debit
+    }
+    #[cfg(test)]
+    pub(in crate::store) fn journal_bytes(&self) -> usize {
+        self.debit.as_ref().map_or(0, |debit| debit.usage().bytes())
+    }
+    fn absorb_debit(&mut self, incoming: Option<custody::Debit>) {
+        if let Some(incoming) = incoming {
+            if let Some(owned) = self.debit.as_mut() {
+                owned.absorb(incoming).expect("same Source custody ledger");
+            } else {
+                self.debit = Some(incoming);
+            }
+        }
     }
     /// Reclassify the exact current graph of an original controlled producer.
     /// Its call must already have admitted all allocation/overlap against an
     /// envelope derived from this same ledger, with this charge excluded once.
     /// Nothing may allocate or change other custody between that call and sync.
     pub(in crate::store) fn replace_admitted_payload(&mut self, payload: super::storage::Payload) {
-        let bytes = self
-            .live
-            .load(Ordering::Relaxed)
-            .checked_sub(self.bytes)
-            .and_then(|n| n.checked_add(payload.bytes))
-            .expect("producer-preadmitted live bytes");
-        let units = self
-            .live_units
-            .load(Ordering::Relaxed)
-            .checked_sub(self.units)
-            .and_then(|n| n.checked_add(payload.units))
-            .expect("producer-preadmitted live units");
-        self.live.store(bytes, Ordering::Relaxed);
-        self.live_units.store(units, Ordering::Relaxed);
+        let growth = custody::Usage::new(
+            payload.bytes.saturating_sub(self.bytes),
+            payload.units.saturating_sub(self.units),
+        );
+        let shrink = custody::Usage::new(
+            self.bytes.saturating_sub(payload.bytes),
+            self.units.saturating_sub(payload.units),
+        );
+        if growth.bytes() != 0 || growth.units() != 0 {
+            let debit = self
+                .storage
+                .ledger()
+                .retain(growth, |_| Ok(()))
+                .expect("original producer preadmitted the exact surviving graph");
+            self.absorb_debit(Some(debit));
+        }
+        if shrink.bytes() != 0 || shrink.units() != 0 {
+            drop(
+                self.debit
+                    .as_mut()
+                    .expect("owned producer graph")
+                    .split(shrink)
+                    .expect("owned producer graph component"),
+            );
+        }
+        // Mirrors have no ownership role. Relative updates preserve releases
+        // by independent guards while this original producer is executing.
+        self.live.fetch_add(growth.bytes(), Ordering::Relaxed);
+        self.live.fetch_sub(shrink.bytes(), Ordering::Relaxed);
+        self.live_units.fetch_add(growth.units(), Ordering::Relaxed);
+        self.live_units.fetch_sub(shrink.units(), Ordering::Relaxed);
         self.bytes = payload.bytes;
         self.units = payload.units;
     }
 }
 impl Drop for Charge {
     fn drop(&mut self) {
-        self.live.store(
-            self.live.load(Ordering::Relaxed) - self.bytes,
-            Ordering::Relaxed,
-        );
-        self.live_units.store(
-            self.live_units.load(Ordering::Relaxed) - self.units,
-            Ordering::Relaxed,
-        );
+        self.live.fetch_sub(self.bytes, Ordering::Relaxed);
+        self.live_units.fetch_sub(self.units, Ordering::Relaxed);
     }
 }
 pub(in crate::store) struct Admission<'a> {
     original: &'a Draft,
-    maximum: usize,
-    total: usize,
     charge: Charge,
 }
 impl<'a> Admission<'a> {
@@ -93,13 +138,14 @@ impl<'a> Admission<'a> {
         )?;
         Ok(Self {
             original,
-            maximum: limits.retained_bytes,
-            total: live_bytes,
             charge: Charge {
+                storage: super::formation::SourceStorage::new(original.custody_ledger().clone()),
+                debit: None,
                 live: original.select_temporary_bytes.clone(),
                 bytes: 0,
                 live_units: original.source_temporary_units.clone(),
                 units: 0,
+                _dependencies: super::formation::WorkDependencies::from_draft(original),
             },
         })
     }
@@ -120,100 +166,8 @@ impl<'a> Admission<'a> {
             return Err(DomError::SourceWorkLimit { limit: limits.work });
         }
         self.original.source_work.store(next, Ordering::Relaxed);
+        super::formation::SourceStorage::record_step();
         crate::source::event::retain_ancestor_work(self.original.source_ancestors.as_ref(), 1)?;
-        Ok(())
-    }
-    pub(in crate::store) fn before(&self, bytes: usize) -> Result<(), DomError> {
-        let next = self
-            .total
-            .checked_add(bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
-        admit(next, self.maximum, DomResource::SourceRetainedBytes)?;
-        if self.original.select_work.get() != 0 {
-            self.original.select_scratch(bytes)?;
-        }
-        Ok(())
-    }
-    pub(in crate::store) fn scratch_allocated(&mut self, bytes: usize) -> Result<(), DomError> {
-        self.before(bytes)?;
-        self.total += bytes;
-        Ok(())
-    }
-    fn retain_payload(
-        &mut self,
-        payload: super::storage::Payload,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        self.before(payload.bytes)?;
-        self.original.source_admit_units(payload.units, cancel)?;
-        let bytes = self
-            .charge
-            .bytes
-            .checked_add(payload.bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let live = self
-            .charge
-            .live
-            .load(Ordering::Relaxed)
-            .checked_add(payload.bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let units = self
-            .charge
-            .units
-            .checked_add(payload.units)
-            .ok_or(DomError::RepresentationExhausted)?;
-        let live_units = self
-            .charge
-            .live_units
-            .load(Ordering::Relaxed)
-            .checked_add(payload.units)
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.total += payload.bytes;
-        self.charge.bytes = bytes;
-        self.charge.live.store(live, Ordering::Relaxed);
-        self.charge.units = units;
-        self.charge.live_units.store(live_units, Ordering::Relaxed);
-        Ok(())
-    }
-    pub(in crate::store) fn reserve<T>(
-        &mut self,
-        values: &mut Vec<T>,
-        count: usize,
-    ) -> Result<(), DomError> {
-        debug_assert!(values.is_empty());
-        let bytes = count
-            .checked_mul(size_of::<T>())
-            .filter(|n| *n <= isize::MAX as usize)
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.before(bytes)?;
-        if self.original.select_work.get() != 0 {
-            self.original.select_scratch(bytes)?;
-        }
-        values
-            .try_reserve_exact(count)
-            .map_err(|_| DomError::AllocationFailed)?;
-        let actual = values
-            .capacity()
-            .checked_mul(size_of::<T>())
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.before(actual)?;
-        self.total += actual;
-        self.charge.bytes = self
-            .charge
-            .bytes
-            .checked_add(actual)
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.charge.live.store(
-            self.charge
-                .live
-                .load(Ordering::Relaxed)
-                .checked_add(actual)
-                .ok_or(DomError::RepresentationExhausted)?,
-            Ordering::Relaxed,
-        );
-        if self.original.select_work.get() != 0 {
-            self.original.select_scratch(0)?;
-        }
         Ok(())
     }
     pub(in crate::store) fn effect_payload(
@@ -227,437 +181,66 @@ impl<'a> Admission<'a> {
         let budget =
             super::formation::Formation::new(self.original, cancel)?.expect("source checkpoint");
         budget.retain_payload(payload, cancel)?;
-        self.total = self
-            .total
-            .checked_add(payload.bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
         Ok(Some(budget.into_charge()))
-    }
-    pub(in crate::store) fn copy<T: Clone>(
-        &mut self,
-        original: &[T],
-        cancel: &AtomicBool,
-    ) -> Result<Vec<T>, DomError> {
-        let mut values = Vec::new();
-        self.reserve(&mut values, original.len())?;
-        for value in original {
-            check_cancel(cancel)?;
-            self.step()?;
-            values.push(value.clone());
-        }
-        Ok(values)
     }
     pub(in crate::store) fn finish(self) -> Charge {
         self.charge
     }
 }
 
+/// A private rollback boundary in the original sparse transaction. The affine
+/// mark seals on drop; restoring it changes semantic state only. Spent work,
+/// acknowledged external receipts and issued identities are never inverse data.
 pub(in crate::store) struct Checkpoint {
-    draft: Draft,
-    charge: Charge,
+    mark: transaction::JournalMark,
+    control: super::control::Snapshot,
+    _header: custody::Debit,
 }
 impl Checkpoint {
-    pub(in crate::store) fn restore(self, failed: &mut Draft) {
-        let Self {
-            mut draft, charge, ..
-        } = self;
-        // Every independent cumulative domain retains actual spent work. Only
-        // private semantic writes/banks roll back; the owner-held CSSOM receipt
-        // and phase identity are not part of this checkpoint.
-        draft.source_work.store(
-            draft
-                .source_work
-                .load(Ordering::Relaxed)
-                .max(failed.source_work.load(Ordering::Relaxed)),
-            Ordering::Relaxed,
-        );
-        draft
-            .base_work
-            .set(draft.base_work.get().max(failed.base_work.get()));
-        draft.encoding_url_work.set(
-            draft
-                .encoding_url_work
-                .get()
-                .max(failed.encoding_url_work.get()),
-        );
-        draft
-            .meta_work
-            .set(draft.meta_work.get().max(failed.meta_work.get()));
-        draft
-            .select_work
-            .set(draft.select_work.get().max(failed.select_work.get()));
-        draft.select_semantic_work.set(
-            draft
-                .select_semantic_work
-                .get()
-                .max(failed.select_semantic_work.get()),
-        );
-        draft.select_semantic_bytes.set(
-            draft
-                .select_semantic_bytes
-                .get()
-                .max(failed.select_semantic_bytes.get()),
-        );
-        draft
-            .input_processing
-            .preserve_spent(&failed.input_processing);
-        draft.source_invocation = draft.source_invocation.max(failed.source_invocation);
-        draft.source_limits = failed.source_limits;
-        draft.source_other_bytes = failed.source_other_bytes;
-        draft.source_other_units = failed.source_other_units;
-        *failed = draft;
-        // These banks now are the active Draft's ordinary structural storage.
-        // Its effect bank and ScratchVec lifetimes keep their normal accounting.
-        drop(charge);
-    }
-}
-impl DraftNode {
-    fn checkpoint(&self, a: &mut Admission<'_>, cancel: &AtomicBool) -> Result<Self, DomError> {
-        check_cancel(cancel)?;
-        a.step()?;
-        let base_document = if let Some(d) = &self.base_document {
-            Some(crate::base::BaseDocument {
-                facts: d.facts.clone(),
-                first: d.first,
-                render_blocking: a.copy(&d.render_blocking, cancel)?,
-            })
-        } else {
-            None
-        };
-        Ok(Self {
-            relevant_global: self.relevant_global,
-            active_range: self.active_range,
-            document: self.document,
-            kind: self.kind.clone(),
-            parent: self.parent,
-            children: a.copy(&self.children, cancel)?,
-            shadow_root: self.shadow_root,
-            host: self.host,
-            template_contents: self.template_contents,
-            template_patch: self.template_patch,
-            template_document: self.template_document,
-            manual_nodes: a.copy(&self.manual_nodes, cancel)?,
-            assigned_nodes: a.copy(&self.assigned_nodes, cancel)?,
-            manual_slot: self.manual_slot,
-            assigned_slot: self.assigned_slot,
-            reflected_targets: self.reflected_targets,
-            control_owner: self.control_owner,
-            option_select: self.option_select,
-            form_past_names: self.form_past_names.clone(),
-            script: self.script,
-            style_parser_document: self.style_parser_document,
-            base: self.base.clone(),
-            base_document,
-            link: self.link.clone(),
-            image: self.image.clone(),
-            hyperlink: self.hyperlink.clone(),
-            encoding_url_document: self.encoding_url_document.clone(),
-            autofocus_document: self
-                .autofocus_document
-                .as_ref()
-                .map(|state| {
-                    use crate::autofocus::DocumentAutofocusState as F;
-                    Ok::<_, DomError>(match state {
-                        F::Known {
-                            candidates,
-                            processed,
-                        } => F::Known {
-                            candidates: a.copy(candidates, cancel)?,
-                            processed: *processed,
-                        },
-                        F::Unavailable => F::Unavailable,
-                    })
-                })
-                .transpose()?,
-            fullscreen_events: a.copy(&self.fullscreen_events, cancel)?,
-            interactive_document: self
-                .interactive_document
-                .as_ref()
-                .map(|state| {
-                    use crate::dialog::DocumentInteractiveState as Interactive;
-                    Ok::<_, DomError>(match state {
-                        Interactive::Known {
-                            open_dialogs,
-                            top_layer,
-                            pending_top_layer_removals,
-                        } => Interactive::Known {
-                            open_dialogs: a.copy(open_dialogs, cancel)?,
-                            top_layer: a.copy(top_layer, cancel)?,
-                            pending_top_layer_removals: a
-                                .copy(pending_top_layer_removals, cancel)?,
-                        },
-                        Interactive::Unavailable => Interactive::Unavailable,
-                    })
-                })
-                .transpose()?,
-        })
+    pub(in crate::store) fn restore(self, draft: &mut Draft) {
+        draft.rollback_journal(self.mark);
+        self.control.restore(draft);
     }
 }
 impl Draft {
     pub(in crate::store) fn source_checkpoint(
-        &self,
+        &mut self,
         other_live_bytes: usize,
         other_retained_units: usize,
         cancel: &AtomicBool,
     ) -> Result<Checkpoint, DomError> {
-        check_cancel(cancel)?;
-        let live = self
-            .source_storage_bytes(cancel)?
-            .checked_add(self.source_formation_bytes.load(Ordering::Relaxed))
-            .and_then(|bytes| bytes.checked_add(other_live_bytes))
-            .ok_or(DomError::RepresentationExhausted)?;
-        let mut a = Admission::new(self, live)?;
-        let mut payload = super::storage::Payload {
-            bytes: size_of::<Draft>() + size_of::<AtomicU64>(),
-            units: 0,
-        };
-        for node in self.existing.iter().chain(&self.created).flatten() {
-            payload.append(super::storage::node(node, || self.source_step(cancel))?)?;
-        }
-        payload.append(
-            self.view_transitions
-                .retained_payload(|| self.source_step(cancel))?,
-        )?;
-        payload.add_units(other_retained_units)?;
-        a.retain_payload(payload, cancel)?;
-        let mut existing = Vec::new();
-        a.reserve(&mut existing, self.existing.len())?;
-        for node in &self.existing {
-            existing.push(
-                node.as_ref()
-                    .map(|n| n.checkpoint(&mut a, cancel))
-                    .transpose()?,
+        super::formation::SourceStorage::record_entry();
+        // Callers supply an absolute external envelope. Already classified
+        // input is in source_other and must not be added a second time.
+        let extra_bytes = other_live_bytes.saturating_sub(self.source_other_bytes);
+        let extra_units = other_retained_units.saturating_sub(self.source_other_units);
+        let extra = custody::Usage::new(extra_bytes, extra_units);
+        let header = self
+            .custody_ledger()
+            .retain(custody::Usage::new(size_of::<Checkpoint>(), 0), |usage| {
+                self.admit_custody_usage(usage.checked_add(extra)?, cancel)
+            })?;
+        let mark = self.journal_mark(extra_bytes, extra_units, cancel)?;
+        let control = super::control::Snapshot::capture(self);
+        self.source_other_bytes = self.source_other_bytes.max(other_live_bytes);
+        self.source_other_units = self.source_other_units.max(other_retained_units);
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::source_external_changed(
+                self.custody_ledger().measurement_identity(),
+                custody::Usage::new(self.source_other_bytes, self.source_other_units),
             );
         }
-        let mut created = Vec::new();
-        a.reserve(&mut created, self.created.len())?;
-        for node in &self.created {
-            created.push(
-                node.as_ref()
-                    .map(|n| n.checkpoint(&mut a, cancel))
-                    .transpose()?,
-            );
-        }
-        let mut effects = Vec::new();
-        a.reserve(&mut effects, self.effects.len())?;
-        for frame in &self.effects {
-            effects.push(frame.checkpoint(&mut a, cancel)?);
-        }
-        let effect_bytes = effects
-            .capacity()
-            .checked_mul(size_of::<select::EffectFrame>())
-            .ok_or(DomError::RepresentationExhausted)?;
-        let draft = Self {
-            fullscreen_exit: self.fullscreen_exit,
-            fullscreen_work_custody: self.fullscreen_work_custody,
-            ranges: a.copy(&self.ranges, cancel)?,
-            range_vacancies: range::form_vacancies(
-                a.copy(self.range_vacancies.as_slice(), cancel)?,
-                || self.source_step(cancel),
-            )?,
-            range_tickets: a.copy(&self.range_tickets, cancel)?,
-            owner: self.owner.clone(),
-            store: self.store,
-            registries: self.registries.clone(),
-            hosted_globals: self.hosted_globals.clone(),
-            hosted_history: self.hosted_history.clone(),
-            hosted_owner: self.hosted_owner,
-            basis: self.basis,
-            source_limits: self.source_limits,
-            source_other_bytes: self.source_other_bytes,
-            source_other_units: self.source_other_units,
-            source_invocation: self.source_invocation,
-            source_headroom: None,
-            method: self
-                .method
-                .as_ref()
-                .map(|frame| frame.checkpoint(&mut a, cancel))
-                .transpose()?,
-            dispatch_retirements: a.copy(&self.dispatch_retirements, cancel)?,
-            meta_work: Cell::new(self.meta_work.get()),
-            meta_work_limit: self.meta_work_limit,
-            phase_map: self
-                .phase_map
-                .as_ref()
-                .map(|m| {
-                    Ok::<_, DomError>(super::PhaseMap {
-                        ids: a.copy(&m.ids, cancel)?,
-                        private: a.copy(&m.private, cancel)?,
-                    })
-                })
-                .transpose()?,
-            base_work: Cell::new(self.base_work.get()),
-            base_work_limit: self.base_work_limit,
-            encoding_url_work: Cell::new(self.encoding_url_work.get()),
-            encoding_url_work_limit: self.encoding_url_work_limit,
-            view_transitions: self.view_transitions.checkpoint(&mut a, cancel)?,
-            signal_slots: a.copy(&self.signal_slots, cancel)?,
-            notification_queued: self.notification_queued,
-            cancelled_signals: a.copy(&self.cancelled_signals, cancel)?,
-            native_tasks: a.copy(&self.native_tasks, cancel)?,
-            cancelled_selects: a.copy(&self.cancelled_selects, cancel)?,
-            details_intentions: a.copy(&self.details_intentions, cancel)?,
-            cancelled_details: a.copy(&self.cancelled_details, cancel)?,
-            cancelled_images: self
-                .cancelled_images
-                .as_ref()
-                .map(|v| v.checkpoint(&mut a, cancel))
-                .transpose()?,
-            effects,
-            hosted_pending: self.hosted_pending,
-            effects_running: false,
-            effect_floor: self.effect_floor,
-            effect_bytes,
-            effect_scoped: false,
-            select_work: Cell::new(self.select_work.get()),
-            select_work_limit: self.select_work_limit,
-            select_scratch_limit: self.select_scratch_limit,
-            select_temporary_bytes: self.select_temporary_bytes.clone(),
-            select_semantic_work: Cell::new(self.select_semantic_work.get()),
-            select_semantic_bytes: Cell::new(self.select_semantic_bytes.get()),
-            existing,
-            generations: a.copy(&self.generations, cancel)?,
-            created,
-            tickets: a.copy(&self.tickets, cancel)?,
-            nodes: self.nodes,
-            units: self.units,
-            document_environment: self.document_environment.clone(),
-            input_processing: self.input_processing.checkpoint(),
-            #[cfg(test)]
-            insertion_trace: self.insertion_trace,
-            #[cfg(test)]
-            svg_processing_trace: self
-                .svg_processing_trace
-                .as_ref()
-                .map(|v| v.checkpoint(&mut a, cancel))
-                .transpose()?,
-            source_work: if self.fullscreen_work_custody.is_some() {
-                self.source_work.clone()
-            } else {
-                Arc::new(AtomicU64::new(self.source_work.load(Ordering::Relaxed)))
-            },
-            source_ancestors: self.source_ancestors.clone(),
-            source_formation_bytes: self.source_formation_bytes.clone(),
-            source_temporary_units: self.source_temporary_units.clone(),
-        };
         Ok(Checkpoint {
-            draft,
-            charge: a.finish(),
+            mark,
+            control,
+            _header: header,
         })
     }
     pub(in crate::store) fn source_storage_bytes(
         &self,
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
-        let mut bytes = size_of::<Self>() + size_of::<AtomicU64>() + 3 * size_of::<AtomicUsize>();
-        let mut payload = super::storage::Payload::default();
-        if let Some(history) = &self.hosted_history {
-            payload.append(history.payload(|| self.source_step(cancel))?)?;
-        }
-        if let Some(index) = &self.hosted_globals {
-            payload.add_bytes(index.retained_payload_bytes()?)?;
-        }
-        if let Some(registries) = &self.registries {
-            payload.add_bytes(registries.retained_payload_bytes(|| self.source_step(cancel))?)?;
-        }
-        let mut add = |capacity: usize, width: usize| -> Result<(), DomError> {
-            bytes = bytes
-                .checked_add(
-                    capacity
-                        .checked_mul(width)
-                        .ok_or(DomError::RepresentationExhausted)?,
-                )
-                .ok_or(DomError::RepresentationExhausted)?;
-            Ok(())
-        };
-        add(self.existing.capacity(), size_of::<Option<DraftNode>>())?;
-        add(self.created.capacity(), size_of::<Option<DraftNode>>())?;
-        add(self.generations.capacity(), size_of::<u64>())?;
-        add(self.tickets.capacity(), size_of::<Key>())?;
-        add(self.ranges.capacity(), size_of::<crate::range::Slot<Key>>())?;
-        add(
-            self.range_vacancies.capacity(),
-            size_of::<std::cmp::Reverse<usize>>(),
-        )?;
-        add(
-            self.range_tickets.capacity(),
-            size_of::<crate::DomRangeId>(),
-        )?;
-        add(
-            self.dispatch_retirements.capacity(),
-            size_of::<(NodeId, Key)>(),
-        )?;
-        if let Some(map) = &self.phase_map {
-            add(map.ids.capacity(), size_of::<Option<NodeId>>())?;
-            add(map.private.capacity(), size_of::<bool>())?;
-        }
-        add(self.signal_slots.capacity(), size_of::<Key>())?;
-        add(self.cancelled_signals.capacity(), size_of::<NodeId>())?;
-        add(self.native_tasks.capacity(), size_of::<select::Pending>())?;
-        add(
-            self.cancelled_selects.capacity(),
-            size_of::<(Option<u64>, NodeId)>(),
-        )?;
-        add(
-            self.details_intentions.capacity(),
-            size_of::<details::Pending<Key>>(),
-        )?;
-        add(
-            self.cancelled_details.capacity(),
-            size_of::<details::Pending<NodeId>>(),
-        )?;
-        add(self.effects.capacity(), size_of::<select::EffectFrame>())?;
-        add(self.select_temporary_bytes.load(Ordering::Relaxed), 1)?;
-        add(
-            self.view_transitions
-                .source_storage_bytes(|| self.source_step(cancel))?,
-            1,
-        )?;
-        for node in self.existing.iter().chain(&self.created).flatten() {
-            check_cancel(cancel)?;
-            self.source_step(cancel)?;
-            payload.append(super::storage::node(node, || self.source_step(cancel))?)?;
-            add(node.children.capacity(), size_of::<Key>())?;
-            add(
-                node.fullscreen_events.capacity(),
-                size_of::<crate::DomFullscreenEvent>(),
-            )?;
-            add(node.manual_nodes.capacity(), size_of::<Key>())?;
-            add(node.assigned_nodes.capacity(), size_of::<Key>())?;
-            if let Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) =
-                &node.autofocus_document
-            {
-                add(candidates.capacity(), size_of::<Key>())?;
-            }
-            if let Some(crate::dialog::DocumentInteractiveState::Known {
-                open_dialogs,
-                top_layer,
-                pending_top_layer_removals,
-            }) = &node.interactive_document
-            {
-                add(open_dialogs.capacity(), size_of::<Key>())?;
-                add(top_layer.capacity(), size_of::<Key>())?;
-                add(pending_top_layer_removals.capacity(), size_of::<Key>())?;
-            }
-            if let Some(d) = &node.base_document {
-                add(d.render_blocking.capacity(), size_of::<Key>())?;
-            }
-        }
-        if let Some(limits) = self.source_limits {
-            admit(
-                payload
-                    .units
-                    .checked_add(self.source_other_units)
-                    .and_then(|n| {
-                        n.checked_add(self.source_temporary_units.load(Ordering::Relaxed))
-                    })
-                    .ok_or(DomError::RepresentationExhausted)?,
-                limits.retained_units,
-                DomResource::SourceRetainedUnits,
-            )?;
-        }
-        bytes
-            .checked_add(payload.bytes)
-            .ok_or(DomError::RepresentationExhausted)
+        Ok(self.controlled_storage_usage(cancel)?.bytes())
     }
 }

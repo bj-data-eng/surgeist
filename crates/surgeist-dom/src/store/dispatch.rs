@@ -2,17 +2,42 @@
 use super::*;
 use crate::DomDocumentStamp;
 use crate::dispatch::{
-    DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits, Row, Scope,
+    DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits, Ledger, Release,
+    ReleaseNode, Row, Scope,
 };
 use source::formation::Formation;
 use std::{
     cell::Cell,
-    sync::{OnceLock, Weak},
+    sync::{Mutex, OnceLock, Weak},
 };
 
 #[derive(Default)]
 pub(super) struct CustodyBank {
-    scopes: Vec<Weak<Scope>>,
+    scopes: bank::Bank<ScopeRecord>,
+    targets: bank::Bank<TargetBucket>,
+    ledger: Option<Arc<Mutex<Ledger>>>,
+    next_row: usize,
+}
+
+struct ScopeRecord {
+    scope: Weak<Scope>,
+    targets: Vec<CleanupRow>,
+}
+struct CleanupRow {
+    target: NodeId,
+    key: usize,
+}
+struct TargetBucket {
+    generations: bank::Bank<Generation>,
+}
+enum Generation {
+    Branch(bank::Bank<Generation>),
+    Rows(bank::Bank<IndexedRow>),
+}
+struct IndexedRow {
+    target: NodeId,
+    scope: usize,
+    index: usize,
 }
 
 /// Actual staged association, resolved by the original Draft's final mapping.
@@ -101,51 +126,294 @@ fn add(a: usize, b: usize) -> Result<usize, DomError> {
     a.checked_add(b).ok_or(DomError::RepresentationExhausted)
 }
 
+/// All temporary backing is admitted before retention. A completed path update
+/// releases superseded candidate objects; spent work itself remains monotonic.
+struct Allocation<'a, 'p> {
+    processing: &'a Processing<'p>,
+    base: usize,
+    held: usize,
+    guard: Option<Formation>,
+}
+impl<'a, 'p> Allocation<'a, 'p> {
+    fn new(processing: &'a Processing<'p>, base: usize) -> Self {
+        Self {
+            processing,
+            base,
+            held: 0,
+            guard: processing.formation.map(Formation::fork),
+        }
+    }
+    fn retain(&mut self, amount: usize) -> Result<(), DomError> {
+        if amount == 0 {
+            return Ok(());
+        }
+        self.processing.step()?;
+        let held = add(self.held, amount)?;
+        self.processing.scratch(held)?;
+        admit(
+            add(self.base, held)?,
+            self.processing.limits.retained_bytes,
+            DomResource::DispatchCustodyRetainedBytes,
+        )?;
+        if let Some(guard) = &self.guard {
+            guard.retain_bytes(amount, self.processing.cancel)?;
+        }
+        self.held = held;
+        Ok(())
+    }
+    fn release(&mut self, released: usize) {
+        self.held = self
+            .held
+            .checked_sub(released)
+            .expect("candidate backing was admitted before allocation");
+        if let Some(guard) = &self.guard {
+            guard.release_bytes(released);
+        }
+    }
+    fn index(&mut self, charge: bank::IndexCharge) -> Result<(), DomError> {
+        self.retain(charge.bytes)
+    }
+    /// Fields already own their separately admitted backing. Reserve this
+    /// materialization's identity before admitting and allocating its header.
+    fn record<T>(&mut self, value: T) -> Result<bank::Record<T>, DomError> {
+        let reserved = bank::Record::reserve()?;
+        self.retain(size_of::<T>())?;
+        Ok(reserved.materialize(value))
+    }
+}
+fn reserve<T>(count: usize, allocation: &mut Allocation<'_, '_>) -> Result<Vec<T>, DomError> {
+    let requested = bytes::<T>(count)?;
+    allocation.retain(requested)?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| DomError::AllocationFailed)?;
+    let actual = bytes::<T>(values.capacity())?;
+    #[cfg(test)]
+    record_allocation(actual);
+    allocation.retain(actual - requested)?;
+    Ok(values)
+}
+#[cfg(test)]
+fn record_allocation(bytes: usize) {
+    if scale_metrics::ENABLED && bytes != 0 {
+        scale_metrics::record(scale_metrics::Event::StructuralAllocation { bytes });
+    }
+}
+#[cfg(test)]
+fn record_sequence(bytes: usize) {
+    if scale_metrics::ENABLED && bytes != 0 {
+        scale_metrics::record(scale_metrics::Event::SequenceMaterialized { bytes });
+    }
+}
+fn totals(bytes: usize) -> bank::Totals {
+    bank::Totals {
+        bytes,
+        ..bank::Totals::default()
+    }
+}
+
+// Preserve all u64 generation bits on every pointer width. Leaving one native
+// bit clear keeps every key below usize::MAX, whose extent cannot be indexed.
+// This requires two levels on 64-bit hosts and three on 32-bit hosts.
+const GENERATION_PART_BITS: usize = usize::BITS as usize - 1;
+const LAST_GENERATION_PART: usize = 64_usize.div_ceil(GENERATION_PART_BITS) - 1;
+fn generation_part(generation: u64, part: usize) -> usize {
+    ((generation >> (part * GENERATION_PART_BITS)) as usize)
+        & ((1_usize << GENERATION_PART_BITS) - 1)
+}
+impl Generation {
+    fn retained_bytes(&self) -> Result<usize, DomError> {
+        let backing = match self {
+            Self::Branch(children) => add(children.index_charge().bytes, children.totals().bytes)?,
+            Self::Rows(rows) => add(rows.index_charge().bytes, rows.totals().bytes)?,
+        };
+        add(size_of::<Self>(), backing)
+    }
+}
+impl TargetBucket {
+    fn retained_bytes(&self) -> Result<usize, DomError> {
+        add(
+            size_of::<Self>(),
+            add(
+                self.generations.index_charge().bytes,
+                self.generations.totals().bytes,
+            )?,
+        )
+    }
+    fn rows(
+        &self,
+        target: NodeId,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<&bank::Bank<IndexedRow>>, DomError> {
+        let mut generations = &self.generations;
+        for part in (0..=LAST_GENERATION_PART).rev() {
+            step()?;
+            let Some(generation) = generations.get(generation_part(target.generation, part)) else {
+                return Ok(None);
+            };
+            match generation {
+                Generation::Branch(children) => generations = children,
+                Generation::Rows(rows) => {
+                    assert_eq!(part, 0, "complete generation selects its rows");
+                    return Ok(Some(rows));
+                }
+            }
+        }
+        unreachable!("complete generation index has a row leaf")
+    }
+}
+
+fn replaced_generation_bytes(
+    candidate: &bank::Bank<Generation>,
+    base: &bank::Bank<Generation>,
+    target: NodeId,
+    part: usize,
+    key: usize,
+) -> Result<usize, DomError> {
+    let index = generation_part(target.generation, part);
+    let mut bytes = candidate
+        .path_index_charge_not_shared_with(base, index)
+        .bytes;
+    let Some(generation) = candidate.get_shared(index) else {
+        return Ok(bytes);
+    };
+    let original = base.get_shared(index);
+    if !original.is_some_and(|original| Arc::ptr_eq(original, generation)) {
+        bytes = add(bytes, size_of::<Generation>())?;
+    }
+    let backing = match generation.as_ref() {
+        Generation::Rows(rows) => {
+            let empty = bank::Bank::default();
+            let original = original
+                .and_then(|original| match original.as_ref() {
+                    Generation::Rows(rows) => Some(rows),
+                    Generation::Branch(_) => None,
+                })
+                .unwrap_or(&empty);
+            rows.path_index_charge_not_shared_with(original, key).bytes
+        }
+        Generation::Branch(children) => {
+            let empty = bank::Bank::default();
+            let original = original
+                .and_then(|original| match original.as_ref() {
+                    Generation::Branch(children) => Some(children),
+                    Generation::Rows(_) => None,
+                })
+                .unwrap_or(&empty);
+            replaced_generation_bytes(children, original, target, part - 1, key)?
+        }
+    };
+    add(bytes, backing)
+}
+
+/// Rebuild only one exact generation path and row path. Recursion is bounded
+/// by the number of native words in u64, independent of participant count.
+fn edit_generation(
+    generations: &mut bank::Bank<Generation>,
+    target: NodeId,
+    part: usize,
+    key: usize,
+    row: Option<bank::Record<IndexedRow>>,
+    allocation: &mut Allocation<'_, '_>,
+) -> Result<(), DomError> {
+    let index = generation_part(target.generation, part);
+    let generation = if part == 0 {
+        let mut rows = match generations.get(index) {
+            Some(Generation::Rows(rows)) => rows.clone(),
+            None => bank::Bank::default(),
+            Some(Generation::Branch(_)) => unreachable!("final generation part has rows"),
+        };
+        if let Some(row) = row {
+            rows.set_admitted(key, row, false, totals(size_of::<IndexedRow>()), |charge| {
+                allocation.index(charge)
+            })?;
+        } else {
+            rows.remove_admitted(key, |charge| allocation.index(charge))?;
+        }
+        (rows.record_count() != 0).then_some(Generation::Rows(rows))
+    } else {
+        let mut children = match generations.get(index) {
+            Some(Generation::Branch(children)) => children.clone(),
+            None => bank::Bank::default(),
+            Some(Generation::Rows(_)) => unreachable!("generation prefix has children"),
+        };
+        edit_generation(&mut children, target, part - 1, key, row, allocation)?;
+        (children.record_count() != 0).then_some(Generation::Branch(children))
+    };
+    if let Some(generation) = generation {
+        let retained = totals(generation.retained_bytes()?);
+        let generation = allocation.record(generation)?;
+        generations.set_admitted(index, generation, false, retained, |charge| {
+            allocation.index(charge)
+        })?;
+    } else {
+        generations.remove_admitted(index, |charge| allocation.index(charge))?;
+    }
+    Ok(())
+}
 impl CustodyBank {
-    /// Whether admission must scan actual index entries, including dead Weak
-    /// entries. An empty index can still retain capacity requiring admission.
     pub(super) fn has_indexed_scopes(&self) -> bool {
-        !self.scopes.is_empty()
+        self.scopes.record_count() != 0
     }
 
-    /// Only an actual dependent scope needs a public retirement association.
-    /// The caller supplies its original work admission for every reached scan.
+    /// Both slot and generation select only their actual custody participants.
     pub(super) fn tracks(
         &self,
         target: NodeId,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
-        for scope in &self.scopes {
+        if self.targets.record_count() == 0 {
+            return Ok(false);
+        }
+        step()?;
+        let Some(bucket) = self.targets.get(target.slot) else {
+            return Ok(false);
+        };
+        let Some(rows) = bucket.rows(target, &mut step)? else {
+            return Ok(false);
+        };
+        for row in rows.values() {
             step()?;
-            let Some(scope) = scope.upgrade() else {
-                continue;
-            };
-            for row in &scope.rows {
-                step()?;
-                if row.target == target {
-                    return Ok(true);
-                }
+            if row.target == target
+                && self
+                    .scopes
+                    .get(row.scope)
+                    .is_some_and(|scope| scope.scope.strong_count() != 0)
+            {
+                return Ok(true);
             }
         }
         Ok(false)
     }
-    /// Source envelopes charge all bodies through this one canonical basis.
-    /// Event payloads exclude that same producer term only in their Source
-    /// debit; their actual Runtime storage still includes the complete scope.
     pub(super) fn retained_bytes(
         &self,
         step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<usize, DomError> {
         Ok(self.extent_with(step)?.bytes)
     }
-    /// Pre-admit the complete reconciliation before deterministic no-callback
-    /// release. Dead Weak headers remain charged until this actual pruning.
-    fn prune(&mut self, processing: &Processing<'_>) -> Result<(), DomError> {
-        for _ in &self.scopes {
-            processing.step()?;
+
+    fn extent_for(&self, references: usize, live_scopes: usize) -> Result<Extent, DomError> {
+        let mut bytes = add(
+            add(self.scopes.index_charge().bytes, self.scopes.totals().bytes)?,
+            add(
+                self.targets.index_charge().bytes,
+                self.targets.totals().bytes,
+            )?,
+        )?;
+        bytes = add(bytes, crate::store::dispatch::bytes::<Row>(references)?)?;
+        bytes = add(
+            bytes,
+            crate::store::dispatch::bytes::<Mutex<Ledger>>(live_scopes)?,
+        )?;
+        if self.ledger.is_some() {
+            bytes = add(bytes, size_of::<Mutex<Ledger>>())?;
         }
-        self.scopes.retain(|scope| scope.strong_count() != 0);
-        Ok(())
+        Ok(Extent {
+            scopes: self.scopes.record_count(),
+            references,
+            bytes,
+        })
     }
     fn extent(&self, processing: &Processing<'_>) -> Result<Extent, DomError> {
         self.extent_with(|| processing.step())
@@ -154,23 +422,117 @@ impl CustodyBank {
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Extent, DomError> {
-        let mut extent = Extent {
-            scopes: self.scopes.capacity(),
-            references: 0,
-            bytes: bytes::<Weak<Scope>>(self.scopes.capacity())?,
+        let Some(ledger) = &self.ledger else {
+            return self.extent_for(0, 0);
         };
-        for scope in &self.scopes {
-            step()?;
-            // The Arc allocation's Scope payload remains until its final Weak
-            // drops, even when the Scope destructor already released its rows.
-            extent.bytes = add(extent.bytes, size_of::<Scope>())?;
-            if let Some(scope) = scope.upgrade() {
-                extent.references = add(extent.references, scope.rows.len())?;
-                extent.bytes = add(extent.bytes, bytes::<Row>(scope.rows.len())?)?;
-            }
-        }
-        Ok(extent)
+        step()?;
+        let ledger = ledger.lock().unwrap_or_else(|error| error.into_inner());
+        self.extent_for(ledger.references, ledger.live_scopes)
     }
+
+    /// Candidate-only objects replaced by this exact target-row edit. The old
+    /// bucket keeps its row root until the outer target update succeeds.
+    fn replaced_target_bytes(
+        &self,
+        candidate: &bank::Bank<TargetBucket>,
+        target: NodeId,
+        key: usize,
+    ) -> Result<usize, DomError> {
+        let slot = target.slot;
+        let mut bytes = candidate
+            .path_index_charge_not_shared_with(&self.targets, slot)
+            .bytes;
+        if let Some(bucket) = candidate.get_shared(slot) {
+            let base = self.targets.get_shared(slot);
+            if !base.is_some_and(|base| Arc::ptr_eq(base, bucket)) {
+                bytes = add(bytes, size_of::<TargetBucket>())?;
+            }
+            let empty = bank::Bank::default();
+            let original = base.map_or(&empty, |base| &base.generations);
+            bytes = add(
+                bytes,
+                replaced_generation_bytes(
+                    &bucket.generations,
+                    original,
+                    target,
+                    LAST_GENERATION_PART,
+                    key,
+                )?,
+            )?;
+        }
+        Ok(bytes)
+    }
+
+    /// Refusal leaves both original roots and the preallocated release list
+    /// intact. Only the released scopes and their actual row paths are reached.
+    fn prune(&mut self, processing: &Processing<'_>) -> Result<(), DomError> {
+        let Some(shared) = self.ledger.clone() else {
+            return Ok(());
+        };
+        let mut ledger = shared.lock().unwrap_or_else(|error| error.into_inner());
+        if ledger.released.is_none() {
+            return Ok(());
+        }
+        let mut allocation = Allocation::new(
+            processing,
+            self.extent_for(ledger.references, ledger.live_scopes)?
+                .bytes,
+        );
+        let mut scopes = self.scopes.clone();
+        let mut targets = self.targets.clone();
+        let mut released = ledger.released.as_deref();
+        while let Some(node) = released {
+            processing.step()?;
+            let slot = node[0].scope;
+            let scope = self.scopes.get(slot).expect("queued registered scope");
+            for cleanup in &scope.targets {
+                processing.step()?;
+                let replaced = self.replaced_target_bytes(&targets, cleanup.target, cleanup.key)?;
+                let mut generations = targets
+                    .get(cleanup.target.slot)
+                    .expect("registered target bucket")
+                    .generations
+                    .clone();
+                edit_generation(
+                    &mut generations,
+                    cleanup.target,
+                    LAST_GENERATION_PART,
+                    cleanup.key,
+                    None,
+                    &mut allocation,
+                )?;
+                if generations.record_count() == 0 {
+                    targets
+                        .remove_admitted(cleanup.target.slot, |charge| allocation.index(charge))?;
+                } else {
+                    let bucket = TargetBucket { generations };
+                    let charge = totals(bucket.retained_bytes()?);
+                    let bucket = allocation.record(bucket)?;
+                    targets.set_admitted(cleanup.target.slot, bucket, false, charge, |charge| {
+                        allocation.index(charge)
+                    })?;
+                }
+                allocation.release(replaced);
+            }
+            let replaced = scopes
+                .path_index_charge_not_shared_with(&self.scopes, slot)
+                .bytes;
+            scopes.remove_admitted(slot, |charge| allocation.index(charge))?;
+            allocation.release(replaced);
+            released = node[0].next.as_deref();
+        }
+        check_cancel(processing.cancel)?;
+        self.scopes = scopes;
+        self.targets = targets;
+        let released = ledger.released.take();
+        drop(ledger);
+        Ledger::discard(released);
+        if self.scopes.record_count() == 0 {
+            self.ledger = None;
+        }
+        Ok(())
+    }
+
     pub(super) fn admit_limits(
         &mut self,
         limits: DomDispatchCustodyLimits,
@@ -181,6 +543,7 @@ impl CustodyBank {
         self.prune(&processing)?;
         self.extent(&processing)?.admit(limits)
     }
+
     fn register(
         &mut self,
         owner: DomOwnerId,
@@ -188,104 +551,178 @@ impl CustodyBank {
         targets: &[NodeId],
         processing: &Processing<'_>,
     ) -> Result<DomDispatchCustody, DomError> {
-        let limits = processing.limits;
-        let formation = processing.formation;
-        let cancel = processing.cancel;
         self.prune(processing)?;
-        let mut extent = self.extent(processing)?;
-        let count = add(self.scopes.len(), 1)?;
-        admit(count, limits.scopes, DomResource::DispatchCustodyScopes)?;
-        processing.step()?; // Scope/header registration and eventual release.
-        extent.references = add(extent.references, targets.len())?;
+        let extent = self.extent(processing)?;
+        let count = add(self.scopes.record_count(), 1)?;
         admit(
-            extent.references,
-            limits.references,
+            count,
+            processing.limits.scopes,
+            DomResource::DispatchCustodyScopes,
+        )?;
+        admit(
+            add(extent.references, targets.len())?,
+            processing.limits.references,
             DomResource::DispatchCustodyReferences,
         )?;
-        let payload = DomDispatchCustody::maximum_retained_bytes(targets.len())?;
-        extent.bytes = add(extent.bytes, payload)?;
+        let next_row = add(self.next_row, targets.len())?;
+        let slot = self.scopes.lowest_vacant().unwrap_or(self.scopes.len());
+        processing.step()?; // Scope registration and eventual queued release.
         for target in targets {
             processing.step()?;
             state.node(owner, *target)?;
         }
-        // The old bank, replacement bank, row construction Vec and boxed rows
-        // can coexist. Admit that whole frontier before allocating either bank.
-        let row_bytes = bytes::<Row>(targets.len())?;
-        let bank_bytes = if count > self.scopes.capacity() {
-            bytes::<Weak<Scope>>(count)?
-        } else {
-            0
-        };
-        let construction = add(add(bank_bytes, row_bytes)?, row_bytes)?;
-        processing.scratch(construction)?;
-        admit(
-            add(extent.bytes, bank_bytes)?,
-            limits.retained_bytes,
-            DomResource::DispatchCustodyRetainedBytes,
-        )?;
-        let guard = formation.map(Formation::fork);
-        if let Some(guard) = &guard {
-            guard.retain_bytes(
-                add(bank_bytes, payload.max(add(row_bytes, row_bytes)?))?,
-                cancel,
-            )?;
+        let mut allocation = Allocation::new(processing, extent.bytes);
+        let mut cleanup = reserve::<CleanupRow>(targets.len(), &mut allocation)?;
+        for (index, target) in targets.iter().enumerate() {
+            cleanup.push(CleanupRow {
+                target: *target,
+                key: self.next_row + index,
+            });
+            #[cfg(test)]
+            record_sequence(size_of::<CleanupRow>());
         }
-        let mut replacement = Vec::new();
-        if bank_bytes != 0 {
-            replacement
-                .try_reserve_exact(count)
-                .map_err(|_| DomError::AllocationFailed)?;
-            let actual = bytes::<Weak<Scope>>(replacement.capacity())?;
-            admit(
-                replacement.capacity(),
-                limits.scopes,
-                DomResource::DispatchCustodyScopes,
-            )?;
-            processing.scratch(add(add(actual, row_bytes)?, row_bytes)?)?;
-            admit(
-                add(extent.bytes, actual)?,
-                limits.retained_bytes,
-                DomResource::DispatchCustodyRetainedBytes,
-            )?;
-            if let Some(guard) = &guard {
-                guard.retain_bytes(actual - bank_bytes, cancel)?;
-            }
-            for scope in &self.scopes {
-                processing.step()?;
-                replacement.push(scope.clone());
-            }
-        }
-        let mut rows = Vec::new();
-        rows.try_reserve_exact(targets.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-        let actual_rows = bytes::<Row>(rows.capacity())?;
-        let actual_bank = bytes::<Weak<Scope>>(replacement.capacity())?;
-        processing.scratch(add(add(actual_bank, actual_rows)?, row_bytes)?)?;
-        if let Some(guard) = &guard {
-            guard.retain_bytes(actual_rows - row_bytes, cancel)?;
-        }
+        let mut rows = reserve::<Row>(targets.len(), &mut allocation)?;
+        let construction = bytes::<Row>(rows.capacity())?;
         for target in targets {
-            processing.step()?; // Row construction.
-            processing.step()?; // Whole-scope eventual release, pre-admitted.
+            processing.step()?;
+            processing.step()?; // Pre-admit eventual row release.
             rows.push(Row {
                 target: *target,
                 retired: OnceLock::new(),
             });
+            #[cfg(test)]
+            record_sequence(size_of::<Row>());
         }
+        let row_bytes = bytes::<Row>(targets.len())?;
+        if construction != row_bytes {
+            allocation.retain(row_bytes)?; // Boxing may replace spare backing.
+        }
+        #[cfg(test)]
+        let original_rows = rows.as_ptr();
+        let rows = rows.into_boxed_slice();
+        #[cfg(test)]
+        if original_rows != rows.as_ptr() {
+            record_allocation(row_bytes);
+            record_sequence(row_bytes);
+        }
+        if construction != row_bytes {
+            allocation.release(construction);
+        }
+        let mut release = reserve::<ReleaseNode>(1, &mut allocation)?;
+        let construction = bytes::<ReleaseNode>(release.capacity())?;
+        release.push(ReleaseNode {
+            scope: slot,
+            next: None,
+        });
+        #[cfg(test)]
+        record_sequence(size_of::<ReleaseNode>());
+        if construction != size_of::<ReleaseNode>() {
+            allocation.retain(size_of::<ReleaseNode>())?;
+        }
+        #[cfg(test)]
+        let original_release = release.as_ptr();
+        let release = release.into_boxed_slice();
+        #[cfg(test)]
+        if original_release != release.as_ptr() {
+            record_allocation(size_of::<ReleaseNode>());
+            record_sequence(size_of::<ReleaseNode>());
+        }
+        if construction != size_of::<ReleaseNode>() {
+            allocation.release(construction);
+        }
+        let ledger = match &self.ledger {
+            Some(ledger) => ledger.clone(),
+            None => {
+                allocation.retain(size_of::<Mutex<Ledger>>())?;
+                let ledger = Arc::new(Mutex::new(Ledger::default()));
+                #[cfg(test)]
+                record_allocation(size_of::<Mutex<Ledger>>());
+                ledger
+            }
+        };
+        // Each materialized Scope independently retains this weak-field
+        // backing occurrence, even though the bank also owns the ledger.
+        allocation.retain(size_of::<Mutex<Ledger>>())?;
+        allocation.retain(size_of::<Scope>())?;
         let scope = Arc::new(Scope {
             owner,
-            rows: rows.into_boxed_slice(),
+            rows,
+            release: OnceLock::new(),
         });
-        check_cancel(cancel)?;
-        // No fallible work follows publication of the registration.
-        if bank_bytes != 0 {
-            replacement.push(Arc::downgrade(&scope));
-            self.scopes = replacement;
-        } else {
-            self.scopes.push(Arc::downgrade(&scope));
+        #[cfg(test)]
+        record_allocation(size_of::<Scope>());
+        let record = allocation.record(ScopeRecord {
+            scope: Arc::downgrade(&scope),
+            targets: cleanup,
+        })?;
+        let scope_bytes = add(
+            add(
+                size_of::<ScopeRecord>(),
+                bytes::<CleanupRow>(record.value().targets.capacity())?,
+            )?,
+            add(size_of::<Scope>(), size_of::<ReleaseNode>())?,
+        )?;
+        let mut scopes = self.scopes.clone();
+        let mut target_index = self.targets.clone();
+        scopes.set_admitted(slot, record, false, totals(scope_bytes), |charge| {
+            allocation.index(charge)
+        })?;
+        for (index, target) in targets.iter().enumerate() {
+            processing.step()?;
+            let replaced =
+                self.replaced_target_bytes(&target_index, *target, self.next_row + index)?;
+            let row = allocation.record(IndexedRow {
+                target: *target,
+                scope: slot,
+                index,
+            })?;
+            let mut generations = target_index
+                .get(target.slot)
+                .map_or_else(bank::Bank::default, |bucket| bucket.generations.clone());
+            edit_generation(
+                &mut generations,
+                *target,
+                LAST_GENERATION_PART,
+                self.next_row + index,
+                Some(row),
+                &mut allocation,
+            )?;
+            let bucket = TargetBucket { generations };
+            let charge = totals(bucket.retained_bytes()?);
+            let bucket = allocation.record(bucket)?;
+            target_index.set_admitted(target.slot, bucket, false, charge, |charge| {
+                allocation.index(charge)
+            })?;
+            allocation.release(replaced);
         }
+        check_cancel(processing.cancel)?;
+        let mut live = ledger.lock().unwrap_or_else(|error| error.into_inner());
+        live.references = live
+            .references
+            .checked_add(targets.len())
+            .expect("admitted row count");
+        live.live_scopes = live
+            .live_scopes
+            .checked_add(1)
+            .expect("admitted scope count");
+        assert!(
+            scope
+                .release
+                .set(Release {
+                    ledger: Arc::downgrade(&ledger),
+                    node: release,
+                })
+                .is_ok(),
+            "unpublished original scope"
+        );
+        self.scopes = scopes;
+        self.targets = target_index;
+        self.next_row = next_row;
+        self.ledger = Some(ledger.clone());
+        drop(live);
         Ok(DomDispatchCustody { scope })
     }
+
     pub(super) fn prepare_publication(
         &mut self,
         retirements: &[Retirement],
@@ -294,32 +731,62 @@ impl CustodyBank {
         formation: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<PublicationPlan, DomError> {
-        // Disabled custody is not an extra condition on ordinary destruction.
-        if self.scopes.is_empty() || retirements.is_empty() {
+        if !self.has_indexed_scopes() || retirements.is_empty() {
             return Ok(PublicationPlan::default());
         }
         let processing = Processing::new(limits, formation, cancel);
         self.prune(&processing)?;
-        self.extent(&processing)?.admit(limits)?;
+        let extent = self.extent(&processing)?;
+        extent.admit(limits)?;
+        let mut allocation = Allocation::new(&processing, extent.bytes);
+        let mut seen = bank::Bank::default();
+        let empty = bank::Bank::default();
         let mut count = 0;
-        for scope in &self.scopes {
+        for retirement in retirements {
             processing.step()?;
-            let Some(scope) = scope.upgrade() else {
+            let Some(bucket) = self.targets.get(retirement.target.slot) else {
                 continue;
             };
-            for row in &scope.rows {
-                for retirement in retirements {
-                    processing.step()?;
-                    if row.target == retirement.target {
-                        if row.retired.get().is_some() {
-                            return Err(DomError::InvalidDispatchCustody);
-                        }
-                        count = add(count, 1)?;
-                    }
+            let Some(participants) = bucket.rows(retirement.target, || processing.step())? else {
+                continue;
+            };
+            for (key, row) in participants.iter() {
+                processing.step()?;
+                if row.target != retirement.target {
+                    continue;
                 }
+                let Some(scope) = self
+                    .scopes
+                    .get(row.scope)
+                    .and_then(|row| row.scope.upgrade())
+                else {
+                    continue;
+                };
+                if scope.rows[row.index].retired.get().is_some() {
+                    return Err(DomError::InvalidDispatchCustody);
+                }
+                processing.step()?;
+                if seen.get(key).is_some() {
+                    return Err(DomError::InvalidDispatchCustody);
+                }
+                let replaced = seen.path_index_charge_not_shared_with(&empty, key).bytes;
+                let marker = allocation.record(key)?;
+                seen.set_admitted(key, marker, false, totals(size_of::<usize>()), |charge| {
+                    allocation.index(charge)
+                })?;
+                allocation.release(replaced);
+                count = add(count, 1)?;
             }
         }
-        let guard = formation.map(Formation::fork);
+        let seen_bytes = add(seen.index_charge().bytes, seen.totals().bytes)?;
+        #[cfg(test)]
+        assert_eq!(
+            allocation.held, seen_bytes,
+            "actual matched-row scratch backing"
+        );
+        drop(seen);
+        allocation.release(seen_bytes);
+        let guard = allocation.guard.take();
         let requested = bytes::<PlannedRow>(count)?;
         processing.scratch(requested)?;
         if let Some(guard) = &guard {
@@ -329,44 +796,48 @@ impl CustodyBank {
         rows.try_reserve_exact(count)
             .map_err(|_| DomError::AllocationFailed)?;
         let actual = bytes::<PlannedRow>(rows.capacity())?;
+        #[cfg(test)]
+        record_allocation(actual);
         processing.scratch(actual)?;
         if let Some(guard) = &guard {
             guard.retain_bytes(actual - requested, cancel)?;
         }
-        for scope in &self.scopes {
+        for retirement in retirements {
             processing.step()?;
-            let Some(scope) = scope.upgrade() else {
+            let Some(bucket) = self.targets.get(retirement.target.slot) else {
                 continue;
             };
-            for (index, row) in scope.rows.iter().enumerate() {
-                for retirement in retirements {
-                    processing.step()?;
-                    if row.target == retirement.target {
-                        if retirement.document.node().owner() != stamp.owner()
-                            || row.retired.get().is_some()
-                        {
-                            return Err(DomError::InvalidDispatchCustody);
-                        }
-                        processing.step()?; // Pre-admit the final infallible cell publication.
-                        rows.push(PlannedRow {
-                            scope: scope.clone(),
-                            index,
-                            stamp: DomDocumentStamp {
-                                store: stamp,
-                                document: retirement.document,
-                            },
-                        });
-                    }
-                }
-            }
-        }
-        // Duplicate packet identities would otherwise try to set one cell twice.
-        for (index, row) in rows.iter().enumerate() {
-            for prior in &rows[..index] {
+            let Some(participants) = bucket.rows(retirement.target, || processing.step())? else {
+                continue;
+            };
+            for row in participants.values() {
                 processing.step()?;
-                if Arc::ptr_eq(&row.scope, &prior.scope) && row.index == prior.index {
+                if row.target != retirement.target {
+                    continue;
+                }
+                let Some(scope) = self
+                    .scopes
+                    .get(row.scope)
+                    .and_then(|row| row.scope.upgrade())
+                else {
+                    continue;
+                };
+                if retirement.document.node().owner() != stamp.owner()
+                    || scope.rows[row.index].retired.get().is_some()
+                {
                     return Err(DomError::InvalidDispatchCustody);
                 }
+                processing.step()?; // The infallible retirement-cell publication.
+                rows.push(PlannedRow {
+                    scope,
+                    index: row.index,
+                    stamp: DomDocumentStamp {
+                        store: stamp,
+                        document: retirement.document,
+                    },
+                });
+                #[cfg(test)]
+                record_sequence(size_of::<PlannedRow>());
             }
         }
         check_cancel(cancel)?;

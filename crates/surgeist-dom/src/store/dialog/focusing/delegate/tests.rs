@@ -111,8 +111,7 @@ fn empty_dialog_completes_both_called_producers_without_a_focusability_reply() {
     assert!(call.autofocus.is_none());
     assert!(call.walk.current.is_none());
     assert!(call.walk.levels.is_empty());
-    // Both real BeginDescendants calls reached the admitted root bank.
-    assert!(call.walk.levels.capacity() >= 1);
+    assert_eq!(call.walk.levels.len(), 0);
     drop(call);
     assert_eq!(d.select_temporary_bytes.load(Ordering::Relaxed), 0);
     assert!(d.dialog_delegate_null_available(root, &cancel()).unwrap());
@@ -207,10 +206,8 @@ fn admitted_wide_walk_is_linear_without_a_per_sibling_payload_rescan() {
     let mut walk = Walk::new(&d);
     walk.begin(&d, root, &cancel()).unwrap();
     while walk.next(&d, &cancel()).unwrap().is_some() {}
-    assert!(
-        walk.levels.capacity() <= 4,
-        "capacity follows depth, not width"
-    );
+    assert!(walk.levels.is_empty());
+    assert_eq!(walk.levels.len(), 0);
     let baseline = d.source_work.load(Ordering::Relaxed);
     walk.begin(&d, root, &cancel()).unwrap();
     let mut actual = Vec::new();
@@ -258,61 +255,40 @@ fn deep_walk_keeps_only_indexed_ancestors_and_releases_actual_capacity() {
             .map(|t| c.created(t).unwrap().unwrap())
             .collect::<Vec<_>>()
     );
-    assert!(walk.levels.capacity() < 2 * (tickets.len() + 2));
-    assert!(d.select_temporary_bytes.load(Ordering::Relaxed) > 0);
+    assert!(walk.levels.is_empty());
+    assert_eq!(walk.levels.len(), 0);
     drop(walk);
     assert_eq!(d.select_temporary_bytes.load(Ordering::Relaxed), 0);
 }
 
 #[test]
-fn query_checkpoint_refusal_and_cancellation_preserve_original_bank_and_called_cursor() {
+fn query_snapshot_aliases_the_original_frontier_and_cancellation_preserves_the_cursor() {
     let (dom, root, _, _) = fixture(true);
     let mut d = draft(&dom);
     let root = d.resolve(root.into()).unwrap();
     let mut call = DelegateFrame::new(&d, root);
     assert_eq!(call.advance(&d, root, &cancel()).unwrap(), None);
     let original = pending(&call);
-    let original_bytes = d.select_temporary_bytes.load(Ordering::Relaxed);
     let live = d.source_storage_bytes(&cancel()).unwrap();
-    let minimum_copy = call.walk.levels.len() * size_of::<Level>();
-    assert!(minimum_copy > 0);
-    let bound = live + minimum_copy - 1;
-    d.source_limits = Some(limits(bound, 100_000_000));
-    let mut admission = source::checkpoint::Admission::new(&d, live).unwrap();
-    assert!(
-        matches!(call.checkpoint(&mut admission, &cancel()), Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit }) if limit == bound)
-    );
-    drop(admission);
-    assert_eq!(pending(&call), original);
-    assert_eq!(
-        d.select_temporary_bytes.load(Ordering::Relaxed),
-        original_bytes
-    );
-    d.source_limits = Some(limits(64_000_000, 100_000_000));
-    let mut admission = source::checkpoint::Admission::new(&d, live).unwrap();
-    assert!(matches!(
-        call.checkpoint(&mut admission, &AtomicBool::new(true)),
-        Err(DomError::Cancelled)
-    ));
-    drop(admission);
-    assert_eq!(pending(&call), original);
-    assert_eq!(
-        d.select_temporary_bytes.load(Ordering::Relaxed),
-        original_bytes
-    );
-    let mut admission = source::checkpoint::Admission::new(&d, live).unwrap();
-    let copy = call.checkpoint(&mut admission, &cancel()).unwrap();
-    let charge = admission.finish();
+    let retained = d.custody_ledger().total();
+    d.source_limits = Some(limits(live + d.source_other_bytes, 100_000_000));
+    let copy = call.clone();
     assert_eq!(pending(&copy), original);
-    assert!(d.select_temporary_bytes.load(Ordering::Relaxed) > original_bytes);
-    drop(copy);
-    drop(charge);
+    assert_eq!(d.custody_ledger().total(), retained);
     assert_eq!(
-        d.select_temporary_bytes.load(Ordering::Relaxed),
-        original_bytes
+        copy.walk.levels.top_identity(),
+        call.walk.levels.top_identity()
     );
+    drop(copy);
+    assert_eq!(d.custody_ledger().total(), retained);
+    assert_eq!(
+        call.advance(&d, root, &AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(pending(&call), original);
     drop(call);
-    assert_eq!(d.select_temporary_bytes.load(Ordering::Relaxed), 0);
+    d.custody_registry().reconcile_releases();
+    assert!(d.custody_ledger().total().bytes() < retained.bytes());
 }
 
 #[test]
@@ -322,7 +298,7 @@ fn reached_stack_allocation_refuses_one_short_without_spending_capacity() {
     let root = d.resolve(root.into()).unwrap();
     let mut walk = Walk::new(&d);
     let live = d.source_storage_bytes(&cancel()).unwrap() + d.source_other_bytes;
-    let bound = live + size_of::<Level>() - 1;
+    let bound = live + source::effects::ScratchStack::<Level>::node_bytes() - 1;
     d.source_limits = Some(limits(bound, 100_000_000));
     assert_eq!(
         walk.begin(&d, root, &cancel()),
@@ -351,4 +327,121 @@ fn reached_stack_allocation_refuses_one_short_without_spending_capacity() {
     d.source_limits = Some(limits(64_000_000, 100_000_000));
     walk.begin(&d, root, &cancel()).unwrap();
     assert!(walk.next(&d, &cancel()).unwrap().is_some());
+}
+
+#[test]
+fn nested_method_marks_restore_shared_frontier_top_updates_without_refunding_work() {
+    let (dom, root, descendants, _) = fixture(false);
+    let mut d = draft(&dom);
+    d.select_scratch_limit = 1_000_000;
+    d.effect_scoped = true;
+    let root = d.resolve(root.into()).unwrap();
+    let first = d.resolve(descendants[0].into()).unwrap();
+    let second = d.resolve(descendants[1].into()).unwrap();
+    let mut delegate = DelegateFrame::new(&d, root);
+    delegate.walk.begin(&d, root, &cancel()).unwrap();
+    d.method = Some(method::Frame::Dialog(dialog::MethodFrame {
+        subject: root,
+        cursor: surgeist_html::HtmlDialogCursor::new(surgeist_html::HtmlDialogOperation::Show),
+        state: dialog::MethodState::Ready,
+        invocation: source::Invocation::Unissued,
+        locals: dialog::MethodLocals::Show {
+            captured_document: None,
+            popover_endpoint: None,
+        },
+        focusing: Some(super::super::FocusingFrame {
+            cursor: surgeist_html::HtmlDialogFocusingCursor::new(),
+            delegate: None,
+            top_document: None,
+            invocation: source::Invocation::Unissued,
+            delegate_call: Some(delegate),
+        }),
+    }));
+    let initial_scratch = d.select_temporary_bytes.load(Ordering::Relaxed);
+    assert_eq!(
+        initial_scratch,
+        source::effects::ScratchStack::<Level>::node_bytes()
+    );
+    let stamp = dom.snapshot().stamp();
+    let outer = d.source_checkpoint(0, 0, &cancel()).unwrap();
+    d.prepare_method_edit(&cancel()).unwrap();
+    let mut frame = d.method.take().unwrap();
+    let method::Frame::Dialog(called) = &mut frame else {
+        unreachable!()
+    };
+    assert_eq!(
+        called
+            .focusing
+            .as_mut()
+            .unwrap()
+            .delegate_call
+            .as_mut()
+            .unwrap()
+            .walk
+            .next(&d, &cancel())
+            .unwrap(),
+        Some(first)
+    );
+    d.method = Some(frame);
+    let inner = d.source_checkpoint(0, 0, &cancel()).unwrap();
+    d.prepare_method_edit(&cancel()).unwrap();
+    let mut frame = d.method.take().unwrap();
+    let method::Frame::Dialog(called) = &mut frame else {
+        unreachable!()
+    };
+    assert_eq!(
+        called
+            .focusing
+            .as_mut()
+            .unwrap()
+            .delegate_call
+            .as_mut()
+            .unwrap()
+            .walk
+            .next(&d, &cancel())
+            .unwrap(),
+        Some(second)
+    );
+    d.method = Some(frame);
+    let spent = d.source_work.load(Ordering::Relaxed);
+    d.source_limits.as_mut().unwrap().work = spent;
+    let cancelled = AtomicBool::new(true);
+    assert_eq!(d.source_step(&cancelled), Err(DomError::Cancelled));
+    inner.restore(&mut d);
+    let Some(method::Frame::Dialog(frame)) = &d.method else {
+        unreachable!()
+    };
+    assert_eq!(
+        frame
+            .focusing
+            .as_ref()
+            .unwrap()
+            .delegate_call
+            .as_ref()
+            .unwrap()
+            .walk
+            .current,
+        Some(first)
+    );
+    outer.restore(&mut d);
+    let Some(method::Frame::Dialog(frame)) = &d.method else {
+        unreachable!()
+    };
+    let walk = &frame
+        .focusing
+        .as_ref()
+        .unwrap()
+        .delegate_call
+        .as_ref()
+        .unwrap()
+        .walk;
+    assert_eq!(walk.current, None);
+    assert_eq!(walk.levels.len(), 1);
+    assert_eq!(walk.levels.last().unwrap().next_child, 0);
+    assert_eq!(
+        d.select_temporary_bytes.load(Ordering::Relaxed),
+        initial_scratch
+    );
+    assert_eq!(d.source_work.load(Ordering::Relaxed), spent);
+    assert_eq!(dom.snapshot().stamp(), stamp);
 }

@@ -60,21 +60,33 @@ impl Draft {
         self.input_sanitize(key, limits, cancel)
     }
     pub(super) fn input_state(&self, key: Key) -> Result<&crate::DomInputState, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let DomNodeKind::Element(element) = self.node(key)?.kind else {
             return Err(DomError::InputInapplicable);
         };
         element.input_state().ok_or(DomError::InputInapplicable)
     }
-    fn input_state_mut(
+    fn with_input_state<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
-    ) -> Result<&mut crate::DomInputState, DomError> {
+        edit: impl FnOnce(&mut crate::DomInputState) -> R,
+    ) -> Result<R, DomError> {
         self.prepare_family_mutation(key, cancel)?;
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked Input")
-        };
-        Ok(element.input_state_mut().expect("checked Input"))
+        self.with_element_fields(key, cancel, |element| {
+            edit(element.input_state_mut().expect("checked Input"))
+        })
+    }
+    fn with_input_state_charged<R>(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+        payload: Option<source::checkpoint::Charge>,
+        edit: impl FnOnce(&mut crate::DomInputState) -> R,
+    ) -> Result<R, DomError> {
+        self.prepare_family_mutation(key, cancel)?;
+        self.with_element_fields_charged(key, cancel, payload, |element| {
+            edit(element.input_state_mut().expect("checked Input"))
+        })
     }
     fn input_raw(
         &self,
@@ -120,12 +132,12 @@ impl Draft {
         } else {
             previous.selection
         };
-        let state = self.input_state_mut(key, cancel)?;
-        state.selection = selection;
-        state.current = value.value;
-        state.email_count = email_count;
+        self.with_input_state_charged(key, cancel, value.payload, |state| {
+            state.selection = selection;
+            state.current = value.value;
+            state.email_count = email_count;
+        })?;
         self.units = units;
-        drop(value.payload); // The actual output now belongs to the canonical family.
         Ok(())
     }
     fn input_string_sanitize(
@@ -174,6 +186,8 @@ impl Draft {
             cancel,
         )?;
         let formation = source::formation::Formation::new(self, cancel)?;
+        #[cfg(test)]
+        let mut output_writes = crate::store::CopyObservation::default();
         let mut output = match &formation {
             Some(formation) => {
                 source::formation::utf16_buffer(count, limits.units, Some(formation), cancel)?
@@ -196,6 +210,8 @@ impl Draft {
                     let unit = raw.code_units()[position];
                     if cursor.retain_unit(unit) {
                         output.push(cursor.replacement_unit(position).unwrap_or(unit));
+                        #[cfg(test)]
+                        output_writes.pushed::<u16>();
                     }
                 }
             }
@@ -247,7 +263,7 @@ impl Draft {
                 let step = self.input_raw(key, A::Step, cancel)?;
                 let default = self.input_raw(key, A::Value, cancel)?;
                 #[cfg(test)]
-                let _source_observation = input_processing::source_observation::bind(self, cancel)?;
+                let _source_observation = input_processing::source_observation::bind(self);
                 let source = source::formation::Formation::new(self, cancel)?;
                 let output = self.input_processing.range(
                     input_processing::RangeInput {
@@ -285,7 +301,7 @@ impl Draft {
                     cursor.advance();
                 }
                 #[cfg(test)]
-                let _source_observation = input_processing::source_observation::bind(self, cancel)?;
+                let _source_observation = input_processing::source_observation::bind(self);
                 let source = source::formation::Formation::new(self, cancel)?;
                 let output = self.input_processing.color(
                     &raw.value,
@@ -324,12 +340,12 @@ impl Draft {
                 self.source_step(cancel)?;
                 let files = surgeist_html::input_filename_setter(value.code_units())
                     .map_err(|_| DomError::InputFilenameInvalidState)?;
-                self.input_state_mut(key, cancel)?.files = files;
+                self.with_input_state(key, cancel, |state| state.files = files)?;
                 Ok(())
             }
             HtmlInputValueSetterStart::SetCurrentValue(flags) => {
                 let old = self.input_shared(&self.input_state(key)?.current, cancel)?;
-                self.input_state_mut(key, cancel)?.flags = flags;
+                self.with_input_state(key, cancel, |state| state.flags = flags)?;
                 self.input_put_value(key, self.input_shared(value, cancel)?, None, limits, cancel)?;
                 self.input_sanitize(key, limits, cancel)?;
                 let state = self.input_state(key)?;
@@ -355,11 +371,13 @@ impl Draft {
                         .document_environment()
                         .input_platform();
                     let len = state.current.len();
-                    self.input_state_mut(key, cancel)?.selection = HtmlInputSelection::cursor(
-                        len,
-                        surgeist_html::HtmlInputSelectionDirection::None
-                            .resolve_none(platform.none_direction()),
-                    );
+                    self.with_input_state(key, cancel, |state| {
+                        state.selection = HtmlInputSelection::cursor(
+                            len,
+                            surgeist_html::HtmlInputSelectionDirection::None
+                                .resolve_none(platform.none_direction()),
+                        )
+                    })?;
                 }
                 Ok(())
             }
@@ -373,7 +391,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let flags = self.input_state(key)?.flags.checked_setter(checked);
-        self.input_state_mut(key, cancel)?.flags = flags;
+        self.with_input_state(key, cancel, |state| state.flags = flags)?;
         self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)
     }
     pub(super) fn set_input_indeterminate(
@@ -384,7 +402,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let flags = self.input_state(key)?.flags.indeterminate_setter(value);
-        self.input_state_mut(key, cancel)?.flags = flags;
+        self.with_input_state(key, cancel, |state| state.flags = flags)?;
         Ok(())
     }
     pub(super) fn reset_input(
@@ -402,7 +420,7 @@ impl Draft {
             };
             match effect {
                 Effect::ClearDirtyAndUserValidity(flags) => {
-                    self.input_state_mut(key, cancel)?.flags = flags
+                    self.with_input_state(key, cancel, |state| state.flags = flags)?;
                 }
                 Effect::ReplaceCurrentFromDefault => {
                     let raw = self.input_default(key, cancel)?;
@@ -411,12 +429,13 @@ impl Draft {
                 Effect::SetCheckedFromPresence => {
                     let present = self.control_attribute(key, A::Checked, cancel)?.is_some();
                     let flags = self.input_state(key)?.flags.reset_checkedness(present);
-                    self.input_state_mut(key, cancel)?.flags = flags;
+                    self.with_input_state(key, cancel, |state| state.flags = flags)?;
                     self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)?;
                 }
                 Effect::EmptySelectedFiles => {
-                    self.input_state_mut(key, cancel)?.files =
-                        surgeist_html::HtmlInputFileSelection::Empty
+                    self.with_input_state(key, cancel, |state| {
+                        state.files = surgeist_html::HtmlInputFileSelection::Empty
+                    })?;
                 }
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
             }
@@ -439,9 +458,10 @@ impl Draft {
         }
         let mut cursor =
             surgeist_html::HtmlInputTypeChange::new(previous, next, state.current.len());
-        self.input_state_mut(key, cancel)?.flags = state.flags.type_changed(next);
+        let flags = state.flags.type_changed(next);
+        self.with_input_state(key, cancel, |state| state.flags = flags)?;
         if next != HtmlInputType::Email {
-            self.input_state_mut(key, cancel)?.email_count = None;
+            self.with_input_state(key, cancel, |state| state.email_count = None)?;
         }
         loop {
             self.source_step(cancel)?;
@@ -469,7 +489,7 @@ impl Draft {
                 Effect::SetCurrentFromDefaultAndClearDirty => {
                     let value = self.input_default(key, cancel)?;
                     let flags = self.input_state(key)?.flags.type_default_installed();
-                    self.input_state_mut(key, cancel)?.flags = flags;
+                    self.with_input_state(key, cancel, |state| state.flags = flags)?;
                     self.input_put_value(key, value, None, limits, cancel)?;
                 }
                 Effect::SetCurrentEmptyForFilename => {
@@ -488,8 +508,9 @@ impl Draft {
                         .document_metadata(self.node(key)?.document)?
                         .document_environment()
                         .input_platform();
-                    self.input_state_mut(key, cancel)?.selection =
-                        HtmlInputSelection::initial(platform.none_direction());
+                    self.with_input_state(key, cancel, |state| {
+                        state.selection = HtmlInputSelection::initial(platform.none_direction())
+                    })?;
                 }
             }
         }
@@ -544,14 +565,14 @@ impl Draft {
             .checked_add(next)
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let state = self.input_state_mut(key, cancel)?;
         let (raw, payload) = match raw {
             Some(input_processing::InputValue { value, payload }) => (Some(value), payload),
             None => (None, None),
         };
-        state.image = state.image.with_observed_source(raw);
+        self.with_input_state_charged(key, cancel, payload, |state| {
+            state.image = state.image.with_observed_source(raw)
+        })?;
         self.units = units;
-        drop(payload);
         Ok(())
     }
     pub(super) fn input_attribute_change(
@@ -593,7 +614,7 @@ impl Draft {
                 .flags
                 .checked_attribute_changed(change)
             {
-                self.input_state_mut(key, cancel)?.flags = next;
+                self.with_input_state(key, cancel, |state| state.flags = next)?;
                 self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)?;
             }
         }
@@ -648,6 +669,7 @@ impl Draft {
         trigger: HtmlRadioTrigger,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        let key = self.live_key(key);
         let Ok(state) = self.input_state(key) else {
             return Ok(());
         };
@@ -671,42 +693,18 @@ impl Draft {
             alias,
             size_of::<Vec<u16>>() + name.value.shared_code_units().capacity() * size_of::<u16>(),
         );
-        let root = crate::slot::root(self, key, cancel)?;
-        let owner = self.node(key)?.control_owner;
         #[cfg(test)]
         super::control::participant_tests::radio_discovery_started(self);
-        for index in 0..self.existing.len() + self.created.len() {
+        let peers = self.control_radio_participants(key, &name.value, cancel)?;
+        let mut selected = peers.cursor(|| self.source_step(cancel))?;
+        while let Some(peer) = selected.next(|| self.source_step(cancel))? {
             self.source_step(cancel)?;
-            let peer = if index < self.existing.len() {
-                Key::Existing(index)
-            } else {
-                Key::Created(index - self.existing.len())
-            };
+            let peer = self.live_key(peer);
             if peer == key {
                 continue;
             }
-            let Ok(node) = self.node(peer) else {
-                continue;
-            };
-            let DomNodeKind::Element(element) = &node.kind else {
-                continue;
-            };
-            let Some(state) = element.input_state() else {
-                continue;
-            };
-            if state.input_type() != HtmlInputType::Radio
-                || node.control_owner != owner
-                || crate::slot::root(self, peer, cancel)? != root
-            {
-                continue;
-            }
-            let Some(other) = self.control_attribute(peer, A::Name, cancel)? else {
-                continue;
-            };
-            if self.input_equal(&name.value, other, cancel)? {
-                let flags = self.input_state(peer)?.flags.radio_peer_unchecked();
-                self.input_state_mut(peer, cancel)?.flags = flags;
-            }
+            let flags = self.input_state(peer)?.flags.radio_peer_unchecked();
+            self.with_input_state(peer, cancel, |state| state.flags = flags)?;
         }
         Ok(())
     }
@@ -722,14 +720,14 @@ impl Draft {
             .checked_add(current.value.len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let state = self.input_state_mut(key, cancel)?;
-        state.flags = state.flags.clone_flags_from(original.flags);
-        state.current = current.value;
-        state.email_count = original.email_count;
+        self.with_input_state_charged(key, cancel, current.payload, |state| {
+            state.flags = state.flags.clone_flags_from(original.flags);
+            state.current = current.value;
+            state.email_count = original.email_count;
+        })?;
         // Only the original current/flags overlay is copied; all other fields
         // remain the freshly initialized target's actual values.
         self.units = units;
-        drop(current.payload);
         self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)
     }
 }
@@ -956,8 +954,12 @@ mod tests {
                 let key = draft.resolve(input.into()).unwrap();
                 // A valid established range fixture; public range/event operations
                 // remain separate. Exercise the real native current-value path.
-                draft.input_state_mut(key, &cancel).unwrap().selection =
-                    HtmlInputSelection::selection(2, 4, Direction::Backward).unwrap();
+                draft
+                    .with_input_state(key, &cancel, |state| {
+                        state.selection =
+                            HtmlInputSelection::selection(2, 4, Direction::Backward).unwrap()
+                    })
+                    .unwrap();
                 draft
                     .set_input_value(key, &"ab".into(), dom.limits, &cancel)
                     .unwrap();

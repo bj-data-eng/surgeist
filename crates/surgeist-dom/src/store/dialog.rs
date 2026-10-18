@@ -5,7 +5,9 @@
 //! inactive setup follows the producer's early return. Source edits publish the
 //! reached prefix, while atomic edits refuse external services without publication.
 use super::*;
-use crate::dialog::{DocumentInteractiveState, DomDialogState};
+#[cfg(test)]
+use crate::dialog::DocumentInteractiveState;
+use crate::dialog::DomDialogState;
 use surgeist_html::{
     HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
     HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
@@ -24,6 +26,7 @@ pub(super) enum MethodState {
     Ready,
     AwaitingAttributeHooks,
 }
+#[derive(Clone)]
 pub(super) struct MethodFrame {
     pub subject: Key,
     pub cursor: HtmlDialogCursor,
@@ -33,24 +36,6 @@ pub(super) struct MethodFrame {
     pub focusing: Option<focusing::FocusingFrame>,
 }
 impl MethodFrame {
-    pub(in crate::store) fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        Ok(Self {
-            subject: self.subject,
-            cursor: self.cursor,
-            state: self.state,
-            invocation: self.invocation,
-            locals: self.locals,
-            focusing: self
-                .focusing
-                .as_ref()
-                .map(|called| called.checkpoint(a, cancel))
-                .transpose()?,
-        })
-    }
     /// Event observations and requestClose save a method before any focusing
     /// call exists. This checked fixed-body copy never clones a traversal bank.
     pub(in crate::store) fn before_focusing(&self) -> Result<Self, DomError> {
@@ -137,6 +122,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.dialog_state(key)?;
+        self.prepare_method_edit(cancel)?;
         let mut frame = match self.method.take() {
             Some(method::Frame::Dialog(frame)) => frame,
             Some(other) => {
@@ -421,10 +407,11 @@ impl Draft {
         let value = source::formation::share(value, formation.as_ref(), cancel)?;
         self.source_step(cancel)?;
         let next = self.dialog_state(key)?.with_return_value(value);
-        self.element_mut(key).set_dialog_state(next);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(next)
+        })?;
         self.units = units;
         // Canonical Draft storage now owns the admitted occurrence.
-        drop(formation);
         self.source_admit(0, cancel)?;
         self.source_admit_units(0, cancel)
     }
@@ -443,8 +430,9 @@ impl Draft {
         self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.force_watcher_enabled = value;
-        self.element_mut(key).set_dialog_state(next);
-        drop(formation);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(next)
+        })?;
         self.source_admit(0, cancel)
     }
     pub(in crate::store) fn set_dialog_request_source_null(
@@ -460,8 +448,9 @@ impl Draft {
         self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.request_source = None;
-        self.element_mut(key).set_dialog_state(next);
-        drop(formation);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(next)
+        })?;
         self.source_admit(0, cancel)
     }
     pub(in crate::store) fn set_dialog_request_return_value(
@@ -505,9 +494,10 @@ impl Draft {
             .map(|value| source::formation::share(value, formation.as_ref(), cancel))
             .transpose()?;
         let next = self.dialog_state(key)?.with_request_return_value(value);
-        self.element_mut(key).set_dialog_state(next);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(next)
+        })?;
         self.units = units;
-        drop(formation);
         self.source_admit(0, cancel)?;
         self.source_admit_units(0, cancel)
     }
@@ -526,9 +516,10 @@ impl Draft {
         self.source_step(cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.toggle_tracker = None;
-        self.element_mut(key).set_dialog_state(next);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(next)
+        })?;
         // The Draft now owns the replacement; its normal recount takes over.
-        drop(formation);
         self.source_admit(0, cancel)
     }
 
@@ -547,13 +538,25 @@ impl Draft {
         self.source_step(cancel)?;
         let mut state = self.dialog_state(key)?.clone();
         state.watcher = watcher;
-        self.element_mut(key).set_dialog_state(state);
-        drop(formation);
+        self.with_element_fields_formed(key, cancel, formation, |element| {
+            element.set_dialog_state(state)
+        })?;
         self.source_admit(0, cancel)
     }
-    fn dialog_list(&self, document: Key, list: DialogList) -> Result<&[Key], DomError> {
-        match self.node(document)?.interactive_document.as_ref() {
-            Some(DocumentInteractiveState::Known {
+    fn dialog_relation(list: DialogList) -> transaction::RelationField {
+        match list {
+            DialogList::Open => transaction::RelationField::OpenDialogs,
+            DialogList::Raw => transaction::RelationField::TopLayer,
+            DialogList::Pending => transaction::RelationField::PendingTopLayerRemovals,
+        }
+    }
+    fn dialog_list(
+        &self,
+        document: Key,
+        list: DialogList,
+    ) -> Result<transaction::SequenceView<'_, NodeId, Key>, DomError> {
+        match self.node(document)?.interactive_document {
+            Some(transaction::InteractiveRead::Known {
                 open_dialogs,
                 top_layer,
                 pending_top_layer_removals,
@@ -562,25 +565,27 @@ impl Draft {
                 DialogList::Raw => top_layer,
                 DialogList::Pending => pending_top_layer_removals,
             }),
-            Some(DocumentInteractiveState::Unavailable) => {
+            Some(transaction::InteractiveRead::Unavailable) => {
                 Err(DomError::DialogDocumentStateUnavailable)
             }
             None => Err(DomError::WrongNodeKind),
         }
     }
-    fn dialog_list_mut(&mut self, document: Key, list: DialogList) -> &mut Vec<Key> {
-        let Some(DocumentInteractiveState::Known {
-            open_dialogs,
-            top_layer,
-            pending_top_layer_removals,
-        }) = self.node_mut(document).interactive_document.as_mut()
-        else {
-            unreachable!("qualified Document list")
-        };
-        match list {
-            DialogList::Open => open_dialogs,
-            DialogList::Raw => top_layer,
-            DialogList::Pending => pending_top_layer_removals,
+    #[cfg(test)]
+    fn staged_dialog_list(&self, document: Key, list: DialogList) -> Result<&[Key], DomError> {
+        match self.dialog_list(document, list)? {
+            transaction::SequenceView::Staged(values)
+            | transaction::SequenceView::AliasedStaged(values, _, _) => Ok(values),
+            transaction::SequenceView::Canonical(values, _)
+            | transaction::SequenceView::AliasedCanonical(values, _, _, _)
+                if values.is_empty() =>
+            {
+                Ok(&[])
+            }
+            transaction::SequenceView::Canonical(_, _)
+            | transaction::SequenceView::AliasedCanonical(_, _, _, _) => {
+                panic!("test requires the actual staged list backing")
+            }
         }
     }
     fn dialog_list_contains(
@@ -592,9 +597,9 @@ impl Draft {
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
         let members = self.dialog_list(document, list)?;
-        for candidate in members {
+        for candidate in members.iter() {
             self.source_step(cancel)?;
-            if *candidate == member {
+            if candidate == member {
                 return Ok(true);
             }
         }
@@ -616,7 +621,7 @@ impl Draft {
             }
             self.source_step(cancel)?;
             let members = self.dialog_list(document, list)?;
-            if members[index] != member {
+            if members.get(index) != Some(member) {
                 index += 1;
                 continue;
             }
@@ -626,7 +631,7 @@ impl Draft {
                 self.source_step(cancel)?;
             }
             check_cancel(cancel)?;
-            self.dialog_list_mut(document, list).remove(index);
+            self.relations_remove(document, Self::dialog_relation(list), index, 1, cancel)?;
         }
         Ok(())
     }
@@ -713,14 +718,14 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        self.dialog_list(document, list)?;
-        let members = self.dialog_list_mut(document, list);
-        let (length, capacity) = (members.len(), members.capacity());
-        let admitted = self.source_reserve_amount::<Key>(length, capacity, 1, cancel)?;
-        source::reserve_bank(self.dialog_list_mut(document, list), 1, admitted)?;
-        self.source_admit(0, cancel)?;
-        self.source_step(cancel)?;
-        self.dialog_list_mut(document, list).push(member);
+        let length = self.dialog_list(document, list)?.len();
+        self.relations_insert(
+            document,
+            Self::dialog_relation(list),
+            length,
+            &[member],
+            cancel,
+        )?;
         self.source_admit(0, cancel)
     }
     pub(super) fn dialog_hook_effect(
@@ -883,7 +888,7 @@ mod tests {
             let batch = DomBatch::new();
             let generous =
                 crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -898,31 +903,36 @@ mod tests {
             // This exercises the actual canonical list owner independently of
             // setup eligibility; no fake Global/activity/watcher is supplied.
             draft.dialog_list_add(doc, first, &cancel).unwrap();
-            let original = draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr();
-            let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
-            let replacement = 2 * size_of::<Key>();
-            let exact = base + replacement;
-            draft.source_limits = Some(crate::DomSourceLimits::new(
-                exact - usize::from(short),
-                100_000,
-                10_000_000,
-                16,
-                4096,
-                4096,
-                1,
-            ));
+            let original = draft
+                .staged_dialog_list(doc, DialogList::Open)
+                .unwrap()
+                .as_ptr();
+            let boundary = transaction::queues::admission_observation::Binding::relation(
+                doc,
+                transaction::RelationField::OpenDialogs,
+                2 * size_of::<Key>(),
+                short,
+            );
             let result = draft.dialog_list_add(doc, second, &cancel);
+            let limit = boundary.limit();
+            drop(boundary);
             if short {
                 assert_eq!(
                     result.unwrap_err(),
                     DomError::ResourceLimit {
                         resource: DomResource::SourceRetainedBytes,
-                        limit: exact - 1
+                        limit
                     }
                 );
-                assert_eq!(draft.dialog_list(doc, DialogList::Open).unwrap(), [first]);
                 assert_eq!(
-                    draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr(),
+                    draft.staged_dialog_list(doc, DialogList::Open).unwrap(),
+                    [first]
+                );
+                assert_eq!(
+                    draft
+                        .staged_dialog_list(doc, DialogList::Open)
+                        .unwrap()
+                        .as_ptr(),
                     original
                 );
                 draft.source_limits = Some(generous);
@@ -930,28 +940,37 @@ mod tests {
             } else {
                 result.unwrap();
             }
-            let Some(DocumentInteractiveState::Known { open_dialogs, .. }) =
-                &draft.node(doc).unwrap().interactive_document
+            let Some(transaction::InteractiveRead::Known { open_dialogs, .. }) =
+                draft.node(doc).unwrap().interactive_document
             else {
                 panic!("native list");
             };
             assert_eq!(open_dialogs.capacity(), 2);
-            assert_eq!(open_dialogs.as_slice(), [first, second]);
-            let backing = open_dialogs.as_ptr();
+            assert_eq!(open_dialogs.iter().collect::<Vec<_>>(), [first, second]);
+            let backing = draft
+                .staged_dialog_list(doc, DialogList::Open)
+                .unwrap()
+                .as_ptr();
             draft.dialog_list_add(doc, first, &cancel).unwrap();
             assert_eq!(
-                draft.dialog_list(doc, DialogList::Open).unwrap(),
+                draft.staged_dialog_list(doc, DialogList::Open).unwrap(),
                 [first, second]
             );
             assert_eq!(
-                draft.dialog_list(doc, DialogList::Open).unwrap().as_ptr(),
+                draft
+                    .staged_dialog_list(doc, DialogList::Open)
+                    .unwrap()
+                    .as_ptr(),
                 backing
             );
             draft.source_limits = Some(generous);
             draft
                 .remove_attribute(first, None, &"open".into(), dom.limits, &cancel)
                 .unwrap();
-            assert_eq!(draft.dialog_list(doc, DialogList::Open).unwrap(), [second]);
+            assert_eq!(
+                draft.staged_dialog_list(doc, DialogList::Open).unwrap(),
+                [second]
+            );
             assert_eq!(
                 draft.element(first).unwrap().attribute(&"open".into()),
                 None
@@ -966,7 +985,7 @@ mod tests {
     }
 
     #[test]
-    fn source_setter_admits_actual_old_and_new_payload_overlap_before_retention() {
+    fn source_setter_candidate_admits_exact_bytes_and_units_with_live_payload_overlap() {
         let cancel = AtomicBool::new(false);
         for failure in [
             None,
@@ -983,7 +1002,7 @@ mod tests {
             batch.set_dialog_return_value(dialog, value.clone());
             let generous =
                 crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -991,37 +1010,22 @@ mod tests {
                 &cancel,
             )
             .unwrap();
-            // The original canonical owner, Draft and retained command already
-            // have actual receipts. The replacement adds one immutable state
-            // payload and one heap UTF16 Vec header/backing occurrence; it
-            // shares that backing rather than allocating a physical deep copy.
-            let base_bytes =
-                draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
-            let base_units =
-                draft.source_storage_units(&cancel).unwrap() + draft.source_other_units;
-            let replacement_bytes =
-                size_of::<DomDialogState>() + size_of::<Vec<u16>>() + capacity * size_of::<u16>();
-            let byte_limit = base_bytes + replacement_bytes
-                - usize::from(failure == Some(DomResource::SourceRetainedBytes));
-            let unit_limit = base_units + capacity
-                - usize::from(failure == Some(DomResource::SourceRetainedUnits));
-            draft.source_limits = Some(crate::DomSourceLimits::new(
-                byte_limit, unit_limit, 10_000_000, 16, 4096, 4096, 1,
-            ));
             let key = draft.resolve(dialog.into()).unwrap();
+            let expected = transaction::queues::admission_observation::dialog_fields(&draft, key);
+            let boundary = transaction::queues::admission_observation::Binding::fields(
+                key,
+                expected,
+                failure.unwrap_or(DomResource::SourceRetainedBytes),
+                failure.is_some(),
+            );
             let original_units = draft.units;
             let result = draft.apply(&batch.commands[0], dom.limits, &cancel);
+            let limit = boundary.limit();
+            drop(boundary);
             if let Some(resource) = failure {
                 assert_eq!(
                     result.unwrap_err(),
-                    DomError::ResourceLimit {
-                        resource,
-                        limit: if resource == DomResource::SourceRetainedBytes {
-                            byte_limit
-                        } else {
-                            unit_limit
-                        },
-                    }
+                    DomError::ResourceLimit { resource, limit }
                 );
                 assert_eq!(
                     draft.dialog_state(key).unwrap().return_value().code_units(),
@@ -1063,7 +1067,7 @@ mod tests {
         batch.set_dialog_return_value(dialog, "unpublished");
         let limits =
             crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-        let (mut draft, _, _) =
+        let (mut draft, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let original = draft.units;
         assert_eq!(
@@ -1082,7 +1086,7 @@ mod tests {
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
     }
     #[test]
-    fn source_tracker_clear_admits_candidate_body_before_replacing_state() {
+    fn source_tracker_clear_admits_complete_candidate_before_replacing_state() {
         let cancel = AtomicBool::new(false);
         for short in [true, false] {
             let (mut dom, dialog) = fixture();
@@ -1093,7 +1097,7 @@ mod tests {
             let batch = DomBatch::new();
             let generous =
                 crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,
@@ -1105,16 +1109,16 @@ mod tests {
             let original = draft.dialog_state(key).unwrap() as *const DomDialogState;
             let original_units = draft.units;
             let original_work = draft.source_work.load(Ordering::Relaxed);
-            let base = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
-            // Canonical and Source Draft state already exist. The helper adds
-            // exactly one candidate immutable body; its string clone shares
-            // existing backing. No task/tracker or completed Show is invented.
-            let exact = base + size_of::<DomDialogState>();
-            let tight = exact - usize::from(short);
-            draft.source_limits = Some(crate::DomSourceLimits::new(
-                tight, 100_000, 10_000_000, 16, 4096, 4096, 1,
-            ));
+            let expected = transaction::queues::admission_observation::dialog_fields(&draft, key);
+            let boundary = transaction::queues::admission_observation::Binding::fields(
+                key,
+                expected,
+                DomResource::SourceRetainedBytes,
+                short,
+            );
             let result = draft.clear_dialog_toggle_tracker(key, &cancel);
+            let tight = boundary.limit();
+            drop(boundary);
             if short {
                 assert_eq!(
                     result.unwrap_err(),
@@ -1125,10 +1129,16 @@ mod tests {
                 );
                 assert!(std::ptr::eq(draft.dialog_state(key).unwrap(), original));
                 assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-                draft.source_limits = Some(crate::DomSourceLimits::new(
-                    exact, 100_000, 10_000_000, 16, 4096, 4096, 1,
-                ));
+                draft.source_limits = Some(generous);
+                let exact = transaction::queues::admission_observation::Binding::fields(
+                    key,
+                    expected,
+                    DomResource::SourceRetainedBytes,
+                    false,
+                );
                 draft.clear_dialog_toggle_tracker(key, &cancel).unwrap();
+                exact.limit();
+                drop(exact);
             } else {
                 result.unwrap();
             }
@@ -1143,8 +1153,8 @@ mod tests {
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
             assert_eq!(
-                draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes,
-                base,
+                transaction::queues::admission_observation::dialog_fields(&draft, key),
+                expected,
                 "the transferred replacement has the original retained shape"
             );
             assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -1169,7 +1179,7 @@ mod tests {
         let batch = DomBatch::new();
         let limits =
             crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-        let (mut draft, _, _) =
+        let (mut draft, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let key = draft.resolve(dialog.into()).unwrap();
         let original = draft.dialog_state(key).unwrap() as *const DomDialogState;
@@ -1205,7 +1215,7 @@ mod tests {
             let batch = DomBatch::new();
             let generous =
                 crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 16, 4096, 4096, 1);
-            let (mut draft, _, _) = Draft::new_source(
+            let (mut draft, _) = Draft::new_source(
                 &dom,
                 batch.owner.clone(),
                 &batch.commands,

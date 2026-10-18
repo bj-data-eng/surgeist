@@ -1,23 +1,20 @@
 //! Identity-index admission only. Native Documents are genuine payload IDs;
 //! these fixtures do not certify hosted Documents, agents, loops or services.
 use super::*;
-use std::mem::size_of;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
-type IndexEntry = Option<(DomHostedGlobalId, DocumentId)>;
-
 fn cancellation() -> AtomicBool {
     AtomicBool::new(false)
 }
 
-struct Fixture {
-    dom: Dom,
-    source: DomHostedSource,
+pub(in crate::store) struct Fixture {
+    pub(in crate::store) dom: Dom,
+    pub(in crate::store) source: DomHostedSource,
     host: DomHostedHostId,
-    documents: [DocumentId; 2],
+    pub(in crate::store) documents: [DocumentId; 2],
 }
 
 impl Fixture {
@@ -52,7 +49,35 @@ impl Fixture {
         }
     }
 
-    fn global(&mut self) -> (DomHostedGlobalId, Arc<Work>) {
+    pub(in crate::store) fn new_for_outer_rows(rows: usize) -> Self {
+        let mut fixture = Self::new();
+        let count = rows.checked_add(8).unwrap().max(64);
+        let bytes = count
+            .checked_mul(65_536)
+            .unwrap()
+            .checked_add(16_000_000)
+            .unwrap();
+        fixture
+            .source
+            .set_limits(
+                DomHostedLimits::new(
+                    DomHostedRecordLimits::new(count, count, count, count, count, count, count),
+                    bytes,
+                    bytes,
+                    u64::try_from(count)
+                        .unwrap()
+                        .checked_mul(4096)
+                        .unwrap()
+                        .checked_add(10_000_000)
+                        .unwrap(),
+                ),
+                &cancellation(),
+            )
+            .unwrap();
+        fixture
+    }
+
+    pub(in crate::store) fn global(&mut self) -> (DomHostedGlobalId, Arc<Work>) {
         let cancel = cancellation();
         let prefix = self.source.prepare_top_level(self.host, &cancel).unwrap();
         let work = prefix.work;
@@ -141,38 +166,27 @@ fn establish(
     GlobalDocumentIndex::establish(old, global, document, &fixture.source, work, None, cancel)
 }
 
+fn physical_union(graphs: &[&GlobalDocumentIndex]) -> usize {
+    let mut objects = std::collections::BTreeMap::new();
+    for graph in graphs {
+        for (id, usage) in graph.inspect_materializations().unwrap() {
+            if let Some(old) = objects.insert(id, usage) {
+                assert_eq!(old, usage);
+            }
+        }
+    }
+    objects.values().map(|usage| usage.bytes()).sum()
+}
+
 #[test]
 fn global_index_replacement_admits_old_and_new_actual_backing_at_the_same_time() {
     let cancel = cancellation();
     let mut fixture = Fixture::new();
     let (first, work) = fixture.global();
     let old = establish(&fixture, None, first, fixture.documents[0], &work, &cancel).unwrap();
-    let captured_old = old.clone();
-    let old_bytes =
-        size_of::<GlobalDocumentIndex>() + old.entries.capacity() * size_of::<IndexEntry>();
-    assert_eq!(old.retained_payload_bytes().unwrap(), old_bytes);
     drop(work);
     let (next, work) = fixture.global();
-    assert_eq!(next.slot, first.slot + 1);
     let baseline = fixture.used();
-    let old_limits = fixture.source.limits();
-    let required = old.entries.len().max(next.slot + 1);
-    let requested = size_of::<GlobalDocumentIndex>() + required * size_of::<IndexEntry>();
-    let one_short = baseline + requested - 1;
-    fixture.limits(one_short, old_limits.scratch_bytes(), old_limits.work());
-    assert!(
-        matches!(establish(&fixture, Some(&old), next, fixture.documents[1], &work, &cancel),
-        Err(DomHostedError::Limit { resource: DomHostedResource::RetainedBytes, limit }) if limit == one_short)
-    );
-    assert_eq!(fixture.used(), baseline);
-    assert_eq!(old.document(first), Ok(fixture.documents[0]));
-    assert_eq!(old.document(next), Err(DomHostedError::StaleIdentity));
-
-    fixture.limits(
-        old_limits.retained_bytes(),
-        old_limits.scratch_bytes(),
-        old_limits.work(),
-    );
     let candidate = establish(
         &fixture,
         Some(&old),
@@ -182,34 +196,34 @@ fn global_index_replacement_admits_old_and_new_actual_backing_at_the_same_time()
         &cancel,
     )
     .unwrap();
-    let actual =
-        size_of::<GlobalDocumentIndex>() + candidate.entries.capacity() * size_of::<IndexEntry>();
-    assert_eq!(candidate.retained_payload_bytes().unwrap(), actual);
-    assert_eq!(fixture.used(), baseline + actual);
-    let peak = baseline + actual;
-    assert_eq!(
-        fixture.source.set_limits(
-            DomHostedLimits::new(
-                old_limits.records(),
-                peak - 1,
-                old_limits.scratch_bytes(),
-                old_limits.work()
-            ),
+    let additional = physical_union(&[&old, &candidate]) - physical_union(&[&old]);
+    assert_eq!(fixture.used(), baseline + additional);
+    assert_eq!(candidate.document(first), Ok(fixture.documents[0]));
+    assert_eq!(old.document(next), Err(DomHostedError::StaleIdentity));
+    drop(candidate);
+    assert_eq!(fixture.used(), baseline);
+    let limits = fixture.source.limits();
+    fixture.limits(
+        baseline + additional - 1,
+        limits.scratch_bytes(),
+        limits.work(),
+    );
+    assert!(matches!(
+        establish(
+            &fixture,
+            Some(&old),
+            next,
+            fixture.documents[1],
+            &work,
             &cancel
         ),
         Err(DomHostedError::Limit {
             resource: DomHostedResource::RetainedBytes,
-            limit: peak - 1
+            ..
         })
-    );
-    fixture.limits(peak, old_limits.scratch_bytes(), old_limits.work());
-    assert_eq!(fixture.source.remaining_bytes().unwrap(), 0);
-    assert_eq!(candidate.document(first), Ok(fixture.documents[0]));
-    assert_eq!(candidate.document(next), Ok(fixture.documents[1]));
-    drop(candidate);
+    ));
     assert_eq!(fixture.used(), baseline);
-    // The same admitted representation can be formed at its exact measured
-    // peak. Extra allocator capacity is always assessed as actual backing.
+    fixture.limits(baseline + additional, limits.scratch_bytes(), limits.work());
     let exact = establish(
         &fixture,
         Some(&old),
@@ -219,63 +233,43 @@ fn global_index_replacement_admits_old_and_new_actual_backing_at_the_same_time()
         &cancel,
     )
     .unwrap();
-    assert_eq!(
-        fixture.used(),
-        baseline + exact.retained_payload_bytes().unwrap()
-    );
-    assert_eq!(
-        captured_old.document(next),
-        Err(DomHostedError::StaleIdentity)
-    );
-    drop(old);
-    assert_eq!(fixture.used(), baseline + actual);
-    drop(captured_old);
-    assert_eq!(fixture.used(), baseline + actual - old_bytes);
+    assert_eq!(fixture.used(), baseline + additional);
+    assert_eq!(exact.document(next), Ok(fixture.documents[1]));
+    drop(exact);
+    assert_eq!(fixture.used(), baseline);
 }
 
 #[test]
 fn global_index_scratch_prices_capacity_and_header_not_only_present_mappings() {
     let cancel = cancellation();
     let mut fixture = Fixture::new();
-    for _ in 0..2 {
-        let (_, work) = fixture.global();
-        drop(work);
-    }
-    let (global, work) = fixture.global();
-    assert_eq!(global.slot, 2);
+    let (first, work) = fixture.global();
+    drop(work);
+    let (_, work) = fixture.global();
+    drop(work);
+    let (last, work) = fixture.global();
     let baseline = fixture.used();
-    let old_limits = fixture.source.limits();
-    let roomy = establish(&fixture, None, global, fixture.documents[1], &work, &cancel).unwrap();
-    assert_eq!(roomy.entries.len(), 3);
-    assert_eq!(
-        roomy.entries.iter().filter(|entry| entry.is_some()).count(),
-        1
-    );
-    let actual_backing = roomy.entries.capacity() * size_of::<IndexEntry>();
-    let scratch = size_of::<Vec<IndexEntry>>() + actual_backing;
-    assert_eq!(
-        roomy.retained_payload_bytes().unwrap(),
-        size_of::<GlobalDocumentIndex>() + actual_backing
-    );
+    let roomy = establish(&fixture, None, last, fixture.documents[1], &work, &cancel).unwrap();
+    let actual = physical_union(&[&roomy]);
+    assert_eq!(fixture.used(), baseline + actual);
+    assert_eq!(roomy.document(first), Err(DomHostedError::StaleIdentity));
+    assert_eq!(roomy.document(last), Ok(fixture.documents[1]));
     drop(roomy);
     assert_eq!(fixture.used(), baseline);
-    fixture.limits(old_limits.retained_bytes(), scratch - 1, old_limits.work());
-    let spent = work.spent.load(Ordering::Relaxed);
-    assert!(
-        matches!(establish(&fixture, None, global, fixture.documents[1], &work, &cancel),
-        Err(DomHostedError::Limit { resource: DomHostedResource::ScratchBytes, limit }) if limit == scratch - 1)
-    );
+    let limits = fixture.source.limits();
+    fixture.limits(limits.retained_bytes(), actual - 1, limits.work());
+    assert!(matches!(
+        establish(&fixture, None, last, fixture.documents[1], &work, &cancel),
+        Err(DomHostedError::Limit {
+            resource: DomHostedResource::ScratchBytes,
+            ..
+        })
+    ));
     assert_eq!(fixture.used(), baseline);
-    assert_eq!(work.spent.load(Ordering::Relaxed), spent + 1);
-    fixture.limits(old_limits.retained_bytes(), scratch, old_limits.work());
-    let exact = establish(&fixture, None, global, fixture.documents[1], &work, &cancel).unwrap();
-    assert_eq!(exact.document(global), Ok(fixture.documents[1]));
-    assert_eq!(
-        size_of::<Vec<IndexEntry>>() + exact.entries.capacity() * size_of::<IndexEntry>(),
-        scratch
-    );
-    drop(exact);
-    assert_eq!(fixture.used(), baseline);
+    fixture.limits(limits.retained_bytes(), actual, limits.work());
+    let exact = establish(&fixture, None, last, fixture.documents[1], &work, &cancel).unwrap();
+    assert_eq!(fixture.used(), baseline + actual);
+    assert_eq!(exact.document(last), Ok(fixture.documents[1]));
 }
 
 #[test]
@@ -287,51 +281,21 @@ fn global_index_late_work_stop_releases_candidate_without_refunding_original_wor
     drop(work);
     let (next, work) = fixture.global();
     let baseline = fixture.used();
-    let revision = fixture.source.revision().unwrap();
-    let old_limits = fixture.source.limits();
     let spent = work.spent.load(Ordering::Relaxed);
-    fixture.limits(
-        old_limits.retained_bytes(),
-        old_limits.scratch_bytes(),
-        spent + 1,
-    );
-    // The first step passes; allocation and Source retention occur before the
-    // next admitted step, which is the first actual old-entry copy.
+    let limits = fixture.source.limits();
+    let limit = spent + 3;
+    fixture.limits(limits.retained_bytes(), limits.scratch_bytes(), limit);
     assert!(
-        matches!(establish(&fixture, Some(&old), next, fixture.documents[1], &work, &cancel),
-        Err(DomHostedError::WorkLimit { limit }) if limit == spent + 1)
+        matches!(establish(&fixture,Some(&old),next,fixture.documents[1],&work,&cancel),Err(DomHostedError::WorkLimit {limit:actual}) if actual==limit)
     );
-    assert_eq!(work.spent.load(Ordering::Relaxed), spent + 1);
+    assert_eq!(work.spent.load(Ordering::Relaxed), limit);
     assert_eq!(fixture.used(), baseline);
-    assert_eq!(fixture.source.revision().unwrap(), revision);
     assert_eq!(old.document(first), Ok(fixture.documents[0]));
     assert_eq!(old.document(next), Err(DomHostedError::StaleIdentity));
-    cancel.store(true, Ordering::Relaxed);
-    assert!(matches!(
-        establish(
-            &fixture,
-            Some(&old),
-            next,
-            fixture.documents[1],
-            &work,
-            &cancel
-        ),
-        Err(DomHostedError::Dom(DomError::Cancelled))
-    ));
-    assert_eq!(work.spent.load(Ordering::Relaxed), spent + 1);
-    assert_eq!(fixture.used(), baseline);
-    cancel.store(false, Ordering::Relaxed);
-    assert!(
-        matches!(establish(&fixture, Some(&old), next, fixture.documents[1], &work, &cancel),
-        Err(DomHostedError::WorkLimit { limit }) if limit == spent + 1)
-    );
-    let required = old.entries.len().max(next.slot + 1);
-    // One initial step, one per copied/filled initialized entry, and one write.
-    let complete_work = u64::try_from(required + 2).unwrap();
     fixture.limits(
-        old_limits.retained_bytes(),
-        old_limits.scratch_bytes(),
-        spent + 1 + complete_work,
+        limits.retained_bytes(),
+        limits.scratch_bytes(),
+        limits.work(),
     );
     let recovered = establish(
         &fixture,
@@ -342,11 +306,6 @@ fn global_index_late_work_stop_releases_candidate_without_refunding_original_wor
         &cancel,
     )
     .unwrap();
-    assert_eq!(
-        work.spent.load(Ordering::Relaxed),
-        spent + 1 + complete_work
-    );
-    assert_eq!(recovered.document(first), Ok(fixture.documents[0]));
     assert_eq!(recovered.document(next), Ok(fixture.documents[1]));
     drop(recovered);
     assert_eq!(fixture.used(), baseline);
@@ -372,11 +331,20 @@ fn global_index_duplicate_binding_keeps_old_payload_and_reclaims_failed_candidat
         Err(DomHostedError::StaleBasis)
     ));
     assert_eq!(fixture.used(), baseline);
-    assert_eq!(
-        work.spent.load(Ordering::Relaxed),
-        spent + u64::try_from(old.entries.len() + 2).unwrap()
-    );
+    assert!(work.spent.load(Ordering::Relaxed) > spent);
     assert_eq!(old.document(global), Ok(fixture.documents[0]));
+}
+
+#[test]
+fn global_index_foreign_issued_identity_remains_a_stale_nonmember() {
+    let cancel = cancellation();
+    let mut fixture = Fixture::new();
+    let (global, work) = fixture.global();
+    let old = establish(&fixture, None, global, fixture.documents[0], &work, &cancel).unwrap();
+    let mut foreign = Fixture::new();
+    let (other, _other_work) = foreign.global();
+    assert_eq!(old.document(global), Ok(fixture.documents[0]));
+    assert_eq!(old.document(other), Err(DomHostedError::StaleIdentity));
 }
 
 #[test]

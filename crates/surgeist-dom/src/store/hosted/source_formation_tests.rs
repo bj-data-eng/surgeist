@@ -28,6 +28,7 @@ struct Fixture {
     work: Arc<Work>,
     parent: DomDocumentMetadata,
     source_work: Arc<AtomicU64>,
+    source_work_id: crate::store::SourceWorkIdentity,
 }
 impl Fixture {
     fn new() -> Self {
@@ -67,6 +68,7 @@ impl Fixture {
             lease,
             work,
             parent,
+            source_work_id: crate::store::SourceWorkIdentity::fresh().unwrap(),
             source_work: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -76,6 +78,7 @@ impl Fixture {
             DomBatch::new().owner,
             source_limits(16_000_000, 1_000_000, 1_000_000),
             self.source_work.clone(),
+            self.source_work_id,
             self.lease.operation,
             &cancel(),
         )

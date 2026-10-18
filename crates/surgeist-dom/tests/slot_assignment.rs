@@ -1263,3 +1263,223 @@ fn authored_display_none_and_contents_preserve_canonical_shadow_slot_and_flat_re
         captures[2].1.source().stamp()
     );
 }
+
+#[test]
+fn detaching_a_slot_visits_it_and_ordinary_descendants_but_not_owned_other_trees() {
+    let mut f = fixture(HtmlSlotAssignment::Named, false);
+    let mut b = DomBatch::new();
+    let template = b.create_element_ns(f.document, Namespace::html(), "template");
+    let nested = b.create_element_ns(f.document, Namespace::html(), "slot");
+    b.set_attribute(&nested, "name", "nested");
+    // Native Template ordinary children still belong to this ordinary tree.
+    b.insert_before(&nested, &template, None);
+    b.insert_before(&template, f.s1, None);
+    let y = b.create_element_ns(f.document, Namespace::html(), "span");
+    b.set_attribute(&y, "slot", "nested");
+    b.insert_before(&y, f.h1, None);
+
+    let inner_host = b.create_element_ns(f.document, Namespace::html(), "div");
+    let inner_root = b.attach_shadow(
+        &inner_host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let inner_slot = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let inner_text = b.create_text(f.document, "inner light");
+    b.insert_before(&inner_slot, &inner_root, None);
+    b.insert_before(&inner_text, &inner_host, None);
+    b.insert_before(&inner_host, f.s1, None);
+    let c = apply(&mut f.dom, b);
+    let id = |ticket: &CreatedNode| c.created(ticket).unwrap().unwrap();
+    let template = id(&template);
+    let nested = id(&nested);
+    let y = id(&y);
+    let inner_slot = id(&inner_slot);
+    let inner_text = id(&inner_text);
+    let contents = f
+        .dom
+        .snapshot()
+        .node(template)
+        .unwrap()
+        .as_template()
+        .unwrap()
+        .contents()
+        .unwrap();
+    let contents_document = f
+        .dom
+        .snapshot()
+        .node(contents)
+        .unwrap()
+        .owner_document()
+        .unwrap();
+
+    // A second independently assigned shadow tree lives in Template contents.
+    let mut b = DomBatch::new();
+    let content_host = b.create_element_ns(contents_document, Namespace::html(), "div");
+    let content_root = b.attach_shadow(
+        &content_host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let content_slot = b.create_element_ns(contents_document, Namespace::html(), "slot");
+    let content_text = b.create_text(contents_document, "contents light");
+    b.insert_before(&content_slot, &content_root, None);
+    b.insert_before(&content_text, &content_host, None);
+    b.insert_before(&content_host, contents, None);
+    let c = apply(&mut f.dom, b);
+    let content_slot = c.created(&content_slot).unwrap().unwrap();
+    let content_text = c.created(&content_text).unwrap().unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+    let before = f.dom.snapshot();
+    assert_eq!(before.slot(f.s1).unwrap().assigned_nodes(), &[f.x]);
+    assert_eq!(before.slot(nested).unwrap().assigned_nodes(), &[y]);
+    assert_eq!(
+        before.slot(inner_slot).unwrap().assigned_nodes(),
+        &[inner_text]
+    );
+    assert_eq!(
+        before.slot(content_slot).unwrap().assigned_nodes(),
+        &[content_text]
+    );
+
+    let mut b = DomBatch::new();
+    b.detach(f.s1);
+    apply(&mut f.dom, b);
+    let now = f.dom.snapshot();
+    assert!(now.slot(f.s1).unwrap().assigned_nodes().is_empty());
+    assert!(now.slot(nested).unwrap().assigned_nodes().is_empty());
+    assert_eq!(now.pending_slot_signals(), &[f.s1, nested]);
+    assert_eq!(
+        now.slot(inner_slot).unwrap().assigned_nodes(),
+        &[inner_text]
+    );
+    assert_eq!(
+        now.slot(content_slot).unwrap().assigned_nodes(),
+        &[content_text]
+    );
+    assert_eq!(before.slot(f.s1).unwrap().assigned_nodes(), &[f.x]);
+    assert_eq!(before.slot(nested).unwrap().assigned_nodes(), &[y]);
+}
+
+#[test]
+fn nested_slot_subtree_insertions_before_between_and_adoption_keep_literal_winners_and_signals() {
+    let mut f = fixture(HtmlSlotAssignment::Named, false);
+    let mut b = DomBatch::new();
+    b.set_attribute(f.s1, "name", "a");
+    let end = b.create_element_ns(f.document, Namespace::html(), "slot");
+    b.set_attribute(&end, "name", "b");
+    b.insert_before(&end, f.r1, None);
+    let a = b.create_element_ns(f.document, Namespace::html(), "span");
+    let z = b.create_element_ns(f.document, Namespace::html(), "span");
+    b.set_attribute(&a, "slot", "a");
+    b.set_attribute(&z, "slot", "b");
+    b.insert_before(&a, f.h1, None);
+    b.insert_before(&z, f.h1, None);
+    let other_document = b.create_document();
+    let other_host = b.create_element_ns(&other_document, Namespace::html(), "div");
+    b.insert_before(&other_host, &other_document, None);
+    let other_root = b.attach_shadow(
+        &other_host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let other_a = b.create_element_ns(&other_document, Namespace::html(), "span");
+    let other_z = b.create_element_ns(&other_document, Namespace::html(), "span");
+    b.set_attribute(&other_a, "slot", "a");
+    b.set_attribute(&other_z, "slot", "b");
+    b.insert_before(&other_a, &other_host, None);
+    b.insert_before(&other_z, &other_host, None);
+    let c = apply(&mut f.dom, b);
+    let id = |ticket: &CreatedNode| c.created(ticket).unwrap().unwrap();
+    let end = id(&end);
+    let a = id(&a);
+    let z = id(&z);
+    let other_root = id(&other_root);
+    let other_a = id(&other_a);
+    let other_z = id(&other_z);
+    let other_document = c.document(&other_document).unwrap();
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+
+    // Introduce a private-created subtree BETWEEN existing participants.
+    // Its second Slot is nested another level, and duplicates the first name.
+    let mut b = DomBatch::new();
+    let middle = b.create_element_ns(f.document, Namespace::html(), "section");
+    let mid_b = b.create_element_ns(f.document, Namespace::html(), "slot");
+    let wrapper = b.create_element_ns(f.document, Namespace::html(), "span");
+    let mid_a = b.create_element_ns(f.document, Namespace::html(), "slot");
+    b.set_attribute(&mid_b, "name", "b");
+    b.set_attribute(&mid_a, "name", "a");
+    b.insert_before(&mid_b, &middle, None);
+    b.insert_before(&mid_a, &wrapper, None);
+    b.insert_before(&wrapper, &middle, None);
+    b.insert_before(&middle, f.r1, Some(end.into()));
+    let c = apply(&mut f.dom, b);
+    let middle = c.created(&middle).unwrap().unwrap();
+    let mid_b = c.created(&mid_b).unwrap().unwrap();
+    let mid_a = c.created(&mid_a).unwrap().unwrap();
+    let s = f.dom.snapshot();
+    assert_eq!(s.slot(f.s1).unwrap().assigned_nodes(), &[a]);
+    assert_eq!(s.slot(mid_b).unwrap().assigned_nodes(), &[z]);
+    assert!(s.slot(mid_a).unwrap().assigned_nodes().is_empty());
+    assert!(s.slot(end).unwrap().assigned_nodes().is_empty());
+    assert_eq!(s.pending_slot_signals(), &[mid_b, end]);
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+
+    // Moving the same subtree BEFORE the first participant changes the final
+    // 'a' winner; the removal/reinsertion also signals the temporary 'b' changes.
+    let mut b = DomBatch::new();
+    b.insert_before(middle, f.r1, Some(f.s1.into()));
+    apply(&mut f.dom, b);
+    let before_adoption = f.dom.snapshot();
+    assert_eq!(before_adoption.slot(mid_b).unwrap().assigned_nodes(), &[z]);
+    assert_eq!(before_adoption.slot(mid_a).unwrap().assigned_nodes(), &[a]);
+    assert!(
+        before_adoption
+            .slot(f.s1)
+            .unwrap()
+            .assigned_nodes()
+            .is_empty()
+    );
+    assert_eq!(
+        before_adoption.pending_slot_signals(),
+        &[end, mid_b, mid_a, f.s1]
+    );
+    // Removal temporarily clears both nested slots before reinsertion. The
+    // first signal order retains those intermediate source-required effects.
+    slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
+
+    let mut b = DomBatch::new();
+    b.adopt(middle, other_document);
+    b.insert_before(middle, other_root, None);
+    apply(&mut f.dom, b);
+    let s = f.dom.snapshot();
+    assert_eq!(s.slot(f.s1).unwrap().assigned_nodes(), &[a]);
+    assert_eq!(s.slot(end).unwrap().assigned_nodes(), &[z]);
+    assert_eq!(s.slot(mid_b).unwrap().assigned_nodes(), &[other_z]);
+    assert_eq!(s.slot(mid_a).unwrap().assigned_nodes(), &[other_a]);
+    assert_eq!(s.pending_slot_signals(), &[f.s1, end, mid_b, mid_a]);
+    for node in [middle, mid_b, mid_a] {
+        assert_eq!(s.node(node).unwrap().owner_document(), Some(other_document));
+        assert_eq!(
+            before_adoption.node(node).unwrap().owner_document(),
+            Some(f.document)
+        );
+    }
+    assert_eq!(before_adoption.slot(mid_b).unwrap().assigned_nodes(), &[z]);
+    assert_eq!(before_adoption.slot(mid_a).unwrap().assigned_nodes(), &[a]);
+}

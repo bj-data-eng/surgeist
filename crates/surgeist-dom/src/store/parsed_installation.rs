@@ -61,6 +61,8 @@ impl Control<'_> {
         Ok(())
     }
     fn reserve<T>(&mut self, values: &mut Vec<T>, additional: usize) -> Result<(), Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         self.check()?;
         let need = values
             .len()
@@ -98,6 +100,12 @@ impl Control<'_> {
             .capacity()
             .checked_mul(size_of::<T>())
             .ok_or(Error::RepresentationExhausted)?;
+        #[cfg(test)]
+        if super::scale_metrics::ENABLED && replacement_bytes != 0 {
+            super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
+                bytes: replacement_bytes,
+            });
+        }
         let peak = self
             .bytes
             .checked_add(replacement_bytes)
@@ -120,6 +128,8 @@ impl Control<'_> {
         // Copy work was prepaid before allocating. No fallible operation or
         // callback remains between moving the values and releasing the old bank.
         replacement.append(values);
+        #[cfg(test)]
+        written.extended::<T>(replacement.len());
         *values = replacement;
         self.bytes = next;
         Ok(())
@@ -214,6 +224,8 @@ impl<'a> Source<'a> {
         Ok(None)
     }
     fn add(&mut self, id: HtmlNodeId, c: &mut Control<'_>) -> Result<(), Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         if self.index(&id, c)?.is_some() {
             return Ok(());
         }
@@ -236,6 +248,8 @@ impl<'a> Source<'a> {
             source: node,
             key: None,
         });
+        #[cfg(test)]
+        written.pushed::<Row<'a>>();
         Ok(())
     }
     fn add_document(
@@ -286,10 +300,12 @@ impl<'a> Source<'a> {
         subject: surgeist_html_semantics::HtmlCaptureSubjectId,
         c: &mut Control<'_>,
     ) -> Result<Key, Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         for binding in &self.captured_bindings {
             c.step(1)?;
             if binding.subject == subject {
-                return Ok(Key::Existing(binding.node.slot));
+                return Ok(Key::Existing(binding.node));
             }
         }
         let capture = self.capture.ok_or(Error::NotCompletedOrdinaryReport)?;
@@ -307,6 +323,8 @@ impl<'a> Source<'a> {
         c.reserve(&mut self.captured_bindings, 1)?;
         self.captured_bindings
             .push(DomParsedHtmlCapturedBinding { subject, node });
+        #[cfg(test)]
+        written.pushed::<DomParsedHtmlCapturedBinding>();
         let captured = capture
             .capture()
             .node(self.captured_bindings.last().expect("just added").subject())
@@ -315,7 +333,7 @@ impl<'a> Source<'a> {
         if document.subject() != self.captured_bindings.last().expect("just added").subject() {
             self.add_captured(document.subject().clone(), c)?;
         }
-        Ok(Key::Existing(node.slot))
+        Ok(Key::Existing(node))
     }
     fn captured_key(
         &self,
@@ -325,7 +343,7 @@ impl<'a> Source<'a> {
         for binding in &self.captured_bindings {
             c.step(1)?;
             if binding.subject == *subject {
-                return Ok(Key::Existing(binding.node.slot));
+                return Ok(Key::Existing(binding.node));
             }
         }
         Err(Error::CapturedStateUnavailable)
@@ -469,6 +487,8 @@ fn collect_fragment<'a>(
     c: &mut Control<'_>,
 ) -> Result<Source<'a>, Error> {
     use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost, HtmlParseRegistry};
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     let fragment = report.fragment().ok_or(Error::NotCompletedFragmentReport)?;
     let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
     let parser = report
@@ -573,6 +593,8 @@ fn collect_fragment<'a>(
                     declarative,
                     available_to_internals,
                 });
+                #[cfg(test)]
+                written.pushed::<ParsedShadow>();
             }
         }
     }
@@ -584,6 +606,8 @@ fn collect_rows<'a>(
     mut source: Source<'a>,
     c: &mut Control<'_>,
 ) -> Result<Source<'a>, Error> {
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     let mut cursor = report.metadata();
     loop {
         // Skipped slots and the terminating observation are actual work too.
@@ -598,6 +622,8 @@ fn collect_rows<'a>(
         if source.bootstrap_only(&record.node().id(), c)? {
             c.reserve(&mut source.metadata, 1)?;
             source.metadata.push(record);
+            #[cfg(test)]
+            written.pushed::<HtmlParseMetadata<'a>>();
             continue;
         }
         source.add(record.node().id(), c)?;
@@ -662,6 +688,8 @@ fn collect_rows<'a>(
         }
         c.reserve(&mut source.metadata, 1)?;
         source.metadata.push(record);
+        #[cfg(test)]
+        written.pushed::<HtmlParseMetadata<'a>>();
     }
     let associations = report.associations();
     for index in 0..associations.len() {
@@ -733,8 +761,10 @@ fn apply_fragment_effects(
                 {
                     return Err(Error::CapturedStateUnavailable);
                 }
-                draft.node_mut(document).template_document =
-                    Some(crate::template::TemplateDocument::Ordinary { inert: Some(inert) });
+                draft.with_node_fields(document, c.cancel, |fields| {
+                    fields.template_document =
+                        Some(crate::template::TemplateDocument::Ordinary { inert: Some(inert) })
+                })?;
             }
             HtmlParseEffect::AttachShadow {
                 host,
@@ -843,6 +873,8 @@ impl Dom {
         limits: Limits,
         cancelled: &AtomicBool,
     ) -> Result<PreparedInstallation, Error> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let mut c = Control {
             limits,
             work: 0,
@@ -955,7 +987,31 @@ impl Dom {
                 draft.allocate(DomNodeKind::Document(metadata), own, self.limits, cancelled)?;
             // Only this genuinely new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
-            draft.node_mut(key).interactive_document = Some(interaction);
+            let interaction = match interaction {
+                crate::dialog::DocumentInteractiveState::Known {
+                    open_dialogs,
+                    top_layer,
+                    pending_top_layer_removals,
+                } => {
+                    for (field, values) in [
+                        (transaction::RelationField::OpenDialogs, open_dialogs),
+                        (transaction::RelationField::TopLayer, top_layer),
+                        (
+                            transaction::RelationField::PendingTopLayerRemovals,
+                            pending_top_layer_removals,
+                        ),
+                    ] {
+                        draft.relations_replace(key, field, values, cancelled)?;
+                    }
+                    crate::dialog::DocumentInteractiveState::native_closed()
+                }
+                crate::dialog::DocumentInteractiveState::Unavailable => {
+                    crate::dialog::DocumentInteractiveState::Unavailable
+                }
+            };
+            draft.with_node_fields(key, cancelled, |fields| {
+                fields.interactive_document = Some(interaction)
+            })?;
             source.rows[i].key = Some(key);
         }
         for i in 0..source.rows.len() {
@@ -990,10 +1046,16 @@ impl Dom {
             for child in row.source.children() {
                 c.step(1)?;
                 children.push(source.key(&child, &mut c)?);
+                #[cfg(test)]
+                written.pushed::<Key>();
             }
-            let destination = draft.node_mut(key);
-            destination.parent = parent;
-            destination.children = children;
+            draft.with_node_fields(key, cancelled, |fields| fields.parent = parent)?;
+            draft.relations_replace(
+                key,
+                transaction::RelationField::Children,
+                children,
+                cancelled,
+            )?;
         }
         state::metadata(&source, &mut draft, self.limits, &mut c)?;
         if capture.is_some() {
@@ -1048,6 +1110,8 @@ impl Dom {
                 source: row.source.id(),
                 node,
             });
+            #[cfg(test)]
+            written.pushed::<DomParsedHtmlBinding>();
         }
         debug_assert_eq!(root, source.rows[root_index].key.expect("allocated root"));
         let captured_bindings = std::mem::take(&mut source.captured_bindings);
@@ -1107,5 +1171,55 @@ impl Dom {
             changes: commit.changes.clone(),
             bindings: pending.bindings,
         })
+    }
+}
+
+#[cfg(test)]
+mod sequence_measurement_tests {
+    use super::super::scale_metrics::{Hooks, Measurement};
+    use super::*;
+
+    #[test]
+    fn parsed_scratch_growth_reports_old_rows_copied_not_new_spare_capacity() {
+        if !super::super::scale_metrics::ENABLED {
+            return;
+        }
+        let cancel = AtomicBool::new(false);
+        let mut values = Vec::with_capacity(2);
+        values.extend([3_u64, 5]);
+        let mut control = Control {
+            limits: Limits::new(32, 0, 4096, 4096),
+            work: 0,
+            bytes: values.capacity() * size_of::<u64>(),
+            peak_bytes: values.capacity() * size_of::<u64>(),
+            cancel: &cancel,
+        };
+        let observation = Measurement::begin().unwrap();
+        assert!(matches!(
+            control.reserve(&mut values, 1),
+            Err(Error::ResourceLimit {
+                resource: Resource::Work,
+                limit: 0
+            })
+        ));
+        assert_eq!(
+            observation
+                .finish(Hooks::default())
+                .unwrap()
+                .sequence_materialized_bytes,
+            0
+        );
+        assert_eq!(values, [3, 5]);
+        control.limits = Limits::new(32, 4096, 4096, 4096);
+        let observation = Measurement::begin().unwrap();
+        control.reserve(&mut values, 1).unwrap();
+        let counters = observation.finish(Hooks::default()).unwrap();
+        assert_eq!(values, [3, 5]);
+        assert!(values.capacity() >= 4);
+        assert_eq!(counters.sequence_materialized_bytes, 2 * size_of::<u64>());
+        assert_eq!(
+            counters.structural_bytes,
+            values.capacity() * size_of::<u64>()
+        );
     }
 }

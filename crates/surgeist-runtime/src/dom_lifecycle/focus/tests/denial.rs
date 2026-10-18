@@ -402,12 +402,18 @@ fn assert_real_shape(case: &Parked) {
 
 #[test]
 fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired_window() {
-    let mut calibration = parked(10_000_000, None, false, true).unwrap();
-    assert_real_shape(&calibration);
-    let (scaffold, canonical) = canonical_prelude(&mut calibration).unwrap();
     for short in [true, false] {
-        let cap = scaffold + canonical + RUNTIME_VISITS - u64::from(short);
-        let mut case = parked(cap, None, false, true).unwrap();
+        let mut case = parked(10_000_000, None, false, true).unwrap();
+        let (cap, scaffold, target) =
+            source_focus_boundary(&mut case.session, &case.request, RUNTIME_VISITS, short);
+        assert_eq!(
+            target,
+            DomFocusTarget::RetiredDocumentWindow {
+                document: case.current_document,
+                global: case.current_global,
+                host: case.host
+            }
+        );
         assert_real_shape(&case);
         let cancel = AtomicBool::new(false);
         let hosted = case.session.hosted_execution();
@@ -798,30 +804,20 @@ fn exhausted(error: &(dyn Error + 'static), cap: u64) -> bool {
 }
 
 #[test]
-fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
-    // Calibrate only setup and canonical preparation/relative retention. All
-    // actual new Runtime visits remain the independently derived literal19.
-    let mut low = 0;
-    let mut high = 10_000_000;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        match parked(10_000_000, Some(middle), true, true) {
-            Ok(_) => high = middle,
-            Err(error) => {
-                assert!(
-                    exhausted(error.as_ref(), middle),
-                    "wrong canonical setup error: {error:?}"
-                );
-                low = middle + 1;
-            }
-        }
-    }
-    let scaffold = low;
-    assert!(scaffold > 0);
+fn observing_parent_retains_actual_denial_across_exact_child_work_cut() {
     for short in [true, false] {
-        let cap = scaffold + RUNTIME_VISITS - u64::from(short);
-        let mut case = parked(10_000_000, Some(cap), false, true).unwrap();
+        let mut case = parked(10_000_000, Some(10_000_000), false, true).unwrap();
         assert_real_shape(&case);
+        let (cap, scaffold, target) =
+            source_focus_boundary(&mut case.session, &case.request, RUNTIME_VISITS, short);
+        assert_eq!(
+            target,
+            DomFocusTarget::RetiredDocumentWindow {
+                document: case.current_document,
+                global: case.current_global,
+                host: case.host
+            }
+        );
         let parent = case.parent.as_ref().unwrap().clone();
         let hosted = case.session.hosted_execution();
         let owner = hosted.state().unwrap();
@@ -831,8 +827,9 @@ fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
             let mut dom = case.session.dom();
             let mut lease = dom
                 .raw_mut()
-                .resume_source_edit(case.request.operation(), source_limits(10_000_000), &cancel)
+                .resume_source_edit(case.request.operation(), source_limits(cap), &cancel)
                 .unwrap();
+            assert_eq!(lease.status().spent_work(), scaffold);
             assert!(
                 matches!(hosted.service_focus(&mut lease, &case.request, &cancel),
                 Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit { limit }))) if limit == cap)
@@ -879,5 +876,89 @@ fn observing_parent_work_governs_actual_denial_and_retained_receipt_transfer() {
             parent.operation()
         );
         assert!(owner.borrow().focus.pending.is_none());
+    }
+}
+
+#[test]
+fn finite_parent_work_refusals_preserve_actual_denial_source() {
+    for cap in [0, 64, 1024, 16_384] {
+        let mut case = match parked(10_000_000, Some(cap), false, true) {
+            Ok(case) => case,
+            Err(error) => {
+                assert!(
+                    exhausted(error.as_ref(), cap),
+                    "wrong setup refusal: {error:?}"
+                );
+                assert_ne!(cap, 16_384, "generous finite parent must reach denial");
+                eprintln!("denial finite parent cap={cap}: setup refused");
+                continue;
+            }
+        };
+        assert_ne!(cap, 0, "zero parent work must refuse");
+        assert_real_shape(&case);
+        let parent = case.parent.as_ref().unwrap().clone();
+        let hosted = case.session.hosted_execution();
+        let owner = hosted.state().unwrap();
+        let before_work = owner.borrow().work;
+        let basis = case.session.snapshot().stamp();
+        let outcome: Result<bool, Failure> = {
+            let mut dom = case.session.dom();
+            match dom.raw_mut().resume_source_edit(
+                case.request.operation(),
+                source_limits(10_000_000),
+                &AtomicBool::new(false),
+            ) {
+                Err(error) => {
+                    eprintln!("denial finite parent cap={cap}: resume refused");
+                    Err(Box::new(error))
+                }
+                Ok(mut lease) => {
+                    assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
+                    hosted
+                        .service_focus(&mut lease, &case.request, &AtomicBool::new(false))
+                        .map_err(|error| Box::new(error) as Failure)
+                }
+            }
+        };
+        match outcome {
+            Err(error) => {
+                assert!(
+                    exhausted(error.as_ref(), cap),
+                    "wrong parent refusal: {error:?}"
+                );
+                assert_ne!(cap, 16_384, "generous finite parent must service denial");
+                assert_eq!(case.session.snapshot().stamp(), basis);
+                eprintln!(
+                    "denial finite parent cap={cap}: service/resume refused; pending={}",
+                    owner.borrow().focus.pending.is_some()
+                );
+            }
+            Ok(serviced) => {
+                assert!(serviced);
+                assert_eq!(owner.borrow().work - before_work, RUNTIME_VISITS);
+                assert!(owner.borrow().focus.pending.is_none());
+                let mut dom = case.session.dom();
+                let mut lease = dom
+                    .raw_mut()
+                    .resume_source_edit(
+                        case.request.operation(),
+                        source_limits(10_000_000),
+                        &AtomicBool::new(false),
+                    )
+                    .unwrap();
+                assert!(matches!(
+                    lease.advance(&AtomicBool::new(false)).unwrap(),
+                    DomSourceProgress::Complete(_)
+                ));
+                drop(lease);
+                assert_eq!(
+                    dom.pending_source_edit().unwrap().operation(),
+                    parent.operation()
+                );
+                eprintln!(
+                    "denial finite parent cap={cap}: nineteen actual Runtime visits serviced"
+                );
+            }
+        }
     }
 }

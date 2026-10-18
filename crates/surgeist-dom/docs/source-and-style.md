@@ -26,8 +26,10 @@ base does not use a Settings creation-URL mirror or establish CSP permission.
 cumulative work, phase publications, output records, published native
 identities and simultaneously outstanding nested operations. Storage includes
 simultaneous private candidates, checkpoints, temporary banks and retained outputs.
-Shared immutable payloads are charged per
-retained occurrence; allocator metadata and Arc control blocks are excluded.
+Materialized payload fields are charged per retained occurrence; sharing a
+persistent root does not materialize its records again. The
+[storage explanation](storage.md) defines the ownership and charge table.
+Allocator metadata and Arc control blocks are excluded.
 Growth admits requested replacement storage while the old bank is live and
 checks actual capacity afterwards. These are representation limits, not a
 physical-memory ceiling. CSS and CSSOM keep their independent producer limits.

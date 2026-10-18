@@ -19,37 +19,21 @@ impl Draft {
     pub(in crate::store) fn autofocus_state(
         &self,
         document: Key,
-    ) -> Result<(&[Key], bool), DomError> {
-        match &self.node(document)?.autofocus_document {
-            Some(State::Known {
+    ) -> Result<(transaction::SequenceView<'_, NodeId, Key>, bool), DomError> {
+        match self.node(document)?.autofocus_document {
+            Some(transaction::AutofocusRead::Known {
                 candidates,
                 processed,
-            }) => Ok((candidates, *processed)),
-            Some(State::Unavailable) => Err(DomError::AutofocusDocumentStateUnavailable),
+            }) => Ok((candidates, processed)),
+            Some(transaction::AutofocusRead::Unavailable) => {
+                Err(DomError::AutofocusDocumentStateUnavailable)
+            }
             None => Err(DomError::WrongNodeKind),
         }
     }
-    fn autofocus_candidates_mut(&mut self, document: Key) -> &mut Vec<Key> {
-        let Some(State::Known { candidates, .. }) = &mut self.node_mut(document).autofocus_document
-        else {
-            unreachable!("qualified autofocus history")
-        };
-        candidates
-    }
     pub(in crate::store) fn autofocus_count(&self, cancel: &AtomicBool) -> Result<usize, DomError> {
-        let mut count = 0usize;
-        for node in self.existing.iter().chain(&self.created).flatten() {
-            self.source_step(cancel)?;
-            if let Some(State::Known { candidates, .. }) = &node.autofocus_document {
-                for _ in candidates {
-                    self.source_step(cancel)?;
-                    count = count
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?;
-                }
-            }
-        }
-        Ok(count)
+        self.source_step(cancel)?;
+        Ok(self.counts.autofocus_candidates)
     }
     pub(in crate::store) fn autofocus_remove(
         &mut self,
@@ -64,14 +48,20 @@ impl Draft {
             if index == candidates.len() {
                 break;
             }
-            if candidates[index] != subject {
+            if candidates.get(index) != Some(subject) {
                 index += 1;
                 continue;
             }
             for _ in index..candidates.len() {
                 self.source_step(cancel)?;
             }
-            self.autofocus_candidates_mut(document).remove(index);
+            self.relations_remove(
+                document,
+                transaction::RelationField::AutofocusCandidates,
+                index,
+                1,
+                cancel,
+            )?;
         }
         Ok(())
     }
@@ -94,17 +84,14 @@ impl Draft {
             limits.autofocus_candidates,
             DomResource::AutofocusCandidates,
         )?;
-        let candidates = self.autofocus_state(document)?.0;
-        // Capacity belongs to the actual installed vector, not its logical slice.
-        let capacity = match &self.node(document)?.autofocus_document {
-            Some(State::Known { candidates, .. }) => candidates.capacity(),
-            _ => unreachable!(),
-        };
-        let growth = self.source_reserve_amount::<Key>(candidates.len(), capacity, 1, cancel)?;
-        source::reserve_bank(self.autofocus_candidates_mut(document), 1, growth)?;
-        self.source_admit(0, cancel)?;
-        self.source_step(cancel)?;
-        self.autofocus_candidates_mut(document).push(subject);
+        let length = self.autofocus_state(document)?.0.len();
+        self.relations_insert(
+            document,
+            transaction::RelationField::AutofocusCandidates,
+            length,
+            &[subject],
+            cancel,
+        )?;
         Ok(())
     }
     pub(in crate::store) fn autofocus_clear(
@@ -113,10 +100,14 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        for _ in self.autofocus_state(document)?.0 {
-            self.source_step(cancel)?;
-        }
-        self.autofocus_candidates_mut(document).clear();
+        let length = self.autofocus_state(document)?.0.len();
+        self.relations_remove(
+            document,
+            transaction::RelationField::AutofocusCandidates,
+            0,
+            length,
+            cancel,
+        )?;
         Ok(())
     }
     pub(in crate::store) fn autofocus_set_processed(
@@ -126,11 +117,12 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.autofocus_state(document)?;
-        let Some(State::Known { processed, .. }) = &mut self.node_mut(document).autofocus_document
-        else {
-            unreachable!()
-        };
-        *processed = true;
+        self.with_node_fields(document, cancel, |fields| {
+            let Some(State::Known { processed, .. }) = &mut fields.autofocus_document else {
+                unreachable!()
+            };
+            *processed = true;
+        })?;
         Ok(())
     }
     pub(in crate::store) fn retire_autofocus_candidate(
@@ -142,19 +134,16 @@ impl Draft {
         if !matches!(self.node(subject)?.kind, DomNodeKind::Element(_)) {
             return Ok(());
         }
-        for index in 0..self.existing.len() + self.created.len() {
+        let owners = self.inbound_keys(subject, cancel)?;
+        for key in owners.iter().copied() {
             self.source_step(cancel)?;
-            let (key, node) = if index < self.existing.len() {
-                (Key::Existing(index), self.existing[index].as_ref())
-            } else {
-                let i = index - self.existing.len();
-                (Key::Created(i), self.created[i].as_ref())
-            };
             if matches!(
-                node.and_then(|n| n.autofocus_document.as_ref()),
-                Some(State::Known { .. })
+                self.node(key)?.autofocus_document,
+                Some(transaction::AutofocusRead::Known { .. })
             ) {
                 self.autofocus_remove(key, subject, cancel)?;
+                #[cfg(test)]
+                tests::after_retirement_document(self);
             }
         }
         Ok(())

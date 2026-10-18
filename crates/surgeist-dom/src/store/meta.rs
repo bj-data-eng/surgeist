@@ -90,11 +90,18 @@ impl Draft {
             }
         }
     }
-    fn meta_metadata_mut(&mut self, document: Key) -> &mut DomDocumentMetadata {
-        let DomNodeKind::Document(metadata) = &mut self.node_mut(document).kind else {
-            unreachable!("checked Document");
-        };
-        metadata
+    fn with_meta_metadata<R>(
+        &mut self,
+        document: Key,
+        cancel: &AtomicBool,
+        edit: impl FnOnce(&mut DomDocumentMetadata) -> R,
+    ) -> Result<R, DomError> {
+        self.with_node_fields(document, cancel, |fields| {
+            let DomNodeKind::Document(metadata) = &mut fields.kind else {
+                unreachable!("checked Document")
+            };
+            edit(metadata)
+        })
     }
     fn meta_pragma(
         &mut self,
@@ -103,6 +110,8 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        #[cfg(test)]
+        transaction::queues::admission_observation::before_payload(self);
         let Some(raw) = self.meta_attribute(key, Attr::HttpEquiv, cancel)? else {
             return Ok(());
         };
@@ -163,6 +172,8 @@ impl Draft {
                 self.source_admit_units(range.len(), cancel)?;
                 self.source_admit(requested, cancel)?;
                 let formation = source::formation::Formation::new(self, cancel)?;
+                #[cfg(test)]
+                let mut token_writes = crate::store::CopyObservation::default();
                 let mut token = source::formation::utf16_buffer(
                     range.len(),
                     limits.units,
@@ -180,15 +191,21 @@ impl Draft {
                     #[cfg(test)]
                     token_observation::copy(self, token.capacity(), cancel);
                     token.push(*unit);
+                    #[cfg(test)]
+                    token_writes.pushed::<u16>();
                 }
-                self.meta_metadata_mut(document)
-                    .meta_state_mut()
-                    .expect("checked history")
-                    .pragma_language = Some(DocumentString::from_utf16(token));
+                #[cfg(test)]
+                transaction::queues::admission_observation::after_payload(self);
+                self.with_node_fields_formed(document, cancel, formation, |fields| {
+                    let DomNodeKind::Document(metadata) = &mut fields.kind else {
+                        unreachable!("checked Document");
+                    };
+                    metadata
+                        .meta_state_mut()
+                        .expect("checked history")
+                        .pragma_language = Some(DocumentString::from_utf16(token))
+                })?;
                 self.units = units;
-                // The actual buffer has moved into canonical metadata. No
-                // fallible action intervenes before releasing its local lease.
-                drop(formation);
             }
             Pragma::Refresh => {
                 if content.is_empty() {
@@ -219,18 +236,22 @@ impl Draft {
                         if url.scheme() == surgeist_html_semantics::HtmlBaseUrlScheme::Javascript {
                             return Ok(());
                         }
-                        self.meta_metadata_mut(document)
-                            .meta_state_mut()
-                            .expect("checked history")
-                            .will_declaratively_refresh = true;
+                        self.with_meta_metadata(document, cancel, |metadata| {
+                            metadata
+                                .meta_state_mut()
+                                .expect("checked history")
+                                .will_declaratively_refresh = true
+                        })?;
                     }
                     Some(surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget::DocumentUrl) => {
                         // This branch selects the actual current Document URL;
                         // it does not parse URL text or reconstruct its history.
-                        self.meta_metadata_mut(document)
-                            .meta_state_mut()
-                            .expect("checked history")
-                            .will_declaratively_refresh = true;
+                        self.with_meta_metadata(document, cancel, |metadata| {
+                            metadata
+                                .meta_state_mut()
+                                .expect("checked history")
+                                .will_declaratively_refresh = true
+                        })?;
                     }
                 }
             }
@@ -269,9 +290,9 @@ impl Draft {
                 .referrer_policy()
                 .ok_or(DomError::Meta(Failure::HistoryUnavailable))?;
             if current != policy {
-                self.meta_metadata_mut(document)
-                    .policy_container_mut()
-                    .referrer = Some(policy);
+                self.with_meta_metadata(document, cancel, |metadata| {
+                    metadata.policy_container_mut().referrer = Some(policy)
+                })?;
             }
         }
         Ok(())
@@ -342,8 +363,9 @@ impl Draft {
                 for _ in 0..size_of::<crate::DomMetaThemeColorState>() {
                     self.meta_step(cancel)?;
                 }
-                self.meta_metadata_mut(document).meta_theme_color =
-                    crate::DomMetaThemeColorState::Known(selected_theme);
+                self.with_meta_metadata(document, cancel, |metadata| {
+                    metadata.meta_theme_color = crate::DomMetaThemeColorState::Known(selected_theme)
+                })?;
                 self.document_metadata(document)?.apply_meta_theme();
             } else {
                 let old = self
@@ -365,15 +387,7 @@ impl Draft {
                 if !equivalent {
                     let old_bytes = old.map_or(0, |old| old.bytes);
                     let new_bytes = selected_scheme.as_ref().map_or(0, |new| new.selected.bytes);
-                    let mut retained = 0usize;
-                    for node in self.existing.iter().chain(&self.created).flatten() {
-                        self.meta_step(cancel)?;
-                        if let DomNodeKind::Document(metadata) = &node.kind {
-                            retained = retained
-                                .checked_add(metadata.meta_color_scheme_bytes())
-                                .ok_or(DomError::RepresentationExhausted)?;
-                        }
-                    }
+                    let retained = self.counts.meta_color_scheme_bytes;
                     let retained = retained
                         .checked_sub(old_bytes)
                         .and_then(|n| n.checked_add(new_bytes))
@@ -394,12 +408,15 @@ impl Draft {
                     // Move the admitted report into canonical custody before
                     // its temporary formation debit is released.
                     if let Some(candidate) = selected_scheme {
-                        self.meta_metadata_mut(document).meta_color_scheme =
-                            Some(Some(candidate.selected));
+                        self.with_meta_metadata(document, cancel, |metadata| {
+                            metadata.meta_color_scheme = Some(Some(candidate.selected))
+                        })?;
                         self.units = units;
                         drop(candidate.formation);
                     } else {
-                        self.meta_metadata_mut(document).meta_color_scheme = Some(None);
+                        self.with_meta_metadata(document, cancel, |metadata| {
+                            metadata.meta_color_scheme = Some(None)
+                        })?;
                         self.units = units;
                     }
                 }
@@ -642,7 +659,22 @@ mod tests {
             1,
         ));
     }
-    fn language_draft() -> (Draft, Key, Key) {
+    struct Fixture {
+        draft: Draft,
+        _dom: Dom,
+    }
+    impl std::ops::Deref for Fixture {
+        type Target = Draft;
+        fn deref(&self) -> &Draft {
+            &self.draft
+        }
+    }
+    impl std::ops::DerefMut for Fixture {
+        fn deref_mut(&mut self) -> &mut Draft {
+            &mut self.draft
+        }
+    }
+    fn language_draft() -> (Fixture, Key, Key) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(policy()).unwrap();
         let mut setup = DomBatch::new();
@@ -666,9 +698,9 @@ mod tests {
         dom.apply(edit, &cancel).unwrap();
         let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         (
-            draft,
-            Key::Existing(meta.slot),
-            Key::Existing(document.node().slot),
+            Fixture { draft, _dom: dom },
+            Key::Existing(meta),
+            Key::Existing(document.node()),
         )
     }
     fn language(draft: &Draft, doc: Key) -> &[u16] {
@@ -686,42 +718,67 @@ mod tests {
         use std::sync::atomic::Ordering;
         let cancel = AtomicBool::new(false);
         let bytes = size_of::<Vec<u16>>() + 4 * size_of::<u16>();
-        let (mut draft, meta, doc) = language_draft();
-        source_budget(&mut draft, bytes, 4);
-        token_observation::start(None);
-        draft.meta_pragma(meta, doc, policy(), &cancel).unwrap();
-        let copied = token_observation::finish();
-        assert_eq!(
-            (copied.count, copied.capacity, copied.bytes, copied.units),
-            (4, 4, bytes, 4)
-        );
-        assert_eq!(language(&draft, doc), [0x45, 0x4e, 0x2d, 0xd800]);
-        assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
-        assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
-        // The exact same original ordinary branch keeps its values and tariff.
-        let (mut ordinary, meta, doc) = language_draft();
-        let initial_work = ordinary.meta_work.get();
-        ordinary.meta_pragma(meta, doc, policy(), &cancel).unwrap();
-        assert_eq!(language(&ordinary, doc), [0x45, 0x4e, 0x2d, 0xd800]);
-        assert_eq!(
-            ordinary.meta_work.get() - initial_work,
-            draft.meta_work.get()
-        );
+        // Select only the original raw token allocation. Its finite parent
+        // allowance resumes after that copy for the separate field barrier.
+        for resource in [
+            DomResource::SourceRetainedBytes,
+            DomResource::SourceRetainedUnits,
+        ] {
+            let (mut draft, meta, doc) = language_draft();
+            source_budget(&mut draft, 1_000_000, 1_000_000);
+            let boundary = transaction::queues::admission_observation::Binding::payload(
+                custody::Usage::new(bytes, 4),
+                resource,
+                false,
+            );
+            token_observation::start(None);
+            draft.meta_pragma(meta, doc, policy(), &cancel).unwrap();
+            let copied = token_observation::finish();
+            boundary.limit();
+            drop(boundary);
+            assert_eq!(
+                (copied.count, copied.capacity, copied.bytes, copied.units),
+                (4, 4, bytes, 4)
+            );
+            assert_eq!(language(&draft, doc), [0x45, 0x4e, 0x2d, 0xd800]);
+            assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
+            assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
+            // The exact same original ordinary branch keeps its values and tariff.
+            let (mut ordinary, meta, doc) = language_draft();
+            let initial_work = ordinary.meta_work.get();
+            ordinary.meta_pragma(meta, doc, policy(), &cancel).unwrap();
+            assert_eq!(language(&ordinary, doc), [0x45, 0x4e, 0x2d, 0xd800]);
+            assert_eq!(
+                ordinary.meta_work.get() - initial_work,
+                draft.meta_work.get()
+            );
+        }
     }
     #[test]
     fn source_meta_language_refuses_one_short_and_reclaims_cancelled_copy() {
         use std::sync::atomic::Ordering;
         let cancel = AtomicBool::new(false);
         let bytes = size_of::<Vec<u16>>() + 4 * size_of::<u16>();
-        for (byte_extra, unit_extra, resource) in [
-            (bytes - 1, 4, DomResource::SourceRetainedBytes),
-            (bytes, 3, DomResource::SourceRetainedUnits),
+        for resource in [
+            DomResource::SourceRetainedBytes,
+            DomResource::SourceRetainedUnits,
         ] {
             let (mut draft, meta, doc) = language_draft();
-            source_budget(&mut draft, byte_extra, unit_extra);
-            assert!(
-                matches!(draft.meta_pragma(meta, doc, policy(), &cancel), Err(DomError::ResourceLimit { resource: actual, .. }) if actual == resource)
+            source_budget(&mut draft, 1_000_000, 1_000_000);
+            let boundary = transaction::queues::admission_observation::Binding::payload(
+                custody::Usage::new(bytes, 4),
+                resource,
+                true,
             );
+            let result = draft.meta_pragma(meta, doc, policy(), &cancel);
+            assert_eq!(
+                result,
+                Err(DomError::ResourceLimit {
+                    resource,
+                    limit: boundary.limit()
+                })
+            );
+            drop(boundary);
             assert_eq!(
                 language(&draft, doc),
                 "old".encode_utf16().collect::<Vec<_>>()
@@ -730,7 +787,13 @@ mod tests {
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
         }
         let (mut draft, meta, doc) = language_draft();
-        source_budget(&mut draft, bytes, 4);
+        source_budget(&mut draft, 1_000_000, 1_000_000);
+        let parent_policy = draft.source_limits;
+        let boundary = transaction::queues::admission_observation::Binding::payload(
+            custody::Usage::new(bytes, 4),
+            DomResource::SourceRetainedBytes,
+            false,
+        );
         let before_work = draft.source_work.load(Ordering::Relaxed);
         token_observation::start(Some(2));
         assert!(matches!(
@@ -738,6 +801,8 @@ mod tests {
             Err(DomError::Cancelled)
         ));
         let copied = token_observation::finish();
+        boundary.limit();
+        drop(boundary);
         assert_eq!((copied.count, copied.bytes, copied.units), (2, bytes, 4));
         assert_eq!(
             language(&draft, doc),
@@ -748,7 +813,15 @@ mod tests {
         let spent = draft.source_work.load(Ordering::Relaxed);
         assert!(spent > before_work);
         cancel.store(false, Ordering::Release);
+        draft.source_limits = parent_policy;
+        let boundary = transaction::queues::admission_observation::Binding::payload(
+            custody::Usage::new(bytes, 4),
+            DomResource::SourceRetainedBytes,
+            false,
+        );
         draft.meta_pragma(meta, doc, policy(), &cancel).unwrap();
+        boundary.limit();
+        drop(boundary);
         assert_eq!(language(&draft, doc), [0x45, 0x4e, 0x2d, 0xd800]);
         assert!(draft.source_work.load(Ordering::Relaxed) > spent);
         assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);

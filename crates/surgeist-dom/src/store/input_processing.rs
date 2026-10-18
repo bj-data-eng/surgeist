@@ -261,6 +261,12 @@ impl InputProcessing {
         }
         let actual = extent(next.capacity(), width)?;
         #[cfg(test)]
+        if super::scale_metrics::ENABLED && actual != 0 {
+            super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
+                bytes: actual,
+            });
+        }
+        #[cfg(test)]
         source_observation::grew(source_growth, actual);
         if let Err(error) = self.acquire(
             actual - requested,
@@ -278,6 +284,8 @@ impl InputProcessing {
             self.release(actual, kind.payload(capacity, width)?, source);
             return Err(error);
         }
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let moved = (|| {
             let mut values = buffer.drain(..);
             loop {
@@ -287,6 +295,8 @@ impl InputProcessing {
                 };
                 self.charge(1, source, cancel)?;
                 next.push(value);
+                #[cfg(test)]
+                written.pushed::<T>();
             }
             Ok(())
         })();
@@ -625,18 +635,11 @@ mod tests {
 
 #[cfg(test)]
 pub(super) mod source_observation {
-    use super::*;
     use crate::store::Draft;
-    use std::{
-        cell::{Cell, RefCell},
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        },
-    };
+    use std::cell::{Cell, RefCell};
     struct Context {
-        base: usize,
-        live: Arc<AtomicUsize>,
+        external: usize,
+        ledger: super::super::custody::Ledger,
         limit: usize,
     }
     #[derive(Clone, Copy, Debug)]
@@ -665,32 +668,23 @@ pub(super) mod source_observation {
         ACTIVE.set(false);
         LAST.take()
     }
-    pub(in crate::store) fn bind(draft: &Draft, cancel: &AtomicBool) -> Result<Binding, DomError> {
-        let next = if ACTIVE.get() {
-            draft
-                .source_limits
-                .map(|limits| {
-                    Ok::<_, DomError>(Context {
-                        base: draft
-                            .source_storage_bytes(cancel)?
-                            .checked_add(draft.source_other_bytes)
-                            .ok_or(DomError::RepresentationExhausted)?,
-                        live: draft.source_formation_bytes.clone(),
-                        limit: limits.retained_bytes,
-                    })
-                })
-                .transpose()?
-        } else {
-            None
-        };
+    pub(in crate::store) fn bind(draft: &Draft) -> Binding {
+        let next = draft
+            .source_limits
+            .filter(|_| ACTIVE.get())
+            .map(|limits| Context {
+                external: draft.source_other_bytes,
+                ledger: draft.custody_ledger().clone(),
+                limit: limits.retained_bytes,
+            });
         let previous = CONTEXT.with(|context| context.replace(next));
-        Ok(Binding { previous })
+        Binding { previous }
     }
     pub(super) fn before(old: usize, registered: bool) -> Option<Growth> {
         CONTEXT.with(|context| {
             context.borrow().as_ref().map(|context| Growth {
-                required: context.base
-                    + context.live.load(Ordering::Relaxed)
+                required: context.external
+                    + context.ledger.total().bytes()
                     + if registered { 0 } else { old },
                 limit: context.limit,
             })
@@ -713,7 +707,25 @@ mod source_tests {
     use crate::{Dom, DomBatch, DomLimits, DomSourceLimits, Namespace};
     use std::sync::{Arc, atomic::Ordering};
 
-    fn draft(cancel: &AtomicBool, bytes: usize, units: usize) -> Draft {
+    // A real Source always keeps its canonical owner alive. Its owner-held
+    // ledger allocations must remain present after the baseline is measured.
+    struct Fixture {
+        draft: Draft,
+        _dom: Dom,
+    }
+    impl std::ops::Deref for Fixture {
+        type Target = Draft;
+        fn deref(&self) -> &Draft {
+            &self.draft
+        }
+    }
+    impl std::ops::DerefMut for Fixture {
+        fn deref_mut(&mut self) -> &mut Draft {
+            &mut self.draft
+        }
+    }
+
+    fn draft(cancel: &AtomicBool, bytes: usize, units: usize) -> Fixture {
         let dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), cancel).unwrap();
         draft.source_limits = Some(DomSourceLimits::new(
@@ -736,7 +748,7 @@ mod source_tests {
             4096,
             1,
         ));
-        draft
+        Fixture { draft, _dom: dom }
     }
 
     fn assert_released(draft: &Draft, source: &Formation) {

@@ -61,15 +61,13 @@ impl Draft {
             Some((value, payload)) => (Some(value), payload),
             None => (None, None),
         };
-        let DomNodeKind::Element(element) = &mut self.node_mut(key).kind else {
-            unreachable!("checked Output")
-        };
-        element
-            .output_state_mut()
-            .expect("checked Output")
-            .default_override = value;
+        self.with_element_fields_charged(key, cancel, payload, |element| {
+            element
+                .output_state_mut()
+                .expect("checked Output")
+                .default_override = value;
+        })?;
         self.units = units;
-        drop(payload); // The canonical family now owns the transferred occurrence.
         Ok(())
     }
     // The ordinary parent/sibling links provide finite traversal without a second
@@ -88,7 +86,7 @@ impl Draft {
             if let DomNodeKind::Text(text) = &node.kind {
                 visit(text)?;
             }
-            if let Some(&child) = node.children.first() {
+            if let Some(child) = node.children.first() {
                 key = child;
                 continue;
             }
@@ -103,9 +101,8 @@ impl Draft {
                     .expect("ordinary descendant has parent");
                 let mut found = false;
                 let mut next = None;
-                for child in &self.node(parent)?.children {
+                for child in self.node(parent)?.children.iter() {
                     self.source_step(cancel)?;
-                    let child = *child;
                     if found {
                         next = Some(child);
                         break;
@@ -171,6 +168,12 @@ impl Draft {
             output
                 .try_reserve_exact(length)
                 .map_err(|_| DomError::AllocationFailed)?;
+            #[cfg(test)]
+            if scale_metrics::ENABLED && output.capacity() != 0 {
+                scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                    bytes: output.capacity() * size_of::<u16>(),
+                });
+            }
         }
         if let Some(formation) = &formation {
             formation.retain_payload(
@@ -189,10 +192,14 @@ impl Draft {
             limits.units,
             DomResource::StringCodeUnits,
         )?;
+        #[cfg(test)]
+        let mut written = transaction::CopyObservation::default();
         self.output_text(key, cancel, |text| {
             for unit in text.code_units() {
                 self.source_step(cancel)?;
                 output.push(*unit);
+                #[cfg(test)]
+                written.pushed::<u16>();
             }
             Ok(())
         })?;
@@ -384,6 +391,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_text_reports_the_actual_initialized_utf16_output() {
+        use crate::store::scale_metrics::{Hooks, Measurement};
+        if !scale_metrics::ENABLED {
+            return;
+        }
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 8, 65_536).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let output = batch.create_element_ns(&document, crate::Namespace::html(), "output");
+        let first = batch.create_text(&document, "ab");
+        let second = batch.create_text(&document, "cd");
+        batch.insert_before(&first, &output, None);
+        batch.insert_before(&second, &output, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let output = commit.created(&output).unwrap().unwrap();
+        for source in [false, true] {
+            let draft = if source {
+                Draft::new_source_root(
+                    &dom,
+                    Arc::new(BatchIdentity),
+                    &[],
+                    0,
+                    crate::DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 8, 16, 16, 1),
+                    &cancel,
+                )
+                .unwrap()
+                .0
+            } else {
+                Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap()
+            };
+            let measurement = Measurement::begin().unwrap();
+            let output = draft
+                .output_default(Key::Existing(output), dom.limits, &cancel)
+                .unwrap();
+            let counters = measurement.finish(Hooks::default()).unwrap();
+            assert_eq!(output.0, DocumentString::from("abcd"));
+            assert_eq!(counters.sequence_materialized_bytes, 4 * size_of::<u16>());
+            assert_eq!(counters.relation_sequence_materialized_bytes, 0);
+            assert!(counters.structural_bytes >= 4 * size_of::<u16>());
+        }
+    }
+
+    #[test]
     fn source_prefix_store_and_reset_replace_reach_cancellation_without_publishing() {
         for reset in [false, true] {
             let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
@@ -414,7 +465,7 @@ mod tests {
             let key = draft.resolve(output.into()).unwrap();
             let input_key = draft.resolve(input.into()).unwrap();
             let form_key = draft.resolve(form.into()).unwrap();
-            let old_children = draft.node(key).unwrap().children.clone();
+            let old_children = draft.node(key).unwrap().children.iter().collect::<Vec<_>>();
             let mut actions = Vec::new();
             let stop = if reset {
                 Action::ClearDefaultOverride
@@ -455,7 +506,7 @@ mod tests {
                 assert_eq!(draft.node(input_key).unwrap().control_owner, None);
                 assert_eq!(draft.node(input_key).unwrap().parent, None);
                 assert_eq!(draft.node(key).unwrap().children.len(), 1);
-                let child = draft.node(key).unwrap().children[0];
+                let child = draft.node(key).unwrap().children.get(0).unwrap();
                 assert!(
                     matches!(&draft.node(child).unwrap().kind,DomNodeKind::Text(v) if v == &DocumentString::from("old"))
                 );
@@ -468,7 +519,10 @@ mod tests {
                         Action::ReplaceAllWithSuppliedValue
                     ]
                 );
-                assert_eq!(draft.node(key).unwrap().children, old_children);
+                assert_eq!(
+                    draft.node(key).unwrap().children.iter().collect::<Vec<_>>(),
+                    old_children
+                );
                 assert_eq!(draft.node(input_key).unwrap().control_owner, Some(form_key));
             }
             drop(draft);

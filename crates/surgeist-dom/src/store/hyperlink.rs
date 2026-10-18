@@ -81,10 +81,9 @@ impl Draft {
         {
             return Err(failure(Failure::EnvironmentMismatch));
         }
-        let base = node.base_document.as_ref().ok_or(DomError::WrongNodeKind)?;
+        let base = node.base_document.ok_or(DomError::WrongNodeKind)?;
         let facts = base
             .facts
-            .as_ref()
             .ok_or_else(|| failure(Failure::Base(HtmlBaseMissing::DocumentFacts)))?;
         let encoding = facts
             .document()
@@ -110,11 +109,7 @@ impl Draft {
         let first = if let Some(key) = base.first {
             step()?;
             HtmlDocumentFirstBase::Present(
-                self.node(key)?
-                    .base
-                    .as_ref()
-                    .and_then(|b| b.frozen.as_ref())
-                    .map(|f| &f.value),
+                self.node(key)?.base.and_then(|b| b.frozen).map(|f| f.value),
             )
         } else {
             HtmlDocumentFirstBase::Absent
@@ -169,27 +164,16 @@ impl Draft {
         facts
             .validate_inputs(base, encoding, revision)
             .map_err(|e| failure(Failure::Producer(e)))?;
-        let mut records = facts.formation_usage().record_capacity();
-        for (i, node) in self.existing.iter().enumerate() {
-            self.encoding_url_step(cancel)?;
-            if key != Key::Existing(i)
-                && let Some(doc) = node.as_ref().and_then(|n| n.encoding_url_document.as_ref())
-            {
-                records = records
-                    .checked_add(doc.records())
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
-        for (i, node) in self.created.iter().enumerate() {
-            self.encoding_url_step(cancel)?;
-            if key != Key::Created(i)
-                && let Some(doc) = node.as_ref().and_then(|n| n.encoding_url_document.as_ref())
-            {
-                records = records
-                    .checked_add(doc.records())
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
+        let previous_records = self
+            .node(key)?
+            .encoding_url_document
+            .map_or(0, crate::hyperlink::EncodingUrlDocument::records);
+        let records = self
+            .counts
+            .encoding_observations
+            .checked_sub(previous_records)
+            .and_then(|records| records.checked_add(facts.formation_usage().record_capacity()))
+            .ok_or(DomError::RepresentationExhausted)?;
         admit(
             records,
             limits.encoding_url_observations,
@@ -225,13 +209,14 @@ impl Draft {
             facts.retained_storage_usage().retained_bytes(),
             facts.retained_storage_usage().utf16_extent(),
         );
-        self.node_mut(key)
-            .encoding_url_document
-            .as_mut()
-            .expect("Document")
-            .facts = Some(facts);
+        self.with_node_fields_formed(key, cancel, formation, |fields| {
+            fields
+                .encoding_url_document
+                .as_mut()
+                .expect("Document")
+                .facts = Some(facts)
+        })?;
         self.units = units;
-        drop(formation);
         Ok(())
     }
     fn store_hyperlink_parse(
@@ -239,6 +224,7 @@ impl Draft {
         key: Key,
         value: RetainedParse,
         limits: DomLimits,
+        cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let old = self
             .node(key)?
@@ -252,13 +238,10 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let document = self.node(key)?.document;
         let RetainedParse { value, payload } = value;
-        self.node_mut(key)
-            .hyperlink
-            .as_mut()
-            .expect("hyperlink")
-            .parsed = Some(Parsed { document, value });
+        self.with_node_fields_charged(key, cancel, payload, |fields| {
+            fields.hyperlink.as_mut().expect("hyperlink").parsed = Some(Parsed { document, value })
+        })?;
         self.units = units;
-        drop(payload);
         Ok(())
     }
     pub(super) fn set_hyperlink_url(
@@ -282,11 +265,9 @@ impl Draft {
                         .as_ref()
                         .expect("actual A/Area")
                         .units();
-                    self.node_mut(key)
-                        .hyperlink
-                        .as_mut()
-                        .expect("hyperlink")
-                        .parsed = None;
+                    self.with_node_fields(key, cancel, |fields| {
+                        fields.hyperlink.as_mut().expect("hyperlink").parsed = None
+                    })?;
                     self.units -= previous;
                     Reply::Applied
                 }
@@ -352,7 +333,7 @@ impl Draft {
                     } else {
                         // Observed failure retains meaningful input qualification,
                         // while the associated URL remains the already-cleared null.
-                        self.store_hyperlink_parse(key, value, limits)?;
+                        self.store_hyperlink_parse(key, value, limits, cancel)?;
                     }
                     Reply::Parsed(success)
                 }
@@ -361,6 +342,7 @@ impl Draft {
                         key,
                         parsed.take().expect("actual successful parse"),
                         limits,
+                        cancel,
                     )?;
                     Reply::Applied
                 }
@@ -897,12 +879,14 @@ mod tests {
             let mut d = Draft::new(&dom, b.owner, &cancel).unwrap();
             let document = d.resolve(doc.into()).unwrap();
             let key = d.resolve(a.into()).unwrap();
-            d.node_mut(document)
-                .base_document
-                .as_mut()
-                .unwrap()
-                .render_blocking
-                .push(key);
+            d.relations_insert(
+                document,
+                transaction::RelationField::RenderBlocking,
+                0,
+                &[key],
+                &cancel,
+            )
+            .unwrap();
             assert_eq!(
                 d.apply(&b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
                     .unwrap_err(),

@@ -27,28 +27,12 @@ pub(in crate::store) struct Invocation {
     pub host: crate::DomHostedHostId,
     pub work: Arc<AtomicU64>,
     pub ancestors: Option<Arc<crate::source::event::EventWork>>,
+    pub work_custody: source::formation::SourceWorkCustody,
+    pub retained_ancestors: Option<Arc<source::formation::EventWorkCustody>>,
     pub limits: crate::DomSourceLimits,
     pub closing_credit: u64,
 }
 impl Invocation {
-    pub(in crate::store) fn retained_atoms(&self) -> Result<source::storage::Payload, DomError> {
-        let mut payload = source::storage::Payload {
-            bytes: size_of::<AtomicU64>() + 2 * size_of::<usize>(),
-            units: 0,
-        };
-        let mut ancestor = self.ancestors.as_ref();
-        while let Some(work) = ancestor {
-            payload
-                .add_bytes(size_of::<crate::source::event::EventWork>() + 2 * size_of::<usize>())?;
-            payload.add_bytes(work.bytes.load(Ordering::Relaxed))?;
-            payload.units = payload
-                .units
-                .checked_add(work.units.load(Ordering::Relaxed))
-                .ok_or(DomError::RepresentationExhausted)?;
-            ancestor = work.ancestors.as_ref();
-        }
-        Ok(payload)
-    }
     pub(in crate::store) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)?;
         let next = self
@@ -79,7 +63,7 @@ impl Invocation {
 impl Draft {
     fn fullscreen_simple(&self, document: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         let mut count = 0usize;
-        for &key in self.fullscreen_raw_members(document, cancel)? {
+        for key in self.fullscreen_raw_members(document, cancel)?.iter() {
             self.source_step(cancel)?;
             count += usize::from(self.element(key)?.fullscreen_flag());
             if count > 1 {
@@ -138,9 +122,12 @@ impl Draft {
             || self.fullscreen_model_target(document, cancel)?.is_none()
         {
             if root {
-                self.method = Some(method::Frame::FullscreenExit(Some(
-                    DomFullscreenExitReturn::RejectedTypeError,
-                )));
+                self.source_set_method(
+                    Some(method::Frame::FullscreenExit(Some(
+                        DomFullscreenExitReturn::RejectedTypeError,
+                    ))),
+                    cancel,
+                )?;
             }
             return Ok(());
         }
@@ -258,7 +245,7 @@ impl Draft {
         };
         drop(documents);
         if root {
-            self.method = Some(method::Frame::FullscreenExit(None));
+            self.source_set_method(Some(method::Frame::FullscreenExit(None)), cancel)?;
         }
         self.fullscreen_exit = Some(frame);
         Err(DomError::FullscreenExitHandoffRequired)
@@ -283,33 +270,20 @@ impl Draft {
                 kind: DomFullscreenEventKind::Change,
             };
             let mut found = false;
-            for old in &self.node(frame.document)?.fullscreen_events {
+            for old in self.node(frame.document)?.fullscreen_events.iter() {
                 self.source_step(cancel)?;
-                found |= *old == event;
+                found |= old == event;
             }
             if !found {
-                let mut count = 0usize;
-                for node in self.existing.iter().chain(&self.created).flatten() {
-                    self.source_step(cancel)?;
-                    count = count
-                        .checked_add(node.fullscreen_events.len())
-                        .ok_or(DomError::RepresentationExhausted)?;
-                }
                 admit(
-                    count
+                    self.counts
+                        .fullscreen_events
                         .checked_add(1)
                         .ok_or(DomError::RepresentationExhausted)?,
                     limits.fullscreen_events,
                     DomResource::FullscreenEvents,
                 )?;
-                let budget = source::formation::Formation::new(self, cancel)?;
-                source::formation::reserve(
-                    &mut self.node_mut(frame.document).fullscreen_events,
-                    1,
-                    budget.as_ref(),
-                    cancel,
-                )?;
-                self.node_mut(frame.document).fullscreen_events.push(event);
+                self.fullscreen_events_push(frame.document, event, cancel)?;
             }
             self.unfullscreen_element_model(subject, cancel)?;
         }
@@ -320,46 +294,20 @@ impl Dom {
     pub(in crate::store) fn fullscreen_work_custody(
         &self,
         work: &Arc<AtomicU64>,
-        mut step: impl FnMut() -> Result<(), DomError>,
+        step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Option<DomFullscreenExitId>, DomError> {
-        for invocation in &self.fullscreen_exits {
-            step()?;
-            if Arc::ptr_eq(work, &invocation.work) {
-                return Ok(Some(invocation.id));
-            }
-            let mut ancestor = invocation.ancestors.as_ref();
-            while let Some(parent) = ancestor {
-                step()?;
-                if Arc::ptr_eq(work, &parent.work) {
-                    return Ok(Some(invocation.id));
-                }
-                ancestor = parent.ancestors.as_ref();
-            }
-        }
-        Ok(None)
+        self.fullscreen_exits.work_custody(work, step)
     }
     pub(in crate::store) fn fullscreen_custody_bytes(&self) -> Result<usize, DomError> {
-        let mut bytes = self
-            .fullscreen_exits
-            .capacity()
-            .checked_mul(size_of::<Invocation>())
-            .and_then(|bytes| bytes.checked_add(size_of::<Vec<Invocation>>() + size_of::<u64>()))
-            .ok_or(DomError::RepresentationExhausted)?;
-        for invocation in &self.fullscreen_exits {
-            bytes = bytes
-                .checked_add(invocation.retained_atoms()?.bytes)
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-        Ok(bytes)
+        // Records, index paths and aliased work atoms are already represented
+        // once by the common controlled ledger. This external envelope contains
+        // only the owner field headers, never another logical root total.
+        size_of::<super::custody::Invocations>()
+            .checked_add(size_of::<u64>())
+            .ok_or(DomError::RepresentationExhausted)
     }
     pub(in crate::store) fn fullscreen_custody_units(&self) -> Result<usize, DomError> {
-        let mut units = 0usize;
-        for invocation in &self.fullscreen_exits {
-            units = units
-                .checked_add(invocation.retained_atoms()?.units)
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-        Ok(units)
+        Ok(0)
     }
     pub fn fullscreen_exit_status(
         &self,
@@ -399,7 +347,7 @@ impl Dom {
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
         let key = draft.resolve(document.into())?;
-        draft.node_mut(key).fullscreen_events.clear();
+        draft.fullscreen_events_clear(key, cancel)?;
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
         Ok(DomFullscreenEventBatch {

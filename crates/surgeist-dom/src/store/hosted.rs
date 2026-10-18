@@ -66,6 +66,8 @@ impl crate::document::HostedDocumentInputs {
         cancel: &AtomicBool,
     ) -> Result<Self, DomHostedError> {
         use crate::document::HostedDocumentInputData;
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         use surgeist_html_semantics::{
             HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsRevision,
             HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
@@ -157,6 +159,8 @@ impl crate::document::HostedDocumentInputs {
         for unit in URL {
             work.step(cancel)?;
             candidate.units.push(*unit);
+            #[cfg(test)]
+            written.pushed::<u16>();
         }
         candidate.serialization = Some(DocumentString::from_utf16(std::mem::take(
             &mut candidate.units,
@@ -294,6 +298,10 @@ impl crate::document::HostedDocumentInputs {
     }
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the sole continuation inline in the producer-admitted Operation; boxing adds separately fallible storage to the original receipt"
+)]
 pub(in crate::store) enum CreationPhase {
     Policy(DomHostedPolicyRequest),
     Execution(DomHostedExecutionRequest),
@@ -804,10 +812,7 @@ impl DomHostedCreationLease {
                     },
                     &context,
                 )?;
-                prepared.state.hosted_history = Some(graph);
-                if let (Some(parent), Some(fresh)) = (&prepared.formation, fresh) {
-                    parent.absorb(fresh);
-                }
+                prepared.set_hosted_history(Some(graph), fresh, &dom.custody_registry, cancel)?;
                 (
                     prepared,
                     CreationPhase::Complete(
@@ -870,6 +875,8 @@ fn set_pending(
     operation: Option<DomHostedOperationId>,
     cancel: &AtomicBool,
 ) -> Result<(), DomError> {
+    #[cfg(test)]
+    let mut written = crate::store::CopyObservation::default();
     if prepared.state.incomplete_hosted != operation {
         source::formation::reserve(
             &mut prepared.changes,
@@ -883,6 +890,8 @@ fn set_pending(
                 .expect("one actual published operation"),
             complete: operation.is_none(),
         });
+        #[cfg(test)]
+        written.pushed::<DomChange>();
         prepared.state.incomplete_hosted = operation;
     }
     Ok(())
@@ -919,6 +928,7 @@ impl Dom {
             DomBatch::new().owner,
             limits,
             request.work.spent.clone(),
+            request.work.spent_id,
             request.key.operation,
             cancel,
         )?)
@@ -980,7 +990,7 @@ impl Dom {
             _retained: retained,
         });
         let mut draft = self.hosted_draft(operation, source, cancel)?;
-        draft.registries = Some(registries);
+        draft.set_registries(Some(registries), None, cancel)?;
         let formation = source::formation::Formation::new(&draft, cancel)?;
         if let Some(formation) = &formation {
             let mut payload = source::storage::Payload::default();
@@ -1000,13 +1010,13 @@ impl Dom {
             &mut |text| source::formation::string(text, formation.as_ref(), cancel),
         )?;
         let document = Key::Created(draft.created.len());
-        let document = draft.allocate(
+        let document = draft.allocate_formed(
             DomNodeKind::Document(metadata),
             document,
             self.limits,
             cancel,
+            formation,
         )?;
-        drop(formation);
         let html = draft.html_skeleton_element(document, "html", self.limits, cancel)?;
         draft.select_element_registry(html, cancel)?;
         draft.pre_insert(html, document, None, self.limits, cancel)?;
@@ -1019,15 +1029,20 @@ impl Dom {
         let (mut prepared, mapped) =
             draft.finish_with_mapping(self, cancel, [document].into_iter())?;
         let document = DocumentId(mapped[0]);
-        prepared.state.hosted_globals = Some(GlobalDocumentIndex::establish(
+        let fresh = prepared
+            .formation
+            .as_ref()
+            .map(source::formation::Formation::fork);
+        let globals = GlobalDocumentIndex::establish(
             self.state.hosted_globals.as_deref(),
             global,
             document,
             source,
             &request.work,
-            prepared.formation.as_ref(),
+            fresh.as_ref(),
             cancel,
-        )?);
+        )?;
+        prepared.set_hosted_globals(Some(globals), fresh, &self.custody_registry, cancel)?;
         Ok((prepared, document))
     }
     fn prepare_hosted_phase(
@@ -1062,46 +1077,75 @@ impl Dom {
             _retained: retained,
         });
         let mut draft = self.hosted_draft(operation, source, cancel)?;
-        let DomNodeKind::Document(metadata) =
-            &mut draft.node_mut(Key::Existing(document.node().slot)).kind
-        else {
-            return Err(DomError::WrongDocument.into());
-        };
-        metadata.set_hosted_association(association);
+        draft.with_node_fields(Key::Existing(document.node()), cancel, |fields| {
+            let DomNodeKind::Document(metadata) = &mut fields.kind else {
+                return Err(DomError::WrongDocument);
+            };
+            metadata.set_hosted_association(association);
+            Ok(())
+        })??;
         Ok(draft.finish(self, cancel)?)
     }
 }
 
-/// Immutable canonical identity index; no activity or execution state is mirrored.
+/// Immutable canonical identity index; issuer/slot lookup never fills holes.
 #[derive(Debug)]
 pub(crate) struct GlobalDocumentIndex {
-    entries: Vec<Option<(DomHostedGlobalId, DocumentId)>>,
+    identity: custody::MaterializationId,
+    entries: transaction::auxiliary::index::Index<GlobalMapping>,
+    _retained: Retained,
+}
+#[derive(Debug)]
+pub(in crate::store) struct GlobalMapping {
+    pub global: DomHostedGlobalId,
+    pub document: DocumentId,
+    pub origin: custody::MaterializationId,
     _retained: Retained,
 }
 impl PartialEq for GlobalDocumentIndex {
     fn eq(&self, other: &Self) -> bool {
-        self.entries == other.entries
+        self.entries.same_values(&other.entries, &|a, b| {
+            a.global == b.global && a.document == b.document
+        })
     }
 }
 impl Eq for GlobalDocumentIndex {}
 impl GlobalDocumentIndex {
+    pub(in crate::store) fn custody_identity(&self) -> custody::MaterializationId {
+        self.identity
+    }
+    pub(in crate::store) fn custody_usage(&self) -> custody::Usage {
+        custody::Usage::new(size_of::<Self>(), 0)
+    }
+    pub(in crate::store) fn custody_bank(
+        &self,
+    ) -> &transaction::auxiliary::index::Index<GlobalMapping> {
+        &self.entries
+    }
     pub(in crate::store) fn document(
         &self,
         global: DomHostedGlobalId,
     ) -> Result<DocumentId, DomHostedError> {
+        let key =
+            transaction::auxiliary::index::Key::new(global.source, global.slot, global.generation);
         self.entries
-            .get(global.slot)
-            .and_then(|entry| *entry)
-            .filter(|(current, _)| *current == global)
-            .map(|(_, document)| document)
+            .get(key)
+            .map_err(|error| match error {
+                DomError::ForeignOwner => DomHostedError::StaleIdentity,
+                other => other.into(),
+            })?
+            .map(|entry| entry.document)
             .ok_or(DomHostedError::StaleIdentity)
     }
-    pub(in crate::store) fn retained_payload_bytes(&self) -> Result<usize, DomError> {
-        self.entries
-            .capacity()
-            .checked_mul(size_of::<Option<(DomHostedGlobalId, DocumentId)>>())
-            .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
-            .ok_or(DomError::RepresentationExhausted)
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_materializations(
+        &self,
+    ) -> Result<Vec<(custody::MaterializationId, custody::Usage)>, DomError> {
+        let mut output = vec![(self.identity, custody::Usage::new(size_of::<Self>(), 0))];
+        output.extend(self.entries.inspect_materializations(|_| {
+            Ok(custody::Usage::new(size_of::<GlobalMapping>(), 0))
+        })?);
+        Ok(output)
     }
     pub(in crate::store) fn establish(
         old: Option<&Self>,
@@ -1113,77 +1157,52 @@ impl GlobalDocumentIndex {
         cancel: &AtomicBool,
     ) -> Result<Arc<Self>, DomHostedError> {
         work.step(cancel)?;
-        let required = old.map_or(0, |index| index.entries.len()).max(
-            global
-                .slot
-                .checked_add(1)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-        );
-        let backing = required
-            .checked_mul(size_of::<Option<(DomHostedGlobalId, DocumentId)>>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        let header = size_of::<Vec<Option<(DomHostedGlobalId, DocumentId)>>>();
-        crate::hosted::admit(
-            backing
-                .checked_add(header)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-            source.limits().scratch_bytes(),
-            DomHostedResource::ScratchBytes,
-        )?;
-        let requested = backing
-            .checked_add(size_of::<Self>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        let retained = source.retain(requested, cancel)?;
-        if let Some(formation) = formation {
-            formation.retain_bytes(requested, cancel)?;
-        }
-        // Field order keeps the debit live until after backing destruction on
-        // every refusal, including a late callback during the retained copy.
+        let identity = custody::MaterializationId::fresh()?;
+        let scratch = std::cell::Cell::new(0);
+        let producer = transaction::auxiliary::index::Producer {
+            source,
+            work,
+            formation,
+            cancel,
+            origin: identity,
+            scratch: &scratch,
+        };
+        let retained = producer.retain(custody::Usage::new(size_of::<Self>(), 0))?;
+        let key =
+            transaction::auxiliary::index::Key::new(global.source, global.slot, global.generation);
+        let duplicate = old
+            .map(|old| old.entries.get(key))
+            .transpose()?
+            .flatten()
+            .is_some();
         let mut candidate = Self {
-            entries: Vec::new(),
+            identity,
+            entries: old.map_or_else(Default::default, |old| old.entries.clone()),
             _retained: retained,
         };
-        candidate
-            .entries
-            .try_reserve_exact(required)
-            .map_err(|_| DomHostedError::AllocationFailed)?;
-        let actual = candidate
-            .entries
-            .capacity()
-            .checked_mul(size_of::<Option<(DomHostedGlobalId, DocumentId)>>())
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        crate::hosted::admit(
-            actual
-                .checked_add(header)
-                .ok_or(DomHostedError::RepresentationExhausted)?,
-            source.limits().scratch_bytes(),
-            DomHostedResource::ScratchBytes,
+        let value = producer.record(|retained| GlobalMapping {
+            global,
+            document,
+            origin: identity,
+            _retained: retained,
+        })?;
+        candidate.entries.insert(
+            key,
+            value,
+            custody::Usage::new(size_of::<GlobalMapping>(), 0),
+            true,
+            &producer,
         )?;
-        let extra = actual
-            .checked_sub(backing)
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        candidate._retained.append(source.retain(extra, cancel)?)?;
-        if let Some(formation) = formation {
-            formation.retain_bytes(extra, cancel)?;
-        }
-        if let Some(old) = old {
-            for entry in &old.entries {
-                work.step(cancel)?;
-                candidate.entries.push(*entry);
-            }
-        }
-        while candidate.entries.len() < required {
-            work.step(cancel)?;
-            candidate.entries.push(None);
-        }
-        work.step(cancel)?;
-        if candidate.entries[global.slot].is_some_and(|(current, _)| current == global) {
+        if duplicate {
             return Err(DomHostedError::StaleBasis);
         }
-        candidate.entries[global.slot] = Some((global, document));
-        Ok(Arc::new(candidate))
+        let candidate = Arc::new(candidate);
+        #[cfg(test)]
+        transaction::auxiliary::allocated(size_of::<Self>());
+        Ok(candidate)
     }
 }
+
 impl DomSnapshot {
     /// Historical creation identity, independent of later adoption or retirement.
     /// This observation grants no current execution authority.
@@ -1407,34 +1426,25 @@ impl Dom {
         }
         // Mutable CSSOM custody is reconciled by its actual owner, never by a
         // lifecycle metadata transition. Unrelated Documents remain usable.
-        for root in &self.style_cssom_roots {
-            work.step(cancel)?;
-            if self.state.node(self.owner, root.root())?.document == document {
-                return Err(DomHostedError::PendingDocumentObligations);
-            }
+        work.step(cancel)?;
+        if self.style_cssom_roots.has_document(document) {
+            return Err(DomHostedError::PendingDocumentObligations);
         }
-        for target in &self.state.signal_slots {
-            work.step(cancel)?;
-            if self.state.node(self.owner, *target)?.document == document {
-                return Err(DomHostedError::PendingDocumentObligations);
-            }
+        work.step(cancel)?;
+        if self.state.signal_targets.has_document_obligations(document) {
+            return Err(DomHostedError::PendingDocumentObligations);
         }
-        for task in &self.state.native_tasks {
-            work.step(cancel)?;
-            if let select::Task::Update { target, .. } = task
-                && self.state.node(self.owner, *target)?.document == document
-            {
-                return Err(DomHostedError::PendingDocumentObligations);
-            }
+        work.step(cancel)?;
+        if self.state.native_targets.has_document_obligations(document) {
+            return Err(DomHostedError::PendingDocumentObligations);
         }
-        for row in &self.state.details_intentions {
-            work.step(cancel)?;
-            if row
-                .queue_association()
-                .is_some_and(|queue| queue.document() == document)
-            {
-                return Err(DomHostedError::PendingDocumentObligations);
-            }
+        work.step(cancel)?;
+        if self
+            .state
+            .details_targets
+            .has_document_obligations(document)
+        {
+            return Err(DomHostedError::PendingDocumentObligations);
         }
         Ok(())
     }
@@ -1532,10 +1542,7 @@ impl DomHostedDestructionLease {
                     .as_deref()
                     .ok_or(DomHostedError::UnsupportedProfile)?
                     .clear_document(creation.document, &context)?;
-                prepared.state.hosted_history = Some(graph);
-                if let (Some(parent), Some(fresh)) = (&prepared.formation, fresh) {
-                    parent.absorb(fresh);
-                }
+                prepared.set_hosted_history(Some(graph), fresh, &dom.custody_registry, cancel)?;
                 let permit = source
                     .permit(operation.request(), current.revision, false, cancel)?
                     .retire_navigable(creation)?;
@@ -1589,7 +1596,7 @@ impl DomHostedDestructionLease {
 }
 
 #[cfg(test)]
-mod index_tests;
+pub(in crate::store) mod index_tests;
 
 #[cfg(test)]
 mod constructor_tests;
@@ -1720,6 +1727,12 @@ impl Dom {
             .values
             .try_reserve_exact(count)
             .map_err(|_| DomHostedError::AllocationFailed)?;
+        #[cfg(test)]
+        if scale_metrics::ENABLED && children.values.capacity() != 0 {
+            scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                bytes: children.values.capacity() * size_of::<DomHostedCreation>(),
+            });
+        }
         let actual = extent(children.values.capacity())?;
         crate::hosted::admit(
             scratch_base
@@ -1749,9 +1762,22 @@ impl Dom {
                 entry: child.active,
                 navigable: child.id,
             });
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::SequenceMaterialized {
+                    bytes: size_of::<DomHostedCreation>(),
+                });
+            }
             Ok(())
         })?;
-        Ok(Arc::new(children))
+        let children = Arc::new(children);
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                bytes: size_of::<CapturedChildren>(),
+            });
+        }
+        Ok(children)
     }
 }
 

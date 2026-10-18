@@ -67,7 +67,7 @@ impl Draft {
         self.source_step(cancel)?;
         let mut state = self.dialog_state(subject)?.clone();
         state.is_modal = modal;
-        self.element_mut(subject).set_dialog_state(state);
+        self.with_element_fields(subject, cancel, |element| element.set_dialog_state(state))?;
         drop(formation);
         self.source_admit(0, cancel)
     }

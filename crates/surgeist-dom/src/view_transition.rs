@@ -180,6 +180,7 @@ impl DomViewTransitionSheet {
 /// Source slots after explicit initialization with a real CSSOM sheet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomDocumentViewTransitions {
+    pub(crate) init_ordinal: usize,
     pub(crate) document: DocumentId,
     pub(crate) sheet: DomViewTransitionSheet,
     pub(crate) active: Option<DomViewTransitionId>,
@@ -223,23 +224,42 @@ pub(crate) struct Record {
 pub(crate) struct Transition {
     pub id: DomViewTransitionId,
     pub document: DocumentId,
-    pub records: crate::store::SharedVec<Record>,
+    pub records: crate::store::Bank<Record>,
+    pub name_units: usize,
+    pub pseudos: usize,
     pub setup: bool,
     pub root_captured: bool,
     pub next_record: u64,
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DocumentTransitions {
+    pub document: DocumentId,
+    pub ids: crate::store::Bank<DomViewTransitionId>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ViewTransitions {
-    pub documents: crate::store::SharedVec<DomDocumentViewTransitions>,
-    pub transitions: crate::store::SharedVec<Transition>,
+    pub documents: crate::store::Bank<DomDocumentViewTransitions>,
+    pub transitions: crate::store::Bank<Transition>,
+    pub document_transitions: crate::store::Bank<DocumentTransitions>,
+    pub records: usize,
+    pub pseudos: usize,
+    pub retained_bytes: usize,
+    pub retained_units: usize,
     pub next_transition: u64,
+    pub next_document: usize,
 }
 impl ViewTransitions {
     pub fn new() -> Self {
         Self {
-            documents: crate::store::SharedVec::default(),
-            transitions: crate::store::SharedVec::default(),
+            documents: crate::store::Bank::default(),
+            transitions: crate::store::Bank::default(),
+            document_transitions: crate::store::Bank::default(),
+            records: 0,
+            pseudos: 0,
+            retained_bytes: 0,
+            retained_units: 0,
             next_transition: 0,
+            next_document: 0,
         }
     }
     pub fn transition(
@@ -251,8 +271,8 @@ impl ViewTransitions {
             return Err(DomError::ForeignOwner);
         }
         self.transitions
-            .iter()
-            .find(|t| t.id == id)
+            .get(usize::try_from(id.generation).map_err(|_| DomError::RepresentationExhausted)?)
+            .filter(|t| t.id == id)
             .ok_or(DomError::StaleViewTransition)
     }
     pub fn pseudo(
@@ -264,8 +284,11 @@ impl ViewTransitions {
         let record = if let Some(record) = id.record {
             let record = transition
                 .records
-                .iter()
-                .find(|r| r.id == record)
+                .get(
+                    usize::try_from(record.generation)
+                        .map_err(|_| DomError::RepresentationExhausted)?,
+                )
+                .filter(|r| r.id == record)
                 .ok_or(DomError::StaleViewTransitionRecord)?;
             if !transition.setup || !record_has_pseudo(record.branches, id.kind) {
                 return Err(DomError::StaleViewTransitionPseudo);
@@ -334,15 +357,33 @@ impl<'a> DomViewTransition<'a> {
         self.value.setup
     }
     pub fn records(self) -> impl ExactSizeIterator<Item = DomViewTransitionRecord<'a>> {
-        self.value
-            .records
-            .iter()
-            .map(move |value| DomViewTransitionRecord {
-                transition: self,
-                value,
-            })
+        TransitionRecords {
+            transition: self,
+            records: self.value.records.iter(),
+            remaining: self.value.records.record_count(),
+        }
     }
 }
+struct TransitionRecords<'a> {
+    transition: DomViewTransition<'a>,
+    records: crate::store::BankIter<'a, Record>,
+    remaining: usize,
+}
+impl<'a> Iterator for TransitionRecords<'a> {
+    type Item = DomViewTransitionRecord<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let (_, value) = self.records.next()?;
+        self.remaining -= 1;
+        Some(DomViewTransitionRecord {
+            transition: self.transition,
+            value,
+        })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+impl ExactSizeIterator for TransitionRecords<'_> {}
 #[derive(Clone, Copy, Debug)]
 pub struct DomViewTransitionRecord<'a> {
     pub(crate) transition: DomViewTransition<'a>,
@@ -428,6 +469,7 @@ impl<'a> DomViewTransitionPseudo<'a> {
         DomViewTransitionPseudoChildren {
             value: self,
             index: 0,
+            records: self.transition.value.records.iter(),
         }
     }
 }
@@ -435,6 +477,7 @@ impl<'a> DomViewTransitionPseudo<'a> {
 pub struct DomViewTransitionPseudoChildren<'a> {
     value: DomViewTransitionPseudo<'a>,
     index: usize,
+    records: crate::store::BankIter<'a, Record>,
 }
 impl Iterator for DomViewTransitionPseudoChildren<'_> {
     type Item = DomViewTransitionPseudoId;
@@ -443,8 +486,7 @@ impl Iterator for DomViewTransitionPseudoChildren<'_> {
         let t = self.value.transition;
         match self.value.id.kind {
             Root if t.value.setup => {
-                let r = t.value.records.get(self.index)?;
-                self.index += 1;
+                let (_, r) = self.records.next()?;
                 Some(pseudo_id(t.id(), Some(r.id), Group))
             }
             ImagePair => loop {

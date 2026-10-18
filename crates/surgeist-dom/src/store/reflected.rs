@@ -48,13 +48,14 @@ impl Draft {
             admit_effect()?;
             match effect {
                 Effect::ClearExplicitTarget => {
-                    *self
-                        .node_mut(node)
-                        .reflected_targets
-                        .as_mut()
-                        .expect("checked Button")
-                        .slot_mut(key)
-                        .expect("checked reflected slot") = None
+                    self.with_node_fields(node, cancel, |fields| {
+                        *fields
+                            .reflected_targets
+                            .as_mut()
+                            .expect("checked Button")
+                            .slot_mut(key)
+                            .expect("checked reflected slot") = None
+                    })?;
                 }
                 Effect::RemoveContentAttribute => {
                     let operand = source::formation::Formation::new(self, cancel)?;
@@ -89,42 +90,59 @@ impl Draft {
                     )?;
                 }
                 Effect::SetExplicitTargetFromSuppliedElement => {
-                    *self
-                        .node_mut(node)
-                        .reflected_targets
-                        .as_mut()
-                        .expect("checked Button")
-                        .slot_mut(key)
-                        .expect("checked reflected slot") = target
+                    self.with_node_fields(node, cancel, |fields| {
+                        *fields
+                            .reflected_targets
+                            .as_mut()
+                            .expect("checked Button")
+                            .slot_mut(key)
+                            .expect("checked reflected slot") = target
+                    })?;
                 }
             }
         }
         Ok(())
     }
-    pub(super) fn reflected_attribute_change(&mut self, node: Key, changed: &crate::QualifiedName) {
-        if let Some(targets) = self.node_mut(node).reflected_targets.as_mut() {
-            for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
-                if surgeist_html::reflected_element_attribute_change(key.attribute(), changed)
-                    && let Some(slot) = targets.slot_mut(key)
-                {
-                    *slot = None;
+    pub(super) fn reflected_attribute_change(
+        &mut self,
+        node: Key,
+        changed: &crate::QualifiedName,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.with_node_fields(node, cancel, |fields| {
+            if let Some(targets) = fields.reflected_targets.as_mut() {
+                for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
+                    if surgeist_html::reflected_element_attribute_change(key.attribute(), changed)
+                        && let Some(slot) = targets.slot_mut(key)
+                    {
+                        *slot = None;
+                    }
                 }
             }
-        }
+        })
     }
     pub(super) fn retire_reflected_target(
         &mut self,
         target: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        for node in self
-            .existing
-            .iter_mut()
-            .chain(&mut self.created)
-            .filter_map(Option::as_mut)
-        {
-            check_cancel(cancel)?;
-            if let Some(targets) = &mut node.reflected_targets {
+        let owners = self.inbound_keys(target, cancel)?;
+        for owner in owners.iter().copied() {
+            self.source_step(cancel)?;
+            let Some(targets) = self.node(owner)?.reflected_targets else {
+                continue;
+            };
+            if ![ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget]
+                .into_iter()
+                .any(|key| targets.get(key) == Some(Some(target)))
+            {
+                continue;
+            }
+            self.with_node_fields(owner, cancel, |fields| {
+                let targets = fields
+                    .reflected_targets
+                    .as_mut()
+                    .expect("qualified reflected owner");
                 for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
                     if let Some(slot) = targets.slot_mut(key)
                         && *slot == Some(target)
@@ -132,7 +150,7 @@ impl Draft {
                         *slot = None;
                     }
                 }
-            }
+            })?;
         }
         Ok(())
     }

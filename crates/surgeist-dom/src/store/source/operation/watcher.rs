@@ -69,13 +69,7 @@ impl Operation {
             .cursor
             .reply(HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;
-        self.draft.source_step(cancel)?;
-        self.draft
-            .effects
-            .last_mut()
-            .expect("qualified Hook")
-            .effect = select::Effect::DialogHook(frame);
-        Ok(())
+        self.draft.source_set_dialog_hook_frame(frame, cancel)
     }
 }
 impl DomSourceLease<'_> {

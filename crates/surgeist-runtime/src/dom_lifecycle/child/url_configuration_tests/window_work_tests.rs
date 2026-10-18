@@ -65,20 +65,18 @@ fn reach_native_execution(
         }
     }
 }
-fn scaffold_and_canonical_replacement_work() -> (u64, u64) {
-    let (mut session, hosted, frame, body) = frame_fixture();
+fn canonical_replacement_boundary(
+    dom: &mut surgeist_dom::Dom,
+    hosted: &HostedRuntime,
+    child: &DomHostedChildRequest,
+) -> (u64, u64) {
     let cancel = AtomicBool::new(false);
-    let mut dom = session.dom();
+    let before_resume = dom.pending_source_edit().unwrap().spent_work();
     let mut lease = dom
-        .raw_mut()
-        .begin_source_edit(
-            DomSourceEdit::insert_before(frame, body, None),
-            source_limits(20_000_000),
-            &cancel,
-        )
+        .resume_source_edit(child.operation(), source_limits(20_000_000), &cancel)
         .unwrap();
-    let _child = reach_native_execution(&mut lease, &hosted);
     let scaffold = lease.status().spent_work();
+    let resume = scaffold - before_resume;
     let owner = hosted.state().unwrap();
     let state = owner.borrow();
     let agent = &state.hosts[0].top_levels[0]
@@ -102,11 +100,10 @@ fn scaffold_and_canonical_replacement_work() -> (u64, u64) {
     let producer = lease.status().spent_work() - scaffold;
     drop(replacement);
     drop(guard);
-    (scaffold, producer)
+    (lease.status().spent_work() + resume, producer)
 }
 #[test]
 fn first_frame_window_preflight_source_work_exact_and_one_short_preserve_real_native_execution() {
-    let (scaffold, producer) = scaffold_and_canonical_replacement_work();
     // New preflight: parent Global lookup4; current child lookup1; retained
     // host/composition/cluster/Window plus two Settings fields6; origin match1;
     // Window growth entry1 and the one actual old-Window move1 =14.
@@ -114,19 +111,29 @@ fn first_frame_window_preflight_source_work_exact_and_one_short_preserve_real_na
     for short in [true, false] {
         let (mut session, hosted, frame, body) = frame_fixture();
         let cancel = AtomicBool::new(false);
-        let cap = scaffold + producer + RUNTIME_STEPS - u64::from(short);
         let owner = hosted.state().unwrap();
         let request = {
             let mut dom = session.dom();
+            let child = {
+                let mut lease = dom
+                    .raw_mut()
+                    .begin_source_edit(
+                        DomSourceEdit::insert_before(frame, body, None),
+                        source_limits(20_000_000),
+                        &cancel,
+                    )
+                    .unwrap();
+                reach_native_execution(&mut lease, &hosted)
+            };
+            // Price canonical retention/resume on this exact original issued
+            // request. A fresh owner's work cannot set its one-short policy.
+            let (scaffold, producer) =
+                canonical_replacement_boundary(dom.raw_mut(), &hosted, &child);
+            let cap = scaffold + producer + RUNTIME_STEPS - u64::from(short);
             let mut lease = dom
                 .raw_mut()
-                .begin_source_edit(
-                    DomSourceEdit::insert_before(frame, body, None),
-                    source_limits(cap),
-                    &cancel,
-                )
+                .resume_source_edit(child.operation(), source_limits(cap), &cancel)
                 .unwrap();
-            let child = reach_native_execution(&mut lease, &hosted);
             assert_eq!(lease.status().spent_work(), scaffold);
             let before = lease.snapshot();
             let identity = match lease.hosted_child_step(&child).unwrap() {

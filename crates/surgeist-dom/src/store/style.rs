@@ -88,23 +88,23 @@ impl Draft {
     ) -> Result<bool, DomError> {
         use surgeist_html::HtmlDocumentBodyRole as Role;
         let mut root = None;
-        for child in &self.node(document)?.children {
+        for child in self.node(document)?.children.iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Element(element) = &self.node(*child)?.kind {
+            if let DomNodeKind::Element(element) = &self.node(child)?.kind {
                 if surgeist_html::document_body_role_with(element.name(), |_| {
                     self.source_step(cancel)
                 })? != Role::Html
                 {
                     return Ok(false);
                 }
-                root = Some(*child);
+                root = Some(child);
                 break;
             }
         }
         let Some(root) = root else { return Ok(false) };
-        for child in &self.node(root)?.children {
+        for child in self.node(root)?.children.iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Element(element) = &self.node(*child)?.kind
+            if let DomNodeKind::Element(element) = &self.node(child)?.kind
                 && surgeist_html::document_body_role_with(element.name(), |_| {
                     self.source_step(cancel)
                 })? == Role::Body
@@ -127,39 +127,25 @@ impl Draft {
         if !surgeist_html::document_allows_render_blocking(html, body) {
             return Ok(());
         }
-        let list = &self
-            .node(document)?
+        let node = self.node(document)?;
+        let list = &node
             .base_document
             .as_ref()
             .ok_or(DomError::WrongNodeKind)?
             .render_blocking;
-        for member in list {
+        for member in list.iter() {
             self.source_step(cancel)?;
-            if *member == key {
+            if member == key {
                 return Ok(());
             }
         }
-        let amount = self.source_reserve_amount::<Key>(list.len(), list.capacity(), 1, cancel)?;
-        let list = &mut self
-            .node_mut(document)
-            .base_document
-            .as_mut()
-            .expect("Document")
-            .render_blocking;
-        match amount {
-            Some(amount) => list
-                .try_reserve_exact(amount)
-                .map_err(|_| DomError::AllocationFailed)?,
-            None => reserve(list, 1)?,
-        }
-        self.source_admit(0, cancel)?;
-        self.node_mut(document)
-            .base_document
-            .as_mut()
-            .expect("Document")
-            .render_blocking
-            .push(key);
-        Ok(())
+        self.relations_insert(
+            document,
+            transaction::RelationField::RenderBlocking,
+            list.len(),
+            &[key],
+            cancel,
+        )
     }
     fn style_unblock_rendering(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         let document = self.node(key)?.document;
@@ -173,39 +159,34 @@ impl Draft {
         for _ in 0..length {
             self.source_step(cancel)?;
         }
-        self.node_mut(document)
-            .base_document
-            .as_mut()
-            .expect("Document")
-            .render_blocking
-            .retain(|member| *member != key);
-        Ok(())
+        self.relations_retain(
+            document,
+            transaction::RelationField::RenderBlocking,
+            |member| member != key,
+            cancel,
+        )
     }
     pub(super) fn retire_style_render_blocking(
         &mut self,
         retired: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        for index in 0..self.existing.len() + self.created.len() {
+        let owners = self.inbound_keys(retired, cancel)?;
+        for key in owners.iter().copied() {
             self.source_step(cancel)?;
-            let key = if index < self.existing.len() {
-                Key::Existing(index)
-            } else {
-                Key::Created(index - self.existing.len())
-            };
             let Ok(node) = self.node(key) else { continue };
             let Some(document) = &node.base_document else {
                 continue;
             };
-            for _ in &document.render_blocking {
+            for _ in document.render_blocking.iter() {
                 self.source_step(cancel)?;
             }
-            self.node_mut(key)
-                .base_document
-                .as_mut()
-                .expect("Document")
-                .render_blocking
-                .retain(|member| *member != retired);
+            self.relations_retain(
+                key,
+                transaction::RelationField::RenderBlocking,
+                |member| member != retired,
+                cancel,
+            )?;
         }
         Ok(())
     }

@@ -404,7 +404,10 @@ impl DomSourceLease<'_> {
                         call.result.ok_or(DomError::InvalidSourceOperation)?,
                     ))
                     .map_err(DomError::DialogProtocol)?;
-                op.draft.method = Some(crate::store::method::Frame::Dialog(call.outer));
+                op.draft.source_set_method(
+                    Some(crate::store::method::Frame::Dialog(call.outer)),
+                    cancel,
+                )?;
                 op.request_close = None;
                 op.receipt = None;
                 return Ok(None);
@@ -456,20 +459,23 @@ impl DomSourceLease<'_> {
                         op.request_close_result = result;
                         call.nested = true;
                         call.occurrence = None;
-                        op.draft.method = Some(crate::store::method::Frame::Dialog(
-                            crate::store::dialog::MethodFrame {
-                                subject: key,
-                                cursor: surgeist_html::HtmlDialogCursor::new(
-                                    surgeist_html::HtmlDialogOperation::Close {
-                                        result_present: op.request_close_result.is_some(),
-                                    },
-                                ),
-                                state: crate::store::dialog::MethodState::Ready,
-                                invocation: Invocation::Unissued,
-                                locals: crate::store::dialog::MethodLocals::Close,
-                                focusing: None,
-                            },
-                        ));
+                        op.draft.source_set_method(
+                            Some(crate::store::method::Frame::Dialog(
+                                crate::store::dialog::MethodFrame {
+                                    subject: key,
+                                    cursor: surgeist_html::HtmlDialogCursor::new(
+                                        surgeist_html::HtmlDialogOperation::Close {
+                                            result_present: op.request_close_result.is_some(),
+                                        },
+                                    ),
+                                    state: crate::store::dialog::MethodState::Ready,
+                                    invocation: Invocation::Unissued,
+                                    locals: crate::store::dialog::MethodLocals::Close,
+                                    focusing: None,
+                                },
+                            )),
+                            cancel,
+                        )?;
                         op.request_close = Some(call);
                         op.receipt = None;
                         drop(formation);
@@ -531,7 +537,7 @@ impl Draft {
             return Ok(Some(shadow));
         }
         if let Some(first) = node.children.first() {
-            return Ok(Some(*first));
+            return Ok(Some(first));
         }
         loop {
             self.source_step(cancel)?;
@@ -541,19 +547,19 @@ impl Draft {
             let node = self.node(current)?;
             if let Some(host) = node.host {
                 if let Some(first) = self.node(host)?.children.first() {
-                    return Ok(Some(*first));
+                    return Ok(Some(first));
                 }
                 current = host;
                 continue;
             }
             let parent = node.parent.ok_or(DomError::HostedSourceUnavailable)?;
             let mut found = false;
-            for sibling in &self.node(parent)?.children {
+            for sibling in self.node(parent)?.children.iter() {
                 self.source_step(cancel)?;
                 if found {
-                    return Ok(Some(*sibling));
+                    return Ok(Some(sibling));
                 }
-                found = *sibling == current;
+                found = sibling == current;
             }
             if !found {
                 return Err(DomError::HostedSourceUnavailable);
@@ -571,6 +577,8 @@ impl DomSourceLease<'_> {
         source: &crate::DomHostedSource,
         cancel: &AtomicBool,
     ) -> Result<crate::DomCloseWatcherHistoryWindows, DomError> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let prepared = self.prepare_close_watcher_request(request, source, cancel)?;
         if prepared.request.step
             != DomSourceCloseWatcherStep::Action(A::ConsumeHistoryActionActivation)
@@ -616,6 +624,8 @@ impl DomSourceLease<'_> {
             let key = op.draft.resolve(top_document.node().into())?;
             formation::reserve(&mut pending, 1, formation.as_ref(), cancel)?;
             pending.push((key, Some(key)));
+            #[cfg(test)]
+            written.pushed::<(Key, Option<Key>)>();
         }
         while let Some((root, current)) = pending.last().copied() {
             op.draft.source_step(cancel)?;
@@ -656,6 +666,8 @@ impl DomSourceLease<'_> {
                 }
                 formation::reserve(&mut windows, 1, formation.as_ref(), cancel)?;
                 windows.push(active_association.global);
+                #[cfg(test)]
+                written.pushed::<crate::DomHostedGlobalId>();
             } else if let DomNodeKind::Element(element) = &node.kind
                 && let Some(Some(child)) = element.child_navigable()
             {
@@ -668,6 +680,8 @@ impl DomSourceLease<'_> {
                 let key = op.draft.resolve(document.node().into())?;
                 formation::reserve(&mut pending, 1, formation.as_ref(), cancel)?;
                 pending.push((key, Some(key)));
+                #[cfg(test)]
+                written.pushed::<(Key, Option<Key>)>();
             }
         }
         let bytes = windows

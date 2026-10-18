@@ -45,7 +45,7 @@ impl DomSourceLease<'_> {
         }
         // Only the already-settled original operation releases its own marker.
         // This publication never resolves a dead receiver or runs its method.
-        op.draft.method = None;
+        op.draft.source_set_method(None, cancel)?;
         op.publication(self.dom, false, PublicationTarget::None, cancel)?;
         op.receipt = None;
         self.complete = true;

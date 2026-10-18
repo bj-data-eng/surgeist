@@ -20,6 +20,7 @@ mod base;
 pub(crate) mod canonical;
 mod children;
 mod control;
+mod custody;
 mod design_mode;
 mod details;
 mod dialog;
@@ -29,8 +30,10 @@ mod element_tasks;
 mod focus;
 mod form;
 mod fullscreen;
+mod history;
 pub(crate) mod hosted;
 mod hyperlink;
+use history::HistoryEntry;
 mod image;
 mod import;
 mod input;
@@ -39,11 +42,17 @@ mod installation;
 mod meta;
 mod method;
 mod navigable;
+#[cfg(test)]
+mod oracle_tests;
 mod output;
 pub(crate) mod parsed_installation;
 mod range;
 mod reflected;
 pub(crate) mod registry;
+#[cfg(test)]
+mod scale_metrics;
+#[cfg(test)]
+mod scale_tests;
 mod script;
 mod select;
 mod shadow;
@@ -51,15 +60,22 @@ mod shared;
 mod slot;
 pub(crate) mod source;
 pub(crate) mod style;
+mod style_custody;
 #[cfg(test)]
 mod style_custody_tests;
 mod svg_script;
 mod template;
 mod textarea;
+mod transaction;
+#[cfg(test)]
+pub(crate) use transaction::CopyObservation;
 mod tree;
 mod view_transition;
 use crate::view_transition::*;
+pub(crate) use bank::{Bank, Iter as BankIter};
 pub(crate) use shared::SharedVec;
+pub(crate) use source::AllocationIds as KeyAliases;
+pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
 use view_transition::DraftTransitions;
 
 /// Configured capacity whose admission would be exceeded.
@@ -877,6 +893,10 @@ pub struct DomCommit {
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: DomChanges,
 }
+pub(in crate::store) struct CommittedPublication {
+    pub commit: DomCommit,
+    pub committed: transaction::PublicationCommitted,
+}
 impl DomCommit {
     pub fn created_range(
         &self,
@@ -957,8 +977,9 @@ impl DomCommit {
 }
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct Node {
+    pub(crate) receipts: transaction::NodeReceipts,
     pub(crate) fullscreen_events: SharedVec<crate::DomFullscreenEvent>,
     pub(crate) active_range: crate::DomActiveRangeState,
     pub(crate) document: DocumentId,
@@ -990,6 +1011,41 @@ pub(crate) struct Node {
     pub(crate) interactive_document: Option<canonical::Interactive>,
     pub(crate) autofocus_document: Option<canonical::Autofocus>,
 }
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.fullscreen_events == other.fullscreen_events
+            && self.active_range == other.active_range
+            && self.document == other.document
+            && self.relevant_global == other.relevant_global
+            && self.kind == other.kind
+            && self.parent == other.parent
+            && self.children == other.children
+            && self.shadow_root == other.shadow_root
+            && self.host == other.host
+            && self.template_contents == other.template_contents
+            && self.template_patch == other.template_patch
+            && self.template_document == other.template_document
+            && self.manual_nodes == other.manual_nodes
+            && self.assigned_nodes == other.assigned_nodes
+            && self.manual_slot == other.manual_slot
+            && self.assigned_slot == other.assigned_slot
+            && self.reflected_targets == other.reflected_targets
+            && self.control_owner == other.control_owner
+            && self.option_select == other.option_select
+            && self.form_past_names == other.form_past_names
+            && self.script == other.script
+            && self.style_parser_document == other.style_parser_document
+            && self.base == other.base
+            && self.base_document == other.base_document
+            && self.link == other.link
+            && self.image == other.image
+            && self.hyperlink == other.hyperlink
+            && self.encoding_url_document == other.encoding_url_document
+            && self.interactive_document == other.interactive_document
+            && self.autofocus_document == other.autofocus_document
+    }
+}
+
 #[cfg_attr(test, derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub(crate) struct Slot {
@@ -997,8 +1053,17 @@ pub(crate) struct Slot {
     retired: bool,
     pub(crate) node: Option<Node>,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct State {
+    identity: custody::MaterializationId,
+    counts: transaction::Counts,
+    inbound: transaction::inbound::InboundIndex,
+    controls: transaction::controls::ControlIndex,
+    slot_index: transaction::slot_index::SlotIndex,
+    range_dependencies: transaction::ranges::RangeDependencies,
+    signal_targets: transaction::queues::CanonicalTargets,
+    native_targets: transaction::queues::CanonicalTargets,
+    details_targets: transaction::queues::CanonicalTargets,
     pub(crate) ranges: bank::Bank<crate::range::Slot<NodeId>>,
     pub(crate) incomplete_source: Option<crate::DomSourceOperationId>,
     pub(crate) incomplete_hosted: Option<crate::hosted::DomHostedOperationId>,
@@ -1016,17 +1081,40 @@ pub(crate) struct State {
     nodes: usize,
     units: usize,
 }
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        self.ranges == other.ranges
+            && self.incomplete_source == other.incomplete_source
+            && self.incomplete_hosted == other.incomplete_hosted
+            && self.slots == other.slots
+            && self.registries == other.registries
+            && self.hosted_globals == other.hosted_globals
+            && self.hosted_history == other.hosted_history
+            && self.view_transitions == other.view_transitions
+            && self.signal_slots == other.signal_slots
+            && self.notification_queued == other.notification_queued
+            && self.native_tasks == other.native_tasks
+            && self.next_task == other.next_task
+            && self.details_intentions == other.details_intentions
+            && self.next_details_intention == other.next_details_intention
+            && self.nodes == other.nodes
+            && self.units == other.units
+    }
+}
 impl State {
     #[cfg(test)]
     pub(crate) fn mutate_slot(&mut self, index: usize, change: impl FnOnce(&mut Slot)) {
         let mut slot = self.slots[index].clone();
         change(&mut slot);
+        if let Some(node) = &mut slot.node {
+            source::storage::refresh_node_receipts(node).unwrap();
+        }
         let payload = source::storage::canonical_slot(&slot, || Ok(())).unwrap();
         let reusable = slot.node.is_none() && !slot.retired;
         self.slots
             .set(
                 index,
-                Arc::new(slot),
+                slot,
                 reusable,
                 bank::Totals {
                     bytes: payload.bytes,
@@ -1038,6 +1126,11 @@ impl State {
     }
 
     pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::CanonicalRecordRead);
+        }
+
         if id.owner != owner {
             return Err(DomError::ForeignOwner);
         }
@@ -1049,24 +1142,12 @@ impl State {
     }
 }
 
-struct HistoryEntry {
-    from: DomRevision,
-    changes: Arc<[DomChange]>,
-    bytes: usize,
-    older: Option<Box<HistoryEntry>>,
-}
-fn discard_history(mut history: Option<Box<HistoryEntry>>) {
-    while let Some(mut entry) = history {
-        history = entry.older.take();
-    }
-}
-
 /// Exclusive canonical mutation owner. Snapshots never borrow its mutable state.
 /// The whole owner is Send, including an exact parked source tail and retained
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
-    fullscreen_exits: Vec<fullscreen::exit::Invocation>,
+    fullscreen_exits: fullscreen::custody::Invocations,
     next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
@@ -1074,26 +1155,22 @@ pub struct Dom {
     revision: DomRevision,
     limits: DomLimits,
     state: Arc<State>,
-    history: Option<Box<HistoryEntry>>,
-    history_entries: usize,
-    history_bytes: usize,
+    state_custody: transaction::StateCustody,
+    custody_registry: bank::CustodyRegistry,
+    history: history::History,
     document_environment: crate::DomDocumentEnvironment,
     active_task: std::sync::Weak<crate::select::Authorization>,
     source_operation: Option<Box<source::operation::Operation>>,
     next_source_operation: u64,
     pub(in crate::store) source_parents: Vec<Box<source::operation::Operation>>,
     source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
-    style_cssom_roots: Vec<crate::style::DomStyleCssomRoot>,
+    style_cssom_roots: style_custody::Bank,
     hosted_source: Option<crate::hosted::SourceObservation>,
     next_hosted_source: u64,
     details_transferred: bool,
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
-}
-impl Drop for Dom {
-    fn drop(&mut self) {
-        discard_history(self.history.take());
-    }
+    _custody_administration: custody::Debit,
 }
 impl Dom {
     pub fn new(limits: DomLimits) -> Result<Self, DomError> {
@@ -1105,46 +1182,61 @@ impl Dom {
         limits: DomLimits,
         input: crate::DomNativeInputPlatform,
     ) -> Result<Self, DomError> {
+        let ledger = custody::Ledger::default();
+        let administration = ledger.retain(custody::Ledger::administration_usage(), |_| Ok(()))?;
+        let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(()))?;
+        let state = State {
+            identity: custody::MaterializationId::fresh()?,
+            counts: transaction::Counts::default(),
+            inbound: transaction::inbound::InboundIndex::default(),
+            controls: transaction::controls::ControlIndex::default(),
+            slot_index: transaction::slot_index::SlotIndex::default(),
+            range_dependencies: transaction::ranges::RangeDependencies::default(),
+            signal_targets: transaction::queues::CanonicalTargets::default(),
+            native_targets: transaction::queues::CanonicalTargets::default(),
+            details_targets: transaction::queues::CanonicalTargets::default(),
+            ranges: bank::Bank::default(),
+            incomplete_source: None,
+            incomplete_hosted: None,
+            slots: bank::Bank::default(),
+            registries: None,
+            hosted_globals: None,
+            hosted_history: None,
+            view_transitions: ViewTransitions::new(),
+            signal_slots: SharedVec::default(),
+            notification_queued: false,
+            native_tasks: SharedVec::default(),
+            next_task: 0,
+            details_intentions: SharedVec::default(),
+            next_details_intention: 0,
+            nodes: 0,
+            units: 0,
+        };
+        let state_custody = transaction::StateCustody::initial(&state, &registry, |_| Ok(()))?;
         Ok(Self {
-            fullscreen_exits: Vec::new(),
+            style_cssom_roots: style_custody::Bank::new(&registry),
+            fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             element_tasks: None,
             owner: DomOwnerId::allocate()?,
             revision: DomRevision(0),
             limits,
-            state: Arc::new(State {
-                ranges: bank::Bank::default(),
-                incomplete_source: None,
-                incomplete_hosted: None,
-                slots: bank::Bank::default(),
-                registries: None,
-                hosted_globals: None,
-                hosted_history: None,
-                view_transitions: ViewTransitions::new(),
-                signal_slots: SharedVec::default(),
-                notification_queued: false,
-                native_tasks: SharedVec::default(),
-                next_task: 0,
-                details_intentions: SharedVec::default(),
-                next_details_intention: 0,
-                nodes: 0,
-                units: 0,
-            }),
+            state: Arc::new(state),
+            state_custody,
+            custody_registry: registry,
+            _custody_administration: administration,
             active_task: std::sync::Weak::new(),
             source_operation: None,
             next_source_operation: 0,
             source_parents: Vec::new(),
             source_event_executor: None,
-            style_cssom_roots: Vec::new(),
             hosted_source: None,
             next_hosted_source: 0,
             details_transferred: false,
             hosted_operations: hosted::operations::Operations::default(),
             hosted_revisions: 0,
-            history: None,
-            history_entries: 0,
-            history_bytes: 0,
+            history: history::History::new(),
             document_environment: crate::DomDocumentEnvironment::new(input),
         })
     }
@@ -1192,8 +1284,8 @@ impl Dom {
             pseudos,
             nodes: self.state.nodes,
             units: self.state.units,
-            history_entries: self.history_entries,
-            history_bytes: self.history_bytes,
+            history_entries: self.history.entries(),
+            history_bytes: self.history.bytes(),
         }
     }
     pub fn snapshot(&self) -> DomSnapshot {
@@ -1347,8 +1439,13 @@ impl Dom {
         batch: DomBatch,
         cancelled: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
-        let prepared = self.prepare(batch, cancelled)?;
-        self.publish(prepared, cancelled)
+        let result = (|| {
+            let prepared = self.prepare(batch, cancelled)?;
+            self.publish(prepared, cancelled)
+        })();
+        #[cfg(test)]
+        self.observe_source_lifecycle();
+        result
     }
     /// Canonical whole-batch input policy, before any command is resolved or
     /// staged. Each caller supplies its actual cancellation/work admission.
@@ -1429,31 +1526,59 @@ impl Dom {
     }
     fn prepare_publication(
         &mut self,
-        prepared: Prepared,
+        mut prepared: Prepared,
         cancelled: &AtomicBool,
     ) -> Result<PreparedPublication, DomError> {
         check_cancel(cancelled)?;
+        let usage = prepared.state.root_usage()?;
+        transaction::nodes::resize_debit(&mut prepared.root_debit, usage, |usage| match &prepared
+            .formation
+        {
+            Some(budget) => budget.admit_custody_usage(usage, cancelled),
+            None => check_cancel(cancelled),
+        })?;
+        let receipt = prepared
+            .root_debit
+            .share(|usage| match &prepared.formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            })?;
+        let guarded = PreparedRoot {
+            value: prepared,
+            receipt,
+        };
+        let state_custody = transaction::StateCustody::from_parts_retained(
+            &guarded.value.state,
+            guarded.value.state_frontiers.clone(),
+            &self.custody_registry,
+            &guarded.receipt,
+            |usage| match &guarded.value.formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            },
+        )?;
+        let changed = guarded.value.changed_from(&self.state);
         let Prepared {
+            formation,
+            state_frontiers: _,
+            root_debit: _,
+            semantic_changed: _,
+            signal_ack,
+            native_ack,
+            details_ack,
+            transition_ack,
+            _transition_outputs,
             created_ranges,
             retirements,
-            mut state,
-            formation,
-            allocation_ids: _allocation_ids,
+            state,
+            allocation_ids,
             owner,
             created,
             documents,
             transition_ids,
             record_ids,
             changes,
-        } = prepared;
-        // All chosen storage has already been admitted. Aggregate units are
-        // derived allocation accounting, not a semantic mutation: compare every
-        // other State field, then restore the candidate's actual usage. A whole
-        // semantic no-op retains the old canonical backing and its truthful usage.
-        let candidate_units = state.units;
-        state.units = self.state.units;
-        let changed = state != *self.state;
-        state.units = candidate_units;
+        } = guarded.value;
         let revision = if changed {
             let protected = self.source_reserved_closing(cancelled)?;
             self.revision
@@ -1487,52 +1612,57 @@ impl Dom {
                 changes
                     .len()
                     .checked_mul(size_of::<DomChange>())
-                    .and_then(|bytes| bytes.checked_add(size_of::<State>()))
                     .ok_or(DomError::RepresentationExhausted)?,
                 cancelled,
             )?;
         }
-        let changes: Arc<[DomChange]> = changes.into();
-        let bytes = size_of::<HistoryEntry>()
-            .checked_add(
-                changes
-                    .len()
-                    .checked_mul(size_of::<DomChange>())
-                    .ok_or(DomError::RepresentationExhausted)?,
-            )
+        let old_changes_bytes = changes
+            .capacity()
+            .checked_mul(size_of::<DomChange>())
             .ok_or(DomError::RepresentationExhausted)?;
-        let entry =
-            if changed && self.limits.history_entries != 0 && bytes <= self.limits.history_bytes {
-                if let Some(budget) = &formation {
-                    budget.retain_bytes(size_of::<HistoryEntry>(), cancelled)?;
-                }
-                Some(Box::new(HistoryEntry {
-                    from: self.revision,
-                    changes: changes.clone(),
-                    bytes,
-                    older: None,
-                }))
-            } else {
-                None
-            };
-        let state = Arc::new(state);
+        let changes: Arc<[DomChange]> = changes.into();
+        #[cfg(test)]
+        if scale_metrics::ENABLED && !changes.is_empty() {
+            let bytes = changes.len() * size_of::<DomChange>();
+            scale_metrics::record(scale_metrics::Event::StructuralAllocation { bytes });
+            scale_metrics::record(scale_metrics::Event::SequenceMaterialized { bytes });
+        }
+        if let Some(budget) = &formation {
+            budget.release_payload(source::storage::Payload {
+                bytes: old_changes_bytes,
+                units: 0,
+            });
+        }
+        let history_plan = self.history.prepare(
+            self,
+            &changes,
+            changed,
+            |usage| match &formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            },
+            || source::formation::step(formation.as_ref(), cancelled),
+        )?;
+        let (state, state_custody) = if changed {
+            let state = Arc::new(state);
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                    bytes: size_of::<State>(),
+                });
+            }
+            (state, state_custody)
+        } else {
+            drop(state);
+            drop(state_custody);
+            (self.state.clone(), self.state_custody.clone())
+        };
         let retired_authority = self.active_task.upgrade().filter(|auth| {
             changes.iter().any(|change| matches!(change,
                 DomChange::SelectTaskCancelled { operation, select, reason: crate::DomSelectTaskCancellationReason::TargetDestroyed }
                 if *operation == auth.id && *select == auth.target
             ))
         });
-        // The retirement scan is admitted before the publication fence. The
-        // matching post-publication retain only drops exact retired handles.
-        for _ in &self.style_cssom_roots {
-            #[cfg(test)]
-            style_custody_tests::observe(style_custody_tests::Site::Publication);
-            if let Some(budget) = &formation {
-                budget.retain_bytes(0, cancelled)?;
-            } else {
-                check_cancel(cancelled)?;
-            }
-        }
         let retirement_publication = self.dispatch_custody.prepare_publication(
             &retirements,
             to,
@@ -1540,16 +1670,48 @@ impl Dom {
             formation.as_ref(),
             cancelled,
         )?;
+        // This independently held candidate is prepared last: its registry
+        // owns its actual peak, and this non-retaining gate includes all prior
+        // publication storage before the final fence.
+        let style_custody = self.style_cssom_roots.prepare_publication(
+            changes.iter().filter_map(|change| match change {
+                DomChange::Destroyed(id) => Some(*id),
+                _ => None,
+            }),
+            changes.iter().filter_map(|change| match change {
+                DomChange::NodeDocument(id) => Some((
+                    *id,
+                    state
+                        .node(self.owner, *id)
+                        .expect("NodeDocument change names a validated live candidate")
+                        .document,
+                )),
+                _ => None,
+            }),
+            |extra| match &formation {
+                Some(budget) => budget.admit_custody_usage(extra, cancelled),
+                None => check_cancel(cancelled),
+            },
+            || source::formation::step(formation.as_ref(), cancelled),
+        )?;
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            state_custody,
+            allocation_ids,
+            signal_ack,
+            native_ack,
+            details_ack,
+            transition_ack,
+            _transition_outputs,
             created_ranges,
             state,
             changed,
             revision,
-            entry,
+            history_plan,
             retirement_publication,
+            style_custody,
             retired_authority,
             owner,
             created,
@@ -1563,13 +1725,27 @@ impl Dom {
         })
     }
     fn publish_prepared(&mut self, publication: PreparedPublication) -> DomCommit {
+        self.publish_prepared_with_proof(publication).commit
+    }
+    fn publish_prepared_with_proof(
+        &mut self,
+        publication: PreparedPublication,
+    ) -> CommittedPublication {
         let PreparedPublication {
+            state_custody,
+            allocation_ids: _,
+            signal_ack: _,
+            native_ack: _,
+            details_ack: _,
+            transition_ack: _,
+            _transition_outputs: _,
             created_ranges,
             state,
             changed,
             revision,
-            entry,
+            history_plan,
             retirement_publication,
+            style_custody,
             retired_authority,
             owner,
             created,
@@ -1582,60 +1758,38 @@ impl Dom {
             _formation,
         } = publication;
         if changed {
-            self.state = state;
-            // Exact generation retirement releases canonical custody. Detach,
-            // adoption and historical snapshots do not retire the live root.
-            self.style_cssom_roots.retain(|root| {
-                #[cfg(test)]
-                style_custody_tests::observe(style_custody_tests::Site::Retention);
-                self.state.node(self.owner, root.root()).is_ok()
-            });
-            self.revision = revision;
-            if let Some(mut entry) = entry {
-                entry.older = self.history.take();
-                self.history = Some(entry);
-                self.trim_history();
-            } else {
-                discard_history(self.history.take());
-                self.history_entries = 0;
-                self.history_bytes = 0;
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::PublishedRoot);
             }
+            self.state = state;
+            self.state_custody = state_custody;
+            if let Some(style_custody) = style_custody {
+                self.style_cssom_roots = style_custody;
+            }
+            self.revision = revision;
+            self.history.commit(history_plan);
         }
         retirement_publication.publish();
         if let Some(auth) = retired_authority {
             auth.destroy_if_pending();
             self.active_task = std::sync::Weak::new();
         }
-        DomCommit {
-            created_ranges,
-            owner,
-            created,
-            documents,
-            transition_ids,
-            record_ids,
-            changes: DomChanges { from, to, changes },
+        CommittedPublication {
+            committed: transaction::PublicationCommitted::at_fence(),
+            commit: DomCommit {
+                created_ranges,
+                owner,
+                created,
+                documents,
+                transition_ids,
+                record_ids,
+                changes: DomChanges { from, to, changes },
+            },
         }
     }
     fn trim_history(&mut self) {
-        let mut entries = 0usize;
-        let mut bytes = 0usize;
-        let mut cursor = &mut self.history;
-        loop {
-            let keep = cursor.as_ref().is_some_and(|entry| {
-                entries < self.limits.history_entries
-                    && entry.bytes <= self.limits.history_bytes - bytes
-            });
-            if !keep {
-                discard_history(cursor.take());
-                break;
-            }
-            let entry = cursor.as_mut().expect("retained entry");
-            entries += 1;
-            bytes += entry.bytes;
-            cursor = &mut entry.older;
-        }
-        self.history_entries = entries;
-        self.history_bytes = bytes;
+        self.history.trim(self.limits);
     }
     /// Complete chronological change records, or an explicit recompute result.
     pub fn changes_since(&self, baseline: DomStamp) -> Result<DomChanges, DomHistoryError> {
@@ -1645,36 +1799,16 @@ impl Dom {
         if baseline.revision > self.revision {
             return Err(DomHistoryError::FutureRevision);
         }
-        let mut entries = Vec::new();
-        let mut cursor = self.history.as_deref();
-        let mut available_from = self.revision;
-        while let Some(entry) = cursor {
-            available_from = entry.from;
-            if entry.from >= baseline.revision {
-                entries
-                    .try_reserve(1)
-                    .map_err(|_| DomHistoryError::AllocationFailed)?;
-                entries.push(entry);
-            }
-            cursor = entry.older.as_deref();
-        }
-        if baseline.revision < available_from {
-            return Err(DomHistoryError::FullRecomputeRequired { available_from });
-        }
-        let mut changes = Vec::new();
-        for entry in entries.into_iter().rev() {
-            changes
-                .try_reserve(entry.changes.len())
-                .map_err(|_| DomHistoryError::AllocationFailed)?;
-            changes.extend_from_slice(&entry.changes);
-        }
+        let changes = self
+            .history
+            .changes_since(baseline.revision, self.revision)?;
         Ok(DomChanges {
             from: baseline,
             to: DomStamp {
                 owner: self.owner,
                 revision: self.revision,
             },
-            changes: changes.into(),
+            changes,
         })
     }
 }
@@ -1694,59 +1828,67 @@ pub(crate) fn check_cancel(cancelled: &AtomicBool) -> Result<(), DomError> {
     }
 }
 pub(crate) fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<(), DomError> {
+    #[cfg(test)]
+    let before = (values.capacity(), values.as_ptr(), values.len());
     values
         .try_reserve(additional)
-        .map_err(|_| DomError::AllocationFailed)
+        .map_err(|_| DomError::AllocationFailed)?;
+    #[cfg(test)]
+    if scale_metrics::ENABLED && values.capacity() != before.0 {
+        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+            bytes: values.capacity() * size_of::<T>(),
+        });
+        if values.as_ptr() != before.1 {
+            let mut moved = CopyObservation::default();
+            moved.extended::<T>(before.2);
+        }
+    }
+    Ok(())
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Key {
-    Existing(usize),
+    Existing(NodeId),
     Created(usize),
 }
 struct DraftNode {
-    fullscreen_events: Vec<crate::DomFullscreenEvent>,
-    active_range: crate::DomActiveRangeState,
-    relevant_global: Option<crate::hosted::DomHostedGlobalId>,
-    document: Key,
-    kind: DomNodeKind,
-    parent: Option<Key>,
-    children: Vec<Key>,
-    shadow_root: Option<Key>,
-    host: Option<Key>,
-    template_contents: Option<Key>,
-    template_patch: Option<crate::template::TemplatePatch<Key>>,
-    template_document: Option<crate::template::TemplateDocument<Key>>,
-    manual_nodes: Vec<Key>,
-    assigned_nodes: Vec<Key>,
-    manual_slot: Option<Key>,
-    assigned_slot: Option<Key>,
-    reflected_targets: Option<crate::reflected::ReflectedTargets<Key>>,
-    control_owner: Option<Key>,
-    option_select: Option<Key>,
-    form_past_names: Option<crate::form::FormPastNames<Key>>,
-    script: Option<crate::script::ScriptState<Key>>,
-    pub(crate) style_parser_document: Option<Key>,
-    base: Option<crate::base::BaseState<Key>>,
-    base_document: Option<crate::base::BaseDocument<Key>>,
-    link: Option<crate::base::LinkState<Key>>,
-    image: Option<crate::image::ImageState<Key>>,
-    hyperlink: Option<crate::hyperlink::HyperlinkState<Key>>,
-    encoding_url_document: Option<crate::hyperlink::EncodingUrlDocument>,
-    interactive_document: Option<crate::dialog::DocumentInteractiveState<Key>>,
-    autofocus_document: Option<crate::autofocus::DocumentAutofocusState<Key>>,
+    fields: custody::Held<Box<transaction::NodeFields>>,
+    children: transaction::Sequence<NodeId, Key>,
+    manual_nodes: transaction::Sequence<NodeId, Key>,
+    assigned_nodes: transaction::Sequence<NodeId, Key>,
+    fullscreen_events: transaction::Sequence<crate::DomFullscreenEvent, crate::DomFullscreenEvent>,
+    render_blocking: transaction::Sequence<NodeId, Key>,
+    autofocus_candidates: transaction::Sequence<NodeId, Key>,
+    open_dialogs: transaction::Sequence<NodeId, Key>,
+    top_layer: transaction::Sequence<NodeId, Key>,
+    pending_top_layer_removals: transaction::Sequence<NodeId, Key>,
 }
+impl std::ops::Deref for DraftNode {
+    type Target = transaction::NodeFields;
+    fn deref(&self) -> &Self::Target {
+        self.fields.value()
+    }
+}
+
 struct Draft {
+    base: Arc<State>,
+    dom_limits: DomLimits,
+    base_custody: transaction::StateCustody,
+    input_captures: bank::Bank<source::input::InputEntry>,
+    input_captures_custody: bank::BankCustody<source::input::InputEntry>,
+    custody_registry: bank::CustodyRegistry,
+    journal: transaction::Journal<transaction::Undo>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     // An actual published parallel invocation retains this same Work atom.
     fullscreen_work_custody: Option<crate::DomFullscreenExitId>,
-    ranges: Vec<crate::range::Slot<Key>>,
-    range_vacancies: range::Vacancies,
+    ranges: transaction::ranges::Ranges,
     range_tickets: Vec<crate::DomRangeId>,
+    range_tickets_charge: custody::Debit,
     owner: Arc<BatchIdentity>,
     store: DomOwnerId,
     registries: Option<Arc<registry::Bank>>,
     hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
     hosted_history: Option<Arc<hosted::history::Graph>>,
+    auxiliary: transaction::auxiliary::Auxiliary,
     hosted_owner: Option<crate::hosted::DomHostedOperationId>,
     basis: DomStamp,
     source_limits: Option<crate::DomSourceLimits>,
@@ -1763,6 +1905,7 @@ struct Draft {
     source_headroom: Option<source::headroom::Scan>,
     method: Option<method::Frame>,
     dispatch_retirements: Vec<(NodeId, Key)>,
+    dispatch_retirements_charge: custody::Debit,
     phase_map: Option<source::PhaseMap>,
     base_work: std::cell::Cell<u64>,
     base_work_limit: u64,
@@ -1771,15 +1914,16 @@ struct Draft {
     meta_work: std::cell::Cell<u64>,
     meta_work_limit: u64,
     view_transitions: DraftTransitions,
-    signal_slots: Vec<Key>,
+    signal_slots: transaction::queues::Signals,
     notification_queued: bool,
-    cancelled_signals: Vec<NodeId>,
-    native_tasks: Vec<select::Pending>,
-    cancelled_selects: Vec<(Option<u64>, NodeId)>,
-    details_intentions: Vec<details::Pending<Key>>,
-    cancelled_details: Vec<details::Pending<NodeId>>,
+    cancelled_signals: transaction::queues::CancelledSignals,
+    native_tasks: transaction::queues::NativeTasks,
+    cancelled_selects: transaction::queues::CancelledSelects,
+    details_intentions: transaction::queues::Details,
+    cancelled_details: transaction::queues::CancelledDetails,
     cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
     effects: Vec<select::EffectFrame>,
+    effects_charge: custody::Debit,
     hosted_pending: Option<source::operation::hosted::ChildHook>,
     effects_running: bool,
     effect_floor: usize,
@@ -1791,12 +1935,25 @@ struct Draft {
     select_temporary_bytes: Arc<AtomicUsize>,
     select_semantic_work: std::cell::Cell<usize>,
     select_semantic_bytes: std::cell::Cell<usize>,
-    existing: Vec<Option<DraftNode>>,
-    generations: Vec<u64>,
+    existing: bank::Bank<usize>,
+    existing_custody: bank::BankCustody<usize>,
+    records: Vec<Option<DraftNode>>,
+    records_charge: custody::Debit,
     created: Vec<Option<DraftNode>>,
+    created_charge: custody::Debit,
+    created_dirty: bank::Bank<bool>,
+    created_dirty_custody: bank::BankCustody<bool>,
+    counts: transaction::Counts,
+    inbound: transaction::inbound::Inbound,
+    controls: transaction::controls::Controls,
+    slot_index: transaction::slot_index::Slots,
+    private_nodes: usize,
+    private_units: usize,
+    private_counts: transaction::Counts,
     // Caller creation tickets exclude private allocations such as imported
     // descendants. They must not be interpreted as allocation indices.
     tickets: Vec<Key>,
+    tickets_charge: custody::Debit,
     nodes: usize,
     units: usize,
     document_environment: crate::DomDocumentEnvironment,
@@ -1805,14 +1962,19 @@ struct Draft {
     insertion_trace: Option<tree::InsertionTrace>,
     #[cfg(test)]
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
+    source_work_custody: source::formation::SourceWorkCustody,
+    source_mirrors: source::formation::SourceMirrors,
+    source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
+    _header_custody: custody::Debit,
 }
 pub(crate) struct PreparedPublication {
     created_ranges: Vec<Option<crate::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
     revision: DomRevision,
-    entry: Option<Box<HistoryEntry>>,
+    history_plan: history::Plan,
     retirement_publication: dispatch::PublicationPlan,
+    style_custody: Option<style_custody::Bank>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
@@ -1822,23 +1984,149 @@ pub(crate) struct PreparedPublication {
     from: DomStamp,
     to: DomStamp,
     changes: Arc<[DomChange]>,
+    state_custody: transaction::StateCustody,
+    allocation_ids: source::AllocationIds,
+    signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
+    native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
+    details_ack: Option<
+        transaction::queues::QueueAck<details::Pending<Key>, crate::DomDetailsToggleIntention>,
+    >,
+    transition_ack: view_transition::TransitionAck,
+    _transition_outputs: custody::Debit,
     _formation: Option<source::formation::Formation>,
 }
 struct Prepared {
+    state: State,
     created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
-    formation: Option<source::formation::Formation>,
-    allocation_ids: Vec<Option<NodeId>>,
-    state: State,
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
     documents: Vec<bool>,
     transition_ids: Vec<Option<DomViewTransitionId>>,
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
+    semantic_changed: bool,
+    allocation_ids: source::AllocationIds,
+    signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
+    native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
+    details_ack: Option<
+        transaction::queues::QueueAck<details::Pending<Key>, crate::DomDetailsToggleIntention>,
+    >,
+    transition_ack: view_transition::TransitionAck,
+    state_frontiers: transaction::StateFrontiers,
+    root_debit: custody::Debit,
+    _transition_outputs: custody::Debit,
+    formation: Option<source::formation::Formation>,
+}
+
+struct PreparedRoot {
+    value: Prepared,
+    receipt: custody::SharedDebit,
+}
+
+impl Prepared {
+    fn changed_from(&self, before: &State) -> bool {
+        self.semantic_changed
+            || self.state.incomplete_source != before.incomplete_source
+            || self.state.incomplete_hosted != before.incomplete_hosted
+            || !same_auxiliary(&self.state.registries, &before.registries)
+            || !same_auxiliary(&self.state.hosted_globals, &before.hosted_globals)
+            || !same_auxiliary(&self.state.hosted_history, &before.hosted_history)
+    }
 }
 
 impl Draft {
+    pub(in crate::store) fn source_work_custody(&self) -> source::formation::SourceWorkCustody {
+        self.source_work_custody.clone()
+    }
+    pub(in crate::store) fn source_ancestor_custody(
+        &self,
+    ) -> Option<Arc<source::formation::EventWorkCustody>> {
+        self.source_ancestor_custody.clone()
+    }
+    pub(in crate::store) fn source_mirrors(&self) -> source::formation::SourceMirrors {
+        self.source_mirrors.clone()
+    }
+
+    pub(in crate::store) fn custody_ledger(&self) -> &custody::Ledger {
+        self.custody_registry.ledger()
+    }
+
+    pub(in crate::store) fn custody_registry(&self) -> &bank::CustodyRegistry {
+        &self.custody_registry
+    }
+
+    pub(in crate::store) fn controlled_storage_usage(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<custody::Usage, DomError> {
+        self.source_step(cancel)?;
+        self.custody_registry.reconcile_releases();
+        Ok(self.custody_ledger().total())
+    }
+
+    pub(in crate::store) fn prepare_undo_slots(
+        &self,
+        count: usize,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.journal
+            .prepare_slots(count, self.custody_ledger(), |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })
+    }
+    pub(in crate::store) fn prepare_undo(&self, cancel: &AtomicBool) -> Result<bool, DomError> {
+        self.journal.prepare(self.custody_ledger(), |usage| {
+            self.admit_custody_usage(usage, cancel)
+        })
+    }
+
+    pub(in crate::store) fn record_range_undo_prepared(
+        &self,
+        undo: transaction::ranges::RangeUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Range(undo));
+    }
+    pub(in crate::store) fn record_transition_undo_prepared(
+        &self,
+        undo: view_transition::TransitionUndo,
+    ) {
+        self.journal
+            .push_prepared(transaction::Undo::Transition(undo));
+    }
+    pub(in crate::store) fn record_inbound_undo_prepared(
+        &self,
+        undo: transaction::inbound::InboundUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Inbound(undo));
+    }
+    pub(in crate::store) fn record_queue_undo_prepared(
+        &self,
+        undo: transaction::queues::QueueUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Queue(undo));
+    }
+    pub(in crate::store) fn record_source_undo_prepared(&self, undo: source::ControlUndo) {
+        self.journal.push_prepared(transaction::Undo::Source(undo));
+    }
+
+    pub(in crate::store) fn journal_mark(
+        &mut self,
+        other_live_bytes: usize,
+        other_units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<transaction::JournalMark, DomError> {
+        let additional = custody::Usage::new(other_live_bytes, other_units);
+        self.journal.mark(self.custody_ledger(), |usage| {
+            self.admit_custody_usage(usage.checked_add(additional)?, cancel)
+        })
+    }
+
+    pub(in crate::store) fn rollback_journal(&mut self, mark: transaction::JournalMark) {
+        let journal = self.journal.clone();
+        journal.rollback(mark, |undo| undo.restore(self));
+    }
+
     fn initialize_native_element(
         &mut self,
         key: Key,
@@ -1872,186 +2160,101 @@ impl Draft {
         initial: Option<&source::initial::Initial>,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
-        let mut existing = Vec::new();
-        let mut generations = Vec::new();
-        source::initial::reserve(&mut existing, dom.state.slots.len(), initial, cancelled)?;
-        source::initial::reserve(&mut generations, dom.state.slots.len(), initial, cancelled)?;
-        for slot in &dom.state.slots {
-            source::initial::step(initial, cancelled)?;
-            let node = if let Some(node) = &slot.node {
-                let mut children = Vec::new();
-                source::initial::reserve(&mut children, node.children.len(), initial, cancelled)?;
-                for id in &node.children {
-                    source::initial::step(initial, cancelled)?;
-                    children.push(Key::Existing(id.slot));
-                }
-                Some(DraftNode {
-                    active_range: node.active_range,
-                    relevant_global: node.relevant_global,
-                    document: Key::Existing(node.document.0.slot),
-                    kind: node.kind.clone(),
-                    base: node
-                        .base
-                        .as_ref()
-                        .map(|b| b.map(|id| Key::Existing(id.slot))),
-                    base_document: node
-                        .base_document
-                        .as_ref()
-                        .map(|b| source::initial::base_document(b, initial, cancelled))
-                        .transpose()?,
-                    link: node
-                        .link
-                        .as_ref()
-                        .map(|b| b.map(|id| Key::Existing(id.slot))),
-                    image: node
-                        .image
-                        .as_ref()
-                        .map(|b| b.map(|id| Key::Existing(id.slot))),
-                    hyperlink: node
-                        .hyperlink
-                        .as_ref()
-                        .map(|h| h.map(|id| Key::Existing(id.slot))),
-                    encoding_url_document: node.encoding_url_document.clone(),
-                    autofocus_document: node
-                        .autofocus_document
-                        .as_ref()
-                        .map(|state| {
-                            use canonical::Autofocus as A;
-                            Ok::<_, DomError>(match state {
-                                A::Known {
-                                    candidates,
-                                    processed,
-                                } => crate::autofocus::DocumentAutofocusState::Known {
-                                    candidates: source::initial::map_keys(
-                                        candidates, initial, cancelled,
-                                    )?,
-                                    processed: *processed,
-                                },
-                                A::Unavailable => {
-                                    crate::autofocus::DocumentAutofocusState::Unavailable
-                                }
-                            })
-                        })
-                        .transpose()?,
-                    fullscreen_events: source::initial::copy(
-                        &node.fullscreen_events,
-                        initial,
-                        cancelled,
-                    )?,
-                    interactive_document: node
-                        .interactive_document
-                        .as_ref()
-                        .map(|state| {
-                            use canonical::Interactive;
-                            Ok::<_, DomError>(match state {
-                                Interactive::Known {
-                                    open_dialogs,
-                                    top_layer,
-                                    pending_top_layer_removals,
-                                } => crate::dialog::DocumentInteractiveState::Known {
-                                    open_dialogs: source::initial::map_keys(
-                                        open_dialogs,
-                                        initial,
-                                        cancelled,
-                                    )?,
-                                    top_layer: source::initial::map_keys(
-                                        top_layer, initial, cancelled,
-                                    )?,
-                                    pending_top_layer_removals: source::initial::map_keys(
-                                        pending_top_layer_removals,
-                                        initial,
-                                        cancelled,
-                                    )?,
-                                },
-                                Interactive::Unavailable => {
-                                    crate::dialog::DocumentInteractiveState::Unavailable
-                                }
-                            })
-                        })
-                        .transpose()?,
-                    style_parser_document: node
-                        .style_parser_document
-                        .map(|id| Key::Existing(id.slot)),
-                    script: node
-                        .script
-                        .map(|value| value.map(|id| Key::Existing(id.slot))),
-                    parent: node.parent.map(|id| Key::Existing(id.slot)),
-                    shadow_root: node.shadow_root.map(|id| Key::Existing(id.slot)),
-                    host: node.host.map(|id| Key::Existing(id.slot)),
-                    template_contents: node.template_contents.map(|id| Key::Existing(id.slot)),
-                    template_patch: node
-                        .template_patch
-                        .map(|p| p.map(|id| Key::Existing(id.slot))),
-                    template_document: node
-                        .template_document
-                        .map(|value| value.map(|id| Key::Existing(id.slot))),
-                    children,
-                    manual_nodes: source::initial::map_keys(
-                        &node.manual_nodes,
-                        initial,
-                        cancelled,
-                    )?,
-                    assigned_nodes: source::initial::map_keys(
-                        &node.assigned_nodes,
-                        initial,
-                        cancelled,
-                    )?,
-                    manual_slot: node.manual_slot.map(|id| Key::Existing(id.slot)),
-                    assigned_slot: node.assigned_slot.map(|id| Key::Existing(id.slot)),
-                    control_owner: node.control_owner.map(|id| Key::Existing(id.slot)),
-                    option_select: node.option_select.map(|id| Key::Existing(id.slot)),
-                    form_past_names: node
-                        .form_past_names
-                        .as_ref()
-                        .map(|map| source::initial::form_names(map, initial, cancelled))
-                        .transpose()?,
-                    reflected_targets: node
-                        .reflected_targets
-                        .map(|targets| targets.map(|id| Key::Existing(id.slot))),
-                })
-            } else {
-                None
-            };
-            existing.push(node);
-            generations.push(slot.generation);
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::Entered(
+                scale_metrics::Domain::Transaction,
+            ));
         }
-        let view_transitions =
-            DraftTransitions::new_formed(&dom.state.view_transitions, initial, cancelled)?;
-        let signal_slots = source::initial::map_keys(&dom.state.signal_slots, initial, cancelled)?;
-        let native_tasks = select::draft_tasks_formed(&dom.state.native_tasks, initial, cancelled)?;
-        let details_intentions =
-            details::draft_formed(&dom.state.details_intentions, initial, cancelled)?;
-        let mut ranges = Vec::new();
-        source::initial::reserve(&mut ranges, dom.state.ranges.len(), initial, cancelled)?;
-        let mut range_vacancies = Vec::new();
-        if dom.state.ranges.lowest_vacant().is_some() {
-            source::initial::reserve(
-                &mut range_vacancies,
-                dom.state.ranges.len(),
-                initial,
-                cancelled,
-            )?;
-        }
-        for (index, slot) in dom.state.ranges.iter() {
+        let registry = dom.custody_registry.clone();
+        let ledger = registry.ledger();
+        let mut admit_initial = |usage: custody::Usage| {
             source::initial::step(initial, cancelled)?;
-            if slot.record.is_none() && !slot.retired && slot.generation < u64::MAX {
-                range_vacancies.push(std::cmp::Reverse(index));
+            if let Some(initial) = initial {
+                let total = usage.checked_add(initial.external_usage())?;
+                let limits = initial.limits();
+                admit(
+                    total.bytes(),
+                    limits.retained_bytes,
+                    DomResource::SourceRetainedBytes,
+                )?;
+                admit(
+                    total.units(),
+                    limits.retained_units,
+                    DomResource::SourceRetainedUnits,
+                )?;
             }
-            ranges.push(crate::range::Slot {
-                generation: slot.generation,
-                retired: slot.retired,
-                record: slot
-                    .record
-                    .map(|record| record.map(|node| Key::Existing(node.slot))),
-            });
-        }
-        let range_vacancies = range::form_vacancies(range_vacancies, || {
-            source::initial::step(initial, cancelled)
-        })?;
+            Ok(())
+        };
+        let header = ledger.retain(
+            custody::Usage::new(size_of::<Draft>(), 0),
+            &mut admit_initial,
+        )?;
+        let journal = transaction::Journal::new(ledger, &mut admit_initial)?;
+        #[cfg(test)]
+        journal.measure_payloads(transaction::Undo::journal_bytes);
+        let source_mirrors =
+            source::formation::SourceMirrors::allocate(&registry, &mut admit_initial)?;
+        let (source_work, source_work_custody) = match initial {
+            Some(initial) => initial.source_work(&registry, &mut admit_initial)?,
+            None => {
+                source::formation::SourceWorkCustody::allocate(0, &registry, &mut admit_initial)?
+            }
+        };
+        let existing = bank::Bank::default();
+        let existing_custody = bank::BankCustody::default();
+        let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let created_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let effects_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let range_tickets_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let tickets_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let dispatch_retirements_charge =
+            ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let view_transitions =
+            DraftTransitions::capture(&dom.state.view_transitions, &dom.state_custody.transitions);
+        let signal_slots = transaction::queues::Signals::capture(
+            &dom.state.signal_slots,
+            dom.state.signal_slots.len(),
+            &dom.state.signal_targets,
+            &dom.state_custody.signal_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let native_tasks = transaction::queues::NativeTasks::capture(
+            &dom.state.native_tasks,
+            dom.state.counts.select_tasks,
+            &dom.state.native_targets,
+            &dom.state_custody.native_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let details_intentions = transaction::queues::Details::capture(
+            &dom.state.details_intentions,
+            dom.state.details_intentions.len(),
+            &dom.state.details_targets,
+            &dom.state_custody.details_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let cancelled_signals =
+            transaction::queues::CancelledSignals::empty(&registry, &mut admit_initial)?;
+        let cancelled_selects =
+            transaction::queues::CancelledSelects::empty(&registry, &mut admit_initial)?;
+        let cancelled_details =
+            transaction::queues::CancelledDetails::empty(&registry, &mut admit_initial)?;
+        let ranges = transaction::ranges::Ranges::new(&dom.state, &dom.state_custody);
         Ok(Self {
+            base: dom.state.clone(),
+            dom_limits: dom.limits,
+            base_custody: dom.state_custody.clone(),
+            input_captures: bank::Bank::default(),
+            input_captures_custody: bank::BankCustody::default(),
+            custody_registry: registry,
+            journal,
+            _header_custody: header,
             ranges,
-            range_vacancies,
             range_tickets: Vec::new(),
+            range_tickets_charge,
             owner,
             #[cfg(test)]
             svg_processing_trace: None,
@@ -2066,18 +2269,19 @@ impl Draft {
             registries: dom.state.registries.clone(),
             hosted_globals: dom.state.hosted_globals.clone(),
             hosted_history: dom.state.hosted_history.clone(),
+            auxiliary: dom.state_custody.auxiliary.clone(),
             hosted_owner: None,
             basis: DomStamp {
                 owner: dom.owner,
                 revision: dom.revision,
             },
             source_limits: initial.map(source::initial::Initial::limits),
-            source_work: Arc::new(AtomicU64::new(
-                initial.map_or(0, source::initial::Initial::work),
-            )),
+            source_work,
+            source_work_custody,
+            source_ancestor_custody: initial.and_then(source::initial::Initial::ancestor_custody),
             source_ancestors: initial.and_then(|initial| initial.ancestors().cloned()),
-            source_formation_bytes: Arc::new(AtomicUsize::new(0)),
-            source_temporary_units: Arc::new(AtomicUsize::new(0)),
+            source_formation_bytes: source_mirrors.bytes(),
+            source_temporary_units: source_mirrors.units(),
             source_other_bytes: 0,
             source_other_units: 0,
             source_invocation: 0,
@@ -2086,6 +2290,7 @@ impl Draft {
             fullscreen_exit: None,
             fullscreen_work_custody: None,
             dispatch_retirements: Vec::new(),
+            dispatch_retirements_charge,
             phase_map: None,
             base_work: std::cell::Cell::new(0),
             base_work_limit: dom.limits.base_work,
@@ -2096,13 +2301,14 @@ impl Draft {
             view_transitions,
             signal_slots,
             notification_queued: dom.state.notification_queued,
-            cancelled_signals: Vec::new(),
+            cancelled_signals,
             native_tasks,
-            cancelled_selects: Vec::new(),
+            cancelled_selects,
             details_intentions,
-            cancelled_details: Vec::new(),
+            cancelled_details,
             cancelled_images: None,
             effects: Vec::new(),
+            effects_charge,
             hosted_pending: None,
             effects_running: false,
             effect_floor: 0,
@@ -2111,32 +2317,88 @@ impl Draft {
             select_work: std::cell::Cell::new(0),
             select_work_limit: dom.limits.select_work,
             select_scratch_limit: dom.limits.select_scratch,
-            select_temporary_bytes: Arc::new(AtomicUsize::new(0)),
+            select_temporary_bytes: source_mirrors.temporary(),
+            source_mirrors,
             select_semantic_work: std::cell::Cell::new(0),
             select_semantic_bytes: std::cell::Cell::new(0),
             existing,
-            generations,
+            existing_custody,
+            records: Vec::new(),
+            records_charge,
+            created_charge,
+            created_dirty: bank::Bank::default(),
+            created_dirty_custody: bank::BankCustody::default(),
+            counts: dom.state.counts,
+            inbound: transaction::inbound::Inbound::capture(
+                &dom.state.inbound,
+                &dom.state_custody.inbound,
+            ),
+            controls: transaction::controls::Controls::capture(
+                &dom.state.controls,
+                &dom.state_custody.controls,
+            ),
+            slot_index: transaction::slot_index::Slots::capture(
+                &dom.state.slot_index,
+                &dom.state_custody.slot_index,
+            ),
+            private_nodes: 0,
+            private_units: 0,
+            private_counts: transaction::Counts::default(),
             created: Vec::new(),
             tickets: Vec::new(),
+            tickets_charge,
             nodes: dom.state.nodes,
             units: dom.state.units,
         })
     }
-    fn node(&self, key: Key) -> Result<&DraftNode, DomError> {
-        match key {
-            Key::Existing(i) => self.existing.get(i),
-            Key::Created(i) => self.created.get(i),
-        }
-        .and_then(Option::as_ref)
-        .ok_or(DomError::StaleNode)
+    fn node(&self, key: Key) -> Result<transaction::NodeRead<'_>, DomError> {
+        let key = self.live_key(key);
+        let read = match key {
+            Key::Existing(id) => {
+                if let Some(index) = self.existing.get(id.slot) {
+                    return self.records[*index]
+                        .as_ref()
+                        .map(|n| self.alias_node_read(transaction::NodeRead::staged(n)))
+                        .ok_or(DomError::StaleNode);
+                }
+                self.base
+                    .node(self.store, id)
+                    .map(transaction::NodeRead::canonical)
+            }
+            Key::Created(index) => match self.created.get(index).and_then(Option::as_ref) {
+                Some(node) => Ok(transaction::NodeRead::staged(node)),
+                None if self.created_dirty.get(index).is_some() => Err(DomError::StaleNode),
+                None => self
+                    .phase_map
+                    .as_ref()
+                    .and_then(|m| m.ids.get(index))
+                    .ok_or(DomError::StaleNode)
+                    .and_then(|id| {
+                        self.base
+                            .node(self.store, id)
+                            .map(transaction::NodeRead::canonical)
+                    }),
+            },
+        }?;
+        Ok(self.alias_node_read(read))
     }
-    fn node_mut(&mut self, key: Key) -> &mut DraftNode {
-        match key {
-            Key::Existing(i) => &mut self.existing[i],
-            Key::Created(i) => &mut self.created[i],
+    fn alias_node_read<'a>(&'a self, read: transaction::NodeRead<'a>) -> transaction::NodeRead<'a> {
+        match &self.phase_map {
+            Some(map) => read.aliases(&map.ids),
+            None => read,
         }
-        .as_mut()
-        .expect("validated staged node")
+    }
+
+    #[cfg(test)]
+    fn existing_key(&self, slot: usize) -> Result<Key, DomError> {
+        let record = self.base.slots.get(slot).ok_or(DomError::StaleNode)?;
+        let key = Key::Existing(NodeId {
+            owner: self.store,
+            slot,
+            generation: record.generation,
+        });
+        self.node(key)?;
+        Ok(key)
     }
     fn resolve(&self, operand: NodeOperand) -> Result<Key, DomError> {
         let key = match operand {
@@ -2145,16 +2407,14 @@ impl Draft {
                     return Err(DomError::ForeignOwner);
                 }
                 if let Some(map) = &self.phase_map
-                    && let Some(index) = map.ids.iter().position(|candidate| *candidate == Some(id))
+                    && let Some(index) = map.ids.original(id)
                 {
                     let key = Key::Created(index);
                     self.node(key)?;
                     return Ok(key);
                 }
-                if self.generations.get(id.slot) != Some(&id.generation) {
-                    return Err(DomError::StaleNode);
-                }
-                Key::Existing(id.slot)
+                self.base.node(self.store, id)?;
+                Key::Existing(id)
             }
             NodeOperand::Created(ticket) => {
                 if !Arc::ptr_eq(&self.owner, &ticket.owner) {
@@ -2178,10 +2438,13 @@ impl Draft {
     ) -> Result<(), DomError> {
         if let Some(parent) = self.node(node)?.parent {
             self.range_pre_remove(node, parent, cancelled)?;
-            self.node_mut(parent)
-                .children
-                .retain(|child| *child != node);
-            self.node_mut(node).parent = None;
+            self.relations_retain(
+                parent,
+                transaction::RelationField::Children,
+                |child| child != node,
+                cancelled,
+            )?;
+            self.with_node_fields(node, cancelled, |fields| fields.parent = None)?;
             self.slot_removal(node, parent, limits, cancelled)?;
             self.push_effect(
                 select::Effect::Tree(tree::Frame::RemovedParent(parent)),
@@ -2199,6 +2462,51 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
+        self.allocate_formed(kind, document, limits, cancel, None)
+    }
+    pub(in crate::store) fn allocate_formed(
+        &mut self,
+        kind: DomNodeKind,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        formation: Option<source::formation::Formation>,
+    ) -> Result<Key, DomError> {
+        let debit = match formation.and_then(source::formation::Formation::into_debit) {
+            Some(debit) => debit,
+            None => self
+                .custody_ledger()
+                .retain(custody::Usage::ZERO, |usage| {
+                    self.admit_custody_usage(usage, cancel)
+                })?,
+        };
+        self.allocate_retained(custody::Held::new(kind, debit), document, limits, cancel)
+    }
+    pub(in crate::store) fn allocate_charged(
+        &mut self,
+        kind: DomNodeKind,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        charge: Option<source::checkpoint::Charge>,
+    ) -> Result<Key, DomError> {
+        let debit = match charge.and_then(source::checkpoint::Charge::into_debit) {
+            Some(debit) => debit,
+            None => self
+                .custody_ledger()
+                .retain(custody::Usage::ZERO, |usage| {
+                    self.admit_custody_usage(usage, cancel)
+                })?,
+        };
+        self.allocate_retained(custody::Held::new(kind, debit), document, limits, cancel)
+    }
+    fn allocate_retained(
+        &mut self,
+        kind: custody::Held<DomNodeKind>,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
         let nodes = self
             .nodes
             .checked_add(1)
@@ -2206,24 +2514,13 @@ impl Draft {
         admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
         let units = self
             .units
-            .checked_add(kind_units(&kind)?)
+            .checked_add(kind_units(kind.value())?)
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        match self.source_reserve_amount::<Option<DraftNode>>(
-            self.created.len(),
-            self.created.capacity(),
-            1,
-            cancel,
-        )? {
-            Some(amount) => self
-                .created
-                .try_reserve_exact(amount)
-                .map_err(|_| DomError::AllocationFailed)?,
-            None => reserve(&mut self.created, 1)?,
-        }
+        self.reserve_created_arena(cancel)?;
         self.source_admit(0, cancel)?;
         let key = Key::Created(self.created.len());
-        let reflected_targets = match &kind {
+        let reflected_targets = match kind.value() {
             DomNodeKind::Element(element) if element.button_state().is_some() => {
                 Some(crate::reflected::ReflectedTargets::button())
             }
@@ -2234,17 +2531,18 @@ impl Draft {
         };
         let related_formation = source::formation::Formation::new(self, cancel)?;
         if let Some(budget) = &related_formation {
-            if matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some()) {
+            if matches!(kind.value(), DomNodeKind::Element(element) if element.form_state().is_some())
+            {
                 budget.retain_bytes(size_of::<Vec<crate::form::FormPastName<Key>>>(), cancel)?;
             }
-            if matches!(&kind, DomNodeKind::Element(element) if element.is_img()) {
+            if matches!(kind.value(), DomNodeKind::Element(element) if element.is_img()) {
                 budget.retain_bytes(size_of::<Vec<u16>>(), cancel)?;
             }
         }
         let form_past_names =
-            matches!(&kind, DomNodeKind::Element(element) if element.form_state().is_some())
+            matches!(kind.value(), DomNodeKind::Element(element) if element.form_state().is_some())
                 .then(crate::form::FormPastNames::fresh);
-        let interactive_document = match &kind {
+        let interactive_document = match kind.value() {
             DomNodeKind::Document(metadata) => Some(
                 if matches!(
                     metadata.creation_cause(),
@@ -2258,7 +2556,7 @@ impl Draft {
             ),
             _ => None,
         };
-        let autofocus_document = match &kind {
+        let autofocus_document = match kind.value() {
             DomNodeKind::Document(metadata) => Some(
                 if matches!(
                     metadata.creation_cause(),
@@ -2272,59 +2570,24 @@ impl Draft {
             ),
             _ => None,
         };
-        let template_document = matches!(kind, DomNodeKind::Document(_))
+        let template_document = matches!(kind.value(), DomNodeKind::Document(_))
             .then_some(crate::template::TemplateDocument::Ordinary { inert: None });
-        let script = matches!(&kind, DomNodeKind::Element(element) if element.is_html_script())
-            .then(crate::script::ScriptState::fresh);
-        let base = matches!(&kind,DomNodeKind::Element(e) if e.is_base())
+        let script =
+            matches!(kind.value(), DomNodeKind::Element(element) if element.is_html_script())
+                .then(crate::script::ScriptState::fresh);
+        let base = matches!(kind.value(),DomNodeKind::Element(e) if e.is_base())
             .then(crate::base::BaseState::fresh);
-        let link = matches!(&kind,DomNodeKind::Element(e) if e.is_link())
+        let link = matches!(kind.value(),DomNodeKind::Element(e) if e.is_link())
             .then(crate::base::LinkState::fresh);
-        let image = matches!(&kind,DomNodeKind::Element(e) if e.is_img())
+        let image = matches!(kind.value(),DomNodeKind::Element(e) if e.is_img())
             .then(|| crate::image::ImageState::fresh(key));
-        let hyperlink = matches!(&kind,DomNodeKind::Element(e) if e.is_hyperlink())
+        let hyperlink = matches!(kind.value(),DomNodeKind::Element(e) if e.is_hyperlink())
             .then(crate::hyperlink::HyperlinkState::fresh);
-        let encoding_url_document = matches!(&kind, DomNodeKind::Document(_))
+        let encoding_url_document = matches!(kind.value(), DomNodeKind::Document(_))
             .then(crate::hyperlink::EncodingUrlDocument::fresh);
         let base_document =
-            matches!(&kind, DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
-        if let Some(map) = &self.phase_map {
-            let amount = self
-                .source_reserve_amount::<Option<NodeId>>(
-                    map.ids.len(),
-                    map.ids.capacity(),
-                    1,
-                    cancel,
-                )?
-                .expect("source map has limits");
-            self.phase_map
-                .as_mut()
-                .expect("source map")
-                .ids
-                .try_reserve_exact(amount)
-                .map_err(|_| DomError::AllocationFailed)?;
-            self.source_admit(0, cancel)?;
-            let map = self.phase_map.as_ref().expect("source map");
-            let amount = self
-                .source_reserve_amount::<bool>(
-                    map.private.len(),
-                    map.private.capacity(),
-                    1,
-                    cancel,
-                )?
-                .expect("source map has limits");
-            self.phase_map
-                .as_mut()
-                .expect("source map")
-                .private
-                .try_reserve_exact(amount)
-                .map_err(|_| DomError::AllocationFailed)?;
-            self.source_admit(0, cancel)?;
-            let map = self.phase_map.as_mut().expect("source map");
-            map.ids.push(None);
-            map.private.push(false);
-        }
-        let relevant_global = match &kind {
+            matches!(kind.value(), DomNodeKind::Document(_)).then(crate::base::BaseDocument::fresh);
+        let relevant_global = match kind.value() {
             DomNodeKind::Document(metadata) => metadata
                 .document_environment()
                 .hosted
@@ -2337,8 +2600,15 @@ impl Draft {
                 .as_ref()
                 .map(|association| association.global),
         };
-        self.created.push(Some(DraftNode {
-            fullscreen_events: Vec::new(),
+        let mut kind = kind;
+        if let Some(incoming) = related_formation.and_then(source::formation::Formation::into_debit)
+        {
+            kind.debit_mut()
+                .absorb(incoming)
+                .expect("same new-record ledger");
+        }
+        let (kind, incoming) = kind.into_parts();
+        let fields = transaction::NodeFields {
             active_range: if matches!(
                 &kind,
                 DomNodeKind::Document(metadata) if matches!(
@@ -2363,7 +2633,6 @@ impl Draft {
             autofocus_document,
             base_document,
             parent: None,
-            children: Vec::new(),
             shadow_root: None,
             host: None,
             template_contents: None,
@@ -2371,37 +2640,84 @@ impl Draft {
             template_document,
             script,
             style_parser_document: None,
-            manual_nodes: Vec::new(),
-            assigned_nodes: Vec::new(),
             manual_slot: None,
             assigned_slot: None,
             reflected_targets,
             control_owner: None,
             option_select: None,
-            form_past_names,
-        }));
-        // Both related payloads now belong to the inserted node. No fallible
-        // operation intervenes between that ownership transfer and release.
-        drop(related_formation);
+            form_past_names: form_past_names
+                .map(|v| transaction::Names::staged(v, || self.source_step(cancel)))
+                .transpose()?,
+        };
+        let ledger = self.custody_ledger().clone();
+        let node = DraftNode::fresh(fields, incoming, &ledger, |usage| {
+            self.admit_custody_usage(usage, cancel)
+        })?;
+        let counts =
+            self.counts
+                .checked_add(transaction::Counts::node(transaction::NodeRead::staged(
+                    &node,
+                ))?)?;
+        self.admit_node_counts(counts, nodes, units, limits)?;
+        self.set_created_dirty(self.created.len(), true, cancel)?;
+        let undo = self.prepare_undo_slots(4, cancel)?;
+        let inbound =
+            self.prepare_inbound_node(key, transaction::NodeRead::staged(&node), true, cancel)?;
+        let controls = self.prepare_control_created(key, node.fields.value(), cancel)?;
+        let slots = self.prepare_slot_created(key, node.fields.value(), cancel)?;
+        self.commit_inbound(inbound);
+        if let Some(plan) = controls {
+            self.commit_control_plan(plan);
+        }
+        if let Some(plan) = slots {
+            self.commit_slot_plan(plan);
+        }
+        let oldcounts = self.counts;
+        let oldnodes = self.nodes;
+        let oldunits = self.units;
+        self.created.push(Some(node));
+        #[cfg(test)]
+        {
+            let mut copied = transaction::CopyObservation::default();
+            copied.pushed::<Option<DraftNode>>();
+        }
+        self.counts = counts;
+        if undo {
+            self.journal.push_prepared(transaction::Undo::Created {
+                len: self.created.len() - 1,
+                counts: oldcounts,
+                nodes: oldnodes,
+                units: oldunits,
+            });
+        }
         self.nodes = nodes;
         self.units = units;
         Ok(key)
     }
     fn register_ticket(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        match self.source_reserve_amount::<Key>(
-            self.tickets.len(),
-            self.tickets.capacity(),
-            1,
-            cancel,
-        )? {
-            Some(amount) => self
-                .tickets
-                .try_reserve_exact(amount)
-                .map_err(|_| DomError::AllocationFailed)?,
-            None => reserve(&mut self.tickets, 1)?,
+        let undo = self.prepare_undo_slots(2, cancel)?;
+        if let Some(next) = self.prepare_output_buffer(&self.tickets, 1, cancel)? {
+            let (values, debit) = next.into_parts();
+            let old = std::mem::replace(&mut self.tickets, values);
+            let debit = std::mem::replace(&mut self.tickets_charge, debit);
+            let before = custody::Held::new(old, debit);
+            if undo {
+                self.journal
+                    .push_prepared(transaction::Undo::TicketsCapacity(before));
+            }
         }
-        self.source_admit(0, cancel)?;
+        let len = self.tickets.len();
+        self.source_step(cancel)?;
         self.tickets.push(key);
+        #[cfg(test)]
+        {
+            let mut copied = transaction::CopyObservation::default();
+            copied.pushed::<Key>();
+        }
+        if undo {
+            self.journal
+                .push_prepared(transaction::Undo::TicketsLength(len));
+        }
         Ok(())
     }
     fn apply(
@@ -2665,20 +2981,18 @@ impl Draft {
                             .source_limits
                             .filter(|_| crate::node_values::source_observation::active())
                             .map(|limits| {
-                                Ok::<_, DomError>(crate::node_values::source_observation::bind(
-                                    self.source_storage_bytes(cancelled)?
-                                        .checked_add(self.source_other_bytes)
-                                        .ok_or(DomError::RepresentationExhausted)?,
-                                    self.source_formation_bytes.clone(),
+                                let ledger = self.custody_ledger().clone();
+                                let bytes = self.source_other_bytes;
+                                let units = self.source_other_units;
+                                crate::node_values::source_observation::bind(
+                                    move || {
+                                        let live = ledger.total();
+                                        (bytes + live.bytes(), units + live.units())
+                                    },
                                     limits.retained_bytes,
-                                    self.source_storage_units(cancelled)?
-                                        .checked_add(self.source_other_units)
-                                        .ok_or(DomError::RepresentationExhausted)?,
-                                    self.source_temporary_units.clone(),
                                     limits.retained_units,
-                                ))
-                            })
-                            .transpose()?;
+                                )
+                            });
                         DomNodeKind::ProcessingInstruction(DomProcessingInstruction::new(
                             target,
                             data,
@@ -2703,10 +3017,8 @@ impl Draft {
                     let payload = source::storage::kind(&kind, || self.source_step(cancelled))?;
                     source::formation::mutation_observation::grew(Some(before), payload.bytes);
                 }
-                let key = self.allocate(kind, document, limits, cancelled)?;
-                // Direct infallible ownership transfer: this payload is now in
-                // the Draft's node graph, before any subsequent fallible hook.
-                drop(metadata_formation);
+                let key =
+                    self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
                 self.initialize_native_element(key, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }
@@ -2796,10 +3108,9 @@ impl Draft {
             }
             Command::SetMarqueeRunning { node, running } => {
                 let node = self.resolve(node.clone())?;
-                let DomNodeKind::Element(element) = &mut self.node_mut(node).kind else {
-                    return Err(DomError::WrongNodeKind);
-                };
+                let mut element = self.element_fields_mut(node, cancelled)?;
                 element.set_marquee_running(*running)?;
+                element.commit(cancelled)?;
             }
             Command::RemoveAttribute {
                 node,
@@ -2822,19 +3133,27 @@ impl Draft {
                 }
                 let mut pending = self.effect_vec();
                 let mut closure = self.effect_vec();
-                self.select_reserve(&mut pending, self.nodes, cancelled)?;
-                self.select_reserve(&mut closure, self.nodes, cancelled)?;
+                self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push(node);
                 while !pending.is_empty() {
                     self.source_step(cancelled)?;
                     let key = pending.pop().expect("admitted destruction node");
                     let current = self.node(key)?;
+                    let contents = self.owned_template_contents(key, cancelled)?;
+                    self.select_reserve(
+                        &mut pending,
+                        current.children.len()
+                            + usize::from(current.shadow_root.is_some())
+                            + usize::from(contents.is_some()),
+                        cancelled,
+                    )?;
+                    self.select_reserve(&mut closure, 1, cancelled)?;
                     for child in current.children.iter().rev() {
                         self.source_step(cancelled)?;
-                        pending.push(*child);
+                        pending.push(child);
                     }
                     pending.extend(current.shadow_root);
-                    pending.extend(self.owned_template_contents(key, cancelled)?);
+                    pending.extend(contents);
                     closure.push(key);
                 }
                 self.push_effect(
@@ -2856,7 +3175,7 @@ impl Draft {
             } => {
                 let node = self.resolve(node.clone())?;
                 let (offset, count) = (*offset, *count);
-                let previous_units = kind_units(&self.node(node)?.kind)?;
+                let previous_units = kind_units(self.node(node)?.kind)?;
                 let fixed_units = match &self.node(node)?.kind {
                     DomNodeKind::ProcessingInstruction(value) => value.target().len(),
                     _ => 0,
@@ -2898,6 +3217,8 @@ impl Draft {
                         output
                     }
                 };
+                #[cfg(test)]
+                let mut copied = transaction::CopyObservation::default();
                 for unit in previous.code_units()[..offset]
                     .iter()
                     .chain(data.code_units())
@@ -2905,6 +3226,8 @@ impl Draft {
                 {
                     self.source_step(cancelled)?;
                     value.push(*unit);
+                    #[cfg(test)]
+                    copied.pushed::<u16>();
                 }
                 let value = DocumentString::from_utf16(value);
                 #[cfg(test)]
@@ -2932,8 +3255,7 @@ impl Draft {
                     .checked_add(kind_units(&kind)?)
                     .ok_or(DomError::RepresentationExhausted)?;
                 admit(units, limits.units, DomResource::StringCodeUnits)?;
-                let target = self.node_mut(node);
-                target.kind = kind;
+                self.with_node_fields(node, cancelled, |fields| fields.kind = kind)?;
                 self.units = units;
                 self.range_replace_data(node, offset, removed, data.len(), cancelled)?;
                 drop(formation); // The actual replacement graph now belongs to Draft.
@@ -2978,440 +3300,8 @@ impl Draft {
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
-        self.range_publication_ready(cancelled)?;
-        admit(
-            self.autofocus_count(cancelled)?,
-            dom.limits.autofocus_candidates,
-            DomResource::AutofocusCandidates,
-        )?;
-        let formation = source::formation::Formation::new(self, cancelled)?;
-        let budget = formation.as_ref();
-        let source::PublicationMap {
-            mut slots,
-            occupants,
-            ids: allocated_ids,
-        } = self.publication_map(dom, budget, cancelled)?;
-        let id = |key| match key {
-            Key::Existing(slot) => NodeId {
-                owner: dom.owner,
-                slot,
-                generation: self.generations[slot],
-            },
-            Key::Created(index) => {
-                allocated_ids[index].expect("surviving public creation reference")
-            }
-        };
-        // Resolve requested private adapter identities only while the canonical
-        // final allocation map exists. All fallible output precedes publication.
-        let mut mapped = Vec::new();
-        if budget.is_some() {
-            source::formation::reserve(&mut mapped, requested.len(), budget, cancelled)?;
-        } else {
-            // The ordinary immutable adapter admits this exact output bank;
-            // preserve its established allocation policy outside composition.
-            mapped
-                .try_reserve_exact(requested.len())
-                .map_err(|_| DomError::AllocationFailed)?;
-        }
-        for key in requested {
-            check_cancel(cancelled)?;
-            self.node(key)?;
-            mapped.push(id(key));
-        }
-        let occupant_bytes = occupants.capacity() * size_of::<Option<Key>>();
-        for (slot, key) in occupants.into_iter().enumerate() {
-            check_cancel(cancelled)?;
-            let Some(key) = key else {
-                continue;
-            };
-            let source = self.node(key)?;
-            if source
-                .base
-                .as_ref()
-                .and_then(|b| b.frozen.as_ref())
-                .is_some_and(|f| f.response == crate::base::Response::Pending)
-            {
-                return Err(DomError::BaseFacts(crate::DomBaseFactsError::Missing(
-                    surgeist_html_semantics::HtmlBaseMissing::ResponseDomain,
-                )));
-            }
-            // Clone each backing occurrence only after its full candidate
-            // lifetime has been admitted, while occupants and Draft still live.
-            if let Some(budget) = budget {
-                let payload =
-                    source::storage::candidate_node(source, || self.source_step(cancelled))?;
-                budget.retain_payload(payload, cancelled)?;
-                let headers = 4usize
-                    + usize::from(source.base_document.is_some())
-                    + usize::from(matches!(
-                        &source.autofocus_document,
-                        Some(crate::autofocus::DocumentAutofocusState::Known { .. })
-                    ))
-                    + if matches!(
-                        &source.interactive_document,
-                        Some(crate::dialog::DocumentInteractiveState::Known { .. })
-                    ) {
-                        3
-                    } else {
-                        0
-                    };
-                budget.retain_bytes(headers * size_of::<Vec<NodeId>>(), cancelled)?;
-            }
-            let mut children = Vec::new();
-            source::formation::reserve(&mut children, source.children.len(), budget, cancelled)?;
-            children.extend(source.children.iter().copied().map(id));
-            slots[slot].node = Some(Node {
-                active_range: source.active_range,
-                relevant_global: source.relevant_global,
-                document: DocumentId(id(source.document)),
-                kind: source.kind.clone(),
-                script: source.script.map(|value| value.map(id)),
-                style_parser_document: source.style_parser_document.map(id),
-                parent: source.parent.map(id),
-                shadow_root: source.shadow_root.map(id),
-                host: source.host.map(id),
-                template_contents: source.template_contents.map(id),
-                template_patch: source.template_patch.map(|p| p.map(id)),
-                template_document: source.template_document.map(|value| value.map(id)),
-                children: children.into(),
-                manual_nodes: map_ids(&source.manual_nodes, &id, budget, cancelled)?.into(),
-                assigned_nodes: map_ids(&source.assigned_nodes, &id, budget, cancelled)?.into(),
-                manual_slot: source.manual_slot.map(id),
-                assigned_slot: source.assigned_slot.map(id),
-                reflected_targets: source.reflected_targets.map(|targets| targets.map(id)),
-                control_owner: source.control_owner.map(id),
-                option_select: source.option_select.map(id),
-                base: source.base.as_ref().map(|b| b.map(id)),
-                base_document: source
-                    .base_document
-                    .as_ref()
-                    .map(|b| {
-                        Ok::<_, DomError>(canonical::BaseDocument {
-                            facts: b.facts.clone(),
-                            first: b.first.map(id),
-                            render_blocking: map_ids(&b.render_blocking, &id, budget, cancelled)?
-                                .into(),
-                        })
-                    })
-                    .transpose()?,
-                link: source.link.as_ref().map(|b| b.map(id)),
-                image: source.image.as_ref().map(|b| b.map(id)),
-                hyperlink: source.hyperlink.as_ref().map(|h| h.map(id)),
-                encoding_url_document: source.encoding_url_document.clone(),
-                autofocus_document: source
-                    .autofocus_document
-                    .as_ref()
-                    .map(|state| {
-                        use crate::autofocus::DocumentAutofocusState as A;
-                        Ok::<_, DomError>(match state {
-                            A::Known {
-                                candidates,
-                                processed,
-                            } => canonical::Autofocus::Known {
-                                candidates: map_ids(candidates, &id, budget, cancelled)?.into(),
-                                processed: *processed,
-                            },
-                            A::Unavailable => canonical::Autofocus::Unavailable,
-                        })
-                    })
-                    .transpose()?,
-                fullscreen_events: copy_records(&source.fullscreen_events, budget, cancelled)?
-                    .into(),
-                interactive_document: source
-                    .interactive_document
-                    .as_ref()
-                    .map(|state| {
-                        use crate::dialog::DocumentInteractiveState as Interactive;
-                        Ok::<_, DomError>(match state {
-                            Interactive::Known {
-                                open_dialogs,
-                                top_layer,
-                                pending_top_layer_removals,
-                            } => canonical::Interactive::Known {
-                                open_dialogs: map_ids(open_dialogs, &id, budget, cancelled)?.into(),
-                                top_layer: map_ids(top_layer, &id, budget, cancelled)?.into(),
-                                pending_top_layer_removals: map_ids(
-                                    pending_top_layer_removals,
-                                    &id,
-                                    budget,
-                                    cancelled,
-                                )?
-                                .into(),
-                            },
-                            Interactive::Unavailable => canonical::Interactive::Unavailable,
-                        })
-                    })
-                    .transpose()?,
-                form_past_names: source
-                    .form_past_names
-                    .as_ref()
-                    .map(|map| form::map_names_formed(map, id, budget, cancelled))
-                    .transpose()?,
-            });
-            #[cfg(test)]
-            if let Some(budget) = budget {
-                budget.observe_candidate(
-                    &slots,
-                    occupant_bytes,
-                    allocated_ids.capacity(),
-                    mapped.capacity(),
-                );
-            }
-        }
-        if let Some(budget) = budget {
-            budget.release_bytes(occupant_bytes);
-        }
-        let select::FinishedTasks {
-            tasks: native_tasks,
-            next: next_task,
-            cancellations,
-        } = self.finish_select_tasks(dom, &id, budget, cancelled)?;
-        let details::Finished {
-            intentions: details_intentions,
-            cancellations: details_cancellations,
-            next: next_details_intention,
-        } = self.finish_details(dom, &id, budget, cancelled)?;
-        let finished = self.view_transitions.finish(
-            dom.owner,
-            &dom.state.view_transitions,
-            budget,
-            cancelled,
-        )?;
-        let mut ranges = Vec::new();
-        source::formation::reserve(&mut ranges, self.ranges.len(), budget, cancelled)?;
-        for (index, slot) in self.ranges.iter().enumerate() {
-            self.source_step(cancelled)?;
-            // An unpublished creation is not a canonical generation. Its
-            // private serial still distinguishes tickets during this batch,
-            // but an absent final record restores the published vacant basis.
-            let (generation, retired) = if slot.record.is_none() {
-                dom.state.ranges.get(index).map_or((0, false), |old| {
-                    (
-                        old.generation,
-                        old.retired || (old.record.is_some() && old.generation == u64::MAX),
-                    )
-                })
-            } else {
-                (slot.generation, slot.retired)
-            };
-            ranges.push(crate::range::Slot {
-                generation,
-                retired,
-                record: slot.record.map(|record| record.map(id)),
-            });
-        }
-        while ranges.len() > dom.state.ranges.len()
-            && ranges.last().is_some_and(|slot| slot.record.is_none())
-        {
-            self.source_step(cancelled)?;
-            ranges.pop();
-        }
-        let mut created_ranges = Vec::new();
-        source::formation::reserve(
-            &mut created_ranges,
-            self.range_tickets.len(),
-            budget,
-            cancelled,
-        )?;
-        for range in &self.range_tickets {
-            self.source_step(cancelled)?;
-            created_ranges.push(self.range_record(*range).ok().map(|_| *range));
-        }
-        for (index, slot) in slots.iter_mut().enumerate() {
-            self.source_step(cancelled)?;
-            if let (Some(candidate), Some(original)) = (
-                slot.node.as_mut(),
-                dom.state
-                    .slots
-                    .get(index)
-                    .and_then(|slot| slot.node.as_ref()),
-            ) {
-                self.reuse_equal_node_backings(candidate, original, budget, cancelled)?;
-            }
-        }
-        let slots = self.seal_bank(slots, &dom.state.slots, budget, cancelled, |slot| {
-            Ok((
-                slot.node.is_none() && !slot.retired,
-                source::storage::canonical_slot(slot, || self.source_step(cancelled))?,
-            ))
-        })?;
-        let ranges = self.seal_bank(ranges, &dom.state.ranges, budget, cancelled, |slot| {
-            Ok((
-                slot.record.is_none() && !slot.retired && slot.generation < u64::MAX,
-                source::storage::Payload {
-                    bytes: size_of::<crate::range::Slot<NodeId>>(),
-                    units: 0,
-                },
-            ))
-        })?;
-        if let Some(budget) = budget {
-            budget.retain_bytes(3 * size_of::<Vec<NodeId>>(), cancelled)?;
-        }
-        let mut state = State {
-            ranges,
-            incomplete_source: None,
-            incomplete_hosted: dom.state.incomplete_hosted,
-            slots,
-            registries: self.registries.clone(),
-            hosted_globals: self.hosted_globals.clone(),
-            hosted_history: self.hosted_history.clone(),
-            view_transitions: finished.value,
-            signal_slots: self
-                .map_public_ids(&self.signal_slots, &id, budget, cancelled)?
-                .into(),
-            notification_queued: self.notification_queued,
-            native_tasks: native_tasks.into(),
-            next_task,
-            details_intentions: details_intentions.into(),
-            next_details_intention,
-            nodes: self.public_nodes(),
-            units: self.public_units(cancelled)?,
-        };
-        source::reuse_sequence(
-            &mut state.signal_slots,
-            &dom.state.signal_slots,
-            budget,
-            cancelled,
-        )?;
-        source::reuse_sequence(
-            &mut state.native_tasks,
-            &dom.state.native_tasks,
-            budget,
-            cancelled,
-        )?;
-        source::reuse_sequence(
-            &mut state.details_intentions,
-            &dom.state.details_intentions,
-            budget,
-            cancelled,
-        )?;
-        let mut changes = difference(dom.owner, &dom.state, &state, budget, cancelled)?;
-        if let Some(cancelled_images) = &self.cancelled_images {
-            for item in cancelled_images.iter() {
-                check_cancel(cancelled)?;
-                source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-                changes.push(DomChange::ImageUpdateCancelled {
-                    update: item.update,
-                    flags: item.flags,
-                    reason: crate::DomImageUpdateCancellationReason::TargetDestroyed,
-                });
-            }
-        }
-
-        let cancellation_bytes = cancellations.capacity() * size_of::<(u64, NodeId)>();
-        for (operation, select) in cancellations {
-            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-            changes.push(DomChange::SelectTaskCancelled {
-                operation: crate::DomNativeTaskId {
-                    owner: dom.owner,
-                    serial: operation,
-                },
-                select,
-                reason: crate::DomSelectTaskCancellationReason::TargetDestroyed,
-            });
-        }
-        if let Some(budget) = budget {
-            budget.release_bytes(cancellation_bytes);
-        }
-        let details_bytes =
-            details_cancellations.capacity() * size_of::<crate::DomDetailsToggleIntention>();
-        for item in details_cancellations {
-            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-            changes.push(DomChange::DetailsToggleIntentionCancelled {
-                operation: item.operation,
-                target: item.target,
-                old: item.old,
-                new: item.new,
-                reason: crate::DomDetailsToggleCancellationReason::TargetDestroyed,
-            });
-        }
-        if let Some(budget) = budget {
-            budget.release_bytes(details_bytes);
-        }
-        for slot in &self.cancelled_signals {
-            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-            changes.push(DomChange::SlotSignalCancelled {
-                slot: *slot,
-                reason: crate::DomSlotSignalCancellationReason::Destroyed,
-            });
-        }
-        let mut created = Vec::new();
-        let mut documents = Vec::new();
-        source::formation::reserve(&mut created, self.tickets.len(), budget, cancelled)?;
-        source::formation::reserve(&mut documents, self.tickets.len(), budget, cancelled)?;
-        for ticket in &self.tickets {
-            let Key::Created(index) = *ticket else {
-                unreachable!("creation ticket allocation")
-            };
-            created.push(allocated_ids[index]);
-            documents.push(
-                self.created[index]
-                    .as_ref()
-                    .is_some_and(|node| matches!(node.kind, DomNodeKind::Document(_))),
-            );
-        }
-        let mut retirements = Vec::new();
-        source::formation::reserve(
-            &mut retirements,
-            self.dispatch_retirements.len(),
-            budget,
-            cancelled,
-        )?;
-        for &(target, document) in &self.dispatch_retirements {
-            self.source_step(cancelled)?;
-            if !dom
-                .dispatch_custody
-                .tracks(target, || self.source_step(cancelled))?
-            {
-                continue;
-            }
-            let document = DocumentId(id(document));
-            retirements.push(dispatch::Retirement { target, document });
-        }
-        Ok((
-            Prepared {
-                created_ranges,
-                retirements,
-                formation,
-                allocation_ids: allocated_ids,
-                state,
-                owner: self.owner.clone(),
-                created,
-                documents,
-                transition_ids: finished.transition_ids,
-                record_ids: finished.record_ids,
-                changes,
-            },
-            mapped,
-        ))
+        self.finish_sparse(dom, cancelled, requested)
     }
-}
-fn copy_records<T: Copy>(
-    source: &[T],
-    budget: Option<&source::formation::Formation>,
-    cancel: &AtomicBool,
-) -> Result<Vec<T>, DomError> {
-    let mut out = Vec::new();
-    source::formation::reserve(&mut out, source.len(), budget, cancel)?;
-    for value in source {
-        source::formation::step(budget, cancel)?;
-        out.push(*value);
-    }
-    Ok(out)
-}
-fn map_ids(
-    keys: &[Key],
-    id: &impl Fn(Key) -> NodeId,
-    budget: Option<&source::formation::Formation>,
-    cancelled: &AtomicBool,
-) -> Result<Vec<NodeId>, DomError> {
-    let mut result = Vec::new();
-    source::formation::reserve(&mut result, keys.len(), budget, cancelled)?;
-    for key in keys {
-        check_cancel(cancelled)?;
-        result.push(id(*key));
-    }
-    Ok(result)
 }
 fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
     match kind {
@@ -3425,13 +3315,420 @@ fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {
         _ => Ok(0),
     }
 }
-fn difference(
+fn sparse_difference(
     owner: DomOwnerId,
     old: &State,
     new: &State,
     budget: Option<&source::formation::Formation>,
     cancelled: &AtomicBool,
+    node_indices: &bank::Bank<bool>,
+    range_indices: impl IntoIterator<Item = usize>,
 ) -> Result<Vec<DomChange>, DomError> {
+    let mut changes = Vec::new();
+    #[cfg(test)]
+    let mut written = transaction::CopyObservation::default();
+    for index in range_indices {
+        check_cancel(cancelled)?;
+        if let Some(budget) = budget {
+            budget.retain_bytes(0, cancelled)?;
+        }
+        let before = old
+            .ranges
+            .get(index)
+            .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
+        let after = new
+            .ranges
+            .get(index)
+            .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
+        let same = before.zip(after).is_some_and(|(a, b)| a.0 == b.0);
+        if let Some((generation, record)) = before {
+            let id = crate::DomRangeId {
+                owner,
+                slot: index,
+                generation,
+            };
+            if same {
+                if record != after.expect("same Range").1 {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::RangeBoundary(id));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+            } else {
+                source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                changes.push(DomChange::RangeRetired(id));
+                #[cfg(test)]
+                written.pushed::<DomChange>();
+            }
+        }
+        if !same && let Some((generation, _)) = after {
+            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+            changes.push(DomChange::RangeCreated(crate::DomRangeId {
+                owner,
+                slot: index,
+                generation,
+            }));
+            #[cfg(test)]
+            written.pushed::<DomChange>();
+        }
+    }
+    // Fullscreen facts depend on top-layer membership and flags of actual
+    // members. Scalar Document writes do not enter that dependency domain.
+    let scratch = budget.map(source::formation::Formation::fork);
+    let mut fullscreen_documents = Vec::new();
+    let mut selected_nodes = Vec::new();
+    for (index, _) in node_indices.iter() {
+        source::formation::reserve(&mut selected_nodes, 1, scratch.as_ref(), cancelled)?;
+        selected_nodes.push(index);
+        #[cfg(test)]
+        written.pushed::<usize>();
+        let before = old.slots.get(index).and_then(|s| s.node.as_ref());
+        let after = new.slots.get(index).and_then(|s| s.node.as_ref());
+        let flags = |node: Option<&Node>| {
+            node.and_then(|n| match &n.kind {
+                DomNodeKind::Element(e) => {
+                    Some((n.document, e.fullscreen_flag(), e.keyboard_lock_flag()))
+                }
+                _ => None,
+            })
+        };
+        let before = flags(before);
+        let after = flags(after);
+        if before != after && (before.is_some_and(|v| v.1) || after.is_some_and(|v| v.1)) {
+            for doc in [before.map(|v| v.0), after.map(|v| v.0)]
+                .into_iter()
+                .flatten()
+            {
+                source::formation::reserve(
+                    &mut fullscreen_documents,
+                    1,
+                    scratch.as_ref(),
+                    cancelled,
+                )?;
+                fullscreen_documents.push(doc);
+                #[cfg(test)]
+                written.pushed::<DocumentId>();
+                source::formation::reserve(&mut selected_nodes, 1, scratch.as_ref(), cancelled)?;
+                selected_nodes.push(doc.node().slot);
+                #[cfg(test)]
+                written.pushed::<usize>();
+            }
+        }
+    }
+    fullscreen_documents.sort_unstable_by_key(|id| (id.node().slot, id.node().generation));
+    fullscreen_documents.dedup();
+    selected_nodes.sort_unstable();
+    selected_nodes.dedup();
+    for index in selected_nodes {
+        let before = old
+            .slots
+            .get(index)
+            .and_then(|slot| slot.node.as_ref().map(|node| (slot.generation, node)));
+        let after = new
+            .slots
+            .get(index)
+            .and_then(|slot| slot.node.as_ref().map(|node| (slot.generation, node)));
+        let same = before.zip(after).is_some_and(|(a, b)| a.0 == b.0);
+        if let Some((generation, node)) = before {
+            let id = NodeId {
+                owner,
+                slot: index,
+                generation,
+            };
+            if same {
+                let current = after.expect("same live identity").1;
+                if node.active_range != current.active_range {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentActiveRange(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
+                    (&node.kind, &current.kind)
+                    && before.design_mode_enabled() != after.design_mode_enabled()
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentDesignMode(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
+                    (&node.kind, &current.kind)
+                    && before.captured_in_view_transition() != after.captured_in_view_transition()
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::ViewTransitionCaptured(
+                        DomViewTransitionSubject::Element(id),
+                    ));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                let intrinsic_changed = match (&node.kind, &current.kind) {
+                    (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
+                        before.attributes() != after.attributes()
+                    }
+                    (DomNodeKind::Document(before), DomNodeKind::Document(after)) => {
+                        !before.same_nondesign_mode_state(after)
+                    }
+                    _ => node.kind != current.kind,
+                };
+                if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
+                    (&node.kind, &current.kind)
+                    && (!before.same_nonattribute_state(after)
+                        || node.reflected_targets != current.reflected_targets
+                        || node.control_owner != current.control_owner
+                        || node.form_past_names != current.form_past_names
+                        || node.base != current.base
+                        || node.link != current.link
+                        || node.image != current.image
+                        || node.hyperlink != current.hyperlink
+                        || node.script != current.script
+                        || node.style_parser_document != current.style_parser_document
+                        || node.option_select != current.option_select
+                        || node.template_patch != current.template_patch)
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::ElementState(id));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.base != current.base
+                    && let Some(frozen) = current.base.as_ref().and_then(|b| b.frozen.as_ref())
+                {
+                    let change = DomChange::DocumentBase(DocumentId(frozen.document));
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(change);
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.autofocus_document != current.autofocus_document {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentAutofocusState(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.interactive_document != current.interactive_document {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentInteractiveState(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.fullscreen_events != current.fullscreen_events {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFullscreenEvents(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                let same_top_layer =
+                    match (&node.interactive_document, &current.interactive_document) {
+                        (
+                            Some(canonical::Interactive::Known { top_layer: a, .. }),
+                            Some(canonical::Interactive::Known { top_layer: b, .. }),
+                        ) => a.shares_backing(b),
+                        (
+                            Some(canonical::Interactive::Unavailable),
+                            Some(canonical::Interactive::Unavailable),
+                        )
+                        | (None, None) => true,
+                        _ => false,
+                    };
+                let fullscreen_dependency = fullscreen_documents
+                    .binary_search_by_key(&(id.slot, id.generation), |doc| {
+                        (doc.node().slot, doc.node().generation)
+                    })
+                    .is_ok()
+                    || !same_top_layer;
+                if matches!(node.kind, DomNodeKind::Document(_))
+                    && fullscreen_dependency
+                    && fullscreen::captured_facts(old, node, owner, budget, cancelled)?
+                        != fullscreen::captured_facts(new, current, owner, budget, cancelled)?
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFullscreenState(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.base_document != current.base_document {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentBase(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node
+                    .base_document
+                    .as_ref()
+                    .map(|state| &state.render_blocking)
+                    != current
+                        .base_document
+                        .as_ref()
+                        .map(|state| &state.render_blocking)
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentRenderBlocking(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
+                    (&node.kind, &current.kind)
+                    && (before.meta_state() != after.meta_state()
+                        || before.meta_theme_color() != after.meta_theme_color()
+                        || before.meta_color_scheme != after.meta_color_scheme
+                        || before.policy_container() != after.policy_container())
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentMeta(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                if node.encoding_url_document != current.encoding_url_document {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentEncodingUrlFacts(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+                let kind_change = if intrinsic_changed {
+                    Some(
+                        if matches!(
+                            (&node.kind, &current.kind),
+                            (DomNodeKind::Element(_), DomNodeKind::Element(_))
+                        ) {
+                            DomChange::Attributes(id)
+                        } else {
+                            DomChange::Data(id)
+                        },
+                    )
+                } else {
+                    None
+                };
+                for change in [
+                    kind_change,
+                    (node.manual_nodes != current.manual_nodes)
+                        .then_some(DomChange::SlotManual(id)),
+                    (node.assigned_nodes != current.assigned_nodes)
+                        .then_some(DomChange::SlotAssignedNodes(id)),
+                    (node.manual_slot != current.manual_slot)
+                        .then_some(DomChange::ManualAssignment(id)),
+                    (node.assigned_slot != current.assigned_slot)
+                        .then_some(DomChange::StoredAssignedSlot(id)),
+                    (node.shadow_root != current.shadow_root).then_some(DomChange::ShadowRoot(id)),
+                    (node.document != current.document).then_some(DomChange::NodeDocument(id)),
+                    (node.parent != current.parent).then_some(DomChange::Parent(id)),
+                    (node.children != current.children).then_some(DomChange::Children(id)),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(change);
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
+            } else {
+                source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                changes.push(DomChange::Destroyed(id));
+                #[cfg(test)]
+                written.pushed::<DomChange>();
+            }
+        }
+        if let Some((generation, _)) = after
+            && !same
+        {
+            source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+            changes.push(DomChange::Created(NodeId {
+                owner,
+                slot: index,
+                generation,
+            }));
+            #[cfg(test)]
+            written.pushed::<DomChange>();
+        }
+    }
+    let has_template = |state: &State| state.counts.templates != 0;
+    let cache_changed = node_indices.iter().any(|(index, _)| {
+        old.slots
+            .get(index)
+            .and_then(|slot| slot.node.as_ref())
+            .zip(new.slots.get(index).and_then(|slot| slot.node.as_ref()))
+            .is_some_and(|(a, b)| {
+                a.template_document != b.template_document
+                    || a.template_contents != b.template_contents
+                    || a.template_patch != b.template_patch
+            })
+    });
+    if cache_changed
+        || ((has_template(old) || has_template(new))
+            && changes.iter().any(|change| {
+                matches!(
+                    change,
+                    DomChange::Created(_)
+                        | DomChange::Destroyed(_)
+                        | DomChange::Parent(_)
+                        | DomChange::Children(_)
+                        | DomChange::NodeDocument(_)
+                )
+            }))
+    {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::TemplateRelations);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
+    // All derived shadow relations are invalidated conservatively whenever a
+    // structural edit can affect a managed shadow tree. Ordinary-only stores
+    // retain their existing precise change contract.
+    let has_shadow = |state: &State| state.counts.shadow_roots != 0;
+    if (has_shadow(old) || has_shadow(new))
+        && changes.iter().any(|change| {
+            matches!(
+                change,
+                DomChange::Created(_)
+                    | DomChange::Destroyed(_)
+                    | DomChange::Parent(_)
+                    | DomChange::Children(_)
+                    | DomChange::NodeDocument(_)
+                    | DomChange::ShadowRoot(_)
+            )
+        })
+    {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::ShadowRelations);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
+    if old.details_intentions != new.details_intentions
+        || old.next_details_intention != new.next_details_intention
+    {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::DetailsToggleIntentions);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
+    if old.signal_slots != new.signal_slots
+        || old.notification_queued != new.notification_queued
+        || old.native_tasks != new.native_tasks
+    {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::IntrinsicTasks);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
+    if !changes.is_empty() && (old.counts.slots != 0 || new.counts.slots != 0) {
+        source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+        changes.push(DomChange::SlotQueries);
+        #[cfg(test)]
+        written.pushed::<DomChange>();
+    }
+    Ok(changes)
+}
+
+#[cfg(test)]
+fn full_difference(
+    owner: DomOwnerId,
+    old: &State,
+    new: &State,
+    cancelled: &AtomicBool,
+) -> Result<Vec<DomChange>, DomError> {
+    let budget: Option<&source::formation::Formation> = None;
     let mut changes = Vec::new();
     for index in 0..old.ranges.len().max(new.ranges.len()) {
         check_cancel(cancelled)?;
@@ -3733,11 +4030,11 @@ fn difference(
         .changes(&old.view_transitions, &mut changes, budget, cancelled)?;
     // Complete pseudo origins derive from ordinary Document children. Report
     // that domain when a valid generic edit changes or removes their origin.
-    for transition in &new.view_transitions.transitions {
+    for transition in new.view_transitions.transitions.values() {
         if old
             .view_transitions
             .transitions
-            .iter()
+            .values()
             .any(|t| t.id == transition.id)
         {
             let origin = |state: &State| {
@@ -3765,3 +4062,82 @@ fn difference(
 
 #[cfg(test)]
 mod tests;
+
+fn same_auxiliary<T: PartialEq>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
+        _ => false,
+    }
+}
+
+impl Prepared {
+    pub(in crate::store) fn set_hosted_history(
+        &mut self,
+        next: Option<Arc<hosted::history::Graph>>,
+        incoming: Option<source::formation::Formation>,
+        registry: &bank::CustodyRegistry,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let incoming = incoming.and_then(source::formation::Formation::into_debit);
+        let (next, custody) = match next {
+            Some(next) => {
+                let plan = transaction::auxiliary::prepare_history(
+                    next,
+                    incoming,
+                    registry,
+                    &mut |usage| match &self.formation {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                    &mut || source::formation::step(self.formation.as_ref(), cancel),
+                )?;
+                let (value, custody) = plan.into_parts();
+                (Some(value), Some(custody))
+            }
+            None => {
+                drop(incoming);
+                (None, None)
+            }
+        };
+        drop((
+            std::mem::replace(&mut self.state.hosted_history, next),
+            std::mem::replace(&mut self.state_frontiers.auxiliary.history, custody),
+        ));
+        Ok(())
+    }
+    pub(in crate::store) fn set_hosted_globals(
+        &mut self,
+        next: Option<Arc<hosted::GlobalDocumentIndex>>,
+        incoming: Option<source::formation::Formation>,
+        registry: &bank::CustodyRegistry,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let incoming = incoming.and_then(source::formation::Formation::into_debit);
+        let (next, custody) = match next {
+            Some(next) => {
+                let plan = transaction::auxiliary::prepare_globals(
+                    next,
+                    incoming,
+                    registry,
+                    &mut |usage| match &self.formation {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                    &mut || source::formation::step(self.formation.as_ref(), cancel),
+                )?;
+                let (value, custody) = plan.into_parts();
+                (Some(value), Some(custody))
+            }
+            None => {
+                drop(incoming);
+                (None, None)
+            }
+        };
+        drop((
+            std::mem::replace(&mut self.state.hosted_globals, next),
+            std::mem::replace(&mut self.state_frontiers.auxiliary.globals, custody),
+        ));
+        Ok(())
+    }
+}

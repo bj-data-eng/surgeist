@@ -21,39 +21,37 @@ impl<K> Pending<K> {
         self.serial.is_none()
     }
 }
+impl<K: Copy> Pending<K> {
+    pub(in crate::store) fn target(&self) -> K {
+        self.target
+    }
+    pub(in crate::store) fn queue_document(&self) -> Option<DocumentId> {
+        self.queue_association
+            .map(|association| association.document())
+    }
+}
+impl Pending<Key> {
+    pub(in crate::store) fn from_published(item: &DomDetailsToggleIntention) -> Self {
+        Self {
+            serial: Some(item.operation.serial),
+            target: Key::Existing(item.target),
+            old: item.old,
+            new: item.new,
+            queue_association: item.queue_association,
+        }
+    }
+}
 // The value drops before its non-Clone Source occurrence debit.
 struct DetailsValue {
     value: DocumentString,
     _payload: Option<source::checkpoint::Charge>,
 }
 pub(super) struct Finished {
-    pub intentions: Vec<DomDetailsToggleIntention>,
-    pub cancellations: Vec<DomDetailsToggleIntention>,
+    pub intentions: SharedVec<DomDetailsToggleIntention>,
+    pub output_debit: Option<custody::Debit>,
+    pub ack: Option<transaction::queues::QueueAck<Pending<Key>, DomDetailsToggleIntention>>,
+    pub cancellations: custody::Held<Vec<DomDetailsToggleIntention>>,
     pub next: u64,
-}
-pub(super) fn draft_formed(
-    source: &[DomDetailsToggleIntention],
-    initial: Option<&source::initial::Initial>,
-    cancel: &AtomicBool,
-) -> Result<Vec<Pending<Key>>, DomError> {
-    let mut out = Vec::new();
-    if let Some(initial) = initial {
-        initial.reserve(&mut out, source.len(), cancel)?;
-    } else {
-        out.try_reserve_exact(source.len())
-            .map_err(|_| DomError::AllocationFailed)?;
-    }
-    for item in source {
-        source::initial::step(initial, cancel)?;
-        out.push(Pending {
-            serial: Some(item.operation.serial),
-            target: Key::Existing(item.target.slot),
-            old: item.old,
-            new: item.new,
-            queue_association: item.queue_association,
-        });
-    }
-    Ok(out)
 }
 impl Draft {
     pub(in crate::store) fn element_task_association(
@@ -72,7 +70,7 @@ impl Draft {
             .document(global)
             .map_err(|_| DomError::HostedSourceUnavailable)?;
         self.source_step(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.node(Key::Existing(document.node().slot))?.kind
+        let DomNodeKind::Document(metadata) = &self.node(Key::Existing(document.node()))?.kind
         else {
             return Err(DomError::HostedSourceUnavailable);
         };
@@ -138,6 +136,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        let target = self.live_key(target);
         self.source_step(cancel)?;
         let count = self
             .details_intentions
@@ -150,25 +149,19 @@ impl Draft {
             limits.details_intentions,
             DomResource::DetailsToggleIntentions,
         )?;
-        let additional = self.source_reserve_amount::<Pending<Key>>(
-            self.details_intentions.len(),
-            self.details_intentions.capacity(),
-            1,
-            cancel,
-        )?;
-        self.details_intentions
-            .try_reserve_exact(additional.unwrap_or(1))
-            .map_err(|_| DomError::AllocationFailed)?;
-        self.source_admit(0, cancel)?;
-        self.headroom_details_issue(cancel)?;
-        let queue_association = self.element_task_association(target, cancel)?;
-        self.details_intentions.push(Pending {
+        let mut values = [Pending {
             serial: None,
             target,
             old,
             new,
-            queue_association,
-        });
+            queue_association: None,
+        }];
+        let mut prepared =
+            self.queue_details_prepare_insert(self.details_intentions.len(), &values, cancel)?;
+        self.headroom_details_issue(cancel)?;
+        values[0].queue_association = self.element_task_association(target, cancel)?;
+        self.queue_details_finalize_insert_document(&mut prepared, &values, cancel)?;
+        self.queue_details_commit_insert(prepared, &values);
         Ok(())
     }
     pub(super) fn details_exclusivity(
@@ -268,67 +261,46 @@ impl Draft {
         target: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let mut kept = 0;
-        for i in 0..self.details_intentions.len() {
+        let target = self.live_key(target);
+        self.source_step(cancel)?;
+        if self.details_intentions.target_count(target) == 0 {
+            return Ok(());
+        }
+        for index in 0..self.details_intentions.len() {
             self.source_step(cancel)?;
-            let item = self.details_intentions[i];
-            if item.target == target {
-                if let Some(id) = self.published_id(target) {
-                    #[cfg(test)]
-                    let growth = source_observation::before(
-                        self,
-                        self.cancelled_details.len() == self.cancelled_details.capacity(),
-                        cancel,
-                    )?;
-                    let additional = self.source_reserve_amount::<Pending<NodeId>>(
-                        self.cancelled_details.len(),
-                        self.cancelled_details.capacity(),
-                        1,
-                        cancel,
-                    )?;
-                    self.cancelled_details
-                        .try_reserve_exact(additional.unwrap_or(1))
-                        .map_err(|_| DomError::AllocationFailed)?;
-                    #[cfg(test)]
-                    source_observation::grew(
-                        growth,
-                        self.cancelled_details.capacity() * size_of::<Pending<NodeId>>(),
-                    );
-                    self.source_admit(0, cancel)?;
-                    self.cancelled_details.push(Pending {
+            let item = self
+                .details_intentions
+                .get(index)
+                .expect("bounded Details queue index");
+            if item.target == target
+                && let Some(id) = self.published_id(target)
+            {
+                #[cfg(test)]
+                let growth = source_observation::before(
+                    self,
+                    self.cancelled_details.len() == self.cancelled_details.capacity(),
+                    cancel,
+                )?;
+                self.queue_cancelled_details_insert(
+                    self.cancelled_details.len(),
+                    &[Pending {
                         serial: item.serial,
                         target: id,
                         old: item.old,
                         new: item.new,
                         queue_association: item.queue_association,
-                    });
-                }
-            } else {
-                self.details_intentions[kept] = item;
-                kept += 1;
+                    }],
+                    cancel,
+                )?;
+                #[cfg(test)]
+                source_observation::grew(
+                    growth,
+                    self.cancelled_details.capacity() * size_of::<Pending<NodeId>>(),
+                );
             }
         }
-        self.details_intentions.truncate(kept);
+        self.queue_details_retain(|item| item.target != target, cancel)?;
         Ok(())
-    }
-    pub(super) fn acknowledge_details_publication(
-        &mut self,
-        published: &[DomDetailsToggleIntention],
-    ) {
-        let mut published = published.iter();
-        let private = self.phase_map.as_ref().map(|m| &m.private);
-        for pending in &mut self.details_intentions {
-            if matches!(pending.target,Key::Created(i) if private.is_some_and(|m|m[i])) {
-                continue;
-            }
-            pending.serial = Some(
-                published
-                    .next()
-                    .expect("visible intention")
-                    .operation
-                    .serial,
-            );
-        }
     }
     pub(super) fn finish_details(
         &self,
@@ -337,6 +309,8 @@ impl Draft {
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Finished, DomError> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         let mut next = dom.state.next_details_intention;
         let mut serial = |old: Option<u64>| -> Result<DomDetailsToggleIntentionId, DomError> {
             let value = if let Some(old) = old {
@@ -353,34 +327,78 @@ impl Draft {
                 serial: value,
             })
         };
-        let mut intentions = Vec::new();
+        let mut ack = None;
+        let intentions = if let Some(canonical) = self.details_intentions.canonical_backing() {
+            transaction::queues::QueueOutput::canonical(canonical.clone())
+        } else {
+            let mut intentions = Vec::new();
+            source::formation::reserve(
+                &mut intentions,
+                self.details_intentions.len(),
+                budget,
+                cancel,
+            )?;
+
+            ack = Some(transaction::queues::QueueAck::prepare(
+                usize::try_from(self.details_intentions.counts().unissued)
+                    .map_err(|_| DomError::RepresentationExhausted)?,
+                self.custody_ledger(),
+                |usage| match budget {
+                    Some(budget) => budget.admit_custody_usage(usage, cancel),
+                    None => check_cancel(cancel),
+                },
+            )?);
+
+            for (index, item) in self.details_intentions.iter().enumerate() {
+                source::formation::step(budget, cancel)?;
+                if self.is_private(item.target) {
+                    continue;
+                }
+                let operation = serial(item.serial)?;
+                intentions.push(DomDetailsToggleIntention {
+                    operation,
+                    target: id(item.target),
+                    old: item.old,
+                    new: item.new,
+                    queue_association: item.queue_association,
+                });
+                #[cfg(test)]
+                written.pushed::<DomDetailsToggleIntention>();
+                if item.serial.is_none() {
+                    ack.as_mut()
+                        .expect("preadmitted unissued acknowledgement")
+                        .push_prepared(
+                            index,
+                            Pending {
+                                serial: Some(operation.serial),
+                                ..item
+                            },
+                        );
+                }
+            }
+            let selected = intentions.len();
+            ack.as_mut()
+                .expect("staged publication plan")
+                .publish_values(
+                    intentions,
+                    selected,
+                    budget,
+                    self.custody_ledger(),
+                    |usage| match budget {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                )?
+        };
+
         let mut cancellations = Vec::new();
-        source::formation::reserve(
-            &mut intentions,
-            self.details_intentions.len(),
-            budget,
-            cancel,
-        )?;
         source::formation::reserve(
             &mut cancellations,
             self.cancelled_details.len(),
             budget,
             cancel,
         )?;
-        for item in &self.details_intentions {
-            source::formation::step(budget, cancel)?;
-            if self.is_private(item.target) {
-                continue;
-            }
-            intentions.push(DomDetailsToggleIntention {
-                operation: serial(item.serial)?,
-                target: id(item.target),
-                old: item.old,
-                new: item.new,
-                queue_association: item.queue_association,
-            });
-        }
-        for item in &self.cancelled_details {
+        for item in self.cancelled_details.iter() {
             source::formation::step(budget, cancel)?;
             cancellations.push(DomDetailsToggleIntention {
                 operation: serial(item.serial)?,
@@ -389,9 +407,22 @@ impl Draft {
                 new: item.new,
                 queue_association: item.queue_association,
             });
+            #[cfg(test)]
+            written.pushed::<DomDetailsToggleIntention>();
         }
+        let cancellations = transaction::queues::finish_vec(
+            cancellations,
+            budget,
+            self.custody_ledger(),
+            |usage| match budget {
+                Some(budget) => budget.admit_custody_usage(usage, cancel),
+                None => check_cancel(cancel),
+            },
+        )?;
         Ok(Finished {
-            intentions,
+            intentions: intentions.values,
+            output_debit: intentions.output_debit,
+            ack,
             cancellations,
             next,
         })
@@ -462,7 +493,7 @@ impl Dom {
             });
         }
         let mut draft = Draft::new(self, DomBatch::new().owner, cancel)?;
-        draft.details_intentions.clear();
+        draft.queue_details_clear(cancel)?;
         let prepared = draft.finish(self, cancel)?;
         let commit = self.publish(prepared, cancel)?;
         if standalone && !out.is_empty() {
@@ -615,7 +646,22 @@ mod tests {
             1,
         ));
     }
-    fn named_draft() -> (Draft, Key, usize) {
+    struct Fixture {
+        draft: Draft,
+        _dom: Dom,
+    }
+    impl std::ops::Deref for Fixture {
+        type Target = Draft;
+        fn deref(&self) -> &Draft {
+            &self.draft
+        }
+    }
+    impl std::ops::DerefMut for Fixture {
+        fn deref_mut(&mut self) -> &mut Draft {
+            &mut self.draft
+        }
+    }
+    fn named_draft() -> (Fixture, Key, usize) {
         let (mut dom, _, a, _) = fixture();
         dom.set_limits(DomLimits::new(32, 100_000, 64, 0, 0, 8, 65536).unwrap())
             .unwrap();
@@ -625,11 +671,8 @@ mod tests {
         let mut setup = DomBatch::new();
         setup.set_attribute(a, "name", DocumentString::from_utf16(units));
         dom.apply(setup, &AtomicBool::new(false)).unwrap();
-        (
-            Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap(),
-            Key::Existing(a.slot),
-            capacity,
-        )
+        let draft = Draft::new(&dom, Arc::new(BatchIdentity), &AtomicBool::new(false)).unwrap();
+        (Fixture { draft, _dom: dom }, Key::Existing(a), capacity)
     }
     #[test]
     fn source_details_name_has_exact_capacity_custody_and_releases_on_first_stop() {
@@ -700,13 +743,14 @@ mod tests {
         assert_eq!(ordinary.value.code_units(), [u16::from(b'g')]);
     }
     #[test]
-    fn source_details_append_checks_replacement_peak_and_preserves_raw_order() {
+    fn source_details_append_without_index_headroom_refuses_and_retry_preserves_raw_order() {
         let (dom, _, a, _) = fixture();
         let cancel = AtomicBool::new(false);
-        let key = Key::Existing(a.slot);
+        let key = Key::Existing(a);
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
-        let bytes = size_of::<Pending<Key>>();
-        source_budget(&mut draft, bytes - 1, 0);
+        // The full owner includes persistent target/document index preparation;
+        // its no-headroom refusal is independent of the raw backing-only test.
+        source_budget(&mut draft, 0, 0);
         assert!(matches!(
             draft.append_details_intention(
                 key,
@@ -721,7 +765,7 @@ mod tests {
             })
         ));
         assert!(draft.details_intentions.is_empty());
-        source_budget(&mut draft, bytes, 0);
+        source_budget(&mut draft, 1_000_000, 1_000_000);
         draft
             .append_details_intention(
                 key,
@@ -732,20 +776,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(draft.details_intentions.capacity(), 1);
-        source_budget(&mut draft, bytes * 2 - 1, 0);
-        assert!(
-            draft
-                .append_details_intention(
-                    key,
-                    HtmlDetailsState::Open,
-                    HtmlDetailsState::Closed,
-                    policy(8),
-                    &cancel
-                )
-                .is_err()
-        );
+        let pointer = draft.details_intentions.staged_pointer().unwrap();
+        source_budget(&mut draft, 0, 0);
+        assert!(matches!(
+            draft.append_details_intention(
+                key,
+                HtmlDetailsState::Open,
+                HtmlDetailsState::Closed,
+                policy(8),
+                &cancel
+            ),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedBytes,
+                ..
+            })
+        ));
         assert_eq!(draft.details_intentions.len(), 1);
-        source_budget(&mut draft, bytes * 2, 0);
+        assert_eq!(draft.details_intentions.capacity(), 1);
+        assert_eq!(draft.details_intentions.staged_pointer().unwrap(), pointer);
+        source_budget(&mut draft, 1_000_000, 1_000_000);
         draft
             .append_details_intention(
                 key,
@@ -755,22 +804,31 @@ mod tests {
                 &cancel,
             )
             .unwrap();
+        transaction::queues::assert_details_backing_boundary([
+            draft.details_intentions.get(0).unwrap(),
+            draft.details_intentions.get(1).unwrap(),
+        ]);
         assert_eq!(draft.details_intentions.len(), 2);
         assert_eq!(
             (
-                draft.details_intentions[0].old,
-                draft.details_intentions[0].new
+                draft.details_intentions.get(0).unwrap().old,
+                draft.details_intentions.get(0).unwrap().new
             ),
             (HtmlDetailsState::Closed, HtmlDetailsState::Open)
         );
         assert_eq!(
             (
-                draft.details_intentions[1].old,
-                draft.details_intentions[1].new
+                draft.details_intentions.get(1).unwrap().old,
+                draft.details_intentions.get(1).unwrap().new
             ),
             (HtmlDetailsState::Open, HtmlDetailsState::Closed)
         );
-        assert!(draft.details_intentions.iter().all(Pending::is_unissued));
+        assert!(
+            draft
+                .details_intentions
+                .iter()
+                .all(|item| item.is_unissued())
+        );
         cancel.store(true, std::sync::atomic::Ordering::Release);
         assert!(matches!(
             draft.cancel_details_intentions(key, &cancel),

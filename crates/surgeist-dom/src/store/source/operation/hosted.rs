@@ -1,5 +1,7 @@
 //! Hosted effects retain this exact original Source root and its Draft keys.
 use super::*;
+#[cfg(test)]
+mod tests;
 #[derive(Clone, Copy)]
 pub(in crate::store) enum ChildHook {
     Create {
@@ -82,7 +84,7 @@ impl Child {
     pub(super) fn form(
         operation: &super::Operation,
         state: &State,
-        ids: &[Option<NodeId>],
+        ids: &super::super::AllocationIds,
         basis: DomStamp,
         hook: ChildHook,
         budget: Option<&formation::Formation>,
@@ -90,12 +92,8 @@ impl Child {
     ) -> Result<Self, DomError> {
         operation.draft.source_step(cancel)?;
         let container = match hook.key() {
-            Key::Existing(slot) => NodeId {
-                owner: basis.owner,
-                slot,
-                generation: operation.draft.generations[slot],
-            },
-            Key::Created(i) => ids[i].ok_or(DomError::UnavailableCreation)?,
+            Key::Existing(id) => id,
+            Key::Created(i) => ids.get(i).ok_or(DomError::UnavailableCreation)?,
         };
         let node = state.node(basis.owner, container)?;
         let DomNodeKind::Document(metadata) = &state.node(basis.owner, node.document.node())?.kind
@@ -313,7 +311,7 @@ impl DomSourceLease<'_> {
                 })?
                 .document
                 .ok_or(DomHostedError::StaleIdentity)?;
-            let active_key = Key::Existing(active.node().slot);
+            let active_key = Key::Existing(active.node());
             let DomNodeKind::Document(active_metadata) = &operation.draft.node(active_key)?.kind
             else {
                 return Err(DomError::WrongDocument.into());
@@ -497,7 +495,7 @@ impl DomSourceLease<'_> {
             formation.retain_payload(payload, cancel)?;
         }
         let retained = source.retain(payload.bytes, cancel)?;
-        let inputs = Arc::new(DomHostedEmbedderPolicyInputs {
+        let inputs = formation::allocated_arc(DomHostedEmbedderPolicyInputs {
             kind,
             parent_document: request.document,
             parent_origin: parent.origin().clone(),
@@ -749,7 +747,7 @@ impl DomSourceLease<'_> {
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         let issued = crate::DomSourceUrlRequest {
-            basis: Arc::new(crate::source::UrlBasis {
+            basis: formation::allocated_arc(crate::source::UrlBasis {
                 child: request.clone(),
                 occurrence,
                 document: DomDocumentStamp {
@@ -972,19 +970,20 @@ impl Draft {
         let inputs = &execution.inputs;
         let request = inner.request();
         let formation = formation::Formation::new(self, cancel)?;
+        let registry_formation = formation.as_ref().map(formation::Formation::fork);
         let (registries, registry) = registry::Bank::form(
             self.registries.as_deref(),
             self.store,
             source,
             &request.work,
-            formation.as_ref(),
+            registry_formation.as_ref(),
             cancel,
         )?;
         if let Some(formation) = &formation {
             formation.retain_bytes(size_of::<DocumentAssociation>(), cancel)?;
         }
         let retained = source.retain(size_of::<DocumentAssociation>(), cancel)?;
-        let association = Arc::new(DocumentAssociation {
+        let association = formation::allocated_arc(DocumentAssociation {
             source: source.observe(),
             host: request.host,
             context: request.context,
@@ -1038,19 +1037,16 @@ impl Draft {
         )?;
         *metadata.policy_container_mut() = parent_policy;
         let document = Key::Created(self.created.len());
-        let registry_payload = registries.retained_payload_bytes(|| self.source_step(cancel))?;
-        self.registries = Some(registries);
-        if let Some(formation) = &formation {
-            formation.release_payload(storage::Payload {
-                bytes: registry_payload,
-                units: 0,
-            });
-        }
+        self.set_registries(Some(registries), registry_formation, cancel)?;
         let old_owner = self.hosted_owner.replace(request.key.operation);
         let result = self.with_effect_scope(|draft| {
-            let document =
-                draft.allocate(DomNodeKind::Document(metadata), document, limits, cancel)?;
-            drop(formation);
+            let document = draft.allocate_formed(
+                DomNodeKind::Document(metadata),
+                document,
+                limits,
+                cancel,
+                formation,
+            )?;
             let html = draft.html_skeleton_element(document, "html", limits, cancel)?;
             draft.select_element_registry(html, cancel)?;
             draft.pre_insert(html, document, None, limits, cancel)?;
@@ -1081,7 +1077,7 @@ impl Draft {
             .as_ref()
             .ok_or(DomHostedError::WrongPhase)?;
         let retained = source.retain(size_of::<DocumentAssociation>(), cancel)?;
-        let association = Arc::new(DocumentAssociation {
+        let association = formation::allocated_arc(DocumentAssociation {
             source: old.source.clone(),
             host: old.host,
             context: old.context,
@@ -1091,10 +1087,12 @@ impl Draft {
             phase,
             _retained: retained,
         });
-        let DomNodeKind::Document(metadata) = &mut self.node_mut(document).kind else {
+        let mut fields = self.node_fields_mut(document, cancel)?;
+        let DomNodeKind::Document(metadata) = &mut fields.kind else {
             unreachable!("validated actual Document")
         };
         metadata.set_hosted_association(association);
+        fields.commit(cancel)?;
         Ok(())
     }
 }
@@ -1127,10 +1125,8 @@ impl DomSourceLease<'_> {
                 return Err(DomHostedError::WrongPhase);
             }
             let next = inner.next_request()?;
-            let checkpoint =
-                operation
-                    .draft
-                    .source_checkpoint(operation.input_bytes()?, 0, cancel)?;
+            let input_bytes = operation.input_bytes()?;
+            let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
             enum Next {
                 Document {
                     key: Key,
@@ -1292,10 +1288,10 @@ impl DomSourceLease<'_> {
                             },
                             &context,
                         )?;
-                        operation.draft.hosted_history = Some(graph);
-                        // Draft storage now owns this exact occurrence; the
-                        // following publication recomputes that baseline.
-                        drop(fresh);
+                        operation
+                            .draft
+                            .set_hosted_history(Some(graph), fresh, cancel)?;
+
                         operation.draft.child_document_phase(
                             source,
                             key,
@@ -1306,10 +1302,11 @@ impl DomSourceLease<'_> {
                             },
                             cancel,
                         )?;
-                        operation
+                        let mut element = operation
                             .draft
-                            .element_mut(child.hook.key())
-                            .establish_child_navigable(Some(*navigable))?;
+                            .element_fields_mut(child.hook.key(), cancel)?;
+                        element.establish_child_navigable(Some(*navigable))?;
+                        element.commit(cancel)?;
                         Next::Queue(creation)
                     }
                     _ => return Err(DomHostedError::WrongPhase),
@@ -1463,10 +1460,8 @@ impl DomSourceLease<'_> {
                 handoff_formation.as_ref(),
                 cancel,
             )?;
-            let checkpoint =
-                operation
-                    .draft
-                    .source_checkpoint(operation.input_bytes()?, 0, cancel)?;
+            let input_bytes = operation.input_bytes()?;
+            let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
             let attempt = (|| {
                 let fresh = formation::Formation::new(&operation.draft, cancel)?;
                 let context = canonical::history::Context::new(source, &original.work, cancel, 0);
@@ -1485,8 +1480,11 @@ impl DomSourceLease<'_> {
                     original.key.operation,
                     &context,
                 )?;
-                operation.draft.hosted_history = Some(graph);
-                drop(fresh);
+                operation
+                    .draft
+                    .set_hosted_history(Some(graph), fresh, cancel)?;
+                #[cfg(test)]
+                tests::after_history_assignment(cancel);
                 operation.publication_with_hosted(
                     self.dom,
                     true,
@@ -1582,8 +1580,7 @@ impl DomSourceLease<'_> {
             entry: nav.active,
             navigable,
         };
-        let DomNodeKind::Document(metadata) =
-            &op.draft.node(Key::Existing(document.node().slot))?.kind
+        let DomNodeKind::Document(metadata) = &op.draft.node(Key::Existing(document.node()))?.kind
         else {
             return Err(DomError::WrongDocument.into());
         };
@@ -1670,10 +1667,8 @@ impl DomSourceLease<'_> {
                     handoff_formation.as_ref(),
                     cancel,
                 )?;
-                let checkpoint =
-                    operation
-                        .draft
-                        .source_checkpoint(operation.input_bytes()?, 0, cancel)?;
+                let input_bytes = operation.input_bytes()?;
+                let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
                 let attempt = (|| {
                     let fresh = formation::Formation::new(&operation.draft, cancel)?;
                     let context =
@@ -1689,8 +1684,9 @@ impl DomSourceLease<'_> {
                         .as_deref()
                         .ok_or(DomHostedError::MissingPublication)?;
                     let graph = graph.mark_retiring(removal.packet.creation.navigable, &context)?;
-                    operation.draft.hosted_history = Some(graph);
-                    drop(fresh);
+                    operation
+                        .draft
+                        .set_hosted_history(Some(graph), fresh, cancel)?;
                     let fresh = formation::Formation::new(&operation.draft, cancel)?;
                     let context =
                         canonical::history::Context::new(source, &original.work, cancel, 0);
@@ -1709,8 +1705,9 @@ impl DomSourceLease<'_> {
                             removal.packet.parent,
                             &context,
                         )?;
-                    operation.draft.hosted_history = Some(graph);
-                    drop(fresh);
+                    operation
+                        .draft
+                        .set_hosted_history(Some(graph), fresh, cancel)?;
                     operation.publication_with_hosted(
                         self.dom,
                         true,

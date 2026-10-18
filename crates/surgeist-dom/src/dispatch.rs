@@ -2,7 +2,7 @@
 use std::{
     fmt,
     mem::size_of,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 
 use crate::{DocumentId, DomDocumentStamp, DomError, DomOwnerId, DomResource, NodeId};
@@ -91,18 +91,24 @@ pub struct DomDispatchCustody {
 }
 impl DomDispatchCustody {
     /// Maximum producer-owned payload for the requested number of target rows.
-    /// Includes the scope header and exact boxed row backing, excluding opaque
-    /// standard allocator metadata. The DOM separately charges its weak index.
+    /// Includes the scope header, admitted release node, weak ledger backing
+    /// occurrence and exact boxed rows, excluding opaque allocator metadata.
+    /// The DOM charges its index and its ledger occurrence separately.
     pub fn maximum_retained_bytes(targets: usize) -> Result<usize, DomError> {
         targets
             .checked_mul(size_of::<Row>())
             .and_then(|bytes| bytes.checked_add(size_of::<Scope>()))
+            .and_then(|bytes| bytes.checked_add(size_of::<ReleaseNode>()))
+            .and_then(|bytes| bytes.checked_add(size_of::<Mutex<Ledger>>()))
             .ok_or(DomError::RepresentationExhausted)
     }
     /// Actual producer-owned scope payload, using the same units as the maximum.
     pub fn retained_bytes(&self) -> usize {
         // Construction already checked this exact extent.
-        size_of::<Scope>() + self.scope.rows.len() * size_of::<Row>()
+        size_of::<Scope>()
+            + size_of::<ReleaseNode>()
+            + size_of::<Mutex<Ledger>>()
+            + self.scope.rows.len() * size_of::<Row>()
     }
     pub fn targets(&self) -> usize {
         self.scope.rows.len()
@@ -120,6 +126,66 @@ impl fmt::Debug for DomDispatchCustody {
 pub(crate) struct Scope {
     pub(crate) owner: DomOwnerId,
     pub(crate) rows: Box<[Row]>,
+    pub(crate) release: OnceLock<Release>,
+}
+
+/// One node is allocated before registration and transferred on external Drop.
+/// Its backing remains charged until the owner actually prunes the weak scope.
+pub(crate) struct ReleaseNode {
+    pub(crate) scope: usize,
+    pub(crate) next: Option<Box<[ReleaseNode]>>,
+}
+pub(crate) struct Release {
+    pub(crate) ledger: Weak<Mutex<Ledger>>,
+    pub(crate) node: Box<[ReleaseNode]>,
+}
+#[derive(Default)]
+pub(crate) struct Ledger {
+    pub(crate) references: usize,
+    pub(crate) live_scopes: usize,
+    pub(crate) released: Option<Box<[ReleaseNode]>>,
+}
+impl Ledger {
+    pub(crate) fn discard(mut released: Option<Box<[ReleaseNode]>>) {
+        // An arbitrarily long abandoned-scope list must not recurse on Drop.
+        while let Some(mut node) = released {
+            released = node[0].next.take();
+        }
+    }
+}
+impl Drop for Ledger {
+    fn drop(&mut self) {
+        Self::discard(self.released.take());
+    }
+}
+impl Drop for Scope {
+    fn drop(&mut self) {
+        let Some(Release {
+            ledger: weak,
+            mut node,
+        }) = self.release.take()
+        else {
+            return;
+        };
+        let Some(ledger) = weak.upgrade() else {
+            return;
+        };
+        let mut ledger = ledger.lock().unwrap_or_else(|error| error.into_inner());
+        let count = self.rows.len();
+        // Release the rows under the same lock used by aggregate observations.
+        drop(std::mem::take(&mut self.rows));
+        drop(weak);
+        ledger.references = ledger
+            .references
+            .checked_sub(count)
+            .expect("registered dispatch rows retain their ledger debit");
+        ledger.live_scopes = ledger
+            .live_scopes
+            .checked_sub(1)
+            .expect("initialized weak ledger occurrence");
+        node[0].next = ledger.released.take();
+        ledger.released = Some(node);
+    }
 }
 pub(crate) struct Row {
     pub(crate) target: NodeId,

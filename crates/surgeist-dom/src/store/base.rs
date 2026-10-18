@@ -56,9 +56,8 @@ impl Draft {
                 HtmlDocumentFirstBase::Present(
                     self.node(key)?
                         .base
-                        .as_ref()
-                        .and_then(|state| state.frozen.as_ref())
-                        .map(|frozen| &frozen.value),
+                        .and_then(|state| state.frozen)
+                        .map(|frozen| frozen.value),
                 )
             }
         })
@@ -226,8 +225,7 @@ impl Draft {
                 encoding,
                 self.node(key)?
                     .base_document
-                    .as_ref()
-                    .and_then(|base| base.facts.as_ref())
+                    .and_then(|base| base.facts)
                     .map(|facts| facts.document()),
             )
             .map_err(|missing| failure(Failure::Missing(missing)))?
@@ -236,12 +234,7 @@ impl Draft {
             return Err(failure(Failure::EnvironmentMismatch));
         }
         let fallback = env.fallback().map_err(|e| failure(Failure::Missing(e)))?;
-        if let Some(previous) = self
-            .node(key)?
-            .base_document
-            .as_ref()
-            .and_then(|d| d.facts.as_ref())
-        {
+        if let Some(previous) = self.node(key)?.base_document.and_then(|d| d.facts) {
             self.base_step(cancel)?;
             if previous.document().revision().producer() != env.revision().producer() {
                 return Err(failure(Failure::ForeignProducer));
@@ -259,27 +252,18 @@ impl Draft {
                 return Err(failure(Failure::InputsMismatch));
             }
         }
-        let mut records = facts.formation_usage().record_capacity();
-        for (i, node) in self.existing.iter().enumerate() {
-            self.base_step(cancel)?;
-            if key != Key::Existing(i)
-                && let Some(document) = node.as_ref().and_then(|n| n.base_document.as_ref())
-            {
-                records = records
-                    .checked_add(document.records())
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
-        for (i, node) in self.created.iter().enumerate() {
-            self.base_step(cancel)?;
-            if key != Key::Created(i)
-                && let Some(document) = node.as_ref().and_then(|n| n.base_document.as_ref())
-            {
-                records = records
-                    .checked_add(document.records())
-                    .ok_or(DomError::RepresentationExhausted)?;
-            }
-        }
+        let previous_records = self
+            .node(key)?
+            .base_document
+            .as_ref()
+            .and_then(|document| document.facts)
+            .map_or(0, |facts| facts.formation_usage().record_capacity());
+        let records = self
+            .counts
+            .base_observations
+            .checked_sub(previous_records)
+            .and_then(|records| records.checked_add(facts.formation_usage().record_capacity()))
+            .ok_or(DomError::RepresentationExhausted)?;
         admit(
             records,
             limits.base_observations,
@@ -314,13 +298,10 @@ impl Draft {
             facts.retained_storage_usage().retained_bytes(),
             facts.retained_storage_usage().utf16_extent(),
         );
-        self.node_mut(key)
-            .base_document
-            .as_mut()
-            .expect("Document")
-            .facts = Some(facts);
+        self.with_node_fields_formed(key, cancel, formation, |fields| {
+            fields.base_document.as_mut().expect("Document").facts = Some(facts)
+        })?;
         self.units = units;
-        drop(formation);
         Ok(())
     }
     fn first_base(&self, document: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
@@ -381,22 +362,27 @@ impl Draft {
             let doc = self
                 .node(self.node(key)?.document)?
                 .base_document
-                .as_ref()
                 .ok_or(DomError::WrongNodeKind)?;
-            for target in &doc.render_blocking {
+            for target in doc.render_blocking.iter() {
                 self.base_step(cancel)?;
-                if !matches!(&self.node(*target)?.kind, DomNodeKind::Element(element)
+                if !matches!(&self.node(target)?.kind, DomNodeKind::Element(element)
                     if element.style_state().is_some_and(|state| state.availability == crate::DomStyleSheetAvailability::Established))
                 {
                     return Err(DomError::LinkProcessingUnavailable);
                 }
             }
         }
-        if let Some(link) = &mut self.node_mut(key).link
+        if self.node(key)?.link.is_some()
             && name.local_name().code_units() == [100, 105, 115, 97, 98, 108, 101, 100]
         {
-            link.flags
-                .disabled_attribute_changed(name.namespace(), old, new);
+            self.with_node_fields(key, cancel, |fields| {
+                fields
+                    .link
+                    .as_mut()
+                    .expect("checked Link")
+                    .flags
+                    .disabled_attribute_changed(name.namespace(), old, new)
+            })?;
         }
         if self.node(key)?.base.is_some()
             && name.namespace().uri().is_none()
@@ -410,7 +396,7 @@ impl Draft {
         Ok(())
     }
     fn native_link_guard(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        let Some(link) = self.node(key)?.link.as_ref() else {
+        let Some(link) = self.node(key)?.link else {
             return Ok(());
         };
         check_cancel(cancel)?;
@@ -447,22 +433,18 @@ impl Draft {
         let state = self
             .node(document)?
             .base_document
-            .as_ref()
             .ok_or(DomError::WrongNodeKind)?;
         if first == state.first && !(first.is_some() && first == changed_href) {
             return Ok(());
         }
         let Some(first) = first else {
-            self.node_mut(document)
-                .base_document
-                .as_mut()
-                .expect("Document")
-                .first = None;
+            self.with_node_fields(document, cancel, |fields| {
+                fields.base_document.as_mut().expect("Document").first = None
+            })?;
             return Ok(());
         };
         let facts = state
             .facts
-            .as_ref()
             .ok_or_else(|| failure(Failure::Missing(HtmlBaseMissing::DocumentFacts)))?;
         let env = facts.document();
         let fallback = env.fallback().map_err(|e| failure(Failure::Missing(e)))?;
@@ -508,26 +490,27 @@ impl Draft {
                 Response::Returned
             },
         };
-        self.node_mut(first).base.as_mut().expect("Base").frozen = Some(frozen);
-        drop(formation);
-        self.node_mut(document)
-            .base_document
-            .as_mut()
-            .expect("Document")
-            .first = Some(first);
+        self.with_node_fields_formed(first, cancel, formation, |fields| {
+            fields.base.as_mut().expect("Base").frozen = Some(frozen)
+        })?;
+        self.with_node_fields(document, cancel, |fields| {
+            fields.base_document.as_mut().expect("Document").first = Some(first)
+        })?;
         self.units = units;
         // Real assignment precedes response. Any cancellation/refusal below
         // leaves this private candidate unpublished.
         if respond {
             self.respond_to_base_change(document, cancel)?;
-            self.node_mut(first)
-                .base
-                .as_mut()
-                .expect("Base")
-                .frozen
-                .as_mut()
-                .expect("assigned")
-                .response = Response::FactsPublished;
+            self.with_node_fields(first, cancel, |fields| {
+                fields
+                    .base
+                    .as_mut()
+                    .expect("Base")
+                    .frozen
+                    .as_mut()
+                    .expect("assigned")
+                    .response = Response::FactsPublished
+            })?;
         }
         Ok(())
     }
@@ -544,7 +527,7 @@ impl Draft {
             return Ok(Some(shadow));
         }
         if let Some(child) = node.children.first() {
-            return Ok(Some(*child));
+            return Ok(Some(child));
         }
         loop {
             self.base_step(cancel)?;
@@ -555,9 +538,9 @@ impl Draft {
             if let Some(parent) = node.parent {
                 for (i, sibling) in self.node(parent)?.children.iter().enumerate() {
                     self.base_step(cancel)?;
-                    if *sibling == key {
+                    if sibling == key {
                         if let Some(next) = self.node(parent)?.children.get(i + 1) {
-                            return Ok(Some(*next));
+                            return Ok(Some(next));
                         }
                         break;
                     }
@@ -565,7 +548,7 @@ impl Draft {
                 key = parent;
             } else if let Some(host) = node.host {
                 if let Some(child) = self.node(host)?.children.first() {
-                    return Ok(Some(*child));
+                    return Ok(Some(child));
                 }
                 key = host;
             } else {
@@ -725,7 +708,11 @@ mod tests {
         let base = draft.resolve(base.into()).unwrap();
         // Explicit private unavailable-input guard: this does not claim a
         // completed public Base freeze or install missing external evidence.
-        draft.node_mut(base).base.as_mut().unwrap().frozen = None;
+        draft
+            .with_node_fields(base, &cancel, |fields| {
+                fields.base.as_mut().unwrap().frozen = None
+            })
+            .unwrap();
         for result in [
             draft
                 .document_base_record(key, &cancel)
@@ -903,15 +890,7 @@ mod tests {
             DomError::BaseWorkLimit { limit: exact - 1 }
         );
         let key = d.resolve(base.into()).unwrap();
-        let frozen = d
-            .node(key)
-            .unwrap()
-            .base
-            .as_ref()
-            .unwrap()
-            .frozen
-            .as_ref()
-            .unwrap();
+        let frozen = d.node(key).unwrap().base.unwrap().frozen.unwrap();
         assert_eq!(frozen.response, Response::Pending);
         assert_eq!(frozen.document, d.resolve(doc.into()).unwrap());
         assert_eq!(
@@ -971,12 +950,14 @@ mod tests {
         let mut d = Draft::new(&dom, b.owner, &cancel).unwrap();
         let document = d.resolve(doc.into()).unwrap();
         let key = d.resolve(base.into()).unwrap();
-        d.node_mut(document)
-            .base_document
-            .as_mut()
-            .unwrap()
-            .render_blocking
-            .push(key);
+        d.relations_insert(
+            document,
+            transaction::RelationField::RenderBlocking,
+            0,
+            &[key],
+            &cancel,
+        )
+        .unwrap();
         assert_eq!(
             d.apply(&b.commands.into_iter().next().unwrap(), dom.limits, &cancel)
                 .unwrap_err(),

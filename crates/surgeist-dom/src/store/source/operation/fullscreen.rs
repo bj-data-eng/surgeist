@@ -1,9 +1,16 @@
 //! Prepared Runtime scheduling join of the original Fullscreen method/hook.
 use super::*;
 use crate::store::fullscreen::exit::{Frame as ExitFrame, Invocation as ExitInvocation};
-use crate::{DomFullscreenExitId, DomFullscreenExitReturn, DomFullscreenExitStatus};
+use crate::{DomFullscreenExitId, DomFullscreenExitStatus};
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(in crate::store) fn native_fixture(
+    limits: DomLimits,
+) -> (Dom, crate::DomHostedSource, DocumentId, NodeId) {
+    tests::fixture_with_limits(limits)
+}
 
 /// One immutable requirement. Copies confer neither queue nor execution authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,44 +76,34 @@ impl DomFullscreenExitJob {
 pub struct DomFullscreenExitHandoffCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     segment: Option<SegmentPublication>,
-    bank: Vec<ExitInvocation>,
-    invocation: Option<ExitInvocation>,
+    bank: Option<crate::store::fullscreen::custody::Invocations>,
+    job: Option<DomFullscreenExitJob>,
+    control: Option<source::PreparedFullscreenControl>,
     custody_units: usize,
     checkpoint: Option<checkpoint::Checkpoint>,
 }
 impl DomFullscreenExitHandoffCommit<'_, '_> {
     pub fn publish(mut self) -> DomFullscreenExitJob {
-        let invocation = self.invocation.take().expect("prepared invocation");
-        let job = DomFullscreenExitJob {
-            id: invocation.id,
-            traversable: invocation.traversable,
-            global: invocation.global,
-            host: invocation.host,
-        };
+        let job = self.job.take().expect("prepared invocation job");
+        let bank = self.bank.take().expect("prepared invocation bank");
+        let control = self.control.take().expect("prepared continuation control");
         let mut operation = self
             .lease
             .dom
             .source_operation
             .take()
             .expect("exclusive original Source");
-        self.segment
+        let published = self
+            .segment
             .take()
             .expect("prepared original publication")
             .publish(&mut operation, self.lease.dom);
         // No allocation, callback or cancellation can interrupt this fence.
-        self.bank.append(&mut self.lease.dom.fullscreen_exits);
-        self.bank.push(invocation);
-        self.lease.dom.fullscreen_exits = std::mem::take(&mut self.bank);
-        operation.draft.fullscreen_exit = None;
-        operation.draft.fullscreen_work_custody = Some(job.id);
-        if matches!(
-            operation.draft.method,
-            Some(crate::store::method::Frame::FullscreenExit(_))
-        ) {
-            operation.draft.method = Some(crate::store::method::Frame::FullscreenExit(Some(
-                DomFullscreenExitReturn::Pending(job.id),
-            )));
-        }
+        self.lease.dom.fullscreen_exits = bank;
+        operation
+            .draft
+            .commit_fullscreen_handoff(control, &published.committed);
+        drop(published);
         // Transfer the named mandatory credit, leaving the outer guard intact.
         operation
             .headroom
@@ -248,34 +245,26 @@ impl<'dom> DomSourceLease<'dom> {
         };
         let result = (|| {
             op.refresh_admission(cancel)?;
+            let control = op
+                .draft
+                .prepare_fullscreen_handoff_control(request.invocation, cancel)?;
             let formation = formation::Formation::new(&op.draft, cancel)?;
-            let mut bank = Vec::new();
-            formation::reserve(
-                &mut bank,
+            admit(
                 self.dom
                     .fullscreen_exits
                     .len()
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?,
-                formation.as_ref(),
-                cancel,
-            )?;
-            admit(
-                bank.capacity(),
                 self.dom.limits.fullscreen_exits,
                 DomResource::FullscreenExits,
             )?;
             if let Some(formation) = &formation {
                 formation.retain_bytes(
                     size_of::<DomFullscreenExitHandoffCommit<'_, '_>>()
-                        .checked_sub(size_of::<Draft>())
+                        .checked_sub(size_of::<checkpoint::Checkpoint>())
                         .ok_or(DomError::RepresentationExhausted)?,
                     cancel,
                 )?;
-            }
-            // Every eventual move is admitted before the no-callback commit.
-            for _ in &self.dom.fullscreen_exits {
-                op.draft.source_step(cancel)?;
             }
             let frame = op.draft.fullscreen_exit.expect("qualified original prefix");
             let invocation = ExitInvocation {
@@ -289,33 +278,24 @@ impl<'dom> DomSourceLease<'dom> {
                 host: frame.host,
                 work: op.draft.source_work.clone(),
                 ancestors: op.draft.source_ancestors.clone(),
+                work_custody: op.draft.source_work_custody.clone(),
+                retained_ancestors: op.draft.source_ancestor_custody.clone(),
                 limits: op.draft.source_limits.expect("original limits"),
                 closing_credit: 1,
             };
-            let atoms = invocation.retained_atoms()?;
-            if let Some(formation) = &formation {
-                formation.retain_payload(atoms, cancel)?;
-            }
-            let custody_bytes = self
-                .dom
-                .source_owner_custody_bytes()?
-                .checked_sub(
-                    self.dom
-                        .fullscreen_exits
-                        .capacity()
-                        .checked_mul(size_of::<ExitInvocation>())
-                        .ok_or(DomError::RepresentationExhausted)?,
-                )
-                .and_then(|bytes| {
-                    bytes.checked_add(bank.capacity().checked_mul(size_of::<ExitInvocation>())?)
-                })
-                .and_then(|bytes| bytes.checked_add(atoms.bytes))
-                .ok_or(DomError::RepresentationExhausted)?;
-            let custody_units = self
-                .dom
-                .fullscreen_custody_units()?
-                .checked_add(atoms.units)
-                .ok_or(DomError::RepresentationExhausted)?;
+            let job = DomFullscreenExitJob {
+                id: invocation.id,
+                traversable: invocation.traversable,
+                global: invocation.global,
+                host: invocation.host,
+            };
+            let bank = self.dom.fullscreen_exits.prepare_append(
+                invocation,
+                |usage| op.draft.admit_custody_usage(usage, cancel),
+                || op.draft.source_step(cancel),
+            )?;
+            let custody_bytes = self.dom.source_owner_custody_bytes()?;
+            let custody_units = self.dom.fullscreen_custody_units()?;
             op.draft.fullscreen_exit_prefix(self.dom.limits, cancel)?;
             let remaining = op
                 .headroom
@@ -336,21 +316,24 @@ impl<'dom> DomSourceLease<'dom> {
             {
                 destination.absorb(formation);
             }
-            // Bank backing and its meter ownership survive dropping this fence.
-            // Its actual capacity replaces the old ambient occurrence at commit.
+            // The prepared roots own their actual union debit in the shared
+            // ledger. The remaining owner envelope contains only headers.
             segment.owner_custody = custody_bytes;
-            Ok((segment, bank, invocation, custody_units))
+            Ok((segment, bank, job, custody_units, control))
         })();
         self.dom.source_operation = Some(op);
         match result {
-            Ok((segment, bank, invocation, custody_units)) => Ok(DomFullscreenExitHandoffCommit {
-                lease: self,
-                segment: Some(segment),
-                bank,
-                invocation: Some(invocation),
-                custody_units,
-                checkpoint: Some(checkpoint),
-            }),
+            Ok((segment, bank, job, custody_units, control)) => {
+                Ok(DomFullscreenExitHandoffCommit {
+                    lease: self,
+                    segment: Some(segment),
+                    bank: Some(bank),
+                    job: Some(job),
+                    control: Some(control),
+                    custody_units,
+                    checkpoint: Some(checkpoint),
+                })
+            }
             Err(error) => {
                 checkpoint.restore(
                     &mut self

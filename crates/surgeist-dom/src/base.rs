@@ -92,11 +92,6 @@ impl<K> BaseDocument<K> {
             .as_ref()
             .map_or(0, |f| f.formation_usage().utf16_extent())
     }
-    pub(crate) fn records(&self) -> usize {
-        self.facts
-            .as_ref()
-            .map_or(0, |f| f.formation_usage().record_capacity())
-    }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LinkState<K> {

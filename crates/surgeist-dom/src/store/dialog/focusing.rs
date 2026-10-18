@@ -7,6 +7,7 @@ use surgeist_html::{
     HtmlDialogFocusingReply as R,
 };
 
+#[derive(Clone)]
 pub(in crate::store) struct FocusingFrame {
     pub cursor: HtmlDialogFocusingCursor,
     pub delegate: Option<Key>,
@@ -87,10 +88,10 @@ impl Draft {
         self.source_step(cancel)?;
         let document = self.node(subject)?.document;
         let mut is_document_element = false;
-        for child in &self.node(document)?.children {
+        for child in self.node(document)?.children.iter() {
             self.source_step(cancel)?;
-            if matches!(self.node(*child)?.kind, DomNodeKind::Element(_)) {
-                is_document_element = *child == subject;
+            if matches!(self.node(child)?.kind, DomNodeKind::Element(_)) {
+                is_document_element = child == subject;
                 break;
             }
         }
@@ -247,25 +248,6 @@ impl Draft {
             frame.focusing = Some(called);
         }
         result
-    }
-}
-impl FocusingFrame {
-    pub(super) fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        Ok(Self {
-            cursor: self.cursor,
-            delegate: self.delegate,
-            top_document: self.top_document,
-            invocation: self.invocation,
-            delegate_call: self
-                .delegate_call
-                .as_ref()
-                .map(|call| call.checkpoint(a, cancel))
-                .transpose()?,
-        })
     }
 }
 

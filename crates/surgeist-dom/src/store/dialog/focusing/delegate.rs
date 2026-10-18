@@ -14,76 +14,65 @@ struct Level {
     parent: Key,
     next_child: usize,
 }
+#[derive(Clone)]
 pub(super) struct Walk {
-    levels: select::ScratchVec<Level>,
+    levels: source::effects::ScratchStack<Level>,
     current: Option<Key>,
 }
 impl Walk {
     fn new(draft: &Draft) -> Self {
         Self {
-            levels: draft.effect_vec(),
+            levels: source::effects::ScratchStack::new(draft),
             current: None,
         }
     }
-    fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        Ok(Self {
-            levels: self.levels.checkpoint(a, cancel)?,
-            current: self.current,
-        })
-    }
+
     fn begin(&mut self, draft: &Draft, root: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         draft.source_step(cancel)?;
         draft.node(root)?;
-        self.levels.clear();
+        let mut levels = source::effects::ScratchStack::new(draft);
+        levels.push(
+            Level {
+                parent: root,
+                next_child: 0,
+            },
+            draft,
+            cancel,
+        )?;
+        self.levels = levels;
         self.current = None;
-        self.reserve_level(draft, cancel)?;
-        self.levels.push(Level {
-            parent: root,
-            next_child: 0,
-        });
-        Ok(())
-    }
-    fn reserve_level(&mut self, draft: &Draft, cancel: &AtomicBool) -> Result<(), DomError> {
-        if self.levels.len() == self.levels.capacity() {
-            // The same checked geometric policy used by Source banks. Admit
-            // the actual old/new allocation overlap only at reached growth;
-            // spare capacity does not repeat a global payload admission scan.
-            let additional = self.levels.capacity().max(1);
-            draft.select_reserve(&mut self.levels, additional, cancel)?;
-        }
         Ok(())
     }
     fn next(&mut self, draft: &Draft, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
         draft.source_step(cancel)?;
         if let Some(current) = self.current {
-            self.reserve_level(draft, cancel)?;
-            self.levels.push(Level {
-                parent: current,
-                next_child: 0,
-            });
+            self.levels.push(
+                Level {
+                    parent: current,
+                    next_child: 0,
+                },
+                draft,
+                cancel,
+            )?;
             self.current = None;
         }
-        while let Some(level) = self.levels.last().copied() {
+        while let Some(level) = self.levels.last() {
             draft.source_step(cancel)?;
-            if let Some(child) = draft
-                .node(level.parent)?
-                .children
-                .get(level.next_child)
-                .copied()
-            {
+            if let Some(child) = draft.node(level.parent)?.children.get(level.next_child) {
                 draft.source_step(cancel)?;
                 draft.node(child)?;
-                self.levels
-                    .last_mut()
-                    .expect("retained ancestor")
-                    .next_child = level
+                let next_child = level
                     .next_child
                     .checked_add(1)
                     .ok_or(DomError::RepresentationExhausted)?;
+                self.levels.replace_top(
+                    Level {
+                        next_child,
+                        ..level
+                    },
+                    draft,
+                    cancel,
+                )?;
                 self.current = Some(child);
                 return Ok(Some(child));
             }
@@ -92,6 +81,7 @@ impl Walk {
         Ok(None)
     }
 }
+#[derive(Clone)]
 pub(super) struct DelegateFrame {
     cursor: HtmlFocusDelegateCursor,
     where_to_look: Key,
@@ -113,18 +103,7 @@ impl DelegateFrame {
             walk: Walk::new(draft),
         }
     }
-    pub(super) fn checkpoint(
-        &self,
-        a: &mut source::checkpoint::Admission<'_>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        Ok(Self {
-            cursor: self.cursor,
-            where_to_look: self.where_to_look,
-            autofocus: self.autofocus,
-            walk: self.walk.checkpoint(a, cancel)?,
-        })
-    }
+
     pub(super) fn pending(&self) -> Option<PendingDelegate> {
         Some(PendingDelegate {
             root: self.where_to_look,

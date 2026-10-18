@@ -187,10 +187,7 @@ impl Continuation {
                 self.request.key.operation,
                 &context,
             )?;
-            // One infallible custody fence: the Draft now owns this occurrence.
-            // Its next storage computation counts it; do not count fresh twice.
-            draft.hosted_history = Some(candidate);
-            drop(fresh);
+            draft.set_hosted_history(Some(candidate), fresh, cancel)?;
         }
         let fresh = source::formation::Formation::new(&draft, cancel)?;
         let context = history::Context::new(source, &self.request.work, cancel, 0);
@@ -306,8 +303,7 @@ impl Continuation {
             .as_deref()
             .ok_or(DomHostedError::MissingPublication)?;
         let candidate = graph.apply_history_job(&job, &context)?;
-        draft.hosted_history = Some(candidate);
-        drop(fresh);
+        draft.set_hosted_history(Some(candidate), fresh, cancel)?;
         let prepared = draft.finish(dom, cancel)?;
         let next = self.next_phase()?;
         let receipt = DomHostedHistoryJobReceipt {
@@ -454,8 +450,7 @@ impl Continuation {
             .as_deref()
             .ok_or(DomHostedError::MissingPublication)?;
         let candidate = graph.finish_update(&completed.update, &context)?;
-        draft.hosted_history = Some(candidate);
-        drop(fresh);
+        draft.set_hosted_history(Some(candidate), fresh, cancel)?;
         let prepared = draft.finish(dom, cancel)?;
         let used = u64::try_from(self.executed)
             .map_err(|_| DomHostedError::RepresentationExhausted)?

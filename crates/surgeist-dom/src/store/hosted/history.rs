@@ -6,6 +6,30 @@ use std::cell::Cell;
 use std::ops::Deref;
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 
+pub(in crate::store) mod documents;
+
+#[cfg(test)]
+#[inline]
+fn semantic_item() {
+    if crate::store::scale_metrics::ENABLED {
+        crate::store::scale_metrics::record(
+            crate::store::scale_metrics::Event::HostedSemanticItemVisited,
+        );
+    }
+}
+
+#[cfg(test)]
+#[inline]
+fn copied_items<T>(items: usize) {
+    if crate::store::scale_metrics::ENABLED {
+        crate::store::scale_metrics::record(
+            crate::store::scale_metrics::Event::SequenceMaterialized {
+                bytes: items * size_of::<T>(),
+            },
+        );
+    }
+}
+
 /// One synchronous graph call borrows the original issuer and cumulative Work.
 /// `scratch_base` is the caller's other simultaneously live formation extent.
 pub(crate) struct Context<'a> {
@@ -14,6 +38,7 @@ pub(crate) struct Context<'a> {
     cancel: &'a AtomicBool,
     scratch: Cell<usize>,
     formation: Option<&'a source::formation::Formation>,
+    origin: Cell<Option<custody::MaterializationId>>,
 }
 impl<'a> Context<'a> {
     pub(crate) fn new(
@@ -28,6 +53,7 @@ impl<'a> Context<'a> {
             cancel,
             scratch: Cell::new(scratch_base),
             formation: None,
+            origin: Cell::new(None),
         }
     }
     /// The caller owns a fresh fork for this single atomic graph call. On
@@ -47,6 +73,14 @@ impl<'a> Context<'a> {
         credit.add(payload, self.cancel)?;
         Ok(credit)
     }
+    fn origin(&self) -> Result<custody::MaterializationId, DomError> {
+        if let Some(origin) = self.origin.get() {
+            return Ok(origin);
+        }
+        let origin = custody::MaterializationId::fresh()?;
+        self.origin.set(Some(origin));
+        Ok(origin)
+    }
     fn release_output(&self, payload: source::storage::Payload) {
         if let Some(formation) = self.formation {
             formation.release_payload(payload);
@@ -62,6 +96,7 @@ impl<'a> Context<'a> {
         Call {
             context: self,
             baseline: self.scratch.get(),
+            previous_origin: self.origin.replace(None),
         }
     }
     fn step(&self) -> Result<(), DomHostedError> {
@@ -82,6 +117,7 @@ impl<'a> Context<'a> {
 struct Call<'a, 'b> {
     context: &'a Context<'b>,
     baseline: usize,
+    previous_origin: Option<custody::MaterializationId>,
 }
 impl Drop for Call<'_, '_> {
     fn drop(&mut self) {
@@ -90,6 +126,7 @@ impl Drop for Call<'_, '_> {
             "call cannot release its caller's scratch"
         );
         self.context.scratch.set(self.baseline);
+        self.context.origin.set(self.previous_origin);
     }
 }
 
@@ -207,8 +244,12 @@ impl<T: Copy> Values<T> {
     fn form(values: &[T], context: &Context<'_>) -> Result<Arc<Self>, DomHostedError> {
         let mut candidate = Buffer::new(values.len(), context)?;
         for value in values {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             candidate.values.push(*value);
+            #[cfg(test)]
+            copied_items::<T>(1);
         }
         Ok(candidate.finish())
     }
@@ -249,6 +290,10 @@ impl<'a, 'b, T: Copy> Buffer<'a, 'b, T> {
             .values
             .try_reserve_exact(capacity)
             .map_err(|_| DomHostedError::AllocationFailed)?;
+        #[cfg(test)]
+        if candidate.values.capacity() != 0 {
+            transaction::auxiliary::allocated(candidate.values.capacity() * size_of::<T>());
+        }
         let actual = candidate
             .values
             .capacity()
@@ -289,10 +334,14 @@ impl<'a, 'b, T: Copy> Buffer<'a, 'b, T> {
             for old in &self.values {
                 context.step()?;
                 next.values.push(*old);
+                #[cfg(test)]
+                copied_items::<T>(1);
             }
             std::mem::swap(self, &mut next);
         }
         self.values.push(value);
+        #[cfg(test)]
+        copied_items::<T>(1);
         Ok(())
     }
     fn contains(&self, value: &T) -> Result<bool, DomHostedError>
@@ -300,6 +349,8 @@ impl<'a, 'b, T: Copy> Buffer<'a, 'b, T> {
         T: PartialEq,
     {
         for old in &self.values {
+            #[cfg(test)]
+            semantic_item();
             self.scratch.context.step()?;
             if old == value {
                 return Ok(true);
@@ -316,10 +367,13 @@ impl<'a, 'b, T: Copy> Buffer<'a, 'b, T> {
         } = self;
         scratch.stage();
         parent.commit();
-        Arc::new(Values {
+        let values = Arc::new(Values {
             values,
             _retained: retained,
-        })
+        });
+        #[cfg(test)]
+        transaction::auxiliary::allocated(size_of::<Values<T>>());
+        values
     }
 }
 #[derive(Clone, Debug)]
@@ -358,7 +412,8 @@ pub(crate) struct Entry {
     pub(crate) history: Option<(usize, usize)>,
 }
 #[derive(Debug)]
-struct Row<T> {
+pub(in crate::store) struct Row<T> {
+    origin: custody::MaterializationId,
     value: T,
     _retained: Retained,
 }
@@ -371,6 +426,8 @@ impl<T> Deref for Row<T> {
 /// Fixed row custody is admitted before any retained-handle clone. Its
 /// inline value precedes both credits on refusal and never escapes uncharged.
 struct Changed<'a, 'b, T> {
+    identity: bank::ReservedRecord<Row<T>>,
+    origin: custody::MaterializationId,
     value: T,
     retained: Retained,
     scratch: Scratch<'a, 'b>,
@@ -395,6 +452,8 @@ fn changed<'a, 'b, T>(
     form: impl FnOnce() -> Result<T, DomHostedError>,
 ) -> Result<Changed<'a, 'b, T>, DomHostedError> {
     context.step()?;
+    let identity = bank::Record::<Row<T>>::reserve()?;
+    let origin = context.origin()?;
     let bytes = size_of::<Row<T>>()
         .checked_add(retained_extra)
         .ok_or(DomHostedError::RepresentationExhausted)?;
@@ -408,15 +467,22 @@ fn changed<'a, 'b, T>(
     payload.add_bytes(size_of::<Row<T>>())?;
     let parent = context.parent(payload)?;
     Ok(Changed {
+        identity,
+        origin,
         value: form()?,
         retained,
         scratch,
         credit: parent,
     })
 }
-fn row<T>(value: Changed<'_, '_, T>, context: &Context<'_>) -> Result<Arc<Row<T>>, DomHostedError> {
+fn row<T>(
+    value: Changed<'_, '_, T>,
+    context: &Context<'_>,
+) -> Result<bank::Record<Row<T>>, DomHostedError> {
     context.step()?;
     let Changed {
+        identity,
+        origin,
         value,
         retained,
         scratch,
@@ -424,7 +490,8 @@ fn row<T>(value: Changed<'_, '_, T>, context: &Context<'_>) -> Result<Arc<Row<T>
     } = value;
     scratch.stage();
     parent.commit();
-    Ok(Arc::new(Row {
+    Ok(identity.materialize(Row {
+        origin,
         value,
         _retained: retained,
     }))
@@ -510,44 +577,179 @@ pub(crate) struct Update {
     pub(crate) target_step: u64,
     pub(crate) jobs: Arc<Values<Job>>,
 }
-#[derive(Debug)]
 pub(crate) struct Graph {
+    identity: custody::MaterializationId,
+    origin: custody::MaterializationId,
     accounted: (usize, usize),
-    navigables: Vec<Option<Arc<Row<Navigable>>>>,
-    entries: Vec<Option<Arc<Row<Entry>>>>,
+    navigables: bank::Bank<Row<Navigable>>,
+    entries: bank::Bank<Row<Entry>>,
+    navigable_ids: transaction::auxiliary::index::Index<transaction::auxiliary::index::Ordinal>,
+    entry_ids: transaction::auxiliary::index::Index<transaction::auxiliary::index::Ordinal>,
+    documents: documents::Index,
+    parent_identity: Option<custody::MaterializationId>,
+    discarded: source::storage::Payload,
     _retained: Retained,
+}
+impl std::fmt::Debug for Graph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Graph")
+            .field("identity", &self.identity)
+            .field("accounted", &self.accounted)
+            .field("navigables", &self.navigables.len())
+            .field("entries", &self.entries.len())
+            .finish()
+    }
 }
 impl PartialEq for Graph {
     fn eq(&self, other: &Self) -> bool {
-        fn bank<T>(a: &[Option<Arc<T>>], b: &[Option<Arc<T>>]) -> bool {
-            a.len() == b.len()
-                && a.iter().zip(b).all(|(a, b)| match (a, b) {
-                    (None, None) => true,
-                    (Some(a), Some(b)) => Arc::ptr_eq(a, b),
-                    _ => false,
-                })
-        }
-        bank(&self.navigables, &other.navigables) && bank(&self.entries, &other.entries)
+        self.navigables
+            .same_records_by(&other.navigables, &|a, b| std::ptr::eq(a, b))
+            && self
+                .entries
+                .same_records_by(&other.entries, &|a, b| std::ptr::eq(a, b))
     }
 }
 impl Eq for Graph {}
+impl<T> Row<T> {
+    pub(in crate::store) fn custody_origin(&self) -> custody::MaterializationId {
+        self.origin
+    }
+}
+impl Row<Navigable> {
+    pub(in crate::store) fn custody_payload(&self) -> Result<custody::Usage, DomError> {
+        let p = self.value.payload()?;
+        Ok(custody::Usage::new(p.bytes, p.units))
+    }
+}
+impl Row<Entry> {
+    pub(in crate::store) fn custody_payload(&self) -> Result<custody::Usage, DomError> {
+        let p = self.value.payload()?;
+        Ok(custody::Usage::new(p.bytes, p.units))
+    }
+}
+fn nav_key(id: DomHostedNavigableId) -> transaction::auxiliary::index::Key {
+    transaction::auxiliary::index::Key::new(id.source, id.slot, id.generation)
+}
+fn entry_key(id: DomHostedEntryId) -> transaction::auxiliary::index::Key {
+    transaction::auxiliary::index::Key::new(id.source, id.slot, id.generation)
+}
+fn history_lookup_error(error: DomError) -> DomHostedError {
+    match error {
+        DomError::ForeignOwner => DomHostedError::StaleIdentity,
+        other => other.into(),
+    }
+}
+
 impl Graph {
+    pub(in crate::store) fn custody_identity(&self) -> custody::MaterializationId {
+        self.identity
+    }
+    pub(in crate::store) fn custody_usage(&self) -> Result<custody::Usage, DomError> {
+        Ok(custody::Usage::new(size_of::<Self>(), 0))
+    }
+    pub(in crate::store) fn custody_origin(&self) -> custody::MaterializationId {
+        self.origin
+    }
+    pub(in crate::store) fn navigable_bank(&self) -> &bank::Bank<Row<Navigable>> {
+        &self.navigables
+    }
+    pub(in crate::store) fn entry_bank(&self) -> &bank::Bank<Row<Entry>> {
+        &self.entries
+    }
+    pub(in crate::store) fn navigable_index(
+        &self,
+    ) -> &transaction::auxiliary::index::Index<transaction::auxiliary::index::Ordinal> {
+        &self.navigable_ids
+    }
+    pub(in crate::store) fn entry_index(
+        &self,
+    ) -> &transaction::auxiliary::index::Index<transaction::auxiliary::index::Ordinal> {
+        &self.entry_ids
+    }
+    pub(in crate::store) fn document_index(&self) -> &documents::Index {
+        &self.documents
+    }
+    fn discarded_payload(&self, next: &Self) -> Result<source::storage::Payload, DomError> {
+        if next.parent_identity != Some(self.identity) {
+            return Err(DomError::RepresentationExhausted);
+        }
+        Ok(next.discarded)
+    }
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_materializations(
+        &self,
+    ) -> Result<Vec<(custody::MaterializationId, custody::Usage)>, DomError> {
+        let mut output = vec![(self.identity, custody::Usage::new(size_of::<Self>(), 0))];
+        let nav = self.navigables.inspect_graph(|row| {
+            Ok(bank::Totals {
+                bytes: size_of::<Row<Navigable>>()
+                    + size_of::<Values<DomHostedEntryId>>()
+                    + row.entries.values.capacity() * size_of::<DomHostedEntryId>(),
+                units: 0,
+                occurrences: 0,
+            })
+        })?;
+        output.extend(nav.materializations());
+        let entries = self.entries.inspect_graph(|row| {
+            let mut bytes = size_of::<Row<Entry>>()
+                + size_of::<Values<DomHostedNavigableId>>()
+                + row.nested.values.capacity() * size_of::<DomHostedNavigableId>();
+            let mut units = 72;
+            if let Some(name) = &row.target_name {
+                let cap = name.shared_code_units().capacity();
+                bytes += size_of::<Vec<u16>>() + cap * size_of::<u16>();
+                units += cap;
+            }
+            if let HtmlAboutBaseUrl::KnownRecord(record) = &row.about_base_url {
+                let p = record.retained_storage_usage();
+                bytes += p.retained_bytes();
+                units += p.utf16_extent();
+            }
+            Ok(bank::Totals {
+                bytes,
+                units,
+                occurrences: 0,
+            })
+        })?;
+        output.extend(entries.materializations());
+        output.extend(self.navigable_ids.inspect_materializations(|_| {
+            Ok(custody::Usage::new(
+                size_of::<transaction::auxiliary::index::Ordinal>(),
+                0,
+            ))
+        })?);
+        output.extend(self.entry_ids.inspect_materializations(|_| {
+            Ok(custody::Usage::new(
+                size_of::<transaction::auxiliary::index::Ordinal>(),
+                0,
+            ))
+        })?);
+        output.extend(self.documents.inspect_materializations()?);
+        Ok(output)
+    }
     /// Window.navigable is selected from actual active Document equality.
     pub(in crate::store) fn active_navigable_for_document_with(
         &self,
         document: DocumentId,
         mut step: impl FnMut() -> Result<(), DomHostedError>,
     ) -> Result<Option<DomHostedNavigableId>, DomHostedError> {
-        for row in &self.navigables {
-            step()?;
-            if let Some(row) = row {
-                let active = self.entry_with(row.active, &mut step)?.document;
-                if active == Some(document) {
-                    return Ok(Some(row.id));
-                }
-            }
+        if self.navigables.is_empty() {
+            return Ok(None);
         }
-        Ok(None)
+        step()?;
+        let Some(member) = self
+            .documents
+            .get(document)
+            .and_then(|group| group.rows.iter().next())
+            .map(|(_, row)| row)
+        else {
+            return Ok(None);
+        };
+        step()?;
+        self.navigables
+            .get(member.navigable)
+            .map(|row| Some(row.id))
+            .ok_or(DomHostedError::StaleIdentity)
     }
     pub(crate) fn navigable(&self, id: DomHostedNavigableId) -> Result<&Navigable, DomHostedError> {
         self.navigable_with(id, || Ok(()))
@@ -555,232 +757,229 @@ impl Graph {
     pub(crate) fn entry(&self, id: DomHostedEntryId) -> Result<&Entry, DomHostedError> {
         self.entry_with(id, || Ok(()))
     }
-    /// Lend the caller's original admission/cancellation to every physical row,
-    /// including empty slots. Historical observations supply a no-budget step.
+    /// Lend the caller's original admission/cancellation to one fully qualified
+    /// identity lookup. Historical observations supply a no-budget step.
     pub(crate) fn navigable_with(
         &self,
         id: DomHostedNavigableId,
         mut step: impl FnMut() -> Result<(), DomHostedError>,
     ) -> Result<&Navigable, DomHostedError> {
-        for row in &self.navigables {
-            step()?;
-            if let Some(row) = row
-                && row.id == id
-            {
-                return Ok(&row.value);
-            }
-        }
-        Err(DomHostedError::StaleIdentity)
+        step()?;
+        let ordinal = self
+            .navigable_ids
+            .get(nav_key(id))
+            .map_err(history_lookup_error)?
+            .ok_or(DomHostedError::StaleIdentity)?;
+        self.navigables
+            .get(ordinal.value)
+            .map(|row| &row.value)
+            .ok_or(DomHostedError::StaleIdentity)
     }
     pub(crate) fn entry_with(
         &self,
         id: DomHostedEntryId,
         mut step: impl FnMut() -> Result<(), DomHostedError>,
     ) -> Result<&Entry, DomHostedError> {
-        for row in &self.entries {
-            step()?;
-            if let Some(row) = row
-                && row.id == id
-            {
-                return Ok(&row.value);
-            }
-        }
-        Err(DomHostedError::StaleIdentity)
+        step()?;
+        let ordinal = self
+            .entry_ids
+            .get(entry_key(id))
+            .map_err(history_lookup_error)?
+            .ok_or(DomHostedError::StaleIdentity)?;
+        self.entries
+            .get(ordinal.value)
+            .map(|row| &row.value)
+            .ok_or(DomHostedError::StaleIdentity)
     }
+    #[cfg(test)]
     pub(crate) fn payload(
         &self,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<source::storage::Payload, DomError> {
-        step()?;
-        let mut p = source::storage::Payload::default();
-        p.add_bytes(size_of::<Self>())?;
-        p.bank::<Option<Arc<Row<Navigable>>>>(self.navigables.capacity())?;
-        p.bank::<Option<Arc<Row<Entry>>>>(self.entries.capacity())?;
-        for nav in &self.navigables {
+        let mut result = source::storage::Payload::default();
+        for (_, usage) in self.inspect_materializations()? {
             step()?;
-            let Some(nav) = nav else { continue };
-            p.add_bytes(size_of::<Row<Navigable>>())?;
-            p.add_bytes(nav.entries.bytes()?)?;
+            result.add_bytes(usage.bytes())?;
+            result.add_units(usage.units())?;
         }
-        for entry in &self.entries {
-            step()?;
-            let Some(entry) = entry else { continue };
-            p.append(entry.value.payload()?)?;
-        }
-        Ok(p)
+        Ok(result)
     }
     fn form(
         old: Option<&Self>,
-        nav: Option<Arc<Row<Navigable>>>,
-        entry: Option<Arc<Row<Entry>>>,
+        nav: Option<bank::Record<Row<Navigable>>>,
+        entry: Option<bank::Record<Row<Entry>>>,
+        context: &Context<'_>,
+    ) -> Result<Arc<Self>, DomHostedError> {
+        Self::form_documents(old, nav, entry, None, context)
+    }
+    fn form_documents(
+        old: Option<&Self>,
+        nav: Option<bank::Record<Row<Navigable>>>,
+        entry: Option<bank::Record<Row<Entry>>>,
+        clear_document: Option<DocumentId>,
         context: &Context<'_>,
     ) -> Result<Arc<Self>, DomHostedError> {
         context.step()?;
-        let mut nav_index = None;
-        let mut entry_index = None;
-        if let Some(old) = old {
-            for (index, prior) in old.navigables.iter().enumerate() {
-                context.step()?;
-                if prior
-                    .as_ref()
-                    .is_some_and(|prior| nav.as_ref().is_some_and(|next| prior.id == next.id))
-                {
-                    nav_index = Some(index);
-                }
-            }
-            for (index, prior) in old.entries.iter().enumerate() {
-                context.step()?;
-                if prior
-                    .as_ref()
-                    .is_some_and(|prior| entry.as_ref().is_some_and(|next| prior.id == next.id))
-                {
-                    entry_index = Some(index);
-                }
-            }
-        }
-        let old_nav_len = old.map_or(0, |g| g.navigables.len());
-        let old_entry_len = old.map_or(0, |g| g.entries.len());
-        let nav_len = old_nav_len
-            .checked_add(usize::from(nav.is_some() && nav_index.is_none()))
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        let entry_len = old_entry_len
-            .checked_add(usize::from(entry.is_some() && entry_index.is_none()))
-            .ok_or(DomHostedError::RepresentationExhausted)?;
-        let extent = |n: usize, e: usize| {
-            n.checked_mul(size_of::<Option<Arc<Row<Navigable>>>>())
-                .and_then(|n| {
-                    e.checked_mul(size_of::<Option<Arc<Row<Entry>>>>())
-                        .and_then(|e| n.checked_add(e))
-                })
-                .and_then(|n| n.checked_add(size_of::<Self>()))
-                .ok_or(DomHostedError::RepresentationExhausted)
-        };
-        let requested = extent(nav_len, entry_len)?;
-        // Supplied private rows/lists still own their staged credits. Only this
-        // new Graph bank and newly cloned old-row occurrences are additional.
-        let mut scratch = context.scratch(requested)?;
-        let retained = context.source.retain(requested, context.cancel)?;
-        let mut parent = context.parent(source::storage::Payload {
-            bytes: requested,
+        let identity = custody::MaterializationId::fresh()?;
+        let origin = context.origin()?;
+        let scratch = context.scratch(size_of::<Self>())?;
+        let retained = context.source.retain(size_of::<Self>(), context.cancel)?;
+        let parent = context.parent(source::storage::Payload {
+            bytes: size_of::<Self>(),
             units: 0,
         })?;
         let mut candidate = Self {
+            identity,
+            origin,
             accounted: (0, 0),
-            navigables: Vec::new(),
-            entries: Vec::new(),
+            navigables: old.map_or_else(Default::default, |old| old.navigables.clone()),
+            entries: old.map_or_else(Default::default, |old| old.entries.clone()),
+            navigable_ids: old.map_or_else(Default::default, |old| old.navigable_ids.clone()),
+            entry_ids: old.map_or_else(Default::default, |old| old.entry_ids.clone()),
+            documents: old.map_or_else(Default::default, |old| old.documents.clone()),
+            parent_identity: old.map(|old| old.identity),
+            discarded: source::storage::Payload::default(),
             _retained: retained,
         };
-        candidate
-            .navigables
-            .try_reserve_exact(nav_len)
-            .map_err(|_| DomHostedError::AllocationFailed)?;
-        let first = extent(candidate.navigables.capacity(), entry_len)?;
-        scratch.replace(first)?;
-        parent.add(
-            source::storage::Payload {
-                bytes: first
-                    .checked_sub(requested)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                units: 0,
-            },
-            context.cancel,
-        )?;
-        candidate._retained.append(
-            context.source.retain(
-                first
-                    .checked_sub(requested)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                context.cancel,
-            )?,
-        )?;
-        candidate
-            .entries
-            .try_reserve_exact(entry_len)
-            .map_err(|_| DomHostedError::AllocationFailed)?;
-        let actual = extent(
-            candidate.navigables.capacity(),
-            candidate.entries.capacity(),
-        )?;
-        scratch.replace(actual)?;
-        parent.add(
-            source::storage::Payload {
-                bytes: actual
-                    .checked_sub(first)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                units: 0,
-            },
-            context.cancel,
-        )?;
-        candidate._retained.append(
-            context.source.retain(
-                actual
-                    .checked_sub(first)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                context.cancel,
-            )?,
-        )?;
-        let mut total = source::storage::Payload {
-            bytes: actual,
-            units: 0,
+        if old.is_some_and(|old| old.origin == origin) {
+            candidate.discarded.add_bytes(size_of::<Self>())?;
+        }
+        let producer = transaction::auxiliary::index::Producer {
+            source: context.source,
+            work: context.work,
+            formation: context.formation,
+            cancel: context.cancel,
+            origin,
+            scratch: &context.scratch,
         };
-        for i in 0..nav_len {
-            context.step()?;
-            if Some(i) == nav_index || (nav_index.is_none() && i == old_nav_len && nav.is_some()) {
-                let value = nav.as_ref().expect("new navigable row");
-                total.append(value.value.payload()?)?;
-                candidate.navigables.push(None);
-            } else {
-                let value = old
-                    .and_then(|g| g.navigables.get(i))
-                    .and_then(Option::as_ref);
-                let mut occurrence = None;
-                if let Some(value) = value {
-                    let payload = value.value.payload()?;
-                    occurrence = Some(context.scratch(payload.bytes)?);
-                    parent.add(payload, context.cancel)?;
-                    total.append(payload)?;
-                }
-                candidate.navigables.push(value.cloned());
-                if let Some(occurrence) = occurrence {
-                    occurrence.stage();
-                }
-            }
-        }
-        for i in 0..entry_len {
-            context.step()?;
-            if Some(i) == entry_index
-                || (entry_index.is_none() && i == old_entry_len && entry.is_some())
+        // This profile creates only paired initial rows; every other producer
+        // replaces their fields without changing active/current Entry identity.
+        let initial_document = match (&nav, &entry) {
+            (Some(nav), Some(entry))
+                if candidate
+                    .navigable_ids
+                    .get(nav_key(nav.value().id))?
+                    .is_none()
+                    && candidate
+                        .entry_ids
+                        .get(entry_key(entry.value().id))?
+                        .is_none() =>
             {
-                let value = entry.as_ref().expect("new entry row");
-                total.append(value.value.payload()?)?;
-                candidate.entries.push(None);
-            } else {
-                let value = old.and_then(|g| g.entries.get(i)).and_then(Option::as_ref);
-                let mut occurrence = None;
-                if let Some(value) = value {
-                    let payload = value.value.payload()?;
-                    occurrence = Some(context.scratch(payload.bytes)?);
-                    parent.add(payload, context.cancel)?;
-                    total.append(payload)?;
-                }
-                candidate.entries.push(value.cloned());
-                if let Some(occurrence) = occurrence {
-                    occurrence.stage();
-                }
+                entry.value().document.map(|document| {
+                    (
+                        document,
+                        candidate.navigables.len(),
+                        candidate.entries.len(),
+                    )
+                })
             }
-        }
+            _ => None,
+        };
         if let Some(nav) = nav {
             context.step()?;
-            candidate.navigables[nav_index.unwrap_or(old_nav_len)] = Some(nav);
+            let key = nav_key(nav.value().id);
+            let ordinal = if let Some(ordinal) = candidate.navigable_ids.get(key)? {
+                ordinal.value
+            } else {
+                let ordinal = candidate.navigables.len();
+                let index = transaction::auxiliary::index::Ordinal::form(ordinal, &producer)?;
+                let discarded = candidate.navigable_ids.insert(
+                    key,
+                    index,
+                    custody::Usage::new(size_of::<transaction::auxiliary::index::Ordinal>(), 0),
+                    false,
+                    &producer,
+                )?;
+                candidate.discarded.add_bytes(discarded.bytes())?;
+                ordinal
+            };
+            candidate.discarded.add_bytes(
+                candidate
+                    .navigables
+                    .origin_path_index_charge(ordinal, origin)?
+                    .bytes,
+            )?;
+            if let Some(prior) = candidate
+                .navigables
+                .get(ordinal)
+                .filter(|row| row.origin == origin)
+            {
+                candidate.discarded.append(prior.value.payload()?)?;
+            }
+            let payload = nav.value().value.payload()?;
+            producer.set(
+                &mut candidate.navigables,
+                ordinal,
+                nav,
+                custody::Usage::new(payload.bytes, payload.units),
+            )?;
         }
         if let Some(entry) = entry {
             context.step()?;
-            candidate.entries[entry_index.unwrap_or(old_entry_len)] = Some(entry);
+            let key = entry_key(entry.value().id);
+            let ordinal = if let Some(ordinal) = candidate.entry_ids.get(key)? {
+                ordinal.value
+            } else {
+                let ordinal = candidate.entries.len();
+                let index = transaction::auxiliary::index::Ordinal::form(ordinal, &producer)?;
+                let discarded = candidate.entry_ids.insert(
+                    key,
+                    index,
+                    custody::Usage::new(size_of::<transaction::auxiliary::index::Ordinal>(), 0),
+                    false,
+                    &producer,
+                )?;
+                candidate.discarded.add_bytes(discarded.bytes())?;
+                ordinal
+            };
+            candidate.discarded.add_bytes(
+                candidate
+                    .entries
+                    .origin_path_index_charge(ordinal, origin)?
+                    .bytes,
+            )?;
+            if let Some(prior) = candidate
+                .entries
+                .get(ordinal)
+                .filter(|row| row.origin == origin)
+            {
+                candidate.discarded.append(prior.value.payload()?)?;
+            }
+            let payload = entry.value().value.payload()?;
+            producer.set(
+                &mut candidate.entries,
+                ordinal,
+                entry,
+                custody::Usage::new(payload.bytes, payload.units),
+            )?;
         }
-        candidate.accounted = (total.bytes, total.units);
+        if let Some((document, navigable, entry)) = initial_document {
+            let discarded = candidate
+                .documents
+                .add(document, navigable, entry, &producer)?;
+            candidate.discarded.add_bytes(discarded.bytes())?;
+        }
+        if let Some(document) = clear_document {
+            let discarded = candidate.documents.clear(document, &producer)?;
+            candidate.discarded.add_bytes(discarded.bytes())?;
+        }
+        let usage = custody::Usage::new(size_of::<Self>(), 0)
+            .checked_add(transaction::auxiliary::index::bank_usage(
+                &candidate.navigables,
+            )?)?
+            .checked_add(transaction::auxiliary::index::bank_usage(
+                &candidate.entries,
+            )?)?
+            .checked_add(candidate.navigable_ids.usage()?)?
+            .checked_add(candidate.entry_ids.usage()?)?
+            .checked_add(candidate.documents.usage()?)?;
+        candidate.accounted = (usage.bytes(), usage.units());
         parent.commit();
         scratch.stage();
-        Ok(Arc::new(candidate))
+        let candidate = Arc::new(candidate);
+        #[cfg(test)]
+        transaction::auxiliary::allocated(size_of::<Self>());
+        Ok(candidate)
     }
     pub(crate) fn initial(
         old: Option<&Self>,
@@ -799,23 +998,17 @@ impl Graph {
         } = input;
         context.step()?;
         if let Some(old) = old {
-            for prior in &old.navigables {
-                context.step()?;
-                if prior
-                    .as_ref()
-                    .is_some_and(|prior| prior.id == creation.navigable)
-                {
-                    return Err(DomHostedError::WrongPhase);
-                }
+            context.step()?;
+            if old
+                .navigable_ids
+                .get(nav_key(creation.navigable))?
+                .is_some()
+            {
+                return Err(DomHostedError::WrongPhase);
             }
-            for prior in &old.entries {
-                context.step()?;
-                if prior
-                    .as_ref()
-                    .is_some_and(|prior| prior.id == creation.entry)
-                {
-                    return Err(DomHostedError::WrongPhase);
-                }
+            context.step()?;
+            if old.entry_ids.get(entry_key(creation.entry))?.is_some() {
+                return Err(DomHostedError::WrongPhase);
             }
         }
         let traversable = if let Some((id, _)) = parent {
@@ -948,6 +1141,8 @@ impl Graph {
         pending.push(traversable)?;
         let mut cursor = 0;
         while cursor < pending.values.len() {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             let id = pending.values[cursor];
             let nav = self.nav(id, context)?;
@@ -955,8 +1150,12 @@ impl Graph {
                 return Ok(Some(&nav.entries));
             }
             for entry in &nav.entries.values {
+                #[cfg(test)]
+                semantic_item();
                 context.step()?;
                 for child in &self.ent(*entry, context)?.nested.values {
+                    #[cfg(test)]
+                    semantic_item();
                     context.step()?;
                     if !pending.contains(child)? {
                         pending.push(*child)?;
@@ -978,6 +1177,8 @@ impl Graph {
         let mut seen = Buffer::new(0, context)?;
         let mut removed = false;
         loop {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             if seen.contains(&id)? {
                 return Err(DomHostedError::WrongPhase);
@@ -1036,6 +1237,8 @@ impl Graph {
         };
         let mut step = None;
         for id in &collection.values {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             let entry = self.ent(*id, context)?;
             // This initial-entry profile has exactly one real DocumentState
@@ -1060,11 +1263,15 @@ impl Graph {
             context,
         )?;
         for id in &parent_state.nested.values {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             if *id == child {
                 return Err(DomHostedError::WrongPhase);
             }
             nested.values.push(*id);
+            #[cfg(test)]
+            copied_items::<DomHostedNavigableId>(1);
         }
         nested.push(child)?;
         let mut parent_state = parent_state.retained_copy(context)?;
@@ -1091,10 +1298,7 @@ impl Graph {
             Some(row(parent_state, context)?),
             context,
         )?;
-        let extent = source::storage::Payload {
-            bytes: assigned.accounted.0,
-            units: assigned.accounted.1,
-        };
+        let extent = assigned.discarded_payload(&result)?;
         drop(assigned);
         context.release_output(extent);
         Ok(result)
@@ -1119,9 +1323,13 @@ impl Graph {
         let mut parent_state = self.ent(parent.active, context)?.retained_copy(context)?;
         let mut nested = Buffer::new(parent_state.nested.values.len(), context)?;
         for id in &parent_state.nested.values {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             if *id != child {
                 nested.values.push(*id);
+                #[cfg(test)]
+                copied_items::<DomHostedNavigableId>(1);
             }
         }
         let old_nested = parent_state.nested.bytes()?;
@@ -1161,6 +1369,8 @@ impl Graph {
             .ok_or(DomHostedError::MissingPublication)?;
         let mut best = None;
         for id in &entries.values {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             if let Some(step) = self.ent(*id, context)?.step
                 && step <= target
@@ -1183,9 +1393,13 @@ impl Graph {
         pending.push(traversable)?;
         let mut cursor = 0;
         while cursor < pending.values.len() {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             let nav = self.nav(pending.values[cursor], context)?;
             for id in &nav.entries.values {
+                #[cfg(test)]
+                semantic_item();
                 context.step()?;
                 let entry = self.ent(*id, context)?;
                 let step = entry.step.ok_or(DomHostedError::MissingPublication)?;
@@ -1193,15 +1407,21 @@ impl Graph {
                     steps.push(step)?;
                     let mut index = steps.values.len() - 1;
                     while index > 0 {
+                        #[cfg(test)]
+                        semantic_item();
                         context.step()?;
                         if steps.values[index - 1] <= steps.values[index] {
                             break;
                         }
                         steps.values.swap(index - 1, index);
+                        #[cfg(test)]
+                        copied_items::<u64>(2);
                         index -= 1;
                     }
                 }
                 for child in &entry.nested.values {
+                    #[cfg(test)]
+                    semantic_item();
                     context.step()?;
                     if !pending.contains(child)? {
                         pending.push(*child)?;
@@ -1234,6 +1454,8 @@ impl Graph {
         let steps = self.used_steps(traversable, context)?;
         let mut selected = None;
         for (index, step) in steps.values.iter().enumerate() {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             if *step <= requested {
                 selected = Some((*step, index));
@@ -1245,6 +1467,8 @@ impl Graph {
         pending.push(traversable)?;
         let mut cursor = 0;
         while cursor < pending.values.len() {
+            #[cfg(test)]
+            semantic_item();
             context.step()?;
             let nav = self.nav(pending.values[cursor], context)?;
             if nav.traversable != traversable {
@@ -1363,28 +1587,38 @@ impl Graph {
     ) -> Result<Arc<Self>, DomHostedError> {
         let _call = context.call();
         let mut candidate = Self::form(Some(self), None, None, context)?;
-        for slot in 0..self.entries.len() {
+        let Some(members) = self.documents.get(document) else {
+            return Ok(candidate);
+        };
+        for (_, member) in members.rows.iter() {
             context.step()?;
-            if let Some(entry) = &self.entries[slot]
-                && entry.document == Some(document)
-            {
+            let entry = self
+                .entries
+                .get(member.entry)
+                .ok_or(DomHostedError::StaleIdentity)?;
+            if entry.document == Some(document) {
+                #[cfg(test)]
+                semantic_item();
                 let mut next = entry.retained_copy(context)?;
                 next.document = None;
                 let prior = candidate;
                 candidate = Self::form(Some(&prior), None, Some(row(next, context)?), context)?;
-                let extent = source::storage::Payload {
-                    bytes: prior.accounted.0,
-                    units: prior.accounted.1,
-                };
+                let extent = prior.discarded_payload(&candidate)?;
                 drop(prior);
                 context.release_output(extent);
             }
         }
-        for slot in 0..self.navigables.len() {
+        for (_, member) in members.rows.iter() {
             context.step()?;
-            if let Some(nav) = &self.navigables[slot] {
+            let nav = self
+                .navigables
+                .get(member.navigable)
+                .ok_or(DomHostedError::StaleIdentity)?;
+            {
                 context.step()?;
                 if self.ent(nav.active, context)?.document == Some(document) {
+                    #[cfg(test)]
+                    semantic_item();
                     let mut next = changed(
                         context,
                         source::storage::Payload {
@@ -1399,14 +1633,18 @@ impl Graph {
                     next.retiring = true;
                     let prior = candidate;
                     candidate = Self::form(Some(&prior), Some(row(next, context)?), None, context)?;
-                    let extent = source::storage::Payload {
-                        bytes: prior.accounted.0,
-                        units: prior.accounted.1,
-                    };
+                    let extent = prior.discarded_payload(&candidate)?;
                     drop(prior);
                     context.release_output(extent);
                 }
             }
+        }
+        if !members.rows.is_empty() {
+            let prior = candidate;
+            candidate = Self::form_documents(Some(&prior), None, None, Some(document), context)?;
+            let extent = prior.discarded_payload(&candidate)?;
+            drop(prior);
+            context.release_output(extent);
         }
         Ok(candidate)
     }
@@ -1503,8 +1741,7 @@ impl Dom {
 }
 
 #[cfg(test)]
-mod tests {
-    mod document_index_tests;
+pub(in crate::store) mod tests {
     use crate::DomSourceLimits;
     // Real issuer IDs and native Document identity payloads exercise this data
     // owner. They do not attest hosted Globals, entropy, loops or external jobs.
@@ -1558,9 +1795,9 @@ mod tests {
         );
     }
 
-    struct Fixture {
-        dom: Dom,
-        source: DomHostedSource,
+    pub(in crate::store) struct Fixture {
+        pub(in crate::store) dom: Dom,
+        pub(in crate::store) source: DomHostedSource,
         host: DomHostedHostId,
         documents: [DocumentId; 5],
         origin: crate::DomOpaqueOrigin,
@@ -1568,7 +1805,7 @@ mod tests {
         about_base_url: HtmlAboutBaseUrl,
     }
     impl Fixture {
-        fn new() -> Self {
+        pub(in crate::store) fn new() -> Self {
             let cancel = AtomicBool::new(false);
             let mut dom =
                 Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
@@ -1605,7 +1842,34 @@ mod tests {
                 about_base_url: HtmlAboutBaseUrl::KnownNull,
             }
         }
-        fn issue(
+        pub(in crate::store) fn new_for_outer_rows(rows: usize) -> Self {
+            let mut fixture = Self::new();
+            let count = rows.checked_add(8).unwrap().max(64);
+            let bytes = count
+                .checked_mul(65_536)
+                .unwrap()
+                .checked_add(16_000_000)
+                .unwrap();
+            fixture
+                .source
+                .set_limits(
+                    DomHostedLimits::new(
+                        DomHostedRecordLimits::new(count, count, count, count, count, count, count),
+                        bytes,
+                        bytes,
+                        u64::try_from(count)
+                            .unwrap()
+                            .checked_mul(4096)
+                            .unwrap()
+                            .checked_add(10_000_000)
+                            .unwrap(),
+                    ),
+                    &AtomicBool::new(false),
+                )
+                .unwrap();
+            fixture
+        }
+        pub(in crate::store) fn issue(
             &mut self,
             document: usize,
         ) -> (DomHostedCreation, DomHostedOperationId, Arc<Work>) {
@@ -1670,7 +1934,7 @@ mod tests {
                 work,
             )
         }
-        fn input(
+        pub(in crate::store) fn input(
             &self,
             creation: DomHostedCreation,
             parent: Option<DomHostedCreation>,
@@ -1749,7 +2013,75 @@ mod tests {
     }
 
     #[test]
-    fn creation_scratch_admits_both_complete_candidate_occurrences_until_transfer() {
+    fn buffer_counters_distinguish_actual_capacity_from_completed_element_writes() {
+        if !crate::store::scale_metrics::ENABLED {
+            return;
+        }
+        let cancel = AtomicBool::new(false);
+        let mut fixture = Fixture::new();
+        let (_, _, work) = fixture.issue(0);
+        let context = Context::new(&fixture.source, &work, &cancel, 0);
+        let _call = context.call();
+        let measurement = crate::store::scale_metrics::Measurement::begin().unwrap();
+        let mut buffer = Buffer::<u64>::new(3, &context).unwrap();
+        let capacity = buffer.values.capacity();
+        buffer.push(7).unwrap();
+        buffer.push(11).unwrap();
+        let values = buffer.finish();
+        let counts = measurement
+            .finish(crate::store::scale_metrics::Hooks::default())
+            .unwrap();
+        assert_eq!(values.values, [7, 11]);
+        assert!(capacity >= 3);
+        assert_eq!(counts.structural_allocations, 2);
+        assert_eq!(
+            counts.structural_bytes,
+            capacity * size_of::<u64>() + size_of::<Values<u64>>()
+        );
+        assert_eq!(counts.sequence_materializations, 2);
+        assert_eq!(counts.sequence_materialized_bytes, 2 * size_of::<u64>());
+        assert_eq!(counts.hosted_semantic_visits, 0);
+        let measurement = crate::store::scale_metrics::Measurement::begin().unwrap();
+        let alias = values.clone();
+        let counts = measurement
+            .finish(crate::store::scale_metrics::Hooks::default())
+            .unwrap();
+        assert!(Arc::ptr_eq(&values, &alias));
+        assert_eq!(counts.structural_allocations, 0);
+        assert_eq!(counts.sequence_materializations, 0);
+    }
+
+    #[test]
+    fn historical_snapshot_foreign_issuer_lookups_remain_stale_identity() {
+        let cancel = AtomicBool::new(false);
+        let mut fixture = Fixture::new();
+        let (top, _, work) = fixture.issue(0);
+        let context = Context::new(&fixture.source, &work, &cancel, 0);
+        let graph = Graph::initial(None, fixture.input(top, None), &context).unwrap();
+        let mut foreign = Fixture::new();
+        let (other, _, _work) = foreign.issue(0);
+        let mut snapshot = fixture.dom.snapshot();
+        // Only the external immutable snapshot retains State now. Installing
+        // the independently issued history is a private observation fixture;
+        // no current DOM/hosted execution or controlled budget is claimed.
+        drop(fixture.dom);
+        Arc::get_mut(&mut snapshot.state).unwrap().hosted_history = Some(graph);
+        assert_eq!(
+            snapshot.hosted_entry(top.entry).unwrap().document(),
+            Some(top.document)
+        );
+        assert!(matches!(
+            snapshot.hosted_navigable(other.navigable),
+            Err(DomHostedError::StaleIdentity)
+        ));
+        assert!(matches!(
+            snapshot.hosted_entry(other.entry),
+            Err(DomHostedError::StaleIdentity)
+        ));
+    }
+
+    #[test]
+    fn creation_scratch_admits_actual_new_candidate_union_until_transfer() {
         let cancel = AtomicBool::new(false);
         let mut f = Fixture::new();
         let (top, _, work) = f.issue(0);
@@ -1772,51 +2104,16 @@ mod tests {
         let extent = |graph: &Graph| {
             assert_eq!(graph.navigables.len(), 2);
             assert_eq!(graph.entries.len(), 2);
-            let banks = size_of::<Graph>()
-                + graph.navigables.capacity() * size_of::<Option<Arc<Row<Navigable>>>>()
-                + graph.entries.capacity() * size_of::<Option<Arc<Row<Entry>>>>();
-            let collections = graph
-                .navigables
+            graph
+                .inspect_materializations()
+                .unwrap()
                 .iter()
-                .map(|row| {
-                    let row = row.as_ref().unwrap();
-                    assert_eq!(row.entries.values.len(), 1);
-                    size_of::<Values<DomHostedEntryId>>()
-                        + row.entries.values.capacity() * size_of::<DomHostedEntryId>()
-                })
-                .sum::<usize>();
-            let nested = graph
-                .entries
-                .iter()
-                .map(|row| {
-                    let row = row.as_ref().unwrap();
-                    assert_eq!(row.about_base_url, HtmlAboutBaseUrl::KnownNull);
-                    size_of::<Values<DomHostedNavigableId>>()
-                        + row.nested.values.capacity() * size_of::<DomHostedNavigableId>()
-                })
-                .sum::<usize>();
-            assert_eq!(
-                graph
-                    .entry(top.entry)
-                    .unwrap()
-                    .target_name
-                    .as_ref()
-                    .unwrap()
-                    .shared_code_units()
-                    .capacity(),
-                0
-            );
-            assert_eq!(graph.entry(child.entry).unwrap().target_name, None);
-            banks
-                + 2 * size_of::<Row<Navigable>>()
-                + 2 * size_of::<Row<Entry>>()
-                + collections
-                + nested
-                + size_of::<Vec<u16>>()
+                .map(|(_, usage)| usage.bytes())
+                .sum::<usize>()
         };
         let assigned_extent = extent(&queued);
         assert_eq!(queued.payload(|| Ok(())).unwrap().bytes, assigned_extent);
-        let output_extent = {
+        let (output_extent, fresh_output, replaced_entry_page) = {
             let context = Context::new(&f.source, &work, &cancel, 0);
             let output = queued
                 .append_creation(child.navigable, op, &context)
@@ -1824,14 +2121,35 @@ mod tests {
             assert_eq!(context.scratch.get(), 0);
             let bytes = extent(&output);
             assert_eq!(output.payload(|| Ok(())).unwrap().bytes, bytes);
-            bytes
+            let original = queued
+                .inspect_materializations()
+                .unwrap()
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect::<std::collections::BTreeSet<_>>();
+            let fresh = output
+                .inspect_materializations()
+                .unwrap()
+                .iter()
+                .filter(|(id, _)| !original.contains(id))
+                .map(|(_, usage)| usage.bytes())
+                .sum::<usize>();
+            let entry_pages = output
+                .entries
+                .inspect_graph(|_| Ok(bank::Totals::default()))
+                .unwrap()
+                .index_charge();
+            assert_eq!(entry_pages.pages, 1);
+            (bytes, fresh, entry_pages.bytes)
         };
-        // C first forms a complete assigned Graph with only scalar changes;
-        // it stays live while the second complete Graph adds the real H list.
-        // The caller's unrelated live formation backing remains present too.
+        // The second entry edit replaces one actual leaf while the assigned
+        // Graph is still alive. Other new records and the navigable leaf are
+        // shared by the two candidates; input rows and identity indexes retain
+        // their original issuer receipts. Count those physical occurrences,
+        // plus the intermediate header/leaf, independently of scratch counters.
         let caller_buffer = vec![0u8; 17];
         let caller_bytes = size_of::<Vec<u8>>() + caller_buffer.capacity();
-        let exact_peak = caller_bytes + assigned_extent + output_extent;
+        let exact_peak = caller_bytes + fresh_output + size_of::<Graph>() + replaced_entry_page;
         let limits = f.source.limits();
         let used = f.used();
         let before_work = work.spent.load(Ordering::Relaxed);
@@ -1992,6 +2310,7 @@ mod tests {
             DomBatch::new().owner,
             DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
+            work.spent_id,
             op,
             &cancel,
         )
@@ -2454,7 +2773,112 @@ mod tests {
     }
 
     #[test]
+    fn auxiliary_union_matches_raw_rows_and_releases_shared_fields_by_row_identity() {
+        use crate::store::transaction::auxiliary;
+        use std::collections::BTreeMap;
+        let cancel = AtomicBool::new(false);
+        let mut fixture = Fixture::new();
+        let (top, _, work) = fixture.issue(0);
+        let context = Context::new(&fixture.source, &work, &cancel, 0);
+        let first = Graph::initial(None, fixture.input(top, None), &context).unwrap();
+        let registry = bank::CustodyRegistry::new(&custody::Ledger::default(), |_| Ok(())).unwrap();
+        let first_control =
+            auxiliary::adopt_history(&first, &registry, &mut |_| Ok(()), &mut || Ok(())).unwrap();
+        assert_eq!(
+            first_control
+                .inspect_claimed_materializations()
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            first
+                .inspect_materializations()
+                .unwrap()
+                .into_iter()
+                .collect()
+        );
+        drop(work);
+        let (child, operation, work) = fixture.issue(1);
+        let context = Context::new(&fixture.source, &work, &cancel, 0);
+        let second =
+            Graph::initial(Some(&first), fixture.input(child, Some(top)), &context).unwrap();
+        let second_control =
+            auxiliary::adopt_history(&second, &registry, &mut |_| Ok(()), &mut || Ok(())).unwrap();
+        let queued = second
+            .mark_creation_queued(child.navigable, operation, &context)
+            .unwrap();
+        let queued_control =
+            auxiliary::adopt_history(&queued, &registry, &mut |_| Ok(()), &mut || Ok(())).unwrap();
+        // A new Navigable row aliases the existing Values backing, but owns a
+        // conservative full field occurrence under its new record identity.
+        assert!(Arc::ptr_eq(
+            &second.navigables.get(1).unwrap().entries,
+            &queued.navigables.get(1).unwrap().entries
+        ));
+        assert!(!Arc::ptr_eq(
+            second.navigables.get_shared(1).unwrap(),
+            queued.navigables.get_shared(1).unwrap()
+        ));
+        let mut expected = BTreeMap::new();
+        let mut actual = BTreeMap::new();
+        for graph in [&first, &second, &queued] {
+            for (id, usage) in graph.inspect_materializations().unwrap() {
+                if let Some(old) = expected.insert(id, usage) {
+                    assert_eq!(old, usage);
+                }
+            }
+        }
+        for control in [&first_control, &second_control, &queued_control] {
+            for (id, usage) in control.inspect_claimed_materializations() {
+                if let Some(old) = actual.insert(id, usage) {
+                    assert_eq!(old, usage);
+                }
+            }
+        }
+        assert_eq!(actual, expected);
+        drop(first_control);
+        drop(second_control);
+        registry.reconcile_releases();
+        assert_eq!(
+            queued_control
+                .inspect_claimed_materializations()
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            queued
+                .inspect_materializations()
+                .unwrap()
+                .into_iter()
+                .collect()
+        );
+        drop(queued_control);
+        registry.reconcile_releases();
+        assert_eq!(
+            registry.total(),
+            bank::CustodyRegistry::administration_usage()
+        );
+        // Semantic historical graphs remain usable after owner custody ends.
+        assert_eq!(first.entry(top.entry).unwrap().step, Some(0));
+        assert_eq!(queued.entry(child.entry).unwrap().step, None);
+    }
+
+    #[test]
     fn source_formation_keeps_only_the_actual_successful_graph_occurrence() {
+        fn fresh_receipt(graph: &Graph, old: Option<&Graph>) -> (usize, usize) {
+            let old = old
+                .map(|old| {
+                    old.inspect_materializations()
+                        .unwrap()
+                        .into_iter()
+                        .collect::<std::collections::BTreeMap<_, _>>()
+                })
+                .unwrap_or_default();
+            graph
+                .inspect_materializations()
+                .unwrap()
+                .iter()
+                .filter(|(id, _)| !old.contains_key(id))
+                .fold((0, 0), |(bytes, units), (_, usage)| {
+                    (bytes + usage.bytes(), units + usage.units())
+                })
+        }
         let cancel = AtomicBool::new(false);
         let mut f = Fixture::new();
         let (top, _, work) = f.issue(0);
@@ -2465,6 +2889,7 @@ mod tests {
             DomBatch::new().owner,
             DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
+            work.spent_id,
             op,
             &cancel,
         )
@@ -2486,11 +2911,25 @@ mod tests {
         let child_form = root_form.fork();
         let context = Context::new(&f.source, &work, &cancel, 0).with_formation(&child_form);
         let initial = Graph::initial(Some(&root), f.input(child, Some(top)), &context).unwrap();
+        assert_eq!(
+            (
+                child_form.owned_payload().bytes,
+                child_form.owned_payload().units
+            ),
+            fresh_receipt(&initial, Some(&root))
+        );
         let queued_form = root_form.fork();
         let context = Context::new(&f.source, &work, &cancel, 0).with_formation(&queued_form);
         let queued = initial
             .mark_creation_queued(child.navigable, op, &context)
             .unwrap();
+        assert_eq!(
+            (
+                queued_form.owned_payload().bytes,
+                queued_form.owned_payload().units
+            ),
+            fresh_receipt(&queued, Some(&initial))
+        );
         let append_form = root_form.fork();
         let context = Context::new(&f.source, &work, &cancel, 0).with_formation(&append_form);
         let appended = queued
@@ -2505,7 +2944,7 @@ mod tests {
                 append_form.owned_payload().bytes,
                 append_form.owned_payload().units
             ),
-            (receipt.bytes, receipt.units)
+            fresh_receipt(&appended, Some(&queued))
         );
         assert_eq!(receipt.units, 144);
         assert_eq!(appended.accounted, (receipt.bytes, receipt.units));
@@ -2526,6 +2965,7 @@ mod tests {
             DomBatch::new().owner,
             DomSourceLimits::new(16_000_000, 4096, 10_000_000, 0, 0, 0, 1),
             work.spent.clone(),
+            work.spent_id,
             op,
             &cancel,
         )
@@ -2556,5 +2996,6 @@ mod tests {
         assert!(work.spent.load(Ordering::Relaxed) > original_work);
     }
 
+    mod document_index_tests;
     mod lookup_work_tests;
 }

@@ -44,15 +44,26 @@ pub(in crate::store) struct Reservation {
 }
 
 struct Row {
+    #[cfg(test)]
     key: Key,
     association_start: u64,
     creates: u64,
 }
 
-// The inline header belongs to Draft's already priced Self. Only this real Vec
-// backing acquires a separate charge. Drop the backing before releasing charge.
+#[derive(Clone, Copy)]
+struct RowBinding {
+    key: Key,
+    row: usize,
+}
+
+// The inline header belongs to Draft's already priced Self. Ordered rows own
+// their admitted Vec backing; exact identity lookup owns paired radix paths.
 pub(in crate::store) struct Scan {
     rows: Vec<Row>,
+    existing: bank::Bank<RowBinding>,
+    existing_custody: bank::BankCustody<RowBinding>,
+    created: bank::Bank<RowBinding>,
+    created_custody: bank::BankCustody<RowBinding>,
     charge: Option<checkpoint::Charge>,
     phases: u64,
     invocations: u64,
@@ -64,6 +75,10 @@ impl Scan {
     fn new() -> Self {
         Self {
             rows: Vec::new(),
+            existing: bank::Bank::default(),
+            existing_custody: bank::BankCustody::default(),
+            created: bank::Bank::default(),
+            created_custody: bank::BankCustody::default(),
             charge: None,
             phases: 0,
             invocations: 0,
@@ -79,13 +94,13 @@ impl Scan {
         cancel: &AtomicBool,
     ) -> Result<Option<usize>, DomError> {
         draft.source_step(cancel)?;
-        for index in 0..self.rows.len() {
-            draft.source_step(cancel)?;
-            if self.rows[index].key == key {
-                return Ok(Some(index));
-            }
-        }
-        Ok(None)
+        let found = match key {
+            Key::Existing(id) => self.existing.get(id.slot),
+            Key::Created(index) => self.created.get(index),
+        };
+        Ok(found
+            .filter(|binding| binding.key == key)
+            .map(|binding| binding.row))
     }
     fn append(
         &mut self,
@@ -94,6 +109,8 @@ impl Scan {
         association_start: u64,
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
+        #[cfg(test)]
+        let mut written = crate::store::CopyObservation::default();
         // A fresh envelope reads the CURRENT draft, including all existing live
         // charges. Its reserve admits old/new backing overlap and charges only
         // actual growth; merge that custody even if the final poll refused.
@@ -105,11 +122,40 @@ impl Scan {
         );
         result?;
         let index = self.rows.len();
+        let usage = custody::Usage::new(size_of::<RowBinding>(), 0);
+        let record = bank::ControlledRecord::new(
+            RowBinding { key, row: index },
+            usage,
+            draft.custody_registry(),
+            |usage| draft.admit_custody_usage(usage, cancel),
+        )?;
+        let (bank, custody, slot) = match key {
+            Key::Existing(id) => (&mut self.existing, &mut self.existing_custody, id.slot),
+            Key::Created(slot) => (&mut self.created, &mut self.created_custody, slot),
+        };
+        let (next, retained) = bank.set_controlled(
+            custody,
+            slot,
+            record,
+            false,
+            bank::Totals {
+                bytes: usage.bytes(),
+                units: 0,
+                occurrences: 1,
+            },
+            draft.custody_registry(),
+            |usage| draft.admit_custody_usage(usage, cancel),
+        )?;
+        *bank = next;
+        *custody = retained;
         self.rows.push(Row {
+            #[cfg(test)]
             key,
             association_start,
             creates: 0,
         });
+        #[cfg(test)]
+        written.pushed::<Row>();
         Ok(index)
     }
     fn qualify(
@@ -198,6 +244,10 @@ impl Draft {
                 checkpoint: Some(checkpoint),
             };
             restore.draft.source_headroom = Some(Scan::new());
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::SourcePreflight);
+            }
             let mut result = (|| {
                 restore.draft.seed_headroom(cancel)?;
                 match entry {
@@ -342,36 +392,19 @@ impl Draft {
 
     fn seed_headroom(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        for index in 0..self.native_tasks.len() {
-            self.source_step(cancel)?;
-            if matches!(
-                self.native_tasks[index],
-                select::Pending::Update { serial: None, .. }
-            ) {
-                self.headroom_select_issue(cancel)?;
-            }
-        }
-        self.source_step(cancel)?;
-        for index in 0..self.cancelled_selects.len() {
-            self.source_step(cancel)?;
-            if self.cancelled_selects[index].0.is_none() {
-                self.headroom_select_issue(cancel)?;
-            }
-        }
-        self.source_step(cancel)?;
-        for index in 0..self.details_intentions.len() {
-            self.source_step(cancel)?;
-            if self.details_intentions[index].is_unissued() {
-                self.headroom_details_issue(cancel)?;
-            }
-        }
-        self.source_step(cancel)?;
-        for index in 0..self.cancelled_details.len() {
-            self.source_step(cancel)?;
-            if self.cancelled_details[index].is_unissued() {
-                self.headroom_details_issue(cancel)?;
-            }
-        }
+        let (selects, details) = self.unissued_source_identities();
+        let scan = self
+            .source_headroom
+            .as_mut()
+            .ok_or(DomError::StyleProtocol)?;
+        scan.selects = scan
+            .selects
+            .checked_add(selects)
+            .ok_or(DomError::RepresentationExhausted)?;
+        scan.details = scan
+            .details
+            .checked_add(details)
+            .ok_or(DomError::RepresentationExhausted)?;
         Ok(())
     }
 
@@ -537,10 +570,10 @@ mod tests {
     fn set_association_start(draft: &mut Draft, key: Key, start: u64) {
         let mut state = draft.element(key).unwrap().style_state().unwrap().clone();
         state.next_association = start;
-        let DomNodeKind::Element(element) = &mut draft.node_mut(key).kind else {
-            unreachable!()
-        };
+        let cancel = AtomicBool::new(false);
+        let mut element = draft.element_fields_mut(key, &cancel).unwrap();
         element.set_style_state(state);
+        element.commit(&cancel).unwrap();
     }
 
     #[test]
@@ -548,7 +581,7 @@ mod tests {
         let f = fixture();
         let batch = DomBatch::new();
         let mut draft = draft(&f.dom, &batch);
-        let key = Key::Existing(f.styles[0].slot);
+        let key = Key::Existing(f.styles[0]);
         let original_invocation = draft.source_invocation;
         draft.source_headroom = Some(Scan::new());
         assert!(
@@ -616,7 +649,7 @@ mod tests {
         draft.source_headroom = Some(Scan::new());
         for node in f.styles {
             draft
-                .headroom_style(Key::Existing(node.slot), Kind::Update, &cancel)
+                .headroom_style(Key::Existing(node), Kind::Update, &cancel)
                 .unwrap();
             let scan = draft.source_headroom.as_ref().unwrap();
             assert_eq!(
@@ -628,7 +661,7 @@ mod tests {
         assert_eq!(live.load(Ordering::Relaxed), original);
         let existing =
             draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes + original;
-        let key = Key::Existing(f.styles[0].slot);
+        let key = Key::Existing(f.styles[0]);
         draft.source_headroom = Some(Scan::new());
         draft.source_limits = Some(limits(existing + size_of::<Row>() - 1));
         assert!(matches!(
@@ -641,6 +674,22 @@ mod tests {
         assert_eq!(draft.source_headroom.as_ref().unwrap().rows.capacity(), 0);
         assert_eq!(live.load(Ordering::Relaxed), original);
         draft.source_limits = Some(limits(existing + size_of::<Row>()));
+        // The ordered row fits, but its exact-identity record and index path
+        // require their own real custody. A refusal retains only the already
+        // allocated row capacity and never installs a partial index entry.
+        assert!(matches!(
+            draft.headroom_style(key, Kind::Update, &cancel),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedBytes,
+                ..
+            })
+        ));
+        let scan = draft.source_headroom.as_ref().unwrap();
+        assert!(scan.rows.is_empty());
+        assert!(scan.existing.is_empty());
+        assert_eq!(scan.rows.capacity(), 1);
+        assert_eq!(live.load(Ordering::Relaxed), original + size_of::<Row>());
+        draft.source_limits = Some(limits(32_000_000));
         draft.headroom_style(key, Kind::Update, &cancel).unwrap();
         assert_eq!(live.load(Ordering::Relaxed), original + size_of::<Row>());
         drop(draft.source_headroom.take());
@@ -654,7 +703,7 @@ mod tests {
         let batch = DomBatch::new();
         let mut draft = draft(&f.dom, &batch);
         let cancel = AtomicBool::new(false);
-        let key = Key::Existing(f.styles[0].slot);
+        let key = Key::Existing(f.styles[0]);
         set_association_start(&mut draft, key, u64::MAX - 1);
         draft.source_invocation = u64::MAX - 1;
         draft.source_headroom = Some(Scan::new());
@@ -723,19 +772,30 @@ mod tests {
         }
         // Counter-component inputs use actual canonical Select identities. Some
         // rows already have an ordinal; only the two explicit None rows issue.
-        let target = Key::Existing(f.select.slot);
-        draft.native_tasks = vec![
-            select::Pending::Update {
-                serial: None,
-                target,
-            },
-            select::Pending::Update {
-                serial: Some(0),
-                target,
-            },
-            select::Pending::Slots,
-        ];
-        draft.cancelled_selects = vec![(None, f.select), (Some(1), f.select)];
+        let target = Key::Existing(f.select);
+        draft
+            .queue_native_remove(0, draft.native_tasks.len(), &cancel)
+            .unwrap();
+        draft
+            .queue_native_insert(
+                0,
+                &[
+                    select::Pending::Update {
+                        serial: None,
+                        target,
+                    },
+                    select::Pending::Update {
+                        serial: Some(0),
+                        target,
+                    },
+                    select::Pending::Slots,
+                ],
+                &cancel,
+            )
+            .unwrap();
+        draft
+            .queue_cancelled_selects_insert(0, &[(None, f.select), (Some(1), f.select)], &cancel)
+            .unwrap();
         draft.source_headroom = Some(Scan::new());
         draft.seed_headroom(&cancel).unwrap();
         let scan = draft.source_headroom.take().unwrap();
@@ -768,7 +828,7 @@ mod tests {
         let mut batch = DomBatch::new();
         batch.insert_before(f.styles[0], f.document, None);
         let mut draft = draft(&f.dom, &batch);
-        let key = Key::Existing(f.styles[0].slot);
+        let key = Key::Existing(f.styles[0]);
         let cancel = AtomicBool::new(false);
         let work = draft.source_work.load(Ordering::Relaxed);
         let policy = draft.source_limits.unwrap();
@@ -842,7 +902,13 @@ mod tests {
                 .unwrap();
             let wrapper = staged.continuation.wrapper;
             let parent = staged.continuation.parent;
-            let children = staged.draft.node(wrapper).unwrap().children.clone();
+            let children = staged
+                .draft
+                .node(wrapper)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>();
             assert_eq!(children.len(), 2);
             let created = staged.draft.created.len();
             let live = staged.draft.source_formation_bytes.load(Ordering::Relaxed);
@@ -865,7 +931,16 @@ mod tests {
             } else {
                 assert!(matches!(result, Err(DomError::RevisionExhausted)));
             }
-            assert_eq!(staged.draft.node(wrapper).unwrap().children, children);
+            assert_eq!(
+                staged
+                    .draft
+                    .node(wrapper)
+                    .unwrap()
+                    .children
+                    .iter()
+                    .collect::<Vec<_>>(),
+                children
+            );
             assert_eq!(staged.draft.node(wrapper).unwrap().parent, None);
             assert!(staged.draft.node(parent).unwrap().children.is_empty());
             assert_eq!(staged.draft.created.len(), created);
@@ -903,12 +978,17 @@ mod tests {
             f.dom.revision = DomRevision(u64::MAX - remaining);
             let batch = DomBatch::new();
             let mut draft = draft(&f.dom, &batch);
-            let original = Key::Existing(f.styles[0].slot);
+            let original = Key::Existing(f.styles[0]);
             set_association_start(&mut draft, original, u64::MAX);
             draft.source_invocation = u64::MAX - 1;
-            let target = Key::Existing(f.select.slot);
-            let selectedcontent = Key::Existing(selectedcontent.slot);
-            let children = draft.node(selectedcontent).unwrap().children.clone();
+            let target = Key::Existing(f.select);
+            let selectedcontent = Key::Existing(selectedcontent);
+            let children = draft
+                .node(selectedcontent)
+                .unwrap()
+                .children
+                .iter()
+                .collect::<Vec<_>>();
             assert_eq!(
                 children.len(),
                 1,
@@ -926,7 +1006,15 @@ mod tests {
             } else {
                 assert!(matches!(result, Err(DomError::RevisionExhausted)));
             }
-            assert_eq!(draft.node(selectedcontent).unwrap().children, children);
+            assert_eq!(
+                draft
+                    .node(selectedcontent)
+                    .unwrap()
+                    .children
+                    .iter()
+                    .collect::<Vec<_>>(),
+                children
+            );
             assert_eq!(draft.created.len(), created);
             assert_eq!(draft.source_invocation, u64::MAX - 1);
             assert_eq!(
@@ -973,10 +1061,12 @@ mod tests {
         assert_eq!(result.remaining_phases, 13);
         assert_eq!(
             draft
-                .node(Key::Existing(f.styles[0].slot))
+                .node(Key::Existing(f.styles[0]))
                 .unwrap()
-                .children,
-            [Key::Existing(first.slot)]
+                .children
+                .iter()
+                .collect::<Vec<_>>(),
+            [Key::Existing(first)]
         );
     }
 
@@ -996,7 +1086,7 @@ mod tests {
         batch.insert_before(first, f.styles[0], None);
         for available in [2, 1] {
             let mut draft = draft(&f.dom, &batch);
-            let style = Key::Existing(f.styles[0].slot);
+            let style = Key::Existing(f.styles[0]);
             set_association_start(&mut draft, style, u64::MAX - available);
             let live = draft.source_formation_bytes.load(Ordering::Relaxed);
             let result = draft.admit_source_command_headroom(
@@ -1013,8 +1103,13 @@ mod tests {
                 assert!(matches!(result, Err(DomError::RepresentationExhausted)));
             }
             assert_eq!(
-                draft.node(style).unwrap().children,
-                [Key::Existing(first.slot), Key::Existing(second.slot)]
+                draft
+                    .node(style)
+                    .unwrap()
+                    .children
+                    .iter()
+                    .collect::<Vec<_>>(),
+                [Key::Existing(first), Key::Existing(second)]
             );
             assert_eq!(
                 draft
@@ -1087,7 +1182,7 @@ mod dialog_occurrence_tests {
         input.set_attribute(subject, "data-counter-proof", "");
         let limits =
             crate::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 16, 4096, 4096, 1);
-        let (mut draft, _, _) =
+        let (mut draft, _) =
             Draft::new_source(&dom, input.owner.clone(), &input.commands, limits, &cancel).unwrap();
         let stamp = dom.snapshot().stamp();
         for value in [u64::MAX - 1, u64::MAX] {

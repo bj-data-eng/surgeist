@@ -204,6 +204,8 @@ pub(crate) fn normalized_value(
 ) -> Result<DocumentString, DomError> {
     let length = normalized_length(raw, step)?;
     step()?;
+    #[cfg(test)]
+    let mut output_writes = crate::store::CopyObservation::default();
     let mut output = output(length, limit, budget, cancel)?;
     let mut normalizer = HtmlNewlineNormalizer::new();
     for unit in raw {
@@ -211,6 +213,8 @@ pub(crate) fn normalized_value(
         if let Some(unit) = normalizer.push(*unit) {
             step()?;
             output.push(unit);
+            #[cfg(test)]
+            output_writes.pushed::<u16>();
         }
     }
     Ok(DocumentString::from_utf16(output))
