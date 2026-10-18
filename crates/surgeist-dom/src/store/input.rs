@@ -673,6 +673,8 @@ impl Draft {
         );
         let root = crate::slot::root(self, key, cancel)?;
         let owner = self.node(key)?.control_owner;
+        #[cfg(test)]
+        super::control::participant_tests::radio_discovery_started(self);
         for index in 0..self.existing.len() + self.created.len() {
             self.source_step(cancel)?;
             let peer = if index < self.existing.len() {

@@ -476,3 +476,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+pub(super) mod participant_tests;
