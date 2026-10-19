@@ -127,6 +127,7 @@ enum Phase {
     Inspect,
     Upgrade,
     Compare,
+    Touch,
     Prepare,
     Commit,
     Hit,
@@ -153,6 +154,7 @@ pub struct HtmlValuePoolAction {
     slot: usize,
     generation: Option<u64>,
     phase: Phase,
+    reads: usize,
     layout: HtmlValuePoolLayout,
 }
 impl HtmlValuePoolAction {
@@ -178,20 +180,13 @@ pub enum HtmlValuePoolProgress {
     Finished,
 }
 
-/// A physical weak occurrence, qualified by pool owner and non-reused generation.
+/// Opaque identity of a retained weak occurrence within its concrete pool owner.
+/// Equality identifies an occurrence; it grants no payload or mutation authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlValuePoolOccurrence {
     owner: u64,
     slot: usize,
     generation: u64,
-}
-impl HtmlValuePoolOccurrence {
-    pub fn slot(self) -> usize {
-        self.slot
-    }
-    pub fn generation(self) -> u64 {
-        self.generation
-    }
 }
 
 /// Allocation-free bookkeeping from an actual transition. A moved occurrence
@@ -450,17 +445,17 @@ macro_rules! concrete_pool {
             }
             /// Admit before beginning root authority; includes its fixed close.
             pub fn root_work() -> HtmlValuePoolWork {
-                policy::root_work()
+                policy::root_work::<$value>()
             }
             /// Admit before issuing a nested mark; includes accept or restore's
             /// fixed metadata work. Inverse work is paid by mutation layouts.
             pub fn mark_work() -> HtmlValuePoolWork {
-                policy::mark_work()
+                policy::mark_work::<$value>()
             }
             /// Admit before freezing a root. Validation and closing afterward
             /// need no further admission callback.
             pub fn seal_work() -> HtmlValuePoolWork {
-                policy::root_work()
+                policy::root_work::<$value>()
             }
             /// O(1) admitted heap extent, including undo and conservative
             /// per-Weak target space. This is not distinct physical allocation
@@ -477,6 +472,19 @@ macro_rules! concrete_pool {
                 $operation {
                     inner: self.inner.operation(input, true),
                 }
+            }
+            /// Promotes this owner's completed miss for the identical still-
+            /// borrowed immutable input. No fingerprint or candidate scan is
+            /// repeated. Call before consuming the miss with `try_finish`.
+            /// Supersession/checkpoint changes bypass without mutation; an
+            /// completed non-miss from this owner returns false without
+            /// consuming its result or candidate, even after supersession.
+            /// An unfinished operation returns `NotReady`.
+            pub fn offer_miss(
+                &mut self,
+                operation: &mut $operation<'_>,
+            ) -> Result<bool, HtmlValuePoolError> {
+                self.inner.offer_miss(&mut operation.inner)
             }
             /// Describes without retaining a candidate or calling consumer code.
             pub fn next_action(

@@ -6,8 +6,8 @@ const BUCKETS: usize = 32;
 const CANDIDATES: usize = 4;
 const PAGE: usize = 8;
 const PAGES: usize = BUCKETS * CANDIDATES / PAGE;
-const LOG: usize = 128;
 const MARKS: usize = 16;
+const READ_BATCH: usize = 32;
 pub(super) const MAX_UNITS: usize = 8192;
 pub(super) const MAX_ATTRIBUTES: usize = 64;
 const MAX_PAYLOAD_BYTES: usize = 256 * 1024;
@@ -42,29 +42,87 @@ impl<T: Value> Drop for Entry<T> {
         tests::observe_entry_drop();
     }
 }
-struct Undo<T: Value> {
-    slot: usize,
-    old: Option<Entry<T>>,
-    cursor: usize,
-    new_page: bool,
+// A checkpoint keeps only the first value displaced from each slot. Repeated
+// writes in that checkpoint retire the superseded current Weak immediately.
+enum Before<T: Value> {
+    Untouched,
+    Saved(Option<Entry<T>>),
 }
-#[derive(Clone, Copy)]
-struct Mark {
+struct UndoPage<T: Value> {
+    cells: Vec<Before<T>>,
+    cursors: [Option<usize>; PAGE / CANDIDATES],
+}
+struct Frame<T: Value> {
+    before_pages: u16,
+    // Empty checkpoints retain only this thin header. The directory and each
+    // selected page are formed lazily under the mutation's actual admission.
+    pages: Vec<Option<UndoPage<T>>>,
+    hot_before: u128,
+    hot_touched: u128,
+}
+impl<T: Value> Frame<T> {
+    fn new(before_pages: u16) -> Self {
+        Self {
+            before_pages,
+            pages: Vec::new(),
+            hot_before: 0,
+            hot_touched: 0,
+        }
+    }
+    fn page(&self, index: usize) -> Option<&UndoPage<T>> {
+        self.pages.get(index).and_then(Option::as_ref)
+    }
+    fn remember_hot(&mut self, mask: u128, hot: u128) {
+        let first = mask & !self.hot_touched;
+        self.hot_before = (self.hot_before & !first) | (hot & first);
+        self.hot_touched |= mask;
+    }
+}
+struct Mark<T: Value> {
     id: u64,
-    len: usize,
-    had_log: bool,
+    frame: Frame<T>,
 }
-struct Root {
+struct Root<T: Value> {
     id: u64,
     frozen: bool,
     suspended: bool,
-    had_log: bool,
-    marks: [Option<Mark>; MARKS],
+    base: Frame<T>,
+    marks: [Option<Mark<T>>; MARKS],
+    current: Option<usize>,
+}
+impl<T: Value> Root<T> {
+    fn frame(&self) -> &Frame<T> {
+        self.current.map_or(&self.base, |index| {
+            &self.marks[index].as_ref().expect("current mark").frame
+        })
+    }
+    fn frame_mut(&mut self) -> &mut Frame<T> {
+        match self.current {
+            Some(index) => &mut self.marks[index].as_mut().expect("current mark").frame,
+            None => &mut self.base,
+        }
+    }
+    fn frame_id(&self) -> u64 {
+        self.current.map_or(self.id, |index| {
+            self.marks[index].as_ref().expect("current mark").id
+        })
+    }
+    fn refresh_current(&mut self) {
+        self.current = self
+            .marks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, mark)| mark.as_ref().map(|mark| (mark.id, index)))
+            .max()
+            .map(|(_, index)| index);
+    }
 }
 struct Prepared<T: Value> {
     entry: Entry<T>,
     page: Option<Vec<Slot<T>>>,
-    log: Option<Vec<Undo<T>>>,
+    undo_page: Option<UndoPage<T>>,
+    directory: Option<Vec<Option<UndoPage<T>>>>,
+    frame: u64,
     usage: HtmlValuePoolUsage,
 }
 
@@ -72,18 +130,19 @@ pub(super) struct Pool<T: Value> {
     owner: Option<u64>,
     next: u64,
     disabled: bool,
-    root: Option<Root>,
+    root: Option<Root<T>>,
     action: Option<(u64, u64)>,
     operation: Option<u64>,
     pages: [Option<Vec<Slot<T>>>; PAGES],
     cursors: [usize; BUCKETS],
-    log: Vec<Undo<T>>,
+    page_bits: u16,
+    hot: u128,
     usage: HtmlValuePoolUsage,
     metadata_limit: usize,
     #[cfg(test)]
     collision: bool,
     #[cfg(test)]
-    refuse_log_reserve: bool,
+    refuse_checkpoint_reserve: bool,
 }
 pub(super) struct Operation<'a, T: Value> {
     input: &'a T,
@@ -101,6 +160,7 @@ pub(super) struct Operation<'a, T: Value> {
     slot: usize,
     generation: Option<u64>,
     vacant: Option<usize>,
+    clear_hot: u128,
     prepared: Option<Prepared<T>>,
     pub(super) candidate: Option<T>,
     candidate_usage: HtmlValuePoolUsage,
@@ -118,13 +178,14 @@ impl<T: Value> Pool<T> {
             operation: None,
             pages: std::array::from_fn(|_| None),
             cursors: [0; BUCKETS],
-            log: Vec::new(),
+            page_bits: 0,
+            hot: 0,
             usage: HtmlValuePoolUsage::default(),
             metadata_limit: MAX_METADATA_BYTES,
             #[cfg(test)]
             collision: false,
             #[cfg(test)]
-            refuse_log_reserve: false,
+            refuse_checkpoint_reserve: false,
         }
     }
     pub(super) fn usage(&self) -> HtmlValuePoolUsage {
@@ -165,13 +226,19 @@ impl<T: Value> Pool<T> {
     }
     fn metadata_delta(
         page_capacity: usize,
-        log_capacity: usize,
+        undo_capacity: usize,
+        directory_capacity: usize,
     ) -> Result<usize, HtmlValuePoolError> {
         page_capacity
             .checked_mul(size_of::<Slot<T>>())
             .and_then(|n| {
-                log_capacity
-                    .checked_mul(size_of::<Undo<T>>())
+                undo_capacity
+                    .checked_mul(size_of::<Before<T>>())
+                    .and_then(|m| n.checked_add(m))
+            })
+            .and_then(|n| {
+                directory_capacity
+                    .checked_mul(size_of::<Option<UndoPage<T>>>())
                     .and_then(|m| n.checked_add(m))
             })
             .and_then(|n| n.checked_add(Self::target_bytes()))
@@ -206,10 +273,41 @@ impl<T: Value> Pool<T> {
             slot: 0,
             generation: None,
             vacant: None,
+            clear_hot: 0,
             prepared: None,
             candidate: None,
             candidate_usage: HtmlValuePoolUsage::default(),
             change: HtmlValuePoolChange::default(),
+        }
+    }
+    pub(super) fn offer_miss(
+        &mut self,
+        op: &mut Operation<'_, T>,
+    ) -> Result<bool, HtmlValuePoolError> {
+        // Completed results grant no mutation authority. In particular an
+        // optional owner-ID exhaustion already produced Bypassed (owner 0),
+        // and immutable Hits survive later operation supersession.
+        if matches!(op.phase, Phase::Hit | Phase::Offered | Phase::Bypassed) {
+            return if op.owner == self.owner.unwrap_or(0) {
+                Ok(false)
+            } else {
+                Err(HtmlValuePoolError::ForeignOwner)
+            };
+        }
+        if !self.valid_operation(op)? {
+            op.bypass();
+            return Ok(false);
+        }
+        if op.phase != Phase::Miss {
+            return Err(HtmlValuePoolError::NotReady);
+        }
+        op.offer = true;
+        op.phase = Phase::Prepare;
+        Ok(true)
+    }
+    fn remember_hot(&mut self, mask: u128) {
+        if let Some(root) = &mut self.root {
+            root.frame_mut().remember_hot(mask, self.hot);
         }
     }
     pub(super) fn next(
@@ -230,6 +328,17 @@ impl<T: Value> Pool<T> {
         if self.collision && matches!(op.phase, Phase::Inspect | Phase::Prepare) {
             op.hash = 0;
         }
+        if op.phase == Phase::Touch
+            && !self
+                .root
+                .as_ref()
+                .is_some_and(|root| !root.frozen && !root.suspended)
+        {
+            // The acquired immutable value is still a Hit. Retention hints are
+            // mutations and require the same active authority as insertion.
+            op.phase = Phase::Hit;
+            return Ok(None);
+        }
         let Some(serial) = self.issue() else {
             op.bypass();
             return Ok(None);
@@ -240,17 +349,28 @@ impl<T: Value> Pool<T> {
             candidate: op.candidate_usage,
             ..HtmlValuePoolLayout::default()
         };
+        let reads = match op.phase {
+            Phase::Hash => read_count(op.left),
+            Phase::Compare if op.left.units && op.right.units => {
+                read_count(op.left).min(read_count(op.right))
+            }
+            _ => 1,
+        };
         match op.phase {
-            Phase::Hash => layout.work = read_work(op.left),
+            Phase::Hash => layout.work = read_work(op.left, reads),
             Phase::Compare => {
-                let left = read_work(op.left);
-                let right = read_work(op.right);
+                let left = read_work(op.left, reads);
+                let right = read_work(op.right, reads);
                 layout.work = HtmlValuePoolWork {
                     record_visits: left.record_visits + right.record_visits,
                     inspected_bytes: left.inspected_bytes + right.inspected_bytes,
-                    copied_bytes: 0,
                     ..HtmlValuePoolWork::default()
                 };
+            }
+            Phase::Touch => {
+                // An active root journals this bounded retention hint.
+                layout.work.record_visits = 1;
+                layout.closing_work.record_visits = 1;
             }
             Phase::Inspect => {
                 if op.candidate_index == CANDIDATES {
@@ -285,49 +405,89 @@ impl<T: Value> Pool<T> {
                     op.bypass();
                     return Ok(None);
                 };
-                if root.frozen || root.suspended || self.log.len() == LOG {
+                if root.frozen || root.suspended {
                     op.bypass();
                     return Ok(None);
                 }
-                op.slot = op.vacant.unwrap_or_else(|| {
-                    bucket(op.hash) * CANDIDATES + self.cursors[bucket(op.hash)]
-                });
+                op.clear_hot = 0;
+                let mut scanned = 0;
+                op.slot = if let Some(vacant) = op.vacant {
+                    vacant
+                } else {
+                    let start = self.cursors[bucket(op.hash)];
+                    let mut selected = bucket(op.hash) * CANDIDATES + start;
+                    for offset in 0..CANDIDATES {
+                        let slot = bucket(op.hash) * CANDIDATES + (start + offset) % CANDIDATES;
+                        scanned += 1;
+                        if self.hot & (1 << slot) == 0 {
+                            selected = slot;
+                            break;
+                        }
+                        op.clear_hot |= 1 << slot;
+                    }
+                    selected
+                };
                 op.generation = self.entry(op.slot).map(|entry| entry.generation);
                 let page = if self.pages[op.slot / PAGE].is_none() {
                     PAGE
                 } else {
                     0
                 };
-                let log = if self.log.capacity() == 0 { LOG } else { 0 };
+                let undo = if root.frame().page(op.slot / PAGE).is_none() {
+                    PAGE
+                } else {
+                    0
+                };
+                let directory = if root.frame().pages.is_empty() {
+                    PAGES
+                } else {
+                    0
+                };
                 layout.pool = self.usage.add(HtmlValuePoolUsage {
-                    bytes: Self::metadata_delta(page, log)?,
+                    bytes: Self::metadata_delta(page, undo, directory)?,
                     utf16_units: 0,
                 })?;
                 if layout.pool.bytes > self.metadata_limit {
                     op.bypass();
                     return Ok(None);
                 }
-                layout.work.copied_bytes = page * size_of::<Slot<T>>();
-                layout.work.record_visits = 1;
-                layout.work.provider_calls = 1 + usize::from(page != 0) + usize::from(log != 0);
-                layout.work.reserve_bytes =
-                    page * size_of::<Slot<T>>() + log * size_of::<Undo<T>>();
+                layout.work.copied_bytes = page * size_of::<Slot<T>>()
+                    + undo * size_of::<Before<T>>()
+                    + directory * size_of::<Option<UndoPage<T>>>();
+                layout.work.record_visits = 1 + scanned;
+                layout.work.provider_calls = 1
+                    + usize::from(page != 0)
+                    + usize::from(undo != 0)
+                    + usize::from(directory != 0);
+                layout.work.reserve_bytes = page * size_of::<Slot<T>>()
+                    + undo * size_of::<Before<T>>()
+                    + directory * size_of::<Option<UndoPage<T>>>();
                 // Charge before either reserve: if the second reserve fails,
                 // the initialized page already needs destruction. On success
-                // the same allowance follows this Weak/page/log through their
+                // the same allowance follows this Weak/page/checkpoint backing through their
                 // provisional or committed owner until they are destroyed.
                 layout.closing_work = HtmlValuePoolWork {
-                    record_visits: 1 + page,
-                    provider_calls: 1 + usize::from(page != 0) + usize::from(log != 0),
+                    record_visits: 1 + page + (undo + directory) * (MARKS + 2),
+                    provider_calls: 1
+                        + usize::from(page != 0)
+                        + (MARKS + 2) * (usize::from(undo != 0) + usize::from(directory != 0)),
+                    copied_bytes: (MARKS + 1)
+                        * (usize::from(undo != 0) * size_of::<Option<UndoPage<T>>>()
+                            + usize::from(directory != 0) * size_of::<Vec<Option<UndoPage<T>>>>()),
                     ..HtmlValuePoolWork::default()
                 };
             }
             Phase::Commit => {
                 layout.pool = op.prepared.as_ref().expect("prepared mutation").usage;
-                layout.work.copied_bytes = size_of::<Undo<T>>() + size_of::<Slot<T>>();
+                layout.work.copied_bytes = size_of::<Before<T>>() + size_of::<Slot<T>>();
+                // A first-before cell can move through at most MARKS older
+                // surviving checkpoints before restoration or final seal.
+                // Pay those actual cell visits/moves and possible Weak drops
+                // now; closure never requests work from a stopped consumer.
                 layout.closing_work = HtmlValuePoolWork {
-                    record_visits: 1,
-                    copied_bytes: size_of::<Undo<T>>() + size_of::<Slot<T>>(),
+                    record_visits: 2 * (MARKS + 1),
+                    provider_calls: MARKS + 2,
+                    copied_bytes: (MARKS + 1) * (size_of::<Before<T>>() + size_of::<Slot<T>>()),
                     ..HtmlValuePoolWork::default()
                 };
             }
@@ -342,6 +502,7 @@ impl<T: Value> Pool<T> {
             slot: op.slot,
             generation: op.generation,
             phase: op.phase,
+            reads,
             layout,
         }))
     }
@@ -396,8 +557,20 @@ impl<T: Value> Pool<T> {
                 op.candidate = Some(T::from_shared(shared));
                 op.left = Cursor::default();
                 op.right = Cursor::default();
-                op.phase = if same { Phase::Hit } else { Phase::Compare };
+                op.phase = if same { Phase::Touch } else { Phase::Compare };
                 Ok(HtmlValuePoolProgress::CandidateAcquired)
+            }
+            Phase::Touch => {
+                if self
+                    .root
+                    .as_ref()
+                    .is_some_and(|root| !root.frozen && !root.suspended)
+                {
+                    self.remember_hot(1 << action.slot);
+                    self.hot |= 1 << action.slot;
+                }
+                op.phase = Phase::Hit;
+                Ok(HtmlValuePoolProgress::Continue)
             }
             Phase::Prepare => self.prepare(op),
             Phase::Commit => self.commit(op),
@@ -416,7 +589,7 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         };
-        if root.frozen || root.suspended || self.log.len() == LOG {
+        if root.frozen || root.suspended {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         }
@@ -433,30 +606,48 @@ impl<T: Value> Pool<T> {
         } else {
             None
         };
-        let log = if self.log.capacity() == 0 {
-            let mut log = Vec::new();
-            // The private test controller produces std's capacity error after
-            // the real page was initialized; it does not simulate host OOM.
-            #[cfg(test)]
-            let requested = if self.refuse_log_reserve {
-                usize::MAX
-            } else {
-                LOG
-            };
-            #[cfg(not(test))]
-            let requested = LOG;
-            if log.try_reserve_exact(requested).is_err() {
+        let frame = root.frame_id();
+        let directory = if root.frame().pages.is_empty() {
+            let mut values = Vec::new();
+            if values.try_reserve_exact(PAGES).is_err() {
                 op.bypass();
                 return Ok(HtmlValuePoolProgress::Finished);
             }
-            Some(log)
+            values.resize_with(PAGES, || None);
+            Some(values)
+        } else {
+            None
+        };
+        let undo_page = if root.frame().page(op.slot / PAGE).is_none() {
+            let mut values = Vec::new();
+            // Capacity-refusal injection follows real Slot/directory initialization.
+            #[cfg(test)]
+            let requested = if self.refuse_checkpoint_reserve {
+                usize::MAX
+            } else {
+                PAGE
+            };
+            #[cfg(not(test))]
+            let requested = PAGE;
+            if values.try_reserve_exact(requested).is_err() {
+                op.bypass();
+                return Ok(HtmlValuePoolProgress::Finished);
+            }
+            for _ in 0..PAGE {
+                values.push(Before::Untouched);
+            }
+            Some(UndoPage {
+                cells: values,
+                cursors: [None; PAGE / CANDIDATES],
+            })
         } else {
             None
         };
         let usage = self.usage.add(HtmlValuePoolUsage {
             bytes: Self::metadata_delta(
                 page.as_ref().map_or(0, Vec::capacity),
-                log.as_ref().map_or(0, Vec::capacity),
+                undo_page.as_ref().map_or(0, |page| page.cells.capacity()),
+                directory.as_ref().map_or(0, Vec::capacity),
             )?,
             utf16_units: 0,
         })?;
@@ -470,7 +661,9 @@ impl<T: Value> Pool<T> {
                 generation,
             },
             page,
-            log,
+            undo_page,
+            directory,
+            frame,
             usage,
         });
         op.phase = Phase::Commit;
@@ -484,7 +677,7 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         };
-        if root.frozen || root.suspended || self.log.len() == LOG {
+        if root.frozen || root.suspended {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         }
@@ -494,32 +687,52 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         }
-        let before = self.usage;
-        let new_page = prepared.page.is_some();
-        if let Some(page) = prepared.page {
-            self.pages[op.slot / PAGE] = Some(page);
+        if root.frame_id() != prepared.frame {
+            drop(prepared);
+            op.bypass();
+            return Ok(HtmlValuePoolProgress::Finished);
         }
-        if let Some(log) = prepared.log {
-            self.log = log;
+        let before = self.usage;
+        let page_index = op.slot / PAGE;
+        if let Some(page) = prepared.page {
+            self.pages[page_index] = Some(page);
+            self.page_bits |= 1 << page_index;
         }
         let inserted = self.occurrence(op.slot, &prepared.entry);
         let old = self.entry_mut(op.slot).replace(prepared.entry);
-        let moved_to_undo = old.as_ref().map(|entry| self.occurrence(op.slot, entry));
+        let old_occurrence = old.as_ref().map(|entry| self.occurrence(op.slot, entry));
         let bucket = bucket(op.hash);
-        self.log.push(Undo {
-            slot: op.slot,
-            old,
-            cursor: self.cursors[bucket],
-            new_page,
-        });
+        let changed_hot = op.clear_hot | (1 << op.slot);
+        self.remember_hot(changed_hot);
+        self.hot &= !changed_hot;
+        let frame = self.root.as_mut().expect("active root").frame_mut();
+        if let Some(directory) = prepared.directory {
+            frame.pages = directory;
+        }
+        if let Some(page) = prepared.undo_page {
+            frame.pages[page_index] = Some(page);
+        }
+        let undo_page = frame.pages[page_index]
+            .as_mut()
+            .expect("prepared before page");
+        let cell = &mut undo_page.cells[op.slot % PAGE];
+        let first = matches!(cell, Before::Untouched);
+        let released = usize::from(!first && old.is_some());
+        if first {
+            *cell = Before::Saved(old);
+        } else {
+            drop(old);
+        }
+        undo_page.cursors[bucket % (PAGE / CANDIDATES)].get_or_insert(self.cursors[bucket]);
         self.cursors[bucket] = (op.slot % CANDIDATES + 1) % CANDIDATES;
         self.usage = prepared.usage;
+        self.usage.bytes -= released * Self::target_bytes();
         op.change = HtmlValuePoolChange {
             before,
             after: self.usage,
             inserted: Some(inserted),
-            moved_to_undo,
-            released: 0,
+            moved_to_undo: if first { old_occurrence } else { None },
+            released,
         };
         op.phase = Phase::Offered;
         Ok(HtmlValuePoolProgress::Finished)
@@ -533,8 +746,9 @@ impl<T: Value> Pool<T> {
             id,
             frozen: false,
             suspended: false,
-            had_log: self.log.capacity() != 0,
-            marks: [None; MARKS],
+            base: Frame::new(self.page_bits),
+            marks: std::array::from_fn(|_| None),
+            current: None,
         });
         self.action = None;
         self.operation = None;
@@ -562,19 +776,20 @@ impl<T: Value> Pool<T> {
         }
         let index = root.marks.iter().position(Option::is_none);
         let id = index.and_then(|_| self.issue());
-        let root = self
-            .root
-            .as_mut()
-            .expect("existing authority survives exhaustion");
+        let root = self.root.as_mut().expect("authority survives exhaustion");
         let (Some(index), Some(id)) = (index, id) else {
             root.suspended = true;
+            self.action = None;
+            self.operation = None;
             return Ok(None);
         };
         root.marks[index] = Some(Mark {
             id,
-            len: self.log.len(),
-            had_log: self.log.capacity() != 0,
+            frame: Frame::new(self.page_bits),
         });
+        root.current = Some(index);
+        self.action = None;
+        self.operation = None;
         Ok(Some(HtmlValuePoolMark {
             owner: token.owner,
             root: token.id,
@@ -586,18 +801,80 @@ impl<T: Value> Pool<T> {
             return Ok(());
         }
         let root = self.root.as_mut().expect("matching root");
-        if let Some(index) = root
+        let Some(index) = root
             .marks
             .iter()
-            .position(|mark| mark.is_some_and(|mark| mark.id == token.id))
-        {
-            root.marks[index] = None;
+            .position(|mark| mark.as_ref().is_some_and(|mark| mark.id == token.id))
+        else {
+            return Ok(());
+        };
+        if root.frozen {
+            return Err(HtmlValuePoolError::NotReady);
         }
+        let mut source = root.marks[index].take().expect("selected mark").frame;
+        let older = root
+            .marks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, mark)| {
+                mark.as_ref()
+                    .filter(|mark| mark.id < token.id)
+                    .map(|mark| (mark.id, i))
+            })
+            .max()
+            .map(|(_, i)| i);
+        let destination = match older {
+            Some(i) => &mut root.marks[i].as_mut().expect("older mark").frame,
+            None => &mut root.base,
+        };
+        let new_hot = source.hot_touched & !destination.hot_touched;
+        destination.hot_before =
+            (destination.hot_before & !new_hot) | (source.hot_before & new_hot);
+        destination.hot_touched |= source.hot_touched;
+        if destination.pages.is_empty() {
+            destination.pages = std::mem::take(&mut source.pages);
+        } else {
+            for (source_page, destination_page) in
+                source.pages.iter_mut().zip(&mut destination.pages)
+            {
+                let Some(mut page) = source_page.take() else {
+                    continue;
+                };
+                if let Some(destination) = destination_page {
+                    for (source, destination) in page.cells.iter_mut().zip(&mut destination.cells) {
+                        if matches!(destination, Before::Untouched) {
+                            *destination = std::mem::replace(source, Before::Untouched);
+                        } else if matches!(source, Before::Saved(Some(_))) {
+                            self.usage.bytes -= Self::target_bytes();
+                        }
+                    }
+                    for (source, destination) in
+                        page.cursors.into_iter().zip(&mut destination.cursors)
+                    {
+                        if destination.is_none() {
+                            *destination = source;
+                        }
+                    }
+                    self.usage.bytes -= page.cells.capacity() * size_of::<Before<T>>();
+                    drop(page);
+                } else {
+                    *destination_page = Some(page);
+                }
+            }
+            self.usage.bytes -= source.pages.capacity() * size_of::<Option<UndoPage<T>>>();
+        }
+        root.refresh_current();
+        self.action = None;
+        self.operation = None;
         Ok(())
     }
     pub(super) fn suspend(&mut self, token: &HtmlValuePoolRoot) -> Result<(), HtmlValuePoolError> {
         if self.root_matches(token.owner, token.id)? {
-            self.root.as_mut().expect("matching root").suspended = true;
+            let root = self.root.as_mut().expect("matching root");
+            if root.frozen {
+                return Err(HtmlValuePoolError::NotReady);
+            }
+            root.suspended = true;
             self.action = None;
             self.operation = None;
         }
@@ -610,34 +887,43 @@ impl<T: Value> Pool<T> {
         if !self.root_matches(token.owner, token.root)? {
             return Ok(self.unchanged());
         }
-        let Some(mark) = self
-            .root
-            .as_ref()
-            .expect("matching root")
-            .marks
-            .iter()
-            .flatten()
-            .find(|mark| mark.id == token.id)
-            .copied()
-        else {
+        let root = self.root.as_ref().expect("matching root");
+        if !root.marks.iter().flatten().any(|mark| mark.id == token.id) {
             return Ok(self.unchanged());
-        };
-        let mut change = self.rollback(mark.len);
-        if !mark.had_log {
-            let log = std::mem::take(&mut self.log);
-            let bytes = log.capacity() * size_of::<Undo<T>>();
-            drop(log);
-            self.usage.bytes -= bytes;
-            change.after = self.usage;
         }
-        for mark in &mut self.root.as_mut().expect("root retained").marks {
-            if mark.is_some_and(|mark| mark.id >= token.id) {
-                *mark = None;
-            }
+        if root.frozen {
+            return Err(HtmlValuePoolError::NotReady);
         }
+        let before = self.usage;
+        let mut released = 0;
+        loop {
+            let root = self.root.as_mut().expect("root retained");
+            let Some(index) = root
+                .marks
+                .iter()
+                .enumerate()
+                .filter_map(|(i, mark)| {
+                    mark.as_ref()
+                        .filter(|mark| mark.id >= token.id)
+                        .map(|mark| (mark.id, i))
+                })
+                .max()
+                .map(|(_, i)| i)
+            else {
+                break;
+            };
+            let frame = root.marks[index].take().expect("selected mark").frame;
+            released += self.rollback_frame(frame);
+        }
+        self.root.as_mut().expect("root retained").refresh_current();
         self.action = None;
         self.operation = None;
-        Ok(change)
+        Ok(HtmlValuePoolChange {
+            before,
+            after: self.usage,
+            released,
+            ..HtmlValuePoolChange::default()
+        })
     }
     fn unchanged(&self) -> HtmlValuePoolChange {
         HtmlValuePoolChange {
@@ -646,36 +932,54 @@ impl<T: Value> Pool<T> {
             ..HtmlValuePoolChange::default()
         }
     }
-    fn rollback(&mut self, len: usize) -> HtmlValuePoolChange {
-        let before = self.usage;
+    fn rollback_frame(&mut self, mut frame: Frame<T>) -> usize {
         let mut released = 0;
-        while self.log.len() > len {
-            let Undo {
-                slot,
-                old,
-                cursor,
-                new_page,
-            } = self.log.pop().expect("known suffix");
-            let current = std::mem::replace(self.entry_mut(slot), old);
-            if current.is_some() {
-                drop(current);
-                released += 1;
-                self.usage.bytes -= Self::target_bytes();
+        for (index, saved) in frame.pages.iter_mut().enumerate() {
+            let Some(mut page) = saved.take() else {
+                continue;
+            };
+            for (offset, cell) in page.cells.iter_mut().enumerate() {
+                if let Before::Saved(old) = std::mem::replace(cell, Before::Untouched) {
+                    let current = std::mem::replace(self.entry_mut(index * PAGE + offset), old);
+                    if current.is_some() {
+                        drop(current);
+                        released += 1;
+                        self.usage.bytes -= Self::target_bytes();
+                    }
+                }
             }
-            self.cursors[slot / CANDIDATES] = cursor;
-            if new_page {
-                let page = self.pages[slot / PAGE].take().expect("introduced page");
-                let bytes = page.capacity() * size_of::<Slot<T>>();
+            self.usage.bytes -= page.cells.capacity() * size_of::<Before<T>>();
+            for (offset, saved) in page.cursors.into_iter().enumerate() {
+                if let Some(saved) = saved {
+                    self.cursors[index * (PAGE / CANDIDATES) + offset] = saved;
+                }
+            }
+            drop(page);
+            if frame.before_pages & (1 << index) == 0 {
+                let page = self.pages[index].take().expect("introduced page");
+                self.usage.bytes -= page.capacity() * size_of::<Slot<T>>();
+                self.page_bits &= !(1 << index);
                 drop(page);
-                self.usage.bytes -= bytes;
             }
         }
-        HtmlValuePoolChange {
-            before,
-            after: self.usage,
-            released,
-            ..HtmlValuePoolChange::default()
+        self.usage.bytes -= frame.pages.capacity() * size_of::<Option<UndoPage<T>>>();
+        self.hot = (self.hot & !frame.hot_touched) | (frame.hot_before & frame.hot_touched);
+        released
+    }
+    fn discard_frame(&mut self, mut frame: Frame<T>) -> usize {
+        let mut released = 0;
+        for page in frame.pages.iter_mut().filter_map(Option::take) {
+            released += page
+                .cells
+                .iter()
+                .filter(|cell| matches!(cell, Before::Saved(Some(_))))
+                .count();
+            self.usage.bytes -= page.cells.capacity() * size_of::<Before<T>>();
+            drop(page);
         }
+        self.usage.bytes -= frame.pages.capacity() * size_of::<Option<UndoPage<T>>>();
+        self.usage.bytes -= released * Self::target_bytes();
+        released
     }
     pub(super) fn abort(
         &mut self,
@@ -685,31 +989,50 @@ impl<T: Value> Pool<T> {
             return Ok(self.unchanged());
         }
         let before = self.usage;
-        let mut change = self.rollback(0);
-        let root = self.root.take().expect("matching root");
-        if !root.had_log {
-            let log = std::mem::take(&mut self.log);
-            let bytes = log.capacity() * size_of::<Undo<T>>();
-            drop(log);
-            self.usage.bytes -= bytes;
+        let mut released = 0;
+        loop {
+            let root = self.root.as_mut().expect("matching root");
+            let Some(index) = root
+                .marks
+                .iter()
+                .enumerate()
+                .filter_map(|(i, mark)| mark.as_ref().map(|mark| (mark.id, i)))
+                .max()
+                .map(|(_, i)| i)
+            else {
+                break;
+            };
+            let frame = root.marks[index].take().expect("selected mark").frame;
+            released += self.rollback_frame(frame);
         }
+        let root = self.root.take().expect("matching root");
+        released += self.rollback_frame(root.base);
         self.action = None;
         self.operation = None;
-        change.before = before;
-        change.after = self.usage;
-        Ok(change)
+        Ok(HtmlValuePoolChange {
+            before,
+            after: self.usage,
+            released,
+            ..HtmlValuePoolChange::default()
+        })
     }
     pub(super) fn prepare_seal(
         &mut self,
         token: HtmlValuePoolRoot,
     ) -> Result<HtmlValuePoolSeal, (HtmlValuePoolError, HtmlValuePoolRoot)> {
         match self.root_matches(token.owner, token.id) {
-            Ok(true) => {
+            Ok(true)
+                if self
+                    .root
+                    .as_ref()
+                    .is_some_and(|root| root.marks.iter().all(Option::is_none) && !root.frozen) =>
+            {
                 self.root.as_mut().expect("matching root").frozen = true;
                 self.action = None;
+                self.operation = None;
                 Ok(HtmlValuePoolSeal { root: token })
             }
-            Ok(false) => Err((HtmlValuePoolError::NotReady, token)),
+            Ok(_) => Err((HtmlValuePoolError::NotReady, token)),
             Err(error) => Err((error, token)),
         }
     }
@@ -728,15 +1051,8 @@ impl<T: Value> Pool<T> {
     ) -> Result<HtmlValuePoolChange, HtmlValuePoolError> {
         self.validate_seal(&seal)?;
         let before = self.usage;
-        let mut released = 0;
-        while let Some(undo) = self.log.pop() {
-            if undo.old.is_some() {
-                released += 1;
-            }
-            drop(undo);
-        }
-        self.usage.bytes -= released * Self::target_bytes();
-        self.root = None;
+        let root = self.root.take().expect("validated seal");
+        let released = self.discard_frame(root.base);
         self.action = None;
         self.operation = None;
         Ok(HtmlValuePoolChange {
@@ -790,15 +1106,20 @@ impl<T: Value> Operation<'_, T> {
                     self.bypass();
                     return Ok(HtmlValuePoolProgress::Finished);
                 }
-                let read = self.input.read(&mut self.left)?;
-                self.payload = self.payload.add(read.payload)?;
-                if self.payload.utf16_units > MAX_UNITS || self.payload.bytes > MAX_PAYLOAD_BYTES {
-                    self.bypass();
-                    return Ok(HtmlValuePoolProgress::Finished);
-                }
-                for byte in std::iter::once(read.word.tag).chain(read.word.value.to_le_bytes()) {
-                    self.hash ^= u64::from(byte);
-                    self.hash = self.hash.wrapping_mul(0x100_0000_01b3);
+                for _ in 0..action.reads {
+                    let read = self.input.read(&mut self.left)?;
+                    self.payload = self.payload.add(read.payload)?;
+                    if self.payload.utf16_units > MAX_UNITS
+                        || self.payload.bytes > MAX_PAYLOAD_BYTES
+                    {
+                        self.bypass();
+                        return Ok(HtmlValuePoolProgress::Finished);
+                    }
+                    for byte in std::iter::once(read.word.tag).chain(read.word.value.to_le_bytes())
+                    {
+                        self.hash ^= u64::from(byte);
+                        self.hash = self.hash.wrapping_mul(0x100_0000_01b3);
+                    }
                 }
                 if self.left.done {
                     self.phase = Phase::Inspect;
@@ -806,20 +1127,26 @@ impl<T: Value> Operation<'_, T> {
                 Ok(HtmlValuePoolProgress::Continue)
             }
             Phase::Compare => {
-                let left = self.input.read(&mut self.left)?;
-                let right = self
-                    .candidate
-                    .as_ref()
-                    .expect("admitted candidate")
-                    .read(&mut self.right)?;
-                if left.word != right.word {
+                let mut equal = true;
+                // Execute the entire length-qualified prepaid run, including
+                // its suffix after a mismatch: inspected-byte work is literal.
+                for _ in 0..action.reads {
+                    let left = self.input.read(&mut self.left)?;
+                    let right = self
+                        .candidate
+                        .as_ref()
+                        .expect("admitted candidate")
+                        .read(&mut self.right)?;
+                    equal &= left.word == right.word;
+                }
+                if !equal {
                     self.candidate = None;
                     self.candidate_usage = HtmlValuePoolUsage::default();
                     self.advance_candidate();
                     return Ok(HtmlValuePoolProgress::CandidateReleased);
                 }
                 if self.left.done && self.right.done {
-                    self.phase = Phase::Hit;
+                    self.phase = Phase::Touch;
                 }
                 Ok(HtmlValuePoolProgress::Continue)
             }
@@ -827,10 +1154,17 @@ impl<T: Value> Operation<'_, T> {
         }
     }
 }
-fn read_work(cursor: Cursor) -> HtmlValuePoolWork {
+fn read_count(cursor: Cursor) -> usize {
+    if cursor.units {
+        (cursor.len - cursor.offset).min(READ_BATCH)
+    } else {
+        1
+    }
+}
+fn read_work(cursor: Cursor, reads: usize) -> HtmlValuePoolWork {
     if cursor.units {
         HtmlValuePoolWork {
-            inspected_bytes: size_of::<u16>(),
+            inspected_bytes: reads * size_of::<u16>(),
             ..HtmlValuePoolWork::default()
         }
     } else {
@@ -843,29 +1177,28 @@ fn read_work(cursor: Cursor) -> HtmlValuePoolWork {
 fn bucket(hash: u64) -> usize {
     hash as usize % BUCKETS
 }
-pub(super) fn root_work() -> HtmlValuePoolWork {
+pub(super) fn root_work<T: Value>() -> HtmlValuePoolWork {
     HtmlValuePoolWork {
-        record_visits: 2,
-        copied_bytes: 2 * size_of::<Root>(),
+        record_visits: (MARKS + 1) * (PAGES + BUCKETS + 1),
+        copied_bytes: 2 * size_of::<Root<T>>(),
         ..HtmlValuePoolWork::default()
     }
 }
 pub(super) fn disposal_work() -> HtmlValuePoolWork {
     let slots = PAGES * PAGE;
-    // Final Drop traverses initialized Slots and Undo records, each retaining
-    // at most one Entry/Weak. Spare Vec capacity is not initialized work. Each
-    // Weak can release one target allocation; each nonempty backing can free
-    // once. No live payload or element buffer is retained by a Weak.
+    let saved = slots * (MARKS + 1);
+    // Initialized live Slots and first-before cells, plus each possible Weak.
+    // Capacity is storage only; no spare capacity elements are traversed.
     HtmlValuePoolWork {
-        record_visits: 2 * (slots + LOG),
-        provider_calls: slots + LOG + PAGES + 1,
+        record_visits: 2 * (slots + saved) + (MARKS + 1) * (PAGES + BUCKETS + 1),
+        provider_calls: slots + saved + PAGES * (MARKS + 2) + MARKS + 1,
         ..HtmlValuePoolWork::default()
     }
 }
-pub(super) fn mark_work() -> HtmlValuePoolWork {
+pub(super) fn mark_work<T: Value>() -> HtmlValuePoolWork {
     HtmlValuePoolWork {
-        record_visits: 3 * MARKS,
-        copied_bytes: (MARKS + 1) * size_of::<Option<Mark>>(),
+        record_visits: 3 * MARKS + (MARKS + 1) * (PAGES + BUCKETS),
+        copied_bytes: (MARKS + 1) * size_of::<Mark<T>>(),
         ..HtmlValuePoolWork::default()
     }
 }

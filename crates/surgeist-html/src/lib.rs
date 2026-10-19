@@ -147,7 +147,10 @@ pub use tokens::{
     HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenComparison, HtmlTokenError,
     HtmlUnorderedTokenSet,
 };
-pub use values::*;
+pub use values::{
+    Attribute, DocumentString, DuplicateAttributeError, Namespace, OrderedAttributes,
+    QualifiedName, Utf8ConversionError,
+};
 pub use vocabulary::*;
 
 mod style;

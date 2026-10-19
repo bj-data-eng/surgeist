@@ -32,7 +32,14 @@ pub use crate::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
-pub use crate::values::sharing::*;
+pub use crate::values::sharing::{
+    HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,
+    HtmlAttributePoolResult, HtmlStringPool, HtmlStringPoolCandidate, HtmlStringPoolOperation,
+    HtmlStringPoolResult, HtmlValuePoolAction, HtmlValuePoolActionKind, HtmlValuePoolChange,
+    HtmlValuePoolError, HtmlValuePoolLayout, HtmlValuePoolMark, HtmlValuePoolOccurrence,
+    HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolUsage,
+    HtmlValuePoolWork,
+};
 
 pub use crate::construction::bounded::*;
 

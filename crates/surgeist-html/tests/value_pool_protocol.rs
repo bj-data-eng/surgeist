@@ -640,3 +640,366 @@ long_root_case!(
     OrderedAttributes,
     shared_attributes
 );
+
+macro_rules! public_guard_edges {
+    ($test:ident, $owner:ident, $pool:ty, $operation:ident, $result:ident, $value:ty, $input:ident, $shared:ident) => {
+        #[test]
+        fn $test() {
+            struct Session<'a> {
+                owner: &'a mut $owner,
+                root: Option<HtmlValuePoolRoot>,
+            }
+            impl Drop for Session<'_> {
+                fn drop(&mut self) {
+                    if let Some(root) = self.root.take() {
+                        self.owner.abort(root);
+                    }
+                }
+            }
+            struct Checkpoint<'a, 'b> {
+                session: &'a mut Session<'b>,
+                mark: Option<HtmlValuePoolMark>,
+            }
+            impl Drop for Checkpoint<'_, '_> {
+                fn drop(&mut self) {
+                    if let Some(mark) = self.mark.take() {
+                        self.session.owner.accept(mark);
+                    }
+                }
+            }
+            struct Prepared<'a> {
+                owner: &'a mut $owner,
+                seal: Option<HtmlValuePoolSeal>,
+            }
+            impl Drop for Prepared<'_> {
+                fn drop(&mut self) {
+                    if let Some(seal) = self.seal.take() {
+                        self.owner.abort_seal(seal);
+                    }
+                }
+            }
+            let meter = Meter::new();
+            {
+                let mut owner = $owner::new(&meter);
+                let original = $input(&meter, 70);
+                let root = owner.begin();
+                assert!(matches!(owner.run(&original.value, true), Done::Offered));
+                let seal = owner.prepare(root).unwrap();
+                owner.seal(seal);
+                let baseline = owner.storage();
+
+                // A consumer cancellation has no failure-time admission. The
+                // nested guard accepts; the enclosing root guard still aborts.
+                let transient = $input(&meter, 71);
+                let cancelled: Result<(), &'static str> = {
+                    let root = owner.begin();
+                    let mut session = Session {
+                        owner: &mut owner,
+                        root: Some(root),
+                    };
+                    let mark = session.owner.mark(session.root.as_ref().unwrap()).unwrap();
+                    let checkpoint = Checkpoint {
+                        session: &mut session,
+                        mark: Some(mark),
+                    };
+                    assert!(matches!(
+                        checkpoint.session.owner.run(&transient.value, true),
+                        Done::Offered
+                    ));
+                    Err("cancelled")
+                };
+                assert_eq!(cancelled, Err("cancelled"));
+                assert_eq!(owner.storage(), baseline);
+                assert!(matches!(owner.run(&transient.value, false), Done::Miss));
+                assert!(matches!(owner.run(&original.value, false), Done::Hit(_)));
+
+                // Panic after a real strong upgrade drops the operation before
+                // its candidate receipt, then the session aborts. No private
+                // phase or slot determines where the panic is injected.
+                let equal = $input(&meter, 70);
+                let before = meter.0.live.get();
+                let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let root = owner.begin();
+                    let session = Session {
+                        owner: &mut owner,
+                        root: Some(root),
+                    };
+                    let mut candidate = meter.reserve(Storage::default());
+                    let mut operation = Some(session.owner.pool.probe(&equal.value));
+                    while let Some(action) = session
+                        .owner
+                        .pool
+                        .next_action(operation.as_mut().unwrap())
+                        .unwrap()
+                    {
+                        let layout = action.layout();
+                        meter.pay(layout.work());
+                        meter.pay(layout.closing_work());
+                        session.owner.metadata.resize(
+                            Storage {
+                                bytes: <$pool>::inline_bytes(),
+                                units: 0,
+                            }
+                            .add(layout.pool().into()),
+                        );
+                        candidate.resize(layout.candidate().into());
+                        let progress = match action.kind() {
+                            HtmlValuePoolActionKind::Read => {
+                                operation.as_mut().unwrap().read(action).unwrap()
+                            }
+                            HtmlValuePoolActionKind::Pool => session
+                                .owner
+                                .pool
+                                .perform(operation.as_mut().unwrap(), action)
+                                .unwrap(),
+                        };
+                        if progress == HtmlValuePoolProgress::CandidateAcquired {
+                            assert!(candidate.amount.bytes > 0);
+                            panic!("consumer panic after admitted strong candidate");
+                        }
+                    }
+                    panic!("fixture failed to acquire a live candidate");
+                }));
+                let panic = panic.unwrap_err();
+                assert_eq!(
+                    panic.downcast_ref::<&str>(),
+                    Some(&"consumer panic after admitted strong candidate")
+                );
+                assert_eq!(meter.0.live.get(), before);
+                assert_eq!(owner.storage(), baseline);
+                let root = owner.begin();
+                let seal = owner.prepare(root).unwrap();
+                drop(Prepared {
+                    owner: &mut owner,
+                    seal: Some(seal),
+                });
+                let root = owner.begin();
+                owner.abort(root);
+
+                // An expired candidate releases the pre-upgrade reservation;
+                // its Weak target-space allowance remains until pool retirement.
+                let expired = $input(&meter, 72);
+                let root = owner.begin();
+                assert!(matches!(owner.run(&expired.value, true), Done::Offered));
+                let seal = owner.prepare(root).unwrap();
+                owner.seal(seal);
+                let weak = Arc::downgrade(expired.value.$shared());
+                drop(expired);
+                assert!(weak.upgrade().is_none());
+                let query = $input(&meter, 72);
+                let before = meter.0.live.get();
+                assert!(matches!(owner.run(&query.value, false), Done::Miss));
+                assert_eq!(meter.0.live.get(), before);
+
+                // A second operation supersedes an unfinished pool action.
+                // The old action cannot mutate state or retain a candidate.
+                let mut first = Some(owner.pool.probe(&query.value));
+                let stale = loop {
+                    let action = owner
+                        .pool
+                        .next_action(first.as_mut().unwrap())
+                        .unwrap()
+                        .unwrap();
+                    meter.pay(action.layout().work());
+                    meter.pay(action.layout().closing_work());
+                    if action.kind() == HtmlValuePoolActionKind::Pool {
+                        break action;
+                    }
+                    first.as_mut().unwrap().read(action).unwrap();
+                };
+                let mut second = Some(owner.pool.probe(&equal.value));
+                let other = owner
+                    .pool
+                    .next_action(second.as_mut().unwrap())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    first.as_mut().unwrap().read(other).unwrap_err(),
+                    HtmlValuePoolError::WrongAction
+                );
+                let unchanged = owner.storage();
+                assert_eq!(
+                    owner.pool.perform(first.as_mut().unwrap(), stale).unwrap(),
+                    HtmlValuePoolProgress::Finished
+                );
+                assert!(matches!(
+                    $operation::try_finish(&mut first).unwrap(),
+                    $result::Bypassed
+                ));
+                drop(second); // Early abandonment of read-only borrowed input.
+                assert_eq!(owner.storage(), unchanged);
+                owner.settle();
+            }
+            assert_eq!(meter.0.live.get(), Storage::default());
+        }
+    };
+}
+public_guard_edges!(
+    public_string_guards_cleanup_cancel_panic_dead_upgrade_and_supersession,
+    Strings,
+    HtmlStringPool,
+    HtmlStringPoolOperation,
+    HtmlStringPoolResult,
+    DocumentString,
+    string,
+    shared_code_units
+);
+public_guard_edges!(
+    public_attribute_guards_cleanup_cancel_panic_dead_upgrade_and_supersession,
+    Attributes,
+    HtmlAttributePool,
+    HtmlAttributePoolOperation,
+    HtmlAttributePoolResult,
+    OrderedAttributes,
+    attributes,
+    shared_attributes
+);
+
+macro_rules! miss_promotion {
+    ($test:ident, $owner:ident, $pool:ty, $operation:ident, $result:ident, $value:ty, $make:expr, $storage:ident, $shared:ident, $headers:expr, $units:expr) => {
+        #[test]
+        fn $test() {
+            #[derive(Debug, Default, Eq, PartialEq)]
+            struct ReadTrace {
+                descriptors: usize,
+                reads: usize,
+                bytes: usize,
+                pool_performs: usize,
+            }
+            fn drive(owner: &mut $owner, operation: &mut Option<$operation<'_>>, candidate: &mut Receipt) -> ReadTrace {
+                let mut trace = ReadTrace::default();
+                loop {
+                    trace.descriptors += 1;
+                    let Some(action) = owner.pool.next_action(operation.as_mut().unwrap()).unwrap() else { break; };
+                    let layout = action.layout();
+                    owner.meter.pay(layout.work());
+                    owner.meter.pay(layout.closing_work());
+                    owner.metadata.resize(Storage { bytes: <$pool>::inline_bytes(), units: 0 }.add(layout.pool().into()));
+                    candidate.resize(layout.candidate().into());
+                    let progress = match action.kind() {
+                        HtmlValuePoolActionKind::Read => {
+                            trace.reads += 1;
+                            trace.bytes += layout.work().inspected_bytes();
+                            operation.as_mut().unwrap().read(action).unwrap()
+                        }
+                        HtmlValuePoolActionKind::Pool => {
+                            trace.pool_performs += 1;
+                            owner.pool.perform(operation.as_mut().unwrap(), action).unwrap()
+                        },
+                    };
+                    if matches!(progress, HtmlValuePoolProgress::CandidateReleased | HtmlValuePoolProgress::Finished) { candidate.shrink_after_drop(Storage::default()); }
+                }
+                trace
+            }
+            let meter = Meter::new();
+            {
+                let mut owner = $owner::new(&meter);
+                let value: $value = $make;
+                let storage = $storage(&value);
+                let input = meter.hold(value, storage);
+                let root = owner.begin();
+                let mut candidate = meter.reserve(Storage::default());
+                let mut operation = Some(owner.pool.probe(&input.value));
+                assert_eq!(
+                    owner
+                        .pool
+                        .offer_miss(operation.as_mut().unwrap())
+                        .unwrap_err(),
+                    HtmlValuePoolError::NotReady
+                );
+                let trace = drive(&mut owner, &mut operation, &mut candidate);
+                assert_eq!(trace, ReadTrace { descriptors: $headers + 8, reads: $headers + 3, bytes: $units * size_of::<u16>(), pool_performs: 4 }, "65-unit value uses three runs plus explicit headers/short components, four candidate probes and final descriptor");
+                assert!(owner.pool.offer_miss(operation.as_mut().unwrap()).unwrap());
+                assert_eq!(drive(&mut owner, &mut operation, &mut candidate), ReadTrace { descriptors: 3, reads: 0, bytes: 0, pool_performs: 2 }, "same qualified miss retains its complete fingerprint and probe result");
+                assert!(matches!(
+                    $operation::try_finish(&mut operation).unwrap(),
+                    $result::Offered(_)
+                ));
+                owner.settle();
+                // Ordinary caller flow after next_action(None): attempt
+                // promotion, then finish either the retained Hit or the offer.
+                let mut candidate = meter.reserve(Storage::default());
+                let mut hit = Some(owner.pool.probe(&input.value));
+                drive(&mut owner, &mut hit, &mut candidate);
+                let held = candidate.amount;
+                assert!(held.bytes > 0);
+                assert!(!owner.pool.offer_miss(hit.as_mut().unwrap()).unwrap());
+                assert_eq!(candidate.amount, held);
+                let superseding = owner.pool.probe(&input.value);
+                assert!(!owner.pool.offer_miss(hit.as_mut().unwrap()).unwrap());
+                assert_eq!(candidate.amount, held);
+                drop(superseding);
+                let $result::Hit(selected) = $operation::try_finish(&mut hit).unwrap() else {
+                    panic!("completed Hit survives maybe-promotion")
+                };
+                let selected = Held {
+                    value: selected.into_value(),
+                    _receipt: candidate,
+                };
+                assert!(Arc::ptr_eq(selected.value.$shared(), input.value.$shared()));
+
+                // The same borrowed operand cannot promote after an actual
+                // competing operation or after a checkpoint invalidates it.
+                let other: $value = $make;
+                let storage = $storage(&other);
+                let other = meter.hold(other, storage);
+                let mut empty = $owner::new(&meter);
+                let empty_root = empty.begin();
+                let mut candidate = meter.reserve(Storage::default());
+                let mut miss = Some(empty.pool.probe(&input.value));
+                drive(&mut empty, &mut miss, &mut candidate);
+                let superseding = empty.pool.probe(&other.value);
+                assert!(!empty.pool.offer_miss(miss.as_mut().unwrap()).unwrap());
+                assert!(matches!(
+                    $operation::try_finish(&mut miss).unwrap(),
+                    $result::Bypassed
+                ));
+                drop(superseding);
+                let mut miss = Some(empty.pool.probe(&input.value));
+                drive(&mut empty, &mut miss, &mut candidate);
+                let mark = empty.mark(&empty_root).unwrap();
+                assert!(!empty.pool.offer_miss(miss.as_mut().unwrap()).unwrap());
+                assert!(matches!(
+                    $operation::try_finish(&mut miss).unwrap(),
+                    $result::Bypassed
+                ));
+                assert_eq!(empty.storage(), Storage::default());
+                empty.restore(mark);
+                empty.abort(empty_root);
+                owner.abort(root);
+                assert!(Arc::ptr_eq(selected.value.$shared(), input.value.$shared()));
+            }
+            assert_eq!(meter.0.live.get(), Storage::default());
+        }
+    };
+}
+miss_promotion!(
+    public_string_miss_promotion_reuses_hash_and_length_qualified_reads,
+    Strings,
+    HtmlStringPool,
+    HtmlStringPoolOperation,
+    HtmlStringPoolResult,
+    DocumentString,
+    DocumentString::from_utf16(vec![0xd800; 65]),
+    string_storage,
+    shared_code_units,
+    1,
+    65
+);
+miss_promotion!(
+    public_attribute_miss_promotion_reuses_hash_and_length_qualified_reads,
+    Attributes,
+    HtmlAttributePool,
+    HtmlAttributePoolOperation,
+    HtmlAttributePoolResult,
+    OrderedAttributes,
+    OrderedAttributes::new(vec![Attribute::new(
+        QualifiedName::new(Namespace::none(), None, DocumentString::from("cell")),
+        DocumentString::from_utf16(vec![0xd800; 65])
+    )])
+    .unwrap(),
+    attribute_storage,
+    shared_attributes,
+    6,
+    69
+);

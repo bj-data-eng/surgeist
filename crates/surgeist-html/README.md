@@ -247,50 +247,104 @@ work/providers and retain cancellation and allocation accounting. Generic tree
 records, allocation identities and mutable backing remain private.
 
 `bounded::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
-weak sharing of those immutable values. Probe a complete validated attribute
+weak sharing of completed immutable values. Probe a whole validated attribute
 bank before processing component strings; offer only the final formed bank.
 Exact ordered names, prefix presence and raw UTF-16 decide equality. Public
 backing/capacity observations and expanded-name validation are unchanged.
+`HtmlValidatedAttributes::from(OrderedAttributes)` transfers the bank's already
+established expanded-name uniqueness proof and original backing without another
+validation or allocation; it does not validate unchecked raw attribute storage.
+Do not offer pending mutable builder storage: retaining a Weak changes whether
+that backing can subsequently be mutated uniquely.
 
 Pool actions are owned scalar tokens. Describe under the consumer's owner lock,
 release that lock to admit the action's work/storage and poll cancellation, then
 perform a pool action under the lock or a read action outside it. No producer
-method calls consumer code. A temporary candidate occurrence is admitted before
-Weak upgrade and keeps that receipt through comparison and output transfer.
-Pool layouts report absolute heap extent, including bounded undo and known Vec
-target-allocation space for every retained Weak occurrence; opaque Arc/allocator
-internals are excluded. Dead Weak entries do not retain element-buffer charges.
-The inline owner layout is reported separately.
+method calls consumer code. Only one operation is current in an owner. Starting
+another supersedes unfinished actions; checkpoint changes also invalidate them.
+An unlocked immutable read is not independent mutation authority. Destroy a
+superseded operation before reconciling its provisional reservation, or retain
+that reservation separately until its actual data is destroyed. A completed
+immutable candidate remains usable with its own receipt, independently of the
+pool's later contents.
 
-Root sessions and nested marks support consumer rollback. The consumer's root
-guard aborts on Drop unless moved into publication; its nested mark guard accepts
-on Drop or restores explicitly. Prepare and validate both concrete pools' seals
-before committing either. Admit each concrete pool's fixed `disposal_work()`
-**before constructing that pool**, even an empty one: a refused finalization
-must still be able to destroy it without another admission callback. This pays
-whole-owner cleanup of initialized slots/undo records, current and retained old
-Weak entries, and page/log backing, including sealed owners. It does not pay
-payload destruction through Weak references, which retain no strong payload.
-Admit `root_work`, `mark_work` and `seal_work` before
-their respective preparation calls, and each mutation layout's `closing_work`
-before performing it. In particular, Prepare prepays its provisional Weak and
-new page/log cleanup before reserving anything, and Upgrade prepays temporary
-strong-candidate cleanup before upgrading. Those payments follow the storage
-through abandonment, staleness, errors or ownership transfer, independent of
-external strong-owner liveness. Attribute candidates include their initialized
-records and nested string handles; primitive UTF-16 elements require no drop
-traversal. Disposal describes record/release bounds, not copies, reads, spare
-capacity traversal or opaque allocator/Arc internals. No failure-time callback
-is needed.
-Closing valid authority allocates nothing and issues no new qualifier. Private
-capacity/counter exhaustion bypasses sharing; inability to issue a nested mark
-suspends further mutations for that root.
-The paired adapter calls `suspend_mutations` on the other root as well after
-restoring its acquired mark, so the checkpoint has no later unlogged pool delta.
-Mandatory work, custody and cancellation failures remain the consumer's explicit
-errors. Pooling
-does not authorize replacing an existing semantic no-op or releasing immutable
-report custody. Parser and DOM integration remain with those consumers.
+Hashing and equality read raw UTF-16 in length-qualified runs of at most 32 units;
+component and bank headers are separately admitted. A comparison completes its
+prepaid run even after a mismatch within that run. Same-backing hits avoid
+content copying, but still fingerprint the input. A completed miss can use
+`offer_miss` for the identical still-borrowed immutable operand before consuming
+its result: the current qualified operation retains its fingerprint and probe
+result, so this path performs neither another hash nor another candidate scan.
+A changed formed operand uses a new offer. Supersession or checkpoint changes
+prevent miss promotion without changing pool storage.
+
+The private policy has 32 fingerprint buckets, four candidates per bucket and
+128 total candidate slots, materialized in pages of eight. Each insertion scans
+at most four policy bits: a successful qualified hit grants a second chance;
+CLOCK clears skipped hot bits and eventually replaces one candidate. Hints are
+written only in an active, unsuspended, unfrozen root; rootless and suspended
+probes still return immutable hits without changing policy. New unique
+values start cold. This protects a recurring live value among one-use inputs
+without promising universal retention, a hit ratio or canonical addresses.
+Expired Weak entries are eligible replacement slots. String length and retained
+capacity are each limited to 8192 units; banks contain/retain at most 64 attribute
+slots and their aggregate string capacity is limited to 8192 units. Independent
+actual-payload and pool-metadata ceilings are each 256 KiB. Not every ceiling
+binds on every platform: entry/checkpoint geometry can be stricter than the byte
+ceiling for the current layouts. The byte checks protect the actual retained
+extent, rather than serving as a separately reachable workload claim. Ineligible
+values, optional reserve refusal and private qualifier exhaustion bypass sharing
+with the original input intact. Mandatory admission/work/cancellation refusal
+remains an explicit consumer error, including after earlier work was spent.
+
+A temporary candidate occurrence is admitted before Weak upgrade and keeps its
+receipt through comparison and output transfer. Pool layouts report the absolute
+preadmitted peak heap extent, including old/new overlap, lazy checkpoint backing
+and known Vec target-allocation space for every retained Weak occurrence; opaque
+Arc/allocator internals are excluded. Dead Weak entries do not retain element
+buffer charges. Reconcile the exact `heap_usage` only after provisional data is
+destroyed or a transition releases it. Accepting a mark may release redundant
+before-images and reduce that extent. The inline owner layout is separate.
+
+Root sessions and at most 16 nested marks support rollback. Thin checkpoint
+headers allocate no directory until their first slot write; only reached pages
+then retain first-before slot and cursor images. Repeated writes in a checkpoint
+drop superseded current Weak occurrences instead of accumulating inverses. Hit
+bits have first-before images too. Accept merges into the nearest older surviving
+checkpoint, retaining its earlier image; accepting an older mark preserves the
+younger marks. Restore applies the selected checkpoint and younger ones newest
+first, recovering entries, generations, cursor/hit policy and actual page presence.
+Storage is bounded by pool capacity and active checkpoints, not report length.
+No full-pool sweep occurs per offer.
+
+The consumer's root guard aborts on Drop unless moved into publication; its nested
+mark guard accepts on Drop or restores explicitly. `prepare_seal` refuses any
+outstanding mark and returns the original root without changing authority.
+Successfully prepared state is frozen until seal or explicit `abort_seal`;
+immutable probes remain possible without changing retention policy. Prepare and
+validate both concrete pools' seals before committing either. Failure preparing
+the second must abort the first prepared seal and retain the second root's
+rollback route.
+
+Admit each concrete pool's fixed `disposal_work()` **before constructing it**,
+even an empty one: a refused finalization must still destroy it without another
+admission callback. This covers initialized slots, checkpoint directories/cells,
+current and saved Weak occurrences and backing release, including sealed owners.
+Weak references retain no strong payload. Admit `root_work`, `mark_work` and
+`seal_work` before their respective preparations, and each action's
+`closing_work` before performing it. Prepare prepays provisional Weak/backing
+cleanup and bounded later checkpoint transfers; Upgrade prepays temporary strong
+candidate cleanup before upgrading. These payments follow actual storage through
+abandonment, staleness, errors and ownership transfer, independently of external
+strong-owner liveness. Attribute candidates include initialized records and nested
+string handles; primitive UTF-16 elements require no drop traversal. Disposal
+bounds describe destruction/release work, with no invented copies, reads or spare
+capacity traversal. Later inverse movement has its separate prepaid copy bound.
+Closing existing authority allocates nothing and issues no fresh qualifier.
+Failure to issue a nested mark suspends mutations for that root; a paired adapter
+also suspends its other root after restoring any acquired mark. Pooling never
+rewrites an existing semantic no-op or releases immutable report custody. Parser
+and DOM integration remain with those consumers.
 
 From the repository root, run focused checks through bounded `pisct run`:
 

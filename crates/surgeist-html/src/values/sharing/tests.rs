@@ -171,6 +171,24 @@ driver!(
     OrderedAttributes
 );
 
+fn frames<T: Value>(pool: &Pool<T>) -> impl Iterator<Item = &Frame<T>> {
+    pool.root.iter().flat_map(|root| {
+        std::iter::once(&root.base).chain(root.marks.iter().flatten().map(|mark| &mark.frame))
+    })
+}
+fn undo_cells<T: Value>(pool: &Pool<T>) -> usize {
+    frames(pool)
+        .flat_map(|frame| frame.pages.iter().flatten())
+        .map(|page| page.cells.len())
+        .sum()
+}
+fn undo_backings<T: Value>(pool: &Pool<T>) -> usize {
+    frames(pool)
+        .map(|frame| {
+            usize::from(frame.pages.capacity() != 0) + frame.pages.iter().flatten().count()
+        })
+        .sum()
+}
 fn raw<T: Value>(pool: &Pool<T>) -> HtmlValuePoolUsage {
     let pages = pool
         .pages
@@ -185,11 +203,20 @@ fn raw<T: Value>(pool: &Pool<T>) -> HtmlValuePoolUsage {
         .flat_map(|page| page.iter())
         .filter(|slot| slot.entry.is_some())
         .count();
-    let undo = pool.log.iter().filter(|undo| undo.old.is_some()).count();
+    let directories = frames(pool)
+        .map(|frame| frame.pages.capacity() * size_of::<Option<UndoPage<T>>>())
+        .sum::<usize>();
+    let before_pages = frames(pool)
+        .flat_map(|frame| frame.pages.iter().flatten())
+        .map(|page| page.cells.capacity() * size_of::<Before<T>>())
+        .sum::<usize>();
+    let saved = frames(pool)
+        .flat_map(|frame| frame.pages.iter().flatten())
+        .flat_map(|page| page.cells.iter())
+        .filter(|cell| matches!(cell, Before::Saved(Some(_))))
+        .count();
     HtmlValuePoolUsage {
-        bytes: pages
-            + pool.log.capacity() * size_of::<Undo<T>>()
-            + (entries + undo) * size_of::<Vec<T::Item>>(),
+        bytes: pages + directories + before_pages + (entries + saved) * size_of::<Vec<T::Item>>(),
         utf16_units: 0,
     }
 }
@@ -453,7 +480,8 @@ fn one_short_entry_refusal_then_exact_admission_keeps_input_and_old_pool_valid()
     let mut pool = HtmlStringPool::new();
     let root = pool.begin_root().unwrap();
     let requested = PAGE * size_of::<Slot<DocumentString>>()
-        + LOG * size_of::<Undo<DocumentString>>()
+        + PAGE * size_of::<Before<DocumentString>>()
+        + PAGES * size_of::<Option<UndoPage<DocumentString>>>()
         + size_of::<Vec<u16>>();
     let mut short = Budget {
         pool: requested - 1,
@@ -652,7 +680,10 @@ fn replacement_overlap_requires_another_weak_occurrence_and_abort_restores_old_b
     let baseline = raw(&pool.inner);
     let root = pool.begin_root().unwrap();
     let replacement = DocumentString::from("replacement");
-    let exact = baseline.bytes() + size_of::<Vec<u16>>();
+    let exact = baseline.bytes()
+        + PAGE * size_of::<Before<DocumentString>>()
+        + PAGES * size_of::<Option<UndoPage<DocumentString>>>()
+        + size_of::<Vec<u16>>();
     assert_eq!(
         strings(
             &mut pool,
@@ -877,9 +908,10 @@ fn hot_repeated_content_mixed_with_unique_ids_shares_while_live_and_remains_boun
                 <= CANDIDATES
         );
     }
-    // Collisions and eviction make canonical addresses optional; a held value
-    // survives eviction, while actual live-candidate hits reuse that backing.
-    assert!(hits > 0 && misses > 0);
+    // This one-hot/one-use trace fits the bounded second-chance policy. It
+    // does not establish retention for arbitrary competing hot populations.
+    assert_eq!(hits, rows.len());
+    assert_eq!(misses, 0);
     drop(pool);
     assert_eq!(
         retained_hot.code_units(),
@@ -888,7 +920,7 @@ fn hot_repeated_content_mixed_with_unique_ids_shares_while_live_and_remains_boun
 }
 
 #[test]
-fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() {
+fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
     fn measured(
         pool: &mut HtmlStringPool,
         input: &DocumentString,
@@ -902,32 +934,32 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
         // Header/slot visits and new metadata are separate, bounded work.
         let reads =
             input.len() * size_of::<u16>() + CANDIDATES * 2 * SHORT_UNITS * size_of::<u16>();
-        let visits = 1 + CANDIDATES * 4 + 1;
-        let allocation =
-            2 * PAGE * size_of::<Slot<DocumentString>>() + LOG * size_of::<Undo<DocumentString>>();
-        let transition =
-            2 * (size_of::<Undo<DocumentString>>() + size_of::<Slot<DocumentString>>());
-        // Each of four upgrades prepays one Vec target and at most two
-        // releases. A Prepare additionally owns an initialized page, one Weak,
-        // and up to three release calls, even if the caller never commits it.
-        let temporary_cleanup = CANDIDATES * 3 + PAGE + 1 + 3;
+        let visits = 1 + CANDIDATES * 5 + 2;
+        let first_page = PAGE
+            * (size_of::<Slot<DocumentString>>() + size_of::<Before<DocumentString>>())
+            + PAGES * size_of::<Option<UndoPage<DocumentString>>>();
+        let immediate = first_page * 2
+            + size_of::<Before<DocumentString>>()
+            + size_of::<Slot<DocumentString>>()
+            + CANDIDATES
+            + 5;
+        let closing = (PAGE + PAGES) * (MARKS + 3)
+            + 2 * MARKS
+            + 10
+            + (MARKS + 1)
+                * (size_of::<Option<UndoPage<DocumentString>>>()
+                    + size_of::<Vec<Option<UndoPage<DocumentString>>>>())
+            + (MARKS + 1)
+                * (size_of::<Before<DocumentString>>() + size_of::<Slot<DocumentString>>())
+            + 3 * (MARKS + 1)
+            + CANDIDATES * 3;
         assert!(budget.inspected <= reads);
         assert!(budget.visits <= visits);
         assert!(budget.upgrades <= CANDIDATES);
-        assert!(
-            usize::MAX - budget.work
-                <= reads
-                    + visits
-                    + 1
-                    + CANDIDATES
-                    + 3
-                    + allocation
-                    + transition
-                    + temporary_cleanup
-        );
+        assert!(usize::MAX - budget.work <= reads + visits + immediate + closing);
         assert_eq!(pool.heap_usage(), raw(&pool.inner));
         assert!(pool.heap_usage().bytes() <= MAX_METADATA_BYTES);
-        assert!(pool.inner.log.len() <= LOG);
+        assert!(undo_cells(&pool.inner) <= PAGES * PAGE * (MARKS + 1));
         result
     }
 
@@ -948,28 +980,20 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
     let cursors = pool.inner.cursors;
     let root = pool.begin_root().unwrap();
     let mark = pool.mark(&root).unwrap().unwrap();
-    let rows: Vec<_> = (0..3 * LOG)
+    let rows: Vec<_> = (0..384)
         .map(|row| DocumentString::from(format!("row-{row}")))
         .collect();
     let mut outputs = Vec::new();
     let mut offered_hot = original.clone();
     let mut last_offered = None;
-    let mut plateau = None;
     let mut hot_hits = 0;
     let mut hot_misses = 0;
     let mut offered = 0;
-    let mut bypassed = 0;
     for (row, unique) in rows.iter().enumerate() {
-        let full_before = pool.inner.log.len() == LOG;
         match measured(&mut pool, unique, true) {
             Outcome::Offered => {
-                assert!(!full_before);
                 offered += 1;
                 last_offered = Some(unique.clone());
-            }
-            Outcome::Bypassed => {
-                assert!(full_before);
-                bypassed += 1;
             }
             other => panic!("fresh distinct row ID: {other:?}"),
         }
@@ -992,17 +1016,11 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
             }
             Outcome::Miss => {
                 hot_misses += 1;
-                let full_before = pool.inner.log.len() == LOG;
                 match measured(&mut pool, &incoming, true) {
                     Outcome::Offered => {
-                        assert!(!full_before);
                         offered += 1;
                         last_offered = Some(incoming.clone());
                         offered_hot.push(incoming.clone());
-                    }
-                    Outcome::Bypassed => {
-                        assert!(full_before);
-                        bypassed += 1;
                     }
                     other => panic!("same miss offered without intervening mutation: {other:?}"),
                 }
@@ -1020,21 +1038,12 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
             other => panic!("qualified read-only hot probe: {other:?}"),
         };
         outputs.push(selected);
-        if pool.inner.log.len() == LOG {
-            let observed = (pool.heap_usage(), pool.inner.cursors);
-            if let Some(expected) = plateau {
-                assert_eq!(observed, expected);
-            } else {
-                plateau = Some(observed);
-            }
-        }
     }
-    assert_eq!(offered, LOG);
-    assert!(hot_hits > 0 && hot_misses > 0 && bypassed > 0);
-    assert_eq!(pool.inner.log.len(), LOG);
-    // The last actually retained occurrence cannot be evicted after all writes
-    // are suspended by the full log. This is a local live-hit assertion, not a
-    // promise that every hot value survives collision-driven eviction.
+    assert!(offered >= rows.len());
+    assert_eq!(hot_hits, rows.len());
+    assert_eq!(hot_misses, 0);
+    // The most recently offered live occurrence remains probeable until the
+    // next mutation; no universal hot retention or hit-ratio is promised.
     let retained = last_offered.unwrap();
     let equal = DocumentString::from_utf16(retained.code_units().to_vec());
     let Outcome::Hit(selected) = measured(&mut pool, &equal, false) else {
@@ -1069,7 +1078,7 @@ fn mixed_live_outputs_cross_root_log_capacity_and_restore_original_candidates() 
         assert_eq!(pair[1].code_units(), literals[row % literals.len()]);
     }
     eprintln!(
-        "mixed root: offered={offered}, hot_hits={hot_hits}, hot_misses={hot_misses}, bypassed={bypassed}, retained_outputs={}",
+        "mixed root: offered={offered}, hot_hits={hot_hits}, hot_misses={hot_misses}, retained_outputs={}",
         outputs.len()
     );
 }
@@ -1118,28 +1127,29 @@ fn nested_restore_and_root_abort_restore_evicted_backings_cursors_and_actual_met
 }
 
 #[test]
-fn finite_session_log_stops_mutations_without_losing_root_rollback_authority() {
+fn repeated_same_checkpoint_turnovers_retain_only_first_before_cells() {
     let mut pool = HtmlStringPool::new();
     pool.inner.collision = true;
     let root = pool.begin_root().unwrap();
-    let values: Vec<_> = (0..LOG + 3)
+    let values: Vec<_> = (0..400)
         .map(|n| DocumentString::from(n.to_string()))
         .collect();
-    for value in &values[..LOG] {
+    let mut plateau = None;
+    for (index, value) in values.iter().enumerate() {
         assert!(matches!(
             strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
             Outcome::Offered
         ));
+        assert_eq!(pool.heap_usage(), raw(&pool.inner));
+        if index >= CANDIDATES {
+            if let Some(usage) = plateau {
+                assert_eq!(pool.heap_usage(), usage);
+            } else {
+                plateau = Some(pool.heap_usage());
+            }
+        }
     }
-    let usage = pool.heap_usage();
-    for value in &values[LOG..] {
-        assert!(matches!(
-            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
-            Outcome::Bypassed
-        ));
-    }
-    assert_eq!(pool.heap_usage(), usage);
-    assert_eq!(pool.inner.log.len(), LOG);
+    assert_eq!(undo_cells(&pool.inner), PAGE);
     pool.abort_root(root).unwrap();
     assert_eq!(pool.heap_usage().bytes(), 0);
 }
@@ -1171,8 +1181,10 @@ fn cancelled_spent_work_and_unaccepted_preparation_do_not_mutate_or_replace_inpu
         strings(&mut pool, &input, true, &mut budget).unwrap_err(),
         Stop::Work
     );
-    assert_eq!(budget.work, 0);
-    assert_eq!(budget.inspected, 2);
+    // The header costs one visit; the remaining two units of work cannot
+    // admit the complete eight-byte contiguous run, so no units were read.
+    assert_eq!(budget.work, 2);
+    assert_eq!(budget.inspected, 0);
     let mut operation = pool.offer(&input);
     while let Some(action) = pool.next_action(&mut operation).unwrap() {
         if action.phase == Phase::Commit {
@@ -1599,10 +1611,10 @@ fn string_before<'a>(
 }
 
 #[test]
-fn prepared_cleanup_covers_real_page_drop_when_the_following_log_reserve_refuses() {
+fn prepared_cleanup_covers_real_page_drop_when_the_following_checkpoint_reserve_refuses() {
     let observed = ObserveCleanup::start();
     let mut pool = HtmlStringPool::new();
-    pool.inner.refuse_log_reserve = true;
+    pool.inner.refuse_checkpoint_reserve = true;
     let root = pool.begin_root().unwrap();
     let input = DocumentString::from("partial allocation");
     let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
@@ -1616,7 +1628,14 @@ fn prepared_cleanup_covers_real_page_drop_when_the_following_log_reserve_refuses
     assert_eq!(cleanup.entries, 0, "refusal preceded Weak creation");
     assert!(closing.record_visits() >= cleanup.slots);
     assert!(closing.provider_calls() >= 1, "the page backing was freed");
-    assert_eq!(closing.copied_bytes(), 0);
+    // This bound also prepays possible later page-header transfers after a
+    // successful commit; the refusal itself only destroys initialized data.
+    assert_eq!(
+        closing.copied_bytes(),
+        (MARKS + 1)
+            * (size_of::<Option<UndoPage<DocumentString>>>()
+                + size_of::<Vec<Option<UndoPage<DocumentString>>>>())
+    );
     assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
     assert_eq!(pool.heap_usage().bytes(), 0);
     drop(operation);
@@ -1755,13 +1774,18 @@ fn preparation_cleanup_work_refuses_one_short_then_retries_the_same_action_exact
     let root = pool.begin_root().unwrap();
     let input = DocumentString::from_utf16(vec![0xd800, 0, 65]);
     let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
-    // First Prepare initializes eight Slots and reserves 128 Undo records.
-    // Immediate work has one visit and three providers (page/log/downgrade).
-    // Cleanup visits the eight Slots and one Entry and can release three
-    // allocations. Destruction performs no element copies or reads.
-    let initialized = 8 * size_of::<Slot<DocumentString>>();
-    let reserved = initialized + 128 * size_of::<Undo<DocumentString>>();
-    let exact = 1 + initialized + 3 + reserved + 8 + 1 + 3;
+    // The real first Prepare initializes eight Slots and eight first-before
+    // cells. Its descriptor also prepays bounded future layer transfers.
+    let initialized = PAGE
+        * (size_of::<Slot<DocumentString>>() + size_of::<Before<DocumentString>>())
+        + PAGES * size_of::<Option<UndoPage<DocumentString>>>();
+    let future_records = 1 + PAGE + (PAGE + PAGES) * (MARKS + 2);
+    let future_providers = 2 + 2 * (MARKS + 2);
+    let future_headers = (MARKS + 1)
+        * (size_of::<Option<UndoPage<DocumentString>>>()
+            + size_of::<Vec<Option<UndoPage<DocumentString>>>>());
+    let exact =
+        1 + initialized + 4 + initialized + future_records + future_providers + future_headers;
     let mut short = Budget {
         work: exact - 1,
         ..Budget::default()
@@ -1944,9 +1968,9 @@ fn prepaid_disposal_bounds_empty_sealed_active_undo_and_replaced_owner_drops() {
             .iter()
             .map(|value| Arc::weak_count(value.shared_code_units()))
             .sum();
-        let undo = pool.inner.log.len();
+        let undo = undo_cells(&pool.inner);
         let pages = pool.inner.pages.iter().flatten().count();
-        let backings = pages + usize::from(pool.inner.log.capacity() != 0);
+        let backings = pages + undo_backings(&pool.inner);
         observed.reset();
         if state == 3 {
             let replacement_disposal = HtmlStringPool::disposal_work();
@@ -2020,9 +2044,8 @@ fn prepaid_attribute_disposal_drops_only_metadata_and_preserves_held_report_like
             .iter()
             .map(|value| Arc::weak_count(value.shared_attributes()))
             .sum();
-        let undo = pool.inner.log.len();
-        let backings =
-            pool.inner.pages.iter().flatten().count() + usize::from(pool.inner.log.capacity() != 0);
+        let undo = undo_cells(&pool.inner);
+        let backings = pool.inner.pages.iter().flatten().count() + undo_backings(&pool.inner);
         observed.reset();
         if state == 3 {
             let work = HtmlAttributePool::disposal_work();
@@ -2056,4 +2079,250 @@ fn prepaid_attribute_disposal_drops_only_metadata_and_preserves_held_report_like
             );
         }
     }
+}
+
+#[test]
+fn accepting_older_mark_preserves_younger_rollback_and_outer_first_before() {
+    let mut pool = HtmlStringPool::new();
+    pool.inner.collision = true;
+    let original: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("base{n}")))
+        .collect();
+    for value in &original {
+        seed_string(&mut pool, value);
+    }
+    let baseline = pool.heap_usage();
+    let cursors = pool.inner.cursors;
+    let root = pool.begin_root().unwrap();
+    let older = pool.mark(&root).unwrap().unwrap();
+    let first: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("first{n}")))
+        .collect();
+    for value in &first {
+        assert!(matches!(
+            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+            Outcome::Offered
+        ));
+    }
+    let younger = pool.mark(&root).unwrap().unwrap();
+    let second: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("second{n}")))
+        .collect();
+    for value in &second {
+        assert!(matches!(
+            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+            Outcome::Offered
+        ));
+    }
+    pool.accept_mark(older).unwrap();
+    assert_eq!(pool.heap_usage(), raw(&pool.inner));
+    pool.restore_mark(younger).unwrap();
+    assert_eq!(pool.heap_usage(), raw(&pool.inner));
+    for value in &first {
+        let equal = DocumentString::from_utf16(value.code_units().to_vec());
+        let Outcome::Hit(selected) =
+            strings(&mut pool, &equal, false, &mut Budget::default()).unwrap()
+        else {
+            panic!("younger rollback retains accepted older writes")
+        };
+        assert!(Arc::ptr_eq(
+            selected.shared_code_units(),
+            value.shared_code_units()
+        ));
+    }
+    pool.abort_root(root).unwrap();
+    assert_eq!(pool.heap_usage(), baseline);
+    assert_eq!(pool.inner.cursors, cursors);
+    for value in &original {
+        let equal = DocumentString::from_utf16(value.code_units().to_vec());
+        let Outcome::Hit(selected) =
+            strings(&mut pool, &equal, false, &mut Budget::default()).unwrap()
+        else {
+            panic!("outer first-before survives non-LIFO acceptance")
+        };
+        assert!(Arc::ptr_eq(
+            selected.shared_code_units(),
+            value.shared_code_units()
+        ));
+    }
+}
+
+#[test]
+fn checkpoint_change_invalidates_provisional_owner_before_it_can_write_another_layer() {
+    let observed = ObserveCleanup::start();
+    let mut pool = HtmlStringPool::new();
+    let root = pool.begin_root().unwrap();
+    let input = DocumentString::from("provisional");
+    let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
+    pool.perform(&mut operation, action).unwrap();
+    let commit = pool.next_action(&mut operation).unwrap().unwrap();
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+    let mark = pool.mark(&root).unwrap().unwrap();
+    assert_eq!(
+        pool.perform(&mut operation, commit).unwrap(),
+        HtmlValuePoolProgress::Finished
+    );
+    assert_eq!(pool.heap_usage().bytes(), 0);
+    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(observed.read().slots, PAGE);
+    pool.restore_mark(mark).unwrap();
+    pool.abort_root(root).unwrap();
+}
+
+#[test]
+fn accepting_redundant_before_images_releases_their_actual_weak_allowances() {
+    let mut pool = HtmlStringPool::new();
+    pool.inner.collision = true;
+    let root = pool.begin_root().unwrap();
+    let first: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("a{n}")))
+        .collect();
+    let second: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("b{n}")))
+        .collect();
+    let third: Vec<_> = (0..4)
+        .map(|n| DocumentString::from(format!("c{n}")))
+        .collect();
+    for value in &first {
+        assert!(matches!(
+            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+            Outcome::Offered
+        ));
+    }
+    let older = pool.mark(&root).unwrap().unwrap();
+    for value in &second {
+        assert!(matches!(
+            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+            Outcome::Offered
+        ));
+    }
+    let younger = pool.mark(&root).unwrap().unwrap();
+    for value in &third {
+        assert!(matches!(
+            strings(&mut pool, value, true, &mut Budget::default()).unwrap(),
+            Outcome::Offered
+        ));
+    }
+    assert!(
+        first
+            .iter()
+            .all(|value| Arc::weak_count(value.shared_code_units()) == 1)
+    );
+    let before = pool.heap_usage();
+    pool.accept_mark(older).unwrap();
+    assert!(
+        first
+            .iter()
+            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
+    );
+    assert_eq!(pool.heap_usage(), raw(&pool.inner));
+    assert!(pool.heap_usage().bytes() <= before.bytes() - 4 * size_of::<Vec<u16>>());
+    pool.restore_mark(younger).unwrap();
+    for value in &second {
+        let equal = DocumentString::from_utf16(value.code_units().to_vec());
+        let Outcome::Hit(selected) =
+            strings(&mut pool, &equal, false, &mut Budget::default()).unwrap()
+        else {
+            panic!("younger restores accepted state")
+        };
+        assert!(Arc::ptr_eq(
+            selected.shared_code_units(),
+            value.shared_code_units()
+        ));
+    }
+    pool.abort_root(root).unwrap();
+    assert_eq!(pool.heap_usage().bytes(), 0);
+    assert!(
+        first
+            .iter()
+            .chain(&second)
+            .chain(&third)
+            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
+    );
+}
+
+#[test]
+fn disposal_prepays_initialized_data_in_root_and_every_active_checkpoint_layer() {
+    let observed = ObserveCleanup::start();
+    let work = HtmlStringPool::disposal_work();
+    let mut remaining = work.record_visits() + work.provider_calls();
+    let mut pool = construct_prepaid(work, &mut remaining, HtmlStringPool::new).unwrap();
+    pool.inner.collision = true;
+    let root = pool.begin_root().unwrap();
+    let mut marks = Vec::new();
+    let mut held = Vec::new();
+    for layer in 0..=16_u16 {
+        if layer != 0 {
+            marks.push(pool.mark(&root).unwrap().unwrap());
+        }
+        for index in 0..4_u16 {
+            let value = DocumentString::from_utf16(vec![0xd800, layer, index]);
+            assert!(matches!(
+                strings(&mut pool, &value, true, &mut Budget::default()).unwrap(),
+                Outcome::Offered
+            ));
+            held.push(value);
+        }
+        assert_eq!(pool.heap_usage(), raw(&pool.inner));
+    }
+    assert_eq!(marks.len(), 16);
+    assert_eq!(undo_cells(&pool.inner), 17 * 8);
+    let slots: usize = pool.inner.pages.iter().flatten().map(Vec::len).sum();
+    let saved_cells = undo_cells(&pool.inner);
+    let directory_cells: usize = frames(&pool.inner).map(|frame| frame.pages.len()).sum();
+    let entries: usize = held
+        .iter()
+        .map(|value| Arc::weak_count(value.shared_code_units()))
+        .sum();
+    let backings = pool.inner.pages.iter().flatten().count() + undo_backings(&pool.inner);
+    observed.reset();
+    drop(pool); // No root/mark close or failure-time callback is required.
+    let actual = observed.read();
+    assert_eq!(actual.slots, slots);
+    assert_eq!(actual.entries, entries);
+    assert!(work.record_visits() >= slots + saved_cells + directory_cells + entries);
+    assert!(work.provider_calls() >= entries + backings);
+    assert!(
+        held.iter()
+            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
+    );
+    for (index, value) in held.iter().enumerate() {
+        assert_eq!(
+            value.code_units(),
+            &[0xd800, (index / 4) as u16, (index % 4) as u16]
+        );
+    }
+    eprintln!(
+        "thin owner: inline_bytes={}, initialized_checkpoint_cells={saved_cells}, directory_cells={directory_cells}, actualWeakReleases={entries}, backings={backings}",
+        HtmlStringPool::inline_bytes()
+    );
+}
+
+#[test]
+fn optional_owner_exhaustion_completed_bypass_is_not_a_mandatory_promotion_error() {
+    let mut pool = HtmlStringPool::new();
+    // The same exhausted neutral state returned when owner_id() is None,
+    // without resetting or exhausting the process-global issuer.
+    pool.inner.owner = None;
+    pool.inner.disabled = true;
+    let input = DocumentString::from("original");
+    let backing = input.shared_code_units().clone();
+    let mut operation = Some(pool.probe(&input));
+    assert!(
+        pool.next_action(operation.as_mut().unwrap())
+            .unwrap()
+            .is_none()
+    );
+    let mut foreign = HtmlStringPool::new();
+    assert_eq!(
+        foreign.offer_miss(operation.as_mut().unwrap()).unwrap_err(),
+        HtmlValuePoolError::ForeignOwner
+    );
+    assert!(!pool.offer_miss(operation.as_mut().unwrap()).unwrap());
+    assert!(matches!(
+        HtmlStringPoolOperation::try_finish(&mut operation).unwrap(),
+        HtmlStringPoolResult::Bypassed
+    ));
+    assert_eq!(pool.heap_usage().bytes(), 0);
+    assert!(Arc::ptr_eq(input.shared_code_units(), &backing));
 }
