@@ -205,6 +205,15 @@ impl State {
                     }
                     for block in state.blocks.values() {
                         sources.charge_step()?;
+                        if let Some(context) = block.inline_context() {
+                            enqueue(
+                                context.context(),
+                                &mut pending,
+                                sources,
+                                depth,
+                                limits.max_source_traversal_steps,
+                            )?;
+                        }
                         sources.visit(block.data.as_ref())?;
                         sources.visit(block.counter_edits.as_slice())?;
                         if let Some(value) = &block.replacement_input {

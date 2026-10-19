@@ -40,6 +40,26 @@ decisions with the independently sampled current input inventory. CSSOM stores
 no resolver or host callback. An error or unwind aborts staging; an advanced
 declaration editor lets a caller stage multiple operations in its own batch.
 
+Inline declaration blocks can carry an immutable, independently current
+`CssomInlineDeclarationContext`. Its packet requires explicit Owner, ParserMode
+and Support inputs; an empty support profile is a valid unsupported selection.
+`create_inline_declarations` starts an empty ordinary block with null parent and
+all flags unset. `update_inline_declaration_context` keeps that block's identity
+and owner identity while replacing current versions and facts. Existing checked
+declarations and their parse-time inputs remain unchanged. Other declarations
+continue to use the store context, including its existing `update_context` flow.
+
+Inline preparation and usability requests use the block packet. Advanced
+`apply_declaration_with_inputs` calls supply every independently current packet
+input/linked version, plus any separate Support decision versions. Context changes
+stale prepared work for that block; unrelated block updates within the same batch
+do not. Live getters read the current block, captures read their original block,
+and manifests distinguish current packets from historical admission versions.
+Context rebinding emits no owner synchronization effect. Existing owner effects
+still require the exact whole-store revision and manifest, so even an unrelated
+inline commit can stale a pending effect. These producer APIs do not implement a
+DOM binding or change the existing post-publication owner-write contract.
+
 `CssStyleProperties` provides generated Rust getters/setters for CSS-owned
 canonical spellings, vendor aliases and distinct legacy grammars. Captures have
 only getters. Reflections delegate the common declaration operations with empty

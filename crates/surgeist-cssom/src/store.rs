@@ -565,6 +565,102 @@ impl CssomBatch {
             })
         })
     }
+    /// Creates an empty inline declaration with stable identity, null parent,
+    /// and computed/readonly/updating flags unset. No owner write is requested.
+    pub fn create_inline_declarations(
+        &mut self,
+        context: CssomInlineDeclarationContext,
+    ) -> Result<CssomBlockTicket, CssomError> {
+        self.apply(|this| {
+            let declarations = CssDeclarationList::try_new_with_limits(Vec::new(), this.limits.css)
+                .map_err(CssomError::Value)?;
+            let selected = projection(
+                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
+                    &declarations,
+                    this.limits.css,
+                ),
+            )?;
+            let id = this.staged.block_record(
+                CssomBlockData::Properties {
+                    domain: CssomPropertyDomain::Ordinary,
+                    authored: CssomPropertyOccurrences::Ordinary(declarations),
+                    selected,
+                },
+                None,
+                None,
+                CssomBlockFlags::default(),
+                &this.limits,
+            )?;
+            this.staged
+                .blocks
+                .get_mut(&id)
+                .expect("new inline block")
+                .binding = crate::inline_context::BlockBinding::Inline(context);
+            let index = this.created.len();
+            this.created.push(Created::Block(id.clone()));
+            this.affect(
+                CssomObjectId::Block(id),
+                &[
+                    CssomChange::Declarations,
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(CssomBlockTicket {
+                token: this.token.clone(),
+                index,
+            })
+        })
+    }
+    /// Replaces current facts for the same inline owner, preserving its block
+    /// identity and existing checked declarations and parse-time provenance.
+    /// Identical packets are no-ops. No owner synchronization effect is emitted.
+    pub fn update_inline_declaration_context(
+        &mut self,
+        id: &CssomBlockId,
+        context: CssomInlineDeclarationContext,
+    ) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            let previous = this
+                .staged
+                .block(id)?
+                .inline_context()
+                .ok_or(CssomError::WrongKind)?;
+            if previous.owner().identity != context.owner().identity {
+                return Err(CssomError::InvalidInput(
+                    "inline declaration owner identity changed",
+                ));
+            }
+            if previous == &context {
+                return Ok(false);
+            }
+            this.staged
+                .blocks
+                .get_mut(id)
+                .expect("validated inline block")
+                .binding = crate::inline_context::BlockBinding::Inline(context);
+            this.affect(
+                CssomObjectId::Block(id.clone()),
+                &[
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(true)
+        })
+    }
     /// Removes a selected terminal directly; this is a product operation, not the
     /// broader source removeProperty algorithm (which also handles shorthands).
     pub fn remove_selected_terminal(
@@ -1010,7 +1106,8 @@ impl CssomBatch {
             CssomObjectId::Block(id) => {
                 let a = &self.staged.blocks[id];
                 let b = &self.base.blocks[id];
-                a.flags != b.flags
+                a.binding != b.binding
+                    || a.flags != b.flags
                     || match (a.data(), b.data()) {
                         (
                             CssomBlockData::Properties {

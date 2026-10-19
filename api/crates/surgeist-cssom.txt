@@ -2872,6 +2872,7 @@ pub fn surgeist_cssom::CssomBatch::remove_property(&mut self, id: &surgeist_csso
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_cssom::CssomRuleId, sheet: &surgeist_cssom::CssomSheetId, input: surgeist_cssom::CssomInputVersion, resolved_location: core::option::Option<alloc::string::String>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::create_inline_declarations(&mut self, context: surgeist_cssom::CssomInlineDeclarationContext) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet(&mut self, source: &str, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet_report(&mut self, report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssSheet>, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetTicket, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_parsed_sheet_with_media_reports(&mut self, sheet_report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssSheet>, media_report: surgeist_css::report::CssParseReport<surgeist_css::syntax::CssMediaQueryList>, inputs: surgeist_cssom::CssomSheetInputs) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
@@ -2884,6 +2885,7 @@ pub fn surgeist_cssom::CssomBatch::replace_sheet_text(&mut self, id: &surgeist_c
 pub fn surgeist_cssom::CssomBatch::set_disabled(&mut self, id: &surgeist_cssom::CssomSheetId, disabled: bool) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_rule_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, _text: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_context(&mut self, context: surgeist_cssom::CssomContext) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::update_inline_declaration_context(&mut self, id: &surgeist_cssom::CssomBlockId, context: surgeist_cssom::CssomInlineDeclarationContext) -> core::result::Result<bool, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::clear_feature_map(&mut self, id: &surgeist_cssom::CssomFeatureMapId) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_font_feature_families(&mut self, id: &surgeist_cssom::CssomRuleId, value: surgeist_css::font_feature_values::CssFontFeatureValuesFamilyList) -> core::result::Result<bool, surgeist_cssom::CssomError>
@@ -2923,6 +2925,7 @@ impl surgeist_cssom::CssomBlock
 pub fn surgeist_cssom::CssomBlock::admission_inputs(&self) -> &[surgeist_cssom::CssomInputVersion]
 pub fn surgeist_cssom::CssomBlock::data(&self) -> &surgeist_cssom::CssomBlockData
 pub const fn surgeist_cssom::CssomBlock::flags(&self) -> surgeist_cssom::CssomBlockFlags
+pub fn surgeist_cssom::CssomBlock::inline_context(&self) -> core::option::Option<&surgeist_cssom::CssomInlineDeclarationContext>
 pub fn surgeist_cssom::CssomBlock::owner(&self) -> core::option::Option<&surgeist_cssom::CssomInputVersion>
 pub fn surgeist_cssom::CssomBlock::parent(&self) -> core::option::Option<&surgeist_cssom::CssomRuleId>
 pub fn surgeist_cssom::CssomBlock::replacement_input(&self) -> core::option::Option<&surgeist_cssom::CssomDeclarationInput>
@@ -4469,6 +4472,11 @@ pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::families(&self) -> &'a [s
 pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::family_input(&self) -> core::option::Option<&'a surgeist_cssom::CssomFontFamilyInput>
 pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::font_display(&self) -> &'a [surgeist_css::font_feature_values::CssFontFeatureDisplayOccurrence]
 pub fn surgeist_cssom::CssomFontFeatureValuesView<'a>::map(&self, kind: surgeist_css::font_feature_values::CssFontFeatureValueKind) -> &'a surgeist_cssom::CssomFeatureMapId
+pub struct surgeist_cssom::CssomInlineDeclarationContext
+impl surgeist_cssom::CssomInlineDeclarationContext
+pub fn surgeist_cssom::CssomInlineDeclarationContext::context(&self) -> &surgeist_cssom::CssomContext
+pub fn surgeist_cssom::CssomInlineDeclarationContext::owner(&self) -> &surgeist_cssom::CssomInputVersion
+pub fn surgeist_cssom::CssomInlineDeclarationContext::try_new(context: surgeist_cssom::CssomContext) -> core::result::Result<Self, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomInput
 pub surgeist_cssom::CssomInput::data: surgeist_cssom::CssomInputData
 pub surgeist_cssom::CssomInput::version: surgeist_cssom::CssomInputVersion
@@ -4478,6 +4486,7 @@ pub surgeist_cssom::CssomInputManifest::context: surgeist_cssom::CssomContext
 pub surgeist_cssom::CssomInputManifest::declaration_admissions: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
 pub surgeist_cssom::CssomInputManifest::font_family_admissions: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
 pub surgeist_cssom::CssomInputManifest::imports: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, surgeist_cssom::CssomInputVersion)>
+pub surgeist_cssom::CssomInputManifest::inline_declarations: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, surgeist_cssom::CssomInlineDeclarationContext)>
 pub surgeist_cssom::CssomInputManifest::selector_admissions: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
 pub surgeist_cssom::CssomInputManifest::sheets: alloc::vec::Vec<(surgeist_cssom::CssomSheetId, surgeist_cssom::CssomInputVersion)>
 pub struct surgeist_cssom::CssomInputVersion

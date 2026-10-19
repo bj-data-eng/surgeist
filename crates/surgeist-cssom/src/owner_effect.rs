@@ -163,7 +163,7 @@ impl CssomStore {
         }
         if self.state.revision != effect.revision
             || self.snapshot().inputs() != *effect.inputs
-            || self.state.block(&effect.block)?.owner.as_ref() != Some(&effect.owner)
+            || self.state.block(&effect.block)?.owner() != Some(&effect.owner)
         {
             return Err(CssomError::StaleOwnerEffect);
         }
@@ -187,7 +187,7 @@ impl CssomStore {
         let inputs = Arc::new(batch.staged.input_manifest());
         for (id, budget) in &batch.owner_updates {
             let block = batch.staged.block(id)?;
-            let Some(owner) = &block.owner else {
+            let Some(owner) = block.owner() else {
                 continue;
             };
             if next == 0 || next > self.limits.max_owner_effect_identity {
