@@ -4,6 +4,7 @@ use crate::{DomNameLimits, DomOwnerId, DomQualifiedName};
 use std::sync::atomic::AtomicBool;
 
 mod fixture_controls;
+mod work_measurement;
 
 fn admitted<T>(f: impl FnOnce(&mut Admission<'_>) -> T) -> T {
     f(&mut Admission {

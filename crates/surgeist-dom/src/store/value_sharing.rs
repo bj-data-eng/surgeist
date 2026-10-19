@@ -2,6 +2,8 @@
 //!
 //! Every callback runs outside the operational mutex. A session owns only weak
 //! cleanup authority, and an occupied root makes a second session bypass.
+#[cfg(test)]
+use super::scale_metrics::Event;
 use super::{DomError, custody};
 use crate::name::AttributeStorage;
 use crate::{DocumentString, DomAttribute};
@@ -169,6 +171,27 @@ fn html_work(work: surgeist_html::bounded::HtmlValuePoolWork) -> Result<usize, D
 fn html_usage(value: surgeist_html::bounded::HtmlValuePoolUsage) -> custody::Usage {
     custody::Usage::new(value.bytes(), value.utf16_units())
 }
+#[cfg(test)]
+fn metric(event: Event) {
+    if super::scale_metrics::ENABLED {
+        super::scale_metrics::record(event);
+    }
+}
+#[cfg(test)]
+fn admitted_html(work: surgeist_html::bounded::HtmlValuePoolWork, closing: bool) {
+    if super::scale_metrics::ENABLED {
+        metric(Event::SharingHtmlAdmitted {
+            closing,
+            coordinates: [
+                work.record_visits(),
+                work.inspected_bytes(),
+                work.copied_bytes(),
+                work.provider_calls(),
+                work.reserve_bytes(),
+            ],
+        });
+    }
+}
 impl State {
     fn active(&self, id: u64) -> bool {
         self.roots.as_ref().is_some_and(|root| root.id == id)
@@ -206,6 +229,8 @@ impl State {
         let root = self.roots.take().expect("matching root");
         protocol(self.strings.abort_root(root.strings));
         self.banks.abort(id);
+        #[cfg(test)]
+        metric(Event::SharingPairAborted);
         self.reconcile();
     }
 }
@@ -217,6 +242,8 @@ impl Owner {
         admission: &mut Admission<'_>,
     ) -> Result<Self, DomError> {
         admission.work(html_work(HtmlStringPool::disposal_work())?)?;
+        #[cfg(test)]
+        admitted_html(HtmlStringPool::disposal_work(), true);
         admission.work(banks::DISPOSAL_WORK)?;
         let storage = ledger.retain(
             custody::Usage::new(size_of::<Mutex<State>>(), 0),
@@ -341,6 +368,8 @@ impl Session {
             return Ok(None);
         }
         admission.work(html_work(HtmlStringPool::root_work())?)?;
+        #[cfg(test)]
+        admitted_html(HtmlStringPool::root_work(), false);
         admission.work(banks::ROOT_WORK)?;
         let mut state = lock(&owner);
         if state.banks.occupied() {
@@ -367,6 +396,8 @@ impl Session {
             marks: 0,
             suspended: false,
         });
+        #[cfg(test)]
+        metric(Event::SharingPairActivated);
         drop(state);
         acquiring.finish(Phase::Active(id));
         Ok(Some(id))
@@ -388,6 +419,8 @@ impl Session {
             return Ok(empty());
         }
         admission.work(html_work(HtmlStringPool::mark_work())?)?;
+        #[cfg(test)]
+        admitted_html(HtmlStringPool::mark_work(), false);
         admission.work(banks::MARK_WORK)?;
         let ledger = lock(&owner).ledger.clone();
         let authority = ledger.retain(
@@ -406,6 +439,8 @@ impl Session {
         match (bank, strings) {
             (Some(bank), Some(strings)) => {
                 state.roots.as_mut().expect("active root").marks += 1;
+                #[cfg(test)]
+                metric(Event::SharingMarkCreated);
                 Ok(Checkpoint {
                     owner: self.owner.clone(),
                     root: Some(id),
@@ -449,6 +484,8 @@ impl Session {
         // Price both verification passes and the protected close selection
         // before traversing nominations. Only scalar shape is read above.
         admission.work(html_work(HtmlStringPool::seal_work())?)?;
+        #[cfg(test)]
+        admitted_html(HtmlStringPool::seal_work(), true);
         admission.work(banks::close_work(marks.len(), live)?)?;
         let verify = |state: &State| {
             let root = state
@@ -458,10 +495,14 @@ impl Session {
                 .expect("owned open session");
             let mut count = 0;
             for (i, mark) in marks.iter().enumerate() {
+                #[cfg(test)]
+                metric(Event::SharingCoordinationVisit);
                 assert!(
-                    marks[..i]
-                        .iter()
-                        .all(|previous| !std::ptr::eq(*previous, *mark)),
+                    marks[..i].iter().all(|previous| {
+                        #[cfg(test)]
+                        metric(Event::SharingCoordinationVisit);
+                        !std::ptr::eq(*previous, *mark)
+                    }),
                     "each pool mark nominated once"
                 );
                 assert!(
@@ -492,6 +533,8 @@ impl Session {
             count,
             "exclusive protected close preparation"
         );
+        #[cfg(test)]
+        metric(Event::SharingClosePrepared);
         Ok(CloseReady {
             owner: self.owner.as_ptr() as usize,
             root: Some(id),
@@ -529,7 +572,11 @@ impl Session {
         while state.roots.as_ref().expect("owned root").marks != 0 {
             let mark = marks
                 .iter()
-                .filter(|mark| mark.root == Some(id))
+                .filter(|mark| {
+                    #[cfg(test)]
+                    metric(Event::SharingCoordinationVisit);
+                    mark.root == Some(id)
+                })
                 .filter_map(|mark| {
                     mark.marks
                         .lock()
@@ -549,6 +596,8 @@ impl Session {
                 .expect("live nominated mark");
             protocol(state.strings.accept_mark(tokens.strings));
             state.banks.accept(tokens.bank);
+            #[cfg(test)]
+            metric(Event::SharingMarkAccepted);
             state.roots.as_mut().expect("owned root").marks -= 1;
         }
         let root = state.roots.take().expect("owned root");
@@ -561,6 +610,8 @@ impl Session {
         // The frozen bank root and prepared HTML token remain paired.
         prepared.root = Some(id);
         prepared.strings = Some(strings);
+        #[cfg(test)]
+        metric(Event::SharingPairClosed);
         *self.phase.lock().expect("session phase") = Phase::Bypassed;
         state.reconcile();
         prepared
@@ -594,10 +645,14 @@ impl Checkpoint {
         if restore {
             protocol(state.strings.restore_mark(tokens.strings));
             let removed = state.banks.restore(tokens.bank);
+            #[cfg(test)]
+            metric(Event::SharingMarkRestored);
             state.roots.as_mut().expect("owned root").marks -= removed;
         } else {
             protocol(state.strings.accept_mark(tokens.strings));
             if state.banks.accept(tokens.bank) {
+                #[cfg(test)]
+                metric(Event::SharingMarkAccepted);
                 state.roots.as_mut().expect("owned root").marks -= 1;
             }
         }
@@ -618,6 +673,8 @@ impl Prepared {
             protocol(state.strings.validate_seal(&strings));
             protocol(state.strings.seal(strings));
             state.banks.seal(id);
+            #[cfg(test)]
+            metric(Event::SharingPairCommitted);
             state.reconcile();
         }
     }
@@ -630,6 +687,8 @@ impl Drop for Prepared {
             let mut state = lock(&owner);
             protocol(state.strings.abort_seal(strings));
             state.banks.abort(id);
+            #[cfg(test)]
+            metric(Event::SharingPairAborted);
             state.reconcile();
         }
     }

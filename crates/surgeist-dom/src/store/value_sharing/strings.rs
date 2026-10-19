@@ -48,9 +48,13 @@ impl Session {
     ) -> Result<Option<SelectedString>, DomError> {
         #[cfg(test)]
         if !self.fixture_strings_enabled() {
+            #[cfg(test)]
+            metric(Event::SharingStringBypassed);
             return Ok(None);
         }
         if !self.may_attempt() {
+            #[cfg(test)]
+            metric(Event::SharingStringBypassed);
             return Ok(None);
         }
         // DOM's finite optional-attempt policy may reject a cold oversized
@@ -60,17 +64,26 @@ impl Session {
             && (value.len() > banks::MAX_UNITS
                 || value.shared_code_units().capacity() > banks::MAX_UNITS)
         {
+            #[cfg(test)]
+            metric(Event::SharingStringBypassed);
             return Ok(None);
         }
         let (Some(owner), Some(id)) = (self.owner.upgrade(), self.ensure_active(admission)?) else {
+            #[cfg(test)]
+            metric(Event::SharingStringBypassed);
             return Ok(None);
         };
         let (operation, ledger) = {
             let mut state = lock(&owner);
             if !state.mutable(id) {
+                #[cfg(test)]
+                metric(Event::SharingStringBypassed);
                 return Ok(None);
             }
-            (state.strings.probe(value), state.ledger.clone())
+            let operation = state.strings.probe(value);
+            #[cfg(test)]
+            metric(Event::SharingStringProbeStarted);
+            (operation, state.ledger.clone())
         };
         let mut pending = Pending {
             operation: Some(operation),
@@ -97,6 +110,8 @@ impl Session {
                                 .offer_miss(pending.operation.as_mut().unwrap())
                                 .map_err(|_| DomError::InvalidSourceOperation)?
                         {
+                            #[cfg(test)]
+                            metric(Event::SharingStringOfferPromoted);
                             continue;
                         }
                     }
@@ -104,7 +119,11 @@ impl Session {
                 };
                 let layout = action.layout();
                 admission.work(html_work(layout.work())?)?;
+                #[cfg(test)]
+                admitted_html(layout.work(), false);
                 admission.work(html_work(layout.closing_work())?)?;
+                #[cfg(test)]
+                admitted_html(layout.closing_work(), true);
                 let extra = {
                     let state = lock(&owner);
                     let target = custody::Usage::new(size_of::<Mutex<State>>(), 0)
@@ -160,15 +179,32 @@ impl Session {
                 .map_err(|_| DomError::InvalidSourceOperation)?;
             Ok(match result {
                 HtmlStringPoolResult::Hit(value) => {
+                    #[cfg(test)]
+                    metric(Event::SharingStringHit);
                     let credit = std::mem::replace(&mut pending.candidate, empty(&ledger));
                     Some(SelectedString(custody::Held::new(
                         value.into_value(),
                         credit,
                     )))
                 }
-                HtmlStringPoolResult::Miss
-                | HtmlStringPoolResult::Offered(_)
-                | HtmlStringPoolResult::Bypassed => None,
+                HtmlStringPoolResult::Miss => {
+                    #[cfg(test)]
+                    metric(Event::SharingStringMiss);
+                    None
+                }
+                HtmlStringPoolResult::Offered(change) => {
+                    #[cfg(test)]
+                    if change.inserted().is_some() {
+                        metric(Event::SharingStringOfferCommitted);
+                    }
+                    let _ = change;
+                    None
+                }
+                HtmlStringPoolResult::Bypassed => {
+                    #[cfg(test)]
+                    metric(Event::SharingStringBypassed);
+                    None
+                }
             })
         })();
         drop(pending);

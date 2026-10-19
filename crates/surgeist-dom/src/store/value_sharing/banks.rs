@@ -109,11 +109,11 @@ impl Banks {
         self.root.as_ref().is_some_and(|root| {
             root.id == mark.root
                 && !root.frozen
-                && root
-                    .frames
-                    .iter()
-                    .flatten()
-                    .any(|frame| frame.serial == mark.serial)
+                && root.frames.iter().flatten().any(|frame| {
+                    #[cfg(test)]
+                    metric(Event::SharingCoordinationVisit);
+                    frame.serial == mark.serial
+                })
         })
     }
     pub(super) fn new() -> Self {
@@ -427,6 +427,8 @@ fn text_hash(
     for unit in value.code_units() {
         admission.work(1)?;
         unit.hash(hasher);
+        #[cfg(test)]
+        metric(Event::SharingBankHashUnit);
     }
     Ok(value.len())
 }
@@ -490,12 +492,26 @@ fn equal(
             for (a, b) in a.code_units().iter().zip(b.code_units()) {
                 admission.work(1)?;
                 if a != b {
+                    #[cfg(test)]
+                    metric(Event::SharingBankComparisonPair);
                     return Ok(false);
                 }
+                #[cfg(test)]
+                metric(Event::SharingBankComparisonPair);
             }
         }
     }
     Ok(true)
+}
+/// Exercise the exact collision comparator without fabricating cached entries
+/// or guessing a collision in the process's real fingerprint algorithm.
+#[cfg(test)]
+pub(super) fn compare_for_test(
+    left: &[DomAttribute],
+    right: &[DomAttribute],
+    admission: &mut Admission<'_>,
+) -> Result<bool, DomError> {
+    equal(left, right, admission)
 }
 fn prospective(
     storage: &AttributeStorage,
@@ -535,18 +551,28 @@ impl Session {
     ) -> Result<BankProbe, DomError> {
         #[cfg(test)]
         if super::fixture::layers(self) == super::fixture::Layers::CallerOnly {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         }
         if !self.may_attempt() {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         }
         let Some(hash) = hash(entries, admission)? else {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         };
         let (Some(owner), Some(id)) = (self.owner.upgrade(), self.ensure_active(admission)?) else {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         };
         if !lock(&owner).mutable(id) {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         }
         let start = (hash as usize % BUCKETS) * WAYS;
@@ -555,8 +581,12 @@ impl Session {
             let info = {
                 let state = lock(&owner);
                 if !state.mutable(id) {
+                    #[cfg(test)]
+                    metric(Event::SharingBankBypassed);
                     return Ok(BankProbe::Bypassed);
                 }
+                #[cfg(test)]
+                metric(Event::SharingBankProbeSlot);
                 state
                     .banks
                     .slots
@@ -573,6 +603,8 @@ impl Session {
             let value = {
                 let state = lock(&owner);
                 if !state.mutable(id) {
+                    #[cfg(test)]
+                    metric(Event::SharingBankBypassed);
                     return Ok(BankProbe::Bypassed);
                 }
                 state
@@ -591,16 +623,24 @@ impl Session {
                 debit,
             ));
             if equal(entries, selected.storage().entries(), admission)? {
+                #[cfg(test)]
+                metric(Event::SharingBankHit);
                 return Ok(BankProbe::Hit(selected));
             }
         }
         let state = lock(&owner);
         if !state.mutable(id) {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         }
         let Some(sequence) = state.banks.next else {
+            #[cfg(test)]
+            metric(Event::SharingBankBypassed);
             return Ok(BankProbe::Bypassed);
         };
+        #[cfg(test)]
+        metric(Event::SharingBankMiss);
         Ok(BankProbe::Miss(BankMiss {
             owner: state.owner,
             root: id,
@@ -871,6 +911,8 @@ impl Session {
             hash,
             prospective,
         });
+        #[cfg(test)]
+        metric(Event::SharingBankOfferCommitted);
         state.banks.weak += 1;
         state.banks.cursors[bucket] = (state.banks.cursors[bucket] + 1) % WAYS as u8;
         state
@@ -892,5 +934,10 @@ fn copied<T>(count: usize) {
                     .expect("bounded pool copy extent"),
             },
         );
+        metric(Event::SharingMetadataSequenceMaterialized {
+            bytes: size_of::<T>()
+                .checked_mul(count)
+                .expect("bounded pool copy extent"),
+        });
     }
 }

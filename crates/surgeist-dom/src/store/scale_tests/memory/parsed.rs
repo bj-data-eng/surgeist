@@ -1,7 +1,10 @@
 //! Actual parser-report/DOM lifetime characterization, without physical-memory
 //! or sharing-policy claims. No report graph is reconstructed or cloned.
 
-use std::sync::{Arc, atomic::AtomicBool};
+use std::{
+    mem::size_of,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use crate::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomElement, DomLimits, DomNameLimits,
@@ -24,6 +27,8 @@ const SELECTED: usize = COLUMNS + 3;
 // Document + doctype + html/head/body/table/tbody + rows + td/Text pairs.
 const PARSED_NODES: usize = 2 + 5 + ROWS + 2 * CELLS;
 const MANAGED_NODES: usize = PARSED_NODES + 1; // Actual origin-source Document.
+
+mod arrays;
 
 fn markup() -> String {
     let mut source = String::from("<!doctype html><html><head></head><body><table><tbody>");
@@ -320,6 +325,11 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
     let (mut dom, environment) = setup();
     assert_eq!(dom.usage().managed_nodes(), 1);
     let before = dom.snapshot().stamp();
+    let measurement = if super::scale_metrics::ENABLED {
+        Some(super::scale_metrics::Measurement::begin().unwrap())
+    } else {
+        None
+    };
     let installed = dom
         .install_parsed_html_document(
             before,
@@ -329,6 +339,24 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
             &AtomicBool::new(false),
         )
         .unwrap();
+    if let Some(measurement) = measurement {
+        let counters = measurement
+            .finish(super::scale_metrics::Hooks::default())
+            .unwrap();
+        assert_eq!(
+            counters.parsed_attribute_rows_materialized,
+            ROWS + 2 * CELLS
+        );
+        assert_eq!(
+            counters.parsed_attribute_row_materialized_bytes,
+            (ROWS + 2 * CELLS) * size_of::<crate::DomAttribute>()
+        );
+        eprintln!(
+            "memory_parsed_conversion completed_attribute_rows={} row_metadata_bytes={} UTF16_buffer_copy_claim=false",
+            counters.parsed_attribute_rows_materialized,
+            counters.parsed_attribute_row_materialized_bytes
+        );
+    }
     assert!(std::ptr::eq(installed.report(), report.as_ref()));
     assert_eq!(installed.bindings().len(), PARSED_NODES);
     let document = installed.document();
@@ -402,6 +430,12 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
         cells.len(),
         report_ids.len()
     );
+    arrays::report(
+        "owner_report_old_current",
+        Some(&report),
+        &report_ids,
+        &[&old, &current],
+    );
     drop(dom);
     assert_eq!(
         check_dom(&current, document, Stage::Style),
@@ -412,14 +446,23 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
         (cells.clone(), text.clone())
     );
     assert_eq!(check_report(&report, &source), report_ids);
+    arrays::report(
+        "report_old_current",
+        Some(&report),
+        &report_ids,
+        &[&old, &current],
+    );
     drop(current);
+    arrays::report("report_old", Some(&report), &report_ids, &[&old]);
     assert_eq!(check_dom(&old, document, Stage::Original), (cells, text));
     assert_eq!(check_report(&report, &source), report_ids);
     drop(old);
+    arrays::report("report_only", Some(&report), &report_ids, &[]);
     assert_eq!(check_report(&report, &source), report_ids);
     drop(report);
     assert!(report_liveness.upgrade().is_none());
     // This proves wrapper liveness, not reclamation of every nested shared
     // allocation or allocator/Weak control block. Drop the observer last.
     drop(report_liveness);
+    arrays::report("no_strong_fixture_arrays", None, &report_ids, &[]);
 }

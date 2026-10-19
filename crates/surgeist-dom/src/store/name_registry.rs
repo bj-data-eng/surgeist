@@ -711,6 +711,8 @@ impl Operation {
         for unit in text.code_units() {
             self.scope.step(admission)?;
             hash.write_u16(*unit);
+            #[cfg(test)]
+            metric(super::scale_metrics::Event::NameHashUnit);
         }
         self.reserve_hashed(text, hash.finish(), admission)
     }
@@ -729,6 +731,8 @@ impl Operation {
         while let Some(slot) = current {
             self.scope.step(admission)?;
             let row = lease.index.row(slot);
+            #[cfg(test)]
+            metric(super::scale_metrics::Event::NameProbeRow);
             current = row.next;
             if row.fingerprint != fingerprint || row.len != text.len() {
                 continue;
@@ -740,9 +744,13 @@ impl Operation {
             for (left, right) in record.text().code_units().iter().zip(text.code_units()) {
                 self.scope.step(admission)?;
                 if left != right {
+                    #[cfg(test)]
+                    metric(super::scale_metrics::Event::NameComparisonPair);
                     equal = false;
                     break;
                 }
+                #[cfg(test)]
+                metric(super::scale_metrics::Event::NameComparisonPair);
             }
             if equal {
                 let origin = match row.pending.as_ref() {

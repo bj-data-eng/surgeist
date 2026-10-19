@@ -1,4 +1,5 @@
 use super::*;
+mod work_measurement;
 use std::{
     collections::HashSet,
     sync::atomic::{AtomicBool, Ordering},

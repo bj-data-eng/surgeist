@@ -705,6 +705,10 @@ pub(super) fn allocate(
                     attribute.value().clone(),
                 ));
                 #[cfg(test)]
+                if scale_metrics::ENABLED {
+                    scale_metrics::record(scale_metrics::Event::ParsedAttributeRowMaterialized);
+                }
+                #[cfg(test)]
                 written.pushed::<crate::DomAttribute>();
             }
             let attribute_scratch = if entries.entries.capacity() != 0 {
