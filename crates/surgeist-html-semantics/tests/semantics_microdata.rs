@@ -355,6 +355,84 @@ fn receiving_types_are_item_value_paths_not_dom_ancestors() {
     );
 }
 #[test]
+fn shared_itemref_routes_report_each_receiver_once() {
+    // HTML877d §5.2: "the relevant types of the item for which it is a
+    // property's value". The leaf is a property value of two receiving items,
+    // so it has two independent type contexts; the many routes above each
+    // receiver are that receiver's own context and are not enumerated again.
+    // This small cycle-free document must be answered, not refused.
+    const LEVELS: usize = 16;
+    let (mut b, d) = builder();
+    let root = el(
+        &mut b,
+        &d,
+        "div",
+        &[
+            ("itemscope", ""),
+            ("itemtype", "Root"),
+            ("itemref", "a0 b0"),
+        ],
+    );
+    let mut children = vec![root.clone()];
+    let mut receivers = Vec::new();
+    for level in 0..LEVELS {
+        let next = if level + 1 == LEVELS {
+            "leaf".to_owned()
+        } else {
+            format!("a{} b{}", level + 1, level + 1)
+        };
+        for side in ["a", "b"] {
+            let id = format!("{side}{level}");
+            let item = el(
+                &mut b,
+                &d,
+                "div",
+                &[
+                    ("itemscope", ""),
+                    ("id", &id),
+                    ("itemprop", "p"),
+                    ("itemref", &next),
+                ],
+            );
+            cs(&mut b, &item, &[]);
+            if level + 1 == LEVELS {
+                receivers.push(item.clone());
+            }
+            children.push(item);
+        }
+    }
+    let leaf = el(
+        &mut b,
+        &d,
+        "div",
+        &[("itemscope", ""), ("id", "leaf"), ("itemprop", "p")],
+    );
+    cs(&mut b, &root, &[]);
+    cs(&mut b, &leaf, &[]);
+    children.push(leaf.clone());
+    cs(&mut b, &d, &children);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&leaf).unwrap();
+    let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataItem);
+    assert_eq!(
+        item(&r).type_context().typing(),
+        &HtmlMicrodataTyping::Typed
+    );
+    let paths = known(item(&r).type_context().paths());
+    assert_eq!(paths.len(), 2);
+    for (path, receiver) in paths.iter().zip(&receivers) {
+        let items = path.items();
+        assert_eq!(items.len(), LEVELS + 2);
+        assert_eq!(items[0], id);
+        assert_eq!(items[1], c.subject_id(receiver).unwrap());
+        assert_eq!(items.last(), Some(&c.subject_id(&root).unwrap()));
+        assert_eq!(
+            path.types().token_units(0),
+            Some(DocumentString::from("Root").code_units())
+        );
+    }
+}
+#[test]
 fn item_graph_cycle_is_distinct_from_crawl_revisit() {
     let (mut b, d) = builder();
     let a = el(
