@@ -95,7 +95,7 @@ matching, cascade, font loading, layout, and rendering remain downstream work.
 Ordinary parser verification is offline and consumes committed data:
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-css --test wpt_parsing -- --test-threads=1
+cargo test --offline --locked -j 1 -p surgeist-css --test css css::corpora::wpt_parsing -- --test-threads=1
 ```
 
 Run the generator from the Surgeist root with existing absolute `CORPUS_OWNER`

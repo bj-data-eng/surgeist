@@ -1,0 +1,20 @@
+//! Images and gradients.
+
+mod c13_image_foundation_red;
+mod gradient_interpolation_opt_in_contract;
+mod gradient_interpolation_projection_contract;
+mod gradient_snapshot_authored_contract;
+mod gradient_snapshot_metadata_contract;
+mod gradient_snapshot_typed_lifecycle;
+mod image_checked_graph_contract;
+mod image_checked_graph_errors;
+mod image_construction;
+mod image_gradient_grammars;
+mod image_layer_foundation;
+mod image_orientation_admission_contract;
+mod image_orientation_serialization;
+mod image_serialization;
+mod images_authored_contract;
+mod images_composed_contract;
+mod images_typed_lifecycle;
+mod radial_radius_diagnostics;

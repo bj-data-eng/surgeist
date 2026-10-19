@@ -1,0 +1,31 @@
+//! Text, decoration, spacing and glyph properties.
+
+mod decoration_authored_contract;
+mod decoration_checked_original_closure_contract;
+mod decoration_typed_values;
+mod glyph_boundary_foundation;
+mod glyph_ordinary_fidelity;
+mod hyphenation_authored_contract;
+mod indent_vertical_authored_contract;
+mod justification_authored_contract;
+mod overflow_wrap_contract;
+mod overflow_wrap_foundation;
+mod page_line_minimum_foundation;
+mod svg_glyph_authored;
+mod text_alignment_foundation;
+mod text_alignment_typed;
+mod text_box_authored_contract;
+mod text_box_models;
+mod text_composed_conventions_contract;
+mod text_controls_authored_lifecycle;
+mod text_signed_thickness_admission_contract;
+mod text_spacing_authored_contract;
+mod text_spacing_foundation;
+mod text_spacing_projection;
+mod text_spacing_typed;
+mod text_transform_authored_contract;
+mod text_value_serialization;
+mod text_whitespace_controls_authored_contract;
+mod text_wrap_controls_authored_contract;
+mod text_wrap_whitespace_authored_contract;
+mod text_wrap_whitespace_lifecycle;

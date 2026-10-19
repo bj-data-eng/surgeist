@@ -30,7 +30,7 @@ use surgeist_css::{
     normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
 };
 
-#[path = "../tests/common/property_expectations.rs"]
+#[path = "../tests/css/support/property_expectations.rs"]
 mod property_expectations;
 
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {

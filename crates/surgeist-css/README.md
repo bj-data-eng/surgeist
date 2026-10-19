@@ -288,7 +288,7 @@ original-unit range. `CssColorOrdinaryOutcome` contains a
 actions; they do not bound allocator capacity or replace a consumer's resource
 controller. For a native numerical value, use Color's `serialize` with
 `SerializationRequest` and `SerializationLimits`. See the
-[public operation examples](tests/used_color_operations.rs).
+[public operation examples](tests/css/color/used_color_operations.rs).
 
 The shared grammar recognizes all 21 retained color branches: currentcolor,
 transparent, hex, named and system colors; rgb, hsl, hwb, lab, lch, oklab and
@@ -309,7 +309,7 @@ resolver with caller-owned banks and a `CssColorPathBuffer`, preserving Parsed,
 Programmatic and ImplicitClosure origins without serialization or reparsing.
 Authored numerical errors transfer their reached component path and applicable
 origin through `CssColorResolutionSite::Authored`. See the
-[public authored-resolution examples](tests/color_authored_resolution.rs).
+[public authored-resolution examples](tests/css/color/color_authored_resolution.rs).
 
 Resolution observes only reached dependencies. The no-element
 `CssColorPropertyFacts::InitialProperties` branch resolves currentcolor through
